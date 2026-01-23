@@ -1,0 +1,49 @@
+# Ralph Wiggum Loop Starter
+
+Autonomous development loop for Claude Code. Creates PRDs and executes tasks automatically.
+
+## Quick Start
+
+1. **Clone this repo** into your project directory (or copy the files)
+
+2. **Create your PRD** by running the create-prd command in Claude Code:
+   ```
+   /create-prd
+   ```
+
+3. **Run the autonomous loop:**
+   ```bash
+   ./ralph.sh 20
+   ```
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `ralph.sh` | Main loop script - runs Claude in iterations until complete |
+| `PROMPT.md` | Template prompt fed to Claude each iteration |
+| `activity.md` | Activity log - tracks progress across iterations |
+| `.claude/commands/create-prd.md` | PRD creation wizard |
+| `.claude/settings.json` | Claude Code permissions for autonomous operation |
+
+## How It Works
+
+1. **PRD Creation**: `/create-prd` guides you through requirements gathering and generates `prd.md` with a task list
+2. **Autonomous Loop**: `ralph.sh` feeds `PROMPT.md` to Claude repeatedly
+3. **Task Execution**: Each iteration, Claude finds one task with `"passes": false`, completes it, marks it done
+4. **Completion**: When all tasks pass, Claude outputs `<promise>COMPLETE</promise>` and the loop exits
+
+## Requirements
+
+- Claude Code CLI (`claude`)
+- `jq` (for JSON parsing in ralph.sh)
+- Bash
+
+## Configuration
+
+Edit `.claude/settings.json` to add permissions for your tech stack. The `create-prd` command will guide you on what to add.
+
+## Logs
+
+- `logs/iteration_N.json` - Raw Claude output for each iteration
+- `activity.md` - Human-readable progress log
