@@ -1,0 +1,76 @@
+{
+  "env": {
+    "XDG_CACHE_HOME": ".cache",
+    "npm_config_cache": ".cache/npm",
+    "PIP_CACHE_DIR": ".cache/pip"
+  },
+  "permissions": {
+    "allow": [
+      "Write(.claude/**)",
+      "Edit(.claude/**)",
+      "Read(.claude/**)",
+      "Write(src/**)",
+      "Edit(src/**)",
+      "Write(tests/**)",
+      "Edit(tests/**)",
+      "Edit(prd.md)",
+      "Edit(activity.md)",
+      "Edit(PROMPT.md)",
+      "Edit(CLAUDE.md)",
+      "Edit(package.json)",
+      "Edit(tsconfig.json)",
+      "WebFetch(domain:*)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npx:*)",
+      "Bash(pnpm:*)",
+      "Bash(yarn:*)",
+      "Bash(bun:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(pip3:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(rm:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(jq:*)",
+      "Bash(time:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(docker:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false,
+    "allowUnsandboxedCommands": true,
+    "network": {
+      "allowLocalBinding": true
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build outputs (adjust for your project)
+dist/
+build/
+out/
