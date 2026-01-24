@@ -678,7 +678,7 @@ All tasks require:
       "  - get_all_for_session(session_id: &str) -> Result<Vec<(String, String)>>",
       "Export from domain/repositories module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

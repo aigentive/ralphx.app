@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:20:00
+**Last Updated:** 2026-01-24 16:28:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 7 / 50
-**Current Task:** Implement ProposalDependencyRepository trait
+**Tasks Completed:** 8 / 50
+**Current Task:** Implement ChatMessageRepository trait
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:28:00 - Implement ProposalDependencyRepository trait
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/proposal_dependency_repository.rs`:
+  - Defined `ProposalDependencyRepository` trait with `Send + Sync` bounds
+  - 9 async methods: `add_dependency`, `remove_dependency`, `get_dependencies`, `get_dependents`, `get_all_for_session`, `would_create_cycle`, `clear_dependencies`, `count_dependencies`, `count_dependents`
+  - Added cycle detection and count methods beyond PRD requirements
+  - Created `MockProposalDependencyRepository` with HashMap-based dependency tracking
+- Updated `domain/repositories/mod.rs` with module and re-export
+- Added 21 comprehensive unit tests:
+  - Trait object safety test
+  - Add/remove dependency tests
+  - Dependency traversal tests (get_dependencies, get_dependents)
+  - Cycle detection tests (direct cycles, self-dependency)
+  - Count operations tests
+  - Arc<dyn ProposalDependencyRepository> usage tests
+
+**Commands run:**
+- `cargo test --lib proposal_dependency_repository::` (21 tests passed)
+- `cargo test --lib` (1697 tests passed)
+
+---
 
 ### 2026-01-24 16:20:00 - Implement TaskProposalRepository trait
 
