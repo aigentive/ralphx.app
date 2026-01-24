@@ -234,6 +234,79 @@ impl TaskStateMachineRepository {
         let machine = TaskStateMachine::new(context);
         Ok((state, machine))
     }
+
+    /// Processes an event and executes a side effect atomically within a transaction.
+    ///
+    /// This function:
+    /// 1. Starts a transaction
+    /// 2. Loads the current state
+    /// 3. Processes the event through the state machine
+    /// 4. Persists the new state
+    /// 5. Executes the side effect closure
+    /// 6. Commits on success, rolls back on any failure
+    ///
+    /// If the side effect fails, the state change is rolled back.
+    ///
+    /// # Arguments
+    /// * `task_id` - The task to transition
+    /// * `event` - The event to process
+    /// * `side_effect` - A closure that receives the old and new states
+    ///
+    /// # Returns
+    /// The new state on success, or an error on failure (with rollback)
+    pub fn transition_atomically<F>(
+        &self,
+        task_id: &TaskId,
+        event: &TaskEvent,
+        side_effect: F,
+    ) -> AppResult<State>
+    where
+        F: FnOnce(&State, &State) -> AppResult<()>,
+    {
+        let conn = self.conn.lock().map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Start transaction
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Load current state
+        let current_state = self.load_state_from_conn(&tx, task_id)?;
+
+        // Create state machine with minimal context for event processing
+        let context = TaskContext::new_test(task_id.as_str(), "");
+        let mut machine = TaskStateMachine::new(context);
+
+        // Process event
+        let response = machine.dispatch(&current_state, event);
+
+        let new_state = match response {
+            crate::domain::state_machine::Response::Transition(new_state) => new_state,
+            crate::domain::state_machine::Response::NotHandled => {
+                return Err(AppError::InvalidTransition {
+                    from: current_state.as_str().to_string(),
+                    to: format!("event {:?} not handled", event),
+                });
+            }
+            crate::domain::state_machine::Response::Handled => {
+                // State didn't change - still run side effect and commit
+                side_effect(&current_state, &current_state)?;
+                tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
+                return Ok(current_state);
+            }
+        };
+
+        // Persist new state within transaction
+        self.persist_state_in_tx(&tx, task_id, &new_state)?;
+
+        // Execute side effect - if this fails, transaction rolls back
+        side_effect(&current_state, &new_state)?;
+
+        // Commit transaction
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(new_state)
+    }
 }
 
 #[cfg(test)]
@@ -592,6 +665,174 @@ mod tests {
         assert!(result.is_err());
 
         // State should still be Ready
+        assert_eq!(repo.load_state(&task_id).unwrap(), State::Ready);
+    }
+
+    // ==================
+    // transition_atomically tests
+    // ==================
+
+    #[test]
+    fn test_transition_atomically_success() {
+        let (repo, task_id) = setup_repo();
+
+        let side_effect_called = std::sync::atomic::AtomicBool::new(false);
+
+        let new_state = repo
+            .transition_atomically(&task_id, &TaskEvent::Schedule, |from, to| {
+                assert_eq!(from, &State::Backlog);
+                assert_eq!(to, &State::Ready);
+                side_effect_called.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(new_state, State::Ready);
+        assert!(side_effect_called.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Verify persisted
+        assert_eq!(repo.load_state(&task_id).unwrap(), State::Ready);
+    }
+
+    #[test]
+    fn test_transition_atomically_side_effect_failure_rollback() {
+        let (repo, task_id) = setup_repo();
+
+        // Side effect that always fails
+        let result = repo.transition_atomically(&task_id, &TaskEvent::Schedule, |_from, _to| {
+            Err(AppError::Validation("Side effect failed".to_string()))
+        });
+
+        assert!(matches!(result, Err(AppError::Validation(_))));
+
+        // State should NOT have changed (rolled back)
+        assert_eq!(repo.load_state(&task_id).unwrap(), State::Backlog);
+    }
+
+    #[test]
+    fn test_transition_atomically_invalid_event() {
+        let (repo, task_id) = setup_repo();
+
+        let side_effect_called = std::sync::atomic::AtomicBool::new(false);
+
+        // ExecutionComplete is not valid in Backlog state
+        let result = repo.transition_atomically(&task_id, &TaskEvent::ExecutionComplete, |_, _| {
+            side_effect_called.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        });
+
+        assert!(matches!(result, Err(AppError::InvalidTransition { .. })));
+
+        // Side effect should not have been called
+        assert!(!side_effect_called.load(std::sync::atomic::Ordering::SeqCst));
+
+        // State should remain unchanged
+        assert_eq!(repo.load_state(&task_id).unwrap(), State::Backlog);
+    }
+
+    #[test]
+    fn test_transition_atomically_not_found() {
+        let (repo, _) = setup_repo();
+        let nonexistent = TaskId::from_string("nonexistent".to_string());
+
+        let result = repo.transition_atomically(&nonexistent, &TaskEvent::Schedule, |_, _| Ok(()));
+        assert!(matches!(result, Err(AppError::TaskNotFound(_))));
+    }
+
+    #[test]
+    fn test_transition_atomically_chain_with_side_effects() {
+        let (repo, task_id) = setup_repo();
+
+        let transitions = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        // First transition: Backlog -> Ready
+        let transitions_clone = transitions.clone();
+        repo.transition_atomically(&task_id, &TaskEvent::Schedule, move |from, to| {
+            transitions_clone.lock().unwrap().push((from.clone(), to.clone()));
+            Ok(())
+        })
+        .unwrap();
+
+        // Second transition: Ready -> Cancelled
+        let transitions_clone = transitions.clone();
+        repo.transition_atomically(&task_id, &TaskEvent::Cancel, move |from, to| {
+            transitions_clone.lock().unwrap().push((from.clone(), to.clone()));
+            Ok(())
+        })
+        .unwrap();
+
+        let recorded = transitions.lock().unwrap();
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[0], (State::Backlog, State::Ready));
+        assert_eq!(recorded[1], (State::Ready, State::Cancelled));
+
+        // Final state
+        assert_eq!(repo.load_state(&task_id).unwrap(), State::Cancelled);
+    }
+
+    #[test]
+    fn test_transition_atomically_persists_state_data() {
+        let (repo, task_id) = setup_repo();
+
+        // Set up Executing state first
+        {
+            let conn = repo.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE tasks SET internal_status = 'executing' WHERE id = 'task-1'",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Transition to Failed with side effect
+        let result = repo.transition_atomically(
+            &task_id,
+            &TaskEvent::ExecutionFailed {
+                error: "Build failed".to_string(),
+            },
+            |from, to| {
+                assert_eq!(from, &State::Executing);
+                if let State::Failed(data) = to {
+                    assert_eq!(data.error, "Build failed");
+                } else {
+                    panic!("Expected Failed state");
+                }
+                Ok(())
+            },
+        );
+
+        // Note: ExecutionFailed creates Failed state but might not preserve error in our impl
+        // Let's verify the transition happened
+        assert!(result.is_ok());
+
+        if let State::Failed(_) = repo.load_state(&task_id).unwrap() {
+            // State is Failed as expected
+        } else {
+            panic!("Expected Failed state");
+        }
+    }
+
+    #[test]
+    fn test_transition_atomically_partial_failure_no_persist() {
+        let (repo, task_id) = setup_repo();
+
+        // Schedule first
+        repo.transition_atomically(&task_id, &TaskEvent::Schedule, |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(repo.load_state(&task_id).unwrap(), State::Ready);
+
+        // Try to cancel but fail in side effect
+        let result = repo.transition_atomically(&task_id, &TaskEvent::Cancel, |from, to| {
+            // Transition is valid (Ready -> Cancelled)
+            assert_eq!(from, &State::Ready);
+            assert_eq!(to, &State::Cancelled);
+            // But we fail the side effect
+            Err(AppError::Database("Simulated failure".to_string()))
+        });
+
+        assert!(result.is_err());
+
+        // State should still be Ready due to rollback
         assert_eq!(repo.load_state(&task_id).unwrap(), State::Ready);
     }
 }

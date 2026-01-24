@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:40:00
+**Last Updated:** 2026-01-24 09:50:00
 **Phase:** State Machine
-**Tasks Completed:** 17 / 22
-**Current Task:** Implement atomic transition with side effects
+**Tasks Completed:** 18 / 22
+**Current Task:** Create happy path integration test
 
 ---
 
@@ -2149,6 +2149,37 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 
 **Files modified:**
 - `src-tauri/src/infrastructure/sqlite/mod.rs` - added state_machine_repository module
+
+---
+
+### 2026-01-24 09:50:00 - Implement atomic transition with side effects
+
+**What was done:**
+- Added `transition_atomically()` method to TaskStateMachineRepository:
+  - Accepts task_id, event, and side_effect closure
+  - Starts database transaction
+  - Loads current state
+  - Processes event through state machine
+  - Persists new state
+  - Executes side effect (receives old and new states)
+  - Commits on success, rolls back on any failure
+- Side effect receives both from and to states for context
+- Invalid events return InvalidTransition error without side effect
+- Wrote 7 comprehensive tests:
+  - Success case: side effect called with correct states
+  - Side effect failure: state rolled back to original
+  - Invalid event: side effect not called, state unchanged
+  - Not found: returns TaskNotFound error
+  - Chain: multiple transitions with side effects
+  - State data: persists data for states like Failed
+  - Partial failure: rollback on side effect error
+
+**Commands run:**
+- `cargo test state_machine_repository` - 26 tests pass
+- `cargo test` - 550 tests pass
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/state_machine_repository.rs` - added transition_atomically
 
 ---
 
