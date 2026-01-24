@@ -1,14 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:25:00
+**Last Updated:** 2026-01-24 17:40:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 13 / 50
-**Current Task:** Implement SqliteChatMessageRepository
+**Tasks Completed:** 14 / 50
+**Current Task:** Implement SqliteTaskDependencyRepository
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:40:00 - Implement SqliteChatMessageRepository
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_chat_message_repo.rs`:
+  - `SqliteChatMessageRepository` struct with `Arc<Mutex<Connection>>` pattern
+  - Constructor methods: `new()` and `from_shared()`
+  - Implements all 11 `ChatMessageRepository` trait methods:
+    - `create()` - INSERT with all fields including optional session/project/task IDs
+    - `get_by_id()` - SELECT with `from_row` deserialization
+    - `get_by_session()` - SELECT filtered by session_id, ordered by created_at ASC
+    - `get_by_project()` - SELECT filtered by project_id AND session_id IS NULL, ordered by created_at ASC
+    - `get_by_task()` - SELECT filtered by task_id, ordered by created_at ASC
+    - `delete_by_session()` - DELETE all messages in a session
+    - `delete_by_project()` - DELETE all messages for a project
+    - `delete_by_task()` - DELETE all messages for a task
+    - `delete()` - DELETE single message by ID
+    - `count_by_session()` - COUNT of messages in a session
+    - `get_recent_by_session()` - SELECT most recent N messages in ascending order
+- Updated `infrastructure/sqlite/mod.rs` with module declaration and re-export
+- Added 36 comprehensive integration tests:
+  - CREATE tests: insert, metadata, parent message, duplicate ID, project/task messages
+  - GET BY ID tests: retrieval, nonexistent, field preservation
+  - GET BY SESSION tests: all messages, ordering, filtering, empty
+  - GET BY PROJECT tests: project-only messages, filtering
+  - GET BY TASK tests: task messages, filtering
+  - DELETE tests: by session, by project, by task, single message, nonexistent
+  - COUNT tests: zero, counting, filtering
+  - GET RECENT tests: limiting, ordering, fewer than limit
+  - SHARED CONNECTION tests
+  - ROLE tests: user, orchestrator, system preservation
+  - CASCADE DELETE tests: session deletion cascades to messages
+
+**Commands run:**
+- `cargo test --lib sqlite_chat_message_repo::` (36 tests passed)
+- `cargo test --lib` (1863 tests passed)
+
+---
 
 ### 2026-01-24 17:25:00 - Implement SqliteProposalDependencyRepository
 
