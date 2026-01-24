@@ -648,7 +648,7 @@ pub struct MockNotifier {
       "Persist state change only on success",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
