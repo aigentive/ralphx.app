@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 02:10:00
+**Last Updated:** 2026-01-25 02:35:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 4 / 18
-**Current Task:** Design requirements for Settings View
+**Tasks Completed:** 5 / 18
+**Current Task:** Design requirements for Activity Stream View
 
 ---
 
 ## Session Log
+
+### 2026-01-25 02:35:00 - Design requirements for Settings View (Task 5)
+
+**What was done:**
+- Added comprehensive Settings View design requirements to specs/DESIGN.md
+- Documented overall layout with glass-effect header and scrollable content area
+- Specified four section cards (Execution, Model, Review, Supervisor) using shadcn Card
+- Defined distinctive Lucide icons for each section (Zap, Brain, FileSearch, Shield)
+- Documented Section Headers with icon containers, titles, and descriptions
+- Specified Setting Rows with label/description column and control column
+- Defined form controls using shadcn components:
+  - Toggle Switch: shadcn Switch with accent-primary on-state
+  - Number Input: shadcn Input (80px width, right-aligned, hidden spin buttons)
+  - Select Dropdown: shadcn Select with model descriptions
+- Documented conditional disabling pattern for master/sub-setting relationships
+- Specified saving indicator (pulsing badge with Loader2 icon)
+- Documented error banner with AlertCircle icon and dismiss button
+- Created loading skeleton using shadcn Skeleton
+- Defined micro-interactions for cards, toggles, inputs, and rows
+- Created acceptance_criteria array with 15 functional requirements
+- Created design_quality array with 15 visual/aesthetic requirements
+
+**Design Highlights:**
+- Glass-effect header with backdrop-blur-md
+- Section cards with gradient border technique for subtle depth
+- Section icons in accent-muted containers (36px × 36px)
+- Setting rows with subtle hover highlight
+- Master toggle controls sub-settings opacity (50% when disabled)
+- Max content width 720px prevents overly wide lines
+- All Lucide icons specified: Settings, Zap, Brain, FileSearch, Shield, ChevronDown, Loader2, AlertCircle, X
+
+**Files modified:**
+- `specs/DESIGN.md` (Settings View section with full requirements)
+- `specs/phases/prd_phase_13_design.md` (marked task 5 as passes: true)
+
+---
 
 ### 2026-01-25 02:10:00 - Design requirements for Ideation View (Task 4)
 
