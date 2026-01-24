@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:45:00
+**Last Updated:** 2026-01-25 00:48:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 19 / 31
-**Current Task:** Replace hardcoded Project Selector with functional component
+**Tasks Completed:** 20 / 31
+**Current Task:** Add Activity and Settings navigation to app layout
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:48:00 - Replace hardcoded Project Selector with functional component (Task 20)
+
+**What was done:**
+- Integrated ProjectSelector component into App.tsx header, replacing hardcoded "Demo Project" text
+- Added ProjectCreationWizard modal with full state management
+- Updated all DEFAULT_PROJECT_ID references to use activeProjectId from projectStore
+- Added project creation handlers (handleCreateProject, handleBrowseFolder, handleFetchBranches)
+- Connected ProjectSelector onNewProject callback to open the creation wizard
+- Updated query hooks and chat context to use currentProjectId
+- Updated TaskBoard and ReviewsPanel to use currentProjectId
+- Wrote comprehensive unit tests for ProjectSelector (31 tests covering all functionality)
+
+**Note:** ProjectSelector component already existed (untracked) with full implementation including:
+- Dropdown trigger showing current project with git mode indicator
+- Project list sorted by most recent, with selection and keyboard navigation
+- New Project option that triggers creation wizard
+- Full accessibility support (ARIA attributes, keyboard nav)
+
+**Files created:**
+- `src/components/projects/ProjectSelector/ProjectSelector.test.tsx` (31 tests)
+
+**Files modified:**
+- `src/App.tsx` (integrated ProjectSelector and ProjectCreationWizard)
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test:run -- src/components/projects/ProjectSelector/ProjectSelector.test.tsx` (31 tests passed)
+
+---
 
 ### 2026-01-25 00:45:00 - Integrate Diff Viewer into Reviews Panel (Task 19)
 
