@@ -1,14 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:47:20
+**Last Updated:** 2026-01-24 17:52:23
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 42 / 50
-**Current Task:** Create ProposalList component
+**Tasks Completed:** 43 / 50
+**Current Task:** Create ProposalEditModal component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:52:23 - Create ProposalList component
+
+**What was done:**
+- Created `src/components/Ideation/ProposalList.tsx` with:
+  - List of ProposalCard components sorted by sortOrder
+  - Drag-to-reorder with @dnd-kit/sortable (DndContext, SortableContext)
+  - Multi-select with Shift+click support via list-level click handler
+  - Toolbar with Select All / Deselect All buttons
+  - Sort by Priority button
+  - Clear All button
+  - Empty state when no proposals ("No proposals yet")
+  - Selected count display in toolbar ("X selected of Y")
+  - Dependency counts passed to cards
+  - exactOptionalPropertyTypes-compliant prop spreading
+- Created `src/components/Ideation/ProposalList.test.tsx` with 33 unit tests covering:
+  - Rendering (container, cards, sortOrder, toolbar)
+  - Empty state (display, text, toolbar hidden)
+  - Select all / Deselect all (buttons, callbacks, count display)
+  - Sort by priority (button, callback, accessibility)
+  - Clear all (button, callback, accessibility)
+  - Card interactions (select, edit, remove callbacks)
+  - Multi-select behavior (prop wiring, last selected tracking)
+  - Drag and drop (sortable context, draggable elements, reorder callback)
+  - Dependency counts (passed to cards correctly)
+  - Styling (spacing, toolbar layout)
+  - Accessibility (list role, button labels)
+- Updated `src/components/Ideation/index.ts` to export ProposalList
+
+**Commands run:**
+- `npm test -- --run src/components/Ideation/ProposalList.test.tsx` (33 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1948 tests passed)
+
+---
 
 ### 2026-01-24 17:47:20 - Create ProposalCard component
 
