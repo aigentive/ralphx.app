@@ -1,14 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:48:00
+**Last Updated:** 2026-01-24 16:00:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 4 / 50
-**Current Task:** Implement ChatMessage and DependencyGraph domain types
+**Tasks Completed:** 5 / 50
+**Current Task:** Implement IdeationSessionRepository trait
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:00:00 - Implement ChatMessage and DependencyGraph domain types
+
+**What was done:**
+- Added `ChatMessageId` newtype to `src-tauri/src/domain/entities/types.rs`:
+  - `new()`, `from_string()`, `as_str()` methods
+  - Display, Default, Hash, Serialize, Deserialize traits
+  - 12 unit tests for the new type
+- Added to `src-tauri/src/domain/entities/ideation.rs`:
+  - `MessageRole` enum (User, Orchestrator, System) with FromStr/Display
+  - `ParseMessageRoleError` error type
+  - `ChatMessage` struct with 10 fields (id, session_id, project_id, task_id, role, content, metadata, parent_message_id, created_at)
+  - Factory methods: `user_in_session`, `orchestrator_in_session`, `system_in_session`, `user_in_project`, `user_about_task`
+  - Helper methods: `with_metadata`, `with_parent`, `is_user`, `is_orchestrator`, `is_system`
+  - `from_row` method for SQLite deserialization
+  - `DependencyGraphNode` struct (proposal_id, title, in_degree, out_degree) with `is_root`, `is_leaf`, `is_blocker` methods
+  - `DependencyGraphEdge` struct (from, to)
+  - `DependencyGraph` struct with nodes, edges, critical_path, has_cycles, cycles fields
+  - Graph methods: `add_node`, `add_edge`, `get_node`, `get_dependencies`, `get_dependents`, `get_roots`, `get_leaves`, `is_on_critical_path`
+- Updated `domain/entities/mod.rs` exports for all new types
+- Added 55 new tests for ChatMessage, MessageRole, and DependencyGraph types
+
+**Commands run:**
+- `cargo test --lib ideation::` (205 tests passed)
+- `cargo test --lib entities::types::` (59 tests passed)
+- `cargo test --lib` (1632 tests passed)
+
+---
 
 ### 2026-01-24 15:48:00 - Implement PriorityAssessment domain types
 

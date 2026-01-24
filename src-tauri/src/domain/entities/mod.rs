@@ -11,11 +11,13 @@ pub mod types;
 
 // Re-export commonly used types for convenience
 pub use ideation::{
-    BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
-    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, ParseComplexityError,
-    ParseIdeationSessionStatusError, ParsePriorityError, ParseProposalStatusError,
-    ParseTaskCategoryError, Priority, PriorityAssessment, PriorityAssessmentFactors,
-    PriorityFactors, ProposalStatus, TaskCategory, TaskProposal, UserHintFactor,
+    BusinessValueFactor, ChatMessage, Complexity, ComplexityFactor, CriticalPathFactor,
+    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
+    IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
+    ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
+    ParseProposalStatusError, ParseTaskCategoryError, Priority, PriorityAssessment,
+    PriorityAssessmentFactors, PriorityFactors, ProposalStatus, TaskCategory, TaskProposal,
+    UserHintFactor,
 };
 pub use project::{GitMode, Project};
 pub use review::{
@@ -26,4 +28,4 @@ pub use review::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_qa::TaskQA;
-pub use types::{IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId};
+pub use types::{ChatMessageId, IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId};

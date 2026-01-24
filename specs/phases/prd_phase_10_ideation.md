@@ -629,7 +629,7 @@ All tasks require:
       "Create DependencyGraph struct with cycle detection fields",
       "Export from domain/entities module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
