@@ -341,3 +341,23 @@ export type {
   SendChatMessageInput,
   SessionWithData,
 } from "./ideation";
+
+// Chat context types and schemas
+export {
+  ViewTypeSchema,
+  VIEW_TYPE_VALUES,
+  ChatContextSchema,
+  isKanbanContext,
+  isIdeationContext,
+  isTaskDetailContext,
+  isActivityContext,
+  isSettingsContext,
+  hasSelectedTask,
+  hasSelectedProposals,
+  hasIdeationSession,
+  createKanbanContext,
+  createIdeationContext,
+  createTaskDetailContext,
+  createProjectContext,
+} from "./chat";
+export type { ViewType, ChatContext } from "./chat";

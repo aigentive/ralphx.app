@@ -1,0 +1,169 @@
+// Chat context types and Zod schemas
+// Types for context-aware chat panel behavior
+
+import { z } from "zod";
+
+// ============================================================================
+// View Types
+// ============================================================================
+
+/**
+ * View type values for chat context
+ */
+export const VIEW_TYPE_VALUES = [
+  "kanban",
+  "ideation",
+  "activity",
+  "settings",
+  "task_detail",
+] as const;
+
+export const ViewTypeSchema = z.enum(VIEW_TYPE_VALUES);
+export type ViewType = z.infer<typeof ViewTypeSchema>;
+
+// ============================================================================
+// Chat Context
+// ============================================================================
+
+/**
+ * Chat context schema - describes the current state of the UI
+ * The chat panel adapts its behavior based on this context
+ */
+export const ChatContextSchema = z.object({
+  /** Current view being displayed */
+  view: ViewTypeSchema,
+  /** Current project ID */
+  projectId: z.string().min(1),
+  /** Selected task ID (for kanban with selection or task_detail view) */
+  selectedTaskId: z.string().optional(),
+  /** Selected proposal IDs (for ideation view) */
+  selectedProposalIds: z.array(z.string()).optional(),
+  /** Current ideation session ID (for ideation view) */
+  ideationSessionId: z.string().optional(),
+});
+
+export type ChatContext = z.infer<typeof ChatContextSchema>;
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Check if context is in kanban view
+ */
+export function isKanbanContext(context: ChatContext): boolean {
+  return context.view === "kanban";
+}
+
+/**
+ * Check if context is in ideation view
+ */
+export function isIdeationContext(context: ChatContext): boolean {
+  return context.view === "ideation";
+}
+
+/**
+ * Check if context is in task detail view
+ */
+export function isTaskDetailContext(context: ChatContext): boolean {
+  return context.view === "task_detail";
+}
+
+/**
+ * Check if context is in activity view
+ */
+export function isActivityContext(context: ChatContext): boolean {
+  return context.view === "activity";
+}
+
+/**
+ * Check if context is in settings view
+ */
+export function isSettingsContext(context: ChatContext): boolean {
+  return context.view === "settings";
+}
+
+/**
+ * Check if context has a selected task
+ */
+export function hasSelectedTask(context: ChatContext): boolean {
+  return context.selectedTaskId !== undefined;
+}
+
+/**
+ * Check if context has selected proposals
+ */
+export function hasSelectedProposals(context: ChatContext): boolean {
+  return (
+    context.selectedProposalIds !== undefined &&
+    context.selectedProposalIds.length > 0
+  );
+}
+
+/**
+ * Check if context has an active ideation session
+ */
+export function hasIdeationSession(context: ChatContext): boolean {
+  return context.ideationSessionId !== undefined;
+}
+
+// ============================================================================
+// Factory Functions
+// ============================================================================
+
+/**
+ * Create a kanban view context
+ */
+export function createKanbanContext(
+  projectId: string,
+  selectedTaskId?: string
+): ChatContext {
+  return {
+    view: "kanban",
+    projectId,
+    selectedTaskId,
+  };
+}
+
+/**
+ * Create an ideation view context
+ */
+export function createIdeationContext(
+  projectId: string,
+  ideationSessionId: string,
+  selectedProposalIds?: string[]
+): ChatContext {
+  return {
+    view: "ideation",
+    projectId,
+    ideationSessionId,
+    selectedProposalIds,
+  };
+}
+
+/**
+ * Create a task detail view context
+ */
+export function createTaskDetailContext(
+  projectId: string,
+  selectedTaskId: string
+): ChatContext {
+  return {
+    view: "task_detail",
+    projectId,
+    selectedTaskId,
+  };
+}
+
+/**
+ * Create a simple project context (activity, settings views)
+ */
+export function createProjectContext(
+  projectId: string,
+  view: "activity" | "settings"
+): ChatContext {
+  return {
+    view,
+    projectId,
+  };
+}

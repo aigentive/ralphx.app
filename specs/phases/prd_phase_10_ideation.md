@@ -949,7 +949,7 @@ All tasks require:
       "Create ViewType type ('kanban' | 'ideation' | 'activity' | 'settings' | 'task_detail')",
       "Export from src/types/chat.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
