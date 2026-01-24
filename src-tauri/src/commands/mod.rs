@@ -20,12 +20,16 @@ pub use execution_commands::{
 };
 pub use health::health_check;
 pub use ideation_commands::{
+    add_proposal_dependency, analyze_dependencies, apply_proposals_to_kanban,
     archive_ideation_session, assess_all_priorities, assess_proposal_priority,
     create_ideation_session, create_task_proposal, delete_ideation_session, delete_task_proposal,
-    get_ideation_session, get_ideation_session_with_data, get_task_proposal,
-    list_ideation_sessions, list_session_proposals, reorder_proposals, set_proposal_selection,
-    toggle_proposal_selection, update_task_proposal, ChatMessageResponse, IdeationSessionResponse,
-    PriorityAssessmentResponse, SessionWithDataResponse, TaskProposalResponse,
+    get_blocked_tasks, get_ideation_session, get_ideation_session_with_data,
+    get_proposal_dependencies, get_proposal_dependents, get_task_blockers, get_task_proposal,
+    list_ideation_sessions, list_session_proposals, remove_proposal_dependency, reorder_proposals,
+    set_proposal_selection, toggle_proposal_selection, update_task_proposal,
+    ApplyProposalsResultResponse, ChatMessageResponse, DependencyGraphResponse,
+    IdeationSessionResponse, PriorityAssessmentResponse, SessionWithDataResponse,
+    TaskProposalResponse,
 };
 pub use project_commands::{
     create_project, delete_project, get_project, list_projects, update_project,
