@@ -1,14 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:04:53
+**Last Updated:** 2026-01-24 10:05:57
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 14 / 33
-**Current Task:** Create hooks.json configuration
+**Tasks Completed:** 16 / 33
+**Current Task:** Implement SupervisorEvent enum in Rust
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:05:57 - Create hooks.json and .mcp.json configs
+
+**What was done:**
+- Created `ralphx-plugin/hooks/hooks.json` with:
+  - PostToolUse hook for Write|Edit → lint-fix.sh
+  - Stop hook for task completion verification
+- Created `ralphx-plugin/hooks/scripts/lint-fix.sh`:
+  - Runs npm lint:fix for TypeScript
+  - Runs cargo clippy --fix for Rust
+- Created `ralphx-plugin/.mcp.json`:
+  - Empty mcpServers object (placeholder)
+- Validated JSON with jq
+- Made lint-fix.sh executable
+
+---
 
 ### 2026-01-24 10:04:53 - Create 5 skill definitions
 
