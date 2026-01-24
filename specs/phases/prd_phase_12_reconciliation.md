@@ -164,7 +164,144 @@ Retroactively verify all UI components from Phases 5, 6, 8, 9, 10:
 
 ---
 
-## Issue 3: (Placeholder for future issues)
+## Issue 3: Missing Automatic Reconciliation (Auditor System)
+
+### Problem
+
+RalphX has no automatic way to detect and correct systemic issues in completed work. Currently:
+- **Supervisor** monitors in real-time during task execution
+- **Review System** checks individual tasks post-completion
+- **Neither** looks backwards at patterns across multiple completed tasks
+
+We discovered Issue 1 and Issue 2 manually by reading the activity log. This should be automatic.
+
+### Important: RalphX is Task-Based, Not Phase-Based
+
+RalphX core model:
+```
+Project → Tasks (with statuses, steps, dependencies)
+```
+
+- `wave` field exists but is nullable (for grouping parallel tasks)
+- `phase_id` and `plan_id` are **methodology extensions** (BMAD, GSD), not core
+- The auditor must work at the **task level**, not phase level
+
+### Solution: Auditor Agent
+
+A new agent that analyzes completed work and creates reconciliation tasks.
+
+**Triggers (task-based, not phase-based):**
+
+| Trigger | When | Use Case |
+|---------|------|----------|
+| `queue_empty` | All tasks approved/completed | End of work session |
+| `task_count` | Every N tasks approved | Periodic checkup (e.g., every 10 tasks) |
+| `terminal_state` | Task enters `failed` or `cancelled` | Post-mortem analysis |
+| `manual` | User runs `/audit` | On-demand |
+| `time_based` | Every X hours of execution | Long-running sessions |
+
+**For methodologies (extensibility only):**
+
+| Trigger | When | Use Case |
+|---------|------|----------|
+| `phase_complete` | All tasks in phase approved | BMAD phase transitions |
+| `wave_complete` | All tasks in wave approved | GSD wave checkpoints |
+
+### Auditor Behavior
+
+```
+1. Read activity logs for recently completed tasks
+2. Read task descriptions/steps from database
+3. Compare: what was required vs what was logged
+4. Identify patterns:
+   - Steps marked complete but not logged (e.g., "visual verification")
+   - Required artifacts missing (screenshots, test files)
+   - Repeated workarounds ("skipped due to...", "marked as done because...")
+   - Same errors occurring across multiple tasks
+5. Generate reconciliation tasks
+6. Either:
+   - Auto-add to queue (if autoReconcile enabled)
+   - Present to user for approval
+```
+
+### Configuration
+
+```typescript
+interface AuditTrigger {
+  type: 'task_count' | 'queue_empty' | 'terminal_state' | 'manual' | 'time_based';
+  config: {
+    taskThreshold?: number;      // For task_count (e.g., 10)
+    intervalMinutes?: number;    // For time_based (e.g., 60)
+    terminalStates?: string[];   // For terminal_state (e.g., ['failed', 'cancelled'])
+  };
+}
+
+interface AuditConfig {
+  enabled: boolean;
+  triggers: AuditTrigger[];
+  autoReconcile: boolean;  // Auto-create tasks or require approval
+  rules: AuditRule[];
+}
+
+interface AuditRule {
+  name: string;
+  description: string;
+  check: 'activity_pattern' | 'artifact_exists' | 'step_logged' | 'custom';
+  pattern?: string;       // Regex for activity_pattern
+  path?: string;          // Glob for artifact_exists
+  stepKeyword?: string;   // For step_logged
+  severity: 'low' | 'medium' | 'high' | 'critical';
+}
+```
+
+### Default Audit Rules
+
+```typescript
+const defaultAuditRules: AuditRule[] = [
+  {
+    name: "visual_verification_logged",
+    description: "UI tasks should have visual verification in activity log",
+    check: "activity_pattern",
+    pattern: "screenshot|visual verification|agent-browser",
+    severity: "medium"
+  },
+  {
+    name: "screenshots_captured",
+    description: "UI tasks should produce screenshots",
+    check: "artifact_exists",
+    path: "screenshots/*.png",
+    severity: "medium"
+  },
+  {
+    name: "tests_created",
+    description: "Tasks with TDD requirement should create test files",
+    check: "artifact_exists",
+    path: "**/*.test.{ts,tsx}",
+    severity: "high"
+  },
+  {
+    name: "tauri_dev_used",
+    description: "UI verification should use 'tauri dev' not just 'npm run dev'",
+    check: "activity_pattern",
+    pattern: "tauri dev",
+    severity: "low"
+  }
+];
+```
+
+### Integration Points
+
+| System | How Auditor Integrates |
+|--------|------------------------|
+| **Supervisor** | Auditor is "retrospective supervisor" - same severity model |
+| **Review System** | Auditor reviews batches of tasks, not individual tasks |
+| **Activity Log** | Primary data source for pattern detection |
+| **Ideation** | Audit findings can feed into ideation as proposals |
+| **Methodologies** | Each methodology can define additional audit rules |
+
+---
+
+## Issue 4: (Placeholder for future issues)
 
 _Add additional reconciliation issues here as they are discovered._
 
