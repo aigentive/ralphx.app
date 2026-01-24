@@ -2,6 +2,7 @@
 // Commands should be minimal - delegate to domain/infrastructure
 
 pub mod agent_profile_commands;
+pub mod execution_commands;
 pub mod health;
 pub mod project_commands;
 pub mod qa_commands;
@@ -12,6 +13,9 @@ pub mod task_commands;
 pub use agent_profile_commands::{
     get_agent_profile, get_agent_profiles_by_role, get_builtin_agent_profiles,
     get_custom_agent_profiles, list_agent_profiles, seed_builtin_profiles,
+};
+pub use execution_commands::{
+    get_execution_status, pause_execution, resume_execution, stop_execution, ExecutionState,
 };
 pub use health::health_check;
 pub use project_commands::{

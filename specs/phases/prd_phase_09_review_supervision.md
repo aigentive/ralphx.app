@@ -892,7 +892,7 @@ interface AskUserQuestionResponse {
       "Create get_execution_status command",
       "Run tauri dev to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
