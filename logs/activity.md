@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:36:30
+**Last Updated:** 2026-01-24 13:39:27
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 23 / 51
-**Current Task:** Implement ReviewCard component
+**Tasks Completed:** 24 / 51
+**Current Task:** Implement ReviewsPanel component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:39:27 - Implement ReviewCard component
+
+**What was done:**
+- Created `src/components/reviews/ReviewCard.tsx` (66 lines, under 100 limit):
+  - Displays task title, review status, and notes
+  - ReviewerTypeIndicator sub-component shows AI (🤖) or Human (👤) indicator
+  - FixAttemptCounter sub-component shows attempt counter (e.g., "Attempt 2 of 3")
+  - Action buttons: View Diff, Approve, Request Changes
+  - Buttons hidden for completed reviews (approved/rejected status)
+  - Uses design system tokens: `--bg-elevated`, `--status-success`, `--status-warning`
+  - Data attributes: `data-testid`, `data-status`, `data-reviewer-type`
+- Created `src/components/reviews/ReviewCard.test.tsx` with 20 tests:
+  - Basic rendering tests (title, status, notes)
+  - Reviewer type indicator tests
+  - Action button tests with callbacks
+  - Fix attempt counter tests
+  - Data attribute tests
+  - Styling tests
+- Updated `src/components/reviews/index.ts` barrel export
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/components/reviews/ReviewCard.test.tsx` (20 tests passed)
+
+---
 
 ### 2026-01-24 13:36:30 - Implement ReviewStatusBadge component
 
