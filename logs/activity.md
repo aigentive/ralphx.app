@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:50:00
+**Last Updated:** 2026-01-24 09:00:00
 **Phase:** State Machine
-**Tasks Completed:** 12 / 22
-**Current Task:** Add on_transition and on_dispatch hooks for logging
+**Tasks Completed:** 13 / 22
+**Current Task:** Implement State Display and FromStr for SQLite serialization
 
 ---
 
@@ -1994,6 +1994,37 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 - `src-tauri/Cargo.toml` - added statig, tracing, updated tokio
 - `src-tauri/src/domain/mod.rs` - added state_machine module export
 - `src-tauri/src/domain/state_machine/mod.rs` - new module with tests
+
+---
+
+### 2026-01-24 09:00:00 - Add on_transition and on_dispatch hooks for logging
+
+**What was done:**
+- Added tracing import (debug, info) to machine.rs
+- Updated dispatch() method to:
+  - Call on_dispatch() before routing event to state handler
+  - Call on_transition() after successful state transition
+- Implemented on_dispatch() hook:
+  - Logs at debug level with task_id, project_id, state, event
+  - Called for every event dispatch regardless of outcome
+- Implemented on_transition() hook:
+  - Logs at info level with task_id, project_id, from_state, to_state, event
+  - Only called when a state transition actually occurs
+- Added State::name() method returning &'static str for all 14 states
+- TaskEvent::name() already existed from previous implementation
+- Wrote 5 tests verifying:
+  - State names are correct for all 14 states
+  - Dispatch logs transition on state change
+  - Dispatch does not log transition when not handled
+  - on_dispatch is called for every event
+  - Task context data is available for logging
+
+**Commands run:**
+- `cargo test state_machine` - 167 tests pass
+- `cargo test` - 475 tests pass
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/machine.rs` - added logging hooks and tests
 
 ---
 

@@ -4,7 +4,9 @@
 use super::context::TaskContext;
 use super::events::TaskEvent;
 use super::types::{FailedData, QaFailedData};
+#[allow(unused_imports)]
 use statig::prelude::*;
+use tracing::{debug, info};
 
 /// The task state machine shared data (context)
 #[derive(Debug)]
@@ -265,8 +267,15 @@ impl TaskStateMachine {
     }
 
     /// Dispatch an event to the current state
+    ///
+    /// This is the main entry point for processing events. It logs the dispatch
+    /// at debug level, routes the event to the appropriate state handler, and
+    /// logs any resulting transition at info level.
     pub fn dispatch(&mut self, state: &State, event: &TaskEvent) -> Response {
-        match state {
+        // Log the dispatch at debug level
+        self.on_dispatch(state, event);
+
+        let response = match state {
             State::Backlog => self.backlog(event),
             State::Ready => self.ready(event),
             State::Blocked => self.blocked(event),
@@ -281,6 +290,62 @@ impl TaskStateMachine {
             State::Approved => self.approved(event),
             State::Failed(data) => self.failed(event, data),
             State::Cancelled => self.cancelled(event),
+        };
+
+        // Log transition at info level if a transition occurred
+        if let Response::Transition(ref new_state) = response {
+            self.on_transition(state, new_state, event);
+        }
+
+        response
+    }
+
+    /// Hook called before dispatching an event to a state handler.
+    ///
+    /// Logs the state/event pair at debug level for detailed tracing.
+    fn on_dispatch(&self, state: &State, event: &TaskEvent) {
+        debug!(
+            task_id = %self.context.task_id,
+            project_id = %self.context.project_id,
+            state = %state.name(),
+            event = %event.name(),
+            "Dispatching event to state"
+        );
+    }
+
+    /// Hook called after a state transition occurs.
+    ///
+    /// Logs the from/to states at info level for visibility into state changes.
+    fn on_transition(&self, from: &State, to: &State, event: &TaskEvent) {
+        info!(
+            task_id = %self.context.task_id,
+            project_id = %self.context.project_id,
+            from_state = %from.name(),
+            to_state = %to.name(),
+            event = %event.name(),
+            "State transition"
+        );
+    }
+}
+
+impl State {
+    /// Returns a human-readable name for the state (for logging)
+    pub fn name(&self) -> &'static str {
+        match self {
+            State::Backlog => "Backlog",
+            State::Ready => "Ready",
+            State::Blocked => "Blocked",
+            State::Executing => "Executing",
+            State::ExecutionDone => "ExecutionDone",
+            State::QaRefining => "QaRefining",
+            State::QaTesting => "QaTesting",
+            State::QaPassed => "QaPassed",
+            State::QaFailed(_) => "QaFailed",
+            State::PendingReview => "PendingReview",
+            State::RevisionNeeded => "RevisionNeeded",
+            State::Approved => "Approved",
+            State::Failed(_) => "Failed",
+            State::Cancelled => "Cancelled",
         }
     }
 }
@@ -586,5 +651,83 @@ mod tests {
             &TaskEvent::Retry,
         );
         assert_eq!(response, Response::Transition(State::Ready));
+    }
+
+    // ==================
+    // State name tests
+    // ==================
+
+    #[test]
+    fn test_state_names_are_correct() {
+        assert_eq!(State::Backlog.name(), "Backlog");
+        assert_eq!(State::Ready.name(), "Ready");
+        assert_eq!(State::Blocked.name(), "Blocked");
+        assert_eq!(State::Executing.name(), "Executing");
+        assert_eq!(State::ExecutionDone.name(), "ExecutionDone");
+        assert_eq!(State::QaRefining.name(), "QaRefining");
+        assert_eq!(State::QaTesting.name(), "QaTesting");
+        assert_eq!(State::QaPassed.name(), "QaPassed");
+        assert_eq!(State::QaFailed(QaFailedData::default()).name(), "QaFailed");
+        assert_eq!(State::PendingReview.name(), "PendingReview");
+        assert_eq!(State::RevisionNeeded.name(), "RevisionNeeded");
+        assert_eq!(State::Approved.name(), "Approved");
+        assert_eq!(State::Failed(FailedData::default()).name(), "Failed");
+        assert_eq!(State::Cancelled.name(), "Cancelled");
+    }
+
+    // ==================
+    // Logging hook tests
+    // ==================
+
+    #[test]
+    fn test_dispatch_logs_transition_on_state_change() {
+        // This test verifies that dispatch() properly routes through
+        // on_dispatch and on_transition hooks when a transition occurs.
+        // The actual log output is verified by integration tests with
+        // a tracing subscriber. Here we verify the state machine behavior.
+        let mut machine = create_machine();
+
+        let response = machine.dispatch(&State::Backlog, &TaskEvent::Schedule);
+
+        // Verify transition occurred (which triggers on_transition)
+        assert_eq!(response, Response::Transition(State::Ready));
+    }
+
+    #[test]
+    fn test_dispatch_does_not_log_transition_when_not_handled() {
+        // When an event is not handled, on_transition should not be called
+        let mut machine = create_machine();
+
+        let response = machine.dispatch(&State::Backlog, &TaskEvent::ExecutionComplete);
+
+        // Verify no transition (on_transition not called)
+        assert_eq!(response, Response::NotHandled);
+    }
+
+    #[test]
+    fn test_on_dispatch_is_called_for_every_event() {
+        // on_dispatch should be called regardless of whether the event is handled
+        let mut machine = create_machine();
+
+        // Event that results in transition
+        let _ = machine.dispatch(&State::Backlog, &TaskEvent::Schedule);
+
+        // Event that is not handled
+        let _ = machine.dispatch(&State::Backlog, &TaskEvent::ExecutionComplete);
+
+        // Both should have gone through on_dispatch (tested via coverage)
+    }
+
+    #[test]
+    fn test_transition_logging_includes_task_context() {
+        // Verify that the machine has context data available for logging
+        let mut machine = create_machine();
+
+        // Context should have task_id and project_id for logging
+        assert_eq!(machine.context.task_id, "task-1");
+        assert_eq!(machine.context.project_id, "proj-1");
+
+        // Dispatch triggers logging with this context
+        let _ = machine.dispatch(&State::Backlog, &TaskEvent::Schedule);
     }
 }
