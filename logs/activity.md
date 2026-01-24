@@ -1,14 +1,64 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 04:30:00
+**Last Updated:** 2026-01-25 05:15:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 7 / 18
-**Current Task:** Design requirements for Task Detail View
+**Tasks Completed:** 8 / 18
+**Current Task:** Design requirements for Reviews Panel
 
 ---
 
 ## Session Log
+
+### 2026-01-25 05:15:00 - Design requirements for Task Detail View (Task 8)
+
+**What was done:**
+- Created comprehensive Task Detail View design requirements in specs/design/pages/task-detail.md
+- Documented modal structure using shadcn Dialog:
+  - Max width 640px, max height 80vh
+  - Glass backdrop with blur(8px) effect
+  - Scale + fade open/close animations (0.95 → 1.0, 200ms)
+  - Elevated background with --shadow-lg
+- Designed header section:
+  - Priority badge (P1-P4) with color coding (P1 red, P2 orange, P3 amber, P4 muted)
+  - Task title (text-xl, font-semibold, tracking-tight)
+  - Status badge using shadcn Badge with all 14 internal statuses mapped
+  - Category badge with subtle styling
+  - Close button with X icon, hover state, focus ring
+- Designed content sections:
+  - Scrollable container using shadcn ScrollArea
+  - Description section with relaxed line height
+  - Steps/checklist section with CheckSquare/Square icons
+  - Reviews section with reviewer icons (Bot/User) and status badges
+  - QA section integrating with TaskDetailQAPanel
+- Created comprehensive State History Timeline:
+  - Vertical layout with connecting lines
+  - Status dots with outcome-based colors (approved=green, changes_requested=amber, rejected=red)
+  - Latest entry with larger dot and subtle glow
+  - Relative timestamps ("2 min ago", "1 hour ago")
+  - Actor labels and quoted notes
+  - Empty state with History icon
+  - Loading state with Loader2 spinner
+- Listed all Lucide icons used (X, CheckSquare, Square, CheckCircle, XCircle, Bot, User, Wrench, Image, History, Loader2)
+- Created full component hierarchy diagram
+- Defined 26 acceptance criteria for functional requirements
+- Created 40-item design quality checklist covering colors, typography, spacing, shadows, borders, motion, icons, and accessibility
+
+**Design Highlights:**
+- Modal floating effect with --shadow-lg and backdrop blur
+- Scale animation creates polished open/close experience
+- Priority badges use semantic colors for quick scanning
+- Timeline dots have ring effect from elevated background
+- Current/latest timeline entry has enhanced styling with glow
+- Content area scrolls independently with custom scrollbar styling
+- Focus trapped within modal for accessibility
+
+**Files modified:**
+- `specs/design/pages/task-detail.md` (complete rewrite with full design requirements)
+- `specs/DESIGN.md` (updated Task Detail status to Complete)
+- `specs/phases/prd_phase_13_design.md` (marked task 8 as passes: true)
+
+---
 
 ### 2026-01-25 04:30:00 - Design requirements for Extensibility View (Task 7)
 
