@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:23:44
+**Last Updated:** 2026-01-24 19:25:30
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 5 / 63
-**Current Task:** Seed built-in workflows (Default, Jira)
+**Tasks Completed:** 6 / 63
+**Current Task:** Implement Artifact and ArtifactBucket Rust types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:25:30 - Seed built-in workflows (Task 6)
+
+**What was done:**
+- Added `seed_builtin_workflows()` method to `SqliteWorkflowRepository`
+- Seeds "RalphX Default" (7 columns) and "Jira Compatible" (5 columns)
+- Idempotent: skips workflows that already exist
+- Returns count of newly seeded workflows
+- Added 6 unit tests for seeding behavior:
+  - test_seed_builtin_workflows_creates_both
+  - test_seed_builtin_workflows_creates_default
+  - test_seed_builtin_workflows_creates_jira
+  - test_seed_builtin_workflows_is_idempotent
+  - test_seed_builtin_workflows_preserves_existing
+  - test_seed_builtin_workflows_skips_existing_builtin
+
+**Commands run:**
+- `cargo test sqlite_workflow_repo::tests --no-fail-fast` (20 tests passed)
+
+---
 
 ### 2026-01-24 19:23:44 - Implement MemoryWorkflowRepository (Task 5)
 
