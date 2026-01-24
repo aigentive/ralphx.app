@@ -694,7 +694,7 @@ All tasks require TDD:
       "Use immer middleware for immutable updates",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
