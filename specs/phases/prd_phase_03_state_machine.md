@@ -416,7 +416,7 @@ pub struct MockNotifier {
       "Derive Debug, Clone for TaskEvent",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

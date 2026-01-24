@@ -5,7 +5,10 @@
 // - State-local data for QaFailed and Failed states
 // - Async actions for agent spawning and event emission
 
-// Submodules will be added as tasks progress
+pub mod events;
+
+// Re-export key types
+pub use events::TaskEvent;
 
 #[cfg(test)]
 mod tests {
