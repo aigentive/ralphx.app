@@ -1,14 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 12:58:19
+**Last Updated:** 2026-01-24 13:15:42
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 12 / 51
-**Current Task:** Integrate ReviewService with state machine transitions
+**Tasks Completed:** 13 / 51
+**Current Task:** Implement Tauri commands for reviews
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:15:42 - Integrate ReviewService with state machine transitions
+
+**What was done:**
+- Added `ReviewStarter` trait to state machine services for starting AI reviews
+  - Defined `ReviewStartResult` enum with `Started`, `Disabled`, and `Error` variants
+  - Added trait to `services.rs` with `start_ai_review` async method
+- Created `MockReviewStarter` for testing
+  - Records all calls for verification
+  - Supports configurable results (started, disabled, error)
+  - Generates unique review IDs for each call
+- Extended `TaskServices` to include `review_starter` field
+  - Updated constructor to accept `ReviewStarter` implementation
+  - Updated `new_mock()` to include mock review starter
+- Modified `TransitionHandler::on_enter` for `PendingReview` state:
+  - Calls `ReviewStarter.start_ai_review` when entering state
+  - Emits `review:update` event with started/disabled/error payload
+  - Only spawns reviewer agent when review successfully started
+  - Notifies user on review start error
+- Added 7 new integration tests for review integration:
+  - test_entering_pending_review_starts_ai_review
+  - test_entering_pending_review_with_disabled_ai_review
+  - test_entering_pending_review_with_error_notifies_user
+  - test_entering_pending_review_emits_started_event_with_review_id
+  - test_execution_done_to_pending_review_starts_ai_review
+  - test_qa_passed_to_pending_review_starts_ai_review
+- Updated all existing tests to work with new `TaskServices` signature
+
+**Commands run:**
+- `cargo test domain::state_machine --no-default-features -- --test-threads=1` (246 passed)
+- `cargo test --no-default-features -- --test-threads=1` (all tests pass)
+- `cargo clippy --no-default-features` (no new warnings)
+
+---
 
 ### 2026-01-24 12:58:19 - Implement ReviewService - human review methods
 

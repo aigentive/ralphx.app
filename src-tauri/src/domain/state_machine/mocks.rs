@@ -1,7 +1,7 @@
 // Mock service implementations for testing
 // These implementations record calls for verification in tests
 
-use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier};
+use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, ReviewStartResult};
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
@@ -292,6 +292,99 @@ impl DependencyManager for MockDependencyManager {
     }
 }
 
+/// Mock implementation of ReviewStarter that records all calls.
+#[derive(Debug)]
+pub struct MockReviewStarter {
+    calls: Arc<Mutex<Vec<ServiceCall>>>,
+    /// The result to return from start_ai_review
+    result: Arc<Mutex<ReviewStartResult>>,
+    /// Counter for generating review IDs
+    counter: Arc<Mutex<u32>>,
+}
+
+impl Default for MockReviewStarter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MockReviewStarter {
+    pub fn new() -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            result: Arc::new(Mutex::new(ReviewStartResult::Started {
+                review_id: "review-1".to_string(),
+            })),
+            counter: Arc::new(Mutex::new(1)),
+        }
+    }
+
+    /// Creates a mock that returns Disabled
+    pub fn disabled() -> Self {
+        let mock = Self::new();
+        *mock.result.lock().unwrap() = ReviewStartResult::Disabled;
+        mock
+    }
+
+    /// Creates a mock that returns an error
+    pub fn with_error(error: impl Into<String>) -> Self {
+        let mock = Self::new();
+        *mock.result.lock().unwrap() = ReviewStartResult::Error(error.into());
+        mock
+    }
+
+    /// Returns all recorded calls
+    pub fn get_calls(&self) -> Vec<ServiceCall> {
+        self.calls.lock().unwrap().clone()
+    }
+
+    /// Clears all recorded calls
+    pub fn clear(&self) {
+        self.calls.lock().unwrap().clear();
+    }
+
+    /// Returns the number of start_ai_review calls
+    pub fn call_count(&self) -> usize {
+        self.calls.lock().unwrap().len()
+    }
+
+    /// Sets the result to return from start_ai_review
+    pub fn set_result(&self, result: ReviewStartResult) {
+        *self.result.lock().unwrap() = result;
+    }
+
+    /// Checks if a review was started for a specific task
+    pub fn has_review_for_task(&self, task_id: &str) -> bool {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.args.first().map(|s| s.as_str()) == Some(task_id))
+    }
+}
+
+#[async_trait]
+impl ReviewStarter for MockReviewStarter {
+    async fn start_ai_review(&self, task_id: &str, project_id: &str) -> ReviewStartResult {
+        self.calls.lock().unwrap().push(ServiceCall::new(
+            "start_ai_review",
+            vec![task_id.to_string(), project_id.to_string()],
+        ));
+
+        let result = self.result.lock().unwrap().clone();
+        match &result {
+            ReviewStartResult::Started { .. } => {
+                // Generate unique review ID for each call
+                let mut counter = self.counter.lock().unwrap();
+                let review_id = format!("review-{}", *counter);
+                *counter += 1;
+                ReviewStartResult::Started { review_id }
+            }
+            _ => result,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +652,98 @@ mod tests {
         let call = ServiceCall::new("test", vec![]);
         let debug_str = format!("{:?}", call);
         assert!(debug_str.contains("ServiceCall"));
+    }
+
+    // ==================
+    // MockReviewStarter tests
+    // ==================
+
+    #[tokio::test]
+    async fn test_mock_review_starter_records_calls() {
+        let starter = MockReviewStarter::new();
+        let result = starter.start_ai_review("task-123", "proj-456").await;
+
+        let calls = starter.get_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].method, "start_ai_review");
+        assert_eq!(calls[0].args, vec!["task-123", "proj-456"]);
+
+        if let ReviewStartResult::Started { review_id } = result {
+            assert!(review_id.starts_with("review-"));
+        } else {
+            panic!("Expected Started result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_generates_unique_ids() {
+        let starter = MockReviewStarter::new();
+        let result1 = starter.start_ai_review("task-1", "proj-1").await;
+        let result2 = starter.start_ai_review("task-2", "proj-1").await;
+
+        if let (ReviewStartResult::Started { review_id: id1 }, ReviewStartResult::Started { review_id: id2 }) = (result1, result2) {
+            assert_ne!(id1, id2);
+        } else {
+            panic!("Expected Started results");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_disabled() {
+        let starter = MockReviewStarter::disabled();
+        let result = starter.start_ai_review("task-1", "proj-1").await;
+        assert_eq!(result, ReviewStartResult::Disabled);
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_with_error() {
+        let starter = MockReviewStarter::with_error("Database error");
+        let result = starter.start_ai_review("task-1", "proj-1").await;
+
+        if let ReviewStartResult::Error(msg) = result {
+            assert_eq!(msg, "Database error");
+        } else {
+            panic!("Expected Error result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_call_count() {
+        let starter = MockReviewStarter::new();
+        assert_eq!(starter.call_count(), 0);
+
+        starter.start_ai_review("task-1", "proj-1").await;
+        assert_eq!(starter.call_count(), 1);
+
+        starter.start_ai_review("task-2", "proj-1").await;
+        assert_eq!(starter.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_has_review_for_task() {
+        let starter = MockReviewStarter::new();
+        starter.start_ai_review("task-123", "proj-1").await;
+
+        assert!(starter.has_review_for_task("task-123"));
+        assert!(!starter.has_review_for_task("task-456"));
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_clear() {
+        let starter = MockReviewStarter::new();
+        starter.start_ai_review("task-1", "proj-1").await;
+        assert_eq!(starter.call_count(), 1);
+
+        starter.clear();
+        assert_eq!(starter.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_mock_review_starter_set_result() {
+        let starter = MockReviewStarter::new();
+        starter.set_result(ReviewStartResult::Disabled);
+
+        let result = starter.start_ai_review("task-1", "proj-1").await;
+        assert_eq!(result, ReviewStartResult::Disabled);
     }
 }
