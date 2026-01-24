@@ -65,3 +65,42 @@ export {
   safeParsePluginManifest,
 } from "./plugin";
 export type { PluginAuthor, PluginManifest } from "./plugin";
+
+// Agent profile types and schemas
+export {
+  ProfileRoleSchema,
+  ModelSchema,
+  PermissionModeSchema,
+  AutonomyLevelSchema,
+  ClaudeCodeConfigSchema,
+  ExecutionConfigSchema,
+  IoConfigSchema,
+  BehaviorConfigSchema,
+  AgentProfileSchema,
+  CreateAgentProfileSchema,
+  UpdateAgentProfileSchema,
+  WORKER_PROFILE,
+  REVIEWER_PROFILE,
+  SUPERVISOR_PROFILE,
+  ORCHESTRATOR_PROFILE,
+  DEEP_RESEARCHER_PROFILE,
+  BUILTIN_PROFILES,
+  getBuiltinProfile,
+  getBuiltinProfileByRole,
+  getModelId,
+  parseAgentProfile,
+  safeParseAgentProfile,
+} from "./agent-profile";
+export type {
+  ProfileRole,
+  Model,
+  PermissionMode,
+  AutonomyLevel,
+  ClaudeCodeConfig,
+  ExecutionConfig,
+  IoConfig,
+  BehaviorConfig,
+  AgentProfile,
+  CreateAgentProfile,
+  UpdateAgentProfile,
+} from "./agent-profile";
