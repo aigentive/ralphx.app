@@ -2,6 +2,7 @@
 // These represent the core business objects of RalphX
 
 pub mod artifact;
+pub mod artifact_flow;
 pub mod ideation;
 pub mod project;
 pub mod review;
@@ -40,4 +41,9 @@ pub use artifact::{
     Artifact, ArtifactBucket, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata,
     ArtifactRelation, ArtifactRelationId, ArtifactRelationType, ArtifactType,
     ParseArtifactRelationTypeError, ParseArtifactTypeError, ProcessId,
+};
+pub use artifact_flow::{
+    ArtifactFlow, ArtifactFlowContext, ArtifactFlowEngine, ArtifactFlowEvaluation,
+    ArtifactFlowEvent, ArtifactFlowFilter, ArtifactFlowId, ArtifactFlowStep, ArtifactFlowTrigger,
+    ParseArtifactFlowEventError, create_research_to_dev_flow,
 };
