@@ -990,7 +990,7 @@ interface AskUserQuestionResponse {
       "Verify original task moved to backlog",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
