@@ -383,6 +383,163 @@ impl ReviewAction {
     }
 }
 
+// ========================================
+// ReviewNote Entity (for review history)
+// ========================================
+
+/// A unique identifier for a ReviewNote
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ReviewNoteId(pub String);
+
+impl ReviewNoteId {
+    /// Creates a new ReviewNoteId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates a ReviewNoteId from an existing string
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ReviewNoteId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for ReviewNoteId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Outcome of a review (for review notes history)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewOutcome {
+    /// Review approved the work
+    Approved,
+    /// Reviewer requested changes
+    ChangesRequested,
+    /// Review rejected the work
+    Rejected,
+}
+
+impl std::fmt::Display for ReviewOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReviewOutcome::Approved => write!(f, "approved"),
+            ReviewOutcome::ChangesRequested => write!(f, "changes_requested"),
+            ReviewOutcome::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+impl FromStr for ReviewOutcome {
+    type Err = ParseReviewOutcomeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "approved" => Ok(ReviewOutcome::Approved),
+            "changes_requested" => Ok(ReviewOutcome::ChangesRequested),
+            "rejected" => Ok(ReviewOutcome::Rejected),
+            _ => Err(ParseReviewOutcomeError(s.to_string())),
+        }
+    }
+}
+
+/// Error when parsing an invalid review outcome string
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseReviewOutcomeError(pub String);
+
+impl std::fmt::Display for ParseReviewOutcomeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid review outcome: {}", self.0)
+    }
+}
+
+impl std::error::Error for ParseReviewOutcomeError {}
+
+/// A note from a reviewer (part of review history)
+///
+/// ReviewNotes store the feedback from each review attempt.
+/// A task can have multiple review notes over time as it goes
+/// through multiple review cycles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewNote {
+    /// Unique identifier
+    pub id: ReviewNoteId,
+    /// Task this note belongs to
+    pub task_id: TaskId,
+    /// Who made the review (ai or human)
+    pub reviewer: ReviewerType,
+    /// Outcome of the review
+    pub outcome: ReviewOutcome,
+    /// Notes/feedback from the reviewer
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    /// When the note was created
+    pub created_at: DateTime<Utc>,
+}
+
+impl ReviewNote {
+    /// Create a new review note
+    pub fn new(task_id: TaskId, reviewer: ReviewerType, outcome: ReviewOutcome) -> Self {
+        Self {
+            id: ReviewNoteId::new(),
+            task_id,
+            reviewer,
+            outcome,
+            notes: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Create a review note with notes
+    pub fn with_notes(
+        task_id: TaskId,
+        reviewer: ReviewerType,
+        outcome: ReviewOutcome,
+        notes: String,
+    ) -> Self {
+        let mut note = Self::new(task_id, reviewer, outcome);
+        note.notes = Some(notes);
+        note
+    }
+
+    /// Create a review note with a specific ID (for testing or database restoration)
+    pub fn with_id(
+        id: ReviewNoteId,
+        task_id: TaskId,
+        reviewer: ReviewerType,
+        outcome: ReviewOutcome,
+    ) -> Self {
+        let mut note = Self::new(task_id, reviewer, outcome);
+        note.id = id;
+        note
+    }
+
+    /// Check if the review was positive (approved)
+    pub fn is_positive(&self) -> bool {
+        self.outcome == ReviewOutcome::Approved
+    }
+
+    /// Check if the review was negative (changes requested or rejected)
+    pub fn is_negative(&self) -> bool {
+        matches!(
+            self.outcome,
+            ReviewOutcome::ChangesRequested | ReviewOutcome::Rejected
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,5 +810,152 @@ mod tests {
         assert_eq!(action.id, parsed.id);
         assert_eq!(action.review_id, parsed.review_id);
         assert_eq!(action.action_type, parsed.action_type);
+    }
+
+    // ===== ReviewNoteId Tests =====
+
+    #[test]
+    fn test_review_note_id_new_generates_valid_uuid() {
+        let id = ReviewNoteId::new();
+        assert_eq!(id.as_str().len(), 36);
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    #[test]
+    fn test_review_note_id_from_string() {
+        let id = ReviewNoteId::from_string("note-123");
+        assert_eq!(id.as_str(), "note-123");
+    }
+
+    #[test]
+    fn test_review_note_id_equality() {
+        let id1 = ReviewNoteId::from_string("note-abc");
+        let id2 = ReviewNoteId::from_string("note-abc");
+        let id3 = ReviewNoteId::from_string("note-xyz");
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn test_review_note_id_serialization() {
+        let id = ReviewNoteId::from_string("note-serialize");
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, "\"note-serialize\"");
+        let parsed: ReviewNoteId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, parsed);
+    }
+
+    // ===== ReviewOutcome Tests =====
+
+    #[test]
+    fn test_review_outcome_display() {
+        assert_eq!(format!("{}", ReviewOutcome::Approved), "approved");
+        assert_eq!(format!("{}", ReviewOutcome::ChangesRequested), "changes_requested");
+        assert_eq!(format!("{}", ReviewOutcome::Rejected), "rejected");
+    }
+
+    #[test]
+    fn test_review_outcome_from_str() {
+        assert_eq!(ReviewOutcome::from_str("approved").unwrap(), ReviewOutcome::Approved);
+        assert_eq!(ReviewOutcome::from_str("changes_requested").unwrap(), ReviewOutcome::ChangesRequested);
+        assert_eq!(ReviewOutcome::from_str("rejected").unwrap(), ReviewOutcome::Rejected);
+        assert!(ReviewOutcome::from_str("invalid").is_err());
+    }
+
+    #[test]
+    fn test_review_outcome_serialization() {
+        let outcome = ReviewOutcome::ChangesRequested;
+        let json = serde_json::to_string(&outcome).unwrap();
+        assert_eq!(json, "\"changes_requested\"");
+        let parsed: ReviewOutcome = serde_json::from_str(&json).unwrap();
+        assert_eq!(outcome, parsed);
+    }
+
+    // ===== ReviewNote Tests =====
+
+    #[test]
+    fn test_review_note_new() {
+        let task_id = TaskId::from_string("task-1".to_string());
+        let note = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::Approved);
+
+        assert_eq!(note.task_id, task_id);
+        assert_eq!(note.reviewer, ReviewerType::Ai);
+        assert_eq!(note.outcome, ReviewOutcome::Approved);
+        assert!(note.notes.is_none());
+        assert!(note.is_positive());
+        assert!(!note.is_negative());
+    }
+
+    #[test]
+    fn test_review_note_with_notes() {
+        let task_id = TaskId::from_string("task-1".to_string());
+        let note = ReviewNote::with_notes(
+            task_id.clone(),
+            ReviewerType::Human,
+            ReviewOutcome::ChangesRequested,
+            "Missing tests".to_string(),
+        );
+
+        assert_eq!(note.task_id, task_id);
+        assert_eq!(note.reviewer, ReviewerType::Human);
+        assert_eq!(note.outcome, ReviewOutcome::ChangesRequested);
+        assert_eq!(note.notes, Some("Missing tests".to_string()));
+        assert!(!note.is_positive());
+        assert!(note.is_negative());
+    }
+
+    #[test]
+    fn test_review_note_with_id() {
+        let id = ReviewNoteId::from_string("note-custom");
+        let task_id = TaskId::from_string("task-1".to_string());
+        let note = ReviewNote::with_id(id.clone(), task_id, ReviewerType::Ai, ReviewOutcome::Approved);
+
+        assert_eq!(note.id, id);
+    }
+
+    #[test]
+    fn test_review_note_is_positive() {
+        let task_id = TaskId::from_string("task-1".to_string());
+
+        let approved = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::Approved);
+        let changes = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::ChangesRequested);
+        let rejected = ReviewNote::new(task_id, ReviewerType::Ai, ReviewOutcome::Rejected);
+
+        assert!(approved.is_positive());
+        assert!(!changes.is_positive());
+        assert!(!rejected.is_positive());
+    }
+
+    #[test]
+    fn test_review_note_is_negative() {
+        let task_id = TaskId::from_string("task-1".to_string());
+
+        let approved = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::Approved);
+        let changes = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::ChangesRequested);
+        let rejected = ReviewNote::new(task_id, ReviewerType::Ai, ReviewOutcome::Rejected);
+
+        assert!(!approved.is_negative());
+        assert!(changes.is_negative());
+        assert!(rejected.is_negative());
+    }
+
+    #[test]
+    fn test_review_note_serialization() {
+        let task_id = TaskId::from_string("task-1".to_string());
+        let note = ReviewNote::with_notes(
+            task_id,
+            ReviewerType::Human,
+            ReviewOutcome::Approved,
+            "Looks good!".to_string(),
+        );
+
+        let json = serde_json::to_string(&note).unwrap();
+        let parsed: ReviewNote = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(note.id, parsed.id);
+        assert_eq!(note.task_id, parsed.task_id);
+        assert_eq!(note.reviewer, parsed.reviewer);
+        assert_eq!(note.outcome, parsed.outcome);
+        assert_eq!(note.notes, parsed.notes);
     }
 }

@@ -3,12 +3,32 @@
 ## Current Status
 **Last Updated:** 2026-01-24 16:00:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 4 / 51
-**Current Task:** Implement ReviewNote domain entity
+**Tasks Completed:** 5 / 51
+**Current Task:** Implement ReviewRepository trait
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:35:00 - Implement ReviewNote domain entity
+
+**What was done:**
+- Added to `src-tauri/src/domain/entities/review.rs`:
+  - `ReviewNoteId` newtype ID with uuid generation
+  - `ReviewOutcome` enum: Approved, ChangesRequested, Rejected (with FromStr, Display, Serialize)
+  - `ParseReviewOutcomeError` for invalid outcome parsing
+  - `ReviewNote` struct with methods: new, with_notes, with_id, is_positive, is_negative
+- Updated `src-tauri/src/domain/entities/mod.rs` to export ReviewNote types
+- Added 13 unit tests covering:
+  - ReviewNoteId generation, equality, and serialization
+  - ReviewOutcome display, from_str, and serialization
+  - ReviewNote creation methods and serialization
+  - is_positive and is_negative helpers
+
+**Commands run:**
+- `cargo test domain::entities::review --no-default-features -- --test-threads=1`
+
+---
 
 ### 2026-01-24 16:25:00 - Implement Review and ReviewAction domain entities
 
