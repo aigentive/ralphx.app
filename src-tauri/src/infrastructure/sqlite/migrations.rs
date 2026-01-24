@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 8;
+pub const SCHEMA_VERSION: i32 = 9;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -55,6 +55,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 8 {
         migrate_v8(conn)?;
         set_schema_version(conn, 8)?;
+    }
+
+    if current_version < 9 {
+        migrate_v9(conn)?;
+        set_schema_version(conn, 9)?;
     }
 
     Ok(())
@@ -433,6 +438,37 @@ fn migrate_v8(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v9: Create review_notes table for storing review notes
+///
+/// The review_notes table stores notes from reviewers:
+/// - Who reviewed (AI or human)
+/// - The outcome of the review
+/// - Notes/feedback from the reviewer
+fn migrate_v9(conn: &Connection) -> AppResult<()> {
+    // Review notes table
+    conn.execute(
+        "CREATE TABLE review_notes (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            reviewer TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on task_id for efficient lookup of history
+    conn.execute(
+        "CREATE INDEX idx_review_notes_task_id ON review_notes(task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,7 +476,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 8);
+        assert_eq!(SCHEMA_VERSION, 9);
     }
 
     #[test]
@@ -517,7 +553,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 
     #[test]
@@ -530,7 +566,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 
     #[test]
@@ -2914,5 +2950,377 @@ mod tests {
             .unwrap();
 
         assert_eq!(review_id, "rev-1");
+    }
+
+    // ==================
+    // V9 Migration Tests: review_notes table
+    // ==================
+
+    #[test]
+    fn test_run_migrations_creates_review_notes_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify review_notes table exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='review_notes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_review_notes_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task first
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Try inserting a complete review note record
+        let result = conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, notes)
+             VALUES ('note-1', 'task-1', 'ai', 'approved', 'Looks good')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_review_notes_index_on_task_id_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_review_notes_task_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_review_notes_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, and note
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome)
+             VALUES ('note-1', 'task-1', 'ai', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // Delete the task
+        conn.execute("DELETE FROM tasks WHERE id = 'task-1'", []).unwrap();
+
+        // Review note should be gone
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM review_notes WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_review_notes_all_reviewer_types() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Test AI reviewer
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome)
+             VALUES ('note-ai', 'task-1', 'ai', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // Test human reviewer
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome)
+             VALUES ('note-human', 'task-1', 'human', 'changes_requested')",
+            [],
+        )
+        .unwrap();
+
+        // Verify both exist
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM review_notes WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_review_notes_all_outcomes() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Test all outcomes
+        let outcomes = ["approved", "changes_requested", "rejected"];
+        for (i, outcome) in outcomes.iter().enumerate() {
+            let note_id = format!("note-{}", i);
+            conn.execute(
+                &format!(
+                    "INSERT INTO review_notes (id, task_id, reviewer, outcome)
+                     VALUES ('{}', 'task-1', 'ai', '{}')",
+                    note_id, outcome
+                ),
+                [],
+            )
+            .unwrap();
+
+            let stored: String = conn
+                .query_row(
+                    &format!("SELECT outcome FROM review_notes WHERE id = '{}'", note_id),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+
+            assert_eq!(&stored, *outcome);
+        }
+    }
+
+    #[test]
+    fn test_review_notes_notes_can_be_null() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert note without notes text
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome)
+             VALUES ('note-1', 'task-1', 'ai', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // Verify notes is NULL
+        let notes: Option<String> = conn
+            .query_row(
+                "SELECT notes FROM review_notes WHERE id = 'note-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(notes.is_none());
+    }
+
+    #[test]
+    fn test_review_notes_created_at_default() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert note without created_at
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome)
+             VALUES ('note-1', 'task-1', 'ai', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // created_at should not be null
+        let created_at: Option<String> = conn
+            .query_row(
+                "SELECT created_at FROM review_notes WHERE id = 'note-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(created_at.is_some());
+    }
+
+    #[test]
+    fn test_review_notes_multiple_per_task() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert multiple notes for same task (review history)
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, notes)
+             VALUES ('note-1', 'task-1', 'ai', 'changes_requested', 'Tests missing')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, notes)
+             VALUES ('note-2', 'task-1', 'ai', 'changes_requested', 'Still missing integration test')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, notes)
+             VALUES ('note-3', 'task-1', 'human', 'approved', 'Looks good now')",
+            [],
+        )
+        .unwrap();
+
+        // All three should exist
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM review_notes WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn test_review_notes_ordered_by_created_at() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert notes with explicit timestamps
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, created_at)
+             VALUES ('note-1', 'task-1', 'ai', 'changes_requested', '2026-01-24 10:00:00')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, created_at)
+             VALUES ('note-2', 'task-1', 'ai', 'approved', '2026-01-24 11:00:00')",
+            [],
+        )
+        .unwrap();
+
+        // Query ordered by created_at
+        let mut stmt = conn
+            .prepare(
+                "SELECT outcome FROM review_notes WHERE task_id = 'task-1' ORDER BY created_at ASC",
+            )
+            .unwrap();
+
+        let outcomes: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(outcomes, vec!["changes_requested", "approved"]);
     }
 }

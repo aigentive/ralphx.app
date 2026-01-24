@@ -3,12 +3,35 @@
 ## Current Status
 **Last Updated:** 2026-01-24 16:00:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 2 / 51
-**Current Task:** Create review_notes table migration
+**Tasks Completed:** 3 / 51
+**Current Task:** Implement Review and ReviewAction domain entities
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:15:00 - Create review_notes table migration
+
+**What was done:**
+- Added migration v9 for the review_notes table
+- Created review_notes table with columns: id, task_id, reviewer, outcome, notes, created_at
+- Added index on task_id for efficient history lookup
+- CASCADE DELETE on task_id foreign key
+- Added 10 integration tests covering:
+  - Table existence and column verification
+  - Index exists
+  - Cascade delete behavior when task is deleted
+  - All reviewer types (ai, human)
+  - All outcomes (approved, changes_requested, rejected)
+  - Nullable notes field
+  - Default created_at timestamp
+  - Multiple notes per task (review history)
+  - Ordering by created_at
+
+**Commands run:**
+- `cargo test migrations --no-default-features -- --test-threads=1`
+
+---
 
 ### 2026-01-24 16:08:00 - Create review_actions table migration
 
