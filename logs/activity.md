@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:38:00
+**Last Updated:** 2026-01-24 15:48:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 3 / 50
-**Current Task:** Implement PriorityAssessment domain types
+**Tasks Completed:** 4 / 50
+**Current Task:** Implement ChatMessage and DependencyGraph domain types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:48:00 - Implement PriorityAssessment domain types
+
+**What was done:**
+- Added priority assessment factor structs to `src-tauri/src/domain/entities/ideation.rs`:
+  - `DependencyFactor` (score: 0-30, blocks_count, reason) with calculate() method
+  - `CriticalPathFactor` (score: 0-25, is_on_critical_path, path_length, reason)
+  - `BusinessValueFactor` (score: 0-20, keywords, reason) with keyword detection
+  - `ComplexityFactor` (score: 0-15, complexity, reason) - simpler = higher score
+  - `UserHintFactor` (score: 0-10, hints, reason) with urgency keyword detection
+  - `PriorityAssessmentFactors` container with total_score() method
+  - `PriorityAssessment` with score_to_priority() mapping and neutral() constructor
+- Added keyword constants for business value and urgency detection
+- Updated `domain/entities/mod.rs` exports for all new types
+- Added 67 new tests for all factor structs and assessment types
+
+**Commands run:**
+- `cargo test --lib ideation::` (150 tests passed)
+- `cargo test --lib` (1565 tests passed)
+
+---
 
 ### 2026-01-24 15:38:00 - Implement TaskProposal Rust domain entity
 
