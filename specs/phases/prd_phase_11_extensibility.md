@@ -1508,7 +1508,7 @@ All tasks require tests written before implementation:
       "Test: Query artifacts by bucket and type",
       "Run cargo test and npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
