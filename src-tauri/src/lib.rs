@@ -26,7 +26,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
-        .invoke_handler(tauri::generate_handler![greet, commands::health::health_check])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            commands::health::health_check,
+            commands::task_commands::list_tasks,
+            commands::task_commands::get_task,
+            commands::task_commands::create_task,
+            commands::task_commands::update_task,
+            commands::task_commands::delete_task
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
