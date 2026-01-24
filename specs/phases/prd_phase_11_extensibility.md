@@ -1066,7 +1066,7 @@ All tasks require tests written before implementation:
       "Register commands in main.rs",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

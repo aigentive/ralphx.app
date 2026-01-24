@@ -121,7 +121,22 @@ pub fn run() {
             commands::workflow_commands::delete_workflow,
             commands::workflow_commands::set_default_workflow,
             commands::workflow_commands::get_active_workflow_columns,
-            commands::workflow_commands::get_builtin_workflows
+            commands::workflow_commands::get_builtin_workflows,
+            // Artifact commands
+            commands::artifact_commands::get_artifacts,
+            commands::artifact_commands::get_artifact,
+            commands::artifact_commands::create_artifact,
+            commands::artifact_commands::update_artifact,
+            commands::artifact_commands::delete_artifact,
+            commands::artifact_commands::get_artifacts_by_bucket,
+            commands::artifact_commands::get_artifacts_by_task,
+            // Bucket commands
+            commands::artifact_commands::get_buckets,
+            commands::artifact_commands::create_bucket,
+            commands::artifact_commands::get_system_buckets,
+            // Artifact relation commands
+            commands::artifact_commands::add_artifact_relation,
+            commands::artifact_commands::get_artifact_relations
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
