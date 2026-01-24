@@ -1,14 +1,53 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:55:00
+**Last Updated:** 2026-01-24 18:15:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 15 / 50
-**Current Task:** Implement PriorityService for priority calculation
+**Tasks Completed:** 16 / 50
+**Current Task:** Implement DependencyService for graph analysis
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:15:00 - Implement PriorityService for priority calculation
+
+**What was done:**
+- Created `src-tauri/src/application/priority_service.rs`:
+  - `PriorityService<P, D>` generic struct with repository dependencies
+  - Constructor `new()` with `Arc<P>` and `Arc<D>` parameters
+  - Implements all priority factor calculations using domain types:
+    - `calculate_dependency_factor()` - 0-30 points based on blocks count
+    - `calculate_critical_path_factor()` - 0-25 points using graph analysis
+    - `calculate_business_value_factor()` - 0-20 points using keyword detection
+    - `calculate_complexity_factor()` - 0-15 points (inverse: simpler = higher)
+    - `calculate_user_hint_factor()` - 0-10 points from urgency hints
+  - `score_to_priority()` - Maps scores to Priority enum (80+=Critical, 60-79=High, 40-59=Medium, <40=Low)
+  - `build_dependency_graph()` - Builds DependencyGraph from proposals and dependencies
+  - `detect_cycles()` - DFS-based cycle detection in dependency graph
+  - `find_critical_path()` - Topological sort + DP for longest path finding
+  - `assess_priority()` - Full priority assessment for single proposal
+  - `assess_all_priorities()` - Batch assessment for all proposals in session
+  - `assess_and_update_all_priorities()` - Assess and persist via repository
+- Updated `application/mod.rs` with module declaration and re-export
+- Added 42 comprehensive unit tests:
+  - Dependency factor tests: 0-4+ blocks scoring
+  - Critical path factor tests: not on path, path lengths 1-4+
+  - Business value factor tests: no keywords, critical/high/low keywords
+  - Complexity factor tests: trivial through very_complex
+  - User hint factor tests: no hints, single hint, multiple hints, max score
+  - Score to priority tests: all four priority levels
+  - Build dependency graph tests: empty, single, linear chain, cycles
+  - Assess priority tests: basic, with blockers, critical keywords, complexity
+  - Assess all priorities tests: empty, multiple, with update persistence
+  - Critical path tests: on chain detection
+  - Integration tests: high priority and low priority proposals
+
+**Commands run:**
+- `cargo test --lib priority_service::` (42 tests passed)
+- `cargo test --lib` (1937 tests passed)
+
+---
 
 ### 2026-01-24 17:55:00 - Implement SqliteTaskDependencyRepository
 

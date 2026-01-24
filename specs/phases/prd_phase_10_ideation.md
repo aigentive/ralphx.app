@@ -797,7 +797,7 @@ All tasks require:
       "Implement assess_all_priorities() for batch processing",
       "Implement score_to_priority() mapping (80-100=Critical, etc.)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
