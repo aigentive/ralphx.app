@@ -662,7 +662,7 @@ All tasks require TDD:
       "Export all from types/qa.ts",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
