@@ -1,10 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:08:00
+**Last Updated:** 2026-01-24 15:11:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 26 / 33
-**Current Task:** Create QA event handlers
+**Tasks Completed:** 27 / 33
+**Current Task:** Integration test: QA Prep runs in parallel with execution
+
+---
+
+## Session Log
+
+### 2026-01-24 15:11:00 - Create QA event handlers
+
+**What was done:**
+- Added QA event schemas to `src/types/events.ts`:
+  - `QAPrepEventSchema` for prep events (started, completed, failed)
+  - `QATestEventSchema` for test events (started, passed, failed)
+  - Support for optional agentId, counts, and error fields
+- Added 10 tests for QA event schemas in `src/types/events.test.ts`
+- Created `src/hooks/useQAEvents.ts`:
+  - Listens to qa:prep and qa:test events from Tauri backend
+  - Runtime validation using Zod schemas
+  - Updates qaStore loading states on started/completed/failed
+  - Sets error messages on failure events
+  - Optional taskId filtering for single-task listeners
+- Created comprehensive test suite with 13 tests covering:
+  - Listener registration/unregistration
+  - qa:prep event handling (started, completed, failed)
+  - qa:test event handling (started, passed, failed)
+  - Invalid event rejection
+  - taskId filtering behavior
+- All 913 TypeScript tests passing
+
+**Commands run:**
+- `npm test -- src/hooks/useQAEvents.test.tsx src/types/events.test.ts --reporter=verbose`
+- `npm run typecheck`
+- `npm test`
 
 ---
 

@@ -8,6 +8,8 @@ import {
   ReviewEventSchema,
   FileChangeEventSchema,
   ProgressEventSchema,
+  QAPrepEventSchema,
+  QATestEventSchema,
 } from "./events";
 
 describe("TaskEventSchema", () => {
@@ -361,5 +363,124 @@ describe("ProgressEventSchema", () => {
   it("validates edge case progress values", () => {
     expect(ProgressEventSchema.safeParse({ taskId: "t", progress: 0, stage: "s" }).success).toBe(true);
     expect(ProgressEventSchema.safeParse({ taskId: "t", progress: 100, stage: "s" }).success).toBe(true);
+  });
+});
+
+describe("QAPrepEventSchema", () => {
+  it("validates a qa_prep_started event", () => {
+    const event = {
+      taskId: "task-123",
+      type: "started",
+      agentId: "agent-456",
+    };
+
+    const result = QAPrepEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a qa_prep_completed event with counts", () => {
+    const event = {
+      taskId: "task-123",
+      type: "completed",
+      agentId: "agent-456",
+      acceptanceCriteriaCount: 5,
+      testStepsCount: 10,
+    };
+
+    const result = QAPrepEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a qa_prep_failed event with error", () => {
+    const event = {
+      taskId: "task-123",
+      type: "failed",
+      error: "Failed to generate acceptance criteria",
+    };
+
+    const result = QAPrepEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid type", () => {
+    const event = {
+      taskId: "task-123",
+      type: "running", // not valid
+    };
+
+    const result = QAPrepEventSchema.safeParse(event);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing taskId", () => {
+    const event = {
+      type: "started",
+    };
+
+    const result = QAPrepEventSchema.safeParse(event);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("QATestEventSchema", () => {
+  it("validates a qa_testing_started event", () => {
+    const event = {
+      taskId: "task-123",
+      type: "started",
+      agentId: "agent-789",
+    };
+
+    const result = QATestEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a qa_passed event with step counts", () => {
+    const event = {
+      taskId: "task-123",
+      type: "passed",
+      agentId: "agent-789",
+      totalSteps: 5,
+      passedSteps: 5,
+      failedSteps: 0,
+    };
+
+    const result = QATestEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a qa_failed event with step counts and error", () => {
+    const event = {
+      taskId: "task-123",
+      type: "failed",
+      agentId: "agent-789",
+      totalSteps: 5,
+      passedSteps: 3,
+      failedSteps: 2,
+      error: "2 tests failed: visibility check, click handler",
+    };
+
+    const result = QATestEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid type", () => {
+    const event = {
+      taskId: "task-123",
+      type: "running", // not valid
+    };
+
+    const result = QATestEventSchema.safeParse(event);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects negative step counts", () => {
+    const event = {
+      taskId: "task-123",
+      type: "passed",
+      totalSteps: -1,
+    };
+
+    const result = QATestEventSchema.safeParse(event);
+    expect(result.success).toBe(false);
   });
 });
