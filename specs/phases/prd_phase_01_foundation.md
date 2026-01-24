@@ -528,6 +528,39 @@ Every task follows the TDD cycle:
 [
   {
     "category": "setup",
+    "description": "Set up agent-browser for visual verification",
+    "steps": [
+      "Install agent-browser globally: `npm install -g agent-browser`",
+      "Create `.claude/skills/agent-browser/` directory",
+      "Create `.claude/skills/agent-browser/SKILL.md` with all agent-browser commands (open, close, snapshot, screenshot, click, fill, etc.)",
+      "Create `screenshots/` directory with `.gitkeep`",
+      "Verify agent-browser works: `agent-browser --version`"
+    ],
+    "passes": false
+  },
+  {
+    "category": "setup",
+    "description": "Update Claude Code settings for agent-browser permissions",
+    "steps": [
+      "Read current `.claude/settings.json`",
+      "Add agent-browser bash permissions: agent-browser open, snapshot, screenshot, click, fill, close, get, is, wait",
+      "Verify permissions are properly formatted"
+    ],
+    "passes": false
+  },
+  {
+    "category": "setup",
+    "description": "Update PROMPT.md with visual verification workflow",
+    "steps": [
+      "Read the Visual Verification Layer section from specs/plan.md (lines 3395-3590)",
+      "Add Visual Verification section to PROMPT.md after Implementation Workflow",
+      "Include: when to verify (UI tasks), how to verify (agent-browser commands), how to document (activity.md format)",
+      "Add table of task types requiring visual verification"
+    ],
+    "passes": false
+  },
+  {
+    "category": "setup",
     "description": "Initialize Tauri 2.0 project with React + TypeScript",
     "steps": [
       "Run `npm create tauri-app@latest ralphx -- --template react-ts`",
