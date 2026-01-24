@@ -1452,17 +1452,20 @@ All tasks require:
     "category": "testing",
     "description": "Visual verification of ideation UI",
     "steps": [
-      "Start the app with npm run tauri dev",
+      "Start the app with npm run tauri dev (NOT npm run dev)",
+      "Wait for Tauri to compile",
       "Navigate to Ideation view",
+      "Use agent-browser screenshot \"body\" screenshots/ideation-empty.png",
       "Create a session and add mock proposals manually",
       "Take screenshots of:",
-      "  - Empty ideation view",
-      "  - View with proposals (selected and unselected)",
-      "  - Apply modal with dependency graph",
-      "  - Chat panel open alongside view",
-      "Verify design matches spec (warm orange, no purple, dark surfaces)"
+      "  - agent-browser screenshot \"body\" screenshots/ideation-proposals.png",
+      "  - agent-browser screenshot \"body\" screenshots/ideation-apply-modal.png",
+      "  - agent-browser screenshot \"body\" screenshots/ideation-chat-panel.png",
+      "Verify design matches spec (warm orange, no purple, dark surfaces)",
+      "Verify screenshots exist: ls -la screenshots/ideation-*.png",
+      "Task FAILS if no screenshots captured"
     ],
-    "passes": true
+    "passes": false
   }
 ]
 ```

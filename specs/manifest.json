@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 11,
+  "currentPhase": 10,
   "phases": [
     {
       "phase": 0,
@@ -77,14 +77,14 @@
       "phase": 10,
       "name": "Ideation",
       "prd": "specs/phases/prd_phase_10_ideation.md",
-      "status": "complete",
+      "status": "active",
       "description": "Chat interface, ideation view, proposals, priority"
     },
     {
       "phase": 11,
       "name": "Extensibility",
       "prd": "specs/phases/prd_phase_11_extensibility.md",
-      "status": "active",
+      "status": "pending",
       "description": "Custom workflows, methodologies, artifacts"
     },
     {
