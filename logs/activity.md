@@ -1,14 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 23:15:00
+**Last Updated:** 2026-01-24 23:17:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 31 / 63
-**Current Task:** Implement TypeScript types for research with Zod schemas
+**Tasks Completed:** 32 / 63
+**Current Task:** Implement TypeScript types for methodologies with Zod schemas
 
 ---
 
 ## Session Log
+
+### 2026-01-24 23:17:00 - Implement TypeScript types for research with Zod schemas (Task 32)
+
+**What was done:**
+- Created `src/types/research.ts` with comprehensive Zod schemas:
+  - `ResearchDepthPresetSchema` enum: quick-scan, standard, deep-dive, exhaustive
+  - `CustomDepthSchema` with maxIterations, timeoutHours, checkpointInterval
+  - `RESEARCH_PRESETS` constant with all 4 preset configurations
+  - `ResearchDepthSchema` discriminated union (preset | custom)
+  - Helper functions: createPresetDepth, createCustomDepth, resolveDepth, isPresetDepth, isCustomDepth
+  - `ResearchProcessStatusSchema` enum: pending, running, paused, completed, failed
+  - Status helpers: isActiveResearchStatus, isTerminalResearchStatus, isPausedResearchStatus
+  - `ResearchBriefSchema` with question, context, scope, constraints
+  - `ResearchOutputSchema` with targetBucket and artifactTypes
+  - `ResearchProgressSchema` with currentIteration, status, lastCheckpoint, errorMessage
+  - `ResearchProcessSchema` for complete research process entities
+  - `CreateResearchProcessInputSchema` for API input validation
+  - `ResearchPresetInfoSchema` for UI display with name and description
+  - `RESEARCH_PRESET_INFO` constant for all 4 presets
+  - Process helpers: getResolvedDepth, getProcessProgressPercentage, processShouldCheckpoint, isMaxIterationsReached
+  - Process state helpers: isProcessActive, isProcessTerminal, isProcessPaused
+  - Parsing helpers: parseResearchProcess, safeParseResearchProcess, parseResearchBrief, safeParseResearchBrief, parseResearchDepth, safeParseResearchDepth
+- Created `src/types/research.test.ts` with 120 tests
+- Updated `src/types/index.ts` to export all research types
+
+**Commands run:**
+- `npm test -- src/types/research.test.ts` - 120 tests passed
+- `npm run typecheck` - No errors
+- `npm test -- src/types/` - 752 tests passed (all type tests)
 
 ### 2026-01-24 23:15:00 - Implement TypeScript types for artifacts with Zod schemas (Task 31)
 
