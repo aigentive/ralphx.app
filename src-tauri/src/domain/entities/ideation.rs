@@ -6,7 +6,7 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use super::{IdeationSessionId, ProjectId};
+use super::{IdeationSessionId, ProjectId, TaskId, TaskProposalId};
 
 /// Status of an ideation session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -252,17 +252,497 @@ impl IdeationSession {
     /// Parse a datetime string from SQLite into a DateTime<Utc>
     /// Handles both RFC3339 format and SQLite's CURRENT_TIMESTAMP format
     fn parse_datetime(s: String) -> DateTime<Utc> {
-        // Try RFC3339 first (our preferred format)
-        if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
-            return dt.with_timezone(&Utc);
-        }
-        // Try SQLite's default datetime format (YYYY-MM-DD HH:MM:SS)
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S") {
-            return Utc.from_utc_datetime(&dt);
-        }
-        // Fallback to now if parsing fails
-        Utc::now()
+        parse_datetime_helper(s)
     }
+}
+
+// ============================================================================
+// TaskProposal and related types
+// ============================================================================
+
+/// Suggested priority level for a task proposal
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Priority {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+impl Default for Priority {
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
+impl std::fmt::Display for Priority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Priority::Critical => write!(f, "critical"),
+            Priority::High => write!(f, "high"),
+            Priority::Medium => write!(f, "medium"),
+            Priority::Low => write!(f, "low"),
+        }
+    }
+}
+
+/// Error type for parsing Priority from a string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsePriorityError {
+    pub value: String,
+}
+
+impl std::fmt::Display for ParsePriorityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown priority: '{}'", self.value)
+    }
+}
+
+impl std::error::Error for ParsePriorityError {}
+
+impl FromStr for Priority {
+    type Err = ParsePriorityError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "critical" => Ok(Priority::Critical),
+            "high" => Ok(Priority::High),
+            "medium" => Ok(Priority::Medium),
+            "low" => Ok(Priority::Low),
+            _ => Err(ParsePriorityError {
+                value: s.to_string(),
+            }),
+        }
+    }
+}
+
+/// Estimated complexity of a task
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Complexity {
+    Trivial,
+    Simple,
+    Moderate,
+    Complex,
+    VeryComplex,
+}
+
+impl Default for Complexity {
+    fn default() -> Self {
+        Self::Moderate
+    }
+}
+
+impl std::fmt::Display for Complexity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Complexity::Trivial => write!(f, "trivial"),
+            Complexity::Simple => write!(f, "simple"),
+            Complexity::Moderate => write!(f, "moderate"),
+            Complexity::Complex => write!(f, "complex"),
+            Complexity::VeryComplex => write!(f, "very_complex"),
+        }
+    }
+}
+
+/// Error type for parsing Complexity from a string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseComplexityError {
+    pub value: String,
+}
+
+impl std::fmt::Display for ParseComplexityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown complexity: '{}'", self.value)
+    }
+}
+
+impl std::error::Error for ParseComplexityError {}
+
+impl FromStr for Complexity {
+    type Err = ParseComplexityError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "trivial" => Ok(Complexity::Trivial),
+            "simple" => Ok(Complexity::Simple),
+            "moderate" => Ok(Complexity::Moderate),
+            "complex" => Ok(Complexity::Complex),
+            "very_complex" => Ok(Complexity::VeryComplex),
+            _ => Err(ParseComplexityError {
+                value: s.to_string(),
+            }),
+        }
+    }
+}
+
+/// Status of a task proposal in the ideation workflow
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProposalStatus {
+    /// Proposal is pending review
+    Pending,
+    /// Proposal has been accepted and will be converted to a task
+    Accepted,
+    /// Proposal has been rejected
+    Rejected,
+    /// Proposal has been modified by the user
+    Modified,
+}
+
+impl Default for ProposalStatus {
+    fn default() -> Self {
+        Self::Pending
+    }
+}
+
+impl std::fmt::Display for ProposalStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProposalStatus::Pending => write!(f, "pending"),
+            ProposalStatus::Accepted => write!(f, "accepted"),
+            ProposalStatus::Rejected => write!(f, "rejected"),
+            ProposalStatus::Modified => write!(f, "modified"),
+        }
+    }
+}
+
+/// Error type for parsing ProposalStatus from a string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseProposalStatusError {
+    pub value: String,
+}
+
+impl std::fmt::Display for ParseProposalStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown proposal status: '{}'", self.value)
+    }
+}
+
+impl std::error::Error for ParseProposalStatusError {}
+
+impl FromStr for ProposalStatus {
+    type Err = ParseProposalStatusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(ProposalStatus::Pending),
+            "accepted" => Ok(ProposalStatus::Accepted),
+            "rejected" => Ok(ProposalStatus::Rejected),
+            "modified" => Ok(ProposalStatus::Modified),
+            _ => Err(ParseProposalStatusError {
+                value: s.to_string(),
+            }),
+        }
+    }
+}
+
+/// Category of a task proposal
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskCategory {
+    /// Initial project setup
+    Setup,
+    /// New feature implementation
+    Feature,
+    /// Bug fix
+    Fix,
+    /// Code refactoring
+    Refactor,
+    /// Documentation
+    Docs,
+    /// Testing
+    Test,
+    /// Performance optimization
+    Performance,
+    /// Security-related
+    Security,
+    /// DevOps/CI/CD
+    DevOps,
+    /// Research/investigation
+    Research,
+    /// Design work
+    Design,
+    /// Chore/maintenance
+    Chore,
+}
+
+impl Default for TaskCategory {
+    fn default() -> Self {
+        Self::Feature
+    }
+}
+
+impl std::fmt::Display for TaskCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskCategory::Setup => write!(f, "setup"),
+            TaskCategory::Feature => write!(f, "feature"),
+            TaskCategory::Fix => write!(f, "fix"),
+            TaskCategory::Refactor => write!(f, "refactor"),
+            TaskCategory::Docs => write!(f, "docs"),
+            TaskCategory::Test => write!(f, "test"),
+            TaskCategory::Performance => write!(f, "performance"),
+            TaskCategory::Security => write!(f, "security"),
+            TaskCategory::DevOps => write!(f, "devops"),
+            TaskCategory::Research => write!(f, "research"),
+            TaskCategory::Design => write!(f, "design"),
+            TaskCategory::Chore => write!(f, "chore"),
+        }
+    }
+}
+
+/// Error type for parsing TaskCategory from a string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseTaskCategoryError {
+    pub value: String,
+}
+
+impl std::fmt::Display for ParseTaskCategoryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown task category: '{}'", self.value)
+    }
+}
+
+impl std::error::Error for ParseTaskCategoryError {}
+
+impl FromStr for TaskCategory {
+    type Err = ParseTaskCategoryError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "setup" => Ok(TaskCategory::Setup),
+            "feature" => Ok(TaskCategory::Feature),
+            "fix" => Ok(TaskCategory::Fix),
+            "refactor" => Ok(TaskCategory::Refactor),
+            "docs" => Ok(TaskCategory::Docs),
+            "test" => Ok(TaskCategory::Test),
+            "performance" => Ok(TaskCategory::Performance),
+            "security" => Ok(TaskCategory::Security),
+            "devops" => Ok(TaskCategory::DevOps),
+            "research" => Ok(TaskCategory::Research),
+            "design" => Ok(TaskCategory::Design),
+            "chore" => Ok(TaskCategory::Chore),
+            _ => Err(ParseTaskCategoryError {
+                value: s.to_string(),
+            }),
+        }
+    }
+}
+
+/// Priority scoring factors used for automated prioritization
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PriorityFactors {
+    /// Score from dependency analysis (blocks other tasks)
+    #[serde(default)]
+    pub dependency: i32,
+    /// Score from business value
+    #[serde(default)]
+    pub business_value: i32,
+    /// Score from technical risk
+    #[serde(default)]
+    pub technical_risk: i32,
+    /// Score from user request frequency
+    #[serde(default)]
+    pub user_demand: i32,
+}
+
+/// A task proposal generated during an ideation session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskProposal {
+    /// Unique identifier for this proposal
+    pub id: TaskProposalId,
+    /// Session this proposal belongs to
+    pub session_id: IdeationSessionId,
+    /// Short title for the task
+    pub title: String,
+    /// Detailed description of what needs to be done
+    pub description: Option<String>,
+    /// Task category
+    pub category: TaskCategory,
+    /// Implementation steps (JSON array of strings)
+    pub steps: Option<String>,
+    /// Acceptance criteria (JSON array of strings)
+    pub acceptance_criteria: Option<String>,
+    /// AI-suggested priority level
+    pub suggested_priority: Priority,
+    /// Numeric priority score (0-100, higher = more important)
+    pub priority_score: i32,
+    /// Explanation for why this priority was suggested
+    pub priority_reason: Option<String>,
+    /// Factors contributing to the priority score
+    pub priority_factors: Option<PriorityFactors>,
+    /// Estimated complexity
+    pub estimated_complexity: Complexity,
+    /// User-overridden priority (if different from suggested)
+    pub user_priority: Option<Priority>,
+    /// Whether the user has modified this proposal
+    pub user_modified: bool,
+    /// Current status in the workflow
+    pub status: ProposalStatus,
+    /// Whether this proposal is selected for conversion
+    pub selected: bool,
+    /// ID of the created task (if converted)
+    pub created_task_id: Option<TaskId>,
+    /// Sort order within the session
+    pub sort_order: i32,
+    /// When the proposal was created
+    pub created_at: DateTime<Utc>,
+    /// When the proposal was last updated
+    pub updated_at: DateTime<Utc>,
+}
+
+impl TaskProposal {
+    /// Creates a new task proposal with required fields
+    pub fn new(
+        session_id: IdeationSessionId,
+        title: impl Into<String>,
+        category: TaskCategory,
+        suggested_priority: Priority,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: TaskProposalId::new(),
+            session_id,
+            title: title.into(),
+            description: None,
+            category,
+            steps: None,
+            acceptance_criteria: None,
+            suggested_priority,
+            priority_score: 50,
+            priority_reason: None,
+            priority_factors: None,
+            estimated_complexity: Complexity::default(),
+            user_priority: None,
+            user_modified: false,
+            status: ProposalStatus::default(),
+            selected: true,
+            created_task_id: None,
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Returns the effective priority (user override or suggested)
+    pub fn effective_priority(&self) -> Priority {
+        self.user_priority.unwrap_or(self.suggested_priority)
+    }
+
+    /// Returns true if the proposal is pending
+    pub fn is_pending(&self) -> bool {
+        self.status == ProposalStatus::Pending
+    }
+
+    /// Returns true if the proposal has been accepted
+    pub fn is_accepted(&self) -> bool {
+        self.status == ProposalStatus::Accepted
+    }
+
+    /// Returns true if the proposal has been converted to a task
+    pub fn is_converted(&self) -> bool {
+        self.created_task_id.is_some()
+    }
+
+    /// Accepts the proposal
+    pub fn accept(&mut self) {
+        self.status = ProposalStatus::Accepted;
+        self.updated_at = Utc::now();
+    }
+
+    /// Rejects the proposal
+    pub fn reject(&mut self) {
+        self.status = ProposalStatus::Rejected;
+        self.selected = false;
+        self.updated_at = Utc::now();
+    }
+
+    /// Sets the user priority override
+    pub fn set_user_priority(&mut self, priority: Priority) {
+        self.user_priority = Some(priority);
+        self.user_modified = true;
+        self.status = ProposalStatus::Modified;
+        self.updated_at = Utc::now();
+    }
+
+    /// Links this proposal to a created task
+    pub fn link_to_task(&mut self, task_id: TaskId) {
+        self.created_task_id = Some(task_id);
+        self.updated_at = Utc::now();
+    }
+
+    /// Toggles selection state
+    pub fn toggle_selection(&mut self) {
+        self.selected = !self.selected;
+        self.updated_at = Utc::now();
+    }
+
+    /// Updates the updated_at timestamp to now
+    pub fn touch(&mut self) {
+        self.updated_at = Utc::now();
+    }
+
+    /// Deserialize a TaskProposal from a SQLite row
+    pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        let priority_factors_json: Option<String> = row.get("priority_factors")?;
+        let priority_factors = priority_factors_json
+            .and_then(|json| serde_json::from_str(&json).ok());
+
+        Ok(Self {
+            id: TaskProposalId::from_string(row.get::<_, String>("id")?),
+            session_id: IdeationSessionId::from_string(row.get::<_, String>("session_id")?),
+            title: row.get("title")?,
+            description: row.get("description")?,
+            category: row
+                .get::<_, String>("category")?
+                .parse()
+                .unwrap_or(TaskCategory::Feature),
+            steps: row.get("steps")?,
+            acceptance_criteria: row.get("acceptance_criteria")?,
+            suggested_priority: row
+                .get::<_, String>("suggested_priority")?
+                .parse()
+                .unwrap_or(Priority::Medium),
+            priority_score: row.get("priority_score")?,
+            priority_reason: row.get("priority_reason")?,
+            priority_factors,
+            estimated_complexity: row
+                .get::<_, String>("estimated_complexity")?
+                .parse()
+                .unwrap_or(Complexity::Moderate),
+            user_priority: row
+                .get::<_, Option<String>>("user_priority")?
+                .and_then(|s| s.parse().ok()),
+            user_modified: row.get::<_, i32>("user_modified")? != 0,
+            status: row
+                .get::<_, String>("status")?
+                .parse()
+                .unwrap_or(ProposalStatus::Pending),
+            selected: row.get::<_, i32>("selected")? != 0,
+            created_task_id: row
+                .get::<_, Option<String>>("created_task_id")?
+                .map(TaskId::from_string),
+            sort_order: row.get("sort_order")?,
+            created_at: parse_datetime_helper(row.get("created_at")?),
+            updated_at: parse_datetime_helper(row.get("updated_at")?),
+        })
+    }
+}
+
+/// Helper function to parse datetime strings from SQLite
+fn parse_datetime_helper(s: String) -> DateTime<Utc> {
+    // Try RFC3339 first (our preferred format)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
+        return dt.with_timezone(&Utc);
+    }
+    // Try SQLite's default datetime format (YYYY-MM-DD HH:MM:SS)
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S") {
+        return Utc.from_utc_datetime(&dt);
+    }
+    // Fallback to now if parsing fails
+    Utc::now()
 }
 
 #[cfg(test)]
@@ -785,5 +1265,603 @@ mod tests {
         assert!(session.converted_at.is_some());
         assert_eq!(session.archived_at.unwrap().hour(), 12);
         assert_eq!(session.converted_at.unwrap().hour(), 16);
+    }
+
+    // ==========================================
+    // Priority Enum Tests
+    // ==========================================
+
+    #[test]
+    fn priority_default_is_medium() {
+        assert_eq!(Priority::default(), Priority::Medium);
+    }
+
+    #[test]
+    fn priority_display() {
+        assert_eq!(format!("{}", Priority::Critical), "critical");
+        assert_eq!(format!("{}", Priority::High), "high");
+        assert_eq!(format!("{}", Priority::Medium), "medium");
+        assert_eq!(format!("{}", Priority::Low), "low");
+    }
+
+    #[test]
+    fn priority_from_str() {
+        assert_eq!("critical".parse::<Priority>().unwrap(), Priority::Critical);
+        assert_eq!("high".parse::<Priority>().unwrap(), Priority::High);
+        assert_eq!("medium".parse::<Priority>().unwrap(), Priority::Medium);
+        assert_eq!("low".parse::<Priority>().unwrap(), Priority::Low);
+    }
+
+    #[test]
+    fn priority_from_str_invalid() {
+        let result: Result<Priority, _> = "invalid".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().value, "invalid");
+    }
+
+    #[test]
+    fn priority_serializes() {
+        assert_eq!(serde_json::to_string(&Priority::Critical).unwrap(), "\"critical\"");
+        assert_eq!(serde_json::to_string(&Priority::Low).unwrap(), "\"low\"");
+    }
+
+    #[test]
+    fn priority_deserializes() {
+        assert_eq!(serde_json::from_str::<Priority>("\"high\"").unwrap(), Priority::High);
+    }
+
+    // ==========================================
+    // Complexity Enum Tests
+    // ==========================================
+
+    #[test]
+    fn complexity_default_is_moderate() {
+        assert_eq!(Complexity::default(), Complexity::Moderate);
+    }
+
+    #[test]
+    fn complexity_display() {
+        assert_eq!(format!("{}", Complexity::Trivial), "trivial");
+        assert_eq!(format!("{}", Complexity::Simple), "simple");
+        assert_eq!(format!("{}", Complexity::Moderate), "moderate");
+        assert_eq!(format!("{}", Complexity::Complex), "complex");
+        assert_eq!(format!("{}", Complexity::VeryComplex), "very_complex");
+    }
+
+    #[test]
+    fn complexity_from_str() {
+        assert_eq!("trivial".parse::<Complexity>().unwrap(), Complexity::Trivial);
+        assert_eq!("simple".parse::<Complexity>().unwrap(), Complexity::Simple);
+        assert_eq!("moderate".parse::<Complexity>().unwrap(), Complexity::Moderate);
+        assert_eq!("complex".parse::<Complexity>().unwrap(), Complexity::Complex);
+        assert_eq!("very_complex".parse::<Complexity>().unwrap(), Complexity::VeryComplex);
+    }
+
+    #[test]
+    fn complexity_from_str_invalid() {
+        let result: Result<Complexity, _> = "unknown".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn complexity_serializes() {
+        assert_eq!(serde_json::to_string(&Complexity::VeryComplex).unwrap(), "\"very_complex\"");
+    }
+
+    // ==========================================
+    // ProposalStatus Enum Tests
+    // ==========================================
+
+    #[test]
+    fn proposal_status_default_is_pending() {
+        assert_eq!(ProposalStatus::default(), ProposalStatus::Pending);
+    }
+
+    #[test]
+    fn proposal_status_display() {
+        assert_eq!(format!("{}", ProposalStatus::Pending), "pending");
+        assert_eq!(format!("{}", ProposalStatus::Accepted), "accepted");
+        assert_eq!(format!("{}", ProposalStatus::Rejected), "rejected");
+        assert_eq!(format!("{}", ProposalStatus::Modified), "modified");
+    }
+
+    #[test]
+    fn proposal_status_from_str() {
+        assert_eq!("pending".parse::<ProposalStatus>().unwrap(), ProposalStatus::Pending);
+        assert_eq!("accepted".parse::<ProposalStatus>().unwrap(), ProposalStatus::Accepted);
+        assert_eq!("rejected".parse::<ProposalStatus>().unwrap(), ProposalStatus::Rejected);
+        assert_eq!("modified".parse::<ProposalStatus>().unwrap(), ProposalStatus::Modified);
+    }
+
+    #[test]
+    fn proposal_status_from_str_invalid() {
+        let result: Result<ProposalStatus, _> = "invalid".parse();
+        assert!(result.is_err());
+    }
+
+    // ==========================================
+    // TaskCategory Enum Tests
+    // ==========================================
+
+    #[test]
+    fn task_category_default_is_feature() {
+        assert_eq!(TaskCategory::default(), TaskCategory::Feature);
+    }
+
+    #[test]
+    fn task_category_display() {
+        assert_eq!(format!("{}", TaskCategory::Setup), "setup");
+        assert_eq!(format!("{}", TaskCategory::Feature), "feature");
+        assert_eq!(format!("{}", TaskCategory::Fix), "fix");
+        assert_eq!(format!("{}", TaskCategory::Refactor), "refactor");
+        assert_eq!(format!("{}", TaskCategory::Docs), "docs");
+        assert_eq!(format!("{}", TaskCategory::Test), "test");
+        assert_eq!(format!("{}", TaskCategory::Performance), "performance");
+        assert_eq!(format!("{}", TaskCategory::Security), "security");
+        assert_eq!(format!("{}", TaskCategory::DevOps), "devops");
+        assert_eq!(format!("{}", TaskCategory::Research), "research");
+        assert_eq!(format!("{}", TaskCategory::Design), "design");
+        assert_eq!(format!("{}", TaskCategory::Chore), "chore");
+    }
+
+    #[test]
+    fn task_category_from_str() {
+        assert_eq!("setup".parse::<TaskCategory>().unwrap(), TaskCategory::Setup);
+        assert_eq!("feature".parse::<TaskCategory>().unwrap(), TaskCategory::Feature);
+        assert_eq!("fix".parse::<TaskCategory>().unwrap(), TaskCategory::Fix);
+        assert_eq!("devops".parse::<TaskCategory>().unwrap(), TaskCategory::DevOps);
+    }
+
+    #[test]
+    fn task_category_from_str_invalid() {
+        let result: Result<TaskCategory, _> = "invalid".parse();
+        assert!(result.is_err());
+    }
+
+    // ==========================================
+    // PriorityFactors Tests
+    // ==========================================
+
+    #[test]
+    fn priority_factors_default() {
+        let factors = PriorityFactors::default();
+        assert_eq!(factors.dependency, 0);
+        assert_eq!(factors.business_value, 0);
+        assert_eq!(factors.technical_risk, 0);
+        assert_eq!(factors.user_demand, 0);
+    }
+
+    #[test]
+    fn priority_factors_serializes() {
+        let factors = PriorityFactors {
+            dependency: 25,
+            business_value: 30,
+            technical_risk: 10,
+            user_demand: 15,
+        };
+        let json = serde_json::to_string(&factors).unwrap();
+        assert!(json.contains("\"dependency\":25"));
+        assert!(json.contains("\"business_value\":30"));
+    }
+
+    #[test]
+    fn priority_factors_deserializes() {
+        let json = r#"{"dependency":10,"business_value":20,"technical_risk":5,"user_demand":15}"#;
+        let factors: PriorityFactors = serde_json::from_str(json).unwrap();
+        assert_eq!(factors.dependency, 10);
+        assert_eq!(factors.user_demand, 15);
+    }
+
+    #[test]
+    fn priority_factors_deserializes_with_missing_fields() {
+        let json = r#"{"dependency":10}"#;
+        let factors: PriorityFactors = serde_json::from_str(json).unwrap();
+        assert_eq!(factors.dependency, 10);
+        assert_eq!(factors.business_value, 0); // default
+    }
+
+    // ==========================================
+    // TaskProposal Creation Tests
+    // ==========================================
+
+    #[test]
+    fn proposal_new_creates_with_defaults() {
+        let session_id = IdeationSessionId::new();
+        let proposal = TaskProposal::new(
+            session_id.clone(),
+            "Add authentication",
+            TaskCategory::Feature,
+            Priority::High,
+        );
+
+        assert_eq!(proposal.session_id, session_id);
+        assert_eq!(proposal.title, "Add authentication");
+        assert_eq!(proposal.category, TaskCategory::Feature);
+        assert_eq!(proposal.suggested_priority, Priority::High);
+        assert_eq!(proposal.priority_score, 50);
+        assert_eq!(proposal.estimated_complexity, Complexity::Moderate);
+        assert_eq!(proposal.status, ProposalStatus::Pending);
+        assert!(proposal.selected);
+        assert!(!proposal.user_modified);
+        assert!(proposal.description.is_none());
+        assert!(proposal.created_task_id.is_none());
+    }
+
+    #[test]
+    fn proposal_new_generates_unique_id() {
+        let session_id = IdeationSessionId::new();
+        let p1 = TaskProposal::new(session_id.clone(), "Task 1", TaskCategory::Feature, Priority::High);
+        let p2 = TaskProposal::new(session_id, "Task 2", TaskCategory::Feature, Priority::Low);
+
+        assert_ne!(p1.id, p2.id);
+    }
+
+    #[test]
+    fn proposal_effective_priority_returns_suggested_when_no_override() {
+        let proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::High,
+        );
+
+        assert_eq!(proposal.effective_priority(), Priority::High);
+    }
+
+    #[test]
+    fn proposal_effective_priority_returns_user_override() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::High,
+        );
+        proposal.set_user_priority(Priority::Low);
+
+        assert_eq!(proposal.effective_priority(), Priority::Low);
+    }
+
+    // ==========================================
+    // TaskProposal Method Tests
+    // ==========================================
+
+    #[test]
+    fn proposal_is_pending() {
+        let proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        assert!(proposal.is_pending());
+        assert!(!proposal.is_accepted());
+    }
+
+    #[test]
+    fn proposal_accept() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        proposal.accept();
+
+        assert!(proposal.is_accepted());
+        assert!(!proposal.is_pending());
+        assert_eq!(proposal.status, ProposalStatus::Accepted);
+    }
+
+    #[test]
+    fn proposal_reject() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        proposal.reject();
+
+        assert_eq!(proposal.status, ProposalStatus::Rejected);
+        assert!(!proposal.selected);
+    }
+
+    #[test]
+    fn proposal_set_user_priority() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Low,
+        );
+        proposal.set_user_priority(Priority::Critical);
+
+        assert_eq!(proposal.user_priority, Some(Priority::Critical));
+        assert!(proposal.user_modified);
+        assert_eq!(proposal.status, ProposalStatus::Modified);
+    }
+
+    #[test]
+    fn proposal_link_to_task() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let task_id = TaskId::new();
+        proposal.link_to_task(task_id.clone());
+
+        assert_eq!(proposal.created_task_id, Some(task_id));
+        assert!(proposal.is_converted());
+    }
+
+    #[test]
+    fn proposal_toggle_selection() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        assert!(proposal.selected);
+
+        proposal.toggle_selection();
+        assert!(!proposal.selected);
+
+        proposal.toggle_selection();
+        assert!(proposal.selected);
+    }
+
+    #[test]
+    fn proposal_touch_updates_timestamp() {
+        let mut proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Test",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let original = proposal.updated_at;
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        proposal.touch();
+
+        assert!(proposal.updated_at > original);
+    }
+
+    // ==========================================
+    // TaskProposal Serialization Tests
+    // ==========================================
+
+    #[test]
+    fn proposal_serializes_to_json() {
+        let proposal = TaskProposal::new(
+            IdeationSessionId::new(),
+            "JSON Test",
+            TaskCategory::Fix,
+            Priority::Critical,
+        );
+        let json = serde_json::to_string(&proposal).unwrap();
+
+        assert!(json.contains("\"title\":\"JSON Test\""));
+        assert!(json.contains("\"category\":\"fix\""));
+        assert!(json.contains("\"suggested_priority\":\"critical\""));
+    }
+
+    #[test]
+    fn proposal_deserializes_from_json() {
+        let json = r#"{
+            "id": "prop-123",
+            "session_id": "sess-456",
+            "title": "Deserialized",
+            "description": "A test proposal",
+            "category": "refactor",
+            "steps": null,
+            "acceptance_criteria": null,
+            "suggested_priority": "high",
+            "priority_score": 75,
+            "priority_reason": "Important",
+            "priority_factors": null,
+            "estimated_complexity": "complex",
+            "user_priority": "critical",
+            "user_modified": true,
+            "status": "modified",
+            "selected": true,
+            "created_task_id": null,
+            "sort_order": 5,
+            "created_at": "2026-01-24T12:00:00Z",
+            "updated_at": "2026-01-24T13:00:00Z"
+        }"#;
+
+        let proposal: TaskProposal = serde_json::from_str(json).unwrap();
+
+        assert_eq!(proposal.id.as_str(), "prop-123");
+        assert_eq!(proposal.session_id.as_str(), "sess-456");
+        assert_eq!(proposal.title, "Deserialized");
+        assert_eq!(proposal.category, TaskCategory::Refactor);
+        assert_eq!(proposal.suggested_priority, Priority::High);
+        assert_eq!(proposal.priority_score, 75);
+        assert_eq!(proposal.estimated_complexity, Complexity::Complex);
+        assert_eq!(proposal.user_priority, Some(Priority::Critical));
+        assert!(proposal.user_modified);
+        assert_eq!(proposal.status, ProposalStatus::Modified);
+        assert_eq!(proposal.sort_order, 5);
+    }
+
+    #[test]
+    fn proposal_roundtrip_serialization() {
+        let mut original = TaskProposal::new(
+            IdeationSessionId::new(),
+            "Roundtrip",
+            TaskCategory::Security,
+            Priority::High,
+        );
+        original.set_user_priority(Priority::Critical);
+
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TaskProposal = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.id, restored.id);
+        assert_eq!(original.title, restored.title);
+        assert_eq!(original.category, restored.category);
+        assert_eq!(original.user_priority, restored.user_priority);
+        assert_eq!(original.status, restored.status);
+    }
+
+    // ==========================================
+    // TaskProposal from_row Integration Tests
+    // ==========================================
+
+    fn setup_proposal_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            r#"CREATE TABLE task_proposals (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                category TEXT NOT NULL,
+                steps TEXT,
+                acceptance_criteria TEXT,
+                suggested_priority TEXT NOT NULL,
+                priority_score INTEGER NOT NULL DEFAULT 50,
+                priority_reason TEXT,
+                priority_factors TEXT,
+                estimated_complexity TEXT DEFAULT 'moderate',
+                user_priority TEXT,
+                user_modified INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'pending',
+                selected INTEGER DEFAULT 1,
+                created_task_id TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )"#,
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn proposal_from_row_basic() {
+        let conn = setup_proposal_test_db();
+        conn.execute(
+            r#"INSERT INTO task_proposals (id, session_id, title, category, suggested_priority,
+               priority_score, estimated_complexity, status, selected, sort_order, created_at, updated_at)
+               VALUES ('prop-1', 'sess-1', 'Test Proposal', 'feature', 'high',
+               75, 'complex', 'pending', 1, 0, '2026-01-24T10:00:00Z', '2026-01-24T11:00:00Z')"#,
+            [],
+        )
+        .unwrap();
+
+        let proposal: TaskProposal = conn
+            .query_row("SELECT * FROM task_proposals WHERE id = 'prop-1'", [], |row| {
+                TaskProposal::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(proposal.id.as_str(), "prop-1");
+        assert_eq!(proposal.session_id.as_str(), "sess-1");
+        assert_eq!(proposal.title, "Test Proposal");
+        assert_eq!(proposal.category, TaskCategory::Feature);
+        assert_eq!(proposal.suggested_priority, Priority::High);
+        assert_eq!(proposal.priority_score, 75);
+        assert_eq!(proposal.estimated_complexity, Complexity::Complex);
+        assert!(proposal.selected);
+        assert!(!proposal.user_modified);
+    }
+
+    #[test]
+    fn proposal_from_row_with_user_override() {
+        let conn = setup_proposal_test_db();
+        conn.execute(
+            r#"INSERT INTO task_proposals (id, session_id, title, category, suggested_priority,
+               priority_score, user_priority, user_modified, status, selected, sort_order, created_at, updated_at)
+               VALUES ('prop-2', 'sess-1', 'Modified', 'fix', 'medium',
+               50, 'critical', 1, 'modified', 1, 3, '2026-01-24T10:00:00Z', '2026-01-24T12:00:00Z')"#,
+            [],
+        )
+        .unwrap();
+
+        let proposal: TaskProposal = conn
+            .query_row("SELECT * FROM task_proposals WHERE id = 'prop-2'", [], |row| {
+                TaskProposal::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(proposal.user_priority, Some(Priority::Critical));
+        assert!(proposal.user_modified);
+        assert_eq!(proposal.status, ProposalStatus::Modified);
+        assert_eq!(proposal.sort_order, 3);
+    }
+
+    #[test]
+    fn proposal_from_row_with_priority_factors() {
+        let conn = setup_proposal_test_db();
+        conn.execute(
+            r#"INSERT INTO task_proposals (id, session_id, title, category, suggested_priority,
+               priority_score, priority_factors, status, selected, sort_order, created_at, updated_at)
+               VALUES ('prop-3', 'sess-1', 'With Factors', 'feature', 'high',
+               80, '{"dependency":25,"business_value":30,"technical_risk":10,"user_demand":15}',
+               'pending', 1, 0, '2026-01-24T10:00:00Z', '2026-01-24T10:00:00Z')"#,
+            [],
+        )
+        .unwrap();
+
+        let proposal: TaskProposal = conn
+            .query_row("SELECT * FROM task_proposals WHERE id = 'prop-3'", [], |row| {
+                TaskProposal::from_row(row)
+            })
+            .unwrap();
+
+        assert!(proposal.priority_factors.is_some());
+        let factors = proposal.priority_factors.unwrap();
+        assert_eq!(factors.dependency, 25);
+        assert_eq!(factors.business_value, 30);
+    }
+
+    #[test]
+    fn proposal_from_row_with_created_task() {
+        let conn = setup_proposal_test_db();
+        conn.execute(
+            r#"INSERT INTO task_proposals (id, session_id, title, category, suggested_priority,
+               priority_score, status, selected, created_task_id, sort_order, created_at, updated_at)
+               VALUES ('prop-4', 'sess-1', 'Converted', 'feature', 'medium',
+               50, 'accepted', 1, 'task-abc', 0, '2026-01-24T10:00:00Z', '2026-01-24T14:00:00Z')"#,
+            [],
+        )
+        .unwrap();
+
+        let proposal: TaskProposal = conn
+            .query_row("SELECT * FROM task_proposals WHERE id = 'prop-4'", [], |row| {
+                TaskProposal::from_row(row)
+            })
+            .unwrap();
+
+        assert!(proposal.created_task_id.is_some());
+        assert_eq!(proposal.created_task_id.as_ref().unwrap().as_str(), "task-abc");
+        assert!(proposal.is_converted());
+    }
+
+    #[test]
+    fn proposal_from_row_unknown_category_defaults_to_feature() {
+        let conn = setup_proposal_test_db();
+        conn.execute(
+            r#"INSERT INTO task_proposals (id, session_id, title, category, suggested_priority,
+               priority_score, status, selected, sort_order, created_at, updated_at)
+               VALUES ('prop-5', 'sess-1', 'Unknown Cat', 'invalid_category', 'medium',
+               50, 'pending', 1, 0, '2026-01-24T10:00:00Z', '2026-01-24T10:00:00Z')"#,
+            [],
+        )
+        .unwrap();
+
+        let proposal: TaskProposal = conn
+            .query_row("SELECT * FROM task_proposals WHERE id = 'prop-5'", [], |row| {
+                TaskProposal::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(proposal.category, TaskCategory::Feature);
     }
 }

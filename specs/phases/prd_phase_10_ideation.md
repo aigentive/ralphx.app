@@ -599,7 +599,7 @@ All tasks require:
       "Implement JSON serialization for steps and acceptance_criteria arrays",
       "Export from domain/entities module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

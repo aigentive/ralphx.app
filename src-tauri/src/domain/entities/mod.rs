@@ -11,8 +11,10 @@ pub mod types;
 
 // Re-export commonly used types for convenience
 pub use ideation::{
-    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus,
-    ParseIdeationSessionStatusError,
+    Complexity, IdeationSession, IdeationSessionBuilder, IdeationSessionStatus,
+    ParseComplexityError, ParseIdeationSessionStatusError, ParsePriorityError,
+    ParseProposalStatusError, ParseTaskCategoryError, Priority, PriorityFactors, ProposalStatus,
+    TaskCategory, TaskProposal,
 };
 pub use project::{GitMode, Project};
 pub use review::{
@@ -23,4 +25,4 @@ pub use review::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_qa::TaskQA;
-pub use types::{IdeationSessionId, ProjectId, TaskId, TaskQAId};
+pub use types::{IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId};
