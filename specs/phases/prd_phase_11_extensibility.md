@@ -1469,7 +1469,7 @@ All tasks require tests written before implementation:
       "Add navigation to App layout",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
