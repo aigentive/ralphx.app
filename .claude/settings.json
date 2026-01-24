@@ -50,7 +50,17 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(jq:*)",
-      "Bash(time:*)"
+      "Bash(time:*)",
+      "Bash(agent-browser:*)",
+      "Bash(agent-browser open:*)",
+      "Bash(agent-browser snapshot:*)",
+      "Bash(agent-browser screenshot:*)",
+      "Bash(agent-browser click:*)",
+      "Bash(agent-browser fill:*)",
+      "Bash(agent-browser close:*)",
+      "Bash(agent-browser get:*)",
+      "Bash(agent-browser is:*)",
+      "Bash(agent-browser wait:*)"
     ],
     "deny": [
       "Bash(sudo:*)",

@@ -547,7 +547,7 @@ Every task follows the TDD cycle:
       "Merge with existing permissions, do not replace",
       "Verify JSON is valid"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
