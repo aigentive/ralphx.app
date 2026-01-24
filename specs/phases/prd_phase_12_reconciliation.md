@@ -564,7 +564,7 @@ const qaPrepProfile = {
       "Write unit tests for ActivityView",
       "Reference specs/plan.md 'Activity Stream' section"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",
