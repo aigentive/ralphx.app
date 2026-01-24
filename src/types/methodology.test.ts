@@ -21,7 +21,6 @@ import {
   parseMethodologyPhase,
   safeParseMethodologyPhase,
   // Types
-  type MethodologyStatus,
   type MethodologyPhase,
   type MethodologyTemplate,
   type MethodologyExtension,

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { StatusBadge, type ReviewStatus, type QAStatus } from "./StatusBadge";
+import { StatusBadge, type QAStatus } from "./StatusBadge";
 
 describe("StatusBadge", () => {
   describe("review status variants", () => {

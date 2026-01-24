@@ -23,7 +23,6 @@ import {
   safeParseAgentProfile,
   type AgentProfile,
   type ProfileRole,
-  type Model,
 } from './agent-profile';
 
 describe('ProfileRoleSchema', () => {

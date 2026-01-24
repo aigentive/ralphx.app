@@ -36,15 +36,10 @@ import {
   safeParseTaskQA,
 } from "./qa";
 import type {
-  AcceptanceCriteriaType,
   AcceptanceCriterion,
   AcceptanceCriteria,
-  QATestStep,
   QATestSteps,
-  QAStepStatus,
-  QAOverallStatus,
   QAStepResult,
-  QAResultsTotals,
   QAResults,
   TaskQA,
 } from "./qa";

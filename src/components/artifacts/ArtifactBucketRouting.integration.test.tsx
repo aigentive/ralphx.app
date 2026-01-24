@@ -151,7 +151,7 @@ const derivedFromRelation: ArtifactRelationResponse = {
 // Test Utilities
 // ============================================================================
 
-function createWrapper() {
+function _createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },

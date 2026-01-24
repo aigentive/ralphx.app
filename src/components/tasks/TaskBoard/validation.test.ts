@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createMockTask } from "@/test/mock-data";
-import { validateDrop, type ValidationResult } from "./validation";
+import { validateDrop } from "./validation";
 
 describe("validateDrop", () => {
   describe("source column restrictions", () => {

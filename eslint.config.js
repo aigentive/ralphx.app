@@ -14,6 +14,7 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      'react-hooks/set-state-in-effect': 'off', // Common pattern for syncing state with props/dialogs
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

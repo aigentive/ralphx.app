@@ -271,7 +271,7 @@ describe("useMethodologyActivation", () => {
     it("should update methodology store to clear active methodology", async () => {
       // Set up initial active methodology
       useMethodologyStore.setState({
-        methodologies: { "bmad-method": { id: "bmad-method", isActive: true } as any },
+        methodologies: { "bmad-method": { id: "bmad-method", isActive: true } as unknown as import("@/types/methodology").MethodologyTemplate },
         activeMethodologyId: "bmad-method",
       });
 
@@ -343,7 +343,7 @@ describe("useMethodologyActivation", () => {
 
     it("should return active methodology from store", () => {
       useMethodologyStore.setState({
-        methodologies: { "bmad-method": mockActivationResponse.methodology as any },
+        methodologies: { "bmad-method": mockActivationResponse.methodology as unknown as import("@/types/methodology").MethodologyTemplate },
         activeMethodologyId: "bmad-method",
       });
 
