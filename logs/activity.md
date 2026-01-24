@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:33:23
+**Last Updated:** 2026-01-24 07:35:56
 **Phase:** Data Layer
-**Tasks Completed:** 10 / 20
-**Current Task:** Add task_blockers table to database migrations
+**Tasks Completed:** 11 / 20
+**Current Task:** Implement SqliteTaskRepository CRUD operations
 
 ---
 
@@ -1399,6 +1399,36 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `src-tauri/src/infrastructure/memory/memory_project_repo.rs` - full ProjectRepository implementation
+
+---
+
+### 2026-01-24 07:35:56 - Add task_blockers table to database migrations
+
+**What was done:**
+- Updated schema version from 1 to 2
+- Added migrate_v2 function to create task_blockers table
+- Table design:
+  - `task_id`: Task that is blocked
+  - `blocker_id`: Task that blocks it
+  - Composite primary key (task_id, blocker_id) prevents duplicates
+  - ON DELETE CASCADE for both foreign keys
+  - `created_at` timestamp
+- Added indexes for efficient queries:
+  - `idx_task_blockers_task_id`: For "what blocks this task?" queries
+  - `idx_task_blockers_blocker_id`: For "what does this task block?" queries
+- Added 8 new tests:
+  - test_run_migrations_creates_task_blockers_table
+  - test_task_blockers_table_has_correct_columns
+  - test_task_blockers_index_on_task_id_exists
+  - test_task_blockers_index_on_blocker_id_exists
+  - test_task_blockers_primary_key_prevents_duplicates
+  - test_task_blockers_cascade_delete_on_task
+  - test_task_blockers_cascade_delete_on_blocker
+  - test_task_blockers_multiple_blockers_per_task
+- All 251 tests pass (8 new tests)
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/migrations.rs` - added v2 migration for task_blockers
 
 ---
 
