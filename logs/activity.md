@@ -1,14 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 01:35:00
+**Last Updated:** 2026-01-25 02:10:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 3 / 18
-**Current Task:** Design requirements for Ideation View (ChatPanel, ProposalList)
+**Tasks Completed:** 4 / 18
+**Current Task:** Design requirements for Settings View
 
 ---
 
 ## Session Log
+
+### 2026-01-25 02:10:00 - Design requirements for Ideation View (Task 4)
+
+**What was done:**
+- Added comprehensive Ideation View design requirements to specs/DESIGN.md
+- Documented two-panel resizable layout with chat panel (left) and proposals panel (right)
+- Specified ChatPanel with asymmetric message bubbles (tail effect), user messages right-aligned with warm orange, AI messages left-aligned with elevated background
+- Defined animated typing indicator with three bouncing dots
+- Documented ChatInput with shadcn components, multi-line auto-resize, Send button with loading state
+- Specified ProposalCard with shadcn Card and Checkbox, hover lift animation, selected state with orange glow
+- Defined Priority badges with semantic color variants
+- Documented drag-and-drop reordering with visual feedback
+- Created Apply dropdown using shadcn DropdownMenu
+- Added resize handle with orange glow on hover
+- Specified empty states for both panels with Lucide icons (MessageSquareText, Lightbulb)
+- Created acceptance_criteria array with 20 functional requirements
+- Created design_quality array with 15 visual/aesthetic requirements
+
+**Design Highlights:**
+- Two-panel layout fills viewport with resizable divider (min 320px per panel)
+- Message bubbles have asymmetric border radius creating tail effect
+- User messages: orange background, right-aligned, white text
+- AI messages: elevated background, left-aligned, border
+- Typing indicator: three animated bouncing dots
+- ProposalCards lift on hover with shadow elevation
+- Selected proposals: orange border + accent-muted background + glow
+- Resize handle glows orange on hover/drag
+- Glass effect headers with backdrop-blur
+- Lucide icons throughout (Send, Paperclip, Lightbulb, MessageSquare, etc.)
+
+**Files modified:**
+- `specs/DESIGN.md` (Ideation View section with full requirements)
+- `specs/phases/prd_phase_13_design.md` (marked task 4 as passes: true)
+
+---
 
 ### 2026-01-25 01:35:00 - Design requirements for Kanban Board (Task 3)
 
