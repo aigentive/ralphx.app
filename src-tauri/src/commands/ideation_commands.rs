@@ -1356,6 +1356,112 @@ pub async fn count_session_messages(
         .map_err(|e| e.to_string())
 }
 
+// ============================================================================
+// Orchestrator Integration Commands
+// ============================================================================
+
+/// Input for sending a message to the orchestrator
+#[derive(Debug, Deserialize)]
+pub struct SendOrchestratorMessageInput {
+    pub session_id: String,
+    pub content: String,
+}
+
+/// Response from the orchestrator
+#[derive(Debug, Serialize)]
+pub struct OrchestratorMessageResponse {
+    pub response_text: String,
+    pub proposals_created: Vec<TaskProposalResponse>,
+    pub tool_calls: Vec<ToolCallResultResponse>,
+}
+
+/// Tool call result response
+#[derive(Debug, Serialize)]
+pub struct ToolCallResultResponse {
+    pub tool_name: String,
+    pub success: bool,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+/// Send a message to the orchestrator agent and get a response
+/// This invokes the Claude CLI with the orchestrator-ideation agent
+#[tauri::command]
+pub async fn send_orchestrator_message(
+    input: SendOrchestratorMessageInput,
+    state: State<'_, AppState>,
+) -> Result<OrchestratorMessageResponse, String> {
+    use crate::application::{ClaudeOrchestratorService, OrchestratorService};
+
+    // First verify the session exists and is active
+    let session_id = IdeationSessionId::from_string(input.session_id.clone());
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Session not found".to_string())?;
+
+    if session.status != IdeationSessionStatus::Active {
+        return Err("Session is not active".to_string());
+    }
+
+    // Create orchestrator service
+    let orchestrator = ClaudeOrchestratorService::new(
+        state.chat_message_repo.clone(),
+        state.task_proposal_repo.clone(),
+    );
+
+    // Check if orchestrator is available
+    if !orchestrator.is_available().await {
+        return Err("Orchestrator agent (claude CLI) is not available".to_string());
+    }
+
+    // Send message and get response
+    let result = orchestrator
+        .send_message(&session_id, &input.content)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Convert proposals to response format
+    let proposals_created: Vec<TaskProposalResponse> = result
+        .proposals_created
+        .into_iter()
+        .map(TaskProposalResponse::from)
+        .collect();
+
+    // Convert tool calls to response format
+    let tool_calls: Vec<ToolCallResultResponse> = result
+        .tool_calls
+        .into_iter()
+        .map(|tc| ToolCallResultResponse {
+            tool_name: tc.tool_name,
+            success: tc.success,
+            result: tc.result,
+            error: tc.error,
+        })
+        .collect();
+
+    Ok(OrchestratorMessageResponse {
+        response_text: result.response_text,
+        proposals_created,
+        tool_calls,
+    })
+}
+
+/// Check if the orchestrator agent is available
+#[tauri::command]
+pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<bool, String> {
+    use crate::application::{ClaudeOrchestratorService, OrchestratorService};
+
+    let orchestrator = ClaudeOrchestratorService::new(
+        state.chat_message_repo.clone(),
+        state.task_proposal_repo.clone(),
+    );
+
+    Ok(orchestrator.is_available().await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

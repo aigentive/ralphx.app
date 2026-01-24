@@ -1368,7 +1368,7 @@ All tasks require:
       "Update proposals store when agent creates proposals",
       "Test full conversation flow with mock agent"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -27,11 +27,12 @@ pub use ideation_commands::{
     get_blocked_tasks, get_ideation_session, get_ideation_session_with_data,
     get_project_messages, get_proposal_dependencies, get_proposal_dependents,
     get_recent_session_messages, get_session_messages, get_task_blockers, get_task_messages,
-    get_task_proposal, list_ideation_sessions, list_session_proposals, remove_proposal_dependency,
-    reorder_proposals, send_chat_message, set_proposal_selection, toggle_proposal_selection,
-    update_task_proposal, ApplyProposalsResultResponse, ChatMessageResponse,
-    DependencyGraphResponse, IdeationSessionResponse, PriorityAssessmentResponse,
-    SessionWithDataResponse, TaskProposalResponse,
+    get_task_proposal, is_orchestrator_available, list_ideation_sessions, list_session_proposals,
+    remove_proposal_dependency, reorder_proposals, send_chat_message, send_orchestrator_message,
+    set_proposal_selection, toggle_proposal_selection, update_task_proposal,
+    ApplyProposalsResultResponse, ChatMessageResponse, DependencyGraphResponse,
+    IdeationSessionResponse, OrchestratorMessageResponse, PriorityAssessmentResponse,
+    SessionWithDataResponse, TaskProposalResponse, ToolCallResultResponse,
 };
 pub use project_commands::{
     create_project, delete_project, get_project, list_projects, update_project,
