@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:10:05
+**Last Updated:** 2026-01-24 22:14:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 54 / 63
-**Current Task:** Create useWorkflowStore Zustand store
+**Tasks Completed:** 55 / 63
+**Current Task:** Create ExtensibilityView for settings/configuration
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:14:00 - Integrate WorkflowSelector with TaskBoard header (Task 55)
+
+**What was done:**
+- Created `src/components/tasks/TaskBoard/TaskBoardWithHeader.tsx` with features:
+  - Header with WorkflowSelector dropdown
+  - Workflow switching triggers column re-render
+  - Converts WorkflowResponse (snake_case API) to WorkflowSchema (camelCase)
+  - Task data preserved during workflow switch (same query key)
+  - Uses useWorkflows hook for workflow list
+  - Component under 100 lines (88 lines)
+- Created `src/components/tasks/TaskBoard/TaskBoardWithHeader.test.tsx` with 9 comprehensive tests covering:
+  - Header rendering with WorkflowSelector
+  - Current workflow name and default badge display
+  - Dropdown lists available workflows
+  - Workflow switching updates columns
+  - Task data not refetched on workflow switch
+  - Loading state
+- Exported TaskBoardWithHeader from index.tsx
+
+**Commands run:**
+- `npm test -- src/components/tasks/TaskBoard/TaskBoardWithHeader.test.tsx --run` - 9 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 22:10:05 - Create MethodologyConfig component (Task 54)
 
