@@ -580,7 +580,7 @@ const qaPrepProfile = {
       "Write unit tests for SettingsView",
       "Reference specs/plan.md 'Minimal Essential Settings' section for defaults"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

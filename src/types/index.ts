@@ -533,3 +533,30 @@ export type {
   MethodologyExtension,
   CreateMethodologyExtensionInput,
 } from "./methodology";
+
+// Project Settings types and schemas
+export {
+  ExecutionSettingsSchema,
+  ModelSettingsSchema,
+  ProjectReviewSettingsSchema,
+  SupervisorSettingsSchema,
+  ProjectSettingsSchema,
+  SettingsProfileSchema,
+  DEFAULT_EXECUTION_SETTINGS,
+  DEFAULT_MODEL_SETTINGS,
+  DEFAULT_PROJECT_REVIEW_SETTINGS,
+  DEFAULT_SUPERVISOR_SETTINGS,
+  DEFAULT_PROJECT_SETTINGS,
+  parseProjectSettings,
+  safeParseProjectSettings,
+  parseSettingsProfile,
+  safeParseSettingsProfile,
+} from "./settings";
+export type {
+  ExecutionSettings,
+  ModelSettings,
+  ProjectReviewSettings,
+  SupervisorSettings,
+  ProjectSettings,
+  SettingsProfile,
+} from "./settings";
