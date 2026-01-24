@@ -1097,7 +1097,7 @@ All tasks require:
       "  - reorder mutation",
       "Export from src/hooks/useProposals.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:40:00
+**Last Updated:** 2026-01-24 19:45:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 33 / 50
-**Current Task:** Create useProposals hook
+**Tasks Completed:** 34 / 50
+**Current Task:** Create usePriorityAssessment hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:45:00 - Create useProposals hook
+
+**What was done:**
+- Created `src/hooks/useProposals.ts` with TanStack Query wrappers:
+  - `proposalKeys` factory for query key management
+  - `useProposals(sessionId)` - Fetch proposals for session
+  - `useProposalMutations()` - Returns mutations object with:
+    - `createProposal` - Create new proposal
+    - `updateProposal` - Update existing proposal
+    - `deleteProposal` - Delete proposal
+    - `toggleSelection` - Toggle selection state
+    - `reorder` - Reorder proposals in session
+- Query invalidation for proposals and session data on mutations
+- Created `src/hooks/useProposals.test.ts` with 19 unit tests covering:
+  - Query key generation
+  - Proposals fetch by session
+  - All mutation operations
+  - Error handling
+
+**Commands run:**
+- `npm test -- --run src/hooks/useProposals.test.ts` (19 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1726 tests passed)
+
+---
 
 ### 2026-01-24 19:40:00 - Create useIdeationSession hook
 
