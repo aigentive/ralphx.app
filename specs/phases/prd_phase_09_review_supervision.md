@@ -431,7 +431,7 @@ interface AskUserQuestionResponse {
       "Run migration",
       "Verify table created with correct schema"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
