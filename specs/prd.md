@@ -71,6 +71,27 @@ Each phase PRD should follow this structure:
 ```json
 [
   {
+    "category": "validation",
+    "description": "Validate and finalize phase structure against master plan",
+    "steps": [
+      "Read the ENTIRE specs/plan.md thoroughly - all 9000+ lines",
+      "List every major component/system described in the plan",
+      "Cross-reference against the 11 proposed phases - identify gaps or overlaps",
+      "Analyze dependencies: which components depend on others being built first?",
+      "Consider Ralph loop constraints: serial execution, one task at a time, fresh context each iteration",
+      "Identify if any phase is too large (should be split) or too small (should be merged)",
+      "Check if phase ordering respects dependencies (can't build UI before data layer, etc.)",
+      "Look for components in plan that aren't covered by any phase",
+      "Look for phases that don't have corresponding content in plan",
+      "If changes needed: update this PRD's phase table and task list",
+      "If changes needed: update specs/manifest.json with correct phases",
+      "Document your analysis and any changes made in the activity log",
+      "Create a dependency graph showing phase relationships"
+    ],
+    "output": "Updated specs/prd.md and specs/manifest.json (if changes needed), dependency analysis in activity log",
+    "passes": false
+  },
+  {
     "category": "planning",
     "description": "Create Phase 1 PRD: Foundation",
     "steps": [
