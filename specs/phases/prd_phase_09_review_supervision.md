@@ -526,7 +526,7 @@ interface AskUserQuestionResponse {
       "Add to AppConfig or project settings",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
