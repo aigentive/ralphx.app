@@ -499,7 +499,7 @@ interface AskUserQuestionResponse {
       "Add method: get_notes_by_task_id(task_id) for history",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
