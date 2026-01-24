@@ -386,7 +386,7 @@ const qaPrepProfile = {
       "Update plugin.json skills path if needed",
       "Verify skills are discoverable"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactoring",

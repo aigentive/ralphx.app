@@ -1,14 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:05:00
+**Last Updated:** 2026-01-25 00:07:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 1 / 21
-**Current Task:** Move QA skills from .claude/ to ralphx-plugin/
+**Tasks Completed:** 2 / 21
+**Current Task:** Move agent-browser skill to ralphx-plugin/
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:07:00 - Move QA skills from .claude/ to ralphx-plugin/ (Task 2)
+
+**What was done:**
+- Moved `.claude/skills/acceptance-criteria-writing/` to `ralphx-plugin/skills/`
+- Moved `.claude/skills/qa-step-generation/` to `ralphx-plugin/skills/`
+- Moved `.claude/skills/qa-evaluation/` to `ralphx-plugin/skills/`
+- Plugin.json already configured with `"skills": "./skills/"` for auto-discovery
+- Plugin now has 8 skill directories: coding-standards, testing-patterns, code-review-checklist, research-methodology, git-workflow, acceptance-criteria-writing, qa-step-generation, qa-evaluation
+
+**Commands run:**
+- `mv .claude/skills/acceptance-criteria-writing ralphx-plugin/skills/`
+- `mv .claude/skills/qa-step-generation ralphx-plugin/skills/`
+- `mv .claude/skills/qa-evaluation ralphx-plugin/skills/`
+
+---
 
 ### 2026-01-25 00:05:00 - Move QA agents from .claude/ to ralphx-plugin/ (Task 1)
 
