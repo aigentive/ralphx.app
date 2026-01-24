@@ -431,7 +431,7 @@ const qaPrepProfile = {
       "Update any frontend code that references agent paths",
       "Run npm run typecheck to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactoring",
