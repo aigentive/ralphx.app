@@ -1,14 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:10:00
+**Last Updated:** 2026-01-24 17:25:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 12 / 50
-**Current Task:** Implement SqliteProposalDependencyRepository
+**Tasks Completed:** 13 / 50
+**Current Task:** Implement SqliteChatMessageRepository
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:25:00 - Implement SqliteProposalDependencyRepository
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs`:
+  - `SqliteProposalDependencyRepository` struct with `Arc<Mutex<Connection>>` pattern
+  - Constructor methods: `new()` and `from_shared()`
+  - Implements all 9 `ProposalDependencyRepository` trait methods:
+    - `add_dependency()` - INSERT OR IGNORE with UNIQUE constraint handling
+    - `remove_dependency()` - DELETE with proposal_id and depends_on_proposal_id
+    - `get_dependencies()` - SELECT proposals this depends on
+    - `get_dependents()` - SELECT proposals that depend on this
+    - `get_all_for_session()` - JOIN with task_proposals to filter by session
+    - `would_create_cycle()` - DFS-based cycle detection algorithm
+    - `clear_dependencies()` - DELETE both directions (outgoing and incoming)
+    - `count_dependencies()` - COUNT of dependencies for a proposal
+    - `count_dependents()` - COUNT of dependents for a proposal
+- Updated `infrastructure/sqlite/mod.rs` with module declaration and re-export
+- Added 30 comprehensive integration tests:
+  - Add/remove dependency tests with UNIQUE constraint handling
+  - Direction correctness tests (dependencies vs dependents)
+  - Session filtering tests with JOIN
+  - Cycle detection tests (self-dependency, direct cycle, indirect cycle)
+  - Clear dependencies tests (both directions)
+  - Count operations tests
+  - CASCADE delete tests (when proposal deleted)
+  - CHECK constraint tests (self-reference prevention)
+  - Shared connection tests
+
+**Commands run:**
+- `cargo test --lib sqlite_proposal_dependency_repo::` (30 tests passed)
+- `cargo test --lib` (1827 tests passed)
+
+---
 
 ### 2026-01-24 17:10:00 - Implement SqliteTaskProposalRepository
 
