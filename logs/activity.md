@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:45:47
+**Last Updated:** 2026-01-24 13:48:44
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 26 / 51
-**Current Task:** Implement StateHistoryTimeline component
+**Tasks Completed:** 27 / 51
+**Current Task:** Implement TaskDetailView with state history
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:48:44 - Implement StateHistoryTimeline component
+
+**What was done:**
+- Created `src/components/tasks/StateHistoryTimeline.tsx` (76 lines, under 80 limit):
+  - Vertical timeline displaying task state transition history
+  - Fetches data via `useTaskStateHistory` hook from TanStack Query
+  - Loading spinner while data fetches
+  - Empty state with "No history" message
+  - Timeline entries with colored dots (green: approved, orange: changes_requested, red: rejected)
+  - Outcome labels: "Approved", "Changes Requested", "Rejected"
+  - Actor display: maps "human" reviewer to "user", "ai" reviewer to "ai_reviewer"
+  - Quoted notes when present
+  - Relative timestamps (e.g., "just now", "15 min ago", "2h ago", "1d ago")
+  - Uses design system tokens: `--bg-surface`, `--text-primary`, `--text-secondary`, `--text-muted`
+  - Data attributes: `data-testid`, `data-timestamp`
+- Created `src/components/tasks/StateHistoryTimeline.test.tsx` with 16 tests:
+  - Loading state tests
+  - Empty state tests
+  - Timeline entry rendering
+  - Outcome label display
+  - Reviewer actor mapping (human→user, ai→ai_reviewer)
+  - Notes display (present and null cases)
+  - Relative timestamp display
+  - Outcome colors (success, warning, error)
+  - Hook integration tests
+  - Data attribute tests
+  - Styling tests (design system compliance)
+- Created `src/components/tasks/index.ts` barrel export
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/components/tasks/StateHistoryTimeline.test.tsx` (16 tests passed)
+- `npm run test -- src/components/tasks/` (148 tests passed)
+
+---
 
 ### 2026-01-24 11:45:47 - Implement ReviewNotesModal component
 
