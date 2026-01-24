@@ -1462,7 +1462,7 @@ All tasks require:
       "  - Chat panel open alongside view",
       "Verify design matches spec (warm orange, no purple, dark surfaces)"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
