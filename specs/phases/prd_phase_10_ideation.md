@@ -739,7 +739,7 @@ All tasks require:
       "Implement delete() with CASCADE to dependencies",
       "Implement reorder() with UPDATE sort_order"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
