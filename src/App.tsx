@@ -3,16 +3,18 @@
  * Root component with QueryClientProvider and EventProvider
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { getQueryClient } from "@/lib/queryClient";
 import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
+import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
 import { useUiStore } from "@/stores/uiStore";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
+import { api } from "@/lib/tauri";
 
 const queryClient = getQueryClient();
 
@@ -43,9 +45,39 @@ function AppContent() {
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
   const toggleReviewsPanel = useUiStore((s) => s.toggleReviewsPanel);
   const setReviewsPanelOpen = useUiStore((s) => s.setReviewsPanelOpen);
+  const executionStatus = useUiStore((s) => s.executionStatus);
+  const setExecutionStatus = useUiStore((s) => s.setExecutionStatus);
+
+  const [isExecutionLoading, setIsExecutionLoading] = useState(false);
 
   const { count: pendingReviewCount } = usePendingReviews(DEFAULT_PROJECT_ID);
   const { data: tasks = [] } = useTasks(DEFAULT_PROJECT_ID);
+
+  const handlePauseToggle = async () => {
+    setIsExecutionLoading(true);
+    try {
+      const response = executionStatus.isPaused
+        ? await api.execution.resume()
+        : await api.execution.pause();
+      setExecutionStatus(response.status);
+    } catch (error) {
+      console.error("Failed to toggle pause:", error);
+    } finally {
+      setIsExecutionLoading(false);
+    }
+  };
+
+  const handleStop = async () => {
+    setIsExecutionLoading(true);
+    try {
+      const response = await api.execution.stop();
+      setExecutionStatus(response.status);
+    } catch (error) {
+      console.error("Failed to stop execution:", error);
+    } finally {
+      setIsExecutionLoading(false);
+    }
+  };
 
   // Build task titles lookup
   const taskTitles = useMemo(() => {
@@ -111,12 +143,26 @@ function AppContent() {
 
       {/* Main content area with TaskBoard and optional ReviewsPanel */}
       <div className="flex-1 flex overflow-hidden">
-        {/* TaskBoard */}
-        <div className="flex-1 overflow-hidden">
-          <TaskBoard
-            projectId={DEFAULT_PROJECT_ID}
-            workflowId={DEFAULT_WORKFLOW_ID}
-          />
+        {/* TaskBoard with ExecutionControlBar */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            <TaskBoard
+              projectId={DEFAULT_PROJECT_ID}
+              workflowId={DEFAULT_WORKFLOW_ID}
+            />
+          </div>
+          {/* ExecutionControlBar at bottom */}
+          <div className="p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+            <ExecutionControlBar
+              runningCount={executionStatus.runningCount}
+              maxConcurrent={executionStatus.maxConcurrent}
+              queuedCount={executionStatus.queuedCount}
+              isPaused={executionStatus.isPaused}
+              isLoading={isExecutionLoading}
+              onPauseToggle={handlePauseToggle}
+              onStop={handleStop}
+            />
+          </div>
         </div>
 
         {/* ReviewsPanel slide-out */}
