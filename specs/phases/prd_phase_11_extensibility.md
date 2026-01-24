@@ -1263,7 +1263,7 @@ All tasks require tests written before implementation:
       "Implement useArtifactMutations for CRUD operations",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -1,14 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:41:30
+**Last Updated:** 2026-01-24 21:43:30
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 41 / 63
-**Current Task:** Implement useArtifacts hooks with TanStack Query
+**Tasks Completed:** 42 / 63
+**Current Task:** Implement useResearch hooks with TanStack Query
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:43:30 - Implement useArtifacts hooks with TanStack Query (Task 42)
+
+**What was done:**
+- Created `src/hooks/useArtifacts.ts` with TanStack Query hooks:
+  - Query keys: `artifactKeys` factory for cache management
+  - Query hooks: `useArtifacts`, `useArtifact`, `useArtifactsByBucket`, `useArtifactsByTask`, `useBuckets`, `useArtifactRelations`
+  - Mutation hooks: `useCreateArtifact`, `useUpdateArtifact`, `useDeleteArtifact`, `useCreateBucket`, `useAddArtifactRelation`
+  - Smart cache invalidation based on bucket/task associations
+- Created `src/hooks/useArtifacts.test.ts` with 33 comprehensive tests covering:
+  - Query key generation for all key types
+  - All query hooks with success, empty, and error states
+  - All mutation hooks with success and error cases
+  - Edge cases: disabled queries when ids are empty
+
+**Commands run:**
+- `npm test -- src/hooks/useArtifacts.test.ts` - 33 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:41:30 - Implement useWorkflows hook with TanStack Query (Task 41)
 
