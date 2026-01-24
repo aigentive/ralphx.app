@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:30:00
+**Last Updated:** 2026-01-24 06:55:26
 **Phase:** Foundation
-**Tasks Completed:** 10 / 19
-**Current Task:** Implement Project entity struct
+**Tasks Completed:** 11 / 19
+**Current Task:** Implement Task entity struct
 
 ---
 
@@ -1046,6 +1046,37 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `src-tauri/src/domain/entities/mod.rs` - added status module export
+
+---
+
+### 2026-01-24 06:55:26 - Implement Project entity struct
+
+**What was done:**
+- Added `chrono = { version = "0.4", features = ["serde"] }` dependency to Cargo.toml for DateTime
+- Created `src-tauri/src/domain/entities/project.rs` with:
+  - GitMode enum (Local, Worktree) with Display, Default, serde traits
+  - Project struct with all fields: id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, created_at, updated_at
+  - Project::new() constructor with sensible defaults (Local git mode, timestamps set to now)
+  - Project::new_with_worktree() constructor for worktree mode projects
+  - Project::is_worktree() helper method
+  - Project::touch() method to update updated_at timestamp
+- Updated `src-tauri/src/domain/entities/mod.rs` to export project module and re-export GitMode, Project
+- Wrote 21 comprehensive tests covering:
+  - GitMode: default, display, serialization, deserialization, clone, equality
+  - Project creation: defaults, unique IDs, timestamps, worktree mode
+  - Project methods: is_worktree, touch
+  - Project serialization: to JSON, from JSON, roundtrip, null optionals
+  - Project clone: works, independence
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 101 tests pass (21 new + 80 existing)
+
+**Files created:**
+- `src-tauri/src/domain/entities/project.rs`
+
+**Files modified:**
+- `src-tauri/Cargo.toml` - added chrono dependency
+- `src-tauri/src/domain/entities/mod.rs` - added project module export and re-exports
 
 ---
 
