@@ -648,7 +648,7 @@ const qaPrepProfile = {
       "Write unit tests for TaskRerunDialog",
       "Reference specs/plan.md 'Task Re-run Dialog' section for exact layout"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",
