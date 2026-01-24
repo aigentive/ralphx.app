@@ -1072,7 +1072,7 @@ interface AskUserQuestionResponse {
       "Connect to execution state",
       "Run tauri dev to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
