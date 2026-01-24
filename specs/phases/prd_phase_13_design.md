@@ -92,7 +92,7 @@ All design work MUST include:
       "Run npm run lint && npm run typecheck",
       "Commit: chore: install Lucide React and shadcn/ui foundation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "design-doc",

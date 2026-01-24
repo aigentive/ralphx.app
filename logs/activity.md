@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 01:05:00
+**Last Updated:** 2026-01-25 01:17:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 0 / 18
-**Current Task:** Install Lucide React and shadcn/ui foundation
+**Tasks Completed:** 1 / 18
+**Current Task:** Create specs/DESIGN.md master design document
 
 ---
 
 ## Session Log
+
+### 2026-01-25 01:17:00 - Install Lucide React and shadcn/ui foundation (Task 1)
+
+**What was done:**
+- Installed lucide-react icon library
+- Initialized shadcn/ui with Tailwind CSS v4 support (new-york style)
+- Added 16 core shadcn components: button, card, dialog, dropdown-menu, input, label, tabs, tooltip, popover, select, checkbox, switch, badge, scroll-area, separator, skeleton
+- Mapped RalphX design tokens to shadcn CSS variables in globals.css:
+  - --primary → --accent-primary (warm orange #ff6b35)
+  - --background → --bg-base (#0f0f0f)
+  - --card → --bg-elevated (#242424)
+  - --foreground → --text-primary (#f0f0f0)
+  - --destructive → --status-error (#ef4444)
+  - --ring → --accent-primary (focus rings use orange)
+- Added cn() utility function in src/lib/utils.ts
+- Created components.json for shadcn component generation config
+- Fixed TypeScript error in dropdown-menu.tsx (exactOptionalPropertyTypes compatibility)
+
+**Dependencies added:**
+- lucide-react
+- @radix-ui/* (checkbox, dialog, dropdown-menu, label, popover, scroll-area, select, separator, slot, switch, tabs, tooltip)
+- class-variance-authority, clsx, tailwind-merge
+- tailwindcss-animate (for animations)
+
+**Commands run:**
+- `npm install lucide-react`
+- `npx shadcn@latest init --defaults`
+- `npx shadcn@latest add button card dialog dropdown-menu input label tabs tooltip popover select checkbox switch badge scroll-area separator skeleton`
+- `npm run typecheck` (passed)
+
+---
 
 ### 2026-01-25 01:05:00 - Phase 12 Complete - Transition to Phase 13
 
