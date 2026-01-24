@@ -202,7 +202,7 @@ Each phase PRD should follow this structure:
       "Verify complete QA workflow is covered"
     ],
     "output": "specs/phases/prd_phase_08_qa_system.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
