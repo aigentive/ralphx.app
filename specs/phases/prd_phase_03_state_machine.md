@@ -634,7 +634,7 @@ pub struct MockNotifier {
       "Wrap state changes in database transactions",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
