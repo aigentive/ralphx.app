@@ -6,12 +6,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::agents::AgenticClient;
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::domain::repositories::{AgentProfileRepository, ProjectRepository, TaskRepository};
 use crate::error::AppResult;
-use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+use crate::infrastructure::memory::{
+    MemoryAgentProfileRepository, MemoryProjectRepository, MemoryTaskRepository,
+};
 use crate::infrastructure::sqlite::{
-    get_default_db_path, open_connection, run_migrations, SqliteProjectRepository,
-    SqliteTaskRepository,
+    get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
+    SqliteProjectRepository, SqliteTaskRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -22,6 +24,8 @@ pub struct AppState {
     pub task_repo: Arc<dyn TaskRepository>,
     /// Project repository (SQLite in production, in-memory for tests)
     pub project_repo: Arc<dyn ProjectRepository>,
+    /// Agent profile repository (SQLite in production)
+    pub agent_profile_repo: Arc<dyn AgentProfileRepository>,
     /// Agent client (Claude Code in production, Mock for tests)
     pub agent_client: Arc<dyn AgenticClient>,
 }
@@ -39,7 +43,10 @@ impl AppState {
 
         Ok(Self {
             task_repo: Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
-            project_repo: Arc::new(SqliteProjectRepository::from_shared(shared_conn)),
+            project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(shared_conn)),
             agent_client: Arc::new(ClaudeCodeClient::new()),
         })
     }
@@ -54,7 +61,10 @@ impl AppState {
 
         Ok(Self {
             task_repo: Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
-            project_repo: Arc::new(SqliteProjectRepository::from_shared(shared_conn)),
+            project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(shared_conn)),
             agent_client: Arc::new(ClaudeCodeClient::new()),
         })
     }
@@ -64,6 +74,7 @@ impl AppState {
         Self {
             task_repo: Arc::new(MemoryTaskRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
+            agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
         }
     }
@@ -76,6 +87,7 @@ impl AppState {
         Self {
             task_repo,
             project_repo,
+            agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
         }
     }
