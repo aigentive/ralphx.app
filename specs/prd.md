@@ -159,7 +159,7 @@ Each phase PRD should follow this structure:
       "Verify all type schemas and store patterns are covered"
     ],
     "output": "specs/phases/prd_phase_05_frontend_core.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
