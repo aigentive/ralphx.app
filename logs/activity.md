@@ -1,14 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:05:00
+**Last Updated:** 2026-01-24 17:25:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 19 / 50
-**Current Task:** Update AppState with ideation repositories
+**Tasks Completed:** 20 / 50
+**Current Task:** Create Tauri commands for ideation sessions
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:25:00 - Update AppState with ideation repositories
+
+**What was done:**
+- Created 5 in-memory repository implementations in `src-tauri/src/infrastructure/memory/`:
+  - `memory_ideation_session_repo.rs` - IdeationSession storage with RwLock<HashMap>
+  - `memory_task_proposal_repo.rs` - TaskProposal storage with CRUD and reorder
+  - `memory_chat_message_repo.rs` - ChatMessage storage with session/project/task filtering
+  - `memory_proposal_dependency_repo.rs` - Proposal dependency edges
+  - `memory_task_dependency_repo.rs` - Task dependency edges with cycle detection
+- Updated `infrastructure/memory/mod.rs`:
+  - Added module declarations for all 5 new repos
+  - Added re-exports for public types
+- Updated `application/app_state.rs`:
+  - Added 5 new repository fields: `ideation_session_repo`, `task_proposal_repo`, `proposal_dependency_repo`, `chat_message_repo`, `task_dependency_repo`
+  - Updated `new_production()` to initialize SQLite implementations
+  - Updated `with_db_path()` to initialize SQLite implementations
+  - Updated `new_test()` to initialize memory implementations
+  - Updated `with_repos()` to initialize memory implementations
+  - Added 2 new tests: `test_ideation_repos_accessible()` and `test_task_dependency_repo_accessible()`
+- All existing AppState tests continue to pass
+
+**Commands run:**
+- `cargo test --lib app_state::` (8 tests passed)
+- `cargo test --lib` (2040 tests passed)
+
+---
 
 ### 2026-01-24 17:05:00 - Implement ApplyService for converting proposals to tasks
 
