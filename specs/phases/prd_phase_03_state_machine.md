@@ -578,7 +578,7 @@ pub struct MockNotifier {
       "Use tracing::info! and tracing::debug! macros",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
