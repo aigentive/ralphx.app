@@ -1,14 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:43:30
+**Last Updated:** 2026-01-24 21:45:30
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 42 / 63
-**Current Task:** Implement useResearch hooks with TanStack Query
+**Tasks Completed:** 43 / 63
+**Current Task:** Implement useMethodologies hook with TanStack Query
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:45:30 - Implement useResearch hooks with TanStack Query (Task 43)
+
+**What was done:**
+- Created `src/hooks/useResearch.ts` with TanStack Query hooks:
+  - Query keys: `researchKeys` factory for cache management
+  - Query hooks: `useResearchProcesses`, `useResearchProcess`, `useResearchPresets`
+  - Mutation hooks: `useStartResearch`, `usePauseResearch`, `useResumeResearch`, `useStopResearch`
+  - Auto-refetch for running processes (30s list, 10s detail for running/paused)
+  - Smart cache invalidation on status changes
+- Created `src/hooks/useResearch.test.ts` with 22 comprehensive tests covering:
+  - Query key generation for all key types
+  - All query hooks with success, empty, and error states
+  - All mutation hooks with success and error cases
+  - Edge cases: disabled queries when id is empty
+
+**Commands run:**
+- `npm test -- src/hooks/useResearch.test.ts` - 22 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:43:30 - Implement useArtifacts hooks with TanStack Query (Task 42)
 
