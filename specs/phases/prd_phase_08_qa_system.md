@@ -811,7 +811,7 @@ All tasks require TDD:
       "Verify transition to QA_REFINING",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -827,7 +827,7 @@ All tasks require TDD:
       "Verify auto-transition to PENDING_REVIEW",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -842,7 +842,7 @@ All tasks require TDD:
       "Test retry triggers re-test",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
