@@ -891,7 +891,7 @@ All tasks require:
       "Create assess_all_priorities command",
       "Register commands in Tauri builder"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
