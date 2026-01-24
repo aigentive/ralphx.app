@@ -4,6 +4,7 @@
 pub mod artifact;
 pub mod artifact_flow;
 pub mod ideation;
+pub mod research;
 pub mod project;
 pub mod review;
 pub mod status;
@@ -46,4 +47,9 @@ pub use artifact_flow::{
     ArtifactFlow, ArtifactFlowContext, ArtifactFlowEngine, ArtifactFlowEvaluation,
     ArtifactFlowEvent, ArtifactFlowFilter, ArtifactFlowId, ArtifactFlowStep, ArtifactFlowTrigger,
     ParseArtifactFlowEventError, create_research_to_dev_flow,
+};
+pub use research::{
+    CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchBrief,
+    ResearchDepth, ResearchDepthPreset, ResearchOutput, ResearchPresets, ResearchProcess,
+    ResearchProcessId, ResearchProcessStatus, ResearchProgress, RESEARCH_PRESETS,
 };

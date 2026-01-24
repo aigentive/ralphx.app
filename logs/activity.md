@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:30:00
+**Last Updated:** 2026-01-24 20:40:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 14 / 63
-**Current Task:** Implement ResearchProcess and ResearchDepthPreset Rust types
+**Tasks Completed:** 15 / 63
+**Current Task:** Implement ProcessRepository trait and SQLite implementation
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:40:00 - Implement ResearchProcess and ResearchDepthPreset Rust types (Task 15)
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/research.rs`
+- Implemented `ResearchDepthPreset` enum with 4 presets:
+  - `quick-scan` - 10 iterations, 30 min timeout, checkpoint every 5
+  - `standard` - 50 iterations, 2 hrs timeout, checkpoint every 10
+  - `deep-dive` - 200 iterations, 8 hrs timeout, checkpoint every 25
+  - `exhaustive` - 500 iterations, 24 hrs timeout, checkpoint every 50
+- Implemented `CustomDepth` struct with max_iterations, timeout_hours, checkpoint_interval
+- Implemented `RESEARCH_PRESETS` constant with index access via `RESEARCH_PRESETS[&preset]`
+- Implemented `ResearchDepth` enum (Preset or Custom) with resolve() method
+- Implemented `ResearchProcessStatus` enum (pending, running, paused, completed, failed)
+- Implemented `ResearchBrief` struct (question, context, scope, constraints)
+- Implemented `ResearchOutput` struct (target_bucket, artifact_types)
+- Implemented `ResearchProgress` struct with:
+  - Iteration tracking, status, checkpoint, error_message
+  - Methods: start, advance, pause, resume, complete, fail, checkpoint
+  - percentage() calculation
+- Implemented `ResearchProcess` struct with:
+  - Full lifecycle management (start, advance, pause, resume, complete, fail)
+  - progress_percentage(), should_checkpoint(), is_max_iterations_reached()
+- Exported all types from `domain/entities/mod.rs`
+- Added 76 unit tests covering all types, serialization, and lifecycle
+
+**Commands run:**
+- `cargo test research --no-fail-fast` (76 tests passed)
+
+---
 
 ### 2026-01-24 20:30:00 - Implement ArtifactFlowRepository trait and SQLite implementation (Task 14)
 
