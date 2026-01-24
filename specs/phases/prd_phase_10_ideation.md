@@ -1270,7 +1270,7 @@ All tasks require:
       "  - Loading state during apply",
       "Export from src/components/Ideation/ApplyModal.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
