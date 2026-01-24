@@ -1079,7 +1079,7 @@ All tasks require:
       "  - Return { sessions, isLoading, error }",
       "Export from src/hooks/useIdeation.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
