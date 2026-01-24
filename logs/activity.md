@@ -1,14 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:15:00
+**Last Updated:** 2026-01-24 19:13:38
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 0 / 63
-**Current Task:** Create extensibility database migrations
+**Tasks Completed:** 1 / 63
+**Current Task:** Implement WorkflowSchema and WorkflowColumn Rust types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:13:38 - Create extensibility database migrations (Task 1)
+
+**What was done:**
+- Added migrations v12-v19 for extensibility tables in `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- Updated SCHEMA_VERSION from 11 to 19
+- Created tables:
+  - `workflows` (v12) - Custom workflow schemas with columns and mappings
+  - `artifact_buckets` (v13) - Storage organization for artifacts
+  - `artifacts` (v14) - Typed documents with content (inline/file)
+  - `artifact_relations` (v15) - Artifact derivation and relationships
+  - `artifact_flows` (v16) - Automated artifact routing triggers
+  - `processes` (v17) - Research and long-running process tracking
+  - Task extensions (v18) - Added columns: external_status, wave, checkpoint_type, phase_id, plan_id, must_haves_json
+  - `methodology_extensions` (v19) - BMAD, GSD methodology support
+- Added indexes for all tables on commonly queried columns
+- Added 25 new tests for extensibility migrations
+
+**Commands run:**
+- `cargo test migrations:: --no-fail-fast` (140 tests passed)
+
+---
 
 ### 2026-01-24 20:15:00 - Phase 10 Complete - Transition to Phase 11
 
