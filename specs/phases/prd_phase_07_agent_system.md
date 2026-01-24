@@ -739,7 +739,7 @@ CREATE TABLE agent_profiles (
       "Verify appropriate action is taken (InjectGuidance or Pause)",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -753,7 +753,7 @@ CREATE TABLE agent_profiles (
       "Verify appropriate action is taken",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -766,7 +766,7 @@ CREATE TABLE agent_profiles (
       "Simulate tool calls and verify monitoring",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -778,7 +778,7 @@ CREATE TABLE agent_profiles (
       "Verify all public APIs are exported",
       "Run cargo build to verify"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

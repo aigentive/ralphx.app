@@ -42,6 +42,7 @@ impl SqliteAgentProfileRepository {
     }
 
     /// Helper to convert string to ProfileRole
+    #[cfg(test)]
     fn string_to_role(s: &str) -> ProfileRole {
         match s {
             "worker" => ProfileRole::Worker,

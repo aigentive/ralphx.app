@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 7,
+  "currentPhase": 8,
   "phases": [
     {
       "phase": 0,
@@ -56,14 +56,14 @@
       "phase": 7,
       "name": "Agent System",
       "prd": "specs/phases/prd_phase_07_agent_system.md",
-      "status": "active",
+      "status": "complete",
       "description": "Worker, reviewer, supervisor agents, skills, hooks"
     },
     {
       "phase": 8,
       "name": "QA System",
       "prd": "specs/phases/prd_phase_08_qa_system.md",
-      "status": "pending",
+      "status": "active",
       "description": "QA prep/testing, visual verification"
     },
     {
