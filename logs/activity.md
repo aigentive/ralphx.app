@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:03:30
+**Last Updated:** 2026-01-24 07:06:44
 **Phase:** Foundation
-**Tasks Completed:** 14 / 19
-**Current Task:** Create TypeScript type definitions with Zod schemas
+**Tasks Completed:** 15 / 19
+**Current Task:** Implement Tauri invoke wrapper with type safety
 
 ---
 
@@ -1172,6 +1172,45 @@ Phase 1: Foundation (no dependencies)
 **Files modified:**
 - `src-tauri/src/commands/mod.rs` - export health module
 - `src-tauri/src/lib.rs` - register health_check command
+
+---
+
+### 2026-01-24 07:06:44 - Create TypeScript type definitions with Zod schemas
+
+**What was done:**
+- Installed Zod for runtime validation: `npm install zod`
+- Created `src/types/status.ts` with:
+  - InternalStatusSchema with all 14 variants
+  - Status category arrays (IDLE_STATUSES, ACTIVE_STATUSES, TERMINAL_STATUSES)
+  - Helper functions (isTerminalStatus, isActiveStatus, isIdleStatus)
+- Created `src/types/project.ts` with:
+  - GitModeSchema (local, worktree)
+  - ProjectSchema matching Rust backend
+  - CreateProjectSchema and UpdateProjectSchema for mutations
+- Created `src/types/task.ts` with:
+  - TaskSchema matching Rust backend
+  - TaskCategorySchema with 6 categories
+  - CreateTaskSchema and UpdateTaskSchema for mutations
+  - TaskListSchema for array responses
+- Created `src/types/index.ts` re-exporting all types and schemas
+- Wrote 65 comprehensive tests across 3 test files
+
+**Commands run:**
+- `npm install zod` - installed Zod
+- `npm run test:run` - 80 tests pass (65 new type tests + 15 validation tests)
+- `npm run typecheck` - passes
+
+**Files created:**
+- `src/types/status.ts`
+- `src/types/status.test.ts`
+- `src/types/project.ts`
+- `src/types/project.test.ts`
+- `src/types/task.ts`
+- `src/types/task.test.ts`
+- `src/types/index.ts`
+
+**Files modified:**
+- `package.json` - added zod dependency
 
 ---
 
