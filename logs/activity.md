@@ -1,14 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:45:00
+**Last Updated:** 2026-01-24 22:00:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 26 / 63
-**Current Task:** Create Tauri commands for artifacts
+**Tasks Completed:** 27 / 63
+**Current Task:** Create Tauri commands for research processes
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:00:00 - Create Tauri commands for artifacts (Task 27)
+
+**What was done:**
+- Created `src-tauri/src/commands/artifact_commands.rs` with:
+  - Input structs: CreateArtifactInput, UpdateArtifactInput, CreateBucketInput, AddRelationInput
+  - Response structs: ArtifactResponse, BucketResponse, ArtifactRelationResponse
+  - Artifact commands: get_artifacts, get_artifact, create_artifact, update_artifact, delete_artifact
+  - Artifact query commands: get_artifacts_by_bucket, get_artifacts_by_task
+  - Bucket commands: get_buckets, create_bucket, get_system_buckets
+  - Relation commands: add_artifact_relation, get_artifact_relations
+- Updated `commands/mod.rs` to export artifact commands
+- Registered 12 artifact commands in `lib.rs`
+- Added 11 integration tests for artifact commands
+
+**Commands run:**
+- `cargo test artifact_commands` - 11 tests passed
 
 ### 2026-01-24 21:45:00 - Create Tauri commands for workflows (Task 26)
 

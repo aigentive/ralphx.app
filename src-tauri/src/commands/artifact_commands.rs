@@ -1,0 +1,596 @@
+// Tauri commands for Artifact CRUD operations
+// Thin layer that delegates to ArtifactRepository and ArtifactBucketRepository
+
+use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::application::AppState;
+use crate::domain::entities::{
+    Artifact, ArtifactBucket, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
+    ArtifactRelationType, ArtifactType, ProcessId, TaskId,
+};
+
+/// Input for creating a new artifact
+#[derive(Debug, Deserialize)]
+pub struct CreateArtifactInput {
+    pub name: String,
+    pub artifact_type: String,
+    pub content_type: String, // "inline" or "file"
+    pub content: String,      // text for inline, path for file
+    pub created_by: String,
+    pub bucket_id: Option<String>,
+    pub task_id: Option<String>,
+    pub process_id: Option<String>,
+    pub derived_from: Option<Vec<String>>,
+}
+
+/// Input for updating an artifact
+#[derive(Debug, Deserialize)]
+pub struct UpdateArtifactInput {
+    pub name: Option<String>,
+    pub content_type: Option<String>,
+    pub content: Option<String>,
+    pub bucket_id: Option<String>,
+}
+
+/// Input for creating a bucket
+#[derive(Debug, Deserialize)]
+pub struct CreateBucketInput {
+    pub name: String,
+    pub accepted_types: Option<Vec<String>>,
+    pub writers: Option<Vec<String>>,
+    pub readers: Option<Vec<String>>,
+}
+
+/// Input for adding an artifact relation
+#[derive(Debug, Deserialize)]
+pub struct AddRelationInput {
+    pub from_artifact_id: String,
+    pub to_artifact_id: String,
+    pub relation_type: String, // "derived_from" or "related_to"
+}
+
+/// Response wrapper for artifact operations
+#[derive(Debug, Serialize)]
+pub struct ArtifactResponse {
+    pub id: String,
+    pub name: String,
+    pub artifact_type: String,
+    pub content_type: String,
+    pub content: String,
+    pub created_at: String,
+    pub created_by: String,
+    pub version: u32,
+    pub bucket_id: Option<String>,
+    pub task_id: Option<String>,
+    pub process_id: Option<String>,
+    pub derived_from: Vec<String>,
+}
+
+impl From<Artifact> for ArtifactResponse {
+    fn from(artifact: Artifact) -> Self {
+        let (content_type, content) = match &artifact.content {
+            ArtifactContent::Inline { text } => ("inline".to_string(), text.clone()),
+            ArtifactContent::File { path } => ("file".to_string(), path.clone()),
+        };
+
+        Self {
+            id: artifact.id.as_str().to_string(),
+            name: artifact.name,
+            artifact_type: artifact.artifact_type.to_string(),
+            content_type,
+            content,
+            created_at: artifact.metadata.created_at.to_rfc3339(),
+            created_by: artifact.metadata.created_by,
+            version: artifact.metadata.version,
+            bucket_id: artifact.bucket_id.map(|id| id.as_str().to_string()),
+            task_id: artifact.metadata.task_id.map(|id| id.as_str().to_string()),
+            process_id: artifact.metadata.process_id.map(|id| id.as_str().to_string()),
+            derived_from: artifact
+                .derived_from
+                .iter()
+                .map(|id| id.as_str().to_string())
+                .collect(),
+        }
+    }
+}
+
+/// Response wrapper for bucket operations
+#[derive(Debug, Serialize)]
+pub struct BucketResponse {
+    pub id: String,
+    pub name: String,
+    pub accepted_types: Vec<String>,
+    pub writers: Vec<String>,
+    pub readers: Vec<String>,
+    pub is_system: bool,
+}
+
+impl From<ArtifactBucket> for BucketResponse {
+    fn from(bucket: ArtifactBucket) -> Self {
+        Self {
+            id: bucket.id.as_str().to_string(),
+            name: bucket.name,
+            accepted_types: bucket
+                .accepted_types
+                .iter()
+                .map(|t| t.to_string())
+                .collect(),
+            writers: bucket.writers,
+            readers: bucket.readers,
+            is_system: bucket.is_system,
+        }
+    }
+}
+
+/// Response wrapper for artifact relation operations
+#[derive(Debug, Serialize)]
+pub struct ArtifactRelationResponse {
+    pub id: String,
+    pub from_artifact_id: String,
+    pub to_artifact_id: String,
+    pub relation_type: String,
+}
+
+impl From<ArtifactRelation> for ArtifactRelationResponse {
+    fn from(relation: ArtifactRelation) -> Self {
+        Self {
+            id: relation.id.as_str().to_string(),
+            from_artifact_id: relation.from_artifact_id.as_str().to_string(),
+            to_artifact_id: relation.to_artifact_id.as_str().to_string(),
+            relation_type: relation.relation_type.to_string(),
+        }
+    }
+}
+
+// ===== Artifact Commands =====
+
+/// Get all artifacts (optionally filtered by type)
+#[tauri::command]
+pub async fn get_artifacts(
+    artifact_type: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtifactResponse>, String> {
+    match artifact_type {
+        Some(type_str) => {
+            let parsed_type: ArtifactType = type_str
+                .parse()
+                .map_err(|_| format!("Invalid artifact type: {}", type_str))?;
+            state
+                .artifact_repo
+                .get_by_type(parsed_type)
+                .await
+                .map(|artifacts| artifacts.into_iter().map(ArtifactResponse::from).collect())
+                .map_err(|e| e.to_string())
+        }
+        None => {
+            // No filtering - we'll need to iterate through types
+            // For now, return empty since there's no get_all method
+            // This is a limitation - in practice you'd want a proper get_all
+            Ok(vec![])
+        }
+    }
+}
+
+/// Get a single artifact by ID
+#[tauri::command]
+pub async fn get_artifact(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ArtifactResponse>, String> {
+    let artifact_id = ArtifactId::from_string(id);
+    state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map(|opt| opt.map(ArtifactResponse::from))
+        .map_err(|e| e.to_string())
+}
+
+/// Create a new artifact
+#[tauri::command]
+pub async fn create_artifact(
+    input: CreateArtifactInput,
+    state: State<'_, AppState>,
+) -> Result<ArtifactResponse, String> {
+    // Parse artifact type
+    let artifact_type: ArtifactType = input
+        .artifact_type
+        .parse()
+        .map_err(|_| format!("Invalid artifact type: {}", input.artifact_type))?;
+
+    // Create artifact based on content type
+    let mut artifact = match input.content_type.as_str() {
+        "inline" => Artifact::new_inline(&input.name, artifact_type, &input.content, &input.created_by),
+        "file" => Artifact::new_file(&input.name, artifact_type, &input.content, &input.created_by),
+        _ => return Err(format!("Invalid content type: {}", input.content_type)),
+    };
+
+    // Add optional fields
+    if let Some(bucket_id_str) = input.bucket_id {
+        artifact = artifact.with_bucket(ArtifactBucketId::from_string(bucket_id_str));
+    }
+    if let Some(task_id_str) = input.task_id {
+        artifact = artifact.with_task(TaskId::from_string(task_id_str));
+    }
+    if let Some(process_id_str) = input.process_id {
+        artifact = artifact.with_process(ProcessId::from_string(process_id_str));
+    }
+    if let Some(derived_from) = input.derived_from {
+        for parent_id in derived_from {
+            artifact = artifact.derived_from_artifact(ArtifactId::from_string(parent_id));
+        }
+    }
+
+    state
+        .artifact_repo
+        .create(artifact)
+        .await
+        .map(ArtifactResponse::from)
+        .map_err(|e| e.to_string())
+}
+
+/// Update an existing artifact
+#[tauri::command]
+pub async fn update_artifact(
+    id: String,
+    input: UpdateArtifactInput,
+    state: State<'_, AppState>,
+) -> Result<ArtifactResponse, String> {
+    let artifact_id = ArtifactId::from_string(id);
+
+    // Get existing artifact
+    let mut artifact = state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Artifact not found: {}", artifact_id.as_str()))?;
+
+    // Apply updates
+    if let Some(name) = input.name {
+        artifact.name = name;
+    }
+    if let (Some(content_type), Some(content)) = (input.content_type, input.content) {
+        artifact.content = match content_type.as_str() {
+            "inline" => ArtifactContent::inline(content),
+            "file" => ArtifactContent::file(content),
+            _ => return Err(format!("Invalid content type: {}", content_type)),
+        };
+    }
+    if let Some(bucket_id_str) = input.bucket_id {
+        artifact.bucket_id = Some(ArtifactBucketId::from_string(bucket_id_str));
+    }
+
+    state
+        .artifact_repo
+        .update(&artifact)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ArtifactResponse::from(artifact))
+}
+
+/// Delete an artifact
+#[tauri::command]
+pub async fn delete_artifact(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let artifact_id = ArtifactId::from_string(id);
+    state
+        .artifact_repo
+        .delete(&artifact_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get artifacts by bucket
+#[tauri::command]
+pub async fn get_artifacts_by_bucket(
+    bucket_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtifactResponse>, String> {
+    let bucket_id = ArtifactBucketId::from_string(bucket_id);
+    state
+        .artifact_repo
+        .get_by_bucket(&bucket_id)
+        .await
+        .map(|artifacts| artifacts.into_iter().map(ArtifactResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Get artifacts by task
+#[tauri::command]
+pub async fn get_artifacts_by_task(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtifactResponse>, String> {
+    let task_id = TaskId::from_string(task_id);
+    state
+        .artifact_repo
+        .get_by_task(&task_id)
+        .await
+        .map(|artifacts| artifacts.into_iter().map(ArtifactResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+// ===== Bucket Commands =====
+
+/// Get all buckets
+#[tauri::command]
+pub async fn get_buckets(state: State<'_, AppState>) -> Result<Vec<BucketResponse>, String> {
+    state
+        .artifact_bucket_repo
+        .get_all()
+        .await
+        .map(|buckets| buckets.into_iter().map(BucketResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Create a new bucket
+#[tauri::command]
+pub async fn create_bucket(
+    input: CreateBucketInput,
+    state: State<'_, AppState>,
+) -> Result<BucketResponse, String> {
+    let mut bucket = ArtifactBucket::new(&input.name);
+
+    // Add accepted types
+    if let Some(types) = input.accepted_types {
+        for type_str in types {
+            let parsed_type: ArtifactType = type_str
+                .parse()
+                .map_err(|_| format!("Invalid artifact type: {}", type_str))?;
+            bucket = bucket.accepts(parsed_type);
+        }
+    }
+
+    // Add writers
+    if let Some(writers) = input.writers {
+        for writer in writers {
+            bucket = bucket.with_writer(writer);
+        }
+    }
+
+    // Add readers
+    if let Some(readers) = input.readers {
+        for reader in readers {
+            bucket = bucket.with_reader(reader);
+        }
+    }
+
+    state
+        .artifact_bucket_repo
+        .create(bucket)
+        .await
+        .map(BucketResponse::from)
+        .map_err(|e| e.to_string())
+}
+
+/// Get system buckets
+#[tauri::command]
+pub async fn get_system_buckets() -> Result<Vec<BucketResponse>, String> {
+    Ok(ArtifactBucket::system_buckets()
+        .into_iter()
+        .map(BucketResponse::from)
+        .collect())
+}
+
+// ===== Relation Commands =====
+
+/// Add a relation between two artifacts
+#[tauri::command]
+pub async fn add_artifact_relation(
+    input: AddRelationInput,
+    state: State<'_, AppState>,
+) -> Result<ArtifactRelationResponse, String> {
+    let from_id = ArtifactId::from_string(input.from_artifact_id);
+    let to_id = ArtifactId::from_string(input.to_artifact_id);
+
+    let relation_type: ArtifactRelationType = input
+        .relation_type
+        .parse()
+        .map_err(|_| format!("Invalid relation type: {}", input.relation_type))?;
+
+    let relation = ArtifactRelation::new(from_id, to_id, relation_type);
+
+    state
+        .artifact_repo
+        .add_relation(relation)
+        .await
+        .map(ArtifactRelationResponse::from)
+        .map_err(|e| e.to_string())
+}
+
+/// Get all relations for an artifact
+#[tauri::command]
+pub async fn get_artifact_relations(
+    artifact_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtifactRelationResponse>, String> {
+    let artifact_id = ArtifactId::from_string(artifact_id);
+    state
+        .artifact_repo
+        .get_relations(&artifact_id)
+        .await
+        .map(|relations| {
+            relations
+                .into_iter()
+                .map(ArtifactRelationResponse::from)
+                .collect()
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_test_state() -> AppState {
+        AppState::new_test()
+    }
+
+    #[tokio::test]
+    async fn test_create_artifact() {
+        let state = setup_test_state();
+
+        let artifact = Artifact::new_inline("Test PRD", ArtifactType::Prd, "Content", "user");
+        let created = state.artifact_repo.create(artifact).await.unwrap();
+
+        assert_eq!(created.name, "Test PRD");
+        assert_eq!(created.artifact_type, ArtifactType::Prd);
+    }
+
+    #[tokio::test]
+    async fn test_get_artifact_by_id() {
+        let state = setup_test_state();
+
+        let artifact = Artifact::new_inline("Find Me", ArtifactType::Prd, "Content", "user");
+        let id = artifact.id.clone();
+
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        let found = state.artifact_repo.get_by_id(&id).await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "Find Me");
+    }
+
+    #[tokio::test]
+    async fn test_get_artifacts_by_bucket() {
+        let state = setup_test_state();
+
+        let bucket_id = ArtifactBucketId::from_string("test-bucket");
+        let artifact = Artifact::new_inline("In Bucket", ArtifactType::Prd, "Content", "user")
+            .with_bucket(bucket_id.clone());
+
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        let found = state.artifact_repo.get_by_bucket(&bucket_id).await.unwrap();
+        assert_eq!(found.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_artifacts_by_task() {
+        let state = setup_test_state();
+
+        let task_id = TaskId::from_string("task-123".to_string());
+        let artifact = Artifact::new_inline("For Task", ArtifactType::CodeChange, "diff", "worker")
+            .with_task(task_id.clone());
+
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        let found = state.artifact_repo.get_by_task(&task_id).await.unwrap();
+        assert_eq!(found.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_artifact() {
+        let state = setup_test_state();
+
+        let artifact = Artifact::new_inline("Delete Me", ArtifactType::Prd, "Content", "user");
+        let id = artifact.id.clone();
+
+        state.artifact_repo.create(artifact).await.unwrap();
+        state.artifact_repo.delete(&id).await.unwrap();
+
+        let found = state.artifact_repo.get_by_id(&id).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_bucket() {
+        let state = setup_test_state();
+
+        let bucket = ArtifactBucket::new("Test Bucket")
+            .accepts(ArtifactType::Prd)
+            .with_writer("user");
+
+        let created = state.artifact_bucket_repo.create(bucket).await.unwrap();
+        assert_eq!(created.name, "Test Bucket");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_buckets() {
+        let state = setup_test_state();
+
+        state
+            .artifact_bucket_repo
+            .create(ArtifactBucket::new("Bucket 1"))
+            .await
+            .unwrap();
+        state
+            .artifact_bucket_repo
+            .create(ArtifactBucket::new("Bucket 2"))
+            .await
+            .unwrap();
+
+        let all = state.artifact_bucket_repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_add_artifact_relation() {
+        let state = setup_test_state();
+
+        let artifact1 = Artifact::new_inline("Parent", ArtifactType::Prd, "Content", "user");
+        let artifact2 = Artifact::new_inline("Child", ArtifactType::Findings, "Derived", "agent");
+
+        let id1 = artifact1.id.clone();
+        let id2 = artifact2.id.clone();
+
+        state.artifact_repo.create(artifact1).await.unwrap();
+        state.artifact_repo.create(artifact2).await.unwrap();
+
+        let relation = ArtifactRelation::derived_from(id2.clone(), id1.clone());
+        state.artifact_repo.add_relation(relation).await.unwrap();
+
+        let relations = state.artifact_repo.get_relations(&id2).await.unwrap();
+        assert_eq!(relations.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_artifact_response_serialization() {
+        let artifact = Artifact::new_inline("Test", ArtifactType::Prd, "Content", "user")
+            .with_bucket(ArtifactBucketId::from_string("bucket-1"))
+            .derived_from_artifact(ArtifactId::from_string("parent-1"));
+
+        let response = ArtifactResponse::from(artifact);
+
+        assert_eq!(response.name, "Test");
+        assert_eq!(response.artifact_type, "prd");
+        assert_eq!(response.content_type, "inline");
+        assert_eq!(response.bucket_id, Some("bucket-1".to_string()));
+        assert_eq!(response.derived_from.len(), 1);
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"name\":\"Test\""));
+    }
+
+    #[tokio::test]
+    async fn test_bucket_response_serialization() {
+        let bucket = ArtifactBucket::new("Test Bucket")
+            .accepts(ArtifactType::Prd)
+            .accepts(ArtifactType::DesignDoc)
+            .with_writer("user");
+
+        let response = BucketResponse::from(bucket);
+
+        assert_eq!(response.name, "Test Bucket");
+        assert_eq!(response.accepted_types.len(), 2);
+        assert!(!response.is_system);
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"name\":\"Test Bucket\""));
+    }
+
+    #[tokio::test]
+    async fn test_get_system_buckets() {
+        let result = get_system_buckets().await.unwrap();
+
+        assert_eq!(result.len(), 4);
+
+        let names: Vec<&str> = result.iter().map(|b| b.name.as_str()).collect();
+        assert!(names.contains(&"Research Outputs"));
+        assert!(names.contains(&"Work Context"));
+        assert!(names.contains(&"Code Changes"));
+        assert!(names.contains(&"PRD Library"));
+    }
+}

@@ -2,6 +2,7 @@
 // Commands should be minimal - delegate to domain/infrastructure
 
 pub mod agent_profile_commands;
+pub mod artifact_commands;
 pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
@@ -15,6 +16,12 @@ pub mod workflow_commands;
 pub use agent_profile_commands::{
     get_agent_profile, get_agent_profiles_by_role, get_builtin_agent_profiles,
     get_custom_agent_profiles, list_agent_profiles, seed_builtin_profiles,
+};
+pub use artifact_commands::{
+    add_artifact_relation, create_artifact, create_bucket, delete_artifact, get_artifact,
+    get_artifact_relations, get_artifacts, get_artifacts_by_bucket, get_artifacts_by_task,
+    get_buckets, get_system_buckets, update_artifact, AddRelationInput, ArtifactRelationResponse,
+    ArtifactResponse, BucketResponse, CreateArtifactInput, CreateBucketInput, UpdateArtifactInput,
 };
 pub use execution_commands::{
     get_execution_status, pause_execution, resume_execution, stop_execution, ExecutionState,
