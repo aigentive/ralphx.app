@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:14:30
+**Last Updated:** 2026-01-24 11:17:45
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 13 / 33
-**Current Task:** Create QA-related skills
+**Tasks Completed:** 14 / 33
+**Current Task:** Implement QAService for orchestrating QA flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 11:17:45 - Create QA-related skills
+
+**What was done:**
+- Created `.claude/skills/acceptance-criteria-writing/SKILL.md` with:
+  - SMART criteria guidelines (Specific, Measurable, Achievable, Relevant, Testable)
+  - Good vs bad examples for each criterion type
+  - Criteria types: visual, behavior, data, accessibility
+  - Output format with JSON schema
+  - Common patterns and anti-patterns
+- Created `.claude/skills/qa-step-generation/SKILL.md` with:
+  - Test step structure (id, criteria_id, description, commands, expected)
+  - Command patterns for visibility, interaction, form, drag-drop testing
+  - Best practices for screenshots, waits, selectors
+  - Common scenario examples with full JSON
+- Created `.claude/skills/qa-evaluation/SKILL.md` with:
+  - Phase 2A refinement process (git diff analysis)
+  - Phase 2B test execution guidelines
+  - Result recording format for pass/fail/skip
+  - Failure analysis and types
+  - Evaluation best practices
+
+**Commands run:**
+- `mkdir -p .claude/skills/acceptance-criteria-writing .claude/skills/qa-step-generation .claude/skills/qa-evaluation`
+
+---
 
 ### 2026-01-24 11:14:30 - Create QA Executor Agent definition
 

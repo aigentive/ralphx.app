@@ -602,7 +602,7 @@ All tasks require TDD:
       "Create .claude/skills/qa-evaluation/SKILL.md",
       "Document git diff analysis and refinement process"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
