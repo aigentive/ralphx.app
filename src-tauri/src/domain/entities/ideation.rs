@@ -1163,6 +1163,417 @@ impl PriorityAssessment {
     }
 }
 
+// ============================================================================
+// ChatMessage and Related Types
+// ============================================================================
+
+use super::ChatMessageId;
+
+/// Role of the message sender in a chat conversation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    /// Message from the human user
+    User,
+    /// Message from the Orchestrator AI agent
+    Orchestrator,
+    /// System message (e.g., session started, context changed)
+    System,
+}
+
+impl Default for MessageRole {
+    fn default() -> Self {
+        Self::User
+    }
+}
+
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Orchestrator => write!(f, "orchestrator"),
+            MessageRole::System => write!(f, "system"),
+        }
+    }
+}
+
+/// Error type for parsing MessageRole from a string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseMessageRoleError {
+    pub value: String,
+}
+
+impl std::fmt::Display for ParseMessageRoleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown message role: '{}'", self.value)
+    }
+}
+
+impl std::error::Error for ParseMessageRoleError {}
+
+impl FromStr for MessageRole {
+    type Err = ParseMessageRoleError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "user" => Ok(MessageRole::User),
+            "orchestrator" => Ok(MessageRole::Orchestrator),
+            "system" => Ok(MessageRole::System),
+            _ => Err(ParseMessageRoleError {
+                value: s.to_string(),
+            }),
+        }
+    }
+}
+
+/// A chat message in an ideation session or project/task context
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    /// Unique identifier for this message
+    pub id: ChatMessageId,
+    /// Session this message belongs to (for ideation context)
+    pub session_id: Option<IdeationSessionId>,
+    /// Project this message belongs to (for project context without session)
+    pub project_id: Option<ProjectId>,
+    /// Task this message is about (for task-specific context)
+    pub task_id: Option<TaskId>,
+    /// Who sent the message
+    pub role: MessageRole,
+    /// The message content (supports Markdown)
+    pub content: String,
+    /// Optional metadata (JSON) for additional context
+    pub metadata: Option<String>,
+    /// Parent message ID for threading (if applicable)
+    pub parent_message_id: Option<ChatMessageId>,
+    /// When the message was created
+    pub created_at: DateTime<Utc>,
+}
+
+impl ChatMessage {
+    /// Create a new user message in an ideation session
+    pub fn user_in_session(session_id: IdeationSessionId, content: impl Into<String>) -> Self {
+        Self {
+            id: ChatMessageId::new(),
+            session_id: Some(session_id),
+            project_id: None,
+            task_id: None,
+            role: MessageRole::User,
+            content: content.into(),
+            metadata: None,
+            parent_message_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Create a new orchestrator message in an ideation session
+    pub fn orchestrator_in_session(session_id: IdeationSessionId, content: impl Into<String>) -> Self {
+        Self {
+            id: ChatMessageId::new(),
+            session_id: Some(session_id),
+            project_id: None,
+            task_id: None,
+            role: MessageRole::Orchestrator,
+            content: content.into(),
+            metadata: None,
+            parent_message_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Create a new system message in an ideation session
+    pub fn system_in_session(session_id: IdeationSessionId, content: impl Into<String>) -> Self {
+        Self {
+            id: ChatMessageId::new(),
+            session_id: Some(session_id),
+            project_id: None,
+            task_id: None,
+            role: MessageRole::System,
+            content: content.into(),
+            metadata: None,
+            parent_message_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Create a new user message in a project context (no session)
+    pub fn user_in_project(project_id: ProjectId, content: impl Into<String>) -> Self {
+        Self {
+            id: ChatMessageId::new(),
+            session_id: None,
+            project_id: Some(project_id),
+            task_id: None,
+            role: MessageRole::User,
+            content: content.into(),
+            metadata: None,
+            parent_message_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Create a new user message about a specific task
+    pub fn user_about_task(task_id: TaskId, content: impl Into<String>) -> Self {
+        Self {
+            id: ChatMessageId::new(),
+            session_id: None,
+            project_id: None,
+            task_id: Some(task_id),
+            role: MessageRole::User,
+            content: content.into(),
+            metadata: None,
+            parent_message_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Set metadata on this message
+    pub fn with_metadata(mut self, metadata: impl Into<String>) -> Self {
+        self.metadata = Some(metadata.into());
+        self
+    }
+
+    /// Set parent message for threading
+    pub fn with_parent(mut self, parent_id: ChatMessageId) -> Self {
+        self.parent_message_id = Some(parent_id);
+        self
+    }
+
+    /// Check if this is a user message
+    pub fn is_user(&self) -> bool {
+        self.role == MessageRole::User
+    }
+
+    /// Check if this is an orchestrator message
+    pub fn is_orchestrator(&self) -> bool {
+        self.role == MessageRole::Orchestrator
+    }
+
+    /// Check if this is a system message
+    pub fn is_system(&self) -> bool {
+        self.role == MessageRole::System
+    }
+
+    /// Create from a rusqlite Row
+    pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        let id: String = row.get("id")?;
+        let session_id: Option<String> = row.get("session_id")?;
+        let project_id: Option<String> = row.get("project_id")?;
+        let task_id: Option<String> = row.get("task_id")?;
+        let role: String = row.get("role")?;
+        let content: String = row.get("content")?;
+        let metadata: Option<String> = row.get("metadata")?;
+        let parent_message_id: Option<String> = row.get("parent_message_id")?;
+        let created_at_str: String = row.get("created_at")?;
+
+        Ok(Self {
+            id: ChatMessageId::from_string(id),
+            session_id: session_id.map(IdeationSessionId::from_string),
+            project_id: project_id.map(ProjectId::from_string),
+            task_id: task_id.map(TaskId::from_string),
+            role: MessageRole::from_str(&role).unwrap_or(MessageRole::User),
+            content,
+            metadata,
+            parent_message_id: parent_message_id.map(ChatMessageId::from_string),
+            created_at: parse_datetime_helper(created_at_str),
+        })
+    }
+}
+
+// ============================================================================
+// DependencyGraph Types
+// ============================================================================
+
+/// A node in the dependency graph representing a single proposal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DependencyGraphNode {
+    /// The proposal ID this node represents
+    pub proposal_id: TaskProposalId,
+    /// Title of the proposal for display
+    pub title: String,
+    /// Number of dependencies (proposals this depends on)
+    pub in_degree: usize,
+    /// Number of dependents (proposals that depend on this)
+    pub out_degree: usize,
+}
+
+impl DependencyGraphNode {
+    /// Create a new dependency graph node
+    pub fn new(proposal_id: TaskProposalId, title: impl Into<String>) -> Self {
+        Self {
+            proposal_id,
+            title: title.into(),
+            in_degree: 0,
+            out_degree: 0,
+        }
+    }
+
+    /// Set the in-degree (dependency count)
+    pub fn with_in_degree(mut self, count: usize) -> Self {
+        self.in_degree = count;
+        self
+    }
+
+    /// Set the out-degree (dependent count)
+    pub fn with_out_degree(mut self, count: usize) -> Self {
+        self.out_degree = count;
+        self
+    }
+
+    /// Returns true if this node has no dependencies (is a root)
+    pub fn is_root(&self) -> bool {
+        self.in_degree == 0
+    }
+
+    /// Returns true if this node has no dependents (is a leaf)
+    pub fn is_leaf(&self) -> bool {
+        self.out_degree == 0
+    }
+
+    /// Returns true if this node is a blocker (has dependents)
+    pub fn is_blocker(&self) -> bool {
+        self.out_degree > 0
+    }
+}
+
+/// An edge in the dependency graph representing a dependency relationship
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DependencyGraphEdge {
+    /// The proposal that has a dependency (depends on "to")
+    pub from: TaskProposalId,
+    /// The proposal that is depended on (is a dependency of "from")
+    pub to: TaskProposalId,
+}
+
+impl DependencyGraphEdge {
+    /// Create a new dependency edge
+    /// "from" depends on "to" (from → to means from needs to complete first)
+    pub fn new(from: TaskProposalId, to: TaskProposalId) -> Self {
+        Self { from, to }
+    }
+}
+
+/// Complete dependency graph for proposals in a session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyGraph {
+    /// All nodes in the graph
+    pub nodes: Vec<DependencyGraphNode>,
+    /// All edges in the graph
+    pub edges: Vec<DependencyGraphEdge>,
+    /// The critical path (longest path through the graph)
+    pub critical_path: Vec<TaskProposalId>,
+    /// Whether the graph contains any cycles
+    pub has_cycles: bool,
+    /// If cycles exist, the proposals involved in each cycle
+    pub cycles: Option<Vec<Vec<TaskProposalId>>>,
+}
+
+impl DependencyGraph {
+    /// Create a new empty dependency graph
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            critical_path: Vec::new(),
+            has_cycles: false,
+            cycles: None,
+        }
+    }
+
+    /// Create a dependency graph with nodes and edges
+    pub fn with_nodes_and_edges(
+        nodes: Vec<DependencyGraphNode>,
+        edges: Vec<DependencyGraphEdge>,
+    ) -> Self {
+        Self {
+            nodes,
+            edges,
+            critical_path: Vec::new(),
+            has_cycles: false,
+            cycles: None,
+        }
+    }
+
+    /// Add a node to the graph
+    pub fn add_node(&mut self, node: DependencyGraphNode) {
+        self.nodes.push(node);
+    }
+
+    /// Add an edge to the graph
+    pub fn add_edge(&mut self, edge: DependencyGraphEdge) {
+        self.edges.push(edge);
+    }
+
+    /// Set the critical path
+    pub fn set_critical_path(&mut self, path: Vec<TaskProposalId>) {
+        self.critical_path = path;
+    }
+
+    /// Mark the graph as having cycles and record them
+    pub fn set_cycles(&mut self, cycles: Vec<Vec<TaskProposalId>>) {
+        self.has_cycles = !cycles.is_empty();
+        self.cycles = if cycles.is_empty() {
+            None
+        } else {
+            Some(cycles)
+        };
+    }
+
+    /// Get the number of nodes in the graph
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Get the number of edges in the graph
+    pub fn edge_count(&self) -> usize {
+        self.edges.len()
+    }
+
+    /// Check if the graph is empty
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Get a node by proposal ID
+    pub fn get_node(&self, proposal_id: &TaskProposalId) -> Option<&DependencyGraphNode> {
+        self.nodes.iter().find(|n| n.proposal_id == *proposal_id)
+    }
+
+    /// Get all edges where the given proposal is the source (depends on others)
+    pub fn get_dependencies(&self, proposal_id: &TaskProposalId) -> Vec<&DependencyGraphEdge> {
+        self.edges.iter().filter(|e| e.from == *proposal_id).collect()
+    }
+
+    /// Get all edges where the given proposal is the target (is depended on)
+    pub fn get_dependents(&self, proposal_id: &TaskProposalId) -> Vec<&DependencyGraphEdge> {
+        self.edges.iter().filter(|e| e.to == *proposal_id).collect()
+    }
+
+    /// Get all root nodes (nodes with no dependencies)
+    pub fn get_roots(&self) -> Vec<&DependencyGraphNode> {
+        self.nodes.iter().filter(|n| n.is_root()).collect()
+    }
+
+    /// Get all leaf nodes (nodes with no dependents)
+    pub fn get_leaves(&self) -> Vec<&DependencyGraphNode> {
+        self.nodes.iter().filter(|n| n.is_leaf()).collect()
+    }
+
+    /// Check if a proposal is on the critical path
+    pub fn is_on_critical_path(&self, proposal_id: &TaskProposalId) -> bool {
+        self.critical_path.contains(proposal_id)
+    }
+
+    /// Get the length of the critical path
+    pub fn critical_path_length(&self) -> usize {
+        self.critical_path.len()
+    }
+}
+
+impl Default for DependencyGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2836,5 +3247,674 @@ mod tests {
 
         assert_eq!(assessment.priority_score, 100);
         assert_eq!(assessment.suggested_priority, Priority::Critical);
+    }
+
+    // ==========================================
+    // MessageRole Tests
+    // ==========================================
+
+    #[test]
+    fn message_role_default_is_user() {
+        assert_eq!(MessageRole::default(), MessageRole::User);
+    }
+
+    #[test]
+    fn message_role_display_user() {
+        assert_eq!(format!("{}", MessageRole::User), "user");
+    }
+
+    #[test]
+    fn message_role_display_orchestrator() {
+        assert_eq!(format!("{}", MessageRole::Orchestrator), "orchestrator");
+    }
+
+    #[test]
+    fn message_role_display_system() {
+        assert_eq!(format!("{}", MessageRole::System), "system");
+    }
+
+    #[test]
+    fn message_role_from_str_user() {
+        let role: MessageRole = "user".parse().unwrap();
+        assert_eq!(role, MessageRole::User);
+    }
+
+    #[test]
+    fn message_role_from_str_orchestrator() {
+        let role: MessageRole = "orchestrator".parse().unwrap();
+        assert_eq!(role, MessageRole::Orchestrator);
+    }
+
+    #[test]
+    fn message_role_from_str_system() {
+        let role: MessageRole = "system".parse().unwrap();
+        assert_eq!(role, MessageRole::System);
+    }
+
+    #[test]
+    fn message_role_from_str_invalid() {
+        let result: Result<MessageRole, _> = "invalid".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.value, "invalid");
+        assert!(err.to_string().contains("unknown message role"));
+    }
+
+    #[test]
+    fn message_role_serializes_to_json() {
+        let json = serde_json::to_string(&MessageRole::Orchestrator).unwrap();
+        assert_eq!(json, "\"orchestrator\"");
+    }
+
+    #[test]
+    fn message_role_deserializes_from_json() {
+        let role: MessageRole = serde_json::from_str("\"system\"").unwrap();
+        assert_eq!(role, MessageRole::System);
+    }
+
+    #[test]
+    fn message_role_clone_works() {
+        let role = MessageRole::Orchestrator;
+        let cloned = role.clone();
+        assert_eq!(role, cloned);
+    }
+
+    // ==========================================
+    // ChatMessage Tests
+    // ==========================================
+
+    #[test]
+    fn chat_message_user_in_session() {
+        let session_id = IdeationSessionId::new();
+        let msg = ChatMessage::user_in_session(session_id.clone(), "Hello world");
+
+        assert_eq!(msg.session_id, Some(session_id));
+        assert!(msg.project_id.is_none());
+        assert!(msg.task_id.is_none());
+        assert_eq!(msg.role, MessageRole::User);
+        assert_eq!(msg.content, "Hello world");
+        assert!(msg.metadata.is_none());
+        assert!(msg.parent_message_id.is_none());
+    }
+
+    #[test]
+    fn chat_message_orchestrator_in_session() {
+        let session_id = IdeationSessionId::new();
+        let msg = ChatMessage::orchestrator_in_session(session_id.clone(), "I can help with that");
+
+        assert_eq!(msg.session_id, Some(session_id));
+        assert_eq!(msg.role, MessageRole::Orchestrator);
+        assert_eq!(msg.content, "I can help with that");
+    }
+
+    #[test]
+    fn chat_message_system_in_session() {
+        let session_id = IdeationSessionId::new();
+        let msg = ChatMessage::system_in_session(session_id.clone(), "Session started");
+
+        assert_eq!(msg.role, MessageRole::System);
+        assert_eq!(msg.content, "Session started");
+    }
+
+    #[test]
+    fn chat_message_user_in_project() {
+        let project_id = ProjectId::new();
+        let msg = ChatMessage::user_in_project(project_id.clone(), "Project question");
+
+        assert!(msg.session_id.is_none());
+        assert_eq!(msg.project_id, Some(project_id));
+        assert!(msg.task_id.is_none());
+        assert_eq!(msg.role, MessageRole::User);
+    }
+
+    #[test]
+    fn chat_message_user_about_task() {
+        let task_id = TaskId::new();
+        let msg = ChatMessage::user_about_task(task_id.clone(), "Task question");
+
+        assert!(msg.session_id.is_none());
+        assert!(msg.project_id.is_none());
+        assert_eq!(msg.task_id, Some(task_id));
+        assert_eq!(msg.role, MessageRole::User);
+    }
+
+    #[test]
+    fn chat_message_with_metadata() {
+        let session_id = IdeationSessionId::new();
+        let msg = ChatMessage::user_in_session(session_id, "Test")
+            .with_metadata(r#"{"key": "value"}"#);
+
+        assert_eq!(msg.metadata, Some(r#"{"key": "value"}"#.to_string()));
+    }
+
+    #[test]
+    fn chat_message_with_parent() {
+        let session_id = IdeationSessionId::new();
+        let parent_id = ChatMessageId::new();
+        let msg = ChatMessage::user_in_session(session_id, "Reply")
+            .with_parent(parent_id.clone());
+
+        assert_eq!(msg.parent_message_id, Some(parent_id));
+    }
+
+    #[test]
+    fn chat_message_is_user_true() {
+        let msg = ChatMessage::user_in_session(IdeationSessionId::new(), "Test");
+        assert!(msg.is_user());
+        assert!(!msg.is_orchestrator());
+        assert!(!msg.is_system());
+    }
+
+    #[test]
+    fn chat_message_is_orchestrator_true() {
+        let msg = ChatMessage::orchestrator_in_session(IdeationSessionId::new(), "Test");
+        assert!(!msg.is_user());
+        assert!(msg.is_orchestrator());
+        assert!(!msg.is_system());
+    }
+
+    #[test]
+    fn chat_message_is_system_true() {
+        let msg = ChatMessage::system_in_session(IdeationSessionId::new(), "Test");
+        assert!(!msg.is_user());
+        assert!(!msg.is_orchestrator());
+        assert!(msg.is_system());
+    }
+
+    #[test]
+    fn chat_message_serializes() {
+        let msg = ChatMessage::user_in_session(IdeationSessionId::new(), "Serialize test");
+        let json = serde_json::to_string(&msg).unwrap();
+
+        assert!(json.contains("\"role\":\"user\""));
+        assert!(json.contains("\"content\":\"Serialize test\""));
+    }
+
+    #[test]
+    fn chat_message_deserializes() {
+        let json = r#"{
+            "id": "msg-123",
+            "session_id": "sess-456",
+            "project_id": null,
+            "task_id": null,
+            "role": "orchestrator",
+            "content": "Hello there",
+            "metadata": null,
+            "parent_message_id": null,
+            "created_at": "2026-01-24T12:00:00Z"
+        }"#;
+
+        let msg: ChatMessage = serde_json::from_str(json).unwrap();
+
+        assert_eq!(msg.id.as_str(), "msg-123");
+        assert_eq!(msg.session_id.as_ref().unwrap().as_str(), "sess-456");
+        assert_eq!(msg.role, MessageRole::Orchestrator);
+        assert_eq!(msg.content, "Hello there");
+    }
+
+    #[test]
+    fn chat_message_roundtrip_serialization() {
+        let original = ChatMessage::user_in_session(IdeationSessionId::new(), "Roundtrip")
+            .with_metadata("some meta");
+
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: ChatMessage = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.id, restored.id);
+        assert_eq!(original.role, restored.role);
+        assert_eq!(original.content, restored.content);
+        assert_eq!(original.metadata, restored.metadata);
+    }
+
+    #[test]
+    fn chat_message_from_row_works() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            r#"CREATE TABLE chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                project_id TEXT,
+                task_id TEXT,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata TEXT,
+                parent_message_id TEXT,
+                created_at TEXT NOT NULL
+            )"#,
+            [],
+        ).unwrap();
+
+        conn.execute(
+            r#"INSERT INTO chat_messages (id, session_id, project_id, task_id, role, content, metadata, parent_message_id, created_at)
+               VALUES ('msg-1', 'sess-1', NULL, NULL, 'user', 'Test message', NULL, NULL, '2026-01-24T10:00:00Z')"#,
+            [],
+        ).unwrap();
+
+        let msg: ChatMessage = conn
+            .query_row("SELECT * FROM chat_messages WHERE id = 'msg-1'", [], |row| {
+                ChatMessage::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(msg.id.as_str(), "msg-1");
+        assert_eq!(msg.session_id.as_ref().unwrap().as_str(), "sess-1");
+        assert_eq!(msg.role, MessageRole::User);
+        assert_eq!(msg.content, "Test message");
+    }
+
+    #[test]
+    fn chat_message_from_row_with_task_context() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            r#"CREATE TABLE chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                project_id TEXT,
+                task_id TEXT,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata TEXT,
+                parent_message_id TEXT,
+                created_at TEXT NOT NULL
+            )"#,
+            [],
+        ).unwrap();
+
+        conn.execute(
+            r#"INSERT INTO chat_messages (id, session_id, project_id, task_id, role, content, metadata, parent_message_id, created_at)
+               VALUES ('msg-2', NULL, 'proj-1', 'task-1', 'orchestrator', 'Task help', '{"foo":"bar"}', NULL, '2026-01-24T11:00:00Z')"#,
+            [],
+        ).unwrap();
+
+        let msg: ChatMessage = conn
+            .query_row("SELECT * FROM chat_messages WHERE id = 'msg-2'", [], |row| {
+                ChatMessage::from_row(row)
+            })
+            .unwrap();
+
+        assert!(msg.session_id.is_none());
+        assert_eq!(msg.project_id.as_ref().unwrap().as_str(), "proj-1");
+        assert_eq!(msg.task_id.as_ref().unwrap().as_str(), "task-1");
+        assert_eq!(msg.role, MessageRole::Orchestrator);
+        assert_eq!(msg.metadata, Some(r#"{"foo":"bar"}"#.to_string()));
+    }
+
+    // ==========================================
+    // DependencyGraphNode Tests
+    // ==========================================
+
+    #[test]
+    fn dependency_graph_node_new() {
+        let node = DependencyGraphNode::new(TaskProposalId::from_string("prop-1"), "Test Task");
+
+        assert_eq!(node.proposal_id.as_str(), "prop-1");
+        assert_eq!(node.title, "Test Task");
+        assert_eq!(node.in_degree, 0);
+        assert_eq!(node.out_degree, 0);
+    }
+
+    #[test]
+    fn dependency_graph_node_with_degrees() {
+        let node = DependencyGraphNode::new(TaskProposalId::new(), "Task")
+            .with_in_degree(2)
+            .with_out_degree(3);
+
+        assert_eq!(node.in_degree, 2);
+        assert_eq!(node.out_degree, 3);
+    }
+
+    #[test]
+    fn dependency_graph_node_is_root() {
+        let root = DependencyGraphNode::new(TaskProposalId::new(), "Root")
+            .with_in_degree(0);
+        let not_root = DependencyGraphNode::new(TaskProposalId::new(), "Not Root")
+            .with_in_degree(1);
+
+        assert!(root.is_root());
+        assert!(!not_root.is_root());
+    }
+
+    #[test]
+    fn dependency_graph_node_is_leaf() {
+        let leaf = DependencyGraphNode::new(TaskProposalId::new(), "Leaf")
+            .with_out_degree(0);
+        let not_leaf = DependencyGraphNode::new(TaskProposalId::new(), "Not Leaf")
+            .with_out_degree(1);
+
+        assert!(leaf.is_leaf());
+        assert!(!not_leaf.is_leaf());
+    }
+
+    #[test]
+    fn dependency_graph_node_is_blocker() {
+        let blocker = DependencyGraphNode::new(TaskProposalId::new(), "Blocker")
+            .with_out_degree(2);
+        let not_blocker = DependencyGraphNode::new(TaskProposalId::new(), "Not Blocker")
+            .with_out_degree(0);
+
+        assert!(blocker.is_blocker());
+        assert!(!not_blocker.is_blocker());
+    }
+
+    #[test]
+    fn dependency_graph_node_serializes() {
+        let node = DependencyGraphNode::new(TaskProposalId::from_string("prop-1"), "Serialize")
+            .with_in_degree(1)
+            .with_out_degree(2);
+        let json = serde_json::to_string(&node).unwrap();
+
+        assert!(json.contains("\"proposal_id\":\"prop-1\""));
+        assert!(json.contains("\"title\":\"Serialize\""));
+        assert!(json.contains("\"in_degree\":1"));
+        assert!(json.contains("\"out_degree\":2"));
+    }
+
+    #[test]
+    fn dependency_graph_node_deserializes() {
+        let json = r#"{
+            "proposal_id": "prop-123",
+            "title": "Test Node",
+            "in_degree": 3,
+            "out_degree": 1
+        }"#;
+
+        let node: DependencyGraphNode = serde_json::from_str(json).unwrap();
+
+        assert_eq!(node.proposal_id.as_str(), "prop-123");
+        assert_eq!(node.title, "Test Node");
+        assert_eq!(node.in_degree, 3);
+        assert_eq!(node.out_degree, 1);
+    }
+
+    #[test]
+    fn dependency_graph_node_equality() {
+        let id = TaskProposalId::from_string("same-id");
+        let node1 = DependencyGraphNode::new(id.clone(), "Node 1").with_in_degree(1);
+        let node2 = DependencyGraphNode::new(id.clone(), "Node 1").with_in_degree(1);
+        let node3 = DependencyGraphNode::new(id, "Node 1").with_in_degree(2);
+
+        assert_eq!(node1, node2);
+        assert_ne!(node1, node3);
+    }
+
+    // ==========================================
+    // DependencyGraphEdge Tests
+    // ==========================================
+
+    #[test]
+    fn dependency_graph_edge_new() {
+        let from = TaskProposalId::from_string("from-1");
+        let to = TaskProposalId::from_string("to-1");
+        let edge = DependencyGraphEdge::new(from.clone(), to.clone());
+
+        assert_eq!(edge.from, from);
+        assert_eq!(edge.to, to);
+    }
+
+    #[test]
+    fn dependency_graph_edge_serializes() {
+        let edge = DependencyGraphEdge::new(
+            TaskProposalId::from_string("prop-a"),
+            TaskProposalId::from_string("prop-b"),
+        );
+        let json = serde_json::to_string(&edge).unwrap();
+
+        assert!(json.contains("\"from\":\"prop-a\""));
+        assert!(json.contains("\"to\":\"prop-b\""));
+    }
+
+    #[test]
+    fn dependency_graph_edge_deserializes() {
+        let json = r#"{"from": "edge-from", "to": "edge-to"}"#;
+        let edge: DependencyGraphEdge = serde_json::from_str(json).unwrap();
+
+        assert_eq!(edge.from.as_str(), "edge-from");
+        assert_eq!(edge.to.as_str(), "edge-to");
+    }
+
+    #[test]
+    fn dependency_graph_edge_equality() {
+        let edge1 = DependencyGraphEdge::new(
+            TaskProposalId::from_string("a"),
+            TaskProposalId::from_string("b"),
+        );
+        let edge2 = DependencyGraphEdge::new(
+            TaskProposalId::from_string("a"),
+            TaskProposalId::from_string("b"),
+        );
+        let edge3 = DependencyGraphEdge::new(
+            TaskProposalId::from_string("a"),
+            TaskProposalId::from_string("c"),
+        );
+
+        assert_eq!(edge1, edge2);
+        assert_ne!(edge1, edge3);
+    }
+
+    // ==========================================
+    // DependencyGraph Tests
+    // ==========================================
+
+    #[test]
+    fn dependency_graph_new() {
+        let graph = DependencyGraph::new();
+
+        assert!(graph.nodes.is_empty());
+        assert!(graph.edges.is_empty());
+        assert!(graph.critical_path.is_empty());
+        assert!(!graph.has_cycles);
+        assert!(graph.cycles.is_none());
+    }
+
+    #[test]
+    fn dependency_graph_default() {
+        let graph: DependencyGraph = Default::default();
+        assert!(graph.is_empty());
+    }
+
+    #[test]
+    fn dependency_graph_with_nodes_and_edges() {
+        let nodes = vec![
+            DependencyGraphNode::new(TaskProposalId::from_string("n1"), "Node 1"),
+            DependencyGraphNode::new(TaskProposalId::from_string("n2"), "Node 2"),
+        ];
+        let edges = vec![
+            DependencyGraphEdge::new(
+                TaskProposalId::from_string("n2"),
+                TaskProposalId::from_string("n1"),
+            ),
+        ];
+
+        let graph = DependencyGraph::with_nodes_and_edges(nodes, edges);
+
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn dependency_graph_add_node() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::new(), "Added"));
+
+        assert_eq!(graph.node_count(), 1);
+    }
+
+    #[test]
+    fn dependency_graph_add_edge() {
+        let mut graph = DependencyGraph::new();
+        graph.add_edge(DependencyGraphEdge::new(
+            TaskProposalId::from_string("a"),
+            TaskProposalId::from_string("b"),
+        ));
+
+        assert_eq!(graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn dependency_graph_set_critical_path() {
+        let mut graph = DependencyGraph::new();
+        let path = vec![
+            TaskProposalId::from_string("step1"),
+            TaskProposalId::from_string("step2"),
+            TaskProposalId::from_string("step3"),
+        ];
+
+        graph.set_critical_path(path.clone());
+
+        assert_eq!(graph.critical_path, path);
+        assert_eq!(graph.critical_path_length(), 3);
+    }
+
+    #[test]
+    fn dependency_graph_set_cycles() {
+        let mut graph = DependencyGraph::new();
+        let cycles = vec![
+            vec![
+                TaskProposalId::from_string("a"),
+                TaskProposalId::from_string("b"),
+                TaskProposalId::from_string("a"),
+            ],
+        ];
+
+        graph.set_cycles(cycles.clone());
+
+        assert!(graph.has_cycles);
+        assert!(graph.cycles.is_some());
+        assert_eq!(graph.cycles.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn dependency_graph_set_empty_cycles() {
+        let mut graph = DependencyGraph::new();
+        graph.set_cycles(vec![]);
+
+        assert!(!graph.has_cycles);
+        assert!(graph.cycles.is_none());
+    }
+
+    #[test]
+    fn dependency_graph_get_node() {
+        let id = TaskProposalId::from_string("find-me");
+        let mut graph = DependencyGraph::new();
+        graph.add_node(DependencyGraphNode::new(id.clone(), "Find Me"));
+
+        let found = graph.get_node(&id);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().title, "Find Me");
+
+        let not_found = graph.get_node(&TaskProposalId::from_string("not-there"));
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn dependency_graph_get_dependencies() {
+        let id = TaskProposalId::from_string("a");
+        let mut graph = DependencyGraph::new();
+        graph.add_edge(DependencyGraphEdge::new(id.clone(), TaskProposalId::from_string("b")));
+        graph.add_edge(DependencyGraphEdge::new(id.clone(), TaskProposalId::from_string("c")));
+        graph.add_edge(DependencyGraphEdge::new(TaskProposalId::from_string("d"), TaskProposalId::from_string("a")));
+
+        let deps = graph.get_dependencies(&id);
+        assert_eq!(deps.len(), 2);
+    }
+
+    #[test]
+    fn dependency_graph_get_dependents() {
+        let id = TaskProposalId::from_string("target");
+        let mut graph = DependencyGraph::new();
+        graph.add_edge(DependencyGraphEdge::new(TaskProposalId::from_string("a"), id.clone()));
+        graph.add_edge(DependencyGraphEdge::new(TaskProposalId::from_string("b"), id.clone()));
+
+        let deps = graph.get_dependents(&id);
+        assert_eq!(deps.len(), 2);
+    }
+
+    #[test]
+    fn dependency_graph_get_roots() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::new(), "Root 1").with_in_degree(0));
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::new(), "Root 2").with_in_degree(0));
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::new(), "Not Root").with_in_degree(1));
+
+        let roots = graph.get_roots();
+        assert_eq!(roots.len(), 2);
+    }
+
+    #[test]
+    fn dependency_graph_get_leaves() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::new(), "Leaf 1").with_out_degree(0));
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::new(), "Not Leaf").with_out_degree(2));
+
+        let leaves = graph.get_leaves();
+        assert_eq!(leaves.len(), 1);
+    }
+
+    #[test]
+    fn dependency_graph_is_on_critical_path() {
+        let on_path = TaskProposalId::from_string("on-path");
+        let off_path = TaskProposalId::from_string("off-path");
+        let mut graph = DependencyGraph::new();
+        graph.set_critical_path(vec![on_path.clone(), TaskProposalId::from_string("other")]);
+
+        assert!(graph.is_on_critical_path(&on_path));
+        assert!(!graph.is_on_critical_path(&off_path));
+    }
+
+    #[test]
+    fn dependency_graph_serializes() {
+        let mut graph = DependencyGraph::new();
+        graph.add_node(DependencyGraphNode::new(TaskProposalId::from_string("p1"), "Node 1"));
+        graph.add_edge(DependencyGraphEdge::new(
+            TaskProposalId::from_string("p2"),
+            TaskProposalId::from_string("p1"),
+        ));
+
+        let json = serde_json::to_string(&graph).unwrap();
+
+        assert!(json.contains("\"nodes\":["));
+        assert!(json.contains("\"edges\":["));
+        assert!(json.contains("\"has_cycles\":false"));
+    }
+
+    #[test]
+    fn dependency_graph_deserializes() {
+        let json = r#"{
+            "nodes": [
+                {"proposal_id": "p1", "title": "Node 1", "in_degree": 0, "out_degree": 1}
+            ],
+            "edges": [
+                {"from": "p2", "to": "p1"}
+            ],
+            "critical_path": ["p1"],
+            "has_cycles": false,
+            "cycles": null
+        }"#;
+
+        let graph: DependencyGraph = serde_json::from_str(json).unwrap();
+
+        assert_eq!(graph.node_count(), 1);
+        assert_eq!(graph.edge_count(), 1);
+        assert_eq!(graph.critical_path_length(), 1);
+        assert!(!graph.has_cycles);
+    }
+
+    #[test]
+    fn dependency_graph_roundtrip_serialization() {
+        let mut original = DependencyGraph::new();
+        original.add_node(DependencyGraphNode::new(TaskProposalId::from_string("a"), "A"));
+        original.add_node(DependencyGraphNode::new(TaskProposalId::from_string("b"), "B"));
+        original.add_edge(DependencyGraphEdge::new(
+            TaskProposalId::from_string("b"),
+            TaskProposalId::from_string("a"),
+        ));
+        original.set_critical_path(vec![TaskProposalId::from_string("a"), TaskProposalId::from_string("b")]);
+
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: DependencyGraph = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.node_count(), restored.node_count());
+        assert_eq!(original.edge_count(), restored.edge_count());
+        assert_eq!(original.critical_path, restored.critical_path);
     }
 }

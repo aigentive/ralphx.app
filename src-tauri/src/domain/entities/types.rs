@@ -28,6 +28,11 @@ pub struct IdeationSessionId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskProposalId(pub String);
 
+/// A unique identifier for a ChatMessage
+/// Uses newtype pattern to prevent accidentally using other IDs where ChatMessageId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChatMessageId(pub String);
+
 impl TaskId {
     /// Creates a new TaskId with a random UUID v4
     pub fn new() -> Self {
@@ -173,6 +178,36 @@ impl Default for TaskProposalId {
 }
 
 impl std::fmt::Display for TaskProposalId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl ChatMessageId {
+    /// Creates a new ChatMessageId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates a ChatMessageId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ChatMessageId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for ChatMessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -551,6 +586,92 @@ mod tests {
     #[test]
     fn task_proposal_id_default_creates_new() {
         let id = TaskProposalId::default();
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    // ===== ChatMessageId Tests =====
+
+    #[test]
+    fn chat_message_id_new_generates_valid_uuid() {
+        let id = ChatMessageId::new();
+        assert_eq!(id.as_str().len(), 36);
+        assert!(id.as_str().chars().filter(|c| *c == '-').count() == 4);
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    #[test]
+    fn chat_message_id_new_generates_unique_ids() {
+        let ids: HashSet<String> = (0..100).map(|_| ChatMessageId::new().0).collect();
+        assert_eq!(ids.len(), 100, "All generated ChatMessageIds should be unique");
+    }
+
+    #[test]
+    fn chat_message_id_from_string_preserves_value() {
+        let id = ChatMessageId::from_string("msg-custom-id");
+        assert_eq!(id.as_str(), "msg-custom-id");
+    }
+
+    #[test]
+    fn chat_message_id_from_string_takes_owned() {
+        let id = ChatMessageId::from_string("msg-owned".to_string());
+        assert_eq!(id.as_str(), "msg-owned");
+    }
+
+    #[test]
+    fn chat_message_id_equality_works() {
+        let id1 = ChatMessageId::from_string("msg-abc");
+        let id2 = ChatMessageId::from_string("msg-abc");
+        let id3 = ChatMessageId::from_string("msg-xyz");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn chat_message_id_clone_works() {
+        let id1 = ChatMessageId::new();
+        let id2 = id1.clone();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn chat_message_id_hash_works() {
+        let id = ChatMessageId::from_string("msg-hash-test");
+        let mut set = HashSet::new();
+        set.insert(id.clone());
+        assert!(set.contains(&id));
+    }
+
+    #[test]
+    fn chat_message_id_display_works() {
+        let id = ChatMessageId::from_string("msg-display");
+        assert_eq!(format!("{}", id), "msg-display");
+    }
+
+    #[test]
+    fn chat_message_id_debug_works() {
+        let id = ChatMessageId::from_string("msg-debug");
+        let debug_str = format!("{:?}", id);
+        assert!(debug_str.contains("msg-debug"));
+    }
+
+    #[test]
+    fn chat_message_id_serializes_to_json() {
+        let id = ChatMessageId::from_string("msg-serialize");
+        let json = serde_json::to_string(&id).expect("Should serialize");
+        assert_eq!(json, "\"msg-serialize\"");
+    }
+
+    #[test]
+    fn chat_message_id_deserializes_from_json() {
+        let json = "\"msg-deserialize\"";
+        let id: ChatMessageId = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(id.as_str(), "msg-deserialize");
+    }
+
+    #[test]
+    fn chat_message_id_default_creates_new() {
+        let id = ChatMessageId::default();
         assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
     }
 }
