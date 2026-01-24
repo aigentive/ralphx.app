@@ -5,5 +5,6 @@ pub mod agents;
 pub mod entities;
 pub mod qa;
 pub mod repositories;
+pub mod review;
 pub mod state_machine;
 pub mod supervisor;
