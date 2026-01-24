@@ -486,7 +486,7 @@ All tasks require TDD:
       "Export from types module",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

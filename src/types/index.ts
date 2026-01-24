@@ -105,6 +105,37 @@ export type {
   UpdateAgentProfile,
 } from "./agent-profile";
 
+// QA Config types and schemas
+export {
+  QAPrepStatusSchema,
+  QATestStatusSchema,
+  QASettingsSchema,
+  TaskQAConfigSchema,
+  QA_PREP_STATUS_VALUES,
+  QA_TEST_STATUS_VALUES,
+  DEFAULT_QA_SETTINGS,
+  DEFAULT_TASK_QA_CONFIG,
+  isPrepComplete,
+  isPrepFailed,
+  isTestTerminal,
+  isTestPassed,
+  isTestFailed,
+  shouldRunQAForCategory,
+  requiresQA,
+  createTaskQAConfig,
+  createInheritedTaskQAConfig,
+  parseQASettings,
+  safeParseQASettings,
+  parseTaskQAConfig,
+  safeParseTaskQAConfig,
+} from "./qa-config";
+export type {
+  QAPrepStatus,
+  QATestStatus,
+  QASettings,
+  TaskQAConfig,
+} from "./qa-config";
+
 // Supervisor types and schemas
 export {
   SeveritySchema,
