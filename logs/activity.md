@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:48:44
+**Last Updated:** 2026-01-24 13:52:13
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 27 / 51
-**Current Task:** Implement TaskDetailView with state history
+**Tasks Completed:** 28 / 51
+**Current Task:** Implement AskUserQuestion types and store
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:52:13 - Implement TaskDetailView with state history
+
+**What was done:**
+- Created `src/components/tasks/TaskDetailView.tsx` (145 lines, under 150 limit):
+  - Displays task title, description, category, and priority
+  - StatusBadge sub-component with color-coded status display for all 14 internal statuses
+  - ReviewItem sub-component showing AI (🤖) or Human (👤) review with status
+  - FixTaskIndicator sub-component showing count of related fix tasks
+  - Integrates StateHistoryTimeline component for full state transition history
+  - LoadingSpinner for reviews loading state
+  - Conditional rendering: description only when present, reviews section only when reviews exist
+  - Uses design system tokens: `--bg-surface`, `--bg-hover`, `--text-primary`, `--text-secondary`, `--text-muted`, `--status-*`
+  - Data attributes: `data-testid`, `data-task-id`, `data-status`
+- Created `src/components/tasks/TaskDetailView.test.tsx` with 24 tests:
+  - Basic rendering tests (title, description, category, priority, status)
+  - Null description handling
+  - State history timeline integration
+  - Reviews section tests (loading, empty, AI/human indicators)
+  - Fix task indicator tests (singular/plural)
+  - Data attribute tests
+  - Styling tests (design system compliance)
+  - Status color tests (approved: green, failed: red, blocked: orange)
+  - Hook integration tests
+- Updated `src/components/tasks/index.ts` barrel export
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/components/tasks/TaskDetailView.test.tsx` (24 tests passed)
+- `npm run test -- src/components/tasks/` (172 tests passed)
 
 ### 2026-01-24 13:48:44 - Implement StateHistoryTimeline component
 
