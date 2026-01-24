@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:43:29
+**Last Updated:** 2026-01-24 07:46:36
 **Phase:** Data Layer
-**Tasks Completed:** 15 / 20
-**Current Task:** Create application/app_state.rs with AppState
+**Tasks Completed:** 16 / 20
+**Current Task:** Integrate AppState with Tauri managed state
 
 ---
 
@@ -1504,6 +1504,33 @@ Phase 1: Foundation (no dependencies)
 **Files modified:**
 - `src-tauri/src/infrastructure/sqlite/sqlite_project_repo.rs` - new file
 - `src-tauri/src/infrastructure/sqlite/mod.rs` - added module export
+
+---
+
+### 2026-01-24 07:46:36 - Create AppState for dependency injection
+
+**What was done:**
+- Created `src-tauri/src/application/` directory
+- Created `AppState` struct with Arc<dyn TaskRepository> and Arc<dyn ProjectRepository>
+- Implemented constructors:
+  - `new_production()`: SQLite repos with shared connection
+  - `with_db_path()`: SQLite repos at custom path
+  - `new_test()`: In-memory repos for testing
+  - `with_repos()`: Custom repo injection
+- Added 4 tests:
+  - test_new_test_creates_empty_repositories
+  - test_with_repos_uses_custom_repositories
+  - test_task_and_project_repos_work_together
+  - test_repositories_are_thread_safe
+- Exported `application` module and `AppState` from lib.rs
+- All 289 tests pass (4 new tests)
+
+**Files created:**
+- `src-tauri/src/application/mod.rs` - module definition
+- `src-tauri/src/application/app_state.rs` - AppState implementation
+
+**Files modified:**
+- `src-tauri/src/lib.rs` - added application module and AppState re-export
 
 ---
 
