@@ -3,7 +3,7 @@
  * Root component with QueryClientProvider and EventProvider
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { getQueryClient } from "@/lib/queryClient";
@@ -13,12 +13,18 @@ import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
 import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailView } from "@/components/tasks/TaskDetailView";
+import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { useUiStore } from "@/stores/uiStore";
+import { useChatStore } from "@/stores/chatStore";
 import type { Task } from "@/types/task";
+import type { ChatContext } from "@/types/chat";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
+
+// Local storage key for persisting chat panel width
+const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 
 const queryClient = getQueryClient();
 
@@ -45,6 +51,26 @@ function ReviewIcon() {
   );
 }
 
+function ChatIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H8l-4 3v-3H5a2 2 0 01-2-2V5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 7h6M7 10h4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function AppContent() {
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
   const toggleReviewsPanel = useUiStore((s) => s.toggleReviewsPanel);
@@ -57,6 +83,12 @@ function AppContent() {
   const modalContext = useUiStore((s) => s.modalContext);
   const closeModal = useUiStore((s) => s.closeModal);
 
+  // Chat panel state
+  const chatIsOpen = useChatStore((s) => s.isOpen);
+  const chatWidth = useChatStore((s) => s.width);
+  const toggleChatPanel = useChatStore((s) => s.togglePanel);
+  const setChatWidth = useChatStore((s) => s.setWidth);
+
   // Extract task from modal context for task-detail modal
   const selectedTask = activeModal === "task-detail" && modalContext?.task
     ? (modalContext.task as Task)
@@ -67,6 +99,37 @@ function AppContent() {
 
   const { count: pendingReviewCount } = usePendingReviews(DEFAULT_PROJECT_ID);
   const { data: tasks = [] } = useTasks(DEFAULT_PROJECT_ID);
+
+  // Load persisted chat width from localStorage on mount
+  useEffect(() => {
+    const savedWidth = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
+    if (savedWidth) {
+      const width = parseInt(savedWidth, 10);
+      if (!isNaN(width)) {
+        setChatWidth(width);
+      }
+    }
+  }, [setChatWidth]);
+
+  // Persist chat width to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
+  }, [chatWidth]);
+
+  // Build chat context based on current view
+  const chatContext: ChatContext = useMemo(() => {
+    if (selectedTask) {
+      return {
+        view: "task_detail",
+        projectId: DEFAULT_PROJECT_ID,
+        selectedTaskId: selectedTask.id,
+      };
+    }
+    return {
+      view: "kanban",
+      projectId: DEFAULT_PROJECT_ID,
+    };
+  }, [selectedTask]);
 
   const handlePauseToggle = async () => {
     setIsExecutionLoading(true);
@@ -141,6 +204,33 @@ function AppContent() {
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>
             Demo Project
           </span>
+          {/* Chat Panel Toggle */}
+          <button
+            onClick={toggleChatPanel}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+            style={{
+              backgroundColor: chatIsOpen
+                ? "var(--bg-elevated)"
+                : "transparent",
+              color: chatIsOpen
+                ? "var(--accent-primary)"
+                : "var(--text-secondary)",
+            }}
+            data-testid="chat-toggle"
+            title="Toggle Chat (⌘K)"
+          >
+            <ChatIcon />
+            <span className="text-sm font-medium">Chat</span>
+            <kbd
+              className="ml-1 px-1 py-0.5 text-xs rounded"
+              style={{
+                backgroundColor: "var(--bg-elevated)",
+                color: "var(--text-muted)",
+              }}
+            >
+              ⌘K
+            </kbd>
+          </button>
           {/* Reviews Panel Toggle */}
           <button
             onClick={toggleReviewsPanel}
@@ -223,6 +313,9 @@ function AppContent() {
             />
           </div>
         )}
+
+        {/* ChatPanel - resizable side panel with Cmd+K toggle */}
+        <ChatPanel context={chatContext} />
       </div>
 
       {/* AskUserQuestionModal - renders when activeQuestion is set */}
