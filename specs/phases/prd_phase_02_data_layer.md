@@ -590,7 +590,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Add StatusTransition struct with Debug, Clone derives",
       "Verify cargo build succeeds"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
