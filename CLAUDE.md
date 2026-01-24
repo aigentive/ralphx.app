@@ -323,6 +323,31 @@ Interactive PRD creation wizard. Gathers requirements and generates a PRD with J
 
 ---
 
+## Claude Code CLI Reference
+
+When working with Claude Code CLI features (agents, hooks, skills, plugins, model configuration), **always check the official documentation** in `docs/claude-code/`:
+
+| File | Contents |
+|------|----------|
+| `index.txt` | Full documentation index with all available pages |
+| `cli-reference.md` | CLI commands and flags (--model, --output-format, etc.) |
+| `model-config.md` | Model aliases (opus, sonnet, haiku), environment variables |
+| `hooks.md` | Hook events, configuration, input/output schemas |
+| `settings.md` | Permissions, settings files, environment variables |
+| `sub-agents.md` | Creating custom subagents |
+| `plugins.md` | Plugin structure and configuration |
+| `skills.md` | Skill definitions and usage |
+| `headless.md` | Programmatic/SDK usage |
+
+**Current model versions (4.5):**
+- `opus` → Opus 4.5 (`claude-opus-4-5-20251101`)
+- `sonnet` → Sonnet 4.5 (`claude-sonnet-4-5-20250929`)
+- `haiku` → Haiku 4.5 (`claude-haiku-4-5-20251001`)
+
+**Source:** https://code.claude.com/docs/llms.txt
+
+---
+
 ## Git Conventions
 
 - **Do NOT** run `git init`, change remotes, or push
