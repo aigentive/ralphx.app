@@ -8,6 +8,8 @@ import {
   ReviewActionSchema,
   ReviewNoteSchema,
   ReviewListSchema,
+  ReviewSettingsSchema,
+  DEFAULT_REVIEW_SETTINGS,
   REVIEWER_TYPE_VALUES,
   REVIEW_STATUS_VALUES,
   REVIEW_ACTION_TYPE_VALUES,
@@ -15,6 +17,11 @@ import {
   isReviewPending,
   isReviewComplete,
   isReviewApproved,
+  shouldRunAiReview,
+  shouldAutoCreateFix,
+  needsHumanReview,
+  needsFixApproval,
+  exceededMaxAttempts,
 } from "./review";
 
 describe("ReviewerTypeSchema", () => {
@@ -342,6 +349,129 @@ describe("Review helper functions", () => {
       expect(isReviewApproved("pending")).toBe(false);
       expect(isReviewApproved("changes_requested")).toBe(false);
       expect(isReviewApproved("rejected")).toBe(false);
+    });
+  });
+});
+
+describe("ReviewSettingsSchema", () => {
+  it("should have correct default values", () => {
+    expect(DEFAULT_REVIEW_SETTINGS.aiReviewEnabled).toBe(true);
+    expect(DEFAULT_REVIEW_SETTINGS.aiReviewAutoFix).toBe(true);
+    expect(DEFAULT_REVIEW_SETTINGS.requireFixApproval).toBe(false);
+    expect(DEFAULT_REVIEW_SETTINGS.requireHumanReview).toBe(false);
+    expect(DEFAULT_REVIEW_SETTINGS.maxFixAttempts).toBe(3);
+  });
+
+  it("should parse valid settings", () => {
+    const settings = {
+      aiReviewEnabled: true,
+      aiReviewAutoFix: true,
+      requireFixApproval: false,
+      requireHumanReview: false,
+      maxFixAttempts: 3,
+    };
+    expect(() => ReviewSettingsSchema.parse(settings)).not.toThrow();
+  });
+
+  it("should apply defaults for missing fields", () => {
+    const result = ReviewSettingsSchema.parse({});
+    expect(result.aiReviewEnabled).toBe(true);
+    expect(result.aiReviewAutoFix).toBe(true);
+    expect(result.requireFixApproval).toBe(false);
+    expect(result.requireHumanReview).toBe(false);
+    expect(result.maxFixAttempts).toBe(3);
+  });
+
+  it("should apply defaults for partial data", () => {
+    const result = ReviewSettingsSchema.parse({
+      aiReviewEnabled: false,
+      maxFixAttempts: 5,
+    });
+    expect(result.aiReviewEnabled).toBe(false);
+    expect(result.aiReviewAutoFix).toBe(true);
+    expect(result.requireFixApproval).toBe(false);
+    expect(result.requireHumanReview).toBe(false);
+    expect(result.maxFixAttempts).toBe(5);
+  });
+
+  it("should reject invalid maxFixAttempts", () => {
+    expect(() =>
+      ReviewSettingsSchema.parse({ maxFixAttempts: -1 })
+    ).toThrow();
+    expect(() =>
+      ReviewSettingsSchema.parse({ maxFixAttempts: 1.5 })
+    ).toThrow();
+  });
+
+  it("should reject non-boolean for boolean fields", () => {
+    expect(() =>
+      ReviewSettingsSchema.parse({ aiReviewEnabled: "true" })
+    ).toThrow();
+    expect(() =>
+      ReviewSettingsSchema.parse({ requireHumanReview: 1 })
+    ).toThrow();
+  });
+});
+
+describe("ReviewSettings helper functions", () => {
+  describe("shouldRunAiReview", () => {
+    it("should return true when AI review is enabled", () => {
+      expect(shouldRunAiReview({ ...DEFAULT_REVIEW_SETTINGS, aiReviewEnabled: true })).toBe(true);
+    });
+
+    it("should return false when AI review is disabled", () => {
+      expect(shouldRunAiReview({ ...DEFAULT_REVIEW_SETTINGS, aiReviewEnabled: false })).toBe(false);
+    });
+  });
+
+  describe("shouldAutoCreateFix", () => {
+    it("should return true when auto fix is enabled", () => {
+      expect(shouldAutoCreateFix({ ...DEFAULT_REVIEW_SETTINGS, aiReviewAutoFix: true })).toBe(true);
+    });
+
+    it("should return false when auto fix is disabled", () => {
+      expect(shouldAutoCreateFix({ ...DEFAULT_REVIEW_SETTINGS, aiReviewAutoFix: false })).toBe(false);
+    });
+  });
+
+  describe("needsHumanReview", () => {
+    it("should return true when human review is required", () => {
+      expect(needsHumanReview({ ...DEFAULT_REVIEW_SETTINGS, requireHumanReview: true })).toBe(true);
+    });
+
+    it("should return false when human review is not required", () => {
+      expect(needsHumanReview({ ...DEFAULT_REVIEW_SETTINGS, requireHumanReview: false })).toBe(false);
+    });
+  });
+
+  describe("needsFixApproval", () => {
+    it("should return true when fix approval is required", () => {
+      expect(needsFixApproval({ ...DEFAULT_REVIEW_SETTINGS, requireFixApproval: true })).toBe(true);
+    });
+
+    it("should return false when fix approval is not required", () => {
+      expect(needsFixApproval({ ...DEFAULT_REVIEW_SETTINGS, requireFixApproval: false })).toBe(false);
+    });
+  });
+
+  describe("exceededMaxAttempts", () => {
+    it("should return false when under max attempts", () => {
+      const settings = { ...DEFAULT_REVIEW_SETTINGS, maxFixAttempts: 3 };
+      expect(exceededMaxAttempts(settings, 0)).toBe(false);
+      expect(exceededMaxAttempts(settings, 1)).toBe(false);
+      expect(exceededMaxAttempts(settings, 2)).toBe(false);
+    });
+
+    it("should return true when at or over max attempts", () => {
+      const settings = { ...DEFAULT_REVIEW_SETTINGS, maxFixAttempts: 3 };
+      expect(exceededMaxAttempts(settings, 3)).toBe(true);
+      expect(exceededMaxAttempts(settings, 5)).toBe(true);
+    });
+
+    it("should work with custom max attempts", () => {
+      const settings = { ...DEFAULT_REVIEW_SETTINGS, maxFixAttempts: 1 };
+      expect(exceededMaxAttempts(settings, 0)).toBe(false);
+      expect(exceededMaxAttempts(settings, 1)).toBe(true);
     });
   });
 });

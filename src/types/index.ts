@@ -236,6 +236,8 @@ export {
   ReviewListSchema,
   ReviewActionListSchema,
   ReviewNoteListSchema,
+  ReviewSettingsSchema,
+  DEFAULT_REVIEW_SETTINGS,
   REVIEWER_TYPE_VALUES,
   REVIEW_STATUS_VALUES,
   REVIEW_ACTION_TYPE_VALUES,
@@ -245,6 +247,11 @@ export {
   isReviewApproved,
   isOutcomePositive,
   isOutcomeNegative,
+  shouldRunAiReview,
+  shouldAutoCreateFix,
+  needsHumanReview,
+  needsFixApproval,
+  exceededMaxAttempts,
 } from "./review";
 export type {
   ReviewerType,
@@ -257,4 +264,5 @@ export type {
   ReviewList,
   ReviewActionList,
   ReviewNoteList,
+  ReviewSettings,
 } from "./review";
