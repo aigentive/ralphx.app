@@ -1039,7 +1039,7 @@ All tasks require tests written before implementation:
       "Update app initialization to create all repositories",
       "Run cargo test to verify AppState initialization"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
