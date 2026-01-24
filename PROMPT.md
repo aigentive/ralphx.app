@@ -44,6 +44,12 @@ In the active PRD, look for tasks with `"passes": false`.
 
 Find the first task where `"passes": false`.
 
+**If the PRD file is too large to read in one go:**
+1. Use `Grep` to find the task by its description: `Grep pattern="description.*[task name]" path="[prd file]"`
+2. Note the line number where the task starts
+3. Use `Read` with `offset` set to ~20 lines before that line number and `limit` of 100+ lines
+4. This ensures you capture the FULL task object including all fields
+
 **CRITICAL: Read ALL fields of the task before starting work.** Each task may contain:
 
 | Field | Purpose |
@@ -53,6 +59,8 @@ Find the first task where `"passes": false`.
 | `acceptance_criteria` | **What to verify** - task is NOT complete until all criteria pass |
 | `design_quality` | **Visual standards** - for UI tasks, verify these design requirements |
 | `passes` | Mark `true` only when ALL steps completed AND all criteria verified |
+
+**DO NOT start working until you have read the full task JSON object.** If you only see the `description`, you have NOT read the full task.
 
 **For visual-verification tasks specifically:**
 1. Read the `steps` to know what to capture and test
