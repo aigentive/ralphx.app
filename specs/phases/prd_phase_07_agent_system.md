@@ -385,7 +385,7 @@ CREATE TABLE agent_profiles (
       "Add component paths: agents, skills, hooks, mcpServers",
       "Verify JSON is valid and matches schema"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

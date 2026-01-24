@@ -56,3 +56,12 @@ export type {
 // Workflow types and schemas
 export { WorkflowColumnSchema, WorkflowSchemaZ } from "./workflow";
 export type { WorkflowColumn, WorkflowSchema } from "./workflow";
+
+// Plugin types and schemas
+export {
+  PluginAuthorSchema,
+  PluginManifestSchema,
+  parsePluginManifest,
+  safeParsePluginManifest,
+} from "./plugin";
+export type { PluginAuthor, PluginManifest } from "./plugin";
