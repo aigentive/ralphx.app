@@ -888,7 +888,7 @@ All tasks require TDD:
       "Verify no anti-AI-slop violations",
       "Save screenshots to screenshots/"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

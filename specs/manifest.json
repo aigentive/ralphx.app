@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 8,
+  "currentPhase": 9,
   "phases": [
     {
       "phase": 0,
@@ -63,14 +63,14 @@
       "phase": 8,
       "name": "QA System",
       "prd": "specs/phases/prd_phase_08_qa_system.md",
-      "status": "active",
+      "status": "complete",
       "description": "QA prep/testing, visual verification"
     },
     {
       "phase": 9,
       "name": "Review & Supervision",
       "prd": "specs/phases/prd_phase_09_review_supervision.md",
-      "status": "pending",
+      "status": "active",
       "description": "Review workflow, watchdog, human-in-loop"
     },
     {
