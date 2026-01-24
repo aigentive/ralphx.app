@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:15:00
+**Last Updated:** 2026-01-24 12:36:00
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 28 / 33
-**Current Task:** Implement useSupervisorAlerts hook
+**Tasks Completed:** 29 / 33
+**Current Task:** Integration test: supervisor detects infinite loop
 
 ---
 
 ## Session Log
+
+### 2026-01-24 12:36:00 - Implement useSupervisorAlerts hook
+
+**What was done:**
+- Created `src/hooks/useSupervisorAlerts.ts`:
+  - `useSupervisorStore` - Zustand store with immer for supervisor alerts
+  - `useFilteredAlerts` - Filter alerts by severity, type, taskId, acknowledged
+  - `useAlertStats` - Computed statistics (total, unacknowledged, by severity, by type)
+  - `useSupervisorEventListener` - Tauri event listener for supervisor:alert and supervisor:event
+  - `useSupervisorAlerts` - Combined hook with all functionality
+  - Actions: addAlert, acknowledgeAlert, acknowledgeAll, dismissAlert, dismissAcknowledged, clearAll, clearAlertsForTask
+- Created `src/hooks/useSupervisorAlerts.test.ts`:
+  - 20 unit tests covering store, filtering, stats, and combined hook
+- Used `crypto.randomUUID()` instead of uuid package for ID generation
+- All tests passing
+
+**Commands run:**
+- `npm test -- src/hooks/useSupervisorAlerts.test.ts`
+
+---
 
 ### 2026-01-24 11:15:00 - Implement supervisor alert TypeScript types
 
