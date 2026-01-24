@@ -440,7 +440,7 @@ All tasks require TDD:
       "Add screenshots/*.png to .gitignore (keep .gitkeep)",
       "Verify directory structure"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",

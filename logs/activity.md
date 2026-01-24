@@ -1,14 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 12:50:00
-**Phase:** Phase 7 (Agent System) - COMPLETE
-**Tasks Completed:** 33 / 33
-**Current Task:** All tasks complete
+**Last Updated:** 2026-01-24 13:00:00
+**Phase:** Phase 8 (QA System)
+**Tasks Completed:** 1 / 33
+**Current Task:** Install agent-browser globally and create skill
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:00:00 - Create screenshots directory and gitkeep
+
+**What was done:**
+- Verified screenshots/ directory already exists (created in Phase 1)
+- Verified .gitkeep already present
+- Added screenshots exclusion pattern to .gitignore:
+  - `screenshots/*` excludes all PNG files
+  - `!screenshots/.gitkeep` preserves the gitkeep
+- Verified directory structure
+
+**Commands run:**
+- `ls -la screenshots/`
+- `grep -A3 "Screenshots" .gitignore`
+
+---
 
 ### 2026-01-24 12:50:00 - Complete Phase 7 integration tests and exports
 
