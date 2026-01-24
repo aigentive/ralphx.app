@@ -1,14 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:45:30
+**Last Updated:** 2026-01-24 21:47:15
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 43 / 63
-**Current Task:** Implement useMethodologies hook with TanStack Query
+**Tasks Completed:** 44 / 63
+**Current Task:** Create WorkflowSelector component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:47:15 - Implement useMethodologies hook with TanStack Query (Task 44)
+
+**What was done:**
+- Created `src/hooks/useMethodologies.ts` with TanStack Query hooks:
+  - Query keys: `methodologyKeys` factory for cache management
+  - Query hooks: `useMethodologies`, `useActiveMethodology`
+  - Mutation hooks: `useActivateMethodology`, `useDeactivateMethodology`
+  - Smart cross-store invalidation (invalidates workflow queries on methodology change)
+- Created `src/hooks/useMethodologies.test.ts` with 14 comprehensive tests covering:
+  - Query key generation for all key types
+  - All query hooks with success, empty, and error states
+  - Activation response with workflow and agent profile info
+  - All mutation hooks with success and error cases
+
+**Commands run:**
+- `npm test -- src/hooks/useMethodologies.test.ts` - 14 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:45:30 - Implement useResearch hooks with TanStack Query (Task 43)
 

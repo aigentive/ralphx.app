@@ -1290,7 +1290,7 @@ All tasks require tests written before implementation:
       "Implement useMethodologyMutations for activate/deactivate",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
