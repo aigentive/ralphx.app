@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 12:15:00
+**Last Updated:** 2026-01-24 12:20:00
 **Phase:** Foundation
-**Tasks Completed:** 1 / 19
-**Current Task:** Update Claude Code settings for agent-browser permissions
+**Tasks Completed:** 2 / 19
+**Current Task:** Update PROMPT.md with visual verification workflow
 
 ---
 
@@ -780,6 +780,26 @@ Phase 1: Foundation (no dependencies)
 - `agent-browser --version` → `agent-browser 0.7.5`
 - `mkdir -p .claude/skills/agent-browser`
 - `mkdir -p screenshots && touch screenshots/.gitkeep`
+
+---
+
+### 2026-01-24 12:20:00 - Update Claude Code settings for agent-browser permissions
+
+**What was done:**
+- Read current `.claude/settings.json`
+- Added 9 agent-browser Bash permissions from specs/plan.md:
+  - `Bash(agent-browser:*)`
+  - `Bash(agent-browser open:*)`
+  - `Bash(agent-browser snapshot:*)`
+  - `Bash(agent-browser screenshot:*)`
+  - `Bash(agent-browser click:*)`
+  - `Bash(agent-browser fill:*)`
+  - `Bash(agent-browser close:*)`
+  - `Bash(agent-browser get:*)`
+  - `Bash(agent-browser is:*)`
+  - `Bash(agent-browser wait:*)`
+- Merged with existing permissions
+- Validated JSON with `jq`
 
 ---
 
