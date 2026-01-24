@@ -1,14 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:35:44
+**Last Updated:** 2026-01-24 14:41:42
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 37 / 51
-**Current Task:** Integration test: AI review approve flow
+**Tasks Completed:** 38 / 51
+**Current Task:** Integration test: AI review needs_changes flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:41:42 - Integration test: AI review approve flow
+
+**What was done:**
+- Created `src-tauri/tests/review_flows.rs` integration test file with 14 tests:
+  - `test_ai_review_approve_flow` - Full flow: start review, process APPROVE outcome, verify records
+  - `test_ai_review_approve_state_machine_transition` - Verify PendingReview → Approved transition
+  - `test_ai_review_disabled` - Verify AI review respects disabled settings
+  - `test_ai_review_no_duplicate` - Cannot start duplicate review for same task
+  - `test_ai_review_stores_notes` - Verify notes are stored in review and review_notes
+  - `test_ai_review_records_completion_time` - Verify completed_at timestamp is set
+  - `test_ai_review_multiple_sequential` - Can start new review after completing previous
+  - `test_ai_review_with_custom_settings` - Settings with require_human_review
+  - `test_complete_review_input_approved` - Helper test for CompleteReviewInput
+  - `test_get_reviews_by_task_id` - Retrieve reviews by task
+  - `test_get_pending_reviews` - Get only pending reviews
+  - `test_count_pending_reviews` - Verify pending count accuracy
+  - `test_has_pending_review` - Detect pending review status
+  - `test_get_reviews_by_status` - Query reviews by status
+- Used `SqliteReviewRepository::from_shared()` and `SqliteTaskRepository::from_shared()` for shared connection
+- Separate in-memory SQLite connection for TaskStateMachineRepository (state machine tests)
+- All tests verify:
+  - Review lifecycle (Pending → Approved)
+  - Review notes and actions are recorded
+  - ReviewSettings integration (ai_disabled, require_human_review)
+  - Repository queries work correctly
+
+**Commands run:**
+- `cargo test --test review_flows` (14 tests passed)
+- `cargo clippy --all-targets` (passed, only pre-existing warnings)
+
+---
 
 ### 2026-01-24 14:35:44 - Implement review points detection
 
