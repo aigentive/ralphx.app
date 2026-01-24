@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:30:00
+**Last Updated:** 2026-01-24 08:35:00
 **Phase:** State Machine
-**Tasks Completed:** 5 / 22
-**Current Task:** Create mock service implementations for testing
+**Tasks Completed:** 6 / 22
+**Current Task:** Create TaskServices container and TaskContext struct
 
 ---
 
@@ -1799,6 +1799,30 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:35:00 - Create mock service implementations for testing
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/mocks.rs` with:
+  - ServiceCall struct for recording method calls
+  - MockAgentSpawner with call recording, spawn_count(), should_fail mode
+  - MockEventEmitter with event recording, event_count(), has_event()
+  - MockNotifier with notification recording and helpers
+  - MockDependencyManager with blocker state tracking
+- All mocks are thread-safe using Arc<Mutex<...>>
+- Updated mod.rs to export mock types
+- Wrote 26 comprehensive tests
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 417 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/mocks.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added mocks module export
 
 ---
 

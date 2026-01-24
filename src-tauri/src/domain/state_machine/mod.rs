@@ -6,11 +6,15 @@
 // - Async actions for agent spawning and event emission
 
 pub mod events;
+pub mod mocks;
 pub mod services;
 pub mod types;
 
 // Re-export key types
 pub use events::TaskEvent;
+pub use mocks::{
+    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, ServiceCall,
+};
 pub use services::{AgentSpawner, DependencyManager, EventEmitter, Notifier};
 pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
 
