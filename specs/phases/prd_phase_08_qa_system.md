@@ -562,7 +562,7 @@ All tasks require TDD:
       "Test JSON column handling",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
