@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:45:00
+**Last Updated:** 2026-01-24 14:10:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 14 / 51
-**Current Task:** Implement Tauri commands for fix tasks
+**Tasks Completed:** 15 / 51
+**Current Task:** Implement Review TypeScript types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:10:00 - Implement Tauri commands for fix tasks
+
+**What was done:**
+- Added fix task input/response types:
+  - `ApproveFixTaskInput` - for approving fix tasks
+  - `RejectFixTaskInput` - for rejecting with feedback and original task ID
+  - `FixTaskAttemptsResponse` - for returning fix attempt count
+- Created three new Tauri commands for fix task operations:
+  - `approve_fix_task(input)` - changes fix task from Blocked to Ready
+  - `reject_fix_task(input)` - marks fix as Failed, creates new fix or moves to backlog
+  - `get_fix_task_attempts(task_id)` - returns count of fix attempts for a task
+- Implemented fix task rejection logic:
+  - Uses ReviewSettings for max_fix_attempts check
+  - Creates new fix task with feedback when under limit
+  - Moves original task to backlog when max attempts exceeded
+  - Records review notes for history
+- Registered all fix task commands in `lib.rs` invoke_handler
+- Added 6 unit tests for fix task commands:
+  - test_approve_fix_task_success
+  - test_approve_fix_task_not_blocked_fails
+  - test_approve_fix_task_not_found
+  - test_reject_fix_task_creates_new_fix
+  - test_get_fix_task_attempts_zero
+  - test_fix_task_attempts_response_serialization
+
+**Commands run:**
+- `cargo test review_commands --no-default-features -- --test-threads=1` (15 passed)
+- `cargo clippy --no-default-features` (no new warnings from review code)
+
+---
 
 ### 2026-01-24 13:45:00 - Implement Tauri commands for reviews
 
