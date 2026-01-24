@@ -6,14 +6,18 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::agents::AgenticClient;
-use crate::domain::repositories::{AgentProfileRepository, ProjectRepository, TaskRepository};
+use crate::domain::qa::QASettings;
+use crate::domain::repositories::{
+    AgentProfileRepository, ProjectRepository, TaskQARepository, TaskRepository,
+};
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryAgentProfileRepository, MemoryProjectRepository, MemoryTaskRepository,
+    MemoryAgentProfileRepository, MemoryProjectRepository, MemoryTaskQARepository,
+    MemoryTaskRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
-    SqliteProjectRepository, SqliteTaskRepository,
+    SqliteProjectRepository, SqliteTaskQARepository, SqliteTaskRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -26,8 +30,12 @@ pub struct AppState {
     pub project_repo: Arc<dyn ProjectRepository>,
     /// Agent profile repository (SQLite in production)
     pub agent_profile_repo: Arc<dyn AgentProfileRepository>,
+    /// TaskQA repository for QA artifacts
+    pub task_qa_repo: Arc<dyn TaskQARepository>,
     /// Agent client (Claude Code in production, Mock for tests)
     pub agent_client: Arc<dyn AgenticClient>,
+    /// Global QA settings
+    pub qa_settings: Arc<tokio::sync::RwLock<QASettings>>,
 }
 
 impl AppState {
@@ -46,8 +54,12 @@ impl AppState {
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(shared_conn)),
+            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(shared_conn)),
             agent_client: Arc::new(ClaudeCodeClient::new()),
+            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         })
     }
 
@@ -64,8 +76,12 @@ impl AppState {
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(shared_conn)),
+            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(shared_conn)),
             agent_client: Arc::new(ClaudeCodeClient::new()),
+            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         })
     }
 
@@ -75,7 +91,9 @@ impl AppState {
             task_repo: Arc::new(MemoryTaskRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
+            task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
+            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         }
     }
 
@@ -88,13 +106,21 @@ impl AppState {
             task_repo,
             project_repo,
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
+            task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
+            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         }
     }
 
     /// Swap the agent client to a different implementation
     pub fn with_agent_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
         self.agent_client = client;
+        self
+    }
+
+    /// Swap the QA settings to custom settings
+    pub fn with_qa_settings(mut self, settings: QASettings) -> Self {
+        self.qa_settings = Arc::new(tokio::sync::RwLock::new(settings));
         self
     }
 }

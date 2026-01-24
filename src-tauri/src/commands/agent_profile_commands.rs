@@ -182,16 +182,7 @@ mod tests {
     use std::sync::Arc;
 
     fn setup_test_state() -> AppState {
-        let task_repo = Arc::new(MemoryTaskRepository::new());
-        let project_repo = Arc::new(MemoryProjectRepository::new());
-        let profile_repo = Arc::new(MemoryAgentProfileRepository::new());
-
-        AppState {
-            task_repo,
-            project_repo,
-            agent_profile_repo: profile_repo,
-            agent_client: Arc::new(crate::infrastructure::MockAgenticClient::new()),
-        }
+        AppState::new_test()
     }
 
     #[tokio::test]

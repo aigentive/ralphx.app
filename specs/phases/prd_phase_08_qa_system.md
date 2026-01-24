@@ -647,7 +647,7 @@ All tasks require TDD:
       "Create skip_qa command (bypass QA failure)",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
