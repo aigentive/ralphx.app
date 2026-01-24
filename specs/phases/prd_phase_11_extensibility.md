@@ -846,7 +846,7 @@ All tasks require tests written before implementation:
       "Export from infrastructure/sqlite/mod.rs",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
