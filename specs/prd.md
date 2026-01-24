@@ -174,7 +174,7 @@ Each phase PRD should follow this structure:
       "Verify all UI components and design tokens are covered"
     ],
     "output": "specs/phases/prd_phase_06_kanban_ui.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
