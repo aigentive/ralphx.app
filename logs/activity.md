@@ -1,14 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:50:00
+**Last Updated:** 2026-01-24 22:58:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 61 / 63
-**Current Task:** Integration test: GSD-specific task fields (wave, checkpoint)
+**Tasks Completed:** 62 / 63
+**Current Task:** Visual verification of extensibility UI components
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:58:00 - Integration test: GSD-specific task fields (Task 62)
+
+**What was done:**
+- Created `src-tauri/tests/gsd_integration.rs` with 20 comprehensive tests covering:
+  - Activate GSD methodology and verify 11-column workflow
+  - Verify checkpoint and discuss columns map to Blocked status
+  - Create tasks with wave=1 and checkpoint_type=human-verify
+  - Verify needs_review_point set for human-verify and human-action checkpoints
+  - Query tasks by wave for parallel execution (wave:1, wave:2, wave:3 filtering)
+  - Checkpoint transitions task to Blocked status
+  - Wave completion verification (all Wave 1 tasks must complete before Wave 2)
+  - GSD checkpoint types (auto, human-verify, decision, human-action)
+  - GSD workflow column behavior with agent profiles
+  - GSD 4-phase structure (Initialize, Plan, Execute, Verify)
+  - GSD 11 agent profiles verification
+  - Discuss column blocked status for clarification discussions
+- Wave/checkpoint info stored in task description (wave:N checkpoint:type)
+- Tests run with both Memory and SQLite repositories for consistency
+
+**Commands run:**
+- `cargo test --test gsd_integration` - 20 tests passed
 
 ### 2026-01-24 22:50:00 - Integration test: Methodology activation and deactivation (Task 61)
 

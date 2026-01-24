@@ -1547,7 +1547,7 @@ All tasks require tests written before implementation:
       "Test: Checkpoint transitions task to blocked status",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
