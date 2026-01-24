@@ -103,7 +103,7 @@ Each phase PRD should follow this structure:
       "Verify PRD tasks align with master plan - cross-reference each task"
     ],
     "output": "specs/phases/prd_phase_01_foundation.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
