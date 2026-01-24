@@ -5,12 +5,14 @@
 // - State-local data for QaFailed and Failed states
 // - Async actions for agent spawning and event emission
 
+pub mod context;
 pub mod events;
 pub mod mocks;
 pub mod services;
 pub mod types;
 
 // Re-export key types
+pub use context::{TaskContext, TaskServices};
 pub use events::TaskEvent;
 pub use mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, ServiceCall,
