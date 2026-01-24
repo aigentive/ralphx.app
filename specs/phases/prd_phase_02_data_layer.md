@@ -783,7 +783,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Verify app builds and health_check works",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -20,8 +20,12 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Create application state with production SQLite repositories
+    let app_state = AppState::new_production().expect("Failed to initialize AppState");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(app_state)
         .invoke_handler(tauri::generate_handler![greet, commands::health::health_check])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
