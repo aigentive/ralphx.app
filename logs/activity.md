@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:28:00
+**Last Updated:** 2026-01-24 15:32:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 20 / 51
-**Current Task:** Implement useReviews hook
+**Tasks Completed:** 21 / 51
+**Current Task:** Implement useReviewEvents hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:32:00 - Implement useReviews hook
+
+**What was done:**
+- Created `src/hooks/useReviews.ts` with TanStack Query:
+  - `reviewKeys` factory for query keys
+  - `usePendingReviews(projectId)` - fetches pending reviews for a project
+    - Syncs data to `reviewStore`
+    - Computed: `isEmpty`, `count`
+  - `useReviewsByTaskId(taskId)` - fetches all reviews for a task
+    - Computed: `hasAiReview`, `hasHumanReview`, `latestReview`
+  - `useTaskStateHistory(taskId)` - fetches state transition history
+    - Sorts by `created_at` descending (newest first)
+    - Computed: `isEmpty`, `latestEntry`
+- Created `src/hooks/useReviews.test.tsx` with 25 tests covering:
+  - Query key generation
+  - Data fetching and loading states
+  - Error handling
+  - Computed properties
+  - Edge cases (empty data, disabled queries)
+
+**Commands run:**
+- `npm run test -- src/hooks/useReviews.test.tsx` (25 tests passed)
+- `npm run typecheck` (passed)
+
+---
 
 ### 2026-01-24 15:28:00 - Implement reviewStore with Zustand
 
