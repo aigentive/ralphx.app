@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 12,
+  "currentPhase": 13,
   "phases": [
     {
       "phase": 0,
@@ -91,14 +91,14 @@
       "phase": 12,
       "name": "Reconciliation",
       "prd": "specs/phases/prd_phase_12_reconciliation.md",
-      "status": "active",
+      "status": "complete",
       "description": "Consolidate agents/skills into plugin, fix architectural inconsistencies"
     },
     {
       "phase": 13,
       "name": "Design System",
       "prd": "specs/phases/prd_phase_13_design.md",
-      "status": "pending",
+      "status": "active",
       "description": "Setup Lucide + shadcn/ui, create DESIGN.md with page requirements"
     },
     {
