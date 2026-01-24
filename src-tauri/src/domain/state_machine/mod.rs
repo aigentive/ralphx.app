@@ -7,6 +7,7 @@
 
 pub mod context;
 pub mod events;
+pub mod machine;
 pub mod mocks;
 pub mod services;
 pub mod types;
@@ -14,6 +15,7 @@ pub mod types;
 // Re-export key types
 pub use context::{TaskContext, TaskServices};
 pub use events::TaskEvent;
+pub use machine::{Response, State, TaskStateMachine};
 pub use mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, ServiceCall,
 };
@@ -22,6 +24,7 @@ pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use statig::prelude::*;
 
     // Simple test to verify statig imports work

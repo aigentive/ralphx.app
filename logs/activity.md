@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:40:00
+**Last Updated:** 2026-01-24 08:50:00
 **Phase:** State Machine
-**Tasks Completed:** 7 / 22
-**Current Task:** Implement TaskStateMachine idle states (Backlog, Ready, Blocked)
+**Tasks Completed:** 12 / 22
+**Current Task:** Add on_transition and on_dispatch hooks for logging
 
 ---
 
@@ -1799,6 +1799,35 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:50:00 - Implement TaskStateMachine with all states
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/machine.rs` with:
+  - TaskStateMachine struct holding TaskContext
+  - State enum with all 14 states (Backlog, Ready, Blocked, Executing, ExecutionDone, QaRefining, QaTesting, QaPassed, QaFailed, PendingReview, RevisionNeeded, Approved, Failed, Cancelled)
+  - Response enum for transition results (Handled, NotHandled, Transition)
+  - State helper methods: is_terminal(), is_idle(), is_active()
+  - Handler functions for all states
+  - dispatch() method to route events to correct state handler
+- All state transitions implemented per the PRD spec
+- State-local data (QaFailedData, FailedData) used for states that need it
+- Context updated appropriately during transitions (blockers, feedback, errors)
+- Updated mod.rs to export machine types
+- Wrote 28 comprehensive tests covering all transitions
+
+**Note:** Tasks 8-12 (idle states, execution, QA, review, terminal) were all implemented together in a single comprehensive state machine implementation.
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 470 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/machine.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added machine module export
 
 ---
 
