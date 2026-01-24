@@ -741,7 +741,7 @@ Every task follows the TDD cycle:
       "Apply dark theme to body",
       "Verify app renders with dark background"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
