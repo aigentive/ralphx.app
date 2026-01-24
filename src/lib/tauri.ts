@@ -282,6 +282,41 @@ export const ExecutionCommandResponseSchema = z.object({
 
 export type ExecutionCommandResponse = z.infer<typeof ExecutionCommandResponseSchema>;
 
+// ============================================================================
+// Task Injection Response Schemas (matching Rust responses)
+// ============================================================================
+
+/**
+ * Inject task response from Rust
+ * Note: field names use camelCase as that's what Rust serde produces with rename_all
+ */
+export const InjectTaskResponseSchema = z.object({
+  task: TaskSchema,
+  target: z.enum(["backlog", "planned"]),
+  priority: z.number().int(),
+  makeNextApplied: z.boolean(),
+});
+
+export type InjectTaskResponse = z.infer<typeof InjectTaskResponseSchema>;
+
+/**
+ * Input type for injecting a task mid-loop
+ */
+export interface InjectTaskInput {
+  /** The project ID to inject the task into */
+  projectId: string;
+  /** Title of the task */
+  title: string;
+  /** Optional description */
+  description?: string;
+  /** Category (defaults to "feature") */
+  category?: string;
+  /** Where to inject: "backlog" (deferred) or "planned" (immediate queue) */
+  target?: "backlog" | "planned";
+  /** If true and target is "planned", make this task the highest priority */
+  makeNext?: boolean;
+}
+
 /**
  * API object containing all typed Tauri command wrappers
  */
@@ -343,6 +378,17 @@ export const api = {
      */
     move: (taskId: string, toStatus: string) =>
       typedInvoke("move_task", { taskId, toStatus }, TaskSchema),
+
+    /**
+     * Inject a task mid-loop
+     * Tasks can be sent to backlog (deferred) or planned (immediate queue).
+     * If makeNext is true and target is "planned", the task gets the highest priority.
+     * Emits a task:created event on success.
+     * @param input Inject task input
+     * @returns The inject task response with created task and injection details
+     */
+    inject: (input: InjectTaskInput) =>
+      typedInvoke("inject_task", { input }, InjectTaskResponseSchema),
   },
 
   projects: {

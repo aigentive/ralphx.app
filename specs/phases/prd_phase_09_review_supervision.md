@@ -918,7 +918,7 @@ interface AskUserQuestionResponse {
       "Emit task:created event",
       "Run tauri dev to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

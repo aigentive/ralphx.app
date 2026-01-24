@@ -1,14 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:19:30
+**Last Updated:** 2026-01-24 14:23:11
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 35 / 51
-**Current Task:** Implement task injection functionality
+**Tasks Completed:** 36 / 51
+**Current Task:** Implement review points detection
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:23:11 - Implement task injection functionality
+
+**What was done:**
+- Created `inject_task` Tauri command in `src-tauri/src/commands/task_commands.rs`:
+  - Input struct `InjectTaskInput` with projectId, title, description, category, target, makeNext (camelCase serde)
+  - Response struct `InjectTaskResponse` with task, target, priority, makeNextApplied
+  - Target options: "backlog" (Backlog status) or "planned" (Ready status)
+  - makeNext option: Sets priority to max(existing Ready tasks) + 1000 for highest priority
+  - Emits `task:created` event with taskId, projectId, title, status, priority, injected flag
+- Added 11 integration tests covering:
+  - Input deserialization (minimal, full, invalid target)
+  - Response serialization (camelCase format)
+  - Backlog injection (Backlog status, priority 0)
+  - Planned injection (Ready status)
+  - makeNext priority calculation (max priority + 1000)
+  - makeNext with empty queue (0 + 1000 = 1000)
+  - Custom category and description handling
+- Updated `src-tauri/src/commands/mod.rs` to export `inject_task`
+- Registered command in `src-tauri/src/lib.rs` invoke_handler
+- Added TypeScript API wrapper in `src/lib/tauri.ts`:
+  - `InjectTaskResponseSchema` with Zod validation
+  - `InjectTaskInput` interface with all fields typed
+  - `api.tasks.inject()` method that calls `inject_task` command
+
+**Commands run:**
+- `cargo test --lib task_commands` (23 tests passed)
+- `cargo clippy --all-targets` (passed, only pre-existing warnings)
+- `npm run typecheck` (passed)
+- `npm run test -- --run` (1359 tests passed)
+
+---
 
 ### 2026-01-24 14:19:30 - Implement execution control store and hooks
 
