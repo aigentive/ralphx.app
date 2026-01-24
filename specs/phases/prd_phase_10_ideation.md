@@ -1019,7 +1019,7 @@ All tasks require:
       "  - clearError()",
       "Export from src/stores/ideationStore.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
