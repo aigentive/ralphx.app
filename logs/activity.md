@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:44:16
+**Last Updated:** 2026-01-24 17:47:20
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 41 / 50
-**Current Task:** Create ProposalCard component
+**Tasks Completed:** 42 / 50
+**Current Task:** Create ProposalList component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:47:20 - Create ProposalCard component
+
+**What was done:**
+- Created `src/components/Ideation/ProposalCard.tsx` with:
+  - Checkbox for selection with accessible label
+  - Title and description preview (with line clamping)
+  - Priority badge with color coding (Critical=#ef4444, High=#ff6b35, Medium=#ffa94d, Low=#6b7280)
+  - Category badge
+  - Dependency info (depends on X, blocks Y) with icons
+  - Edit and Remove action buttons (visible on hover)
+  - Selected state with orange border (#ff6b35) and increased border width
+  - Modified indicator badge
+  - Support for userPriority override
+  - Optional complexity indicator
+  - Article role with aria-labelledby for accessibility
+- Created `src/components/Ideation/ProposalCard.test.tsx` with 46 unit tests covering:
+  - Rendering (container, title, description, placeholder)
+  - Checkbox (checked/unchecked, click handler, accessibility)
+  - Priority badge (all 4 levels with correct colors, user override)
+  - Category badge (all categories)
+  - Dependency info (depends on, blocks, both, singular/plural)
+  - Action buttons (edit, remove, hover visibility, accessibility)
+  - Selected state (orange vs subtle border)
+  - Modified indicator (shown/hidden, text)
+  - Accessibility (article role, aria-labelledby, keyboard)
+  - Styling (background, rounded, border, transition)
+  - Complexity indicator (shown/hidden, value)
+- Created `src/components/Ideation/index.ts` for exports
+
+**Commands run:**
+- `npm test -- --run src/components/Ideation/ProposalCard.test.tsx` (46 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1915 tests passed)
+
+---
 
 ### 2026-01-24 17:44:16 - Create ChatInput component
 
