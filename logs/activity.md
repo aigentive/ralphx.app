@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:01:12
+**Last Updated:** 2026-01-24 15:05:21
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 48 / 51
-**Current Task:** Add TaskCard click to open TaskDetailView
+**Tasks Completed:** 49 / 51
+**Current Task:** Visual verification of review components
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:05:21 - Add TaskCard click to open TaskDetailView
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/Column.tsx`:
+  - Added `onTaskSelect` optional prop
+  - Pass `onSelect` to TaskCard using spread to satisfy exactOptionalPropertyTypes
+- Updated `src/components/tasks/TaskBoard/TaskBoard.tsx`:
+  - Added `useUiStore` import for modal handling
+  - Added `handleTaskSelect` callback that opens "task-detail" modal with task context
+  - Pass `onTaskSelect` to Column components
+- Updated `src/App.tsx`:
+  - Added `TaskDetailView` import
+  - Added `selectedTask` computed value from modalContext
+  - Added TaskDetailView modal with overlay, close button, and content
+- Fixed TypeScript strictness issues:
+  - Used spread pattern for optional onSelect prop
+  - Extracted Task from modalContext before JSX to avoid unknown type in JSX
+- All tests pass (26 tests across 3 files)
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- --run src/App.test.tsx src/components/tasks/TaskBoard/TaskBoard.test.tsx src/components/tasks/TaskBoard/Column.test.tsx` (26 tests passed)
+
+---
 
 ### 2026-01-24 15:01:12 - Integrate AskUserQuestionModal with App
 

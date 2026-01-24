@@ -10,6 +10,7 @@ interface ColumnProps {
   column: BoardColumn;
   isOver?: boolean;
   isInvalid?: boolean;
+  onTaskSelect?: (taskId: string) => void;
 }
 
 function InvalidDropIcon() {
@@ -23,7 +24,7 @@ function InvalidDropIcon() {
   );
 }
 
-export function Column({ column, isOver, isInvalid }: ColumnProps) {
+export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
 
   const getBorderColor = () => {
@@ -53,7 +54,11 @@ export function Column({ column, isOver, isInvalid }: ColumnProps) {
       {/* Task list */}
       <div className="p-2 space-y-2 min-h-[100px]">
         {column.tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard
+            key={task.id}
+            task={task}
+            {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
+          />
         ))}
       </div>
     </div>
