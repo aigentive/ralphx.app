@@ -1138,7 +1138,7 @@ All tasks require:
       "  - Invalidate task queries on success",
       "Export from src/hooks/useApplyProposals.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
