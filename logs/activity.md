@@ -3,12 +3,34 @@
 ## Current Status
 **Last Updated:** 2026-01-24 16:00:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 1 / 51
-**Current Task:** Create review_actions table migration
+**Tasks Completed:** 2 / 51
+**Current Task:** Create review_notes table migration
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:08:00 - Create review_actions table migration
+
+**What was done:**
+- Added migration v8 for the review_actions table
+- Created review_actions table with columns: id, review_id, action_type, target_task_id, created_at
+- Added indexes on review_id and target_task_id for efficient queries
+- CASCADE DELETE on review_id foreign key
+- Added 10 integration tests covering:
+  - Table existence and column verification
+  - Both indexes exist
+  - Cascade delete behavior when review is deleted
+  - All action types (created_fix_task, moved_to_backlog, approved)
+  - Nullable target_task_id
+  - Default created_at timestamp
+  - Multiple actions per review
+  - Lookup by target task ID
+
+**Commands run:**
+- `cargo test migrations --no-default-features -- --test-threads=1`
+
+---
 
 ### 2026-01-24 16:00:00 - Create reviews table migration
 

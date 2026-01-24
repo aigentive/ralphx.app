@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 7;
+pub const SCHEMA_VERSION: i32 = 8;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -50,6 +50,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 7 {
         migrate_v7(conn)?;
         set_schema_version(conn, 7)?;
+    }
+
+    if current_version < 8 {
+        migrate_v8(conn)?;
+        set_schema_version(conn, 8)?;
     }
 
     Ok(())
@@ -391,6 +396,43 @@ fn migrate_v7(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v8: Create review_actions table for tracking review actions
+///
+/// The review_actions table tracks actions taken on reviews:
+/// - When fix tasks are created
+/// - When tasks are moved to backlog
+/// - When reviews are approved
+fn migrate_v8(conn: &Connection) -> AppResult<()> {
+    // Review actions table
+    conn.execute(
+        "CREATE TABLE review_actions (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+            action_type TEXT NOT NULL,
+            target_task_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on review_id for efficient lookup
+    conn.execute(
+        "CREATE INDEX idx_review_actions_review_id ON review_actions(review_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on target_task_id for finding actions related to a task
+    conn.execute(
+        "CREATE INDEX idx_review_actions_target_task_id ON review_actions(target_task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,7 +440,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 7);
+        assert_eq!(SCHEMA_VERSION, 8);
     }
 
     #[test]
@@ -475,7 +517,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
@@ -488,7 +530,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
@@ -2481,5 +2523,396 @@ mod tests {
             .unwrap();
 
         assert_eq!(approved_count, 1);
+    }
+
+    // ==================
+    // V8 Migration Tests: review_actions table
+    // ==================
+
+    #[test]
+    fn test_run_migrations_creates_review_actions_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify review_actions table exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='review_actions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_review_actions_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, and review first
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Fix Task')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        // Try inserting a complete review action record
+        let result = conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type, target_task_id)
+             VALUES ('action-1', 'rev-1', 'created_fix_task', 'task-2')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_review_actions_index_on_review_id_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_review_actions_review_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_review_actions_index_on_target_task_id_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_review_actions_target_task_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_review_actions_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, review, and action
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type)
+             VALUES ('action-1', 'rev-1', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // Delete the review
+        conn.execute("DELETE FROM reviews WHERE id = 'rev-1'", []).unwrap();
+
+        // Review action should be gone
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM review_actions WHERE review_id = 'rev-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_review_actions_all_action_types() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, and review
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        // Test all action types
+        let action_types = ["created_fix_task", "moved_to_backlog", "approved"];
+        for (i, action_type) in action_types.iter().enumerate() {
+            let action_id = format!("action-{}", i);
+            conn.execute(
+                &format!(
+                    "INSERT INTO review_actions (id, review_id, action_type)
+                     VALUES ('{}', 'rev-1', '{}')",
+                    action_id, action_type
+                ),
+                [],
+            )
+            .unwrap();
+
+            let stored: String = conn
+                .query_row(
+                    &format!("SELECT action_type FROM review_actions WHERE id = '{}'", action_id),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+
+            assert_eq!(&stored, *action_type);
+        }
+    }
+
+    #[test]
+    fn test_review_actions_target_task_id_can_be_null() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, and review
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        // Insert action without target_task_id
+        conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type)
+             VALUES ('action-1', 'rev-1', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // Verify target_task_id is NULL
+        let target_task_id: Option<String> = conn
+            .query_row(
+                "SELECT target_task_id FROM review_actions WHERE id = 'action-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(target_task_id.is_none());
+    }
+
+    #[test]
+    fn test_review_actions_created_at_default() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, and review
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        // Insert action without created_at
+        conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type)
+             VALUES ('action-1', 'rev-1', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // created_at should not be null
+        let created_at: Option<String> = conn
+            .query_row(
+                "SELECT created_at FROM review_actions WHERE id = 'action-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(created_at.is_some());
+    }
+
+    #[test]
+    fn test_review_actions_multiple_per_review() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, task, and review
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-fix', 'proj-1', 'feature', 'Fix Task')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        // Insert multiple actions for same review
+        conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type, target_task_id)
+             VALUES ('action-1', 'rev-1', 'created_fix_task', 'task-fix')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type)
+             VALUES ('action-2', 'rev-1', 'approved')",
+            [],
+        )
+        .unwrap();
+
+        // Both should exist
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM review_actions WHERE review_id = 'rev-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_review_actions_lookup_by_target_task() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project, tasks, and review
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-fix', 'proj-1', 'feature', 'Fix Task')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO reviews (id, project_id, task_id, reviewer_type)
+             VALUES ('rev-1', 'proj-1', 'task-1', 'ai')",
+            [],
+        )
+        .unwrap();
+
+        // Insert action with target task
+        conn.execute(
+            "INSERT INTO review_actions (id, review_id, action_type, target_task_id)
+             VALUES ('action-1', 'rev-1', 'created_fix_task', 'task-fix')",
+            [],
+        )
+        .unwrap();
+
+        // Look up by target task
+        let review_id: String = conn
+            .query_row(
+                "SELECT review_id FROM review_actions WHERE target_task_id = 'task-fix'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(review_id, "rev-1");
     }
 }
