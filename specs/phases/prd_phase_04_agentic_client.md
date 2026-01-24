@@ -703,7 +703,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Verify tokio has process feature enabled",
       "Run cargo build to verify dependencies resolve"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -717,7 +717,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Define AgentResult<T> type alias",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -731,7 +731,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Derive Debug, Clone, PartialEq, Eq for both",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -744,7 +744,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Derive Debug, Clone",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -757,7 +757,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Derive Debug, Clone",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -771,7 +771,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Derive Debug, Clone, PartialEq, Eq, Hash",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -784,7 +784,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Derive Debug, Clone, Default where appropriate",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -798,7 +798,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Mark trait with #[async_trait] and Send + Sync bounds",
       "Run cargo build to verify trait compiles"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -814,7 +814,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Use Arc<RwLock<...>> for thread-safe response/call storage",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -830,7 +830,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Add models: claude-sonnet-4-5-20250929 (Sonnet 4.5), claude-opus-4-5-20251101 (Opus 4.5), claude-haiku-4-5-20251001 (Haiku 4.5)",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -841,7 +841,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Implement is_available() checking if CLI path exists",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -855,7 +855,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Return AgentHandle with new UUID",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -867,7 +867,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Handle NotFound error for missing handles",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -880,7 +880,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Handle NotFound for missing handles",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -891,7 +891,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Wait for completion and return AgentResponse",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -903,7 +903,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Return Pin<Box<dyn Stream<...>>>",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -916,7 +916,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Add assert_marker(output, marker) helper",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -929,7 +929,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Implement spawn, spawn_background, wait_for methods",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -944,7 +944,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Add with_agent_client method",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -956,7 +956,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Verify stream_response returns mock chunks",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -967,7 +967,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Use #[ignore] for tests that require real CLI (run manually)",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -979,7 +979,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Document cost estimate in test comment",
       "Run with cargo test -- --ignored when ready"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -993,7 +993,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Re-export test utilities: test_prompts",
       "Run cargo build"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

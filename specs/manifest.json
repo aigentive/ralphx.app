@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 4,
+  "currentPhase": 5,
   "phases": [
     {
       "phase": 0,
@@ -35,14 +35,14 @@
       "phase": 4,
       "name": "Agentic Client",
       "prd": "specs/phases/prd_phase_04_agentic_client.md",
-      "status": "active",
+      "status": "complete",
       "description": "Agent abstraction, Claude Code client, mock client"
     },
     {
       "phase": 5,
       "name": "Frontend Core",
       "prd": "specs/phases/prd_phase_05_frontend_core.md",
-      "status": "pending",
+      "status": "active",
       "description": "React setup, Zustand stores, Tauri bindings, events"
     },
     {
