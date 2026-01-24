@@ -1,0 +1,91 @@
+{
+  "project": "RalphX",
+  "masterPlan": "specs/plan.md",
+  "currentPhase": 0,
+  "phases": [
+    {
+      "phase": 0,
+      "name": "PRD Generation",
+      "prd": "specs/prd.md",
+      "status": "active",
+      "description": "Generate phase-specific PRDs from master plan"
+    },
+    {
+      "phase": 1,
+      "name": "Foundation",
+      "prd": "specs/phases/prd_phase_01_foundation.md",
+      "status": "pending",
+      "description": "Project setup, Tauri, React, TypeScript, basic types"
+    },
+    {
+      "phase": 2,
+      "name": "Data Layer",
+      "prd": "specs/phases/prd_phase_02_data_layer.md",
+      "status": "pending",
+      "description": "Repository pattern, SQLite, migrations"
+    },
+    {
+      "phase": 3,
+      "name": "State Machine",
+      "prd": "specs/phases/prd_phase_03_state_machine.md",
+      "status": "pending",
+      "description": "statig, 14 internal statuses, transitions, side effects"
+    },
+    {
+      "phase": 4,
+      "name": "Agentic Client",
+      "prd": "specs/phases/prd_phase_04_agentic_client.md",
+      "status": "pending",
+      "description": "Agent abstraction, Claude Code client, mock client"
+    },
+    {
+      "phase": 5,
+      "name": "Frontend Core",
+      "prd": "specs/phases/prd_phase_05_frontend_core.md",
+      "status": "pending",
+      "description": "React setup, Zustand stores, Tauri bindings, events"
+    },
+    {
+      "phase": 6,
+      "name": "Kanban UI",
+      "prd": "specs/phases/prd_phase_06_kanban_ui.md",
+      "status": "pending",
+      "description": "TaskBoard, columns, drag-drop, task cards"
+    },
+    {
+      "phase": 7,
+      "name": "Agent System",
+      "prd": "specs/phases/prd_phase_07_agent_system.md",
+      "status": "pending",
+      "description": "Worker, reviewer, supervisor agents, skills, hooks"
+    },
+    {
+      "phase": 8,
+      "name": "QA System",
+      "prd": "specs/phases/prd_phase_08_qa_system.md",
+      "status": "pending",
+      "description": "QA prep/testing, visual verification"
+    },
+    {
+      "phase": 9,
+      "name": "Review & Supervision",
+      "prd": "specs/phases/prd_phase_09_review_supervision.md",
+      "status": "pending",
+      "description": "Review workflow, watchdog, human-in-loop"
+    },
+    {
+      "phase": 10,
+      "name": "Ideation",
+      "prd": "specs/phases/prd_phase_10_ideation.md",
+      "status": "pending",
+      "description": "Chat interface, ideation view, proposals, priority"
+    },
+    {
+      "phase": 11,
+      "name": "Extensibility",
+      "prd": "specs/phases/prd_phase_11_extensibility.md",
+      "status": "pending",
+      "description": "Custom workflows, methodologies, artifacts"
+    }
+  ]
+}
