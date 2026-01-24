@@ -455,7 +455,7 @@ const qaPrepProfile = {
       "Verify .claude/commands/ still exists if used",
       "Run git status to confirm cleanup"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
