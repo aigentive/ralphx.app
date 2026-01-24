@@ -1,14 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:15:00
+**Last Updated:** 2026-01-24 17:44:16
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 40 / 50
-**Current Task:** Create ChatInput component
+**Tasks Completed:** 41 / 50
+**Current Task:** Create ProposalCard component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:44:16 - Create ChatInput component
+
+**What was done:**
+- Created `src/components/Chat/ChatInput.tsx` with:
+  - Auto-resize textarea (min 40px, max 120px height)
+  - Send button with loading state indicator
+  - Enter to send, Shift+Enter for newline behavior
+  - Disabled state while sending
+  - Attach button placeholder (disabled, for future functionality)
+  - Support for both controlled and uncontrolled modes
+  - Accessible labels and ARIA attributes
+  - Helper text showing keyboard shortcuts
+  - Auto-focus option
+- Created `src/components/Chat/ChatInput.test.tsx` with 39 unit tests covering:
+  - Rendering (textarea, send button, attach button, placeholder)
+  - Textarea behavior (value updates, clearing, accessibility)
+  - Auto-resize styles (minHeight, maxHeight)
+  - Send behavior (button click, Enter key, Shift+Enter, empty/whitespace)
+  - Disabled state (textarea, buttons, loading indicator)
+  - Attach button (placeholder, disabled, tooltip)
+  - Accessibility (aria-labels, helper text)
+  - Focus behavior (focusable, autoFocus prop)
+  - Styling (dark surface, accent colors, disabled opacity)
+  - Error handling (preserves value on send failure)
+- Updated `src/components/Chat/index.ts` to export ChatInput
+
+**Commands run:**
+- `npm test -- --run src/components/Chat/ChatInput.test.tsx` (39 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1869 tests passed)
+
+---
 
 ### 2026-01-24 20:15:00 - Create ChatMessage component
 
