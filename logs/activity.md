@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:52:17
+**Last Updated:** 2026-01-24 21:54:36
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 46 / 63
-**Current Task:** Create ArtifactCard component
+**Tasks Completed:** 47 / 63
+**Current Task:** Create ArtifactBrowser component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:54:36 - Create ArtifactCard component (Task 47)
+
+**What was done:**
+- Created `src/components/artifacts/ArtifactCard.tsx` with features:
+  - Displays artifact name and type badge with category coloring
+  - Formatted timestamp display
+  - Version badge (shown only when version > 1)
+  - Content type indicator (inline/file icons)
+  - Click handling for selection with disabled state support
+  - Selected state styling with accent border
+  - Uses design tokens for anti-AI-slop styling
+  - Component under 100 lines (70 lines)
+- Created `src/components/artifacts/ArtifactCard.test.tsx` with 26 comprehensive tests covering:
+  - Rendering artifact info
+  - Version display logic
+  - Click handling and selection
+  - Type badge category colors (document, code, process, context, log)
+  - Accessibility (button role, aria-pressed, accessible name)
+  - Styling with design tokens
+  - Content type indicators
+
+**Commands run:**
+- `npm test -- src/components/artifacts/ArtifactCard.test.tsx --run` - 26 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:52:17 - Create WorkflowEditor component (Task 46)
 
