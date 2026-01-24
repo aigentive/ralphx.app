@@ -430,7 +430,7 @@ pub struct MockNotifier {
       "Derive Debug, Clone, Serialize, Deserialize",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

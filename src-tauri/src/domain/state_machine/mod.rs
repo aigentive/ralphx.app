@@ -6,9 +6,11 @@
 // - Async actions for agent spawning and event emission
 
 pub mod events;
+pub mod types;
 
 // Re-export key types
 pub use events::TaskEvent;
+pub use types::{Blocker, QaFailure};
 
 #[cfg(test)]
 mod tests {

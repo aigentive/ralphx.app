@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:15:00
+**Last Updated:** 2026-01-24 08:20:00
 **Phase:** State Machine
-**Tasks Completed:** 2 / 22
-**Current Task:** Create Blocker and QaFailure structs
+**Tasks Completed:** 3 / 22
+**Current Task:** Create state-local data structs (QaFailedData, FailedData)
 
 ---
 
@@ -1799,6 +1799,30 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:20:00 - Create Blocker and QaFailure structs
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/types.rs` with:
+  - Blocker struct with id and resolved fields
+  - Helper methods: new(), human_input(), is_human_input(), resolve(), as_resolved()
+  - QaFailure struct for test failure details
+  - Constructors: new(), assertion_failure(), visual_failure()
+  - Builder method: with_screenshot()
+  - Default trait for both structs
+- Updated mod.rs to export types module and re-export Blocker, QaFailure
+- Wrote 24 comprehensive tests
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 362 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/types.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added types module export
 
 ---
 
