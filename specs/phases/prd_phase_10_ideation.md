@@ -1218,7 +1218,7 @@ All tasks require:
       "Apply anti-AI-slop design (no purple, warm orange accent)",
       "Export from src/components/Ideation/ProposalCard.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
