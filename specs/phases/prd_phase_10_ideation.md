@@ -1408,7 +1408,7 @@ All tasks require:
       "Verify chat context is updated",
       "Verify empty proposals list shown"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -1422,7 +1422,7 @@ All tasks require:
       "Verify dependencies preserved",
       "Verify session status updated"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -1434,7 +1434,7 @@ All tasks require:
       "Verify scores match expected factor calculations",
       "Verify priority mappings correct (80+ = Critical, etc.)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -1446,7 +1446,7 @@ All tasks require:
       "Verify warning returned about cycle",
       "Verify apply blocked or warnings shown"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
