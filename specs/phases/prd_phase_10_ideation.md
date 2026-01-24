@@ -999,7 +999,7 @@ All tasks require:
       "  - getTaskMessages(taskId)",
       "Export from src/api/chat.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

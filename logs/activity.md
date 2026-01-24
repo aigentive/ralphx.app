@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:15:00
+**Last Updated:** 2026-01-24 19:20:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 28 / 50
-**Current Task:** Create Tauri API wrappers for chat
+**Tasks Completed:** 29 / 50
+**Current Task:** Create ideationStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:20:00 - Create Tauri API wrappers for chat
+
+**What was done:**
+- Created `src/api/chat.ts` with type-safe Tauri invoke wrappers:
+  - `sendChatMessage(context, input)` - Send message to session/project/task
+  - `sendMessageWithContext(chatContext, content)` - Send using ChatContext type
+  - `getSessionMessages(sessionId)` - Get all messages for a session
+  - `getRecentSessionMessages(sessionId, limit)` - Get recent messages with limit
+  - `getProjectMessages(projectId)` - Get all project messages
+  - `getTaskMessages(taskId)` - Get all task messages
+  - `deleteChatMessage(messageId)` - Delete a single message
+  - `deleteSessionMessages(sessionId)` - Delete all session messages
+  - `countSessionMessages(sessionId)` - Count messages in session
+- Input types: SendMessageInput, MessageContext
+- Context-aware message routing based on ChatContext view type
+- Zod schema validation for all responses
+- Created `src/api/chat.test.ts` with 32 unit tests
+- Namespace export as `chatApi` for alternative usage pattern
+
+**Commands run:**
+- `npm test -- --run src/api/chat.test.ts` (32 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1566 tests passed)
+
+---
 
 ### 2026-01-24 19:15:00 - Create Tauri API wrappers for proposals
 
