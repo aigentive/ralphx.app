@@ -7,4 +7,4 @@ pub mod actions;
 
 pub use events::{SupervisorEvent, ToolCallInfo, ErrorInfo, ProgressInfo};
 pub use patterns::{ToolCallWindow, DetectionResult, Pattern};
-pub use actions::{SupervisorAction, Severity};
+pub use actions::{action_for_detection, action_for_severity, SupervisorAction, Severity};
