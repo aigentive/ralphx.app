@@ -678,7 +678,7 @@ All tasks require TDD:
       "Export from api/qa.ts",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

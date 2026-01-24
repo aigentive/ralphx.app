@@ -1,14 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:38:00
+**Last Updated:** 2026-01-24 14:42:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 18 / 33
-**Current Task:** Create Tauri API wrappers for QA
+**Tasks Completed:** 19 / 33
+**Current Task:** Create qaStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:42:00 - Create Tauri API wrappers for QA
+
+**What was done:**
+- Added QA response schemas to `src/lib/tauri.ts`:
+  - `AcceptanceCriterionResponseSchema`: Matches Rust response with criteria_type field
+  - `QATestStepResponseSchema`: For test step data
+  - `QAStepResultResponseSchema`: For individual step results
+  - `QAResultsResponseSchema`: For overall test results
+  - `TaskQAResponseSchema`: Full TaskQA record with all 3 phases
+  - `UpdateQASettingsInput` interface for partial settings updates
+- Added QA API wrappers to the `api` object:
+  - `api.qa.getSettings()`: Get global QA settings
+  - `api.qa.updateSettings(input)`: Partial update of QA settings
+  - `api.qa.getTaskQA(taskId)`: Get TaskQA record for a task
+  - `api.qa.getResults(taskId)`: Get QA test results
+  - `api.qa.retry(taskId)`: Reset test results for re-testing
+  - `api.qa.skip(taskId)`: Skip QA by marking all steps as skipped
+- Added 25 new tests to `src/lib/tauri.test.ts` covering:
+  - getSettings: Command call, response parsing, schema validation
+  - updateSettings: Partial updates, return value verification
+  - getTaskQA: Null handling, acceptance criteria parsing, test steps, results
+  - getResults: Null when no results, step result parsing, validation
+  - retry: Command call, error propagation
+  - skip: Command call, skipped status verification
+- All 698 TypeScript tests passing
+
+**Commands run:**
+- `npm test -- src/lib/tauri.test.ts --reporter=verbose`
+- `npm run typecheck`
+- `npm test`
+
+---
 
 ### 2026-01-24 13:38:00 - Create TypeScript QA types and Zod schemas
 
