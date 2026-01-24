@@ -1,14 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 18:25:00
+**Last Updated:** 2026-01-24 18:35:00
 **Phase:** Phase 10 (Ideation)
 **Tasks Completed:** 24 / 50
-**Current Task:** Register ideation commands in Tauri builder
+**Current Task:** Create TypeScript types for ideation system
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:35:00 - Register ideation commands in Tauri builder
+
+**What was done:**
+- Updated `src-tauri/src/lib.rs` to register all ideation commands:
+  - Ideation session commands (6)
+  - Task proposal commands (10)
+  - Dependency and apply commands (8)
+  - Chat message commands (8)
+- Total: 32 new commands registered in invoke_handler
+
+**Commands run:**
+- `cargo build` (successful)
+- `cargo test --lib` (2078 tests passed)
+
+---
 
 ### 2026-01-24 18:25:00 - Create Tauri commands for chat messages
 
