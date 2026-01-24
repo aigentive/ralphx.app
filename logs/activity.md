@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:00:00
-**Phase:** Data Layer
-**Tasks Completed:** 20 / 20
-**Current Task:** All tasks complete - Phase 2 finished
+**Last Updated:** 2026-01-24 08:10:00
+**Phase:** State Machine
+**Tasks Completed:** 1 / 22
+**Current Task:** Create TaskEvent enum with all transition triggers
 
 ---
 
@@ -1799,6 +1799,27 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:10:00 - Add statig crate and tokio dependencies
+
+**What was done:**
+- Added `statig = { version = "0.3", features = ["async"] }` to Cargo.toml
+- Updated tokio to use `features = ["full"]` instead of limited features
+- Added `tracing = "0.1"` for transition logging
+- Created `src-tauri/src/domain/state_machine/mod.rs` module structure
+- Added state_machine module export to domain/mod.rs
+- Wrote 2 tests verifying statig imports and tokio full features work
+
+**Commands run:**
+- `cargo build --manifest-path src-tauri/Cargo.toml` - succeeded
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 310 tests pass
+
+**Files modified:**
+- `src-tauri/Cargo.toml` - added statig, tracing, updated tokio
+- `src-tauri/src/domain/mod.rs` - added state_machine module export
+- `src-tauri/src/domain/state_machine/mod.rs` - new module with tests
 
 ---
 

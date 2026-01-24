@@ -403,7 +403,7 @@ pub struct MockNotifier {
       "Add tracing = \"0.1\" for transition logging",
       "Run cargo build to verify dependencies resolve"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
