@@ -719,7 +719,7 @@ interface AskUserQuestionResponse {
       "Add to EventProvider",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

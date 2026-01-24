@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:32:00
+**Last Updated:** 2026-01-24 13:33:11
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 21 / 51
-**Current Task:** Implement useReviewEvents hook
+**Tasks Completed:** 22 / 51
+**Current Task:** Implement ReviewStatusBadge component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:33:11 - Implement useReviewEvents hook
+
+**What was done:**
+- Updated `src/hooks/useEvents.ts` with full `useReviewEvents` implementation:
+  - Listens to `review:update` Tauri events
+  - Validates events with `ReviewEventSchema` from `@/types/events`
+  - Invalidates TanStack Query caches on review events:
+    - Always invalidates `["reviews", "pending"]` for all event types
+    - For "completed" events, also invalidates task-specific queries:
+      - `["reviews", "byTask", taskId]`
+      - `["reviews", "stateHistory", taskId]`
+  - Uses `useQueryClient()` hook for cache access
+- Added 10 new tests to `src/hooks/useEvents.test.tsx` covering:
+  - Event listener setup and cleanup
+  - Cache invalidation for all event types (started, completed, needs_human, fix_proposed)
+  - Task-specific query invalidation
+  - Error handling for invalid payloads
+- Hook is already registered in `EventProvider` (from Phase 5)
+
+**Commands run:**
+- `npm run test -- src/hooks/useEvents.test.tsx` (28 tests passed)
+- `npm run typecheck` (passed)
+
+---
 
 ### 2026-01-24 15:32:00 - Implement useReviews hook
 

@@ -1,7 +1,14 @@
+import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { useTaskEvents, useAgentEvents, useSupervisorAlerts } from "./useEvents";
+import {
+  useTaskEvents,
+  useAgentEvents,
+  useSupervisorAlerts,
+  useReviewEvents,
+} from "./useEvents";
 import { useTaskStore } from "@/stores/taskStore";
 import { useActivityStore } from "@/stores/activityStore";
 import type { Task } from "@/types/task";
@@ -405,6 +412,218 @@ describe("useSupervisorAlerts", () => {
 
     await waitFor(() => {
       expect(mockUnlisten).toHaveBeenCalled();
+    });
+  });
+});
+
+describe("useReviewEvents", () => {
+  const eventCallbacks: Record<string, (event: { payload: unknown }) => void> = {};
+  const mockInvalidateQueries = vi.fn();
+
+  beforeEach(() => {
+    Object.keys(eventCallbacks).forEach((key) => delete eventCallbacks[key]);
+    mockListen.mockReset();
+    mockUnlisten.mockReset();
+    mockInvalidateQueries.mockReset();
+
+    mockListen.mockImplementation(
+      (eventName: string, callback: (event: { payload: unknown }) => void) => {
+        eventCallbacks[eventName] = callback;
+        return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
+      }
+    );
+  });
+
+  // Helper to render hook with QueryClient wrapper
+  const createWrapper = () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
+    // Mock invalidateQueries
+    queryClient.invalidateQueries = mockInvalidateQueries;
+
+    return ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  };
+
+  it("should set up listener for review:update event", () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    expect(mockListen).toHaveBeenCalledWith("review:update", expect.any(Function));
+  });
+
+  it("should clean up listener on unmount", async () => {
+    const { unmount } = renderHook(() => useReviewEvents(), {
+      wrapper: createWrapper(),
+    });
+
+    unmount();
+
+    await waitFor(() => {
+      expect(mockUnlisten).toHaveBeenCalled();
+    });
+  });
+
+  it("should invalidate pending reviews query on review:started event", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const reviewEvent = {
+      taskId: TASK_UUID,
+      reviewId: "review-123",
+      type: "started",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: reviewEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "pending"],
+    });
+  });
+
+  it("should invalidate task reviews query on review:completed event", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const reviewEvent = {
+      taskId: TASK_UUID,
+      reviewId: "review-123",
+      type: "completed",
+      outcome: "approved",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: reviewEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "byTask", TASK_UUID],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "pending"],
+    });
+  });
+
+  it("should invalidate state history query on review:completed event", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const reviewEvent = {
+      taskId: TASK_UUID,
+      reviewId: "review-123",
+      type: "completed",
+      outcome: "approved",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: reviewEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "stateHistory", TASK_UUID],
+    });
+  });
+
+  it("should invalidate pending reviews on needs_human event", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const reviewEvent = {
+      taskId: TASK_UUID,
+      reviewId: "review-123",
+      type: "needs_human",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: reviewEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "pending"],
+    });
+  });
+
+  it("should invalidate pending reviews on fix_proposed event", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const reviewEvent = {
+      taskId: TASK_UUID,
+      reviewId: "review-123",
+      type: "fix_proposed",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: reviewEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "pending"],
+    });
+  });
+
+  it("should log error for invalid event payload", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({
+        payload: { invalid: "payload" },
+      });
+    });
+
+    expect(consoleSpy).toHaveBeenCalled();
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("should handle all review event types", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const eventTypes = ["started", "completed", "needs_human", "fix_proposed"] as const;
+
+    for (const type of eventTypes) {
+      mockInvalidateQueries.mockClear();
+
+      const reviewEvent = {
+        taskId: TASK_UUID,
+        reviewId: "review-123",
+        type,
+        ...(type === "completed" && { outcome: "approved" }),
+      };
+
+      await act(async () => {
+        eventCallbacks["review:update"]?.({ payload: reviewEvent });
+      });
+
+      // All events should at least invalidate pending reviews
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["reviews", "pending"],
+      });
+    }
+  });
+
+  it("should invalidate task-specific queries with correct taskId", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const specificTaskId = "specific-task-uuid";
+    const reviewEvent = {
+      taskId: specificTaskId,
+      reviewId: "review-123",
+      type: "completed",
+      outcome: "changes_requested",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: reviewEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "byTask", specificTaskId],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "stateHistory", specificTaskId],
     });
   });
 });
