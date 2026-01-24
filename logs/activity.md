@@ -1,14 +1,53 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:45:00
+**Last Updated:** 2026-01-24 17:05:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 18 / 50
-**Current Task:** Implement ApplyService for converting proposals to tasks
+**Tasks Completed:** 19 / 50
+**Current Task:** Update AppState with ideation repositories
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:05:00 - Implement ApplyService for converting proposals to tasks
+
+**What was done:**
+- Created `src-tauri/src/application/apply_service.rs`:
+  - `ApplyService<S, P, PD, T, TD>` generic struct with five repository dependencies
+  - Constructor `new()` with Arc-wrapped repositories
+  - Helper types:
+    - `TargetColumn` enum (Draft, Backlog, Todo) with `to_status()` method
+    - `ApplyProposalsOptions` - proposal IDs, target column, preserve_dependencies flag
+    - `ApplyProposalsResult` - created tasks, dependencies count, warnings, session converted
+    - `SelectionValidation` - is_valid, cycles detected, warnings
+  - Validation methods:
+    - `validate_selection()` - Checks for circular dependencies in selected proposals
+    - `detect_cycles()` - DFS-based cycle detection in dependency graph
+    - Warns about dependencies outside selection
+  - Apply methods:
+    - `apply_proposals()` - Main method that:
+      - Validates session is active
+      - Validates selection has no cycles
+      - Creates Task from each proposal (copies title, description, category, priority)
+      - Optionally creates task dependencies from proposal dependencies
+      - Updates proposal status to Accepted and links created_task_id
+      - Checks if session should be marked Converted
+    - `apply_selected_proposals()` - Convenience method for selected proposals
+    - `create_task_from_proposal()` - Maps TaskProposal fields to Task
+    - `check_and_update_session_status()` - Marks session as Converted if all proposals applied
+- Updated `application/mod.rs` with module declaration and re-exports
+- Added 18 comprehensive unit tests:
+  - Validation tests: empty selection, no cycles, with cycles, missing dependency warnings
+  - Target column tests: Draft→Backlog, Backlog→Backlog, Todo→Ready
+  - Apply tests: creates tasks, sets correct status, preserves dependencies, copies fields
+  - Session conversion tests: all applied converts session, partial does not
+
+**Commands run:**
+- `cargo test --lib apply_service::` (18 tests passed)
+- `cargo test --lib` (2013 tests passed)
+
+---
 
 ### 2026-01-24 16:45:00 - Implement IdeationService for orchestrating ideation flow
 
