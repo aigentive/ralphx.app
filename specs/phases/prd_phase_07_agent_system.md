@@ -374,7 +374,7 @@ CREATE TABLE agent_profiles (
       "Create empty placeholder files for all 5 skill definitions",
       "Verify directory structure matches specification"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
