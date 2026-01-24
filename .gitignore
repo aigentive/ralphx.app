@@ -38,3 +38,4 @@ src-tauri/gen/schemas
 # Screenshots (keep .gitkeep)
 screenshots/*
 !screenshots/.gitkeep
+*.db
