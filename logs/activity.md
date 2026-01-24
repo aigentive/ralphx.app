@@ -1,14 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 23:31:00
+**Last Updated:** 2026-01-24 21:33:16
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 37 / 63
-**Current Task:** Create Zustand store for workflows
+**Tasks Completed:** 38 / 63
+**Current Task:** Implement artifactStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:33:16 - Implement workflowStore with Zustand (Task 38)
+
+**What was done:**
+- Created `src/stores/workflowStore.ts` with Zustand + immer middleware:
+  - State: `workflows` (Record by ID), `activeWorkflowId`, `isLoading`, `error`
+  - Actions: `setWorkflows`, `setActiveWorkflow`, `addWorkflow`, `updateWorkflow`, `deleteWorkflow`, `setLoading`, `setError`
+  - Automatic default workflow detection on `setWorkflows`
+  - Clears active workflow when deleted
+- Created `src/stores/workflowStore.test.ts` with 32 comprehensive tests covering:
+  - All store actions with edge cases
+  - Selectors: `selectActiveWorkflow`, `selectWorkflowColumns`, `selectWorkflowById`
+  - Default workflow handling, workflow deletion side effects
+
+**Commands run:**
+- `npm test -- src/stores/workflowStore.test.ts` - 32 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 23:31:00 - Create Tauri API wrappers for methodologies (Task 37)
 
