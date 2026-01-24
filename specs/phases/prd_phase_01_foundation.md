@@ -621,7 +621,7 @@ Every task follows the TDD cycle:
       "Define AppResult<T> type alias",
       "Verify tests pass with `cargo test`"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

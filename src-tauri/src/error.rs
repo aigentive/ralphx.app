@@ -1,25 +1,26 @@
 // Unified error handling for RalphX
-// Full implementation with thiserror will be added in subsequent task
 
 use serde::Serialize;
-use std::fmt;
+use thiserror::Error;
 
 /// Application error type for RalphX
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum AppError {
-    /// Generic error for initial scaffolding
-    Generic(String),
-}
+    #[error("Database error: {0}")]
+    Database(String),
 
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AppError::Generic(msg) => write!(f, "{}", msg),
-        }
-    }
-}
+    #[error("Task not found: {0}")]
+    TaskNotFound(String),
 
-impl std::error::Error for AppError {}
+    #[error("Project not found: {0}")]
+    ProjectNotFound(String),
+
+    #[error("Invalid status transition: {from} → {to}")]
+    InvalidTransition { from: String, to: String },
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+}
 
 // Make errors serializable for Tauri
 impl Serialize for AppError {
@@ -39,15 +40,95 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_error_display() {
-        let err = AppError::Generic("test error".to_string());
-        assert_eq!(err.to_string(), "test error");
+    fn test_database_error_display() {
+        let err = AppError::Database("connection failed".to_string());
+        assert_eq!(err.to_string(), "Database error: connection failed");
     }
 
     #[test]
-    fn test_error_serialization() {
-        let err = AppError::Generic("serialize me".to_string());
+    fn test_task_not_found_error_display() {
+        let err = AppError::TaskNotFound("task-123".to_string());
+        assert_eq!(err.to_string(), "Task not found: task-123");
+    }
+
+    #[test]
+    fn test_project_not_found_error_display() {
+        let err = AppError::ProjectNotFound("project-456".to_string());
+        assert_eq!(err.to_string(), "Project not found: project-456");
+    }
+
+    #[test]
+    fn test_invalid_transition_error_display() {
+        let err = AppError::InvalidTransition {
+            from: "backlog".to_string(),
+            to: "approved".to_string(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Invalid status transition: backlog → approved"
+        );
+    }
+
+    #[test]
+    fn test_validation_error_display() {
+        let err = AppError::Validation("title cannot be empty".to_string());
+        assert_eq!(err.to_string(), "Validation error: title cannot be empty");
+    }
+
+    #[test]
+    fn test_database_error_serialization() {
+        let err = AppError::Database("db failure".to_string());
         let json = serde_json::to_string(&err).unwrap();
-        assert_eq!(json, "\"serialize me\"");
+        assert_eq!(json, "\"Database error: db failure\"");
+    }
+
+    #[test]
+    fn test_task_not_found_error_serialization() {
+        let err = AppError::TaskNotFound("abc-123".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, "\"Task not found: abc-123\"");
+    }
+
+    #[test]
+    fn test_project_not_found_error_serialization() {
+        let err = AppError::ProjectNotFound("proj-789".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, "\"Project not found: proj-789\"");
+    }
+
+    #[test]
+    fn test_invalid_transition_error_serialization() {
+        let err = AppError::InvalidTransition {
+            from: "ready".to_string(),
+            to: "cancelled".to_string(),
+        };
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, "\"Invalid status transition: ready → cancelled\"");
+    }
+
+    #[test]
+    fn test_validation_error_serialization() {
+        let err = AppError::Validation("invalid input".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, "\"Validation error: invalid input\"");
+    }
+
+    #[test]
+    fn test_app_result_ok() {
+        let result: AppResult<i32> = Ok(42);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_app_result_err() {
+        let result: AppResult<i32> = Err(AppError::Validation("test".to_string()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_is_std_error() {
+        let err = AppError::Database("test".to_string());
+        let _: &dyn std::error::Error = &err;
     }
 }
