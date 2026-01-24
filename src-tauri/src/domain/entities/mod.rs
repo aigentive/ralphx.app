@@ -1,6 +1,7 @@
 // Domain entities - pure Rust types with no external dependencies
 // These represent the core business objects of RalphX
 
+pub mod artifact;
 pub mod ideation;
 pub mod project;
 pub mod review;
@@ -34,4 +35,9 @@ pub use workflow::{
     ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,
     ParseSyncDirectionError, SyncDirection, SyncProvider, SyncSettings, WorkflowColumn,
     WorkflowDefaults, WorkflowId, WorkflowSchema,
+};
+pub use artifact::{
+    Artifact, ArtifactBucket, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata,
+    ArtifactRelation, ArtifactRelationId, ArtifactRelationType, ArtifactType,
+    ParseArtifactRelationTypeError, ParseArtifactTypeError, ProcessId,
 };
