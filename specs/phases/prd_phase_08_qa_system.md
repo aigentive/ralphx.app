@@ -766,7 +766,7 @@ All tasks require TDD:
       "Show info text explaining what QA does",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
