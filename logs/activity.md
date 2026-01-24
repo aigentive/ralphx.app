@@ -1,14 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:26:00
+**Last Updated:** 2026-01-24 15:28:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 19 / 51
-**Current Task:** Implement reviewStore with Zustand
+**Tasks Completed:** 20 / 51
+**Current Task:** Implement useReviews hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:28:00 - Implement reviewStore with Zustand
+
+**What was done:**
+- Created `src/stores/reviewStore.ts` with Zustand + immer:
+  - State: `pendingReviews` (Record), `selectedReviewId`, `isLoading`, `error`
+  - Actions: `setPendingReviews`, `setReview`, `removeReview`, `selectReview`
+  - Actions: `setLoading`, `setError`, `clearReviews`
+  - Selectors: `selectPendingReviewsList`, `selectReviewById`, `selectSelectedReview`
+  - Selectors: `selectPendingReviewCount`, `selectIsReviewSelected`
+- Created `src/stores/reviewStore.test.ts` with 27 tests
+- Store is under 100 lines as required
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/stores/reviewStore.test.ts` (27 tests passed)
+
+---
 
 ### 2026-01-24 15:26:00 - Implement Tauri API wrappers for reviews and fix tasks
 
