@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 23:17:00
+**Last Updated:** 2026-01-24 23:21:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 32 / 63
-**Current Task:** Implement TypeScript types for methodologies with Zod schemas
+**Tasks Completed:** 33 / 63
+**Current Task:** Create Tauri API wrappers for workflows
 
 ---
 
 ## Session Log
+
+### 2026-01-24 23:21:00 - Implement TypeScript types for methodologies with Zod schemas (Task 33)
+
+**What was done:**
+- Created `src/types/methodology.ts` with comprehensive Zod schemas:
+  - `MethodologyStatusSchema` enum: available, active, disabled
+  - Status helpers: isMethodologyActive, isMethodologyAvailable, isMethodologyDisabled
+  - `MethodologyPhaseSchema` with id, name, order, agentProfiles, description, columnIds
+  - `MethodologyTemplateSchema` with artifactType, templatePath, name, description
+  - `MethodologyExtensionSchema` for complete methodology entities
+  - `CreateMethodologyExtensionInputSchema` for API input validation
+  - `BMAD_METHODOLOGY` constant: 8 agents, 4 phases, 10 workflow columns
+  - `GSD_METHODOLOGY` constant: 11 agents, 4 phases, 11 workflow columns
+  - `BUILTIN_METHODOLOGIES` array containing both built-in methodologies
+  - Helper: getBuiltinMethodology(id) to find built-in methodology
+  - Parsing helpers: parseMethodologyExtension, safeParseMethodologyExtension, parseMethodologyPhase, safeParseMethodologyPhase
+- Created `src/types/methodology.test.ts` with 67 tests
+- Updated `src/types/index.ts` to export all methodology types
+
+**Commands run:**
+- `npm test -- src/types/methodology.test.ts` - 67 tests passed
+- `npm run typecheck` - No errors
+- `npm test -- --run` - 2574 tests passed (all tests)
 
 ### 2026-01-24 23:17:00 - Implement TypeScript types for research with Zod schemas (Task 32)
 
