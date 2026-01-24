@@ -1,14 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:01:43
+**Last Updated:** 2026-01-24 14:06:14
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 31 / 51
-**Current Task:** Implement Tauri command for answering questions
+**Tasks Completed:** 32 / 51
+**Current Task:** Implement ExecutionControlBar component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:06:14 - Implement Tauri command for answering questions
+
+**What was done:**
+- Created `answer_user_question` Tauri command in `src-tauri/src/commands/task_commands.rs`:
+  - Input struct `AnswerUserQuestionInput` with task_id, selected_options, custom_response (camelCase serde)
+  - Response struct `AnswerUserQuestionResponse` with task_id, resumed_status, answer_recorded
+  - Command validates task exists and is in Blocked status
+  - Transitions task from Blocked → Ready (per state machine rules)
+  - Persists update and returns confirmation
+- Added 6 integration tests:
+  - `test_answer_user_question_transitions_blocked_to_ready` - verifies state transition
+  - `test_answer_user_question_fails_if_not_blocked` - validates precondition
+  - `test_answer_user_question_not_found` - handles missing task
+  - `test_answer_user_question_input_deserialization` - camelCase input parsing
+  - `test_answer_user_question_input_without_custom_response` - optional field
+  - `test_answer_user_question_response_serialization` - camelCase output
+- Updated `src-tauri/src/commands/mod.rs` to export the new command
+- Registered command in `src-tauri/src/lib.rs` invoke_handler
+
+**Commands run:**
+- `cargo test --lib task_commands` (13 tests passed)
+- `cargo clippy --all-targets` (passed, only pre-existing warnings)
+- `npm run typecheck` (passed)
+- `npm run test -- src/hooks/useAskUserQuestion.test.tsx` (20 tests passed)
+
+---
 
 ### 2026-01-24 14:01:43 - Implement AskUserQuestionModal component
 

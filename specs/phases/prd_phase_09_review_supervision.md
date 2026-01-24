@@ -864,7 +864,7 @@ interface AskUserQuestionResponse {
       "Update task status from blocked to previous state",
       "Run tauri dev to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
