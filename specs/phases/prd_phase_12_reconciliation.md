@@ -374,7 +374,7 @@ const qaPrepProfile = {
       "Verify agents are discoverable with: claude --plugin-dir ./ralphx-plugin --help",
       "Remove .claude/agents/ directory if empty"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactoring",
