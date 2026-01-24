@@ -795,7 +795,7 @@ All tasks require TDD:
       "Update qaStore on events",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",

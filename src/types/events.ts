@@ -144,3 +144,38 @@ export const TaskEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export type TaskEvent = z.infer<typeof TaskEventSchema>;
+
+// ============================================================================
+// QA Events
+// ============================================================================
+
+/**
+ * Schema for QA prep events
+ * Emitted when QA preparation phase changes
+ */
+export const QAPrepEventSchema = z.object({
+  taskId: z.string(),
+  type: z.enum(["started", "completed", "failed"]),
+  agentId: z.string().optional(),
+  acceptanceCriteriaCount: z.number().int().nonnegative().optional(),
+  testStepsCount: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
+});
+
+export type QAPrepEvent = z.infer<typeof QAPrepEventSchema>;
+
+/**
+ * Schema for QA test events
+ * Emitted during and after QA test execution
+ */
+export const QATestEventSchema = z.object({
+  taskId: z.string(),
+  type: z.enum(["started", "passed", "failed"]),
+  agentId: z.string().optional(),
+  totalSteps: z.number().int().nonnegative().optional(),
+  passedSteps: z.number().int().nonnegative().optional(),
+  failedSteps: z.number().int().nonnegative().optional(),
+  error: z.string().optional(),
+});
+
+export type QATestEvent = z.infer<typeof QATestEventSchema>;
