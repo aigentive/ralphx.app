@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { InternalStatusSchema } from "./status";
+export type { InternalStatus } from "./status";
 
 /**
  * Task schema matching Rust backend serialization

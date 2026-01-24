@@ -11,6 +11,11 @@ vi.mock("@/hooks/useEvents", () => ({
   useFileChangeEvents: vi.fn(),
 }));
 
+// Mock TaskBoard to avoid Tauri API calls during tests
+vi.mock("@/components/tasks/TaskBoard", () => ({
+  TaskBoard: () => <div data-testid="task-board-mock">Task Board</div>,
+}));
+
 describe("App", () => {
   it("should render without crashing", () => {
     render(<App />);
@@ -22,21 +27,27 @@ describe("App", () => {
     expect(screen.getByText(/RalphX/i)).toBeInTheDocument();
   });
 
-  it("should display health status placeholder", () => {
+  it("should display project name", () => {
     render(<App />);
-    expect(screen.getByText(/autonomous/i)).toBeInTheDocument();
+    expect(screen.getByText(/Demo Project/i)).toBeInTheDocument();
   });
 
-  it("should have dark theme background class", () => {
+  it("should have main element with flex layout", () => {
     render(<App />);
     const mainElement = screen.getByRole("main");
-    expect(mainElement).toHaveClass("bg-bg-base");
+    expect(mainElement).toHaveClass("min-h-screen", "flex", "flex-col");
   });
 
-  it("should use accent color for title", () => {
+  it("should render header with RalphX branding", () => {
     render(<App />);
-    const titleElement = screen.getByText(/RalphX/i);
-    expect(titleElement).toHaveClass("text-accent-primary");
+    const header = screen.getByRole("banner");
+    expect(header).toBeInTheDocument();
+    expect(header).toHaveClass("flex", "items-center", "justify-between");
+  });
+
+  it("should render TaskBoard component", () => {
+    render(<App />);
+    expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
   });
 
   it("should provide QueryClient context", () => {

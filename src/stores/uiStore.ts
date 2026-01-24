@@ -53,7 +53,7 @@ interface UiState {
   /** Currently active modal type, or null if none */
   activeModal: ModalType;
   /** Context data for the active modal */
-  modalContext?: Record<string, unknown>;
+  modalContext: Record<string, unknown> | undefined;
   /** Active notifications */
   notifications: Notification[];
   /** Loading states for different parts of the UI */

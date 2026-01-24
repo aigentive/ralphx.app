@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 6,
+  "currentPhase": 7,
   "phases": [
     {
       "phase": 0,
@@ -49,14 +49,14 @@
       "phase": 6,
       "name": "Kanban UI",
       "prd": "specs/phases/prd_phase_06_kanban_ui.md",
-      "status": "active",
+      "status": "complete",
       "description": "TaskBoard, columns, drag-drop, task cards"
     },
     {
       "phase": 7,
       "name": "Agent System",
       "prd": "specs/phases/prd_phase_07_agent_system.md",
-      "status": "pending",
+      "status": "active",
       "description": "Worker, reviewer, supervisor agents, skills, hooks"
     },
     {

@@ -296,7 +296,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Verify packages installed in package.json",
       "Create basic DndContext test to verify import works"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
@@ -309,7 +309,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Import in main.tsx or App.tsx",
       "Write test to verify CSS variables are defined"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -322,7 +322,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Export defaultWorkflow constant with 7 columns",
       "Run tests to verify types work correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -334,7 +334,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Use Zod validation for response parsing",
       "Run tests to verify API wrapper"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -351,7 +351,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Keep under 100 lines",
       "Run tests to verify hook behavior"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -364,7 +364,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Add data-testid='task-board-skeleton'",
       "Run tests to verify skeleton renders"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -378,7 +378,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Use CSS variables for all colors",
       "Run tests to verify all badge variants"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -399,7 +399,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Keep under 100 lines",
       "Run tests to verify all behavior"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -418,7 +418,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Keep under 100 lines",
       "Run tests to verify droppable behavior"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -437,7 +437,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Keep under 150 lines",
       "Run tests to verify board behavior"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -448,7 +448,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Export TaskBoardProps type",
       "Verify exports work with import test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -464,7 +464,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Return validation result with error message",
       "Run tests to verify all rules enforced"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -478,7 +478,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Use CSS transitions for smooth animations",
       "Run tests to verify visual states"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -491,7 +491,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Create reorder mutation in useTaskBoard",
       "Run tests to verify priority updates"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -506,7 +506,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Show toast for successful moves",
       "Run tests to verify shortcuts work"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -519,7 +519,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Use optimistic update with rollback on failure",
       "Run tests to verify race condition handled"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -531,7 +531,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Test drag-drop end-to-end",
       "Visual verification: take screenshot of board"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -546,7 +546,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
       "Take screenshots for verification",
       "Document results in activity log"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

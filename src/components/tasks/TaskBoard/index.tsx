@@ -1,0 +1,9 @@
+/**
+ * TaskBoard - Public exports
+ */
+
+export { TaskBoard, type TaskBoardProps } from "./TaskBoard";
+export { TaskBoardSkeleton } from "./TaskBoardSkeleton";
+export { Column } from "./Column";
+export { TaskCard } from "./TaskCard";
+export { useTaskBoard, type BoardColumn, type UseTaskBoardResult, workflowKeys } from "./hooks";
