@@ -415,6 +415,25 @@ const qaPrepProfile = {
 
 **IMPORTANT: Work on ONE task per iteration.** Find the first task with `"passes": false`, complete it, update `"passes": true`, commit, and stop. The Issues above are documentation - the tasks below are the actual work items.
 
+### How to Read Tasks
+
+**CRITICAL: Read ALL fields of a task before starting work.** Each task may contain:
+
+| Field | Purpose |
+|-------|---------|
+| `description` | What the task is about (summary only) |
+| `steps` | **Required actions** - follow these step by step |
+| `acceptance_criteria` | **What to verify** - the task is NOT complete until all criteria pass |
+| `design_quality` | **Visual standards** - for UI tasks, verify these design requirements |
+| `passes` | Mark `true` only when ALL steps completed AND all criteria verified |
+
+**For visual-verification tasks specifically:**
+1. Read the `steps` to know what to capture and test
+2. Read `acceptance_criteria` to know what functional requirements to check
+3. Read `design_quality` to know what design standards to verify
+4. Fix ANY issue found in steps 2 or 3 using `/frontend-design` skill
+5. Only mark `passes: true` when everything in all three sections is satisfied
+
 ```json
 [
   {
