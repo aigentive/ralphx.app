@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
+import type { ViewType } from "@/types/chat";
 
 // ============================================================================
 // Types
@@ -55,6 +56,8 @@ interface UiState {
   sidebarOpen: boolean;
   /** Whether the reviews panel is open */
   reviewsPanelOpen: boolean;
+  /** Current main view (kanban, ideation, etc.) */
+  currentView: ViewType;
   /** Currently active modal type, or null if none */
   activeModal: ModalType;
   /** Context data for the active modal */
@@ -84,6 +87,8 @@ interface UiActions {
   toggleReviewsPanel: () => void;
   /** Set reviews panel visibility directly */
   setReviewsPanelOpen: (open: boolean) => void;
+  /** Set the current main view */
+  setCurrentView: (view: ViewType) => void;
   /** Open a modal with optional context */
   openModal: (type: ModalType, context?: Record<string, unknown>) => void;
   /** Close the current modal */
@@ -123,6 +128,7 @@ export const useUiStore = create<UiState & UiActions>()(
     // Initial state
     sidebarOpen: true,
     reviewsPanelOpen: false,
+    currentView: "kanban" as ViewType,
     activeModal: null,
     modalContext: undefined,
     notifications: [],
@@ -156,6 +162,11 @@ export const useUiStore = create<UiState & UiActions>()(
     setReviewsPanelOpen: (open) =>
       set((state) => {
         state.reviewsPanelOpen = open;
+      }),
+
+    setCurrentView: (view) =>
+      set((state) => {
+        state.currentView = view;
       }),
 
     openModal: (type, context) =>

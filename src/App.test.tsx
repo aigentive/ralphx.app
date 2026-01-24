@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useQueryClient } from "@tanstack/react-query";
 import App from "./App";
+import { useUiStore } from "@/stores/uiStore";
+import { useChatStore } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useProposalStore } from "@/stores/proposalStore";
 
 // Mock the useEvents hooks to prevent Tauri API calls
 vi.mock("@/hooks/useEvents", () => ({
@@ -16,7 +20,100 @@ vi.mock("@/components/tasks/TaskBoard", () => ({
   TaskBoard: () => <div data-testid="task-board-mock">Task Board</div>,
 }));
 
+// Mock IdeationView to avoid complex ideation state issues
+vi.mock("@/components/Ideation", () => ({
+  IdeationView: () => <div data-testid="ideation-view-mock">Ideation View</div>,
+}));
+
+// Mock ideation hooks
+vi.mock("@/hooks/useIdeation", () => ({
+  useIdeationSession: vi.fn().mockReturnValue({
+    data: null,
+    isLoading: false,
+  }),
+  useCreateIdeationSession: vi.fn().mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useArchiveIdeationSession: vi.fn().mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
+// Mock proposal hooks
+vi.mock("@/hooks/useProposals", () => ({
+  useProposalMutations: vi.fn().mockReturnValue({
+    createProposal: { mutateAsync: vi.fn() },
+    updateProposal: { mutateAsync: vi.fn() },
+    deleteProposal: { mutate: vi.fn() },
+    toggleSelection: { mutate: vi.fn() },
+    reorder: { mutate: vi.fn() },
+  }),
+}));
+
+// Mock apply proposals hook
+vi.mock("@/hooks/useApplyProposals", () => ({
+  useApplyProposals: vi.fn().mockReturnValue({
+    apply: {
+      mutateAsync: vi.fn(),
+      isPending: false,
+    },
+  }),
+}));
+
+// Reset stores before each test
+function resetStores() {
+  useUiStore.setState({
+    sidebarOpen: true,
+    reviewsPanelOpen: false,
+    currentView: "kanban",
+    activeModal: null,
+    modalContext: undefined,
+    notifications: [],
+    loading: {},
+    confirmation: null,
+    activeQuestion: null,
+    executionStatus: {
+      isPaused: false,
+      runningCount: 0,
+      maxConcurrent: 2,
+      queuedCount: 0,
+      canStartTask: true,
+    },
+  });
+
+  useChatStore.setState({
+    messages: {},
+    context: {
+      view: "kanban",
+      projectId: "demo-project",
+    },
+    isOpen: false,
+    width: 320,
+    isLoading: false,
+  });
+
+  useIdeationStore.setState({
+    sessions: {},
+    activeSessionId: null,
+    isLoading: false,
+    error: null,
+  });
+
+  useProposalStore.setState({
+    proposals: {},
+    selectedProposalIds: new Set(),
+    isLoading: false,
+    error: null,
+  });
+}
+
 describe("App", () => {
+  beforeEach(() => {
+    resetStores();
+  });
+
   it("should render without crashing", () => {
     render(<App />);
     expect(document.body).toBeDefined();

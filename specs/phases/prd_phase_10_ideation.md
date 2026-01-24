@@ -1355,7 +1355,7 @@ All tasks require:
       "Ensure chat context updates when entering Ideation view",
       "Test session persistence when navigating away and back"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
