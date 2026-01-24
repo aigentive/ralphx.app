@@ -456,3 +456,314 @@ describe("api.workflows", () => {
     });
   });
 });
+
+// Helper to create mock QA settings
+const createMockQASettings = (overrides = {}) => ({
+  qa_enabled: true,
+  auto_qa_for_ui_tasks: true,
+  auto_qa_for_api_tasks: false,
+  qa_prep_enabled: true,
+  browser_testing_enabled: true,
+  browser_testing_url: "http://localhost:1420",
+  ...overrides,
+});
+
+// Helper to create mock TaskQA response
+const createMockTaskQAResponse = (overrides = {}) => ({
+  id: "qa-1",
+  task_id: "task-1",
+  screenshots: [],
+  created_at: "2026-01-24T12:00:00Z",
+  ...overrides,
+});
+
+// Helper to create mock QA results response
+const createMockQAResultsResponse = (overrides = {}) => ({
+  task_id: "task-1",
+  overall_status: "passed",
+  total_steps: 2,
+  passed_steps: 2,
+  failed_steps: 0,
+  steps: [
+    { step_id: "QA1", status: "passed" },
+    { step_id: "QA2", status: "passed" },
+  ],
+  ...overrides,
+});
+
+describe("api.qa", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  describe("getSettings", () => {
+    it("should call get_qa_settings", async () => {
+      mockInvoke.mockResolvedValue(createMockQASettings());
+
+      await api.qa.getSettings();
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_qa_settings", {});
+    });
+
+    it("should return QA settings", async () => {
+      const settings = createMockQASettings({ qa_enabled: false });
+      mockInvoke.mockResolvedValue(settings);
+
+      const result = await api.qa.getSettings();
+
+      expect(result.qa_enabled).toBe(false);
+      expect(result.auto_qa_for_ui_tasks).toBe(true);
+    });
+
+    it("should validate settings schema", async () => {
+      mockInvoke.mockResolvedValue({ invalid: "settings" });
+
+      await expect(api.qa.getSettings()).rejects.toThrow();
+    });
+
+    it("should require browser_testing_url to be valid URL", async () => {
+      mockInvoke.mockResolvedValue(
+        createMockQASettings({ browser_testing_url: "not-a-url" })
+      );
+
+      await expect(api.qa.getSettings()).rejects.toThrow();
+    });
+  });
+
+  describe("updateSettings", () => {
+    it("should call update_qa_settings with input", async () => {
+      mockInvoke.mockResolvedValue(createMockQASettings({ qa_enabled: false }));
+      const input = { qa_enabled: false };
+
+      await api.qa.updateSettings(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("update_qa_settings", { input });
+    });
+
+    it("should return updated settings", async () => {
+      const settings = createMockQASettings({
+        qa_enabled: false,
+        browser_testing_url: "http://localhost:3000",
+      });
+      mockInvoke.mockResolvedValue(settings);
+
+      const result = await api.qa.updateSettings({
+        qa_enabled: false,
+        browser_testing_url: "http://localhost:3000",
+      });
+
+      expect(result.qa_enabled).toBe(false);
+      expect(result.browser_testing_url).toBe("http://localhost:3000");
+    });
+
+    it("should accept partial updates", async () => {
+      mockInvoke.mockResolvedValue(createMockQASettings({ qa_enabled: false }));
+
+      const result = await api.qa.updateSettings({ qa_enabled: false });
+
+      expect(result.auto_qa_for_ui_tasks).toBe(true); // Unchanged
+    });
+  });
+
+  describe("getTaskQA", () => {
+    it("should call get_task_qa with taskId", async () => {
+      mockInvoke.mockResolvedValue(createMockTaskQAResponse());
+
+      await api.qa.getTaskQA("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_task_qa", {
+        taskId: "task-1",
+      });
+    });
+
+    it("should return null when no TaskQA exists", async () => {
+      mockInvoke.mockResolvedValue(null);
+
+      const result = await api.qa.getTaskQA("nonexistent");
+
+      expect(result).toBeNull();
+    });
+
+    it("should return TaskQA when exists", async () => {
+      const taskQA = createMockTaskQAResponse({ task_id: "task-123" });
+      mockInvoke.mockResolvedValue(taskQA);
+
+      const result = await api.qa.getTaskQA("task-123");
+
+      expect(result?.task_id).toBe("task-123");
+    });
+
+    it("should parse acceptance_criteria correctly", async () => {
+      const taskQA = createMockTaskQAResponse({
+        acceptance_criteria: [
+          { id: "AC1", description: "Test criterion", testable: true, criteria_type: "visual" },
+        ],
+      });
+      mockInvoke.mockResolvedValue(taskQA);
+
+      const result = await api.qa.getTaskQA("task-1");
+
+      expect(result?.acceptance_criteria).toHaveLength(1);
+      expect(result?.acceptance_criteria?.[0]?.criteria_type).toBe("visual");
+    });
+
+    it("should parse qa_test_steps correctly", async () => {
+      const taskQA = createMockTaskQAResponse({
+        qa_test_steps: [
+          {
+            id: "QA1",
+            criteria_id: "AC1",
+            description: "Verify task board",
+            commands: ["agent-browser open http://localhost:1420"],
+            expected: "Task board visible",
+          },
+        ],
+      });
+      mockInvoke.mockResolvedValue(taskQA);
+
+      const result = await api.qa.getTaskQA("task-1");
+
+      expect(result?.qa_test_steps).toHaveLength(1);
+      expect(result?.qa_test_steps?.[0]?.commands).toContain(
+        "agent-browser open http://localhost:1420"
+      );
+    });
+
+    it("should parse test_results correctly", async () => {
+      const taskQA = createMockTaskQAResponse({
+        test_results: createMockQAResultsResponse({ overall_status: "failed", failed_steps: 1 }),
+      });
+      mockInvoke.mockResolvedValue(taskQA);
+
+      const result = await api.qa.getTaskQA("task-1");
+
+      expect(result?.test_results?.overall_status).toBe("failed");
+      expect(result?.test_results?.failed_steps).toBe(1);
+    });
+
+    it("should validate TaskQA schema", async () => {
+      mockInvoke.mockResolvedValue({ invalid: "taskqa" });
+
+      await expect(api.qa.getTaskQA("task-1")).rejects.toThrow();
+    });
+  });
+
+  describe("getResults", () => {
+    it("should call get_qa_results with taskId", async () => {
+      mockInvoke.mockResolvedValue(createMockQAResultsResponse());
+
+      await api.qa.getResults("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_qa_results", {
+        taskId: "task-1",
+      });
+    });
+
+    it("should return null when no results", async () => {
+      mockInvoke.mockResolvedValue(null);
+
+      const result = await api.qa.getResults("task-1");
+
+      expect(result).toBeNull();
+    });
+
+    it("should return results when available", async () => {
+      const results = createMockQAResultsResponse();
+      mockInvoke.mockResolvedValue(results);
+
+      const result = await api.qa.getResults("task-1");
+
+      expect(result?.overall_status).toBe("passed");
+      expect(result?.total_steps).toBe(2);
+    });
+
+    it("should parse step results correctly", async () => {
+      const results = createMockQAResultsResponse({
+        steps: [
+          { step_id: "QA1", status: "passed", screenshot: "ss1.png" },
+          { step_id: "QA2", status: "failed", error: "Element not found" },
+        ],
+      });
+      mockInvoke.mockResolvedValue(results);
+
+      const result = await api.qa.getResults("task-1");
+
+      expect(result?.steps[0]?.screenshot).toBe("ss1.png");
+      expect(result?.steps[1]?.error).toBe("Element not found");
+    });
+
+    it("should validate results schema", async () => {
+      mockInvoke.mockResolvedValue({ invalid: "results" });
+
+      await expect(api.qa.getResults("task-1")).rejects.toThrow();
+    });
+  });
+
+  describe("retry", () => {
+    it("should call retry_qa with taskId", async () => {
+      mockInvoke.mockResolvedValue(createMockTaskQAResponse());
+
+      await api.qa.retry("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("retry_qa", { taskId: "task-1" });
+    });
+
+    it("should return updated TaskQA", async () => {
+      const taskQA = createMockTaskQAResponse({
+        test_results: createMockQAResultsResponse({
+          overall_status: "pending",
+          passed_steps: 0,
+        }),
+      });
+      mockInvoke.mockResolvedValue(taskQA);
+
+      const result = await api.qa.retry("task-1");
+
+      expect(result.test_results?.overall_status).toBe("pending");
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("No QA record found"));
+
+      await expect(api.qa.retry("nonexistent")).rejects.toThrow(
+        "No QA record found"
+      );
+    });
+  });
+
+  describe("skip", () => {
+    it("should call skip_qa with taskId", async () => {
+      mockInvoke.mockResolvedValue(createMockTaskQAResponse());
+
+      await api.qa.skip("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("skip_qa", { taskId: "task-1" });
+    });
+
+    it("should return TaskQA with skipped steps", async () => {
+      const taskQA = createMockTaskQAResponse({
+        test_results: {
+          task_id: "task-1",
+          overall_status: "passed",
+          total_steps: 1,
+          passed_steps: 0,
+          failed_steps: 0,
+          steps: [{ step_id: "QA1", status: "skipped" }],
+        },
+      });
+      mockInvoke.mockResolvedValue(taskQA);
+
+      const result = await api.qa.skip("task-1");
+
+      expect(result.test_results?.steps[0]?.status).toBe("skipped");
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("No QA record found"));
+
+      await expect(api.qa.skip("nonexistent")).rejects.toThrow(
+        "No QA record found"
+      );
+    });
+  });
+});

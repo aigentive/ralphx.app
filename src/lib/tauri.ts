@@ -14,6 +14,12 @@ import {
   type UpdateProject,
 } from "@/types/project";
 import { WorkflowSchemaZ } from "@/types/workflow";
+import {
+  QASettingsSchema,
+  AcceptanceCriteriaTypeSchema,
+  QAStepStatusSchema,
+  QAOverallStatusSchema,
+} from "@/types";
 
 /**
  * Generic invoke wrapper with runtime Zod validation
@@ -50,6 +56,107 @@ const ProjectListSchema = z.array(ProjectSchema);
  * Workflow list schema for array responses
  */
 const WorkflowListSchema = z.array(WorkflowSchemaZ);
+
+// ============================================================================
+// QA Response Schemas (matching Rust responses)
+// ============================================================================
+
+/**
+ * Acceptance criterion response from Rust
+ * Note: `type` field is renamed to `criteria_type` in Rust response
+ */
+export const AcceptanceCriterionResponseSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  testable: z.boolean(),
+  criteria_type: AcceptanceCriteriaTypeSchema,
+});
+
+export type AcceptanceCriterionResponse = z.infer<typeof AcceptanceCriterionResponseSchema>;
+
+/**
+ * QA test step response from Rust
+ */
+export const QATestStepResponseSchema = z.object({
+  id: z.string(),
+  criteria_id: z.string(),
+  description: z.string(),
+  commands: z.array(z.string()),
+  expected: z.string(),
+});
+
+export type QATestStepResponse = z.infer<typeof QATestStepResponseSchema>;
+
+/**
+ * QA step result response from Rust
+ */
+export const QAStepResultResponseSchema = z.object({
+  step_id: z.string(),
+  status: QAStepStatusSchema,
+  screenshot: z.string().optional(),
+  actual: z.string().optional(),
+  expected: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export type QAStepResultResponse = z.infer<typeof QAStepResultResponseSchema>;
+
+/**
+ * QA results response from Rust
+ */
+export const QAResultsResponseSchema = z.object({
+  task_id: z.string(),
+  overall_status: QAOverallStatusSchema,
+  total_steps: z.number().int().nonnegative(),
+  passed_steps: z.number().int().nonnegative(),
+  failed_steps: z.number().int().nonnegative(),
+  steps: z.array(QAStepResultResponseSchema),
+});
+
+export type QAResultsResponse = z.infer<typeof QAResultsResponseSchema>;
+
+/**
+ * TaskQA response from Rust - full QA record for a task
+ */
+export const TaskQAResponseSchema = z.object({
+  id: z.string(),
+  task_id: z.string(),
+
+  // Phase 1: QA Prep
+  acceptance_criteria: z.array(AcceptanceCriterionResponseSchema).optional(),
+  qa_test_steps: z.array(QATestStepResponseSchema).optional(),
+  prep_agent_id: z.string().optional(),
+  prep_started_at: z.string().optional(),
+  prep_completed_at: z.string().optional(),
+
+  // Phase 2: QA Refinement
+  actual_implementation: z.string().optional(),
+  refined_test_steps: z.array(QATestStepResponseSchema).optional(),
+  refinement_agent_id: z.string().optional(),
+  refinement_completed_at: z.string().optional(),
+
+  // Phase 3: QA Testing
+  test_results: QAResultsResponseSchema.optional(),
+  screenshots: z.array(z.string()),
+  test_agent_id: z.string().optional(),
+  test_completed_at: z.string().optional(),
+
+  created_at: z.string(),
+});
+
+export type TaskQAResponse = z.infer<typeof TaskQAResponseSchema>;
+
+/**
+ * Input type for updating QA settings (partial update)
+ */
+export interface UpdateQASettingsInput {
+  qa_enabled?: boolean;
+  auto_qa_for_ui_tasks?: boolean;
+  auto_qa_for_api_tasks?: boolean;
+  qa_prep_enabled?: boolean;
+  browser_testing_enabled?: boolean;
+  browser_testing_url?: string;
+}
 
 /**
  * API object containing all typed Tauri command wrappers
@@ -169,5 +276,63 @@ export const api = {
      * @returns Array of workflows
      */
     list: () => typedInvoke("list_workflows", {}, WorkflowListSchema),
+  },
+
+  qa: {
+    /**
+     * Get global QA settings
+     * @returns The current QA settings
+     */
+    getSettings: () => typedInvoke("get_qa_settings", {}, QASettingsSchema),
+
+    /**
+     * Update global QA settings
+     * @param input Partial settings to update
+     * @returns The updated QA settings
+     */
+    updateSettings: (input: UpdateQASettingsInput) =>
+      typedInvoke("update_qa_settings", { input }, QASettingsSchema),
+
+    /**
+     * Get TaskQA data for a specific task
+     * @param taskId The task ID
+     * @returns TaskQA record or null if none exists
+     */
+    getTaskQA: (taskId: string) =>
+      typedInvoke(
+        "get_task_qa",
+        { taskId },
+        TaskQAResponseSchema.nullable()
+      ),
+
+    /**
+     * Get QA test results for a specific task
+     * @param taskId The task ID
+     * @returns QA results or null if no results yet
+     */
+    getResults: (taskId: string) =>
+      typedInvoke(
+        "get_qa_results",
+        { taskId },
+        QAResultsResponseSchema.nullable()
+      ),
+
+    /**
+     * Retry QA tests for a task
+     * Resets test results to pending for re-testing
+     * @param taskId The task ID
+     * @returns Updated TaskQA record
+     */
+    retry: (taskId: string) =>
+      typedInvoke("retry_qa", { taskId }, TaskQAResponseSchema),
+
+    /**
+     * Skip QA for a task
+     * Marks all test steps as skipped to bypass QA failure
+     * @param taskId The task ID
+     * @returns Updated TaskQA record
+     */
+    skip: (taskId: string) =>
+      typedInvoke("skip_qa", { taskId }, TaskQAResponseSchema),
   },
 } as const;
