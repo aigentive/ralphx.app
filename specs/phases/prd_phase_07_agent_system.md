@@ -726,7 +726,7 @@ CREATE TABLE agent_profiles (
       "Add acknowledge functionality",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
