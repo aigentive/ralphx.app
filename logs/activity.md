@@ -1,14 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:20:33
+**Last Updated:** 2026-01-24 20:35:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 21 / 63
-**Current Task:** Implement ArtifactFlowService
+**Tasks Completed:** 22 / 63
+**Current Task:** Implement ResearchService
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:35:00 - Implement ArtifactFlowService (Task 22)
+
+**What was done:**
+- Created `src-tauri/src/domain/services/artifact_flow_service.rs`
+- Implemented `ArtifactFlowService<R: ArtifactFlowRepository>` generic struct
+- Implemented `StepExecutionResult` enum for Copy and ProcessSpawned results
+- Implemented `FlowExecutionResult` struct for complete flow execution results
+- Implemented `load_active_flows()` - loads active flows from repository into engine
+- Implemented `register_flow()` - registers flow with in-memory engine
+- Implemented `on_artifact_created()` - evaluates flows on artifact creation event
+- Implemented `on_task_completed()` - evaluates flows on task completion event
+- Implemented `on_process_completed()` - evaluates flows on process completion event
+- Implemented `evaluate_flows()` - evaluates flows for a given context
+- Implemented `execute_steps()` - executes steps of a flow evaluation
+- Implemented `execute_all_flows()` - executes all matching flow evaluations
+- Implemented repository delegation methods: get_flow, get_all_flows, get_active_flows, create_flow, update_flow, delete_flow, set_flow_active, flow_exists
+- Implemented `process_artifact_created()` - full event handler that loads flows and executes
+- Implemented `process_task_completed()` - full event handler for task completion
+- Implemented `process_process_completed()` - full event handler for process completion
+- Updated `domain/services/mod.rs` to export ArtifactFlowService, FlowExecutionResult, StepExecutionResult
+- Added 46 unit tests covering all service methods:
+  - Service creation and flow registration tests
+  - load_active_flows tests (empty, loads all active, skips inactive, replaces existing)
+  - on_artifact_created tests (no flows, basic match, filtered match, no match scenarios, multiple flows)
+  - on_task_completed tests (matches, no match, without artifact)
+  - on_process_completed tests (matches, no match)
+  - evaluate_flows tests with different contexts
+  - execute_steps tests (copy step, spawn process step, multiple steps)
+  - execute_all_flows tests (empty, single, multiple)
+  - Repository method delegation tests
+  - process_* event handler tests (loads flows and executes)
+  - Integration scenario tests (research-to-dev flow, multiple flows triggered, inactive flows ignored)
+
+**Commands run:**
+- `cargo test artifact_flow_service --no-fail-fast` (46 tests passed)
+
+---
 
 ### 2026-01-24 20:20:33 - Implement ArtifactService (Task 21)
 
