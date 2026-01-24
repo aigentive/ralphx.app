@@ -86,16 +86,16 @@ describe('AutonomyLevelSchema', () => {
 
 describe('ClaudeCodeConfigSchema', () => {
   it('should validate minimal config', () => {
-    const config = { agentDefinition: './agents/test.md' };
+    const config = { agent: './agents/test.md' };
     const result = ClaudeCodeConfigSchema.parse(config);
-    expect(result.agentDefinition).toBe('./agents/test.md');
+    expect(result.agent).toBe('./agents/test.md');
     expect(result.skills).toEqual([]);
     expect(result.mcpServers).toEqual([]);
   });
 
   it('should validate full config', () => {
     const config = {
-      agentDefinition: './agents/test.md',
+      agent: './agents/test.md',
       skills: ['skill1', 'skill2'],
       hooks: { preToolUse: [] },
       mcpServers: ['server1'],
@@ -105,8 +105,8 @@ describe('ClaudeCodeConfigSchema', () => {
     expect(result.mcpServers).toHaveLength(1);
   });
 
-  it('should reject empty agentDefinition', () => {
-    expect(() => ClaudeCodeConfigSchema.parse({ agentDefinition: '' })).toThrow();
+  it('should reject empty agent', () => {
+    expect(() => ClaudeCodeConfigSchema.parse({ agent: '' })).toThrow();
   });
 });
 
@@ -191,7 +191,7 @@ describe('AgentProfileSchema', () => {
     description: 'A test agent',
     role: 'worker',
     claudeCode: {
-      agentDefinition: './agents/test.md',
+      agent: './agents/test.md',
       skills: [],
       mcpServers: [],
     },

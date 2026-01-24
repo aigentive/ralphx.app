@@ -63,9 +63,13 @@ export type AutonomyLevel = z.infer<typeof AutonomyLevelSchema>;
  * Claude Code component configuration
  */
 export const ClaudeCodeConfigSchema = z.object({
-  agentDefinition: z.string().min(1),
+  /** Agent name (resolved via --plugin-dir, e.g. "worker") */
+  agent: z.string().min(1),
+  /** Skills to inject at startup (resolved via plugin discovery) */
   skills: z.array(z.string()).default([]),
+  /** Agent-scoped hooks configuration */
   hooks: z.unknown().optional(),
+  /** MCP servers to enable */
   mcpServers: z.array(z.string()).default([]),
 });
 
@@ -152,7 +156,7 @@ export const WORKER_PROFILE: AgentProfile = {
   description: 'Executes implementation tasks autonomously',
   role: 'worker',
   claudeCode: {
-    agentDefinition: './agents/worker.md',
+    agent: 'worker',
     skills: ['coding-standards', 'testing-patterns', 'git-workflow'],
     mcpServers: [],
   },
@@ -182,7 +186,7 @@ export const REVIEWER_PROFILE: AgentProfile = {
   description: 'Reviews code changes for quality and correctness',
   role: 'reviewer',
   claudeCode: {
-    agentDefinition: './agents/reviewer.md',
+    agent: 'reviewer',
     skills: ['code-review-checklist'],
     mcpServers: [],
   },
@@ -212,7 +216,7 @@ export const SUPERVISOR_PROFILE: AgentProfile = {
   description: 'Monitors task execution and intervenes when problems occur',
   role: 'supervisor',
   claudeCode: {
-    agentDefinition: './agents/supervisor.md',
+    agent: 'supervisor',
     skills: [],
     mcpServers: [],
   },
@@ -242,7 +246,7 @@ export const ORCHESTRATOR_PROFILE: AgentProfile = {
   description: 'Plans and coordinates complex multi-step tasks',
   role: 'orchestrator',
   claudeCode: {
-    agentDefinition: './agents/orchestrator.md',
+    agent: 'orchestrator',
     skills: [],
     mcpServers: [],
   },
@@ -272,7 +276,7 @@ export const DEEP_RESEARCHER_PROFILE: AgentProfile = {
   description: 'Conducts thorough research and analysis',
   role: 'researcher',
   claudeCode: {
-    agentDefinition: './agents/deep-researcher.md',
+    agent: 'deep-researcher',
     skills: ['research-methodology'],
     mcpServers: [],
   },

@@ -1,10 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:22:00
+**Last Updated:** 2026-01-25 00:26:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 5 / 21
-**Current Task:** Update TypeScript types for plugin-based agents
+**Tasks Completed:** 6 / 21
+**Current Task:** Consolidate Phase 10 ideation components
+
+---
+
+## Session Log
+
+### 2026-01-25 00:26:00 - Update TypeScript types for plugin-based agents (Task 6)
+
+**What was done:**
+- Updated `ClaudeCodeConfigSchema` in `src/types/agent-profile.ts`:
+  - Renamed `agentDefinition` field to `agent`
+  - Added doc comments explaining plugin discovery
+- Updated all builtin profile constants to use agent names instead of paths:
+  - `'./agents/worker.md'` → `'worker'`
+  - `'./agents/reviewer.md'` → `'reviewer'`
+  - etc.
+- Updated test file `agent-profile.test.ts` to use new field name
+- All 40 agent-profile tests pass
+- TypeScript typecheck passes
+
+**Commands run:**
+- `npm run typecheck` - passed
+- `npm run test -- --run src/types/agent-profile.test.ts` - 40 tests passed
 
 ---
 
