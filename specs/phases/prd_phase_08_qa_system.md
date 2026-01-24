@@ -547,7 +547,7 @@ All tasks require TDD:
       "Add get_pending_prep method for finding tasks needing QA prep",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

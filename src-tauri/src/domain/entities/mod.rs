@@ -4,10 +4,12 @@
 pub mod project;
 pub mod status;
 pub mod task;
+pub mod task_qa;
 pub mod types;
 
 // Re-export commonly used types for convenience
 pub use project::{GitMode, Project};
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
-pub use types::{ProjectId, TaskId};
+pub use task_qa::TaskQA;
+pub use types::{ProjectId, TaskId, TaskQAId};
