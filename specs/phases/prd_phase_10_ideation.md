@@ -1169,7 +1169,7 @@ All tasks require:
       "Apply design system (dark surface, subtle border)",
       "Export from src/components/Chat/ChatPanel.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
