@@ -1,14 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:38:45
+**Last Updated:** 2026-01-24 21:41:30
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 40 / 63
-**Current Task:** Implement useWorkflows hook with TanStack Query
+**Tasks Completed:** 41 / 63
+**Current Task:** Implement useArtifacts hooks with TanStack Query
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:41:30 - Implement useWorkflows hook with TanStack Query (Task 41)
+
+**What was done:**
+- Created `src/hooks/useWorkflows.ts` with TanStack Query hooks:
+  - Query keys: `workflowKeys` factory for cache management
+  - Query hooks: `useWorkflows`, `useWorkflow(id)`, `useActiveWorkflowColumns`
+  - Mutation hooks: `useCreateWorkflow`, `useUpdateWorkflow`, `useDeleteWorkflow`, `useSetDefaultWorkflow`
+  - All mutations invalidate relevant queries on success
+  - Stale time set to 1 minute for caching
+- Created `src/hooks/useWorkflows.test.ts` with 23 comprehensive tests covering:
+  - Query key generation
+  - All query hooks with success, empty, and error states
+  - All mutation hooks with success and error cases
+  - Edge cases: disabled queries when id is empty
+
+**Commands run:**
+- `npm test -- src/hooks/useWorkflows.test.ts` - 23 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:38:45 - Implement methodologyStore with Zustand (Task 40)
 
