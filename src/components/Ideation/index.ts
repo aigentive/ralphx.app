@@ -1,4 +1,5 @@
 export { ApplyModal } from "./ApplyModal";
+export { DependencyVisualization } from "./DependencyVisualization";
 export { IdeationView } from "./IdeationView";
 export { PriorityBadge } from "./PriorityBadge";
 export { ProposalCard } from "./ProposalCard";
