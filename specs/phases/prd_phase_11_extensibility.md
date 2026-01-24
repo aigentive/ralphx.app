@@ -1534,7 +1534,7 @@ All tasks require tests written before implementation:
       "Test: Deactivate methodology returns to default",
       "Run cargo test and npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
