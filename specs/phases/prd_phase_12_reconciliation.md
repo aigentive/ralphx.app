@@ -575,6 +575,152 @@ const qaPrepProfile = {
       "Document all fixes in activity.md"
     ],
     "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Define AuditConfig and AuditRule types",
+    "steps": [
+      "Create src/types/audit.ts with AuditTrigger, AuditConfig, AuditRule interfaces",
+      "Define trigger types: task_count, queue_empty, terminal_state, manual, time_based",
+      "Define check types: activity_pattern, artifact_exists, step_logged, custom",
+      "Define severity levels: low, medium, high, critical",
+      "Add Zod schemas for validation",
+      "Run npm run typecheck"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Implement default audit rules",
+    "steps": [
+      "Create src/lib/audit/defaultRules.ts",
+      "Implement visual_verification_logged rule (check activity for screenshot/agent-browser)",
+      "Implement screenshots_captured rule (check screenshots/*.png exists)",
+      "Implement tests_created rule (check **/*.test.{ts,tsx} exists)",
+      "Implement tauri_dev_used rule (check activity for 'tauri dev')",
+      "Export defaultAuditRules array",
+      "Write unit tests for rule matching logic"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Implement activity log parser",
+    "steps": [
+      "Create src/lib/audit/activityParser.ts",
+      "Parse activity.md into structured entries (timestamp, title, content)",
+      "Extract task references from entries",
+      "Implement pattern matching against entries",
+      "Handle both header section and log entries",
+      "Write unit tests for parser"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Implement artifact checker",
+    "steps": [
+      "Create src/lib/audit/artifactChecker.ts",
+      "Implement glob-based file existence checks",
+      "Check screenshots directory for PNG files",
+      "Check for test files matching patterns",
+      "Return structured results (found/missing, paths)",
+      "Write unit tests"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Create auditor agent definition",
+    "steps": [
+      "Create ralphx-plugin/agents/auditor.md",
+      "Define role: retrospective analysis of completed work",
+      "Define inputs: activity log, task list, audit rules",
+      "Define outputs: reconciliation task proposals",
+      "Define tools: Read, Glob, Grep (no Write/Edit - read-only)",
+      "Add to plugin.json agents list"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Implement audit trigger system",
+    "steps": [
+      "Create src/lib/audit/triggers.ts",
+      "Implement task_count trigger (after N tasks approved)",
+      "Implement queue_empty trigger (all tasks in terminal state)",
+      "Implement manual trigger (user command)",
+      "Implement time_based trigger (interval timer)",
+      "Integrate with task state machine events",
+      "Write unit tests for each trigger"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Implement reconciliation task generator",
+    "steps": [
+      "Create src/lib/audit/reconciliation.ts",
+      "Generate task proposals from audit findings",
+      "Map severity to task priority",
+      "Group related findings into single tasks",
+      "Format task descriptions with evidence from audit",
+      "Support autoReconcile (auto-add) vs approval mode",
+      "Write unit tests"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Add audit settings to project configuration",
+    "steps": [
+      "Add audit section to project settings schema",
+      "Default: enabled=true, triggers=[queue_empty, manual], autoReconcile=false",
+      "Add UI for audit settings in Settings panel",
+      "Persist settings to database",
+      "Write tests for settings CRUD"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Implement /audit command",
+    "steps": [
+      "Create ralphx-plugin/skills/audit/SKILL.md",
+      "Define /audit slash command for manual trigger",
+      "Show audit progress in UI",
+      "Display findings summary when complete",
+      "Allow user to approve/reject reconciliation tasks",
+      "Document command usage"
+    ],
+    "passes": false
+  },
+  {
+    "category": "auditor",
+    "description": "Add methodology-aware audit rules (extensibility)",
+    "steps": [
+      "Extend MethodologyConfig with audit rules",
+      "Add phase_complete trigger for BMAD",
+      "Add wave_complete trigger for GSD",
+      "Allow methodologies to define custom rules",
+      "Merge methodology rules with default rules",
+      "Write tests for methodology integration"
+    ],
+    "passes": false
+  },
+  {
+    "category": "testing",
+    "description": "End-to-end test of auditor system",
+    "steps": [
+      "Create test project with intentionally skipped steps",
+      "Trigger audit manually",
+      "Verify correct findings are detected",
+      "Verify reconciliation tasks are generated",
+      "Test autoReconcile mode",
+      "Test approval mode",
+      "Document test results in activity.md"
+    ],
+    "passes": false
   }
 ]
 ```
