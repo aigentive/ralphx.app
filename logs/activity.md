@@ -1,14 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:00:00
+**Last Updated:** 2026-01-24 20:05:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 37 / 50
-**Current Task:** Create useChat hook
+**Tasks Completed:** 38 / 50
+**Current Task:** Create ChatPanel component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:05:00 - Create useChat hook
+
+**What was done:**
+- Created `src/hooks/useChat.ts` with TanStack Query wrappers:
+  - `chatKeys` factory for query key management
+  - `useChatMessages(context)` - Fetch messages for context (session/project/task)
+  - `useChat(context)` - Combined hook returning:
+    - `messages` - Query result with messages array
+    - `sendMessage` - Mutation for sending messages
+- Context-aware message fetching (ideation->session, kanban->project/task)
+- Query invalidation after sending messages
+- Created `src/hooks/useChat.test.ts` with 16 unit tests covering:
+  - Query key generation
+  - Context-based message fetching
+  - Send message in various contexts
+  - Error handling
+
+**Commands run:**
+- `npm test -- --run src/hooks/useChat.test.ts` (16 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1771 tests passed)
+
+---
 
 ### 2026-01-24 20:00:00 - Create useApplyProposals hook
 
