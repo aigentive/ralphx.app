@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 use crate::domain::agents::{AgentConfig, AgenticClient, AgentRole};
 use crate::domain::state_machine::AgentSpawner;
+use crate::domain::supervisor::{ErrorInfo, SupervisorEvent, ToolCallInfo};
+use crate::infrastructure::supervisor::EventBus;
 
 /// Bridge between the state machine's AgentSpawner and the AgenticClient
 ///
@@ -17,6 +19,8 @@ pub struct AgenticClientSpawner {
     client: Arc<dyn AgenticClient>,
     /// Working directory for spawned agents
     working_directory: PathBuf,
+    /// Event bus for supervisor events (optional)
+    event_bus: Option<Arc<EventBus>>,
 }
 
 impl AgenticClientSpawner {
@@ -25,12 +29,19 @@ impl AgenticClientSpawner {
         Self {
             client,
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            event_bus: None,
         }
     }
 
     /// Create with a specific working directory
     pub fn with_working_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.working_directory = path.into();
+        self
+    }
+
+    /// Attach an event bus for supervisor events
+    pub fn with_event_bus(mut self, event_bus: Arc<EventBus>) -> Self {
+        self.event_bus = Some(event_bus);
         self
     }
 
@@ -46,11 +57,44 @@ impl AgenticClientSpawner {
             other => AgentRole::Custom(other.to_string()),
         }
     }
+
+    /// Emit a TaskStart event if event bus is configured
+    fn emit_task_start(&self, task_id: &str, agent_type: &str) {
+        if let Some(ref event_bus) = self.event_bus {
+            let event = SupervisorEvent::task_start(task_id, agent_type);
+            // Ignore if no subscribers - that's okay
+            let _ = event_bus.publish(event);
+        }
+    }
+
+    /// Emit a ToolCall event if event bus is configured
+    pub fn emit_tool_call(&self, task_id: &str, info: ToolCallInfo) {
+        if let Some(ref event_bus) = self.event_bus {
+            let event = SupervisorEvent::tool_call(task_id, info);
+            let _ = event_bus.publish(event);
+        }
+    }
+
+    /// Emit an Error event if event bus is configured
+    pub fn emit_error(&self, task_id: &str, info: ErrorInfo) {
+        if let Some(ref event_bus) = self.event_bus {
+            let event = SupervisorEvent::error(task_id, info);
+            let _ = event_bus.publish(event);
+        }
+    }
+
+    /// Get a reference to the event bus if configured
+    pub fn event_bus(&self) -> Option<&Arc<EventBus>> {
+        self.event_bus.as_ref()
+    }
 }
 
 #[async_trait]
 impl AgentSpawner for AgenticClientSpawner {
     async fn spawn(&self, agent_type: &str, task_id: &str) {
+        // Emit TaskStart event before spawning
+        self.emit_task_start(task_id, agent_type);
+
         let role = Self::role_from_string(agent_type);
 
         let config = AgentConfig {
@@ -63,8 +107,14 @@ impl AgentSpawner for AgenticClientSpawner {
             env: std::collections::HashMap::new(),
         };
 
-        // Spawn and ignore result (logging will happen via state machine hooks)
-        let _ = self.client.spawn_agent(config).await;
+        // Spawn and handle errors
+        match self.client.spawn_agent(config).await {
+            Ok(_) => {}
+            Err(e) => {
+                // Emit error event
+                self.emit_error(task_id, ErrorInfo::new(e.to_string(), "spawn_agent"));
+            }
+        }
     }
 
     async fn spawn_background(&self, agent_type: &str, task_id: &str) {
@@ -185,5 +235,129 @@ mod tests {
 
         // Should not panic or error
         spawner.wait_for("worker", "task-123").await;
+    }
+
+    // ==================== Event Bus Tests ====================
+
+    #[tokio::test]
+    async fn test_with_event_bus() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let event_bus = Arc::new(EventBus::new());
+        let spawner = AgenticClientSpawner::new(mock.clone()).with_event_bus(event_bus.clone());
+
+        assert!(spawner.event_bus().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_spawn_emits_task_start_event() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let event_bus = Arc::new(EventBus::new());
+        let mut subscriber = event_bus.subscribe();
+
+        let spawner = AgenticClientSpawner::new(mock.clone()).with_event_bus(event_bus);
+
+        spawner.spawn("worker", "task-123").await;
+
+        // Check that TaskStart event was emitted
+        let event = subscriber.try_recv().unwrap();
+        if let SupervisorEvent::TaskStart {
+            task_id,
+            agent_role,
+            ..
+        } = event
+        {
+            assert_eq!(task_id, "task-123");
+            assert_eq!(agent_role, "worker");
+        } else {
+            panic!("Expected TaskStart event, got {:?}", event);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_emit_tool_call() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let event_bus = Arc::new(EventBus::new());
+        let mut subscriber = event_bus.subscribe();
+
+        let spawner = AgenticClientSpawner::new(mock.clone()).with_event_bus(event_bus);
+
+        let info = ToolCallInfo::new("Write", r#"{"path": "test.txt"}"#);
+        spawner.emit_tool_call("task-123", info);
+
+        let event = subscriber.try_recv().unwrap();
+        if let SupervisorEvent::ToolCall { task_id, info } = event {
+            assert_eq!(task_id, "task-123");
+            assert_eq!(info.tool_name, "Write");
+        } else {
+            panic!("Expected ToolCall event, got {:?}", event);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_emit_error() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let event_bus = Arc::new(EventBus::new());
+        let mut subscriber = event_bus.subscribe();
+
+        let spawner = AgenticClientSpawner::new(mock.clone()).with_event_bus(event_bus);
+
+        let info = ErrorInfo::new("Something went wrong", "test_source");
+        spawner.emit_error("task-123", info);
+
+        let event = subscriber.try_recv().unwrap();
+        if let SupervisorEvent::Error { task_id, info } = event {
+            assert_eq!(task_id, "task-123");
+            assert_eq!(info.message, "Something went wrong");
+            assert_eq!(info.source, "test_source");
+        } else {
+            panic!("Expected Error event, got {:?}", event);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_spawn_without_event_bus_works() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let spawner = AgenticClientSpawner::new(mock.clone());
+
+        // Should not panic even without event bus
+        spawner.spawn("worker", "task-123").await;
+
+        let calls = mock.get_spawn_calls().await;
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_emit_without_event_bus_is_noop() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let spawner = AgenticClientSpawner::new(mock.clone());
+
+        // Should not panic
+        let info = ToolCallInfo::new("Read", "{}");
+        spawner.emit_tool_call("task-123", info);
+
+        let error_info = ErrorInfo::new("Test error", "test");
+        spawner.emit_error("task-123", error_info);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_spawns_emit_multiple_events() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let event_bus = Arc::new(EventBus::new());
+        let mut subscriber = event_bus.subscribe();
+
+        let spawner = AgenticClientSpawner::new(mock.clone()).with_event_bus(event_bus);
+
+        spawner.spawn("worker", "task-1").await;
+        spawner.spawn("reviewer", "task-2").await;
+        spawner.spawn("supervisor", "task-3").await;
+
+        // Check all three events
+        let event1 = subscriber.try_recv().unwrap();
+        let event2 = subscriber.try_recv().unwrap();
+        let event3 = subscriber.try_recv().unwrap();
+
+        assert_eq!(event1.task_id(), "task-1");
+        assert_eq!(event2.task_id(), "task-2");
+        assert_eq!(event3.task_id(), "task-3");
     }
 }
