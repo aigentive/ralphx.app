@@ -1236,7 +1236,7 @@ All tasks require tests written before implementation:
       "Handle workflow and agent profile switching",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
