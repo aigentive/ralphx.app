@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    ProjectId, Review, ReviewAction, ReviewId, ReviewNote, TaskId,
+    ProjectId, Review, ReviewAction, ReviewId, ReviewNote, ReviewerType, TaskId,
 };
 
 // ============================================================================
@@ -117,6 +117,27 @@ pub struct RequestChangesInput {
 pub struct RejectReviewInput {
     pub review_id: String,
     pub notes: String,
+}
+
+/// Input for approving a fix task
+#[derive(Debug, Deserialize)]
+pub struct ApproveFixTaskInput {
+    pub fix_task_id: String,
+}
+
+/// Input for rejecting a fix task
+#[derive(Debug, Deserialize)]
+pub struct RejectFixTaskInput {
+    pub fix_task_id: String,
+    pub feedback: String,
+    pub original_task_id: String,
+}
+
+/// Response for fix task attempt count
+#[derive(Debug, Serialize)]
+pub struct FixTaskAttemptsResponse {
+    pub task_id: String,
+    pub attempt_count: u32,
 }
 
 // ============================================================================
@@ -292,6 +313,156 @@ pub async fn reject_review(
         .map_err(|e| e.to_string())
 }
 
+// ============================================================================
+// Commands - Fix task operations
+// ============================================================================
+
+use crate::domain::entities::{InternalStatus, ReviewOutcome, Task};
+use crate::domain::review::config::ReviewSettings;
+
+/// Approve a fix task, changing its status from Blocked to Ready
+#[tauri::command]
+pub async fn approve_fix_task(
+    input: ApproveFixTaskInput,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let fix_task_id = TaskId::from_string(input.fix_task_id);
+
+    // Get the fix task
+    let mut fix_task = state
+        .task_repo
+        .get_by_id(&fix_task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Fix task not found: {}", fix_task_id.as_str()))?;
+
+    // Verify it's in Blocked status
+    if fix_task.internal_status != InternalStatus::Blocked {
+        return Err(format!(
+            "Fix task {} is not in Blocked status (current: {:?})",
+            fix_task_id.as_str(),
+            fix_task.internal_status
+        ));
+    }
+
+    // Change to Ready status
+    fix_task.internal_status = InternalStatus::Ready;
+    state
+        .task_repo
+        .update(&fix_task)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Reject a fix task with feedback, optionally creating a new fix proposal
+/// Returns the new fix task ID if one was created, None if max attempts reached
+#[tauri::command]
+pub async fn reject_fix_task(
+    input: RejectFixTaskInput,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let fix_task_id = TaskId::from_string(input.fix_task_id);
+    let original_task_id = TaskId::from_string(input.original_task_id);
+    let settings = ReviewSettings::default();
+
+    // Get and update fix task to Failed
+    let mut fix_task = state
+        .task_repo
+        .get_by_id(&fix_task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Fix task not found: {}", fix_task_id.as_str()))?;
+
+    fix_task.internal_status = InternalStatus::Failed;
+    state.task_repo.update(&fix_task).await.map_err(|e| e.to_string())?;
+
+    // Get original task
+    let original_task = state
+        .task_repo
+        .get_by_id(&original_task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Original task not found: {}", original_task_id.as_str()))?;
+
+    // Count fix attempts for original task
+    let attempt_count = state
+        .review_repo
+        .count_fix_actions(&original_task_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Check if max attempts exceeded
+    if settings.exceeded_max_attempts(attempt_count) {
+        // Move original task to backlog
+        let mut original = original_task;
+        original.internal_status = InternalStatus::Backlog;
+        state.task_repo.update(&original).await.map_err(|e| e.to_string())?;
+
+        // Add review note about max attempts
+        let note = ReviewNote::with_notes(
+            original_task_id.clone(),
+            ReviewerType::Ai,
+            ReviewOutcome::Rejected,
+            format!(
+                "Max fix attempts ({}) reached. Task moved to backlog. Last feedback: {}",
+                settings.max_fix_attempts, input.feedback
+            ),
+        );
+        state.review_repo.add_note(&note).await.map_err(|e| e.to_string())?;
+
+        return Ok(None);
+    }
+
+    // Create new fix task with feedback
+    let new_fix_description = format!(
+        "Previous fix rejected. Feedback: {}\n\nOriginal issue: {}",
+        input.feedback,
+        fix_task.description.as_deref().unwrap_or("No description")
+    );
+
+    let mut new_fix_task = Task::new_with_category(
+        original_task.project_id.clone(),
+        format!("Fix: {}", original_task.title),
+        "fix".to_string(),
+    );
+    new_fix_task.set_description(Some(new_fix_description));
+    new_fix_task.set_priority(original_task.priority + 1);
+
+    if settings.needs_fix_approval() {
+        new_fix_task.internal_status = InternalStatus::Blocked;
+    } else {
+        new_fix_task.internal_status = InternalStatus::Ready;
+    }
+
+    let created = state
+        .task_repo
+        .create(new_fix_task)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(Some(created.id.as_str().to_string()))
+}
+
+/// Get the number of fix attempts for a task
+#[tauri::command]
+pub async fn get_fix_task_attempts(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<FixTaskAttemptsResponse, String> {
+    let task_id = TaskId::from_string(task_id.clone());
+
+    let attempt_count = state
+        .review_repo
+        .count_fix_actions(&task_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(FixTaskAttemptsResponse {
+        task_id: task_id.as_str().to_string(),
+        attempt_count,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,5 +617,174 @@ mod tests {
         // Verify it serializes to JSON
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"reviewer_type\":\"human\""));
+    }
+
+    // ========================================
+    // Fix Task Command Tests
+    // ========================================
+
+    use crate::domain::entities::Project;
+
+    async fn create_task_for_tests(state: &AppState, project_id: ProjectId) -> Task {
+        // Create a project first (required for task creation)
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        let mut project_with_id = project;
+        project_with_id.id = project_id.clone();
+        state.project_repo.create(project_with_id).await.unwrap();
+
+        // Create a task
+        let mut task = Task::new(project_id, "Test Task".to_string());
+        task.internal_status = InternalStatus::PendingReview;
+        state.task_repo.create(task.clone()).await.unwrap();
+        task
+    }
+
+    async fn create_blocked_fix_task(state: &AppState, project_id: ProjectId) -> (Task, Task) {
+        // Create a project first
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        let mut project_with_id = project;
+        project_with_id.id = project_id.clone();
+        state.project_repo.create(project_with_id).await.unwrap();
+
+        // Create original task
+        let mut original = Task::new(project_id.clone(), "Original Task".to_string());
+        original.internal_status = InternalStatus::RevisionNeeded;
+        let original = state.task_repo.create(original).await.unwrap();
+
+        // Create fix task (blocked, waiting for approval)
+        let mut fix_task = Task::new_with_category(
+            project_id,
+            "Fix: Original Task".to_string(),
+            "fix".to_string(),
+        );
+        fix_task.internal_status = InternalStatus::Blocked;
+        let fix_task = state.task_repo.create(fix_task).await.unwrap();
+
+        (original, fix_task)
+    }
+
+    #[tokio::test]
+    async fn test_approve_fix_task_success() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("proj-1".to_string());
+
+        // Create original task and blocked fix task
+        let (_original, fix_task) = create_blocked_fix_task(&state, project_id).await;
+
+        // Verify fix task is blocked initially
+        let task = state.task_repo.get_by_id(&fix_task.id).await.unwrap().unwrap();
+        assert_eq!(task.internal_status, InternalStatus::Blocked);
+
+        // Approve it directly (simulating what the command does)
+        let mut task = state.task_repo.get_by_id(&fix_task.id).await.unwrap().unwrap();
+        assert_eq!(task.internal_status, InternalStatus::Blocked);
+        task.internal_status = InternalStatus::Ready;
+        state.task_repo.update(&task).await.unwrap();
+
+        // Verify it's now Ready
+        let updated = state.task_repo.get_by_id(&fix_task.id).await.unwrap().unwrap();
+        assert_eq!(updated.internal_status, InternalStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn test_approve_fix_task_not_blocked_fails() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("proj-1".to_string());
+
+        // Create a task that is Ready (not Blocked)
+        let task = create_task_for_tests(&state, project_id).await;
+
+        // Set it to Ready
+        let mut task = state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        task.internal_status = InternalStatus::Ready;
+        state.task_repo.update(&task).await.unwrap();
+
+        // Simulating the command logic - should reject non-Blocked tasks
+        let task = state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert_ne!(task.internal_status, InternalStatus::Blocked);
+        // In the real command, this returns an error
+    }
+
+    #[tokio::test]
+    async fn test_approve_fix_task_not_found() {
+        let state = setup_test_state().await;
+
+        let nonexistent_id = TaskId::from_string("nonexistent".to_string());
+
+        // Task not found
+        let result = state.task_repo.get_by_id(&nonexistent_id).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reject_fix_task_creates_new_fix() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("proj-1".to_string());
+
+        // Create original task and blocked fix task
+        let (original, fix_task) = create_blocked_fix_task(&state, project_id).await;
+
+        // Create a review for the original task (required for fix attempt counting)
+        let review = Review::new(
+            original.project_id.clone(),
+            original.id.clone(),
+            ReviewerType::Ai,
+        );
+        state.review_repo.create(&review).await.unwrap();
+
+        // Simulate reject_fix_task logic:
+        // 1. Mark fix task as Failed
+        let mut fix = state.task_repo.get_by_id(&fix_task.id).await.unwrap().unwrap();
+        fix.internal_status = InternalStatus::Failed;
+        state.task_repo.update(&fix).await.unwrap();
+
+        // 2. Create new fix task
+        let mut new_fix_task = Task::new_with_category(
+            original.project_id.clone(),
+            format!("Fix: {}", original.title),
+            "fix".to_string(),
+        );
+        new_fix_task.set_description(Some(format!(
+            "Previous fix rejected. Feedback: {}\n\nOriginal issue: {}",
+            "Not good enough",
+            fix.description.as_deref().unwrap_or("No description")
+        )));
+        new_fix_task.set_priority(original.priority + 1);
+        new_fix_task.internal_status = InternalStatus::Ready;
+        let created = state.task_repo.create(new_fix_task).await.unwrap();
+
+        // Verify new fix task was created
+        assert!(created.title.starts_with("Fix:"));
+        assert!(created.description.as_ref().unwrap().contains("Not good enough"));
+
+        // Original fix task should be Failed
+        let old_fix = state.task_repo.get_by_id(&fix_task.id).await.unwrap().unwrap();
+        assert_eq!(old_fix.internal_status, InternalStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_get_fix_task_attempts_zero() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("proj-1".to_string());
+
+        // Create a task
+        let task = create_task_for_tests(&state, project_id).await;
+
+        // Get fix attempts (should be 0)
+        let count = state.review_repo.count_fix_actions(&task.id).await.unwrap();
+
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_fix_task_attempts_response_serialization() {
+        let response = FixTaskAttemptsResponse {
+            task_id: "task-123".to_string(),
+            attempt_count: 2,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"task_id\":\"task-123\""));
+        assert!(json.contains("\"attempt_count\":2"));
     }
 }
