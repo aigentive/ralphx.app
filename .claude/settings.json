@@ -60,7 +60,13 @@
       "Bash(agent-browser close:*)",
       "Bash(agent-browser get:*)",
       "Bash(agent-browser is:*)",
-      "Bash(agent-browser wait:*)"
+      "Bash(agent-browser wait:*)",
+      "Bash(agent-browser drag:*)",
+      "Bash(agent-browser reload:*)",
+      "Bash(agent-browser type:*)",
+      "Bash(agent-browser press:*)",
+      "Bash(agent-browser hover:*)",
+      "Bash(agent-browser scroll:*)"
     ],
     "deny": [
       "Bash(sudo:*)",
