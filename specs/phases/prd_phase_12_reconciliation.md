@@ -104,7 +104,67 @@ ralphx-plugin/
 
 ---
 
-## Issue 2: (Placeholder for future issues)
+## Issue 2: Missing Visual Verification
+
+### Problem
+
+Visual verification was largely skipped during UI implementation phases. The `screenshots/` folder is empty (only `.gitkeep`), and the activity log shows only ONE visual verification attempt which partially failed.
+
+### What Went Wrong
+
+1. **Wrong dev command**: Used `npm run dev` (Vite-only) instead of `npm run tauri dev` (full app with backend)
+2. **No screenshots captured**: Zero screenshots despite PROMPT.md having clear instructions
+3. **Rationalized as "covered by unit tests"**: Agent skipped visual verification claiming unit tests were sufficient
+4. **Tauri backend required**: Without Tauri, `invoke` commands fail and app shows errors
+
+### Evidence from Activity Log
+
+```
+### 2026-01-24 15:25:00 - Visual verification of QA UI components
+- Started dev server on http://localhost:1420
+- Verified page renders using agent-browser (shows error without Tauri backend)
+- Note: Full visual screenshots require Tauri backend running
+```
+
+### Solution
+
+Retroactively verify all UI components from Phases 5, 6, 8, 9, 10:
+1. Run `npm run tauri dev` (not `npm run dev`)
+2. Wait for Tauri to compile and serve
+3. Use `agent-browser` to capture screenshots
+4. Fix any visual issues discovered
+5. Verify anti-AI-slop compliance (no purple gradients, no Inter font, no generic icons)
+
+### Components Requiring Visual Verification
+
+**Phase 5 (Frontend Core):**
+- Basic app shell and layout
+
+**Phase 6 (Kanban UI):**
+- TaskBoard with columns
+- TaskCard component
+- Drag-drop interactions
+- Status badges
+
+**Phase 8 (QA System):**
+- TaskQABadge
+- TaskDetailQAPanel
+- QASettingsPanel
+
+**Phase 9 (Review & Supervision):**
+- Review components
+- Supervisor dashboard
+- Human-in-loop approval UI
+
+**Phase 10 (Ideation):**
+- ChatPanel and ChatMessage
+- ProposalCard and ProposalList
+- IdeationView
+- PriorityBadge
+
+---
+
+## Issue 3: (Placeholder for future issues)
 
 _Add additional reconciliation issues here as they are discovered._
 
@@ -281,6 +341,101 @@ const qaPrepProfile = {
       "Update specs/plan.md agent sections to use plugin pattern",
       "Document --plugin-dir usage in README if applicable",
       "Update any PRD references to .claude/ paths"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Kanban UI (Phase 6)",
+    "steps": [
+      "Run npm run tauri dev and wait for compilation",
+      "agent-browser open http://localhost:1420",
+      "agent-browser snapshot -i -c to analyze page structure",
+      "Navigate to Kanban board view",
+      "agent-browser screenshot screenshots/kanban-board-overview.png",
+      "Verify TaskCard rendering - agent-browser screenshot screenshots/task-card.png",
+      "Test drag-drop: agent-browser click on a task card, drag to another column",
+      "agent-browser screenshot screenshots/drag-drop-interaction.png",
+      "Verify status badges render correctly",
+      "Check anti-AI-slop: no purple gradients, no Inter font, no generic icons",
+      "agent-browser close",
+      "Document findings in activity.md"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of QA UI components (Phase 8)",
+    "steps": [
+      "Run npm run tauri dev and wait for compilation",
+      "agent-browser open http://localhost:1420",
+      "Navigate to a task with QA data",
+      "agent-browser screenshot screenshots/qa-badge.png",
+      "Open task detail panel",
+      "agent-browser screenshot screenshots/qa-detail-panel.png",
+      "Verify Acceptance Criteria tab renders",
+      "agent-browser screenshot screenshots/qa-acceptance-criteria-tab.png",
+      "Verify Test Results tab renders",
+      "agent-browser screenshot screenshots/qa-test-results-tab.png",
+      "Open QA Settings panel",
+      "agent-browser screenshot screenshots/qa-settings-panel.png",
+      "Check anti-AI-slop compliance",
+      "agent-browser close",
+      "Document findings in activity.md"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Review & Supervision UI (Phase 9)",
+    "steps": [
+      "Run npm run tauri dev and wait for compilation",
+      "agent-browser open http://localhost:1420",
+      "Navigate to review components (if accessible)",
+      "agent-browser screenshot screenshots/review-panel.png",
+      "Verify supervisor dashboard renders",
+      "agent-browser screenshot screenshots/supervisor-dashboard.png",
+      "Test human-in-loop approval UI if available",
+      "agent-browser screenshot screenshots/human-approval-ui.png",
+      "Check anti-AI-slop compliance",
+      "agent-browser close",
+      "Document findings in activity.md"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Ideation UI (Phase 10)",
+    "steps": [
+      "Run npm run tauri dev and wait for compilation",
+      "agent-browser open http://localhost:1420",
+      "Navigate to Ideation view",
+      "agent-browser screenshot screenshots/ideation-view.png",
+      "Verify ChatPanel renders",
+      "agent-browser screenshot screenshots/chat-panel.png",
+      "Test ChatInput interaction",
+      "agent-browser screenshot screenshots/chat-input.png",
+      "Verify ProposalCard and ProposalList render",
+      "agent-browser screenshot screenshots/proposal-list.png",
+      "Verify PriorityBadge renders correctly",
+      "agent-browser screenshot screenshots/priority-badge.png",
+      "Check anti-AI-slop compliance",
+      "agent-browser close",
+      "Document findings in activity.md"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Fix visual issues discovered during verification",
+    "steps": [
+      "Review all screenshots captured in previous tasks",
+      "Identify any visual issues (layout, styling, responsiveness)",
+      "Identify any anti-AI-slop violations",
+      "Fix each issue found",
+      "Re-capture screenshots to verify fixes",
+      "Run npm run lint and npm run typecheck",
+      "Document all fixes in activity.md"
     ],
     "passes": false
   }
