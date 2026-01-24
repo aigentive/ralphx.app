@@ -1,14 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:59:21
+**Last Updated:** 2026-01-24 15:01:12
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 47 / 51
-**Current Task:** Integrate AskUserQuestionModal with App
+**Tasks Completed:** 48 / 51
+**Current Task:** Add TaskCard click to open TaskDetailView
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:01:12 - Integrate AskUserQuestionModal with App
+
+**What was done:**
+- Updated `src/App.tsx`:
+  - Added AskUserQuestionModal import
+  - Added activeQuestion and clearActiveQuestion from uiStore
+  - Added isQuestionLoading local state
+  - Implemented handleQuestionSubmit (logs response, clears modal - TODO for Tauri command)
+  - Implemented handleQuestionClose (dismisses without submitting)
+  - Added AskUserQuestionModal component at end of layout
+  - Modal renders when activeQuestion is non-null
+- All tests pass (7 tests)
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- --run src/App.test.tsx` (7 tests passed)
+
+---
 
 ### 2026-01-24 14:59:21 - Integrate ExecutionControlBar with App layout
 
