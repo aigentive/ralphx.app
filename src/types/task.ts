@@ -50,6 +50,8 @@ export const CreateTaskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   priority: z.number().int().default(0),
+  /** Override for QA enablement. null means inherit from global settings. */
+  needsQa: z.boolean().nullable().optional(),
 });
 
 export type CreateTask = z.infer<typeof CreateTaskSchema>;

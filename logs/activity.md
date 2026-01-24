@@ -1,14 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:03:00
+**Last Updated:** 2026-01-24 15:06:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 24 / 33
-**Current Task:** Add QA toggle to task creation form
+**Tasks Completed:** 25 / 33
+**Current Task:** Integrate TaskQABadge with TaskCard
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:06:00 - Add QA toggle to task creation form
+
+**What was done:**
+- Updated `src/types/task.ts`:
+  - Added `needsQa` field to `CreateTaskSchema` (boolean | null | undefined)
+  - null means inherit from global QA settings
+  - true means explicitly enable QA for this task
+  - undefined/omitted inherits from global settings
+- Added 4 new tests to `src/types/task.test.ts` for needsQa validation
+- Created `src/components/tasks/TaskCreationForm.tsx`:
+  - Complete task creation form with title, category, description fields
+  - QA toggle checkbox with info text explaining what QA does
+  - Submits via useTaskMutation hook
+  - Proper form validation (title required)
+  - Disabled states during submission
+  - Error display for failed submissions
+  - Cancel and Create buttons with proper styling
+  - Full ARIA accessibility with proper labels and aria-describedby
+- Created comprehensive test suite `src/components/tasks/TaskCreationForm.test.tsx` with 23 tests covering:
+  - Rendering (form fields, heading, buttons, QA checkbox, info text)
+  - Form validation (title required)
+  - QA toggle interaction (check/uncheck, submit behavior)
+  - Category selection (default, change, submit)
+  - Description field (optional, submit)
+  - Cancel button behavior
+  - Form reset after success
+  - Accessibility (labels, aria-describedby)
+- All 881 TypeScript tests passing
+
+**Commands run:**
+- `npm test -- src/types/task.test.ts --reporter=verbose`
+- `npm test -- src/components/tasks/TaskCreationForm.test.tsx --reporter=verbose`
+- `npm run typecheck`
+- `npm test`
+
+---
 
 ### 2026-01-24 15:03:00 - Create QASettingsPanel component
 

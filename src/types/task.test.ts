@@ -191,6 +191,45 @@ describe("CreateTaskSchema", () => {
       expect(result.error.issues[0]?.message).toBe("Title is required");
     }
   });
+
+  it("should allow needsQa as true", () => {
+    const createData = {
+      projectId: "project-123",
+      title: "New Task",
+      needsQa: true,
+    };
+    const result = CreateTaskSchema.parse(createData);
+    expect(result.needsQa).toBe(true);
+  });
+
+  it("should allow needsQa as false", () => {
+    const createData = {
+      projectId: "project-123",
+      title: "New Task",
+      needsQa: false,
+    };
+    const result = CreateTaskSchema.parse(createData);
+    expect(result.needsQa).toBe(false);
+  });
+
+  it("should allow needsQa as null (inherit from global)", () => {
+    const createData = {
+      projectId: "project-123",
+      title: "New Task",
+      needsQa: null,
+    };
+    const result = CreateTaskSchema.parse(createData);
+    expect(result.needsQa).toBe(null);
+  });
+
+  it("should default needsQa to undefined when not provided", () => {
+    const createData = {
+      projectId: "project-123",
+      title: "New Task",
+    };
+    const result = CreateTaskSchema.parse(createData);
+    expect(result.needsQa).toBeUndefined();
+  });
 });
 
 describe("UpdateTaskSchema", () => {
