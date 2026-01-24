@@ -1,14 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:15:00
+**Last Updated:** 2026-01-24 15:19:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 30 / 33
-**Current Task:** End-to-end QA UI flow
+**Tasks Completed:** 31 / 33
+**Current Task:** Add cost-optimized test prompts for QA agents
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:19:00 - End-to-end QA UI flow integration test
+
+**What was done:**
+- Created `src/integration/qa-ui-flow.test.tsx` with 19 integration tests covering:
+  - **TaskQABadge on TaskCard:** 8 tests for badge rendering with all QA states
+  - **Badge updates through QA states:** 3 tests for state transitions (pending -> preparing -> ready -> testing -> passed/failed)
+  - **TaskDetailQAPanel rendering:** 5 tests for acceptance criteria, test results tab, screenshots tab, and result summary
+  - **Loading and empty states:** 3 tests for no QA data, no criteria, and no results scenarios
+- Fixed test data to use correct Tauri response schemas (`criteria_type`, `step_id`, `passed_steps`/`total_steps`)
+- Wrapped tab clicks in `act()` for proper React state updates
+
+**Commands run:**
+- `npm test -- src/integration/qa-ui-flow.test.tsx --reporter=verbose`
+
+---
 
 ### 2026-01-24 15:15:00 - QA System Integration Tests
 
