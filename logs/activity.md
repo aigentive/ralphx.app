@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 23:24:00
+**Last Updated:** 2026-01-24 23:26:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 34 / 63
-**Current Task:** Create Tauri API wrappers for artifacts
+**Tasks Completed:** 35 / 63
+**Current Task:** Create Tauri API wrappers for research
 
 ---
 
 ## Session Log
+
+### 2026-01-24 23:26:00 - Create Tauri API wrappers for artifacts (Task 35)
+
+**What was done:**
+- Created `src/lib/api/artifacts.ts` with type-safe Tauri command wrappers:
+  - Response schemas: `ArtifactResponseSchema`, `BucketResponseSchema`, `ArtifactRelationResponseSchema`
+  - Input schemas: `CreateArtifactInputSchema`, `UpdateArtifactInputSchema`, `CreateBucketInputSchema`, `AddRelationInputSchema`
+  - Artifact API: `getArtifacts`, `getArtifact`, `createArtifact`, `updateArtifact`, `deleteArtifact`
+  - Bucket API: `getBuckets`, `createBucket`, `getSystemBuckets`
+  - Query APIs: `getArtifactsByBucket`, `getArtifactsByTask`
+  - Relation API: `addArtifactRelation`, `getArtifactRelations`
+  - All responses validated with Zod before returning
+- Created `src/lib/api/artifacts.test.ts` with 62 tests covering:
+  - Schema validation for all response and input types
+  - All 12 API functions with success and error cases
+  - Edge cases: nullable fields, file vs inline content, relation types
+- Updated `src/lib/api/index.ts` to export all artifact API functions and types
+
+**Commands run:**
+- `npm test -- src/lib/api/artifacts.test.ts` - 62 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 23:24:00 - Create Tauri API wrappers for workflows (Task 34)
 
