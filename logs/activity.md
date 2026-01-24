@@ -1,14 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:25:00
+**Last Updated:** 2026-01-24 19:30:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 30 / 50
-**Current Task:** Create proposalStore with Zustand
+**Tasks Completed:** 31 / 50
+**Current Task:** Create chatStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:30:00 - Create proposalStore with Zustand
+
+**What was done:**
+- Created `src/stores/proposalStore.ts` with Zustand + immer middleware:
+  - State: proposals (Record<string, TaskProposal>), isLoading, error
+  - Actions: setProposals, addProposal, updateProposal, removeProposal,
+    toggleSelection, selectAll, deselectAll, reorder, setLoading, setError, clearError
+  - Selectors: selectProposalsBySession, selectSelectedProposals,
+    selectSelectedProposalIds, selectProposalsByPriority, selectSortedProposals
+- Uses Record<string, TaskProposal> for O(1) lookup
+- Selected state tracked on proposal.selected field (derived Set via selector)
+- Created `src/stores/proposalStore.test.ts` with 46 unit tests covering:
+  - Initial state verification
+  - All action methods (setProposals, add, update, remove, toggle, selectAll, deselectAll, reorder)
+  - All selector functions
+  - Edge cases
+
+**Commands run:**
+- `npm test -- --run src/stores/proposalStore.test.ts` (46 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1648 tests passed)
+
+---
 
 ### 2026-01-24 19:25:00 - Create ideationStore with Zustand
 

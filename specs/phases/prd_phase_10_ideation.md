@@ -1042,7 +1042,7 @@ All tasks require:
       "  - reorder(proposalIds)",
       "Export from src/stores/proposalStore.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
