@@ -6,6 +6,7 @@ pub mod artifact_commands;
 pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
+pub mod methodology_commands;
 pub mod project_commands;
 pub mod qa_commands;
 pub mod research_commands;
@@ -64,4 +65,9 @@ pub use research_commands::{
     get_research_presets, get_research_process, get_research_processes, pause_research,
     resume_research, start_research, stop_research, CustomDepthInput, ResearchPresetResponse,
     ResearchProcessResponse, StartResearchInput,
+};
+pub use methodology_commands::{
+    activate_methodology, deactivate_methodology, get_active_methodology, get_methodologies,
+    MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,
+    MethodologyTemplateResponse, WorkflowSchemaResponse,
 };
