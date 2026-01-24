@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:20:00
+**Last Updated:** 2026-01-24 08:25:00
 **Phase:** State Machine
-**Tasks Completed:** 3 / 22
-**Current Task:** Create state-local data structs (QaFailedData, FailedData)
+**Tasks Completed:** 4 / 22
+**Current Task:** Create service traits for dependency injection
 
 ---
 
@@ -1799,6 +1799,32 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:25:00 - Create state-local data structs (QaFailedData, FailedData)
+
+**What was done:**
+- Added QaFailedData struct with:
+  - failures: Vec<QaFailure> for tracking test failures
+  - retry_count: u32 for retry tracking
+  - notified: bool for notification status
+  - Helper methods: new(), single(), has_failures(), failure_count(), add_failure(), etc.
+- Added FailedData struct with:
+  - error: String for failure message
+  - details: Option<String> for stack traces
+  - is_timeout: bool for timeout failures
+  - Constructors: new(), timeout(), with_details()
+- Both structs implement Default trait
+- Updated mod.rs to export QaFailedData and FailedData
+- Wrote 23 comprehensive tests
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 385 tests pass
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/types.rs` - added state-local data structs
+- `src-tauri/src/domain/state_machine/mod.rs` - updated exports
 
 ---
 

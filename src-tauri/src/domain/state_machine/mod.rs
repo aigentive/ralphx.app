@@ -10,7 +10,7 @@ pub mod types;
 
 // Re-export key types
 pub use events::TaskEvent;
-pub use types::{Blocker, QaFailure};
+pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
 
 #[cfg(test)]
 mod tests {
