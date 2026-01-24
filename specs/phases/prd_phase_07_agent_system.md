@@ -399,7 +399,7 @@ CREATE TABLE agent_profiles (
       "Implement serde Serialize/Deserialize for all structs",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

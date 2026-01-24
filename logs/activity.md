@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:54:39
+**Last Updated:** 2026-01-24 09:57:25
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 2 / 33
-**Current Task:** Implement AgentProfile Rust struct
+**Tasks Completed:** 3 / 33
+**Current Task:** Implement AgentProfile TypeScript types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 09:57:25 - Implement AgentProfile Rust struct
+
+**What was done:**
+- Created `src-tauri/src/domain/agents/agent_profile.rs` with:
+  - ProfileRole enum (Worker, Reviewer, Supervisor, Orchestrator, Researcher)
+  - Model enum (Opus, Sonnet, Haiku) with model_id() for full IDs
+  - PermissionMode enum (Default, AcceptEdits, BypassPermissions)
+  - AutonomyLevel enum (Supervised, SemiAutonomous, FullyAutonomous)
+  - ClaudeCodeConfig struct for agent definition and skills
+  - ExecutionConfig struct for model, iterations, timeout
+  - IoConfig struct for artifact types
+  - BehaviorConfig struct for autonomy flags
+  - AgentProfile struct with all fields from PRD schema
+  - Factory methods for 5 built-in profiles: worker(), reviewer(), supervisor(), orchestrator(), deep_researcher()
+  - builtin_profiles() returning all 5 profiles
+- Updated domain/agents/mod.rs to export agent_profile types
+- All 706 Rust tests passing (includes 40+ new AgentProfile tests)
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+
+---
 
 ### 2026-01-24 09:54:39 - Create plugin.json manifest
 
