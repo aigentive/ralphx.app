@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 06:58:23
+**Last Updated:** 2026-01-24 07:01:45
 **Phase:** Foundation
-**Tasks Completed:** 12 / 19
-**Current Task:** Set up SQLite database with rusqlite
+**Tasks Completed:** 13 / 19
+**Current Task:** Implement basic Tauri health_check command
 
 ---
 
@@ -1115,6 +1115,41 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `src-tauri/src/domain/entities/mod.rs` - added task module export and re-export
+
+---
+
+### 2026-01-24 07:01:45 - Set up SQLite database with rusqlite
+
+**What was done:**
+- Added rusqlite dependency with bundled feature to Cargo.toml
+- Added tempfile dev-dependency for testing
+- Created `src-tauri/src/infrastructure/sqlite/` module structure
+- Implemented `connection.rs` with:
+  - `get_default_db_path()` - returns default database path
+  - `open_connection()` - opens database connection at specified path
+  - `open_memory_connection()` - opens in-memory database for testing
+- Implemented `migrations.rs` with:
+  - Schema version tracking via `schema_migrations` table
+  - `run_migrations()` - runs all pending migrations
+  - `migrate_v1()` - creates projects, tasks, and task_state_history tables
+  - Indexes on project_id, internal_status, and task_id for performance
+- All tables match the schema from the master plan:
+  - `projects` table with git mode, worktree fields
+  - `tasks` table with internal_status, priority, timestamps
+  - `task_state_history` table for audit logging
+- Updated `infrastructure/mod.rs` to export sqlite module
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 146 tests pass (21 new SQLite tests)
+
+**Files created:**
+- `src-tauri/src/infrastructure/sqlite/mod.rs`
+- `src-tauri/src/infrastructure/sqlite/connection.rs`
+- `src-tauri/src/infrastructure/sqlite/migrations.rs`
+
+**Files modified:**
+- `src-tauri/Cargo.toml` - added rusqlite, tempfile dependencies
+- `src-tauri/src/infrastructure/mod.rs` - export sqlite module
 
 ---
 
