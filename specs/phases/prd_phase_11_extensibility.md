@@ -741,7 +741,7 @@ All tasks require tests written before implementation:
       "Add From/Into traits for JSON conversion",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
