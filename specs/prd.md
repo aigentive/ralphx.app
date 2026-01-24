@@ -230,7 +230,7 @@ Each phase PRD should follow this structure:
       "Verify complete ideation workflow is covered"
     ],
     "output": "specs/phases/prd_phase_10_ideation.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
