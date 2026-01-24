@@ -634,7 +634,7 @@ Every task follows the TDD cycle:
       "Add derive macros: Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
