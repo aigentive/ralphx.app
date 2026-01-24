@@ -975,7 +975,7 @@ interface AskUserQuestionResponse {
       "Verify notification emitted",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",

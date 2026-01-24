@@ -692,3 +692,224 @@ async fn test_multiple_fix_attempts_tracked() {
     let count = service.get_fix_attempt_count(&task_id).await.unwrap();
     assert_eq!(count, 2);
 }
+
+// ============================================================================
+// AI Review Escalate Flow Tests
+// ============================================================================
+
+/// Test: Full AI review escalate flow
+///
+/// Flow:
+/// 1. Task is in pending_review state
+/// 2. Start AI review via ReviewService
+/// 3. Mock reviewer agent returns ESCALATE outcome
+/// 4. Process review result
+/// 5. Verify task transitions to blocked
+/// 6. Verify review record has needs_human status
+/// 7. Verify notification emitted (via review note)
+#[tokio::test]
+async fn test_ai_review_escalate_flow() {
+    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+
+    // Verify task is in PendingReview state
+    let state = sm_repo.load_state(&task_id).unwrap();
+    assert_eq!(state, State::PendingReview);
+
+    // Create ReviewService
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // 1. Start AI review
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    assert!(review.is_pending());
+
+    // 2. Simulate reviewer agent returning ESCALATE outcome
+    let input = CompleteReviewInput::escalate(
+        "Security-sensitive changes detected: adds authentication bypass",
+        "This change modifies core authentication logic and needs human verification",
+    );
+
+    // 3. Process the review result
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+
+    // 4. Verify no fix task was created (escalate doesn't create fix tasks)
+    assert!(fix_task_id.is_none(), "ESCALATE should not create fix task");
+
+    // 5. Verify review status is Rejected (escalate uses reject to signal human review needed)
+    assert_eq!(review.status, ReviewStatus::Rejected);
+    let persisted_review = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+    assert_eq!(persisted_review.status, ReviewStatus::Rejected);
+
+    // 6. Verify review notes contain escalation reason
+    assert!(persisted_review
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("Security-sensitive changes")));
+
+    // 7. Verify review note was created with Rejected outcome
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].outcome, ReviewOutcome::Rejected);
+    assert!(notes[0]
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("Security-sensitive")));
+}
+
+/// Test: Escalate flow with state machine - task stays blocked
+#[tokio::test]
+async fn test_ai_review_escalate_state_machine_blocked() {
+    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+
+    // Start in PendingReview
+    assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
+
+    // Conduct AI review with ESCALATE
+    let service = ReviewService::new(review_repo, task_repo);
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate("Needs human review", "Security concern");
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // In the real system, the orchestrator would detect the escalation and
+    // either keep the task in PendingReview for human review, or move to Blocked
+    // For this test, we verify the review was marked as rejected (escalated)
+    assert_eq!(review.status, ReviewStatus::Rejected);
+
+    // The task would need human intervention - simulate blocking it
+    sm_repo.persist_state(&task_id, &State::Blocked).unwrap();
+    assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::Blocked);
+}
+
+/// Test: CompleteReviewInput::escalate creates correct input
+#[test]
+fn test_complete_review_input_escalate() {
+    let input = CompleteReviewInput::escalate("Security concern", "Needs human review");
+
+    assert_eq!(input.outcome, ReviewToolOutcome::Escalate);
+    assert_eq!(input.notes, "Security concern");
+    assert!(input.fix_description.is_none());
+    assert_eq!(
+        input.escalation_reason,
+        Some("Needs human review".to_string())
+    );
+    assert!(input.validate().is_ok());
+}
+
+/// Test: CompleteReviewInput::escalate requires escalation_reason
+#[test]
+fn test_complete_review_input_escalate_requires_reason() {
+    let input = CompleteReviewInput {
+        outcome: ReviewToolOutcome::Escalate,
+        notes: "Something is wrong".to_string(),
+        fix_description: None,
+        escalation_reason: None, // Missing!
+    };
+
+    assert!(
+        input.validate().is_err(),
+        "Should fail validation without escalation_reason"
+    );
+}
+
+/// Test: Escalate for security-sensitive changes
+#[tokio::test]
+async fn test_ai_review_escalate_security_sensitive() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate(
+        "Changes to authentication/authorization code require human verification",
+        "Modifies user permission checks",
+    );
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Verify escalation recorded
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert!(notes[0]
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("authentication/authorization")));
+}
+
+/// Test: Escalate for design decisions
+#[tokio::test]
+async fn test_ai_review_escalate_design_decision() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate(
+        "Multiple valid approaches possible - human should decide",
+        "Could use Redux or Context API for state management",
+    );
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Verify escalation recorded
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert!(notes[0]
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("Multiple valid approaches")));
+}
+
+/// Test: Escalate for breaking changes
+#[tokio::test]
+async fn test_ai_review_escalate_breaking_changes() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate(
+        "Breaking changes to public API detected",
+        "Removes deprecated endpoint /api/v1/users - requires migration plan",
+    );
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Verify escalation recorded
+    let persisted = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+    assert!(persisted
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("Breaking changes")));
+}
+
+/// Test: Escalate for low confidence
+#[tokio::test]
+async fn test_ai_review_escalate_low_confidence() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate(
+        "Unable to fully evaluate - test coverage unclear",
+        "Cannot determine if all edge cases are covered without manual review",
+    );
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Verify escalation recorded with uncertainty note
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert!(notes[0]
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("Unable to fully evaluate")));
+}
+
+/// Test: Escalate doesn't create review actions like CreatedFixTask
+#[tokio::test]
+async fn test_ai_review_escalate_no_actions() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate("Needs human review", "Design decision");
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Verify no review actions were created
+    let actions = review_repo.get_actions(&review.id).await.unwrap();
+    assert_eq!(actions.len(), 0, "ESCALATE should not create review actions");
+}

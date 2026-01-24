@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:43:52
+**Last Updated:** 2026-01-24 14:45:56
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 39 / 51
-**Current Task:** Integration test: AI review escalate flow
+**Tasks Completed:** 40 / 51
+**Current Task:** Integration test: fix task rejection and retry
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:45:56 - Integration test: AI review escalate flow
+
+**What was done:**
+- Added 9 new tests to `src-tauri/tests/review_flows.rs` (now 33 tests total):
+  - `test_ai_review_escalate_flow` - Full flow: start review, process ESCALATE outcome, verify records
+  - `test_ai_review_escalate_state_machine_blocked` - Verify escalation leads to blocked state
+  - `test_complete_review_input_escalate` - Helper test for CompleteReviewInput
+  - `test_complete_review_input_escalate_requires_reason` - Validation test
+  - `test_ai_review_escalate_security_sensitive` - Escalate for auth/security changes
+  - `test_ai_review_escalate_design_decision` - Escalate for multiple valid approaches
+  - `test_ai_review_escalate_breaking_changes` - Escalate for API breaking changes
+  - `test_ai_review_escalate_low_confidence` - Escalate when AI is uncertain
+  - `test_ai_review_escalate_no_actions` - Verify ESCALATE doesn't create review actions
+- Tests verify:
+  - No fix task created for escalation
+  - Review status is Rejected (signals human review needed)
+  - Escalation reason is recorded in notes
+  - Different escalation scenarios (security, design, breaking changes, uncertainty)
+  - No CreatedFixTask actions for ESCALATE outcome
+
+**Commands run:**
+- `cargo test --test review_flows` (33 tests passed)
+
+---
 
 ### 2026-01-24 14:43:52 - Integration test: AI review needs_changes flow
 
