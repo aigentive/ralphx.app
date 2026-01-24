@@ -8,16 +8,16 @@ use tokio::sync::Mutex;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
-    AgentProfileRepository, ProjectRepository, TaskQARepository, TaskRepository,
+    AgentProfileRepository, ProjectRepository, ReviewRepository, TaskQARepository, TaskRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryAgentProfileRepository, MemoryProjectRepository, MemoryTaskQARepository,
-    MemoryTaskRepository,
+    MemoryAgentProfileRepository, MemoryProjectRepository, MemoryReviewRepository,
+    MemoryTaskQARepository, MemoryTaskRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
-    SqliteProjectRepository, SqliteTaskQARepository, SqliteTaskRepository,
+    SqliteProjectRepository, SqliteReviewRepository, SqliteTaskQARepository, SqliteTaskRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -32,6 +32,8 @@ pub struct AppState {
     pub agent_profile_repo: Arc<dyn AgentProfileRepository>,
     /// TaskQA repository for QA artifacts
     pub task_qa_repo: Arc<dyn TaskQARepository>,
+    /// Review repository for code reviews
+    pub review_repo: Arc<dyn ReviewRepository>,
     /// Agent client (Claude Code in production, Mock for tests)
     pub agent_client: Arc<dyn AgenticClient>,
     /// Global QA settings
@@ -57,7 +59,8 @@ impl AppState {
             agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(shared_conn)),
+            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(&shared_conn))),
+            review_repo: Arc::new(SqliteReviewRepository::from_shared(shared_conn)),
             agent_client: Arc::new(ClaudeCodeClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         })
@@ -79,7 +82,8 @@ impl AppState {
             agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(shared_conn)),
+            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(&shared_conn))),
+            review_repo: Arc::new(SqliteReviewRepository::from_shared(shared_conn)),
             agent_client: Arc::new(ClaudeCodeClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         })
@@ -92,6 +96,7 @@ impl AppState {
             project_repo: Arc::new(MemoryProjectRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
+            review_repo: Arc::new(MemoryReviewRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         }
@@ -107,6 +112,7 @@ impl AppState {
             project_repo,
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
+            review_repo: Arc::new(MemoryReviewRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
         }

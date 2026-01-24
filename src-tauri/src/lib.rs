@@ -51,7 +51,14 @@ pub fn run() {
             commands::qa_commands::get_task_qa,
             commands::qa_commands::get_qa_results,
             commands::qa_commands::retry_qa,
-            commands::qa_commands::skip_qa
+            commands::qa_commands::skip_qa,
+            commands::review_commands::get_pending_reviews,
+            commands::review_commands::get_review_by_id,
+            commands::review_commands::get_reviews_by_task_id,
+            commands::review_commands::get_task_state_history,
+            commands::review_commands::approve_review,
+            commands::review_commands::request_changes,
+            commands::review_commands::reject_review
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -610,7 +610,7 @@ interface AskUserQuestionResponse {
       "Create get_task_state_history command",
       "Run tauri dev to verify commands work"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
