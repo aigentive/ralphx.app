@@ -11,8 +11,9 @@ pub mod types;
 // Re-export commonly used types for convenience
 pub use project::{GitMode, Project};
 pub use review::{
-    ParseReviewActionTypeError, ParseReviewStatusError, ParseReviewerTypeError, Review,
-    ReviewAction, ReviewActionId, ReviewActionType, ReviewId, ReviewStatus, ReviewerType,
+    ParseReviewActionTypeError, ParseReviewOutcomeError, ParseReviewStatusError,
+    ParseReviewerTypeError, Review, ReviewAction, ReviewActionId, ReviewActionType, ReviewId,
+    ReviewNote, ReviewNoteId, ReviewOutcome, ReviewStatus, ReviewerType,
 };
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
