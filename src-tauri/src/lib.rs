@@ -112,7 +112,16 @@ pub fn run() {
             commands::ideation_commands::count_session_messages,
             // Orchestrator commands
             commands::ideation_commands::send_orchestrator_message,
-            commands::ideation_commands::is_orchestrator_available
+            commands::ideation_commands::is_orchestrator_available,
+            // Workflow commands
+            commands::workflow_commands::get_workflows,
+            commands::workflow_commands::get_workflow,
+            commands::workflow_commands::create_workflow,
+            commands::workflow_commands::update_workflow,
+            commands::workflow_commands::delete_workflow,
+            commands::workflow_commands::set_default_workflow,
+            commands::workflow_commands::get_active_workflow_columns,
+            commands::workflow_commands::get_builtin_workflows
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
