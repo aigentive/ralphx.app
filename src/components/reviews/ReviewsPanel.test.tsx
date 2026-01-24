@@ -13,11 +13,33 @@ vi.mock("@/hooks/useReviews", () => ({
   usePendingReviews: vi.fn(),
 }));
 
+vi.mock("@/hooks/useGitDiff", () => ({
+  useGitDiff: vi.fn(() => ({
+    changes: [],
+    commits: [],
+    isLoadingChanges: false,
+    isLoadingHistory: false,
+    error: null,
+    fetchDiff: vi.fn(),
+    refresh: vi.fn(),
+  })),
+}));
+
 vi.mock("@/stores/taskStore", () => ({
   useTaskStore: vi.fn(() => ({})),
 }));
 
+// Mock DiffViewer to avoid complex rendering
+vi.mock("@/components/diff", () => ({
+  DiffViewer: ({ onFetchDiff: _onFetchDiff, ...props }: { onFetchDiff: unknown }) => (
+    <div data-testid="mock-diff-viewer" data-props={JSON.stringify(props)}>
+      DiffViewer
+    </div>
+  ),
+}));
+
 import { usePendingReviews } from "@/hooks/useReviews";
+import { useGitDiff } from "@/hooks/useGitDiff";
 
 const createMockReview = (overrides: Partial<ReviewResponse> = {}): ReviewResponse => ({
   id: `review-${Math.random().toString(36).slice(2)}`,
@@ -407,6 +429,216 @@ describe("ReviewsPanel", () => {
 
       const panel = screen.getByTestId("reviews-panel");
       expect(panel).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+    });
+  });
+
+  describe("DiffViewer integration", () => {
+    const reviewWithDiff = createMockReview({ id: "review-1", task_id: "task-1" });
+
+    beforeEach(() => {
+      vi.mocked(usePendingReviews).mockReturnValue({
+        data: [reviewWithDiff],
+        isLoading: false,
+        error: null,
+        isEmpty: false,
+        count: 1,
+        refetch: vi.fn(),
+      });
+
+      vi.mocked(useGitDiff).mockReturnValue({
+        changes: [
+          { path: "src/auth.ts", status: "modified", additions: 10, deletions: 5 },
+        ],
+        commits: [
+          {
+            sha: "abc123",
+            shortSha: "abc123",
+            message: "feat: add auth",
+            author: "Claude",
+            date: new Date(),
+          },
+        ],
+        isLoadingChanges: false,
+        isLoadingHistory: false,
+        error: null,
+        fetchDiff: vi.fn(),
+        refresh: vi.fn(),
+      });
+    });
+
+    it("switches to detail view when View Diff is clicked", () => {
+      render(
+        <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
+        { wrapper: createWrapper() }
+      );
+
+      // Click View Diff button
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      // Should show detail view with DiffViewer
+      expect(screen.getByTestId("review-detail-view")).toBeInTheDocument();
+      expect(screen.getByTestId("mock-diff-viewer")).toBeInTheDocument();
+    });
+
+    it("shows task title in detail view header", () => {
+      render(
+        <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      expect(screen.getByTestId("review-detail-title")).toHaveTextContent(
+        "Add user authentication"
+      );
+    });
+
+    it("shows back button in detail view", () => {
+      render(
+        <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      expect(screen.getByTestId("review-detail-back")).toBeInTheDocument();
+    });
+
+    it("returns to list view when back button is clicked", () => {
+      render(
+        <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
+        { wrapper: createWrapper() }
+      );
+
+      // Go to detail view
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+      expect(screen.getByTestId("review-detail-view")).toBeInTheDocument();
+
+      // Click back
+      fireEvent.click(screen.getByTestId("review-detail-back"));
+
+      // Should be back to list view
+      expect(screen.queryByTestId("review-detail-view")).not.toBeInTheDocument();
+      expect(screen.getByTestId("review-card-review-1")).toBeInTheDocument();
+    });
+
+    it("shows approve and request changes buttons in detail view for pending reviews", () => {
+      const onApprove = vi.fn();
+      const onRequestChanges = vi.fn();
+
+      render(
+        <ReviewsPanel
+          projectId="project-1"
+          taskTitles={mockTaskTitles}
+          onApprove={onApprove}
+          onRequestChanges={onRequestChanges}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      expect(screen.getByTestId("review-detail-approve")).toBeInTheDocument();
+      expect(screen.getByTestId("review-detail-request-changes")).toBeInTheDocument();
+    });
+
+    it("calls onApprove from detail view", () => {
+      const onApprove = vi.fn();
+
+      render(
+        <ReviewsPanel
+          projectId="project-1"
+          taskTitles={mockTaskTitles}
+          onApprove={onApprove}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+      fireEvent.click(screen.getByTestId("review-detail-approve"));
+
+      expect(onApprove).toHaveBeenCalledWith("review-1");
+    });
+
+    it("calls onRequestChanges from detail view", () => {
+      const onRequestChanges = vi.fn();
+
+      render(
+        <ReviewsPanel
+          projectId="project-1"
+          taskTitles={mockTaskTitles}
+          onRequestChanges={onRequestChanges}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+      fireEvent.click(screen.getByTestId("review-detail-request-changes"));
+
+      expect(onRequestChanges).toHaveBeenCalledWith("review-1");
+    });
+
+    it("calls external onViewDiff callback when provided", () => {
+      const onViewDiff = vi.fn();
+
+      render(
+        <ReviewsPanel
+          projectId="project-1"
+          taskTitles={mockTaskTitles}
+          onViewDiff={onViewDiff}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      expect(onViewDiff).toHaveBeenCalledWith("review-1");
+    });
+
+    it("uses useGitDiff hook with correct task ID", () => {
+      render(
+        <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      expect(useGitDiff).toHaveBeenCalledWith({
+        taskId: "task-1",
+        enabled: true,
+      });
+    });
+
+    it("hides action buttons for non-pending reviews in detail view", () => {
+      const approvedReview = createMockReview({
+        id: "review-1",
+        task_id: "task-1",
+        status: "approved",
+      });
+
+      vi.mocked(usePendingReviews).mockReturnValue({
+        data: [approvedReview],
+        isLoading: false,
+        error: null,
+        isEmpty: false,
+        count: 1,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <ReviewsPanel
+          projectId="project-1"
+          taskTitles={mockTaskTitles}
+          onApprove={vi.fn()}
+          onRequestChanges={vi.fn()}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /view diff/i }));
+
+      expect(screen.queryByTestId("review-detail-approve")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("review-detail-request-changes")).not.toBeInTheDocument();
     });
   });
 });

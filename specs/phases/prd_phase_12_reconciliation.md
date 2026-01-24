@@ -695,7 +695,7 @@ const qaPrepProfile = {
       "Ensure proper loading states during diff computation",
       "Write integration tests for Reviews with DiffViewer"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

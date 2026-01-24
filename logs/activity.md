@@ -1,14 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:35:00
+**Last Updated:** 2026-01-25 00:45:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 18 / 31
-**Current Task:** Integrate Diff Viewer into Reviews Panel
+**Tasks Completed:** 19 / 31
+**Current Task:** Replace hardcoded Project Selector with functional component
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:45:00 - Integrate Diff Viewer into Reviews Panel (Task 19)
+
+**What was done:**
+- Integrated DiffViewer component into ReviewsPanel with full detail view mode
+- Created useGitDiff hook for fetching git diff data (mock implementation)
+- Added ReviewDetailView component showing DiffViewer with review context
+- Added ReviewDetailHeader with back button and approve/request changes actions
+- Implemented seamless view switching between list and detail modes
+- Detail view shows task title, review type, and status
+- DiffViewer shows Changes and History tabs for the reviewed task
+- Proper loading states during diff computation
+- Callbacks work from both list and detail views
+- Wrote comprehensive tests for useGitDiff hook (13 tests)
+- Added 10 integration tests for DiffViewer integration in ReviewsPanel
+
+**Files created:**
+- `src/hooks/useGitDiff.ts`
+- `src/hooks/useGitDiff.test.ts`
+
+**Files modified:**
+- `src/components/reviews/ReviewsPanel.tsx` (added DiffViewer integration)
+- `src/components/reviews/ReviewsPanel.test.tsx` (added integration tests)
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test:run -- src/hooks/useGitDiff.test.ts src/components/reviews/ReviewsPanel.test.tsx` (40 tests passed)
+
+---
 
 ### 2026-01-25 00:35:00 - Implement Screenshot Gallery/Lightbox (Task 18)
 
