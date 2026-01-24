@@ -15,7 +15,7 @@ import {
   proposalKeys,
 } from "./useProposals";
 import { ideationApi } from "@/api/ideation";
-import type { TaskProposal } from "@/types/ideation";
+import type { TaskProposal as _TaskProposal } from "@/types/ideation";
 import type { TaskProposalResponse } from "@/api/ideation";
 
 // Mock the ideation API

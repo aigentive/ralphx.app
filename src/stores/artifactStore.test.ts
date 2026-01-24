@@ -7,7 +7,7 @@ import {
   selectArtifactsByType,
   selectArtifactById,
 } from "./artifactStore";
-import type { Artifact, ArtifactBucket, ArtifactType } from "@/types/artifact";
+import type { Artifact, ArtifactBucket } from "@/types/artifact";
 
 // Helper to create test artifacts
 const createTestArtifact = (overrides: Partial<Artifact> = {}): Artifact => ({

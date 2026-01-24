@@ -38,9 +38,7 @@ export function useTaskEvents() {
   const removeTask = useTaskStore((s) => s.removeTask);
 
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<unknown>("task:event", (event) => {
+    const unlisten: Promise<UnlistenFn> = listen<unknown>("task:event", (event) => {
       // Runtime validation of backend events
       const parsed = TaskEventSchema.safeParse(event.payload);
 
@@ -95,9 +93,7 @@ export function useAgentEvents(taskId?: string) {
   const addMessage = useActivityStore((s) => s.addMessage);
 
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<AgentMessageEvent>("agent:message", (event) => {
+    const unlisten: Promise<UnlistenFn> = listen<AgentMessageEvent>("agent:message", (event) => {
       if (!taskId || event.payload.taskId === taskId) {
         addMessage(event.payload);
       }
@@ -127,9 +123,7 @@ export function useSupervisorAlerts() {
   const addAlert = useActivityStore((s) => s.addAlert);
 
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<{
+    const unlisten: Promise<UnlistenFn> = listen<{
       taskId: string;
       severity: "low" | "medium" | "high" | "critical";
       type: "error" | "loop_detected" | "stuck" | "escalation";
@@ -163,9 +157,7 @@ export function useReviewEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<unknown>("review:update", (event) => {
+    const unlisten: Promise<UnlistenFn> = listen<unknown>("review:update", (event) => {
       // Runtime validation of backend events
       const parsed = ReviewEventSchema.safeParse(event.payload);
 
@@ -206,9 +198,7 @@ export function useReviewEvents() {
  */
 export function useFileChangeEvents() {
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<unknown>("file:change", (_event) => {
+    const unlisten: Promise<UnlistenFn> = listen<unknown>("file:change", (_event) => {
       // TODO: Implement file change handling
     });
 

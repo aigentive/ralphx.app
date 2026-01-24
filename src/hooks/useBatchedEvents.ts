@@ -54,9 +54,7 @@ export function useBatchedAgentMessages(taskId: string): AgentMessageEvent[] {
 
   // Set up event listener
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<AgentMessageEvent>("agent:message", (event) => {
+    const unlisten: Promise<UnlistenFn> = listen<AgentMessageEvent>("agent:message", (event) => {
       if (event.payload.taskId === taskId) {
         bufferRef.current.push(event.payload);
       }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
   useSupervisorStore,
@@ -6,7 +6,7 @@ import {
   useAlertStats,
   useSupervisorAlerts,
 } from "./useSupervisorAlerts";
-import type { SupervisorAlert } from "@/types/supervisor";
+import type { SupervisorAlert as _SupervisorAlert } from "@/types/supervisor";
 
 // Reset store before each test
 beforeEach(() => {

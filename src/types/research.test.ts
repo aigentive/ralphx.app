@@ -52,10 +52,8 @@ import {
   parseResearchDepth,
   safeParseResearchDepth,
   // Types
-  type ResearchDepthPreset,
   type CustomDepth,
   type ResearchDepth,
-  type ResearchProcessStatus,
   type ResearchBrief,
   type ResearchOutput,
   type ResearchProgress,

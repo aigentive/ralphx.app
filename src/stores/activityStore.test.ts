@@ -139,7 +139,7 @@ describe("activityStore", () => {
 
       // Get the first alert's index position
       const state = useActivityStore.getState();
-      const firstAlert = state.alerts[0];
+      const _firstAlert = state.alerts[0];
 
       useActivityStore.getState().dismissAlert(0);
 

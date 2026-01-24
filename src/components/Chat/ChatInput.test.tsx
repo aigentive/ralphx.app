@@ -229,7 +229,6 @@ describe("ChatInput", () => {
     });
 
     it("does NOT call onSend when disabled and Enter pressed", async () => {
-      const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
       render(<ChatInput onSend={onSend} isSending={true} />);
 

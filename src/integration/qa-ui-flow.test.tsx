@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
 import { createMockTask } from "@/test/mock-data";
 import { TaskCard } from "@/components/tasks/TaskBoard/TaskCard";

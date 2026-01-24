@@ -55,9 +55,7 @@ export function useAskUserQuestion() {
 
   // Set up event listener for agent questions
   useEffect(() => {
-    let unlisten: Promise<UnlistenFn>;
-
-    unlisten = listen<unknown>("agent:ask_user_question", (event) => {
+    const unlisten: Promise<UnlistenFn> = listen<unknown>("agent:ask_user_question", (event) => {
       // Runtime validation of event payload
       const parsed = AskUserQuestionPayloadSchema.safeParse(event.payload);
 

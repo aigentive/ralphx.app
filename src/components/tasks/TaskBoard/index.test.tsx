@@ -11,8 +11,6 @@ import {
   useTaskBoard,
   workflowKeys,
   type TaskBoardProps,
-  type BoardColumn,
-  type UseTaskBoardResult,
 } from "./index";
 
 describe("TaskBoard exports", () => {

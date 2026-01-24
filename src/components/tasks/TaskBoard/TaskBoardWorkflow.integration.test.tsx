@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TaskBoardWithHeader } from "./TaskBoardWithHeader";
 import * as workflowsApi from "@/lib/api/workflows";
 import { api } from "@/lib/tauri";
-import type { WorkflowResponse, WorkflowColumnResponse } from "@/lib/api/workflows";
+import type { WorkflowResponse } from "@/lib/api/workflows";
 
 // ============================================================================
 // Mocks

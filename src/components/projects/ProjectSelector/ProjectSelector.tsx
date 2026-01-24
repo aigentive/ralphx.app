@@ -313,6 +313,22 @@ export function ProjectSelector({ onNewProject, className = "" }: ProjectSelecto
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
+  const handleSelectProject = useCallback(
+    (projectId: string) => {
+      selectProject(projectId);
+      setIsOpen(false);
+      setFocusedIndex(-1);
+      triggerRef.current?.focus();
+    },
+    [selectProject]
+  );
+
+  const handleNewProject = useCallback(() => {
+    setIsOpen(false);
+    setFocusedIndex(-1);
+    onNewProject();
+  }, [onNewProject]);
+
   // Keyboard navigation
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -372,7 +388,7 @@ export function ProjectSelector({ onNewProject, className = "" }: ProjectSelecto
           break;
       }
     },
-    [isOpen, focusedIndex, projectList, totalItems]
+    [isOpen, focusedIndex, projectList, totalItems, handleSelectProject, handleNewProject]
   );
 
   const handleToggle = useCallback(() => {
@@ -385,22 +401,6 @@ export function ProjectSelector({ onNewProject, className = "" }: ProjectSelecto
       setFocusedIndex(-1);
     }
   }, [isOpen, projectList, activeProjectId]);
-
-  const handleSelectProject = useCallback(
-    (projectId: string) => {
-      selectProject(projectId);
-      setIsOpen(false);
-      setFocusedIndex(-1);
-      triggerRef.current?.focus();
-    },
-    [selectProject]
-  );
-
-  const handleNewProject = useCallback(() => {
-    setIsOpen(false);
-    setFocusedIndex(-1);
-    onNewProject();
-  }, [onNewProject]);
 
   const hasProjects = projectList.length > 0;
 

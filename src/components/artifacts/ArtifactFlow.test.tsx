@@ -9,7 +9,7 @@
  * - Styling with design tokens
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ArtifactFlow } from "./ArtifactFlow";
 import type { ArtifactFlow as ArtifactFlowType } from "@/types/artifact";

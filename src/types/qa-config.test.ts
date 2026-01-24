@@ -22,7 +22,7 @@ import {
   parseTaskQAConfig,
   safeParseTaskQAConfig,
 } from "./qa-config";
-import type { QAPrepStatus, QATestStatus, QASettings, TaskQAConfig } from "./qa-config";
+import type { QASettings, TaskQAConfig } from "./qa-config";
 
 describe("QAPrepStatus", () => {
   it("should have all expected values", () => {

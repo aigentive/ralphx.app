@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useQueryClient } from "@tanstack/react-query";
 import App from "./App";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -186,15 +185,8 @@ describe("App", () => {
 
   it("should provide QueryClient context", () => {
     // This test verifies that QueryClientProvider is working
-    // by rendering a component that uses useQueryClient
-    function QueryClientChecker() {
-      const queryClient = useQueryClient();
-      return queryClient ? <div data-testid="query-ok">OK</div> : null;
-    }
-
-    // Render with App as parent to get the QueryClientProvider context
-    render(<App />);
     // If App renders successfully with QueryClientProvider, queries should work
+    render(<App />);
     expect(document.body).toBeDefined();
   });
 
