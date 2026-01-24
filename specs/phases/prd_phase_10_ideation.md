@@ -584,7 +584,7 @@ All tasks require:
       "Implement builder pattern for IdeationSession creation",
       "Export from domain/entities module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
