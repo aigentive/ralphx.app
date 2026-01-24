@@ -174,6 +174,29 @@ impl WorkflowRepository for SqliteWorkflowRepository {
     }
 }
 
+impl SqliteWorkflowRepository {
+    /// Seeds built-in workflows (default RalphX and Jira-compatible) if they don't exist.
+    /// Returns the number of workflows seeded.
+    pub async fn seed_builtin_workflows(&self) -> AppResult<usize> {
+        let builtin_workflows = vec![
+            WorkflowSchema::default_ralphx(),
+            WorkflowSchema::jira_compatible(),
+        ];
+
+        let mut seeded_count = 0;
+
+        for workflow in builtin_workflows {
+            // Check if workflow already exists
+            if self.get_by_id(&workflow.id).await?.is_none() {
+                self.create(workflow).await?;
+                seeded_count += 1;
+            }
+        }
+
+        Ok(seeded_count)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,5 +460,96 @@ mod tests {
         // Read via repo2
         let found = repo2.get_by_id(&workflow.id).await.unwrap();
         assert!(found.is_some());
+    }
+
+    // ==================== SEEDING TESTS ====================
+
+    #[tokio::test]
+    async fn test_seed_builtin_workflows_creates_both() {
+        let conn = setup_test_db();
+        let repo = SqliteWorkflowRepository::new(conn);
+
+        let count = repo.seed_builtin_workflows().await.unwrap();
+        assert_eq!(count, 2);
+
+        let all = repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_workflows_creates_default() {
+        let conn = setup_test_db();
+        let repo = SqliteWorkflowRepository::new(conn);
+
+        repo.seed_builtin_workflows().await.unwrap();
+
+        let default = repo.get_default().await.unwrap();
+        assert!(default.is_some());
+        assert_eq!(default.unwrap().name, "RalphX Default");
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_workflows_creates_jira() {
+        let conn = setup_test_db();
+        let repo = SqliteWorkflowRepository::new(conn);
+
+        repo.seed_builtin_workflows().await.unwrap();
+
+        let jira_id = crate::domain::entities::WorkflowId::from_string("jira-compat");
+        let jira = repo.get_by_id(&jira_id).await.unwrap();
+        assert!(jira.is_some());
+        assert_eq!(jira.unwrap().name, "Jira Compatible");
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_workflows_is_idempotent() {
+        let conn = setup_test_db();
+        let repo = SqliteWorkflowRepository::new(conn);
+
+        // Seed twice
+        let count1 = repo.seed_builtin_workflows().await.unwrap();
+        let count2 = repo.seed_builtin_workflows().await.unwrap();
+
+        // First seed creates 2, second creates 0
+        assert_eq!(count1, 2);
+        assert_eq!(count2, 0);
+
+        // Still only 2 workflows
+        let all = repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_workflows_preserves_existing() {
+        let conn = setup_test_db();
+        let repo = SqliteWorkflowRepository::new(conn);
+
+        // Create a custom workflow
+        let custom = create_test_workflow();
+        repo.create(custom).await.unwrap();
+
+        // Seed built-ins
+        repo.seed_builtin_workflows().await.unwrap();
+
+        // Should have 3 workflows total
+        let all = repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_workflows_skips_existing_builtin() {
+        let conn = setup_test_db();
+        let repo = SqliteWorkflowRepository::new(conn);
+
+        // Manually create the default workflow
+        let default = WorkflowSchema::default_ralphx();
+        repo.create(default).await.unwrap();
+
+        // Seed should only create Jira (skip default since it exists)
+        let count = repo.seed_builtin_workflows().await.unwrap();
+        assert_eq!(count, 1);
+
+        let all = repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
     }
 }

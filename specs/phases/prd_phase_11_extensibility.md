@@ -791,7 +791,7 @@ All tasks require tests written before implementation:
       "Call seeding on database initialization",
       "Run cargo test to verify workflows are seeded"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
