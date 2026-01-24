@@ -1305,7 +1305,7 @@ All tasks require tests written before implementation:
       "Keep under 100 lines",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
