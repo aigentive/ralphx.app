@@ -627,7 +627,7 @@ CREATE TABLE agent_profiles (
       "Add execute_action() method for Log/InjectGuidance/Pause/Kill",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
