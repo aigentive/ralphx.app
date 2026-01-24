@@ -1184,7 +1184,7 @@ All tasks require:
       "Apply design system (warm colors for user, neutral for orchestrator)",
       "Export from src/components/Chat/ChatMessage.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
