@@ -767,3 +767,342 @@ describe("api.qa", () => {
     });
   });
 });
+
+// Helper to create mock review
+const createMockReview = (overrides = {}) => ({
+  id: "review-1",
+  project_id: "project-1",
+  task_id: "task-1",
+  reviewer_type: "ai",
+  status: "pending",
+  notes: null,
+  created_at: "2026-01-24T12:00:00Z",
+  completed_at: null,
+  ...overrides,
+});
+
+// Helper to create mock review note (state history)
+const createMockReviewNote = (overrides = {}) => ({
+  id: "note-1",
+  task_id: "task-1",
+  reviewer: "ai",
+  outcome: "approved",
+  notes: null,
+  created_at: "2026-01-24T12:00:00Z",
+  ...overrides,
+});
+
+describe("api.reviews", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  describe("getPending", () => {
+    it("should call get_pending_reviews with project_id", async () => {
+      mockInvoke.mockResolvedValue([createMockReview()]);
+
+      await api.reviews.getPending("project-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_pending_reviews", {
+        project_id: "project-1",
+      });
+    });
+
+    it("should return array of pending reviews", async () => {
+      const reviews = [
+        createMockReview({ id: "r1" }),
+        createMockReview({ id: "r2" }),
+      ];
+      mockInvoke.mockResolvedValue(reviews);
+
+      const result = await api.reviews.getPending("project-1");
+
+      expect(result).toHaveLength(2);
+      expect(result[0]?.id).toBe("r1");
+    });
+
+    it("should return empty array when no pending reviews", async () => {
+      mockInvoke.mockResolvedValue([]);
+
+      const result = await api.reviews.getPending("project-1");
+
+      expect(result).toEqual([]);
+    });
+
+    it("should validate review schema", async () => {
+      mockInvoke.mockResolvedValue([{ invalid: "review" }]);
+
+      await expect(api.reviews.getPending("project-1")).rejects.toThrow();
+    });
+  });
+
+  describe("getById", () => {
+    it("should call get_review_by_id with review_id", async () => {
+      mockInvoke.mockResolvedValue(createMockReview());
+
+      await api.reviews.getById("review-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_review_by_id", {
+        review_id: "review-1",
+      });
+    });
+
+    it("should return review when found", async () => {
+      const review = createMockReview({ notes: "Looks good" });
+      mockInvoke.mockResolvedValue(review);
+
+      const result = await api.reviews.getById("review-1");
+
+      expect(result?.notes).toBe("Looks good");
+    });
+
+    it("should return null when not found", async () => {
+      mockInvoke.mockResolvedValue(null);
+
+      const result = await api.reviews.getById("nonexistent");
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("getByTaskId", () => {
+    it("should call get_reviews_by_task_id with task_id", async () => {
+      mockInvoke.mockResolvedValue([createMockReview()]);
+
+      await api.reviews.getByTaskId("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_reviews_by_task_id", {
+        task_id: "task-1",
+      });
+    });
+
+    it("should return array of reviews for task", async () => {
+      const reviews = [
+        createMockReview({ id: "r1", reviewer_type: "ai" }),
+        createMockReview({ id: "r2", reviewer_type: "human" }),
+      ];
+      mockInvoke.mockResolvedValue(reviews);
+
+      const result = await api.reviews.getByTaskId("task-1");
+
+      expect(result).toHaveLength(2);
+      expect(result[0]?.reviewer_type).toBe("ai");
+      expect(result[1]?.reviewer_type).toBe("human");
+    });
+  });
+
+  describe("getTaskStateHistory", () => {
+    it("should call get_task_state_history with task_id", async () => {
+      mockInvoke.mockResolvedValue([createMockReviewNote()]);
+
+      await api.reviews.getTaskStateHistory("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_task_state_history", {
+        task_id: "task-1",
+      });
+    });
+
+    it("should return array of review notes", async () => {
+      const notes = [
+        createMockReviewNote({ id: "n1", outcome: "approved" }),
+        createMockReviewNote({ id: "n2", outcome: "changes_requested", notes: "Missing tests" }),
+      ];
+      mockInvoke.mockResolvedValue(notes);
+
+      const result = await api.reviews.getTaskStateHistory("task-1");
+
+      expect(result).toHaveLength(2);
+      expect(result[0]?.outcome).toBe("approved");
+      expect(result[1]?.notes).toBe("Missing tests");
+    });
+
+    it("should return empty array for task with no history", async () => {
+      mockInvoke.mockResolvedValue([]);
+
+      const result = await api.reviews.getTaskStateHistory("task-1");
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("approve", () => {
+    it("should call approve_review with input", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const input = { review_id: "review-1", notes: "LGTM" };
+
+      await api.reviews.approve(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("approve_review", { input });
+    });
+
+    it("should not require notes", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const input = { review_id: "review-1" };
+
+      await api.reviews.approve(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("approve_review", { input });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Review not found"));
+
+      await expect(
+        api.reviews.approve({ review_id: "nonexistent" })
+      ).rejects.toThrow("Review not found");
+    });
+  });
+
+  describe("requestChanges", () => {
+    it("should call request_changes with input", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = { review_id: "review-1", notes: "Missing tests" };
+
+      await api.reviews.requestChanges(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("request_changes", { input });
+    });
+
+    it("should return fix task ID when fix_description provided", async () => {
+      mockInvoke.mockResolvedValue("fix-task-123");
+      const input = {
+        review_id: "review-1",
+        notes: "Missing tests",
+        fix_description: "Add unit tests for validation",
+      };
+
+      const result = await api.reviews.requestChanges(input);
+
+      expect(result).toBe("fix-task-123");
+    });
+
+    it("should return null when no fix_description", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = { review_id: "review-1", notes: "Missing tests" };
+
+      const result = await api.reviews.requestChanges(input);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("reject", () => {
+    it("should call reject_review with input", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const input = { review_id: "review-1", notes: "Fundamentally wrong approach" };
+
+      await api.reviews.reject(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("reject_review", { input });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Review not found"));
+
+      await expect(
+        api.reviews.reject({ review_id: "nonexistent", notes: "rejected" })
+      ).rejects.toThrow("Review not found");
+    });
+  });
+});
+
+describe("api.fixTasks", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  describe("approve", () => {
+    it("should call approve_fix_task with input", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const input = { fix_task_id: "fix-task-1" };
+
+      await api.fixTasks.approve(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("approve_fix_task", { input });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Fix task not found"));
+
+      await expect(
+        api.fixTasks.approve({ fix_task_id: "nonexistent" })
+      ).rejects.toThrow("Fix task not found");
+    });
+  });
+
+  describe("reject", () => {
+    it("should call reject_fix_task with input", async () => {
+      mockInvoke.mockResolvedValue("new-fix-task-123");
+      const input = {
+        fix_task_id: "fix-task-1",
+        feedback: "Try a different approach",
+        original_task_id: "task-1",
+      };
+
+      await api.fixTasks.reject(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("reject_fix_task", { input });
+    });
+
+    it("should return new fix task ID when under max attempts", async () => {
+      mockInvoke.mockResolvedValue("new-fix-task-123");
+      const input = {
+        fix_task_id: "fix-task-1",
+        feedback: "Try a different approach",
+        original_task_id: "task-1",
+      };
+
+      const result = await api.fixTasks.reject(input);
+
+      expect(result).toBe("new-fix-task-123");
+    });
+
+    it("should return null when max attempts reached (moved to backlog)", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = {
+        fix_task_id: "fix-task-3",
+        feedback: "Still not right",
+        original_task_id: "task-1",
+      };
+
+      const result = await api.fixTasks.reject(input);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("getAttempts", () => {
+    it("should call get_fix_task_attempts with task_id", async () => {
+      mockInvoke.mockResolvedValue({ task_id: "task-1", attempt_count: 2 });
+
+      await api.fixTasks.getAttempts("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_fix_task_attempts", {
+        task_id: "task-1",
+      });
+    });
+
+    it("should return attempt count", async () => {
+      mockInvoke.mockResolvedValue({ task_id: "task-1", attempt_count: 2 });
+
+      const result = await api.fixTasks.getAttempts("task-1");
+
+      expect(result.task_id).toBe("task-1");
+      expect(result.attempt_count).toBe(2);
+    });
+
+    it("should return zero when no attempts", async () => {
+      mockInvoke.mockResolvedValue({ task_id: "task-1", attempt_count: 0 });
+
+      const result = await api.fixTasks.getAttempts("task-1");
+
+      expect(result.attempt_count).toBe(0);
+    });
+
+    it("should validate response schema", async () => {
+      mockInvoke.mockResolvedValue({ invalid: "response" });
+
+      await expect(api.fixTasks.getAttempts("task-1")).rejects.toThrow();
+    });
+  });
+});

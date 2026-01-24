@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:24:00
+**Last Updated:** 2026-01-24 15:26:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 17 / 51
-**Current Task:** Implement Tauri API wrappers for reviews
+**Tasks Completed:** 19 / 51
+**Current Task:** Implement reviewStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:26:00 - Implement Tauri API wrappers for reviews and fix tasks
+
+**What was done:**
+- Extended `src/lib/tauri.ts` with review API wrappers:
+  - Added `ReviewResponseSchema`, `ReviewNoteResponseSchema`, `FixTaskAttemptsResponseSchema`
+  - Added input types: `ApproveReviewInput`, `RequestChangesInput`, `RejectReviewInput`
+  - Added fix task input types: `ApproveFixTaskInput`, `RejectFixTaskInput`
+  - `api.reviews.getPending(projectId)` - get pending reviews for a project
+  - `api.reviews.getById(reviewId)` - get review by ID
+  - `api.reviews.getByTaskId(taskId)` - get all reviews for a task
+  - `api.reviews.getTaskStateHistory(taskId)` - get state history (review notes)
+  - `api.reviews.approve(input)` - approve a review
+  - `api.reviews.requestChanges(input)` - request changes on review
+  - `api.reviews.reject(input)` - reject a review
+  - `api.fixTasks.approve(input)` - approve a fix task
+  - `api.fixTasks.reject(input)` - reject fix task with feedback
+  - `api.fixTasks.getAttempts(taskId)` - get fix attempt count
+- Added 30 new tests in `src/lib/tauri.test.ts` for reviews and fix tasks API
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/lib/tauri.test.ts` (95 tests passed)
+
+---
 
 ### 2026-01-24 15:24:00 - Implement ReviewConfig TypeScript types
 
