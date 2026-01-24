@@ -8,22 +8,27 @@ use tokio::sync::Mutex;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
-    AgentProfileRepository, ChatMessageRepository, IdeationSessionRepository, ProjectRepository,
-    ProposalDependencyRepository, ReviewRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskQARepository, TaskRepository,
+    AgentProfileRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
+    ChatMessageRepository, IdeationSessionRepository, MethodologyRepository, ProcessRepository,
+    ProjectRepository, ProposalDependencyRepository, ReviewRepository, TaskDependencyRepository,
+    TaskProposalRepository, TaskQARepository, TaskRepository, WorkflowRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryAgentProfileRepository, MemoryChatMessageRepository, MemoryIdeationSessionRepository,
-    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryReviewRepository,
-    MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
-    MemoryTaskRepository,
+    MemoryAgentProfileRepository, MemoryArtifactBucketRepository, MemoryArtifactFlowRepository,
+    MemoryArtifactRepository, MemoryChatMessageRepository, MemoryIdeationSessionRepository,
+    MemoryMethodologyRepository, MemoryProcessRepository, MemoryProjectRepository,
+    MemoryProposalDependencyRepository, MemoryReviewRepository, MemoryTaskDependencyRepository,
+    MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
+    MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
-    SqliteChatMessageRepository, SqliteIdeationSessionRepository, SqliteProjectRepository,
-    SqliteProposalDependencyRepository, SqliteReviewRepository, SqliteTaskDependencyRepository,
-    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
+    SqliteArtifactBucketRepository, SqliteArtifactFlowRepository, SqliteArtifactRepository,
+    SqliteChatMessageRepository, SqliteIdeationSessionRepository, SqliteMethodologyRepository,
+    SqliteProcessRepository, SqliteProjectRepository, SqliteProposalDependencyRepository,
+    SqliteReviewRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -54,6 +59,19 @@ pub struct AppState {
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     /// Task dependency repository
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    // Extensibility repositories
+    /// Workflow repository for custom workflows
+    pub workflow_repo: Arc<dyn WorkflowRepository>,
+    /// Artifact repository for artifact management
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
+    /// Artifact bucket repository for organizing artifacts
+    pub artifact_bucket_repo: Arc<dyn ArtifactBucketRepository>,
+    /// Artifact flow repository for artifact routing
+    pub artifact_flow_repo: Arc<dyn ArtifactFlowRepository>,
+    /// Process repository for research processes
+    pub process_repo: Arc<dyn ProcessRepository>,
+    /// Methodology repository for methodology extensions
+    pub methodology_repo: Arc<dyn MethodologyRepository>,
 }
 
 impl AppState {
@@ -92,8 +110,25 @@ impl AppState {
                 &shared_conn,
             ))),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
-                shared_conn,
+                Arc::clone(&shared_conn),
             )),
+            // Extensibility repositories
+            workflow_repo: Arc::new(SqliteWorkflowRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            artifact_repo: Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            artifact_bucket_repo: Arc::new(SqliteArtifactBucketRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            artifact_flow_repo: Arc::new(SqliteArtifactFlowRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            process_repo: Arc::new(SqliteProcessRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
         })
     }
 
@@ -130,8 +165,25 @@ impl AppState {
                 &shared_conn,
             ))),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
-                shared_conn,
+                Arc::clone(&shared_conn),
             )),
+            // Extensibility repositories
+            workflow_repo: Arc::new(SqliteWorkflowRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            artifact_repo: Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            artifact_bucket_repo: Arc::new(SqliteArtifactBucketRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            artifact_flow_repo: Arc::new(SqliteArtifactFlowRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            process_repo: Arc::new(SqliteProcessRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
         })
     }
 
@@ -150,6 +202,13 @@ impl AppState {
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
+            // Extensibility repositories
+            workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
+            artifact_repo: Arc::new(MemoryArtifactRepository::new()),
+            artifact_bucket_repo: Arc::new(MemoryArtifactBucketRepository::new()),
+            artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
+            process_repo: Arc::new(MemoryProcessRepository::new()),
+            methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
         }
     }
 
@@ -171,6 +230,13 @@ impl AppState {
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
+            // Extensibility repositories
+            workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
+            artifact_repo: Arc::new(MemoryArtifactRepository::new()),
+            artifact_bucket_repo: Arc::new(MemoryArtifactBucketRepository::new()),
+            artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
+            process_repo: Arc::new(MemoryProcessRepository::new()),
+            methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
         }
     }
 
@@ -425,5 +491,63 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(blockers.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_extensibility_repos_accessible() {
+        use crate::domain::entities::{
+            Artifact, ArtifactBucket, ArtifactFlow, ArtifactFlowTrigger, ArtifactType,
+            WorkflowColumn, WorkflowSchema,
+        };
+        use crate::domain::entities::methodology::MethodologyExtension;
+        use crate::domain::entities::research::{ResearchBrief, ResearchProcess};
+        use crate::domain::entities::status::InternalStatus;
+
+        let state = AppState::new_test();
+
+        // Test workflow repository
+        let workflow = WorkflowSchema::new(
+            "Test Workflow",
+            vec![
+                WorkflowColumn::new("backlog", "Backlog", InternalStatus::Backlog),
+                WorkflowColumn::new("done", "Done", InternalStatus::Approved),
+            ],
+        );
+        state.workflow_repo.create(workflow.clone()).await.unwrap();
+        let found_workflow = state.workflow_repo.get_by_id(&workflow.id).await.unwrap();
+        assert!(found_workflow.is_some());
+
+        // Test artifact repository
+        let artifact = Artifact::new_inline("Test", ArtifactType::Prd, "content", "user");
+        state.artifact_repo.create(artifact.clone()).await.unwrap();
+        let found_artifact = state.artifact_repo.get_by_id(&artifact.id).await.unwrap();
+        assert!(found_artifact.is_some());
+
+        // Test artifact bucket repository
+        let bucket = ArtifactBucket::new("Test Bucket")
+            .accepts(ArtifactType::Prd)
+            .with_writer("user");
+        state.artifact_bucket_repo.create(bucket.clone()).await.unwrap();
+        let found_bucket = state.artifact_bucket_repo.get_by_id(&bucket.id).await.unwrap();
+        assert!(found_bucket.is_some());
+
+        // Test artifact flow repository
+        let flow = ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created());
+        state.artifact_flow_repo.create(flow.clone()).await.unwrap();
+        let found_flow = state.artifact_flow_repo.get_by_id(&flow.id).await.unwrap();
+        assert!(found_flow.is_some());
+
+        // Test process repository
+        let brief = ResearchBrief::new("Test question");
+        let process = ResearchProcess::new("Test Research", brief, "researcher");
+        state.process_repo.create(process.clone()).await.unwrap();
+        let found_process = state.process_repo.get_by_id(&process.id).await.unwrap();
+        assert!(found_process.is_some());
+
+        // Test methodology repository
+        let methodology = MethodologyExtension::new("Test Method", workflow);
+        state.methodology_repo.create(methodology.clone()).await.unwrap();
+        let found_methodology = state.methodology_repo.get_by_id(&methodology.id).await.unwrap();
+        assert!(found_methodology.is_some());
     }
 }

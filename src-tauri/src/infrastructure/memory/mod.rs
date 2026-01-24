@@ -2,8 +2,13 @@
 // These implementations use HashMap/RwLock for thread-safe in-memory storage
 
 pub mod memory_agent_profile_repo;
+pub mod memory_artifact_bucket_repo;
+pub mod memory_artifact_flow_repo;
+pub mod memory_artifact_repo;
 pub mod memory_chat_message_repo;
 pub mod memory_ideation_session_repo;
+pub mod memory_methodology_repo;
+pub mod memory_process_repo;
 pub mod memory_project_repo;
 pub mod memory_proposal_dependency_repo;
 pub mod memory_review_repo;
@@ -15,8 +20,13 @@ pub mod memory_workflow_repo;
 
 // Re-exports for convenience
 pub use memory_agent_profile_repo::MemoryAgentProfileRepository;
+pub use memory_artifact_bucket_repo::MemoryArtifactBucketRepository;
+pub use memory_artifact_flow_repo::MemoryArtifactFlowRepository;
+pub use memory_artifact_repo::MemoryArtifactRepository;
 pub use memory_chat_message_repo::MemoryChatMessageRepository;
 pub use memory_ideation_session_repo::MemoryIdeationSessionRepository;
+pub use memory_methodology_repo::MemoryMethodologyRepository;
+pub use memory_process_repo::MemoryProcessRepository;
 pub use memory_project_repo::MemoryProjectRepository;
 pub use memory_proposal_dependency_repo::MemoryProposalDependencyRepository;
 pub use memory_review_repo::MemoryReviewRepository;
