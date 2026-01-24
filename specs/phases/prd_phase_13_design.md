@@ -249,7 +249,7 @@ All design work MUST include:
       "Define acceptance_criteria and design_quality arrays",
       "Commit: docs: add Ideation design requirements to DESIGN.md"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "design-req",
