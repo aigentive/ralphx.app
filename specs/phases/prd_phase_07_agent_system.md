@@ -701,7 +701,7 @@ CREATE TABLE agent_profiles (
       "Emit Error events on agent errors",
       "Run cargo test to verify events are emitted"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
