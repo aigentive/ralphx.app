@@ -5,14 +5,13 @@
  * with filtering, acknowledgement, and computed state.
  */
 
-import { useEffect, useMemo, useCallback, useState } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import {
   SupervisorEventSchema,
   SupervisorAlertSchema,
-  type SupervisorEvent,
   type SupervisorAlert,
   type Severity,
   type AlertType,
