@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 01:25:00
+**Last Updated:** 2026-01-25 01:35:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 2 / 18
-**Current Task:** Design requirements for Kanban Board (TaskBoard, Column, TaskCard)
+**Tasks Completed:** 3 / 18
+**Current Task:** Design requirements for Ideation View (ChatPanel, ProposalList)
 
 ---
 
 ## Session Log
+
+### 2026-01-25 01:35:00 - Design requirements for Kanban Board (Task 3)
+
+**What was done:**
+- Added comprehensive Kanban Board design requirements to specs/DESIGN.md
+- Documented TaskBoard layout with viewport-filling height, horizontal scroll, and subtle warm radial gradient background
+- Specified Column component with glass-effect headers, warm orange accent dot, task count badges, and drag-over glow states
+- Defined TaskCard with shadcn Card base, layered shadows, priority left-border stripe, hover lift animation, drag state (scale + rotate), and selected state
+- Included CSS code examples for key patterns (scroll fade, glass effect, drag states)
+- Added component hierarchy diagram showing structure
+- Created acceptance_criteria array with 12 functional requirements
+- Created design_quality array with 12 visual/aesthetic requirements
+- Referenced Linear and Raycast as design inspiration for board layout
+
+**Design Highlights:**
+- Warm radial gradient background (subtle orange glow at top)
+- Glass effect column headers with backdrop-blur
+- 3px priority stripe on left edge of cards (not badges)
+- Drag handle (GripVertical) visible only on hover
+- Orange glow drop zones during drag-over
+- Layered shadows for physical card depth
+
+**Files modified:**
+- `specs/DESIGN.md` (Kanban Board section with full requirements)
+
+---
 
 ### 2026-01-25 01:25:00 - Create specs/DESIGN.md master design document (Task 2)
 
