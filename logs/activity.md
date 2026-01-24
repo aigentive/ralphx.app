@@ -1,14 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:50:00
+**Last Updated:** 2026-01-24 21:05:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 23 / 63
-**Current Task:** Implement MethodologyService
+**Tasks Completed:** 24 / 63
+**Current Task:** Add ResearchService commands
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:05:00 - Implement MethodologyService (Task 24)
+
+**What was done:**
+- Created `src-tauri/src/domain/services/methodology_service.rs`
+- Implemented `MethodologyService<R: MethodologyRepository>` generic struct
+- Implemented `MethodologyActivationResult` struct with workflow, agent_profiles, skills, previous_methodology
+- Implemented `activate_methodology()` - activates a methodology, deactivating any currently active one
+- Implemented `deactivate_methodology()` - deactivates a methodology (validates state)
+- Implemented `get_active()` - gets the currently active methodology
+- Implemented `switch_methodology()` - convenience method for switching (calls activate)
+- Implemented repository delegation methods: get_methodology, get_all_methodologies, create_methodology, update_methodology, delete_methodology, methodology_exists
+- Implemented component getters: get_workflow, get_agent_profiles, get_skills, get_phases, get_templates
+- Implemented built-in methodology accessors: get_builtin_methodologies, get_bmad, get_gsd
+- Implemented `seed_builtins()` - seeds BMAD and GSD into the repository (idempotent)
+- Updated `domain/services/mod.rs` to export MethodologyService and MethodologyActivationResult
+- Added 34 unit tests covering:
+  - activate_methodology tests (success, not found, already active, deactivates previous)
+  - deactivate_methodology tests (success, not found, not active)
+  - get_active tests (none, some)
+  - Repository delegation tests (get, get_all, create, update, delete, exists)
+  - delete_methodology validation (fails if active)
+  - switch_methodology test
+  - Component getter tests (workflow, agent_profiles, skills, phases, templates)
+  - Built-in methodology tests (get_builtin_methodologies, get_bmad, get_gsd)
+  - seed_builtins tests (seeds both, skips existing, idempotent)
+  - Integration scenario tests (methodology lifecycle, custom methodology)
+
+**Commands run:**
+- `cargo test methodology_service --no-fail-fast` (34 tests passed)
+
+---
 
 ### 2026-01-24 20:50:00 - Implement ResearchService (Task 23)
 
