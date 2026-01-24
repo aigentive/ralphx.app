@@ -117,7 +117,7 @@ Each phase PRD should follow this structure:
       "Verify PRD tasks cover all repository methods from plan"
     ],
     "output": "specs/phases/prd_phase_02_data_layer.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
