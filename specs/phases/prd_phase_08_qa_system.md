@@ -707,7 +707,7 @@ All tasks require TDD:
       "Handle loading and error states",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

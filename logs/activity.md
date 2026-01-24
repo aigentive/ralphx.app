@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:45:00
+**Last Updated:** 2026-01-24 14:49:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 20 / 33
-**Current Task:** Create useQA hook
+**Tasks Completed:** 21 / 33
+**Current Task:** Create TaskQABadge component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:49:00 - Create useQA hooks
+
+**What was done:**
+- Created `src/hooks/useQA.ts` with React Query + Zustand integration:
+  - Query keys factory: `qaKeys.settings()`, `qaKeys.taskQAById(taskId)`, etc.
+  - `useQASettings`: Global settings with load/update, optimistic updates
+  - `useTaskQA(taskId)`: Per-task QA data with store sync
+  - `useQAResults(taskId)`: Test results with optional polling
+  - `useQAActions(taskId)`: retry/skip mutations
+  - `useIsQAEnabled`: Simple selector for global enabled state
+  - `useTaskNeedsQA(category, override)`: Category-based QA requirement
+- Created comprehensive test suite with 25 tests covering:
+  - Settings fetch/update/error handling
+  - Task QA data loading and store sync
+  - Results computed state (isPassed, isFailed, isActive)
+  - Retry/skip actions and error handling
+  - Convenience hooks for QA enable state
+- All 755 TypeScript tests passing
+
+**Commands run:**
+- `npm test -- src/hooks/useQA.test.tsx --reporter=verbose`
+- `npm run typecheck`
+- `npm test`
+
+---
 
 ### 2026-01-24 14:45:00 - Create qaStore with Zustand
 
