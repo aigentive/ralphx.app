@@ -536,7 +536,7 @@ Every task follows the TDD cycle:
       "Create `screenshots/` directory with `.gitkeep`",
       "Verify agent-browser works: `agent-browser --version`"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
