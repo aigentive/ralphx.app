@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:10:00
+**Last Updated:** 2026-01-24 11:20:00
 **Phase:** Phase 5 (Frontend Core)
-**Tasks Completed:** 3 / 22
-**Current Task:** Create WorkflowSchema type definitions
+**Tasks Completed:** 8 / 22
+**Current Task:** Extend Tauri API wrappers for tasks
 
 ---
 
@@ -2356,6 +2356,49 @@ Phase 4 (Agentic Client) is now complete with all 23 tasks passing.
 
 **Files modified:**
 - `src/types/index.ts`
+
+---
+
+### 2026-01-24 11:20:00 - Implement Zustand stores
+
+**What was done:**
+- Created `src/types/workflow.ts` with WorkflowColumnSchema and WorkflowSchemaZ
+- Created `src/stores/taskStore.ts`:
+  - TaskState and TaskActions interfaces
+  - setTasks, updateTask, selectTask, addTask, removeTask actions
+  - selectTasksByStatus, selectSelectedTask selectors
+  - Ring buffer not needed (backend controls task list)
+- Created `src/stores/projectStore.ts`:
+  - ProjectState and ProjectActions interfaces
+  - setProjects, updateProject, selectProject, addProject, removeProject actions
+  - selectActiveProject, selectProjectById selectors
+- Created `src/stores/uiStore.ts`:
+  - Sidebar toggle, modal management, notifications
+  - Loading states and confirmation dialogs
+- Created `src/stores/activityStore.ts`:
+  - Ring buffer for agent messages (max 100)
+  - Supervisor alerts with severity filtering
+  - Task-specific filtering methods
+
+**Test counts:**
+- workflow: 17 tests
+- taskStore: 21 tests
+- projectStore: 20 tests
+- uiStore: 16 tests
+- activityStore: 15 tests
+- Total: 217 tests passing
+
+**Files created:**
+- `src/types/workflow.ts`
+- `src/types/workflow.test.ts`
+- `src/stores/taskStore.ts`
+- `src/stores/taskStore.test.ts`
+- `src/stores/projectStore.ts`
+- `src/stores/projectStore.test.ts`
+- `src/stores/uiStore.ts`
+- `src/stores/uiStore.test.ts`
+- `src/stores/activityStore.ts`
+- `src/stores/activityStore.test.ts`
 
 ---
 

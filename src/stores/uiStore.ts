@@ -1,0 +1,159 @@
+/**
+ * UI store using Zustand with immer middleware
+ *
+ * Manages ephemeral UI state: sidebar visibility, modal state,
+ * notifications, loading states, and confirmation dialogs.
+ */
+
+import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Modal types available in the application */
+export type ModalType =
+  | "task-detail"
+  | "task-create"
+  | "project-settings"
+  | "settings"
+  | "ask-user-question"
+  | null;
+
+/** Notification severity levels */
+export type NotificationType = "success" | "error" | "warning" | "info";
+
+/** A notification to display to the user */
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  title?: string;
+  duration?: number;
+}
+
+/** Confirmation dialog configuration */
+export interface ConfirmationConfig {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+}
+
+// ============================================================================
+// State Interface
+// ============================================================================
+
+interface UiState {
+  /** Whether the sidebar is open */
+  sidebarOpen: boolean;
+  /** Currently active modal type, or null if none */
+  activeModal: ModalType;
+  /** Context data for the active modal */
+  modalContext?: Record<string, unknown>;
+  /** Active notifications */
+  notifications: Notification[];
+  /** Loading states for different parts of the UI */
+  loading: Record<string, boolean>;
+  /** Active confirmation dialog */
+  confirmation: ConfirmationConfig | null;
+}
+
+// ============================================================================
+// Actions Interface
+// ============================================================================
+
+interface UiActions {
+  /** Toggle sidebar visibility */
+  toggleSidebar: () => void;
+  /** Set sidebar visibility directly */
+  setSidebarOpen: (open: boolean) => void;
+  /** Open a modal with optional context */
+  openModal: (type: ModalType, context?: Record<string, unknown>) => void;
+  /** Close the current modal */
+  closeModal: () => void;
+  /** Add a notification */
+  addNotification: (notification: Notification) => void;
+  /** Remove a notification by ID */
+  removeNotification: (id: string) => void;
+  /** Clear all notifications */
+  clearNotifications: () => void;
+  /** Set loading state for a key */
+  setLoading: (key: string, loading: boolean) => void;
+  /** Show a confirmation dialog */
+  showConfirmation: (config: ConfirmationConfig) => void;
+  /** Hide the confirmation dialog */
+  hideConfirmation: () => void;
+}
+
+// ============================================================================
+// Store Implementation
+// ============================================================================
+
+export const useUiStore = create<UiState & UiActions>()(
+  immer((set) => ({
+    // Initial state
+    sidebarOpen: true,
+    activeModal: null,
+    modalContext: undefined,
+    notifications: [],
+    loading: {},
+    confirmation: null,
+
+    // Actions
+    toggleSidebar: () =>
+      set((state) => {
+        state.sidebarOpen = !state.sidebarOpen;
+      }),
+
+    setSidebarOpen: (open) =>
+      set((state) => {
+        state.sidebarOpen = open;
+      }),
+
+    openModal: (type, context) =>
+      set((state) => {
+        state.activeModal = type;
+        state.modalContext = context;
+      }),
+
+    closeModal: () =>
+      set((state) => {
+        state.activeModal = null;
+        state.modalContext = undefined;
+      }),
+
+    addNotification: (notification) =>
+      set((state) => {
+        state.notifications.push(notification);
+      }),
+
+    removeNotification: (id) =>
+      set((state) => {
+        state.notifications = state.notifications.filter((n) => n.id !== id);
+      }),
+
+    clearNotifications: () =>
+      set((state) => {
+        state.notifications = [];
+      }),
+
+    setLoading: (key, loading) =>
+      set((state) => {
+        state.loading[key] = loading;
+      }),
+
+    showConfirmation: (config) =>
+      set((state) => {
+        state.confirmation = config;
+      }),
+
+    hideConfirmation: () =>
+      set((state) => {
+        state.confirmation = null;
+      }),
+  }))
+);
