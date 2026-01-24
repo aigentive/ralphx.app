@@ -11,6 +11,7 @@ pub mod machine;
 pub mod mocks;
 pub mod persistence;
 pub mod services;
+pub mod transition_handler;
 pub mod types;
 
 // Re-export key types
@@ -26,6 +27,7 @@ pub use persistence::{
     serialize_qa_failed_data, state_has_data, StateData,
 };
 pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
+pub use transition_handler::{TransitionHandler, TransitionResult};
 
 #[cfg(test)]
 mod tests {

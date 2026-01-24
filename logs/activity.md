@@ -1,14 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:32:00
+**Last Updated:** 2026-01-24 12:05:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 15 / 33
-**Current Task:** Integrate QA with state machine transitions
+**Tasks Completed:** 16 / 33
+**Current Task:** Create Tauri commands for QA operations
 
 ---
 
 ## Session Log
+
+### 2026-01-24 12:05:00 - Integrate QA with state machine transitions
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/transition_handler.rs` with:
+  - `TransitionResult` enum (Success, NotHandled, AutoTransition)
+  - `TransitionHandler` struct wrapping `TaskStateMachine`
+  - `handle_transition` method: Orchestrates dispatch, on_enter, on_exit, auto-transitions
+  - `on_enter` method: Entry actions for each state (spawns agents, emits events, notifies)
+  - `on_exit` method: Exit actions for state cleanup
+  - `check_auto_transition` method: Auto-transitions for ExecutionDone, QaPassed, RevisionNeeded
+  - Ready state: Spawns QA prep agent in background if `qa_enabled`
+  - ExecutionDone: Auto-transition to QaRefining (if QA enabled) or PendingReview
+  - QaRefining: Waits for QA prep if not complete, spawns qa-refiner agent
+  - QaTesting: Spawns qa-tester agent
+  - QaPassed: Emits qa_passed event, auto-transitions to PendingReview
+  - QaFailed: Emits qa_failed event, notifies user with failure count
+  - PendingReview: Spawns reviewer agent
+  - Approved: Emits task_completed, unblocks dependents
+  - Failed: Emits task_failed event
+  - 18 comprehensive unit tests covering all QA flow scenarios
+- Updated `src-tauri/src/domain/state_machine/mod.rs` to export new module
+- All 1047 Rust tests passing
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml transition_handler`
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+
+---
 
 ### 2026-01-24 11:32:00 - Implement QAService for orchestrating QA flow
 
