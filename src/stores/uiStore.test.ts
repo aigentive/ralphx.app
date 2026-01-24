@@ -7,6 +7,8 @@ describe("uiStore", () => {
     // Reset store to initial state before each test
     useUiStore.setState({
       sidebarOpen: true,
+      reviewsPanelOpen: false,
+      currentView: "kanban",
       activeModal: null,
       modalContext: undefined,
       notifications: [],
@@ -40,6 +42,36 @@ describe("uiStore", () => {
 
       useUiStore.getState().setSidebarOpen(true);
       expect(useUiStore.getState().sidebarOpen).toBe(true);
+    });
+  });
+
+  describe("currentView", () => {
+    it("initializes with kanban view", () => {
+      const state = useUiStore.getState();
+      expect(state.currentView).toBe("kanban");
+    });
+
+    it("sets current view to ideation", () => {
+      useUiStore.getState().setCurrentView("ideation");
+      expect(useUiStore.getState().currentView).toBe("ideation");
+    });
+
+    it("sets current view to activity", () => {
+      useUiStore.getState().setCurrentView("activity");
+      expect(useUiStore.getState().currentView).toBe("activity");
+    });
+
+    it("sets current view to settings", () => {
+      useUiStore.getState().setCurrentView("settings");
+      expect(useUiStore.getState().currentView).toBe("settings");
+    });
+
+    it("switches between views", () => {
+      useUiStore.getState().setCurrentView("ideation");
+      expect(useUiStore.getState().currentView).toBe("ideation");
+
+      useUiStore.getState().setCurrentView("kanban");
+      expect(useUiStore.getState().currentView).toBe("kanban");
     });
   });
 

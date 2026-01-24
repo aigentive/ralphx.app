@@ -3,7 +3,7 @@
  * Root component with QueryClientProvider and EventProvider
  */
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { getQueryClient } from "@/lib/queryClient";
@@ -14,12 +14,23 @@ import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar"
 import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailView } from "@/components/tasks/TaskDetailView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
+import { IdeationView } from "@/components/Ideation";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
+import { useProposalStore } from "@/stores/proposalStore";
 import type { Task } from "@/types/task";
 import type { ChatContext } from "@/types/chat";
+import type { ChatMessage as ChatMessageType, ApplyProposalsInput } from "@/types/ideation";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
+import {
+  useIdeationSession,
+  useCreateIdeationSession,
+  useArchiveIdeationSession,
+} from "@/hooks/useIdeation";
+import { useProposalMutations } from "@/hooks/useProposals";
+import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { api } from "@/lib/tauri";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 
@@ -71,6 +82,39 @@ function ChatIcon() {
   );
 }
 
+function KanbanIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect x="3" y="3" width="4" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="8" y="3" width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="13" y="3" width="4" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function IdeationIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M10 2a6 6 0 016 6c0 2.22-1.21 4.16-3 5.19V15a2 2 0 01-2 2H9a2 2 0 01-2-2v-1.81C5.21 12.16 4 10.22 4 8a6 6 0 016-6z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M8 18h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Transform API messages to component-compatible format
+function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null }>): ChatMessageType[] {
+  return messages.map((msg) => ({
+    ...msg,
+    role: (["user", "orchestrator", "system"].includes(msg.role) ? msg.role : "system") as "user" | "orchestrator" | "system",
+  }));
+}
+
 function AppContent() {
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
   const toggleReviewsPanel = useUiStore((s) => s.toggleReviewsPanel);
@@ -82,12 +126,27 @@ function AppContent() {
   const activeModal = useUiStore((s) => s.activeModal);
   const modalContext = useUiStore((s) => s.modalContext);
   const closeModal = useUiStore((s) => s.closeModal);
+  const currentView = useUiStore((s) => s.currentView);
+  const setCurrentView = useUiStore((s) => s.setCurrentView);
 
   // Chat panel state
   const chatIsOpen = useChatStore((s) => s.isOpen);
   const chatWidth = useChatStore((s) => s.width);
   const toggleChatPanel = useChatStore((s) => s.togglePanel);
   const setChatWidth = useChatStore((s) => s.setWidth);
+
+  // Ideation state
+  const activeSession = useIdeationStore(selectActiveSession);
+  const setActiveSession = useIdeationStore((s) => s.setActiveSession);
+  const activeSessionId = activeSession?.id ?? "";
+  // Get raw proposals from store and memoize the filtered/sorted version
+  const allProposals = useProposalStore((s) => s.proposals);
+  const proposals = useMemo(() => {
+    if (!activeSessionId) return [];
+    return Object.values(allProposals)
+      .filter((p) => p.sessionId === activeSessionId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [allProposals, activeSessionId]);
 
   // Extract task from modal context for task-detail modal
   const selectedTask = activeModal === "task-detail" && modalContext?.task
@@ -99,6 +158,13 @@ function AppContent() {
 
   const { count: pendingReviewCount } = usePendingReviews(DEFAULT_PROJECT_ID);
   const { data: tasks = [] } = useTasks(DEFAULT_PROJECT_ID);
+
+  // Ideation hooks
+  const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
+  const createSession = useCreateIdeationSession();
+  const archiveSession = useArchiveIdeationSession();
+  const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
+  const { apply: applyProposalsMutation } = useApplyProposals();
 
   // Load persisted chat width from localStorage on mount
   useEffect(() => {
@@ -116,6 +182,24 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
+  // Keyboard shortcuts for view switching (Cmd+1 for Kanban, Cmd+2 for Ideation)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "1") {
+          e.preventDefault();
+          setCurrentView("kanban");
+        } else if (e.key === "2") {
+          e.preventDefault();
+          setCurrentView("ideation");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setCurrentView]);
+
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {
     if (selectedTask) {
@@ -125,11 +209,19 @@ function AppContent() {
         selectedTaskId: selectedTask.id,
       };
     }
+    if (currentView === "ideation" && activeSession) {
+      return {
+        view: "ideation",
+        projectId: DEFAULT_PROJECT_ID,
+        ideationSessionId: activeSession.id,
+        selectedProposalIds: proposals.filter((p) => p.selected).map((p) => p.id),
+      };
+    }
     return {
-      view: "kanban",
+      view: currentView,
       projectId: DEFAULT_PROJECT_ID,
     };
-  }, [selectedTask]);
+  }, [selectedTask, currentView, activeSession, proposals]);
 
   const handlePauseToggle = async () => {
     setIsExecutionLoading(true);
@@ -175,6 +267,59 @@ function AppContent() {
     clearActiveQuestion();
   };
 
+  // Ideation handlers
+  const handleNewSession = useCallback(async () => {
+    try {
+      const session = await createSession.mutateAsync({
+        projectId: DEFAULT_PROJECT_ID,
+      });
+      setActiveSession(session.id);
+    } catch (error) {
+      console.error("Failed to create session:", error);
+    }
+  }, [createSession, setActiveSession]);
+
+  const handleArchiveSession = useCallback(async (sessionId: string) => {
+    try {
+      await archiveSession.mutateAsync(sessionId);
+      setActiveSession(null);
+    } catch (error) {
+      console.error("Failed to archive session:", error);
+    }
+  }, [archiveSession, setActiveSession]);
+
+  const handleSendIdeationMessage = useCallback((content: string) => {
+    // Message sending will be handled by the Orchestrator agent integration
+    console.log("Send ideation message:", content);
+  }, []);
+
+  const handleSelectProposal = useCallback((proposalId: string) => {
+    toggleSelection.mutate(proposalId);
+  }, [toggleSelection]);
+
+  const handleEditProposal = useCallback((proposalId: string) => {
+    // Open edit modal for proposal
+    console.log("Edit proposal:", proposalId);
+  }, []);
+
+  const handleRemoveProposal = useCallback((proposalId: string) => {
+    deleteProposal.mutate(proposalId);
+  }, [deleteProposal]);
+
+  const handleReorderProposals = useCallback((proposalIds: string[]) => {
+    if (activeSession) {
+      reorder.mutate({ sessionId: activeSession.id, proposalIds });
+    }
+  }, [activeSession, reorder]);
+
+  const handleApplyProposals = useCallback(async (options: ApplyProposalsInput) => {
+    try {
+      await applyProposalsMutation.mutateAsync(options);
+    } catch (error) {
+      console.error("Failed to apply proposals:", error);
+    }
+  }, [applyProposalsMutation]);
+
   // Build task titles lookup
   const taskTitles = useMemo(() => {
     const titles: Record<string, string> = {};
@@ -194,12 +339,53 @@ function AppContent() {
         className="flex items-center justify-between p-4 border-b"
         style={{ borderColor: "var(--border-subtle)" }}
       >
-        <h1
-          className="text-xl font-bold"
-          style={{ color: "var(--accent-primary)" }}
-        >
-          RalphX
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1
+            className="text-xl font-bold"
+            style={{ color: "var(--accent-primary)" }}
+          >
+            RalphX
+          </h1>
+          {/* View Navigation */}
+          <nav className="flex items-center gap-1" role="navigation" aria-label="Main views">
+            <button
+              onClick={() => setCurrentView("kanban")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                backgroundColor: currentView === "kanban"
+                  ? "var(--bg-elevated)"
+                  : "transparent",
+                color: currentView === "kanban"
+                  ? "var(--accent-primary)"
+                  : "var(--text-secondary)",
+              }}
+              data-testid="nav-kanban"
+              aria-current={currentView === "kanban" ? "page" : undefined}
+              title="Kanban (⌘1)"
+            >
+              <KanbanIcon />
+              <span className="text-sm font-medium">Kanban</span>
+            </button>
+            <button
+              onClick={() => setCurrentView("ideation")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                backgroundColor: currentView === "ideation"
+                  ? "var(--bg-elevated)"
+                  : "transparent",
+                color: currentView === "ideation"
+                  ? "var(--accent-primary)"
+                  : "var(--text-secondary)",
+              }}
+              data-testid="nav-ideation"
+              aria-current={currentView === "ideation" ? "page" : undefined}
+              title="Ideation (⌘2)"
+            >
+              <IdeationIcon />
+              <span className="text-sm font-medium">Ideation</span>
+            </button>
+          </nav>
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>
             Demo Project
@@ -264,28 +450,48 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Main content area with TaskBoard and optional ReviewsPanel */}
+      {/* Main content area with view-specific content and optional panels */}
       <div className="flex-1 flex overflow-hidden">
-        {/* TaskBoard with ExecutionControlBar */}
+        {/* Main view area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-hidden">
-            <TaskBoard
-              projectId={DEFAULT_PROJECT_ID}
-              workflowId={DEFAULT_WORKFLOW_ID}
-            />
+            {currentView === "kanban" && (
+              <TaskBoard
+                projectId={DEFAULT_PROJECT_ID}
+                workflowId={DEFAULT_WORKFLOW_ID}
+              />
+            )}
+            {currentView === "ideation" && (
+              <IdeationView
+                session={activeSession}
+                messages={transformMessages(sessionData?.messages ?? [])}
+                proposals={proposals}
+                onSendMessage={handleSendIdeationMessage}
+                onNewSession={handleNewSession}
+                onArchiveSession={handleArchiveSession}
+                onSelectProposal={handleSelectProposal}
+                onEditProposal={handleEditProposal}
+                onRemoveProposal={handleRemoveProposal}
+                onReorderProposals={handleReorderProposals}
+                onApply={handleApplyProposals}
+                isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending}
+              />
+            )}
           </div>
-          {/* ExecutionControlBar at bottom */}
-          <div className="p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-            <ExecutionControlBar
-              runningCount={executionStatus.runningCount}
-              maxConcurrent={executionStatus.maxConcurrent}
-              queuedCount={executionStatus.queuedCount}
-              isPaused={executionStatus.isPaused}
-              isLoading={isExecutionLoading}
-              onPauseToggle={handlePauseToggle}
-              onStop={handleStop}
-            />
-          </div>
+          {/* ExecutionControlBar at bottom (only show in kanban view) */}
+          {currentView === "kanban" && (
+            <div className="p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+              <ExecutionControlBar
+                runningCount={executionStatus.runningCount}
+                maxConcurrent={executionStatus.maxConcurrent}
+                queuedCount={executionStatus.queuedCount}
+                isPaused={executionStatus.isPaused}
+                isLoading={isExecutionLoading}
+                onPauseToggle={handlePauseToggle}
+                onStop={handleStop}
+              />
+            </div>
+          )}
         </div>
 
         {/* ReviewsPanel slide-out */}

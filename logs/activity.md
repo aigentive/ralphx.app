@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 18:19:00
+**Last Updated:** 2026-01-24 18:30:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 50 / 50
-**Current Task:** All tasks complete
+**Tasks Completed:** 51 / 59
+**Current Task:** Connect Orchestrator agent to chat (Task 52)
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:30:00 - Integrate IdeationView with navigation
+
+**What was done:**
+- Added view navigation state to `useUiStore`:
+  - Added `currentView: ViewType` state (defaults to "kanban")
+  - Added `setCurrentView` action
+  - Updated tests for new view state
+- Updated `src/App.tsx` with view navigation:
+  - Added Kanban and Ideation navigation buttons in header
+  - Implemented view switching (conditional rendering of TaskBoard/IdeationView)
+  - Added keyboard shortcuts (Cmd+1 for Kanban, Cmd+2 for Ideation)
+  - Updated chat context to reflect current view
+  - Added icons for Kanban and Ideation views
+  - Connected IdeationView with ideation store, proposal store, and hooks
+  - Fixed proposal selector to avoid infinite re-render loop
+- Created 19 navigation integration tests in `src/App.navigation.test.tsx`:
+  - Store state tests for currentView
+  - View switching preserves other state
+  - Session persistence when navigating
+  - Chat context logic tests
+  - Integration contract tests
+
+**Commands run:**
+- `npm test -- --run src/stores/uiStore.test.ts` (32 passed)
+- `npm test -- --run src/App.navigation.test.tsx` (19 passed)
+- `npm test -- --run src/App.test.tsx` (7 passed)
+- `npm test -- --run` (2270 passed)
+- `npm run typecheck` (passed)
+
+---
 
 ### 2026-01-24 18:19:00 - Integrate ChatPanel with App layout
 
