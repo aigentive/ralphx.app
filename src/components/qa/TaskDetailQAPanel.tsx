@@ -7,14 +7,19 @@
  * - Screenshots tab with thumbnail gallery and lightbox
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import type {
   TaskQAResponse,
   QAResultsResponse,
   AcceptanceCriterionResponse,
   QATestStepResponse,
 } from "@/lib/tauri";
-import type { QAStepStatus } from "@/types/qa";
+import type { QAStepStatus, QAStepResult } from "@/types/qa";
+import {
+  ScreenshotGallery,
+  pathsToScreenshots,
+  type Screenshot,
+} from "./ScreenshotGallery";
 
 // ============================================================================
 // Types
@@ -109,48 +114,6 @@ function MinusIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function ChevronLeftIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M12 4L6 10L12 16"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M8 4L14 10L8 16"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M18 6L6 18M6 6L18 18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function ImageIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -223,10 +186,6 @@ function getCriterionStatus(
   if (stepResults.every((r) => r.status === "passed")) return "passed";
 
   return "pending";
-}
-
-function getFilename(path: string): string {
-  return path.split("/").pop() || path;
 }
 
 // ============================================================================
@@ -376,13 +335,11 @@ function AcceptanceCriteriaTab({
 interface TestResultsTabProps {
   testSteps?: QATestStepResponse[] | undefined;
   results: QAResultsResponse | null;
-  onScreenshotClick?: ((path: string) => void) | undefined;
 }
 
 function TestResultsTab({
   testSteps,
   results,
-  onScreenshotClick,
 }: TestResultsTabProps) {
   if (!results) {
     return (
@@ -449,14 +406,13 @@ function TestResultsTab({
                       {stepResult.step_id}
                     </span>
                     {stepResult.screenshot && (
-                      <button
-                        data-testid={`step-screenshot-link-${stepResult.step_id}`}
-                        onClick={() => onScreenshotClick?.(stepResult.screenshot!)}
-                        className="flex items-center gap-1 text-xs text-[--accent-primary] hover:underline"
+                      <span
+                        data-testid={`step-screenshot-indicator-${stepResult.step_id}`}
+                        className="flex items-center gap-1 text-xs text-[--text-muted]"
                       >
                         <ImageIcon className="w-3 h-3" />
-                        Screenshot
-                      </button>
+                        Has screenshot
+                      </span>
                     )}
                   </div>
                   <p className="text-sm text-[--text-primary]">
@@ -514,149 +470,16 @@ function TestResultsTab({
 // ============================================================================
 
 interface ScreenshotsTabProps {
-  screenshots: string[];
-  onThumbnailClick: (index: number) => void;
+  screenshots: Screenshot[];
 }
 
-function ScreenshotsTab({ screenshots, onThumbnailClick }: ScreenshotsTabProps) {
-  if (screenshots.length === 0) {
-    return (
-      <p className="text-[--text-muted] text-sm py-4">
-        No screenshots captured
-      </p>
-    );
-  }
-
+function ScreenshotsTab({ screenshots }: ScreenshotsTabProps) {
   return (
-    <div className="grid grid-cols-3 gap-2">
-      {screenshots.map((path, index) => (
-        <button
-          key={path}
-          data-testid={`screenshot-thumbnail-${index}`}
-          onClick={() => onThumbnailClick(index)}
-          className="aspect-video rounded overflow-hidden bg-[--bg-hover] hover:ring-2 hover:ring-[--accent-primary] transition-all"
-        >
-          <img
-            src={path}
-            alt={getFilename(path)}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              // If image fails to load, show placeholder
-              e.currentTarget.style.display = "none";
-            }}
-          />
-          <div className="flex items-center justify-center h-full text-[--text-muted]">
-            <ImageIcon className="w-8 h-8" />
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ============================================================================
-// Lightbox Component
-// ============================================================================
-
-interface LightboxProps {
-  screenshots: string[];
-  currentIndex: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}
-
-function Lightbox({
-  screenshots,
-  currentIndex,
-  onClose,
-  onPrev,
-  onNext,
-}: LightboxProps) {
-  const currentPath = screenshots[currentIndex] ?? "";
-  const filename = getFilename(currentPath);
-
-  // Handle escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft") onPrev();
-      if (e.key === "ArrowRight") onNext();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, onPrev, onNext]);
-
-  return (
-    <div
-      data-testid="screenshot-lightbox"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90"
-      onClick={onClose}
-    >
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4">
-        <span
-          data-testid="lightbox-filename"
-          className="text-white text-sm font-medium"
-        >
-          {filename}
-        </span>
-        <div className="flex items-center gap-4">
-          <span
-            data-testid="lightbox-current-index"
-            className="text-white text-sm"
-          >
-            {currentIndex + 1} of {screenshots.length}
-          </span>
-          <button
-            data-testid="lightbox-close"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            className="text-white hover:text-gray-300 transition-colors"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-      </div>
-
-      {/* Navigation */}
-      {screenshots.length > 1 && (
-        <>
-          <button
-            data-testid="lightbox-prev"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPrev();
-            }}
-            disabled={currentIndex === 0}
-            className="absolute left-4 p-2 text-white hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronLeftIcon />
-          </button>
-          <button
-            data-testid="lightbox-next"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNext();
-            }}
-            disabled={currentIndex === screenshots.length - 1}
-            className="absolute right-4 p-2 text-white hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronRightIcon />
-          </button>
-        </>
-      )}
-
-      {/* Image */}
-      <img
-        src={currentPath}
-        alt={filename}
-        className="max-w-[90vw] max-h-[80vh] object-contain"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
+    <ScreenshotGallery
+      screenshots={screenshots}
+      columns={3}
+      emptyMessage="No screenshots captured"
+    />
   );
 }
 
@@ -674,7 +497,6 @@ export function TaskDetailQAPanel({
   isSkipping = false,
 }: TaskDetailQAPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>("criteria");
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const tablistRef = useRef<HTMLDivElement>(null);
 
   // Handle keyboard navigation
@@ -724,8 +546,22 @@ export function TaskDetailQAPanel({
 
   const criteria = taskQA.acceptance_criteria ?? [];
   const testSteps = taskQA.qa_test_steps ?? taskQA.refined_test_steps;
-  const screenshots = taskQA.screenshots ?? [];
+  const screenshotPaths = taskQA.screenshots ?? [];
   const isFailed = results?.overall_status === "failed";
+
+  // Create a map of step results for matching with screenshots
+  const stepResultsMap = new Map<string, QAStepResult>();
+  if (results?.steps) {
+    for (const step of results.steps) {
+      stepResultsMap.set(step.step_id, step);
+    }
+  }
+
+  // Convert screenshot paths to Screenshot objects with step result context
+  const screenshots: Screenshot[] = pathsToScreenshots(
+    screenshotPaths,
+    stepResultsMap
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -757,7 +593,7 @@ export function TaskDetailQAPanel({
         <TabButton
           id="screenshots"
           label="Screenshots"
-          count={screenshots.length > 0 ? screenshots.length : undefined}
+          count={screenshotPaths.length > 0 ? screenshotPaths.length : undefined}
           countTestId="screenshots-count"
           isSelected={activeTab === "screenshots"}
           onClick={setActiveTab}
@@ -783,17 +619,10 @@ export function TaskDetailQAPanel({
           <TestResultsTab
             testSteps={testSteps}
             results={results}
-            onScreenshotClick={(path) => {
-              const index = screenshots.indexOf(path);
-              if (index !== -1) setLightboxIndex(index);
-            }}
           />
         )}
         {activeTab === "screenshots" && (
-          <ScreenshotsTab
-            screenshots={screenshots}
-            onThumbnailClick={setLightboxIndex}
-          />
+          <ScreenshotsTab screenshots={screenshots} />
         )}
       </div>
 
@@ -815,23 +644,6 @@ export function TaskDetailQAPanel({
             {isSkipping ? "Skipping..." : "Skip QA"}
           </button>
         </div>
-      )}
-
-      {/* Lightbox */}
-      {lightboxIndex !== null && (
-        <Lightbox
-          screenshots={screenshots}
-          currentIndex={lightboxIndex}
-          onClose={() => setLightboxIndex(null)}
-          onPrev={() =>
-            setLightboxIndex((prev) => Math.max(0, (prev ?? 0) - 1))
-          }
-          onNext={() =>
-            setLightboxIndex((prev) =>
-              Math.min(screenshots.length - 1, (prev ?? 0) + 1)
-            )
-          }
-        />
       )}
     </div>
   );

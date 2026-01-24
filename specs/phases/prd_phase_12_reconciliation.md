@@ -682,7 +682,7 @@ const qaPrepProfile = {
       "Integrate with TaskDetailQAPanel",
       "Write unit tests for ScreenshotGallery"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

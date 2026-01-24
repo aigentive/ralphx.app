@@ -317,7 +317,8 @@ describe("TaskDetailQAPanel", () => {
       render(<TaskDetailQAPanel taskQA={createTaskQAResponse()} results={results} />);
       await user.click(screen.getByRole("tab", { name: /test results/i }));
 
-      expect(screen.getByTestId("step-screenshot-link-QA1")).toBeInTheDocument();
+      // Changed from clickable link to indicator since lightbox is now in ScreenshotGallery
+      expect(screen.getByTestId("step-screenshot-indicator-QA1")).toBeInTheDocument();
     });
   });
 
@@ -455,7 +456,8 @@ describe("TaskDetailQAPanel", () => {
       await user.click(screen.getByTestId("screenshot-thumbnail-0"));
       await user.click(screen.getByTestId("lightbox-next"));
 
-      expect(screen.getByTestId("lightbox-current-index")).toHaveTextContent("2 of 2");
+      // ScreenshotGallery uses "lightbox-counter" with format "N / M"
+      expect(screen.getByTestId("lightbox-counter")).toHaveTextContent("2 / 2");
     });
 
     it("navigates to previous screenshot in lightbox", async () => {
@@ -469,7 +471,8 @@ describe("TaskDetailQAPanel", () => {
       await user.click(screen.getByTestId("screenshot-thumbnail-1"));
       await user.click(screen.getByTestId("lightbox-prev"));
 
-      expect(screen.getByTestId("lightbox-current-index")).toHaveTextContent("1 of 2");
+      // ScreenshotGallery uses "lightbox-counter" with format "N / M"
+      expect(screen.getByTestId("lightbox-counter")).toHaveTextContent("1 / 2");
     });
 
     it("shows screenshot filename in lightbox", async () => {
@@ -482,6 +485,7 @@ describe("TaskDetailQAPanel", () => {
       await user.click(screen.getByRole("tab", { name: /screenshots/i }));
       await user.click(screen.getByTestId("screenshot-thumbnail-0"));
 
+      // ScreenshotGallery uses the filename as label
       expect(screen.getByTestId("lightbox-filename")).toHaveTextContent("qa1-result.png");
     });
   });
