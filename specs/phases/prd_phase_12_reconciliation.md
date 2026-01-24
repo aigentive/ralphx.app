@@ -396,7 +396,7 @@ const qaPrepProfile = {
       "Update any references in hooks or agents that use agent-browser",
       "Verify agent-browser commands work via plugin"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactoring",
