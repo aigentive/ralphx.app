@@ -3,12 +3,35 @@
 ## Current Status
 **Last Updated:** 2026-01-24 16:00:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 3 / 51
-**Current Task:** Implement Review and ReviewAction domain entities
+**Tasks Completed:** 4 / 51
+**Current Task:** Implement ReviewNote domain entity
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:25:00 - Implement Review and ReviewAction domain entities
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/review.rs` with:
+  - `ReviewId` and `ReviewActionId` newtype IDs with uuid generation
+  - `ReviewerType` enum: Ai, Human (with FromStr, Display, Serialize)
+  - `ReviewStatus` enum: Pending, Approved, ChangesRequested, Rejected
+  - `ReviewActionType` enum: CreatedFixTask, MovedToBacklog, Approved
+  - `Review` struct with methods: new, with_id, is_pending, is_complete, is_approved, approve, request_changes, reject
+  - `ReviewAction` struct with methods: new, with_target_task, with_id, is_fix_task_action
+  - Parse error types for all enums
+- Updated `src-tauri/src/domain/entities/mod.rs` to export all review types
+- Added 25 unit tests covering:
+  - ID generation and serialization
+  - Enum display, from_str, and serialization
+  - Review creation, status changes, and serialization
+  - ReviewAction creation and serialization
+
+**Commands run:**
+- `cargo test domain::entities::review --no-default-features -- --test-threads=1`
+
+---
 
 ### 2026-01-24 16:15:00 - Create review_notes table migration
 
