@@ -27,6 +27,12 @@ ralphx/
 ├── CLAUDE.md                   # This file - project guidance
 ├── README.md                   # Project overview
 │
+├── src/                        # Frontend (React/TypeScript)
+│   └── CLAUDE.md               # Frontend patterns & conventions
+│
+├── src-tauri/                  # Backend (Rust/Tauri)
+│   └── CLAUDE.md               # Backend patterns & conventions
+│
 ├── specs/                      # Specifications
 │   ├── manifest.json           # Phase tracker (source of truth for active phase)
 │   ├── plan.md                 # Master plan (comprehensive specification)
@@ -47,6 +53,24 @@ ralphx/
 │
 └── screenshots/                # Visual verification (if agent-browser used)
 ```
+
+---
+
+## Codebase Documentation (Progressive Discovery)
+
+For detailed context on tech stack, patterns, and conventions, see the dedicated CLAUDE.md files:
+
+| File | Contents |
+|------|----------|
+| [`src/CLAUDE.md`](src/CLAUDE.md) | **Frontend** - React 19, TypeScript 5.8, Zustand stores, TanStack Query, Tailwind CSS, component patterns, testing with Vitest |
+| [`src-tauri/CLAUDE.md`](src-tauri/CLAUDE.md) | **Backend** - Rust, Tauri 2.0, SQLite, clean architecture, repository pattern, newtype IDs, state machine, agent system |
+
+These files contain:
+- Complete tech stack with versions
+- Directory structure and organization
+- Key patterns with code examples
+- Coding standards and conventions
+- Testing approaches and commands
 
 ---
 
