@@ -708,7 +708,7 @@ All tasks require:
       "  - has_circular_dependency(task_id: &str, potential_dep: &str) -> Result<bool>",
       "Export from domain/repositories module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
