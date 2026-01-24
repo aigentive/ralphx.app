@@ -1249,7 +1249,7 @@ All tasks require tests written before implementation:
       "Implement useWorkflowMutations for CRUD operations",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
