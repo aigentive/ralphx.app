@@ -6,6 +6,7 @@ pub mod entities;
 pub mod qa;
 pub mod repositories;
 pub mod review;
+pub mod services;
 pub mod state_machine;
 pub mod supervisor;
 pub mod tools;

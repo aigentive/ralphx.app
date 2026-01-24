@@ -1,14 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:12:38
+**Last Updated:** 2026-01-24 20:16:27
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 19 / 63
-**Current Task:** Implement WorkflowService
+**Tasks Completed:** 20 / 63
+**Current Task:** Implement ArtifactService
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:16:27 - Implement WorkflowService (Task 20)
+
+**What was done:**
+- Created `src-tauri/src/domain/services/` directory for domain services
+- Created `src-tauri/src/domain/services/mod.rs` with service module exports
+- Created `src-tauri/src/domain/services/workflow_service.rs` with:
+  - `WorkflowService<R: WorkflowRepository>` generic struct with repository dependency
+  - `get_active_workflow()` - returns default workflow, or built-in fallback
+  - `apply_workflow(Option<WorkflowId>)` - generates `AppliedWorkflow` with columns for Kanban
+  - `validate_column_mappings()` - validates workflow schema (unique IDs, non-empty names)
+  - `get_all_workflows()` - returns all available workflows
+  - `get_workflow(id)` - returns specific workflow by ID
+  - `set_default_workflow(id)` - sets a workflow as the default
+- `AppliedWorkflow` struct with workflow_id, workflow_name, columns
+- `AppliedColumn` struct with id, name, maps_to, color, icon, agent_profile
+- `ColumnMappingError` and `ValidationResult` for validation feedback
+- Updated `domain/mod.rs` to export services module
+- Added 25 unit tests covering all service methods:
+  - get_active_workflow tests (default, fallback, custom)
+  - apply_workflow tests (by id, default, not found, mappings)
+  - validate_column_mappings tests (valid, empty, duplicates, etc.)
+  - get_all_workflows, get_workflow, set_default_workflow tests
+
+**Commands run:**
+- `cargo test workflow_service --no-fail-fast` (25 tests passed)
+- `cargo clippy --all-targets` (no new warnings)
+
+---
 
 ### 2026-01-24 20:12:38 - Seed built-in methodologies (BMAD, GSD) (Task 19)
 

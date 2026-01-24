@@ -976,7 +976,7 @@ All tasks require tests written before implementation:
       "Handle dynamic Kanban column generation from WorkflowSchema",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
