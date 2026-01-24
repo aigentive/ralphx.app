@@ -3,6 +3,8 @@
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::domain::agents::error::AgentError;
+
 /// Application error type for RalphX
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -20,6 +22,18 @@ pub enum AppError {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("Agent error: {0}")]
+    Agent(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+}
+
+impl From<AgentError> for AppError {
+    fn from(err: AgentError) -> Self {
+        AppError::Agent(err.to_string())
+    }
 }
 
 // Make errors serializable for Tauri
