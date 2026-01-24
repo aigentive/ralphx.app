@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:10:00
+**Last Updated:** 2026-01-24 09:20:00
 **Phase:** State Machine
-**Tasks Completed:** 14 / 22
-**Current Task:** Create task_state_data table migration
+**Tasks Completed:** 15 / 22
+**Current Task:** Implement state-local data persistence helpers
 
 ---
 
@@ -2056,6 +2056,36 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 **Files modified:**
 - `src-tauri/src/domain/state_machine/machine.rs` - added Display, FromStr, as_str
 - `src-tauri/src/domain/state_machine/mod.rs` - exported ParseStateError
+
+---
+
+### 2026-01-24 09:20:00 - Create task_state_data table migration
+
+**What was done:**
+- Updated SCHEMA_VERSION from 2 to 3
+- Added migrate_v3() function creating task_state_data table:
+  - task_id TEXT PRIMARY KEY (foreign key to tasks with CASCADE DELETE)
+  - state_type TEXT NOT NULL (e.g., "qa_failed", "failed")
+  - data TEXT NOT NULL (JSON string)
+  - updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+- Added idx_task_state_data_state_type index for querying by state type
+- Updated run_migrations() to call migrate_v3() when version < 3
+- Added 8 comprehensive tests:
+  - Table exists after migration
+  - Table has correct columns
+  - Index exists
+  - Primary key prevents duplicates
+  - CASCADE DELETE removes data when task is deleted
+  - Can store and retrieve JSON data
+  - Can update using INSERT OR REPLACE
+  - updated_at has default timestamp
+
+**Commands run:**
+- `cargo test migrations` - 31 tests pass
+- `cargo test` - 495 tests pass
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/migrations.rs` - added v3 migration
 
 ---
 

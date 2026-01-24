@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 2;
+pub const SCHEMA_VERSION: i32 = 3;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -25,6 +25,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 2 {
         migrate_v2(conn)?;
         set_schema_version(conn, 2)?;
+    }
+
+    if current_version < 3 {
+        migrate_v3(conn)?;
+        set_schema_version(conn, 3)?;
     }
 
     Ok(())
@@ -174,6 +179,34 @@ fn migrate_v2(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v3: Create task_state_data table for state-local data persistence
+///
+/// States like QaFailed and Failed have associated data that needs to persist
+/// across application restarts. This table stores that data as JSON.
+fn migrate_v3(conn: &Connection) -> AppResult<()> {
+    // Task state data table
+    // Stores state-local data for states like qa_failed and failed
+    conn.execute(
+        "CREATE TABLE task_state_data (
+            task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+            state_type TEXT NOT NULL,
+            data TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on state_type for querying all tasks in a specific state with data
+    conn.execute(
+        "CREATE INDEX idx_task_state_data_state_type ON task_state_data(state_type)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 2);
+        assert_eq!(SCHEMA_VERSION, 3);
     }
 
     #[test]
@@ -258,7 +291,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
@@ -271,7 +304,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
@@ -710,5 +743,265 @@ mod tests {
             .unwrap();
 
         assert_eq!(count, 2);
+    }
+
+    // ==================
+    // V3 Migration Tests: task_state_data table
+    // ==================
+
+    #[test]
+    fn test_run_migrations_creates_task_state_data_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify task_state_data table exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='task_state_data'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_task_state_data_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task first
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, internal_status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'qa_failed')",
+            [],
+        )
+        .unwrap();
+
+        // Try inserting a state data record
+        let result = conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data)
+             VALUES ('task-1', 'qa_failed', '{\"failures\": [], \"retry_count\": 0}')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_task_state_data_index_on_state_type_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_task_state_data_state_type'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_task_state_data_primary_key_prevents_duplicates() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // First insert should succeed
+        conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data) VALUES ('task-1', 'qa_failed', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Duplicate should fail (primary key violation)
+        let result = conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data) VALUES ('task-1', 'failed', '{}')",
+            [],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_task_state_data_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert state data
+        conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data) VALUES ('task-1', 'qa_failed', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Delete the task
+        conn.execute("DELETE FROM tasks WHERE id = 'task-1'", []).unwrap();
+
+        // State data should be gone
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_state_data WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_task_state_data_stores_json() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert JSON data
+        let json_data = r#"{"failures":[{"test_name":"test_foo","error":"assertion failed"}],"retry_count":2}"#;
+        conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data) VALUES ('task-1', 'qa_failed', ?1)",
+            [json_data],
+        )
+        .unwrap();
+
+        // Read it back
+        let retrieved: String = conn
+            .query_row(
+                "SELECT data FROM task_state_data WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(retrieved, json_data);
+    }
+
+    #[test]
+    fn test_task_state_data_can_update() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert initial data
+        conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data) VALUES ('task-1', 'qa_failed', '{\"retry_count\":0}')",
+            [],
+        )
+        .unwrap();
+
+        // Update the data using REPLACE
+        conn.execute(
+            "INSERT OR REPLACE INTO task_state_data (task_id, state_type, data)
+             VALUES ('task-1', 'qa_failed', '{\"retry_count\":1}')",
+            [],
+        )
+        .unwrap();
+
+        // Read it back
+        let retrieved: String = conn
+            .query_row(
+                "SELECT data FROM task_state_data WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(retrieved.contains("\"retry_count\":1"));
+    }
+
+    #[test]
+    fn test_task_state_data_updated_at_has_default() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Insert without specifying updated_at
+        conn.execute(
+            "INSERT INTO task_state_data (task_id, state_type, data) VALUES ('task-1', 'qa_failed', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // updated_at should not be null
+        let updated_at: Option<String> = conn
+            .query_row(
+                "SELECT updated_at FROM task_state_data WHERE task_id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(updated_at.is_some());
     }
 }
