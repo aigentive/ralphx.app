@@ -661,7 +661,7 @@ pub struct MockNotifier {
       "Verify final state is Approved",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -673,7 +673,7 @@ pub struct MockNotifier {
       "Verify RevisionNeeded → Executing loop",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -685,7 +685,7 @@ pub struct MockNotifier {
       "Verify error state is cleared on retry",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -698,7 +698,7 @@ pub struct MockNotifier {
       "Update lib.rs if needed",
       "Run cargo build"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

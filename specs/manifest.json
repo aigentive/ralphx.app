@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 3,
+  "currentPhase": 4,
   "phases": [
     {
       "phase": 0,
@@ -28,14 +28,14 @@
       "phase": 3,
       "name": "State Machine",
       "prd": "specs/phases/prd_phase_03_state_machine.md",
-      "status": "active",
+      "status": "complete",
       "description": "statig, 14 internal statuses, transitions, side effects"
     },
     {
       "phase": 4,
       "name": "Agentic Client",
       "prd": "specs/phases/prd_phase_04_agentic_client.md",
-      "status": "pending",
+      "status": "active",
       "description": "Agent abstraction, Claude Code client, mock client"
     },
     {

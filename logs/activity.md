@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:50:00
-**Phase:** State Machine
-**Tasks Completed:** 18 / 22
-**Current Task:** Create happy path integration test
+**Last Updated:** 2026-01-24 10:10:00
+**Phase:** Phase 3 Complete - Transitioning to Phase 4 (Agentic Client)
+**Tasks Completed:** 22 / 22
+**Current Task:** Phase transition to Phase 4
 
 ---
 
@@ -2180,6 +2180,90 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 
 **Files modified:**
 - `src-tauri/src/infrastructure/sqlite/state_machine_repository.rs` - added transition_atomically
+
+---
+
+### 2026-01-24 10:05:00 - Create integration tests (happy path, QA flow, human overrides)
+
+**What was done:**
+- Created `src-tauri/tests/state_machine_flows.rs` with 19 comprehensive integration tests:
+  - Happy path tests:
+    - `test_happy_path_without_qa`: Backlog → Ready → Executing → ExecutionDone → PendingReview → Approved
+    - `test_happy_path_tracks_transitions`: Verifies state transitions are recorded
+    - `test_approved_is_terminal`: Verifies terminal state behavior
+  - QA flow tests:
+    - `test_qa_flow_success`: ExecutionDone → QaRefining → QaTesting → QaPassed → PendingReview
+    - `test_qa_flow_failure_and_retry`: QaTesting → QaFailed → RevisionNeeded loop
+    - `test_qa_failed_preserves_data`: Verifies QaFailedData persistence
+    - `test_revision_needed_to_executing_loop`: Verifies revision cycle
+  - Human override tests:
+    - `test_force_approve_from_pending_review`: ForceApprove bypasses normal review
+    - `test_skip_qa_from_qa_failed`: SkipQa moves directly to PendingReview
+    - `test_retry_from_failed/cancelled/approved`: Retry returns to Ready
+    - `test_retry_clears_error_state`: Verifies error data cleared on retry
+  - Blocking flow tests:
+    - `test_blocking_flow`: BlockerDetected/BlockersResolved transitions
+    - `test_needs_human_input_blocks_execution`: Agent signals needing human input
+  - Other flow tests:
+    - `test_cancel_from_various_states`: Cancel from Ready, Blocked, Executing
+    - `test_execution_failed_stores_error`: Verifies FailedData persistence
+    - `test_full_review_cycle`: Complete review with rejection and revision
+
+**Commands run:**
+- `cargo test --test state_machine_flows` - 19 tests pass
+- `cargo test` - 569 tests pass (19 new integration tests)
+
+**Files created:**
+- `src-tauri/tests/state_machine_flows.rs`
+
+---
+
+### 2026-01-24 10:10:00 - Export state machine module from domain layer
+
+**What was done:**
+- Verified state machine module is already properly exported:
+  - `domain/mod.rs` has `pub mod state_machine;`
+  - `state_machine/mod.rs` re-exports all key types: TaskStateMachine, TaskEvent, TaskContext, State
+  - Service traits exported: AgentSpawner, EventEmitter, Notifier, DependencyManager
+  - Mock implementations exported for testing
+  - Persistence helpers exported: StateData, serialize/deserialize functions
+- Module accessible via `ralphx::domain::state_machine::*`
+- Follows clean architecture - domain layer exports modules independently
+
+**Commands run:**
+- `cargo build` - succeeds
+- `cargo test` - 569 tests pass (545 unit + 5 repo + 19 integration)
+
+**Files verified:**
+- `src-tauri/src/domain/mod.rs` - exports state_machine
+- `src-tauri/src/domain/state_machine/mod.rs` - re-exports all types
+- `src-tauri/src/lib.rs` - exports domain module
+
+---
+
+### 2026-01-24 10:10:00 - Phase 3 Complete
+
+**Summary:**
+Phase 3 (State Machine) is now complete with all 22 tasks passing.
+
+**Deliverables:**
+- **statig-based state machine** with 14 internal statuses
+- **TaskEvent enum** with 16 event variants (user, agent, system signals)
+- **Hierarchical superstates**: Execution, QA, Review
+- **State-local data**: QaFailedData and FailedData for persistent state info
+- **Service traits**: AgentSpawner, EventEmitter, Notifier, DependencyManager
+- **Mock services** for testing with call recording
+- **TaskContext** with shared state and blocker management
+- **State serialization**: Display and FromStr for SQLite persistence
+- **Persistence layer**: task_state_data table, StateData helpers
+- **TaskStateMachineRepository**: load, persist, process_event, transition_atomically
+- **Integration tests**: 19 tests covering happy path, QA flow, human overrides
+
+**Test coverage:**
+- 569 total tests passing
+- Unit tests for all state transitions
+- Integration tests for complete workflows
+- Atomicity and rollback tests
 
 ---
 
