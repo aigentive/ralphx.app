@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:49:54
+**Last Updated:** 2026-01-24 14:52:36
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 42 / 51
-**Current Task:** Integration test: AskUserQuestion flow
+**Tasks Completed:** 44 / 51
+**Current Task:** Integration test: Reviews panel end-to-end
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:52:36 - Integration test: AskUserQuestion and execution pause/resume flows
+
+**What was done:**
+- Created `src-tauri/tests/execution_control_flows.rs` with 14 tests:
+  - `test_ask_user_question_full_flow` - Full NeedsHumanInput → Blocked → Ready flow
+  - `test_needs_human_input_preserves_reason` - Verify reason is handled
+  - `test_blocked_task_cannot_be_scheduled` - Blocked task rejects Schedule event
+  - `test_blocked_task_can_be_cancelled` - Blocked task can be cancelled
+  - `test_multiple_ask_user_questions` - Sequential question/answer flow
+  - `test_pause_does_not_affect_executing_tasks` - Executing tasks continue
+  - `test_ready_tasks_still_schedulable` - Ready tasks can be scheduled
+  - `test_backlog_to_ready_scheduling` - Backlog → Ready transition
+  - `test_blocker_detected_blocks_ready_task` - BlockerDetected event
+  - `test_blockers_resolved_unblocks_task` - BlockersResolved event
+  - `test_multiple_blockers_resolved` - Multiple blockers resolved at once
+  - `test_complete_lifecycle_with_question` - Full lifecycle with human input
+  - `test_blocked_task_cannot_fail_directly` - Cannot fail from Blocked state
+  - `test_resume_from_blocked_goes_to_ready` - Resume goes to Ready, not Executing
+- Tests verify:
+  - Executing → Blocked (NeedsHumanInput)
+  - Blocked → Ready (BlockersResolved)
+  - Ready → Blocked (BlockerDetected)
+  - Pause/resume behavior at state machine level
+  - Complete lifecycle with human intervention
+
+**Commands run:**
+- `cargo test --test execution_control_flows` (14 tests passed)
+
+---
 
 ### 2026-01-24 14:49:54 - Integration test: human review flow
 
