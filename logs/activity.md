@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:35:00
+**Last Updated:** 2026-01-24 17:50:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 21 / 50
-**Current Task:** Create Tauri commands for task proposals
+**Tasks Completed:** 22 / 50
+**Current Task:** Create Tauri commands for dependencies and apply
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:50:00 - Create Tauri commands for task proposals
+
+**What was done:**
+- Extended `src-tauri/src/commands/ideation_commands.rs` with proposal commands:
+  - Input types:
+    - `CreateProposalInput` - session_id, title, description, category, steps, etc.
+    - `UpdateProposalInput` - optional fields for partial updates
+  - Response types:
+    - `PriorityAssessmentResponse` - proposal_id, priority, score, reason
+  - Commands:
+    - `create_task_proposal` - Create new proposal with validation
+    - `get_task_proposal` - Get proposal by ID
+    - `list_session_proposals` - List all proposals in a session
+    - `update_task_proposal` - Update proposal fields with user_modified tracking
+    - `delete_task_proposal` - Delete proposal
+    - `toggle_proposal_selection` - Toggle selection and return new state
+    - `set_proposal_selection` - Set selection to specific value
+    - `reorder_proposals` - Reorder proposals within a session
+    - `assess_proposal_priority` - Get priority assessment (stub)
+    - `assess_all_priorities` - Get all assessments for session (stub)
+- Updated `commands/mod.rs` with new exports
+- 8 new unit tests for proposal CRUD, selection, reordering, and serialization
+- Total: 19 tests in ideation_commands module
+
+**Commands run:**
+- `cargo test --lib ideation_commands::` (19 tests passed)
+- `cargo test --lib` (2059 tests passed)
+
+---
 
 ### 2026-01-24 17:35:00 - Create Tauri commands for ideation sessions
 
