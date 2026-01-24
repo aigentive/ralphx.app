@@ -1064,7 +1064,7 @@ All tasks require:
       "  - clearMessages(contextKey)",
       "Export from src/stores/chatStore.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
