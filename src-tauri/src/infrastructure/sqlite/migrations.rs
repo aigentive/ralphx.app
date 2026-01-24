@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 5;
+pub const SCHEMA_VERSION: i32 = 6;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -40,6 +40,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 5 {
         migrate_v5(conn)?;
         set_schema_version(conn, 5)?;
+    }
+
+    if current_version < 6 {
+        migrate_v6(conn)?;
+        set_schema_version(conn, 6)?;
     }
 
     Ok(())
@@ -302,6 +307,37 @@ fn migrate_v5(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v6: Add QA columns to tasks table
+///
+/// Adds per-task QA configuration columns:
+/// - needs_qa: Boolean override for QA requirement (NULL = inherit from global)
+/// - qa_prep_status: Status of QA preparation phase
+/// - qa_test_status: Status of QA testing phase
+fn migrate_v6(conn: &Connection) -> AppResult<()> {
+    // Add needs_qa column (nullable boolean for override)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN needs_qa BOOLEAN DEFAULT NULL",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add qa_prep_status column (pending, running, completed, failed)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN qa_prep_status TEXT DEFAULT 'pending'",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add qa_test_status column (pending, waiting_for_prep, running, passed, failed)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN qa_test_status TEXT DEFAULT 'pending'",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 5);
+        assert_eq!(SCHEMA_VERSION, 6);
     }
 
     #[test]
@@ -386,7 +422,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]
@@ -399,7 +435,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]
@@ -1608,5 +1644,295 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    // ==================
+    // V6 Migration Tests: QA columns on tasks table
+    // ==================
+
+    #[test]
+    fn test_tasks_has_needs_qa_column() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task with needs_qa
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        let result = conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, needs_qa)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 1)",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_tasks_needs_qa_can_be_null() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task without specifying needs_qa
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Verify needs_qa is NULL by default
+        let needs_qa: Option<bool> = conn
+            .query_row(
+                "SELECT needs_qa FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(needs_qa.is_none());
+    }
+
+    #[test]
+    fn test_tasks_has_qa_prep_status_column() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, qa_prep_status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'running')",
+            [],
+        )
+        .unwrap();
+
+        // Verify the value
+        let status: String = conn
+            .query_row(
+                "SELECT qa_prep_status FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(status, "running");
+    }
+
+    #[test]
+    fn test_tasks_qa_prep_status_defaults_to_pending() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task without specifying qa_prep_status
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Verify default
+        let status: String = conn
+            .query_row(
+                "SELECT qa_prep_status FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(status, "pending");
+    }
+
+    #[test]
+    fn test_tasks_has_qa_test_status_column() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, qa_test_status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'passed')",
+            [],
+        )
+        .unwrap();
+
+        // Verify the value
+        let status: String = conn
+            .query_row(
+                "SELECT qa_test_status FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(status, "passed");
+    }
+
+    #[test]
+    fn test_tasks_qa_test_status_defaults_to_pending() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task without specifying qa_test_status
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Verify default
+        let status: String = conn
+            .query_row(
+                "SELECT qa_test_status FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(status, "pending");
+    }
+
+    #[test]
+    fn test_tasks_qa_columns_can_be_updated() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and task
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Update QA columns
+        conn.execute(
+            "UPDATE tasks SET needs_qa = 1, qa_prep_status = 'completed', qa_test_status = 'running'
+             WHERE id = 'task-1'",
+            [],
+        )
+        .unwrap();
+
+        // Verify updates
+        let (needs_qa, prep_status, test_status): (bool, String, String) = conn
+            .query_row(
+                "SELECT needs_qa, qa_prep_status, qa_test_status FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert!(needs_qa);
+        assert_eq!(prep_status, "completed");
+        assert_eq!(test_status, "running");
+    }
+
+    #[test]
+    fn test_tasks_qa_columns_all_statuses() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        // Test all valid prep statuses
+        let prep_statuses = ["pending", "running", "completed", "failed"];
+        for (i, status) in prep_statuses.iter().enumerate() {
+            let task_id = format!("task-prep-{}", i);
+            conn.execute(
+                &format!(
+                    "INSERT INTO tasks (id, project_id, category, title, qa_prep_status)
+                     VALUES ('{}', 'proj-1', 'feature', 'Task', '{}')",
+                    task_id, status
+                ),
+                [],
+            )
+            .unwrap();
+
+            let stored: String = conn
+                .query_row(
+                    &format!(
+                        "SELECT qa_prep_status FROM tasks WHERE id = '{}'",
+                        task_id
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+
+            assert_eq!(&stored, *status);
+        }
+
+        // Test all valid test statuses
+        let test_statuses = ["pending", "waiting_for_prep", "running", "passed", "failed"];
+        for (i, status) in test_statuses.iter().enumerate() {
+            let task_id = format!("task-test-{}", i);
+            conn.execute(
+                &format!(
+                    "INSERT INTO tasks (id, project_id, category, title, qa_test_status)
+                     VALUES ('{}', 'proj-1', 'feature', 'Task', '{}')",
+                    task_id, status
+                ),
+                [],
+            )
+            .unwrap();
+
+            let stored: String = conn
+                .query_row(
+                    &format!(
+                        "SELECT qa_test_status FROM tasks WHERE id = '{}'",
+                        task_id
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+
+            assert_eq!(&stored, *status);
+        }
     }
 }

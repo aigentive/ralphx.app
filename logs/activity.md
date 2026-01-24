@@ -1,14 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:54:32
+**Last Updated:** 2026-01-24 10:56:52
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 6 / 33
-**Current Task:** Add QA columns to tasks table migration
+**Tasks Completed:** 7 / 33
+**Current Task:** Create AcceptanceCriteria and QATestStep types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:56:52 - Add QA columns to tasks table migration
+
+**What was done:**
+- Updated `SCHEMA_VERSION` from 5 to 6
+- Added `migrate_v6()` function with ALTER TABLE statements:
+  - `needs_qa BOOLEAN DEFAULT NULL` - nullable boolean for per-task QA override
+  - `qa_prep_status TEXT DEFAULT 'pending'` - QA preparation phase status
+  - `qa_test_status TEXT DEFAULT 'pending'` - QA testing phase status
+- Added 8 new tests for v6 migration:
+  - `test_tasks_has_needs_qa_column`
+  - `test_tasks_needs_qa_can_be_null`
+  - `test_tasks_has_qa_prep_status_column`
+  - `test_tasks_qa_prep_status_defaults_to_pending`
+  - `test_tasks_has_qa_test_status_column`
+  - `test_tasks_qa_test_status_defaults_to_pending`
+  - `test_tasks_qa_columns_can_be_updated`
+  - `test_tasks_qa_columns_all_statuses`
+- All 57 migration tests passing
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml infrastructure::sqlite::migrations::tests`
+
+---
 
 ### 2026-01-24 10:54:32 - Create task_qa table migration
 
