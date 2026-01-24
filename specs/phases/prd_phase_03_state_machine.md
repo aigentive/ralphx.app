@@ -457,7 +457,7 @@ pub struct MockNotifier {
       "Use async_trait for async method support",
       "Run cargo build to verify trait definitions compile"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

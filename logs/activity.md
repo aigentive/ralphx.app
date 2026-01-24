@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:25:00
+**Last Updated:** 2026-01-24 08:30:00
 **Phase:** State Machine
-**Tasks Completed:** 4 / 22
-**Current Task:** Create service traits for dependency injection
+**Tasks Completed:** 5 / 22
+**Current Task:** Create mock service implementations for testing
 
 ---
 
@@ -1799,6 +1799,29 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:30:00 - Create service traits for dependency injection
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/services.rs` with:
+  - AgentSpawner trait: spawn(), spawn_background(), wait_for(), stop()
+  - EventEmitter trait: emit(), emit_with_payload()
+  - Notifier trait: notify(), notify_with_message()
+  - DependencyManager trait: unblock_dependents(), has_unresolved_blockers(), get_blocking_tasks()
+- All traits use async_trait for async method support
+- All traits are Send + Sync for thread safety
+- Wrote 6 tests verifying object safety and Arc/Box wrapping
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 391 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/services.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added services module export
 
 ---
 
