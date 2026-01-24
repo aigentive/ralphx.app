@@ -1,8 +1,8 @@
 // TaskServices container and TaskContext for state machine
 // These provide the shared context needed during state transitions
 
-use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier};
-use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier};
+use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter};
+use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter};
 use super::types::Blocker;
 use std::sync::Arc;
 
@@ -22,6 +22,9 @@ pub struct TaskServices {
 
     /// Service for managing task dependencies
     pub dependency_manager: Arc<dyn DependencyManager>,
+
+    /// Service for starting reviews on tasks
+    pub review_starter: Arc<dyn ReviewStarter>,
 }
 
 impl TaskServices {
@@ -31,12 +34,14 @@ impl TaskServices {
         event_emitter: Arc<dyn EventEmitter>,
         notifier: Arc<dyn Notifier>,
         dependency_manager: Arc<dyn DependencyManager>,
+        review_starter: Arc<dyn ReviewStarter>,
     ) -> Self {
         Self {
             agent_spawner,
             event_emitter,
             notifier,
             dependency_manager,
+            review_starter,
         }
     }
 
@@ -47,6 +52,7 @@ impl TaskServices {
             event_emitter: Arc::new(MockEventEmitter::new()),
             notifier: Arc::new(MockNotifier::new()),
             dependency_manager: Arc::new(MockDependencyManager::new()),
+            review_starter: Arc::new(MockReviewStarter::new()),
         }
     }
 }
@@ -58,6 +64,7 @@ impl std::fmt::Debug for TaskServices {
             .field("event_emitter", &"<EventEmitter>")
             .field("notifier", &"<Notifier>")
             .field("dependency_manager", &"<DependencyManager>")
+            .field("review_starter", &"<ReviewStarter>")
             .finish()
     }
 }
@@ -224,6 +231,7 @@ mod tests {
         assert!(debug_str.contains("event_emitter"));
         assert!(debug_str.contains("notifier"));
         assert!(debug_str.contains("dependency_manager"));
+        assert!(debug_str.contains("review_starter"));
     }
 
     // ==================

@@ -594,7 +594,7 @@ interface AskUserQuestionResponse {
       "Emit review:update events on state changes",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

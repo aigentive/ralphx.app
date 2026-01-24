@@ -169,13 +169,66 @@ impl<'a> TransitionHandler<'a> {
                 }
             }
             State::PendingReview => {
-                // Spawn reviewer agent
-                self.machine
+                // Start AI review via ReviewStarter
+                let review_result = self.machine
                     .context
                     .services
-                    .agent_spawner
-                    .spawn("reviewer", &self.machine.context.task_id)
+                    .review_starter
+                    .start_ai_review(
+                        &self.machine.context.task_id,
+                        &self.machine.context.project_id,
+                    )
                     .await;
+
+                // Emit review:update event with the result
+                match &review_result {
+                    super::services::ReviewStartResult::Started { review_id } => {
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_with_payload(
+                                "review:update",
+                                &self.machine.context.task_id,
+                                &format!(r#"{{"type":"started","reviewId":"{}"}}"#, review_id),
+                            )
+                            .await;
+
+                        // Spawn reviewer agent
+                        self.machine
+                            .context
+                            .services
+                            .agent_spawner
+                            .spawn("reviewer", &self.machine.context.task_id)
+                            .await;
+                    }
+                    super::services::ReviewStartResult::Disabled => {
+                        // AI review disabled, emit event but don't spawn agent
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_with_payload(
+                                "review:update",
+                                &self.machine.context.task_id,
+                                r#"{"type":"disabled"}"#,
+                            )
+                            .await;
+                    }
+                    super::services::ReviewStartResult::Error(msg) => {
+                        // Review failed to start, notify user
+                        self.machine
+                            .context
+                            .services
+                            .notifier
+                            .notify_with_message(
+                                "review_error",
+                                &self.machine.context.task_id,
+                                msg,
+                            )
+                            .await;
+                    }
+                }
             }
             State::RevisionNeeded => {
                 // Auto-transition to Executing will be handled by check_auto_transition
@@ -260,9 +313,9 @@ mod tests {
     use super::*;
     use crate::domain::state_machine::context::{TaskContext, TaskServices};
     use crate::domain::state_machine::mocks::{
-        MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier,
+        MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
     };
-    use crate::domain::state_machine::services::{AgentSpawner, EventEmitter, Notifier};
+    use crate::domain::state_machine::services::{AgentSpawner, EventEmitter, Notifier, ReviewStarter};
     use crate::domain::state_machine::types::QaFailedData;
     use std::sync::Arc;
 
@@ -271,21 +324,24 @@ mod tests {
         Arc<MockEventEmitter>,
         Arc<MockNotifier>,
         Arc<MockDependencyManager>,
+        Arc<MockReviewStarter>,
         TaskServices,
     ) {
         let spawner = Arc::new(MockAgentSpawner::new());
         let emitter = Arc::new(MockEventEmitter::new());
         let notifier = Arc::new(MockNotifier::new());
         let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::new());
 
         let services = TaskServices::new(
             Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
             Arc::clone(&emitter) as Arc<dyn EventEmitter>,
             Arc::clone(&notifier) as Arc<dyn Notifier>,
             Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
         );
 
-        (spawner, emitter, notifier, dep_manager, services)
+        (spawner, emitter, notifier, dep_manager, review_starter, services)
     }
 
     fn create_context_with_services(
@@ -327,7 +383,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_backlog_to_ready_transition() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -343,7 +399,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_backlog_to_ready_with_qa_enabled() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -366,7 +422,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execution_done_auto_transition_to_qa_refining() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -390,7 +446,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execution_done_auto_transition_to_pending_review_without_qa() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -413,7 +469,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execution_done_with_qa_prep_complete_skips_wait() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services)
             .with_qa_enabled()
             .with_qa_prep_complete();
@@ -439,7 +495,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_qa_refining_to_qa_testing() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -457,7 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_qa_testing_passed() {
-        let (_spawner, emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -479,7 +535,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_qa_testing_failed_notifies_user() {
-        let (_spawner, emitter, notifier, _dep_manager, services) = create_test_services();
+        let (_spawner, emitter, notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -500,7 +556,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_qa_failed_skip_qa_transitions_to_pending_review() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -521,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_qa_failed_retry_transitions_to_revision_needed() {
-        let (_spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -547,7 +603,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pending_review_approved() {
-        let (_spawner, emitter, _notifier, dep_manager, services) = create_test_services();
+        let (_spawner, emitter, _notifier, dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -574,7 +630,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pending_review_rejected_auto_transitions_to_executing() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -603,7 +659,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execution_failed_emits_event() {
-        let (_spawner, emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -629,7 +685,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_event_not_handled() {
-        let (_spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -649,7 +705,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_entering_executing_spawns_worker() {
-        let (spawner, _emitter, _notifier, _dep_manager, services) = create_test_services();
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
 
@@ -661,5 +717,179 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].method, "spawn");
         assert_eq!(calls[0].args, vec!["worker", "task-1"]);
+    }
+
+    // ==================
+    // Review integration tests
+    // ==================
+
+    #[tokio::test]
+    async fn test_entering_pending_review_starts_ai_review() {
+        let (spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::PendingReview).await;
+
+        // Should have called start_ai_review
+        assert!(review_starter.has_review_for_task("task-1"));
+        assert_eq!(review_starter.call_count(), 1);
+
+        // Should have emitted review:update event
+        let events = emitter.get_events();
+        assert!(events.iter().any(|e| {
+            e.method == "emit_with_payload" && e.args[0] == "review:update"
+        }));
+
+        // Should have spawned reviewer agent
+        let calls = spawner.get_calls();
+        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+    }
+
+    #[tokio::test]
+    async fn test_entering_pending_review_with_disabled_ai_review() {
+        let spawner = Arc::new(MockAgentSpawner::new());
+        let emitter = Arc::new(MockEventEmitter::new());
+        let notifier = Arc::new(MockNotifier::new());
+        let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::disabled());
+
+        let services = TaskServices::new(
+            Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
+            Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+            Arc::clone(&notifier) as Arc<dyn Notifier>,
+            Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
+        );
+
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::PendingReview).await;
+
+        // Should NOT spawn reviewer agent when AI review is disabled
+        let calls = spawner.get_calls();
+        assert!(!calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+
+        // Should emit review:update with disabled type
+        let events = emitter.get_events();
+        assert!(events.iter().any(|e| {
+            e.method == "emit_with_payload"
+                && e.args[0] == "review:update"
+                && e.args[2].contains("disabled")
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_entering_pending_review_with_error_notifies_user() {
+        let spawner = Arc::new(MockAgentSpawner::new());
+        let emitter = Arc::new(MockEventEmitter::new());
+        let notifier = Arc::new(MockNotifier::new());
+        let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::with_error("Database connection failed"));
+
+        let services = TaskServices::new(
+            Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
+            Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+            Arc::clone(&notifier) as Arc<dyn Notifier>,
+            Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
+        );
+
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::PendingReview).await;
+
+        // Should NOT spawn reviewer agent when review fails to start
+        let calls = spawner.get_calls();
+        assert!(!calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+
+        // Should notify user about the error
+        assert!(notifier.has_notification("review_error"));
+    }
+
+    #[tokio::test]
+    async fn test_entering_pending_review_emits_started_event_with_review_id() {
+        let (spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::PendingReview).await;
+
+        // Verify review:update event contains the review ID
+        let events = emitter.get_events();
+        let review_event = events.iter().find(|e| {
+            e.method == "emit_with_payload" && e.args[0] == "review:update"
+        }).expect("Should have review:update event");
+
+        assert!(review_event.args[2].contains("started"));
+        assert!(review_event.args[2].contains("review-"));
+
+        // Verify reviewer spawned after review started
+        let calls = spawner.get_calls();
+        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+
+        // Verify review_starter was called with correct arguments
+        let review_calls = review_starter.get_calls();
+        assert_eq!(review_calls.len(), 1);
+        assert_eq!(review_calls[0].args[0], "task-1");
+        assert_eq!(review_calls[0].args[1], "proj-1");
+    }
+
+    #[tokio::test]
+    async fn test_execution_done_to_pending_review_starts_ai_review() {
+        let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+        let mut handler = TransitionHandler::new(&mut machine);
+
+        // Transition from Executing -> ExecutionDone -> PendingReview (auto)
+        let result = handler
+            .handle_transition(&State::Executing, &TaskEvent::ExecutionComplete)
+            .await;
+
+        // Should auto-transition to PendingReview
+        assert_eq!(result.state(), Some(&State::PendingReview));
+
+        // Should have started AI review
+        assert!(review_starter.has_review_for_task("task-1"));
+
+        // Should have emitted review:update event
+        assert!(emitter.get_events().iter().any(|e| {
+            e.method == "emit_with_payload" && e.args[0] == "review:update"
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_qa_passed_to_pending_review_starts_ai_review() {
+        let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
+        let mut machine = TaskStateMachine::new(context);
+        let mut handler = TransitionHandler::new(&mut machine);
+
+        // Transition from QaTesting -> QaPassed -> PendingReview (auto)
+        let result = handler
+            .handle_transition(&State::QaTesting, &TaskEvent::QaTestsComplete { passed: true })
+            .await;
+
+        // Should auto-transition to PendingReview
+        if let TransitionResult::AutoTransition(state) = &result {
+            assert_eq!(*state, State::PendingReview);
+        } else {
+            panic!("Expected AutoTransition to PendingReview");
+        }
+
+        // Should have started AI review
+        assert!(review_starter.has_review_for_task("task-1"));
+
+        // Should have emitted review:update event
+        assert!(emitter.get_events().iter().any(|e| {
+            e.method == "emit_with_payload" && e.args[0] == "review:update"
+        }));
     }
 }

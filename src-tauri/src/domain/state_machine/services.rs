@@ -119,6 +119,42 @@ pub trait DependencyManager: Send + Sync {
     async fn get_blocking_tasks(&self, task_id: &str) -> Vec<String>;
 }
 
+/// Result of starting a review.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewStartResult {
+    /// Review started successfully with the review ID
+    Started { review_id: String },
+    /// Review was not started because AI review is disabled
+    Disabled,
+    /// Review failed to start due to an error
+    Error(String),
+}
+
+/// Trait for starting reviews on tasks.
+///
+/// The state machine uses this trait to initiate AI reviews when
+/// a task enters the PendingReview state. The actual implementation
+/// connects to the ReviewService.
+///
+/// Implementations are provided in Phase 9 (Review & Supervision).
+#[async_trait]
+pub trait ReviewStarter: Send + Sync {
+    /// Starts an AI review for a task.
+    ///
+    /// Creates a Review record and prepares for AI review.
+    /// The actual reviewer agent is spawned separately via AgentSpawner.
+    ///
+    /// # Arguments
+    /// * `task_id` - The ID of the task to review
+    /// * `project_id` - The ID of the project the task belongs to
+    ///
+    /// # Returns
+    /// * `ReviewStartResult::Started` - Review started with review ID
+    /// * `ReviewStartResult::Disabled` - AI review is disabled in settings
+    /// * `ReviewStartResult::Error` - Failed to start review
+    async fn start_ai_review(&self, task_id: &str, project_id: &str) -> ReviewStartResult;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,12 +182,18 @@ mod tests {
     }
 
     #[test]
+    fn test_review_starter_is_object_safe() {
+        fn _assert_object_safe(_: &dyn ReviewStarter) {}
+    }
+
+    #[test]
     fn test_traits_can_be_wrapped_in_arc() {
         // This is important for sharing services across threads
         fn _takes_arc_spawner(_: Arc<dyn AgentSpawner>) {}
         fn _takes_arc_emitter(_: Arc<dyn EventEmitter>) {}
         fn _takes_arc_notifier(_: Arc<dyn Notifier>) {}
         fn _takes_arc_manager(_: Arc<dyn DependencyManager>) {}
+        fn _takes_arc_review_starter(_: Arc<dyn ReviewStarter>) {}
     }
 
     #[test]
@@ -160,5 +202,54 @@ mod tests {
         fn _takes_box_emitter(_: Box<dyn EventEmitter>) {}
         fn _takes_box_notifier(_: Box<dyn Notifier>) {}
         fn _takes_box_manager(_: Box<dyn DependencyManager>) {}
+        fn _takes_box_review_starter(_: Box<dyn ReviewStarter>) {}
+    }
+
+    // ReviewStartResult tests
+    #[test]
+    fn test_review_start_result_started() {
+        let result = ReviewStartResult::Started {
+            review_id: "rev-123".to_string(),
+        };
+        if let ReviewStartResult::Started { review_id } = result {
+            assert_eq!(review_id, "rev-123");
+        } else {
+            panic!("Expected Started variant");
+        }
+    }
+
+    #[test]
+    fn test_review_start_result_disabled() {
+        let result = ReviewStartResult::Disabled;
+        assert_eq!(result, ReviewStartResult::Disabled);
+    }
+
+    #[test]
+    fn test_review_start_result_error() {
+        let result = ReviewStartResult::Error("Something failed".to_string());
+        if let ReviewStartResult::Error(msg) = result {
+            assert_eq!(msg, "Something failed");
+        } else {
+            panic!("Expected Error variant");
+        }
+    }
+
+    #[test]
+    fn test_review_start_result_clone() {
+        let result = ReviewStartResult::Started {
+            review_id: "rev-1".to_string(),
+        };
+        let cloned = result.clone();
+        assert_eq!(result, cloned);
+    }
+
+    #[test]
+    fn test_review_start_result_debug() {
+        let result = ReviewStartResult::Started {
+            review_id: "rev-1".to_string(),
+        };
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("Started"));
+        assert!(debug_str.contains("rev-1"));
     }
 }
