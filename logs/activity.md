@@ -1,14 +1,68 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:19:43
+**Last Updated:** 2026-01-24 16:45:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 17 / 50
-**Current Task:** Implement IdeationService for orchestrating ideation flow
+**Tasks Completed:** 18 / 50
+**Current Task:** Implement ApplyService for converting proposals to tasks
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:45:00 - Implement IdeationService for orchestrating ideation flow
+
+**What was done:**
+- Created `src-tauri/src/application/ideation_service.rs`:
+  - `IdeationService<S, P, M, D>` generic struct with four repository dependencies
+  - Constructor `new()` with `Arc<S>`, `Arc<P>`, `Arc<M>`, `Arc<D>` parameters
+  - Helper structs:
+    - `SessionWithData` - Session with proposals and messages
+    - `CreateProposalOptions` - Options for creating proposals
+    - `UpdateProposalOptions` - Options for updating proposals
+    - `SessionStats` - Statistics for a session
+  - Session management methods:
+    - `create_session()` - Create with auto-generated title if none provided
+    - `get_session()` - Get session by ID
+    - `get_session_with_data()` - Get session with proposals and messages
+    - `get_sessions_by_project()` - Get all sessions for a project
+    - `get_active_sessions()` - Get active sessions for a project
+    - `archive_session()` - Archive a session
+    - `update_session_title()` - Update session title
+    - `delete_session()` - Delete session and cascade
+  - Proposal management methods:
+    - `create_proposal()` - Create with session validation
+    - `update_proposal()` - Update with user modification tracking
+    - `delete_proposal()` - Delete with dependency cleanup
+    - `toggle_proposal_selection()` - Toggle selection state
+    - `set_proposal_selection()` - Set selection state
+    - `get_proposals()` - Get proposals for session
+    - `get_selected_proposals()` - Get selected proposals
+    - `select_all_proposals()` - Select all in session
+    - `deselect_all_proposals()` - Deselect all in session
+    - `reorder_proposals()` - Reorder by ID list
+  - Message management methods:
+    - `add_user_message()` - Add user message
+    - `add_orchestrator_message()` - Add orchestrator message
+    - `add_system_message()` - Add system message
+    - `get_session_messages()` - Get all messages
+    - `get_recent_messages()` - Get recent with limit
+  - Statistics method:
+    - `get_session_stats()` - Get proposal and message counts
+- Updated `application/mod.rs` with module declaration and re-exports
+- Added 29 comprehensive unit tests:
+  - Session tests: create with/without title, get, archive, update title, delete, get by project, get active
+  - Proposal tests: create in active session, create fails for nonexistent/archived, update title/priority, delete, toggle selection, get selected, select/deselect all
+  - Message tests: add user/orchestrator/system messages, get session messages, get recent
+  - Session with data tests: get with data, returns none for nonexistent
+  - Stats tests: counts proposals and messages correctly
+  - Reorder tests: reorder proposals
+
+**Commands run:**
+- `cargo test --lib ideation_service::` (29 tests passed)
+- `cargo test --lib` (1995 tests passed)
+
+---
 
 ### 2026-01-24 16:19:43 - Implement DependencyService for graph analysis
 

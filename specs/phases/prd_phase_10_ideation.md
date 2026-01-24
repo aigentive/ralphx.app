@@ -828,7 +828,7 @@ All tasks require:
       "Implement add_message() for chat history",
       "Implement get_session_messages()"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
