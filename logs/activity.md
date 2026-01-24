@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:00:00
+**Last Updated:** 2026-01-24 08:30:00
 **Phase:** PRD Generation
-**Tasks Completed:** 5 / 12
-**Current Task:** Create Phase 5 PRD: Frontend Core
+**Tasks Completed:** 6 / 12
+**Current Task:** Create Phase 6 PRD: Kanban UI
 
 ---
 
@@ -301,6 +301,59 @@ Phase 1: Foundation (no dependencies)
 - ✅ Cost-optimized test patterns documented
 - ✅ AppState integration with dependency injection
 - ✅ TDD mandatory for all tasks
+
+---
+
+### 2026-01-24 08:30:00 - Phase 5 PRD Created: Frontend Core
+
+**What was done:**
+- Read extensive sections of `specs/plan.md` covering Frontend Core requirements:
+  - TypeScript Frontend Best Practices (lines 5612-6019)
+  - Real-Time Events (lines 1813-2075)
+  - Module Organization (lines 5633-5680)
+  - Zustand Store Pattern (lines 5873-5923)
+  - TanStack Query hooks (lines 5824-5870, 2867-2943)
+  - WorkflowSchema types (lines 7751-7828)
+- Created `specs/phases/prd_phase_05_frontend_core.md` with 22 atomic tasks
+- Tasks cover:
+  1. TanStack Query and Zustand dependencies setup
+  2. Event type definitions (6 event types)
+  3. TaskEvent Zod schema (discriminated union)
+  4. WorkflowSchema type definitions
+  5. taskStore with Zustand and immer
+  6. projectStore
+  7. uiStore for UI state
+  8. activityStore for agent messages
+  9. Extended Tauri API wrappers for tasks
+  10. Extended Tauri API wrappers for projects
+  11. TanStack Query QueryClientProvider setup
+  12. useTasks hook with TanStack Query
+  13. useProjects hook
+  14. useTaskMutation hook
+  15. useTaskEvents hook with Tauri event listening
+  16. useAgentEvents hook for activity stream
+  17. useSupervisorAlerts hook
+  18. Event batching hook for performance
+  19. EventProvider component for global listeners
+  20. Integration of providers in App
+  21. Formatters utility module
+  22. Test utilities for stores and hooks
+
+**Key Design Decisions:**
+- Zustand with immer middleware for immutable state updates
+- TanStack Query for server state management
+- Separation of Zustand (client state) and TanStack Query (server state)
+- Event batching with 50ms flush interval for high-frequency agent messages
+- Runtime validation of Tauri events using Zod safeParse
+- Global EventProvider for app-wide event listeners
+
+**Verification:**
+- ✅ All event types from master plan covered (6 types)
+- ✅ All store patterns documented (taskStore, projectStore, uiStore, activityStore)
+- ✅ TanStack Query setup with testing patterns
+- ✅ Event batching for performance included
+- ✅ TDD mandatory for all tasks
+- ✅ File size limits documented (hooks: 100 lines, stores: 150 lines)
 
 ---
 
