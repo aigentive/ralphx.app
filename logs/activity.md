@@ -460,4 +460,70 @@ Phase 1: Foundation (no dependencies)
 
 ---
 
+### 2026-01-24 10:00:00 - Phase 8 PRD Created: QA System
+
+**What was done:**
+- Read extensive sections of `specs/plan.md` covering QA System requirements:
+  - Built-in QA System (Two-Phase Approach) (lines 3723-3892)
+  - QA Prep Agent (lines 3894-4009)
+  - QA Executor Agent (lines 4010-4143)
+  - Visual Verification Layer (lines 3395-3590)
+  - QA Configuration and UI (lines 4189-4345)
+  - QA-related State Machine States (lines 6299-6730)
+- Created `specs/phases/prd_phase_08_qa_system.md` with 33 atomic tasks
+- Tasks cover:
+  1. Screenshots directory and gitkeep setup
+  2. agent-browser installation and skill creation
+  3. Claude Code settings for agent-browser permissions
+  4. QA configuration types in Rust
+  5. QA configuration types in TypeScript
+  6. task_qa table migration
+  7. QA columns on tasks table migration
+  8. AcceptanceCriteria and QATestStep types
+  9. QAResult types
+  10. TaskQA entity and repository trait
+  11. SqliteTaskQARepository implementation
+  12. QA Prep Agent definition
+  13. QA Executor Agent definition
+  14. QA-related skills (acceptance-criteria-writing, qa-step-generation, qa-evaluation)
+  15. QAService for orchestrating QA flow
+  16. QA integration with state machine transitions
+  17. Tauri commands for QA operations
+  18. TypeScript QA types and Zod schemas
+  19. Tauri API wrappers for QA
+  20. qaStore with Zustand
+  21. useQA hooks
+  22. TaskQABadge component
+  23. TaskDetailQAPanel component
+  24. QASettingsPanel component
+  25. QA toggle in task creation form
+  26. TaskQABadge integration with TaskCard
+  27. QA event handlers
+  28. Integration test: QA Prep parallel execution
+  29. Integration test: QA Testing flow with pass
+  30. Integration test: QA Testing flow with failure
+  31. Integration test: End-to-end QA UI flow
+  32. Cost-optimized test prompts for QA agents
+  33. Visual verification of QA UI components
+
+**Key Design Decisions:**
+- Two-phase QA architecture: QA Prep (background, parallel) + QA Testing (post-execution)
+- QA Prep runs concurrently with task execution (non-blocking)
+- Refinement step analyzes git diff to update test steps based on actual implementation
+- Per-task override with needs_qa boolean (NULL = inherit from global settings)
+- agent-browser skill for visual verification with full command reference
+- Cost-optimized testing with minimal echo prompts (~98% cost savings)
+
+**Verification:**
+- ✅ Two-phase QA flow fully documented (prep parallel, testing sequential)
+- ✅ All QA states covered (qa_prepping, qa_refining, qa_testing, qa_passed, qa_failed)
+- ✅ Database schema for task_qa table included
+- ✅ QA Prep and QA Executor agent profiles defined
+- ✅ agent-browser commands documented
+- ✅ UI components for QA status and settings
+- ✅ Integration tests for all QA flows
+- ✅ TDD mandatory for all tasks
+
+---
+
 <!-- Agent will append dated entries below -->
