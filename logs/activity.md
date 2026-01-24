@@ -1,14 +1,85 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 18:01:30
+**Last Updated:** 2026-01-24 18:12:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 46 / 50
-**Current Task:** Create IdeationView component
+**Tasks Completed:** 48 / 50
+**Current Task:** Create DependencyVisualization component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:12:00 - Create SessionSelector component
+
+**What was done:**
+- Created `src/components/Ideation/SessionSelector.tsx` with:
+  - Dropdown trigger showing current session title
+  - Dropdown listbox with all sessions for project
+  - Session status indicators (active=green, archived=muted, converted=blue)
+  - New Session button with accent primary styling
+  - Archive action per session (only for active sessions)
+  - Click outside and Escape key to close dropdown
+  - Loading state with disabled controls and indicator
+  - Empty state for no sessions
+  - Proper ARIA attributes (aria-haspopup, aria-expanded, role="listbox", role="option", aria-selected)
+- Created 42 tests covering:
+  - Rendering (dropdown trigger, new session button, current session display)
+  - Dropdown behavior (open/close, outside click, Escape key)
+  - Session selection (callback, dropdown close, highlight current)
+  - Status indicators (colors for active/archived/converted)
+  - Archive action (visibility per status, callback, dropdown stays open)
+  - Empty state handling
+  - Accessibility (ARIA attributes, descriptive labels)
+  - Styling (design tokens for colors, backgrounds, borders)
+  - Loading state (disabled controls, indicator)
+- Exported from `src/components/Ideation/index.ts`
+
+**Commands run:**
+- `npm test -- --run src/components/Ideation/SessionSelector.test.tsx` (42 passed)
+- `npm test -- --run` (2181 passed)
+- `npm run typecheck` (passed)
+
+---
+
+### 2026-01-24 18:08:00 - Create IdeationView component
+
+**What was done:**
+- Created `src/components/Ideation/IdeationView.tsx` with:
+  - Split layout: Conversation panel (left) + Proposals panel (right)
+  - Header with session title, New Session and Archive buttons
+  - Conversation panel with message history and ChatMessage components
+  - Message input using ChatInput with isSending prop for loading state
+  - Auto-scroll to bottom on new messages
+  - Proposals panel with ProposalList component
+  - Proposal count display in header
+  - Apply section with selected count and dropdown for target column
+  - Column options: Draft, Backlog, Todo
+  - Loading overlay with spinner
+  - No-session state with "Start Session" prompt
+  - Empty states for messages and proposals
+  - Responsive layout (flex-col on mobile, flex-row on desktop with lg:flex-row)
+  - Proper ARIA landmarks (role=main)
+  - Anti-AI-slop styling (dark surfaces, warm orange accent, no purple)
+- Created `src/components/Ideation/IdeationView.test.tsx` with 45 unit tests covering:
+  - Layout (container, split panels, panel order)
+  - Header (title, default title for null, buttons, callbacks)
+  - Conversation panel (header, messages display, empty state, input, send callback)
+  - Proposals panel (header, count, display, empty state, prop passing)
+  - Apply section (render, selected count, dropdown, options, apply callback)
+  - Loading state (overlay, input disabled, button disabled)
+  - No session state (prompt, button, callback)
+  - Responsive layout (flex classes)
+  - Accessibility (ARIA landmarks, labels)
+  - Styling (backgrounds, borders, anti-AI-slop)
+- Updated `src/components/Ideation/index.ts` to export IdeationView
+
+**Commands run:**
+- `npm test -- --run src/components/Ideation/IdeationView.test.tsx` (45 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (2139 tests passed)
+
+---
 
 ### 2026-01-24 18:01:30 - Create PriorityBadge component
 

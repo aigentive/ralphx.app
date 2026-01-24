@@ -1302,7 +1302,7 @@ All tasks require:
       "  - Responsive layout (stack on mobile)",
       "Export from src/components/Ideation/IdeationView.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -1316,7 +1316,7 @@ All tasks require:
       "  - Archive action per session",
       "Export from src/components/Ideation/SessionSelector.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
