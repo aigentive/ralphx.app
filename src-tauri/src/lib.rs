@@ -144,7 +144,12 @@ pub fn run() {
             commands::research_commands::stop_research,
             commands::research_commands::get_research_processes,
             commands::research_commands::get_research_process,
-            commands::research_commands::get_research_presets
+            commands::research_commands::get_research_presets,
+            // Methodology commands
+            commands::methodology_commands::get_methodologies,
+            commands::methodology_commands::get_active_methodology,
+            commands::methodology_commands::activate_methodology,
+            commands::methodology_commands::deactivate_methodology
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

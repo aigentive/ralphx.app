@@ -1,14 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:15:00
+**Last Updated:** 2026-01-24 22:30:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 28 / 63
-**Current Task:** Create Tauri commands for methodologies
+**Tasks Completed:** 29 / 63
+**Current Task:** Implement TypeScript types for workflows with Zod schemas
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:30:00 - Create Tauri commands for methodologies (Task 29)
+
+**What was done:**
+- Created `src-tauri/src/commands/methodology_commands.rs` with:
+  - Response structs: MethodologyResponse, MethodologyPhaseResponse, MethodologyTemplateResponse
+  - Activation response: MethodologyActivationResponse with workflow, agent profiles, skills
+  - Simplified workflow response: WorkflowSchemaResponse
+  - Query commands: get_methodologies, get_active_methodology
+  - Action commands: activate_methodology, deactivate_methodology
+- Updated `commands/mod.rs` to export methodology commands
+- Registered 4 methodology commands in `lib.rs`
+- Added 10 integration tests for methodology commands
+
+**Commands run:**
+- `cargo test methodology_commands` - 10 tests passed
+- `cargo test methodology` - 181 tests passed (includes entity, repo, service, sqlite tests)
 
 ### 2026-01-24 22:15:00 - Create Tauri commands for research processes (Task 28)
 
