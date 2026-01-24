@@ -1495,7 +1495,7 @@ All tasks require tests written before implementation:
       "Test: Delete workflow and verify fallback to default",
       "Run cargo test and npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",

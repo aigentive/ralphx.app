@@ -1,14 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:21:42
+**Last Updated:** 2026-01-24 22:26:26
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 57 / 63
-**Current Task:** Integration test: Workflow CRUD and column rendering
+**Tasks Completed:** 58 / 63
+**Current Task:** Integration test: Artifact creation and bucket routing
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:26:26 - Integration test: Workflow CRUD and column rendering (Task 58)
+
+**What was done:**
+- Created `src-tauri/tests/workflow_integration.rs` with 14 comprehensive tests covering:
+  - Create custom workflow with 5 columns (color, behavior, status mappings)
+  - Set workflow as default (unsets previous default)
+  - Get columns for TaskBoard rendering (verifies column IDs, names, status mappings)
+  - Delete workflow and verify fallback to default
+  - Complete CRUD cycle (create, read, update, delete)
+  - Multiple workflows coexist
+  - Column behavior preservation (skip_review, auto_advance, agent_profile)
+- Tests run with both Memory and SQLite repositories for consistency verification
+- Created `src/components/tasks/TaskBoard/TaskBoardWorkflow.integration.test.tsx` with 11 frontend tests:
+  - Workflow structure validation (5 columns, correct mappings)
+  - Switch from default to custom workflow
+  - Default badge shows for default workflow
+  - Renders correct column counts (7 for RalphX, 5 for custom)
+  - Columns change when workflow is switched
+  - Fallback to default when current is deleted
+  - Workflow list shows all available workflows
+  - Task data preserved when switching workflows
+
+**Commands run:**
+- `cargo test --test workflow_integration` - 14 tests passed
+- `npm test -- src/components/tasks/TaskBoard/TaskBoardWorkflow.integration.test.tsx --run` - 11 tests passed
+- `npm run typecheck` - No errors
+- `cargo test` - All tests passed
 
 ### 2026-01-24 22:21:42 - Integrate methodology activation with app state (Task 57)
 
