@@ -726,7 +726,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Implement get_by_status query",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -743,7 +743,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Implement get_next_executable with blocker subquery",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

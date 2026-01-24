@@ -536,4 +536,340 @@ mod tests {
             assert_eq!(tasks[0].title, "Task 1");
         }
     }
+
+    // ==================== STATUS OPERATION TESTS ====================
+
+    #[tokio::test]
+    async fn test_persist_status_change_updates_task_status() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Test Task");
+
+        repo.create(task.clone()).await.unwrap();
+
+        let result = repo
+            .persist_status_change(
+                &task.id,
+                InternalStatus::Backlog,
+                InternalStatus::Ready,
+                "user",
+            )
+            .await;
+
+        assert!(result.is_ok());
+
+        // Verify task status was updated
+        let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert_eq!(found.internal_status, InternalStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn test_persist_status_change_creates_history_record() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Test Task");
+
+        repo.create(task.clone()).await.unwrap();
+
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Backlog,
+            InternalStatus::Ready,
+            "system",
+        )
+        .await
+        .unwrap();
+
+        let history = repo.get_status_history(&task.id).await.unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].from, InternalStatus::Backlog);
+        assert_eq!(history[0].to, InternalStatus::Ready);
+        assert_eq!(history[0].trigger, "system");
+    }
+
+    #[tokio::test]
+    async fn test_status_change_and_history_are_atomic() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Test Task");
+
+        repo.create(task.clone()).await.unwrap();
+
+        // Make multiple status changes
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Backlog,
+            InternalStatus::Ready,
+            "user",
+        )
+        .await
+        .unwrap();
+
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Ready,
+            InternalStatus::Executing,
+            "agent",
+        )
+        .await
+        .unwrap();
+
+        // Verify both status and history are consistent
+        let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert_eq!(found.internal_status, InternalStatus::Executing);
+
+        let history = repo.get_status_history(&task.id).await.unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[1].from, InternalStatus::Ready);
+        assert_eq!(history[1].to, InternalStatus::Executing);
+    }
+
+    #[tokio::test]
+    async fn test_get_status_history_returns_transitions_in_order() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Test Task");
+
+        repo.create(task.clone()).await.unwrap();
+
+        // Create a sequence of transitions
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Backlog,
+            InternalStatus::Ready,
+            "step1",
+        )
+        .await
+        .unwrap();
+
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Ready,
+            InternalStatus::Executing,
+            "step2",
+        )
+        .await
+        .unwrap();
+
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::ExecutionDone,
+            "step3",
+        )
+        .await
+        .unwrap();
+
+        let history = repo.get_status_history(&task.id).await.unwrap();
+
+        assert_eq!(history.len(), 3);
+        // Should be in chronological order (oldest first)
+        assert_eq!(history[0].trigger, "step1");
+        assert_eq!(history[1].trigger, "step2");
+        assert_eq!(history[2].trigger, "step3");
+    }
+
+    #[tokio::test]
+    async fn test_get_status_history_returns_empty_for_no_transitions() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Test Task");
+
+        repo.create(task.clone()).await.unwrap();
+
+        let history = repo.get_status_history(&task.id).await.unwrap();
+        assert!(history.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_by_status_filters_correctly() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let mut task1 = create_test_task("Backlog Task");
+        task1.internal_status = InternalStatus::Backlog;
+
+        let mut task2 = create_test_task("Ready Task 1");
+        task2.internal_status = InternalStatus::Ready;
+
+        let mut task3 = create_test_task("Ready Task 2");
+        task3.internal_status = InternalStatus::Ready;
+
+        let mut task4 = create_test_task("Executing Task");
+        task4.internal_status = InternalStatus::Executing;
+
+        repo.create(task1).await.unwrap();
+        repo.create(task2).await.unwrap();
+        repo.create(task3).await.unwrap();
+        repo.create(task4).await.unwrap();
+
+        let ready_tasks = repo
+            .get_by_status(&project_id, InternalStatus::Ready)
+            .await
+            .unwrap();
+
+        assert_eq!(ready_tasks.len(), 2);
+        assert!(ready_tasks.iter().all(|t| t.internal_status == InternalStatus::Ready));
+    }
+
+    #[tokio::test]
+    async fn test_get_by_status_returns_empty_for_no_matches() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task = create_test_task("Backlog Task");
+        repo.create(task).await.unwrap();
+
+        let ready_tasks = repo
+            .get_by_status(&project_id, InternalStatus::Ready)
+            .await
+            .unwrap();
+
+        assert!(ready_tasks.is_empty());
+    }
+
+    // ==================== BLOCKER OPERATION TESTS ====================
+
+    #[tokio::test]
+    async fn test_add_blocker_creates_relationship() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+
+        let task1 = create_test_task("Blocked Task");
+        let task2 = create_test_task("Blocker Task");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+
+        let result = repo.add_blocker(&task1.id, &task2.id).await;
+        assert!(result.is_ok());
+
+        let blockers = repo.get_blockers(&task1.id).await.unwrap();
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0].id, task2.id);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_blocker_removes_relationship() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+
+        let task1 = create_test_task("Blocked Task");
+        let task2 = create_test_task("Blocker Task");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.add_blocker(&task1.id, &task2.id).await.unwrap();
+
+        repo.resolve_blocker(&task1.id, &task2.id).await.unwrap();
+
+        let blockers = repo.get_blockers(&task1.id).await.unwrap();
+        assert!(blockers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_blockers_returns_blocking_tasks() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+
+        let task1 = create_test_task("Blocked Task");
+        let task2 = create_test_task("Blocker 1");
+        let task3 = create_test_task("Blocker 2");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.create(task3.clone()).await.unwrap();
+
+        repo.add_blocker(&task1.id, &task2.id).await.unwrap();
+        repo.add_blocker(&task1.id, &task3.id).await.unwrap();
+
+        let blockers = repo.get_blockers(&task1.id).await.unwrap();
+        assert_eq!(blockers.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_dependents_returns_dependent_tasks() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+
+        let blocker = create_test_task("Blocker");
+        let dep1 = create_test_task("Dependent 1");
+        let dep2 = create_test_task("Dependent 2");
+
+        repo.create(blocker.clone()).await.unwrap();
+        repo.create(dep1.clone()).await.unwrap();
+        repo.create(dep2.clone()).await.unwrap();
+
+        // dep1 and dep2 are blocked by blocker
+        repo.add_blocker(&dep1.id, &blocker.id).await.unwrap();
+        repo.add_blocker(&dep2.id, &blocker.id).await.unwrap();
+
+        let dependents = repo.get_dependents(&blocker.id).await.unwrap();
+        assert_eq!(dependents.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_next_executable_excludes_blocked_tasks() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let mut blocked_task = create_test_task("Blocked Ready");
+        blocked_task.internal_status = InternalStatus::Ready;
+        blocked_task.priority = 10; // Higher priority
+
+        let mut unblocked_task = create_test_task("Unblocked Ready");
+        unblocked_task.internal_status = InternalStatus::Ready;
+        unblocked_task.priority = 1; // Lower priority
+
+        let blocker = create_test_task("Blocker");
+
+        repo.create(blocked_task.clone()).await.unwrap();
+        repo.create(unblocked_task.clone()).await.unwrap();
+        repo.create(blocker.clone()).await.unwrap();
+
+        repo.add_blocker(&blocked_task.id, &blocker.id).await.unwrap();
+
+        // Should return unblocked task even though blocked has higher priority
+        let next = repo.get_next_executable(&project_id).await.unwrap();
+        assert!(next.is_some());
+        assert_eq!(next.unwrap().id, unblocked_task.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_next_executable_returns_highest_priority_ready() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let mut low = create_test_task("Low");
+        low.internal_status = InternalStatus::Ready;
+        low.priority = 1;
+
+        let mut high = create_test_task("High");
+        high.internal_status = InternalStatus::Ready;
+        high.priority = 10;
+
+        repo.create(low).await.unwrap();
+        repo.create(high.clone()).await.unwrap();
+
+        let next = repo.get_next_executable(&project_id).await.unwrap();
+        assert!(next.is_some());
+        assert_eq!(next.unwrap().id, high.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_next_executable_returns_none_when_no_ready_tasks() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task = create_test_task("Backlog Task"); // Default status is Backlog
+        repo.create(task).await.unwrap();
+
+        let next = repo.get_next_executable(&project_id).await.unwrap();
+        assert!(next.is_none());
+    }
 }
