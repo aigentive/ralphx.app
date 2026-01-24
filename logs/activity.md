@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:30:00
+**Last Updated:** 2026-01-24 09:40:00
 **Phase:** State Machine
-**Tasks Completed:** 16 / 22
-**Current Task:** Create TaskStateMachineRepository
+**Tasks Completed:** 17 / 22
+**Current Task:** Implement atomic transition with side effects
 
 ---
 
@@ -2116,6 +2116,39 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 
 **Files modified:**
 - `src-tauri/src/domain/state_machine/mod.rs` - added persistence module
+
+---
+
+### 2026-01-24 09:40:00 - Create TaskStateMachineRepository for SQLite integration
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/state_machine_repository.rs` with:
+  - TaskStateMachineRepository struct with Mutex<Connection>
+  - load_state(): loads state from tasks table, rehydrates state-local data
+  - persist_state(): updates internal_status, manages state-local data in task_state_data
+  - process_event(): atomic event processing with transaction support
+  - load_with_state_machine(): loads state and creates TaskStateMachine
+- Uses rehydration pattern (SQLite source of truth, statig for validation)
+- Proper transaction handling for atomicity
+- State-local data persistence for QaFailed and Failed states
+- Cleanup of state data when transitioning to states without data
+- Exported from sqlite module
+- Wrote 19 integration tests covering:
+  - load_state (found, not found, with qa_failed data, with failed data, missing data)
+  - persist_state (updates, not found, saves data, cleans up old data)
+  - process_event (transitions, not found, invalid, chain, with state data)
+  - load_with_state_machine (returns state+machine, not found, rehydrates)
+  - Atomicity (failed events don't change state)
+
+**Commands run:**
+- `cargo test state_machine_repository` - 19 tests pass
+- `cargo test` - 543 tests pass
+
+**Files created:**
+- `src-tauri/src/infrastructure/sqlite/state_machine_repository.rs`
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/mod.rs` - added state_machine_repository module
 
 ---
 
