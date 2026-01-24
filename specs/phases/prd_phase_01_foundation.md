@@ -532,7 +532,7 @@ Every task follows the TDD cycle:
     "steps": [
       "Install agent-browser globally: `npm install -g agent-browser`",
       "Create `.claude/skills/agent-browser/` directory",
-      "Create `.claude/skills/agent-browser/SKILL.md` with all agent-browser commands (open, close, snapshot, screenshot, click, fill, etc.)",
+      "Copy the EXACT SKILL.md content from specs/plan.md lines 3444-3502 to `.claude/skills/agent-browser/SKILL.md`",
       "Create `screenshots/` directory with `.gitkeep`",
       "Verify agent-browser works: `agent-browser --version`"
     ],
@@ -543,8 +543,9 @@ Every task follows the TDD cycle:
     "description": "Update Claude Code settings for agent-browser permissions",
     "steps": [
       "Read current `.claude/settings.json`",
-      "Add agent-browser bash permissions: agent-browser open, snapshot, screenshot, click, fill, close, get, is, wait",
-      "Verify permissions are properly formatted"
+      "Add the EXACT permissions from specs/plan.md lines 3508-3527 (agent-browser bash permissions)",
+      "Merge with existing permissions, do not replace",
+      "Verify JSON is valid"
     ],
     "passes": false
   },
@@ -552,10 +553,10 @@ Every task follows the TDD cycle:
     "category": "setup",
     "description": "Update PROMPT.md with visual verification workflow",
     "steps": [
-      "Read the Visual Verification Layer section from specs/plan.md (lines 3395-3590)",
-      "Add Visual Verification section to PROMPT.md after Implementation Workflow",
-      "Include: when to verify (UI tasks), how to verify (agent-browser commands), how to document (activity.md format)",
-      "Add table of task types requiring visual verification"
+      "Read specs/plan.md lines 3541-3589 for the EXACT Visual Verification section content",
+      "Read specs/plan.md lines 3709-3719 for the task type verification table",
+      "Add the Visual Verification section to PROMPT.md after the Implementation Workflow section",
+      "Include the table showing which task types require visual verification"
     ],
     "passes": false
   },
