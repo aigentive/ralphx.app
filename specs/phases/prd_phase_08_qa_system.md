@@ -632,7 +632,7 @@ All tasks require TDD:
       "Implement QaFailed notification",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
