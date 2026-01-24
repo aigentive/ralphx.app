@@ -21,8 +21,11 @@ Headless browser automation for visual verification of UI implementations.
 - `agent-browser snapshot -i -c` — Interactive + compact (best for verification)
 
 ### Screenshots
-- `agent-browser screenshot <path.png>` — Capture viewport
-- `agent-browser screenshot --full <path.png>` — Full page screenshot
+- `agent-browser screenshot "body" <path.png>` — Capture viewport
+- `agent-browser screenshot --full "body" <path.png>` — Full page screenshot
+
+> **Note**: The "body" selector is required due to a bug in agent-browser.
+> See: https://github.com/vercel-labs/agent-browser/issues/238
 
 ### Interactions
 - `agent-browser click @e1` — Click element by reference
@@ -49,9 +52,16 @@ Headless browser automation for visual verification of UI implementations.
 
 ## Verification Workflow
 
-1. Start app: `npm run tauri dev`
-2. Open browser: `agent-browser open http://localhost:1420`
-3. Analyze page: `agent-browser snapshot -i -c`
-4. Capture proof: `agent-browser screenshot screenshots/[task-name].png`
-5. Test interactions if applicable
-6. Close: `agent-browser close`
+1. Start app: `npm run tauri dev` (MUST use tauri dev, not just npm run dev)
+2. Wait for Tauri to compile (can take 30-60 seconds first time)
+3. Open browser: `agent-browser open http://localhost:1420`
+4. Analyze page: `agent-browser snapshot -i -c`
+5. Capture proof: `agent-browser screenshot "body" screenshots/[task-name].png`
+6. Test interactions if applicable
+7. Close: `agent-browser close`
+8. Verify screenshot exists: `ls -la screenshots/[task-name].png`
+
+**IMPORTANT**:
+- Task FAILS if no screenshot is captured
+- Must use `npm run tauri dev` (not `npm run dev`) - Tauri backend required for invoke() calls
+- Always verify screenshot file exists before marking task complete
