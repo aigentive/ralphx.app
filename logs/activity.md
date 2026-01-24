@@ -1,14 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:33:16
+**Last Updated:** 2026-01-24 21:36:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 38 / 63
-**Current Task:** Implement artifactStore with Zustand
+**Tasks Completed:** 39 / 63
+**Current Task:** Implement methodologyStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:36:00 - Implement artifactStore with Zustand (Task 39)
+
+**What was done:**
+- Created `src/stores/artifactStore.ts` with Zustand + immer middleware:
+  - State: `artifacts` (Record by ID), `buckets` (Record by ID), `selectedBucketId`, `selectedArtifactId`, `isLoading`, `error`
+  - Actions: `setArtifacts`, `setBuckets`, `setSelectedBucket`, `setSelectedArtifact`, `addArtifact`, `updateArtifact`, `deleteArtifact`, `addBucket`, `setLoading`, `setError`
+  - Clears artifact selection when bucket changes
+  - Clears selection when selected artifact is deleted
+- Created `src/stores/artifactStore.test.ts` with 43 comprehensive tests covering:
+  - All store actions with edge cases
+  - Selectors: `selectSelectedBucket`, `selectSelectedArtifact`, `selectArtifactsByBucket`, `selectArtifactsByType`, `selectArtifactById`
+  - Bucket/artifact selection behavior, deletion side effects
+
+**Commands run:**
+- `npm test -- src/stores/artifactStore.test.ts` - 43 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:33:16 - Implement workflowStore with Zustand (Task 38)
 
