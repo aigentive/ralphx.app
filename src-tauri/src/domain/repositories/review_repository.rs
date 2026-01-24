@@ -79,6 +79,12 @@ pub trait ReviewRepository: Send + Sync {
 
     /// Check if a task has any pending reviews
     async fn has_pending_review(&self, task_id: &TaskId) -> AppResult<bool>;
+
+    /// Count fix task actions for a task (number of fix tasks created during reviews)
+    async fn count_fix_actions(&self, task_id: &TaskId) -> AppResult<u32>;
+
+    /// Get fix task actions for a task (to find fix tasks created for this task)
+    async fn get_fix_actions(&self, task_id: &TaskId) -> AppResult<Vec<ReviewAction>>;
 }
 
 #[cfg(test)]
@@ -87,7 +93,6 @@ mod tests {
     use crate::domain::entities::{
         ReviewActionType, ReviewOutcome, ReviewerType,
     };
-    use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
 
@@ -220,6 +225,42 @@ mod tests {
             Ok(reviews
                 .values()
                 .any(|r| r.task_id == *task_id && r.status == ReviewStatus::Pending))
+        }
+
+        async fn count_fix_actions(&self, task_id: &TaskId) -> AppResult<u32> {
+            let reviews = self.reviews.read().unwrap();
+            let actions = self.actions.read().unwrap();
+            let mut count = 0u32;
+            for review in reviews.values() {
+                if review.task_id == *task_id {
+                    for action in actions.values() {
+                        if action.review_id == review.id
+                            && action.action_type == ReviewActionType::CreatedFixTask
+                        {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+            Ok(count)
+        }
+
+        async fn get_fix_actions(&self, task_id: &TaskId) -> AppResult<Vec<ReviewAction>> {
+            let reviews = self.reviews.read().unwrap();
+            let actions = self.actions.read().unwrap();
+            let mut result = Vec::new();
+            for review in reviews.values() {
+                if review.task_id == *task_id {
+                    for action in actions.values() {
+                        if action.review_id == review.id
+                            && action.action_type == ReviewActionType::CreatedFixTask
+                        {
+                            result.push(action.clone());
+                        }
+                    }
+                }
+            }
+            Ok(result)
         }
     }
 
@@ -382,7 +423,7 @@ mod tests {
         let task1 = TaskId::from_string("task-1".to_string());
         let task2 = TaskId::from_string("task-2".to_string());
 
-        let mut review1 = Review::new(project_id.clone(), task1, ReviewerType::Ai);
+        let review1 = Review::new(project_id.clone(), task1, ReviewerType::Ai);
         let mut review2 = Review::new(project_id.clone(), task2, ReviewerType::Ai);
 
         // Leave review1 pending, approve review2
@@ -432,5 +473,70 @@ mod tests {
         repo.create(&review).await.unwrap();
 
         assert!(repo.has_pending_review(&task_id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_mock_repository_count_fix_actions() {
+        let repo = MockReviewRepository::new();
+        let project_id = ProjectId::from_string("proj-1".to_string());
+        let task_id = TaskId::from_string("task-1".to_string());
+
+        // No fix actions yet
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 0);
+
+        // Create a review and add fix task action
+        let review = Review::new(project_id, task_id.clone(), ReviewerType::Ai);
+        let review_id = review.id.clone();
+        repo.create(&review).await.unwrap();
+
+        let fix_task_id = TaskId::from_string("fix-1".to_string());
+        let action = ReviewAction::with_target_task(
+            review_id.clone(),
+            ReviewActionType::CreatedFixTask,
+            fix_task_id,
+        );
+        repo.add_action(&action).await.unwrap();
+
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 1);
+
+        // Add another fix task action
+        let fix_task_id_2 = TaskId::from_string("fix-2".to_string());
+        let action2 = ReviewAction::with_target_task(
+            review_id,
+            ReviewActionType::CreatedFixTask,
+            fix_task_id_2,
+        );
+        repo.add_action(&action2).await.unwrap();
+
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_mock_repository_get_fix_actions() {
+        let repo = MockReviewRepository::new();
+        let project_id = ProjectId::from_string("proj-1".to_string());
+        let task_id = TaskId::from_string("task-1".to_string());
+
+        // Create a review and add actions
+        let review = Review::new(project_id, task_id.clone(), ReviewerType::Ai);
+        let review_id = review.id.clone();
+        repo.create(&review).await.unwrap();
+
+        let fix_task_id = TaskId::from_string("fix-1".to_string());
+        let action1 = ReviewAction::with_target_task(
+            review_id.clone(),
+            ReviewActionType::CreatedFixTask,
+            fix_task_id.clone(),
+        );
+        repo.add_action(&action1).await.unwrap();
+
+        // Add a non-fix action (should not be returned)
+        let action2 = ReviewAction::new(review_id, ReviewActionType::Approved);
+        repo.add_action(&action2).await.unwrap();
+
+        let fix_actions = repo.get_fix_actions(&task_id).await.unwrap();
+        assert_eq!(fix_actions.len(), 1);
+        assert!(fix_actions[0].is_fix_task_action());
+        assert_eq!(fix_actions[0].target_task_id, Some(fix_task_id));
     }
 }

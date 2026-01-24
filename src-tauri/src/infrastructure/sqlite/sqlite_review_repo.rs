@@ -575,6 +575,64 @@ impl ReviewRepository for SqliteReviewRepository {
 
         Ok(count > 0)
     }
+
+    async fn count_fix_actions(&self, task_id: &TaskId) -> AppResult<u32> {
+        let conn = self.conn.lock().await;
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM review_actions ra
+                 INNER JOIN reviews r ON ra.review_id = r.id
+                 WHERE r.task_id = ?1 AND ra.action_type = 'created_fix_task'",
+                [task_id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(|e| AppError::Database(format!("Failed to count fix actions: {}", e)))?;
+
+        Ok(count as u32)
+    }
+
+    async fn get_fix_actions(&self, task_id: &TaskId) -> AppResult<Vec<ReviewAction>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT ra.id, ra.review_id, ra.action_type, ra.target_task_id, ra.created_at
+                 FROM review_actions ra
+                 INNER JOIN reviews r ON ra.review_id = r.id
+                 WHERE r.task_id = ?1 AND ra.action_type = 'created_fix_task'
+                 ORDER BY ra.created_at ASC",
+            )
+            .map_err(|e| AppError::Database(format!("Failed to prepare statement: {}", e)))?;
+
+        let rows = stmt
+            .query_map([task_id.as_str()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(|e| AppError::Database(format!("Failed to query fix actions: {}", e)))?;
+
+        let mut actions = Vec::new();
+        for row in rows {
+            let (id, review_id, action_type, target_task_id, created_at) =
+                row.map_err(|e| AppError::Database(format!("Failed to read row: {}", e)))?;
+            actions.push(Self::row_to_action(
+                id,
+                review_id,
+                action_type,
+                target_task_id,
+                created_at,
+            )?);
+        }
+
+        Ok(actions)
+    }
 }
 
 #[cfg(test)]
@@ -736,7 +794,7 @@ mod tests {
     #[tokio::test]
     async fn test_add_and_get_note() {
         let conn = setup_test_db();
-        let (project_id, task_id) = create_test_project_and_task(&conn);
+        let (_project_id, task_id) = create_test_project_and_task(&conn);
         let repo = SqliteReviewRepository::new(conn);
 
         let note1 = ReviewNote::with_notes(
@@ -848,5 +906,108 @@ mod tests {
 
         let actions = repo.get_actions(&review_id).await.unwrap();
         assert_eq!(actions.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_count_fix_actions() {
+        let conn = setup_test_db();
+        let (project_id, task_id) = create_test_project_and_task(&conn);
+        let repo = SqliteReviewRepository::new(conn);
+
+        // No fix actions yet
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 0);
+
+        // Create a review and add fix task action
+        let review = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
+        let review_id = review.id.clone();
+        repo.create(&review).await.unwrap();
+
+        let fix_task_id = TaskId::new();
+        let action = ReviewAction::with_target_task(
+            review_id.clone(),
+            ReviewActionType::CreatedFixTask,
+            fix_task_id,
+        );
+        repo.add_action(&action).await.unwrap();
+
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 1);
+
+        // Add another fix task action
+        let fix_task_id_2 = TaskId::new();
+        let action2 = ReviewAction::with_target_task(
+            review_id.clone(),
+            ReviewActionType::CreatedFixTask,
+            fix_task_id_2,
+        );
+        repo.add_action(&action2).await.unwrap();
+
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 2);
+
+        // Add a non-fix action (should not be counted)
+        let action3 = ReviewAction::new(review_id, ReviewActionType::Approved);
+        repo.add_action(&action3).await.unwrap();
+
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_fix_actions() {
+        let conn = setup_test_db();
+        let (project_id, task_id) = create_test_project_and_task(&conn);
+        let repo = SqliteReviewRepository::new(conn);
+
+        // Create a review and add actions
+        let review = Review::new(project_id, task_id.clone(), ReviewerType::Ai);
+        let review_id = review.id.clone();
+        repo.create(&review).await.unwrap();
+
+        let fix_task_id = TaskId::new();
+        let action1 = ReviewAction::with_target_task(
+            review_id.clone(),
+            ReviewActionType::CreatedFixTask,
+            fix_task_id.clone(),
+        );
+        repo.add_action(&action1).await.unwrap();
+
+        // Add a non-fix action (should not be returned)
+        let action2 = ReviewAction::new(review_id, ReviewActionType::Approved);
+        repo.add_action(&action2).await.unwrap();
+
+        let fix_actions = repo.get_fix_actions(&task_id).await.unwrap();
+        assert_eq!(fix_actions.len(), 1);
+        assert!(fix_actions[0].is_fix_task_action());
+        assert_eq!(fix_actions[0].target_task_id, Some(fix_task_id));
+    }
+
+    #[tokio::test]
+    async fn test_count_fix_actions_across_multiple_reviews() {
+        let conn = setup_test_db();
+        let (project_id, task_id) = create_test_project_and_task(&conn);
+        let repo = SqliteReviewRepository::new(conn);
+
+        // Create first review with fix action
+        let review1 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
+        repo.create(&review1).await.unwrap();
+
+        let action1 = ReviewAction::with_target_task(
+            review1.id.clone(),
+            ReviewActionType::CreatedFixTask,
+            TaskId::new(),
+        );
+        repo.add_action(&action1).await.unwrap();
+
+        // Create second review with fix action
+        let review2 = Review::new(project_id, task_id.clone(), ReviewerType::Ai);
+        repo.create(&review2).await.unwrap();
+
+        let action2 = ReviewAction::with_target_task(
+            review2.id.clone(),
+            ReviewActionType::CreatedFixTask,
+            TaskId::new(),
+        );
+        repo.add_action(&action2).await.unwrap();
+
+        // Should count both fix actions across reviews
+        assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 2);
     }
 }
