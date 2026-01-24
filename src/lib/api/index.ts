@@ -57,3 +57,22 @@ export {
   type CreateBucketInput,
   type AddRelationInput,
 } from "./artifacts";
+
+// Research API
+export {
+  startResearch,
+  pauseResearch,
+  resumeResearch,
+  stopResearch,
+  getResearchProcesses,
+  getResearchProcess,
+  getResearchPresets,
+  ResearchProcessResponseSchema,
+  ResearchPresetResponseSchema,
+  StartResearchInputSchema,
+  CustomDepthInputSchema,
+  type ResearchProcessResponse,
+  type ResearchPresetResponse,
+  type StartResearchInput,
+  type CustomDepthInput,
+} from "./research";
