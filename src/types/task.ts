@@ -17,6 +17,8 @@ export const TaskSchema = z.object({
   description: z.string().nullable(),
   priority: z.number().int(),
   internalStatus: InternalStatusSchema,
+  /** Whether this task needs a review point (human-in-loop checkpoint) */
+  needsReviewPoint: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),

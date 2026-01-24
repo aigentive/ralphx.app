@@ -24,6 +24,7 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   description: null,
   priority: 0,
   internalStatus: "backlog",
+  needsReviewPoint: false,
   createdAt: "2026-01-24T12:00:00Z",
   updatedAt: "2026-01-24T12:00:00Z",
   startedAt: null,
