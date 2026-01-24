@@ -1,14 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:09:00
+**Last Updated:** 2026-01-25 00:15:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 3 / 21
-**Current Task:** Update Rust AgentProfile to use plugin pattern
+**Tasks Completed:** 4 / 21
+**Current Task:** Update Claude spawning to use --plugin-dir
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:15:00 - Update Rust AgentProfile to use plugin pattern (Task 4)
+
+**What was done:**
+- Updated `ClaudeCodeConfig` struct in `src-tauri/src/domain/agents/agent_profile.rs`:
+  - Renamed `agent_definition` field to `agent` (name-based, not path-based)
+  - Updated doc comment to explain plugin discovery via `--plugin-dir`
+- Updated all builtin profile definitions to use agent names instead of paths:
+  - `"./agents/worker.md"` → `"worker"`
+  - `"./agents/reviewer.md"` → `"reviewer"`
+  - etc.
+- Updated `ClaudeCodeConfigResponse` in commands to match new field name
+- Updated all tests referencing `agent_definition`
+- All 97 agent_profile tests pass
+
+**Commands run:**
+- `cargo test --lib agent_profile` - 97 tests passed
+
+---
 
 ### 2026-01-25 00:09:00 - Move agent-browser skill to ralphx-plugin/ (Task 3)
 

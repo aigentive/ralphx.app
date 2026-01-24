@@ -408,7 +408,7 @@ const qaPrepProfile = {
       "Update all agent profile instantiations",
       "Run cargo test to verify compilation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactoring",
