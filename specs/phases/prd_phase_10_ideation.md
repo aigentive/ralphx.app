@@ -722,7 +722,7 @@ All tasks require:
       "Implement delete() with CASCADE to proposals and messages",
       "Run tests with test database"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

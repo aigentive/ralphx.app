@@ -4,6 +4,7 @@
 pub mod connection;
 pub mod migrations;
 pub mod sqlite_agent_profile_repo;
+pub mod sqlite_ideation_session_repo;
 pub mod sqlite_project_repo;
 pub mod sqlite_review_repo;
 pub mod sqlite_task_qa_repo;
@@ -14,6 +15,7 @@ pub mod state_machine_repository;
 pub use connection::{get_default_db_path, open_connection, open_memory_connection};
 pub use migrations::{run_migrations, SCHEMA_VERSION};
 pub use sqlite_agent_profile_repo::SqliteAgentProfileRepository;
+pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
 pub use sqlite_project_repo::SqliteProjectRepository;
 pub use sqlite_review_repo::SqliteReviewRepository;
 pub use sqlite_task_qa_repo::SqliteTaskQARepository;
