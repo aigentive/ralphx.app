@@ -505,3 +505,31 @@ export type {
   CreateResearchProcessInput,
   ResearchPresetInfo,
 } from "./research";
+
+// Methodology types and schemas
+export {
+  MethodologyStatusSchema,
+  METHODOLOGY_STATUS_VALUES,
+  isMethodologyActive,
+  isMethodologyAvailable,
+  isMethodologyDisabled,
+  MethodologyPhaseSchema,
+  MethodologyTemplateSchema,
+  MethodologyExtensionSchema,
+  CreateMethodologyExtensionInputSchema,
+  BMAD_METHODOLOGY,
+  GSD_METHODOLOGY,
+  BUILTIN_METHODOLOGIES,
+  getBuiltinMethodology,
+  parseMethodologyExtension,
+  safeParseMethodologyExtension,
+  parseMethodologyPhase,
+  safeParseMethodologyPhase,
+} from "./methodology";
+export type {
+  MethodologyStatus,
+  MethodologyPhase,
+  MethodologyTemplate,
+  MethodologyExtension,
+  CreateMethodologyExtensionInput,
+} from "./methodology";
