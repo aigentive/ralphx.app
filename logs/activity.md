@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 23:21:00
+**Last Updated:** 2026-01-24 23:24:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 33 / 63
-**Current Task:** Create Tauri API wrappers for workflows
+**Tasks Completed:** 34 / 63
+**Current Task:** Create Tauri API wrappers for artifacts
 
 ---
 
 ## Session Log
+
+### 2026-01-24 23:24:00 - Create Tauri API wrappers for workflows (Task 34)
+
+**What was done:**
+- Created `src/lib/api/workflows.ts` with type-safe Tauri command wrappers:
+  - Response schemas: `WorkflowResponseSchema`, `WorkflowColumnResponseSchema`
+  - Input schemas: `CreateWorkflowInputSchema`, `UpdateWorkflowInputSchema`, `WorkflowColumnInputSchema`
+  - API functions: `getWorkflows`, `getWorkflow`, `createWorkflow`, `updateWorkflow`, `deleteWorkflow`
+  - API functions: `setDefaultWorkflow`, `getActiveWorkflowColumns`, `getBuiltinWorkflows`
+  - All responses validated with Zod before returning
+  - Input validation before sending to backend
+- Created `src/lib/api/workflows.test.ts` with 50 tests covering:
+  - Schema validation for all response and input types
+  - All 8 API functions with success and error cases
+  - Edge cases: nullable fields, empty arrays, invalid responses
+- Created `src/lib/api/index.ts` to export all workflow API functions and types
+
+**Commands run:**
+- `npm test -- src/lib/api/workflows.test.ts` - 50 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 23:21:00 - Implement TypeScript types for methodologies with Zod schemas (Task 33)
 
