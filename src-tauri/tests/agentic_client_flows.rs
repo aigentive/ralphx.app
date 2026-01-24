@@ -179,6 +179,8 @@ async fn test_real_claude_agent_echo() {
         role: AgentRole::Worker,
         prompt: test_prompts::ECHO_MARKER.to_string(),
         working_directory: std::env::current_dir().unwrap(),
+        plugin_dir: Some(std::path::PathBuf::from("./ralphx-plugin")),
+        agent: None,
         model: None,
         max_tokens: Some(50),
         timeout_secs: Some(30),

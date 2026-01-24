@@ -77,6 +77,16 @@ impl AgenticClient for ClaudeCodeClient {
         // Add output format for streaming
         args.extend(["--output-format".to_string(), "stream-json".to_string()]);
 
+        // Add plugin directory for agent/skill discovery
+        if let Some(plugin_dir) = &config.plugin_dir {
+            args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
+        }
+
+        // Add agent name if specified
+        if let Some(agent) = &config.agent {
+            args.extend(["--agent".to_string(), agent.clone()]);
+        }
+
         // Add model if specified
         if let Some(model) = &config.model {
             args.extend(["--model".to_string(), model.clone()]);
@@ -150,15 +160,7 @@ impl AgenticClient for ClaudeCodeClient {
         prompt: &str,
     ) -> AgentResult<AgentResponse> {
         // For send_prompt, we spawn a new one-shot agent
-        let config = AgentConfig {
-            role: crate::domain::agents::AgentRole::Worker,
-            prompt: prompt.to_string(),
-            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            model: None,
-            max_tokens: None,
-            timeout_secs: None,
-            env: HashMap::new(),
-        };
+        let config = AgentConfig::worker(prompt);
 
         let handle = self.spawn_agent(config).await?;
         let output = self.wait_for_completion(&handle).await?;
