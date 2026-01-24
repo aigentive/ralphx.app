@@ -108,9 +108,9 @@ impl Default for AutonomyLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeCodeConfig {
-    /// Path to agent definition file (.claude/agents/*.md)
-    pub agent_definition: String,
-    /// Skills to inject at startup
+    /// Agent name (resolved via --plugin-dir, e.g. "worker" resolves to ralphx-plugin/agents/worker.md)
+    pub agent: String,
+    /// Skills to inject at startup (resolved via plugin discovery)
     #[serde(default)]
     pub skills: Vec<String>,
     /// Agent-scoped hooks configuration (JSON)
@@ -122,9 +122,9 @@ pub struct ClaudeCodeConfig {
 }
 
 impl ClaudeCodeConfig {
-    pub fn new(agent_definition: impl Into<String>) -> Self {
+    pub fn new(agent: impl Into<String>) -> Self {
         Self {
-            agent_definition: agent_definition.into(),
+            agent: agent.into(),
             skills: vec![],
             hooks: None,
             mcp_servers: vec![],
@@ -305,7 +305,7 @@ impl AgentProfile {
             name: "Worker".to_string(),
             description: "Executes implementation tasks autonomously".to_string(),
             role: ProfileRole::Worker,
-            claude_code: ClaudeCodeConfig::new("./agents/worker.md")
+            claude_code: ClaudeCodeConfig::new("worker")
                 .with_skills(vec![
                     "coding-standards".to_string(),
                     "testing-patterns".to_string(),
@@ -329,7 +329,7 @@ impl AgentProfile {
             name: "Reviewer".to_string(),
             description: "Reviews code changes for quality and correctness".to_string(),
             role: ProfileRole::Reviewer,
-            claude_code: ClaudeCodeConfig::new("./agents/reviewer.md")
+            claude_code: ClaudeCodeConfig::new("reviewer")
                 .with_skills(vec![
                     "code-review-checklist".to_string(),
                 ]),
@@ -348,7 +348,7 @@ impl AgentProfile {
             name: "Supervisor".to_string(),
             description: "Monitors task execution and intervenes when problems occur".to_string(),
             role: ProfileRole::Supervisor,
-            claude_code: ClaudeCodeConfig::new("./agents/supervisor.md"),
+            claude_code: ClaudeCodeConfig::new("supervisor"),
             execution: ExecutionConfig::default()
                 .with_model(Model::Haiku)
                 .with_max_iterations(100),
@@ -364,7 +364,7 @@ impl AgentProfile {
             name: "Orchestrator".to_string(),
             description: "Plans and coordinates complex multi-step tasks".to_string(),
             role: ProfileRole::Orchestrator,
-            claude_code: ClaudeCodeConfig::new("./agents/orchestrator.md"),
+            claude_code: ClaudeCodeConfig::new("orchestrator"),
             execution: ExecutionConfig::default()
                 .with_model(Model::Opus)
                 .with_max_iterations(50),
@@ -382,7 +382,7 @@ impl AgentProfile {
             name: "Deep Researcher".to_string(),
             description: "Conducts thorough research and analysis".to_string(),
             role: ProfileRole::Researcher,
-            claude_code: ClaudeCodeConfig::new("./agents/deep-researcher.md")
+            claude_code: ClaudeCodeConfig::new("deep-researcher")
                 .with_skills(vec![
                     "research-methodology".to_string(),
                 ]),
@@ -501,8 +501,8 @@ mod tests {
     // ClaudeCodeConfig tests
     #[test]
     fn test_claude_code_config_new() {
-        let config = ClaudeCodeConfig::new("./agents/worker.md");
-        assert_eq!(config.agent_definition, "./agents/worker.md");
+        let config = ClaudeCodeConfig::new("worker");
+        assert_eq!(config.agent, "worker");
         assert!(config.skills.is_empty());
         assert!(config.hooks.is_none());
         assert!(config.mcp_servers.is_empty());
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_claude_code_config_with_skills() {
-        let config = ClaudeCodeConfig::new("./agents/worker.md")
+        let config = ClaudeCodeConfig::new("worker")
             .with_skills(vec!["skill1".to_string(), "skill2".to_string()]);
         assert_eq!(config.skills.len(), 2);
     }
@@ -586,14 +586,14 @@ mod tests {
             "Test Agent",
             "A test agent",
             ProfileRole::Worker,
-            "./agents/test.md",
+            "test",
         );
 
         assert_eq!(profile.id, "test");
         assert_eq!(profile.name, "Test Agent");
         assert_eq!(profile.description, "A test agent");
         assert_eq!(profile.role, ProfileRole::Worker);
-        assert_eq!(profile.claude_code.agent_definition, "./agents/test.md");
+        assert_eq!(profile.claude_code.agent, "test");
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
             "description": "Test agent",
             "role": "worker",
             "claudeCode": {
-                "agentDefinition": "./agents/test.md",
+                "agent": "test",
                 "skills": [],
                 "mcpServers": []
             },
