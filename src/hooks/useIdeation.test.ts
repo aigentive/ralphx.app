@@ -1,0 +1,407 @@
+/**
+ * useIdeation hooks tests
+ *
+ * Tests for useIdeationSession and useIdeationSessions hooks
+ * using TanStack Query with mocked API.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, waitFor, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement } from "react";
+import {
+  useIdeationSession,
+  useIdeationSessions,
+  useCreateIdeationSession,
+  useArchiveIdeationSession,
+  useDeleteIdeationSession,
+  ideationKeys,
+} from "./useIdeation";
+import { ideationApi } from "@/api/ideation";
+import type { IdeationSession, TaskProposal, ChatMessage } from "@/types/ideation";
+
+// Mock the ideation API
+vi.mock("@/api/ideation", () => ({
+  ideationApi: {
+    sessions: {
+      get: vi.fn(),
+      getWithData: vi.fn(),
+      list: vi.fn(),
+      create: vi.fn(),
+      archive: vi.fn(),
+      delete: vi.fn(),
+    },
+  },
+}));
+
+// Create mock data
+const mockSession: IdeationSession = {
+  id: "session-1",
+  projectId: "project-1",
+  title: "Test Session",
+  status: "active",
+  createdAt: "2026-01-24T10:00:00Z",
+  updatedAt: "2026-01-24T10:00:00Z",
+  archivedAt: null,
+  convertedAt: null,
+};
+
+const mockSession2: IdeationSession = {
+  id: "session-2",
+  projectId: "project-1",
+  title: "Second Session",
+  status: "archived",
+  createdAt: "2026-01-23T10:00:00Z",
+  updatedAt: "2026-01-23T12:00:00Z",
+  archivedAt: "2026-01-23T12:00:00Z",
+  convertedAt: null,
+};
+
+const mockProposal: TaskProposal = {
+  id: "proposal-1",
+  sessionId: "session-1",
+  title: "Test Proposal",
+  description: "Test description",
+  category: "feature",
+  steps: ["Step 1", "Step 2"],
+  acceptanceCriteria: ["AC 1"],
+  suggestedPriority: "high",
+  priorityScore: 75,
+  priorityReason: "Blocks other tasks",
+  estimatedComplexity: "moderate",
+  userPriority: null,
+  userModified: false,
+  status: "pending",
+  selected: true,
+  createdTaskId: null,
+  sortOrder: 0,
+  createdAt: "2026-01-24T10:00:00Z",
+  updatedAt: "2026-01-24T10:00:00Z",
+};
+
+const mockMessage: ChatMessage = {
+  id: "message-1",
+  sessionId: "session-1",
+  projectId: null,
+  taskId: null,
+  role: "user",
+  content: "Hello",
+  metadata: null,
+  parentMessageId: null,
+  createdAt: "2026-01-24T10:00:00Z",
+};
+
+// Test wrapper with QueryClientProvider
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+    },
+  });
+
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    return createElement(QueryClientProvider, { client: queryClient }, children);
+  };
+}
+
+describe("ideationKeys", () => {
+  it("should generate correct key for all", () => {
+    expect(ideationKeys.all).toEqual(["ideation"]);
+  });
+
+  it("should generate correct key for sessions", () => {
+    expect(ideationKeys.sessions()).toEqual(["ideation", "sessions"]);
+  });
+
+  it("should generate correct key for session list by project", () => {
+    expect(ideationKeys.sessionList("project-1")).toEqual([
+      "ideation",
+      "sessions",
+      "list",
+      "project-1",
+    ]);
+  });
+
+  it("should generate correct key for session details", () => {
+    expect(ideationKeys.sessionDetails()).toEqual(["ideation", "sessions", "detail"]);
+  });
+
+  it("should generate correct key for session detail", () => {
+    expect(ideationKeys.sessionDetail("session-1")).toEqual([
+      "ideation",
+      "sessions",
+      "detail",
+      "session-1",
+    ]);
+  });
+
+  it("should generate correct key for session with data", () => {
+    expect(ideationKeys.sessionWithData("session-1")).toEqual([
+      "ideation",
+      "sessions",
+      "detail",
+      "session-1",
+      "with-data",
+    ]);
+  });
+});
+
+describe("useIdeationSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should fetch session with data successfully", async () => {
+    const mockData = {
+      session: mockSession,
+      proposals: [mockProposal],
+      messages: [mockMessage],
+    };
+    vi.mocked(ideationApi.sessions.getWithData).mockResolvedValueOnce(mockData);
+
+    const { result } = renderHook(() => useIdeationSession("session-1"), {
+      wrapper: createWrapper(),
+    });
+
+    expect(result.current.isLoading).toBe(true);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual(mockData);
+    expect(ideationApi.sessions.getWithData).toHaveBeenCalledWith("session-1");
+  });
+
+  it("should return null for non-existent session", async () => {
+    vi.mocked(ideationApi.sessions.getWithData).mockResolvedValueOnce(null);
+
+    const { result } = renderHook(() => useIdeationSession("non-existent"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toBeNull();
+  });
+
+  it("should handle fetch error", async () => {
+    const error = new Error("Failed to fetch session");
+    vi.mocked(ideationApi.sessions.getWithData).mockRejectedValueOnce(error);
+
+    const { result } = renderHook(() => useIdeationSession("session-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error).toEqual(error);
+  });
+
+  it("should not fetch when sessionId is empty", async () => {
+    const { result } = renderHook(() => useIdeationSession(""), {
+      wrapper: createWrapper(),
+    });
+
+    // Query should be disabled
+    expect(result.current.isFetching).toBe(false);
+    expect(ideationApi.sessions.getWithData).not.toHaveBeenCalled();
+  });
+});
+
+describe("useIdeationSessions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should fetch sessions for project successfully", async () => {
+    const mockSessions = [mockSession, mockSession2];
+    vi.mocked(ideationApi.sessions.list).mockResolvedValueOnce(mockSessions);
+
+    const { result } = renderHook(() => useIdeationSessions("project-1"), {
+      wrapper: createWrapper(),
+    });
+
+    expect(result.current.isLoading).toBe(true);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual(mockSessions);
+    expect(ideationApi.sessions.list).toHaveBeenCalledWith("project-1");
+  });
+
+  it("should return empty array for project with no sessions", async () => {
+    vi.mocked(ideationApi.sessions.list).mockResolvedValueOnce([]);
+
+    const { result } = renderHook(() => useIdeationSessions("project-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual([]);
+  });
+
+  it("should handle fetch error", async () => {
+    const error = new Error("Failed to fetch sessions");
+    vi.mocked(ideationApi.sessions.list).mockRejectedValueOnce(error);
+
+    const { result } = renderHook(() => useIdeationSessions("project-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error).toEqual(error);
+  });
+
+  it("should not fetch when projectId is empty", async () => {
+    const { result } = renderHook(() => useIdeationSessions(""), {
+      wrapper: createWrapper(),
+    });
+
+    expect(result.current.isFetching).toBe(false);
+    expect(ideationApi.sessions.list).not.toHaveBeenCalled();
+  });
+});
+
+describe("useCreateIdeationSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should create a session successfully", async () => {
+    vi.mocked(ideationApi.sessions.create).mockResolvedValueOnce(mockSession);
+
+    const { result } = renderHook(() => useCreateIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ projectId: "project-1", title: "Test Session" });
+    });
+
+    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", "Test Session");
+  });
+
+  it("should create a session without title", async () => {
+    const sessionNoTitle = { ...mockSession, title: null };
+    vi.mocked(ideationApi.sessions.create).mockResolvedValueOnce(sessionNoTitle);
+
+    const { result } = renderHook(() => useCreateIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ projectId: "project-1" });
+    });
+
+    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", undefined);
+  });
+
+  it("should handle creation error", async () => {
+    const error = new Error("Failed to create session");
+    vi.mocked(ideationApi.sessions.create).mockRejectedValueOnce(error);
+
+    const { result } = renderHook(() => useCreateIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ projectId: "project-1" });
+      })
+    ).rejects.toThrow("Failed to create session");
+  });
+});
+
+describe("useArchiveIdeationSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should archive a session successfully", async () => {
+    vi.mocked(ideationApi.sessions.archive).mockResolvedValueOnce(undefined);
+
+    const { result } = renderHook(() => useArchiveIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync("session-1");
+    });
+
+    expect(ideationApi.sessions.archive).toHaveBeenCalledWith("session-1");
+  });
+
+  it("should handle archive error", async () => {
+    const error = new Error("Failed to archive session");
+    vi.mocked(ideationApi.sessions.archive).mockRejectedValueOnce(error);
+
+    const { result } = renderHook(() => useArchiveIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync("session-1");
+      })
+    ).rejects.toThrow("Failed to archive session");
+  });
+});
+
+describe("useDeleteIdeationSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should delete a session successfully", async () => {
+    vi.mocked(ideationApi.sessions.delete).mockResolvedValueOnce(undefined);
+
+    const { result } = renderHook(() => useDeleteIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync("session-1");
+    });
+
+    expect(ideationApi.sessions.delete).toHaveBeenCalledWith("session-1");
+  });
+
+  it("should handle delete error", async () => {
+    const error = new Error("Failed to delete session");
+    vi.mocked(ideationApi.sessions.delete).mockRejectedValueOnce(error);
+
+    const { result } = renderHook(() => useDeleteIdeationSession(), {
+      wrapper: createWrapper(),
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync("session-1");
+      })
+    ).rejects.toThrow("Failed to delete session");
+  });
+});

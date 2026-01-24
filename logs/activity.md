@@ -1,14 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:35:00
+**Last Updated:** 2026-01-24 19:40:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 32 / 50
-**Current Task:** Create useIdeationSession hook
+**Tasks Completed:** 33 / 50
+**Current Task:** Create useProposals hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:40:00 - Create useIdeationSession hook
+
+**What was done:**
+- Created `src/hooks/useIdeation.ts` with TanStack Query wrappers:
+  - `ideationKeys` factory for query key management
+  - `useIdeationSession(sessionId)` - Fetch session with proposals and messages
+  - `useIdeationSessions(projectId)` - Fetch all sessions for project
+  - `useCreateIdeationSession()` - Mutation for creating sessions
+  - `useArchiveIdeationSession()` - Mutation for archiving sessions
+  - `useDeleteIdeationSession()` - Mutation for deleting sessions
+- Query invalidation on mutations to keep cache consistent
+- Enabled flag prevents queries when sessionId/projectId is empty
+- Created `src/hooks/useIdeation.test.ts` with 21 unit tests covering:
+  - Query key generation
+  - Session fetch with data
+  - Session list fetch
+  - Create/archive/delete mutations
+  - Error handling
+  - Empty ID handling
+
+**Commands run:**
+- `npm test -- --run src/hooks/useIdeation.test.ts` (21 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1707 tests passed)
+
+---
 
 ### 2026-01-24 19:35:00 - Create chatStore with Zustand
 
