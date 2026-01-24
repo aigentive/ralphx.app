@@ -1,14 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:26:26
+**Last Updated:** 2026-01-24 22:35:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 58 / 63
-**Current Task:** Integration test: Artifact creation and bucket routing
+**Tasks Completed:** 59 / 63
+**Current Task:** Integration test: Methodology activation flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:35:00 - Integration test: Artifact creation and bucket routing (Task 59)
+
+**What was done:**
+- Created `src-tauri/tests/artifact_integration.rs` with 20 comprehensive tests covering:
+  - Create artifact in research-outputs bucket (verify type, bucket, creator)
+  - Copy artifact to another bucket with derived_from relation
+  - Create artifact relation (derived_from) with proper links
+  - Query artifacts by bucket (filter by bucket_id)
+  - Query artifacts by type (filter by artifact_type)
+  - Full CRUD cycle (create, read, update, delete)
+  - Multiple artifacts coexist across 4 system buckets
+  - Related artifacts (related_to relation type)
+  - Delete artifact relation
+  - Bucket access control (can_write, can_read, accepts_type)
+  - System buckets flagged correctly (is_system)
+- Tests run with both Memory and SQLite repositories for consistency
+- Created `src/components/artifacts/ArtifactBucketRouting.integration.test.tsx` with 21 frontend tests:
+  - Artifact type and bucket assignment verification
+  - Bucket acceptance rules validation
+  - ArtifactCard rendering with proper Artifact type
+  - Copy artifact between buckets with derived_from tracking
+  - Artifact relation creation and querying
+  - Query artifacts by bucket and type via API
+  - ArtifactBrowser integration with bucket selection
+  - System bucket properties validation
+  - Versioning display (v1 hidden, v2+ shown)
+  - CRUD operations via API mocks
+
+**Commands run:**
+- `cargo test --test artifact_integration` - 20 tests passed
+- `npm test -- src/components/artifacts/ArtifactBucketRouting.integration.test.tsx --run` - 21 tests passed
+- `cargo test` - All tests passed (331 total)
+- `npm test -- --run` - All tests passed (3,276 total)
 
 ### 2026-01-24 22:26:26 - Integration test: Workflow CRUD and column rendering (Task 58)
 
