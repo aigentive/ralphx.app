@@ -1277,7 +1277,7 @@ All tasks require tests written before implementation:
       "Implement useResearchMutations for start/pause/resume/stop",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
