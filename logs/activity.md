@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:30:00
+**Last Updated:** 2026-01-24 21:45:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 25 / 63
-**Current Task:** Create Tauri commands for workflows
+**Tasks Completed:** 26 / 63
+**Current Task:** Create Tauri commands for artifacts
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:45:00 - Create Tauri commands for workflows (Task 26)
+
+**What was done:**
+- Created `src-tauri/src/commands/workflow_commands.rs` with:
+  - `WorkflowColumnInput`, `CreateWorkflowInput`, `UpdateWorkflowInput` input structs
+  - `WorkflowColumnResponse`, `WorkflowResponse` response structs
+  - `get_workflows` - list all workflows
+  - `get_workflow` - get workflow by ID
+  - `create_workflow` - create new workflow with columns
+  - `update_workflow` - update existing workflow
+  - `delete_workflow` - delete workflow by ID
+  - `set_default_workflow` - set workflow as default
+  - `get_active_workflow_columns` - get columns for current default workflow
+  - `get_builtin_workflows` - get RalphX default and Jira-compatible workflows
+- Updated `commands/mod.rs` to export workflow commands
+- Registered 8 workflow commands in `lib.rs`
+- Added 10 integration tests for workflow commands
+
+**Commands run:**
+- `cargo test workflow_commands` - 10 tests passed
 
 ### 2026-01-24 21:30:00 - Update AppState with extensibility repositories (Task 25)
 
