@@ -1,3 +1,15 @@
+// RalphX - Autonomous AI-driven development system
+// Tauri 2.0 backend with clean architecture
+
+// Core modules
+pub mod commands;
+pub mod domain;
+pub mod error;
+pub mod infrastructure;
+
+// Re-export common types
+pub use error::{AppError, AppResult};
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
