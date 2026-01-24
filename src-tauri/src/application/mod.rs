@@ -3,9 +3,11 @@
 
 pub mod app_state;
 pub mod qa_service;
+pub mod review_service;
 pub mod supervisor_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
+pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
