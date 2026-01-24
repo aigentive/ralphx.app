@@ -1084,7 +1084,7 @@ interface AskUserQuestionResponse {
       "Hide modal after answer submitted",
       "Run tauri dev to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

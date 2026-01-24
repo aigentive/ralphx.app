@@ -11,10 +11,12 @@ import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
+import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { useUiStore } from "@/stores/uiStore";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
+import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 
 const queryClient = getQueryClient();
 
@@ -47,8 +49,11 @@ function AppContent() {
   const setReviewsPanelOpen = useUiStore((s) => s.setReviewsPanelOpen);
   const executionStatus = useUiStore((s) => s.executionStatus);
   const setExecutionStatus = useUiStore((s) => s.setExecutionStatus);
+  const activeQuestion = useUiStore((s) => s.activeQuestion);
+  const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
 
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
+  const [isQuestionLoading, setIsQuestionLoading] = useState(false);
 
   const { count: pendingReviewCount } = usePendingReviews(DEFAULT_PROJECT_ID);
   const { data: tasks = [] } = useTasks(DEFAULT_PROJECT_ID);
@@ -77,6 +82,24 @@ function AppContent() {
     } finally {
       setIsExecutionLoading(false);
     }
+  };
+
+  const handleQuestionSubmit = async (response: AskUserQuestionResponse) => {
+    setIsQuestionLoading(true);
+    try {
+      console.log("Submit answer:", response);
+      // TODO: Call Tauri command to submit answer and trigger BlockersResolved event
+      clearActiveQuestion();
+    } catch (error) {
+      console.error("Failed to submit answer:", error);
+    } finally {
+      setIsQuestionLoading(false);
+    }
+  };
+
+  const handleQuestionClose = () => {
+    // Close without submitting - question remains unanswered
+    clearActiveQuestion();
   };
 
   // Build task titles lookup
@@ -191,6 +214,14 @@ function AppContent() {
           </div>
         )}
       </div>
+
+      {/* AskUserQuestionModal - renders when activeQuestion is set */}
+      <AskUserQuestionModal
+        question={activeQuestion}
+        onSubmit={handleQuestionSubmit}
+        onClose={handleQuestionClose}
+        isLoading={isQuestionLoading}
+      />
     </main>
   );
 }
