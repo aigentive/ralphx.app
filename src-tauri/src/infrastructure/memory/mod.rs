@@ -3,9 +3,11 @@
 
 pub mod memory_agent_profile_repo;
 pub mod memory_project_repo;
+pub mod memory_task_qa_repo;
 pub mod memory_task_repo;
 
 // Re-exports for convenience
 pub use memory_agent_profile_repo::MemoryAgentProfileRepository;
 pub use memory_project_repo::MemoryProjectRepository;
+pub use memory_task_qa_repo::MemoryTaskQARepository;
 pub use memory_task_repo::MemoryTaskRepository;

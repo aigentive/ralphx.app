@@ -45,7 +45,13 @@ pub fn run() {
             commands::agent_profile_commands::get_agent_profiles_by_role,
             commands::agent_profile_commands::get_builtin_agent_profiles,
             commands::agent_profile_commands::get_custom_agent_profiles,
-            commands::agent_profile_commands::seed_builtin_profiles
+            commands::agent_profile_commands::seed_builtin_profiles,
+            commands::qa_commands::get_qa_settings,
+            commands::qa_commands::update_qa_settings,
+            commands::qa_commands::get_task_qa,
+            commands::qa_commands::get_qa_results,
+            commands::qa_commands::retry_qa,
+            commands::qa_commands::skip_qa
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
