@@ -131,7 +131,7 @@ impl Task {
 
     /// Parse a datetime string from SQLite into a DateTime<Utc>
     /// Handles both RFC3339 format and SQLite's CURRENT_TIMESTAMP format
-    fn parse_datetime(s: String) -> DateTime<Utc> {
+    pub fn parse_datetime(s: String) -> DateTime<Utc> {
         // Try RFC3339 first (our preferred format)
         if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
             return dt.with_timezone(&Utc);
