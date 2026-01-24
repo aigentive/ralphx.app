@@ -1,14 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:30:45
+**Last Updated:** 2026-01-24 19:45:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 7 / 63
-**Current Task:** Implement ArtifactRepository trait
+**Tasks Completed:** 8 / 63
+**Current Task:** Implement ArtifactBucketRepository trait
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:45:00 - Implement ArtifactRepository trait (Task 8)
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/artifact_repository.rs`
+- Defined `ArtifactRepository` trait with 14 async methods:
+  - CRUD: `create`, `get_by_id`, `update`, `delete`
+  - Query by association: `get_by_bucket`, `get_by_type`, `get_by_task`, `get_by_process`
+  - Relation methods: `get_derived_from`, `get_related`, `add_relation`
+  - Relation queries: `get_relations`, `get_relations_by_type`, `delete_relation`
+- Added `MockArtifactRepository` for testing trait object usage
+- Added 26 unit tests covering all trait methods and artifact associations
+- Exported `ArtifactRepository` from `domain/repositories/mod.rs`
+
+**Commands run:**
+- `cargo test artifact_repository --no-fail-fast` (26 tests passed)
+
+---
 
 ### 2026-01-24 19:30:45 - Implement Artifact and ArtifactBucket Rust types (Task 7)
 
