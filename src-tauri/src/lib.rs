@@ -73,7 +73,43 @@ pub fn run() {
             commands::execution_commands::get_execution_status,
             commands::execution_commands::pause_execution,
             commands::execution_commands::resume_execution,
-            commands::execution_commands::stop_execution
+            commands::execution_commands::stop_execution,
+            // Ideation session commands
+            commands::ideation_commands::create_ideation_session,
+            commands::ideation_commands::get_ideation_session,
+            commands::ideation_commands::get_ideation_session_with_data,
+            commands::ideation_commands::list_ideation_sessions,
+            commands::ideation_commands::archive_ideation_session,
+            commands::ideation_commands::delete_ideation_session,
+            // Task proposal commands
+            commands::ideation_commands::create_task_proposal,
+            commands::ideation_commands::get_task_proposal,
+            commands::ideation_commands::list_session_proposals,
+            commands::ideation_commands::update_task_proposal,
+            commands::ideation_commands::delete_task_proposal,
+            commands::ideation_commands::toggle_proposal_selection,
+            commands::ideation_commands::set_proposal_selection,
+            commands::ideation_commands::reorder_proposals,
+            commands::ideation_commands::assess_proposal_priority,
+            commands::ideation_commands::assess_all_priorities,
+            // Dependency and apply commands
+            commands::ideation_commands::add_proposal_dependency,
+            commands::ideation_commands::remove_proposal_dependency,
+            commands::ideation_commands::get_proposal_dependencies,
+            commands::ideation_commands::get_proposal_dependents,
+            commands::ideation_commands::analyze_dependencies,
+            commands::ideation_commands::apply_proposals_to_kanban,
+            commands::ideation_commands::get_task_blockers,
+            commands::ideation_commands::get_blocked_tasks,
+            // Chat message commands
+            commands::ideation_commands::send_chat_message,
+            commands::ideation_commands::get_session_messages,
+            commands::ideation_commands::get_recent_session_messages,
+            commands::ideation_commands::get_project_messages,
+            commands::ideation_commands::get_task_messages,
+            commands::ideation_commands::delete_chat_message,
+            commands::ideation_commands::delete_session_messages,
+            commands::ideation_commands::count_session_messages
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
