@@ -363,7 +363,7 @@ All design work MUST include:
       "DESIGN.md already references this file - just update the dedicated page",
       "Commit: docs: add Extensibility View design requirements"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "design-req",
