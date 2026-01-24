@@ -626,7 +626,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Handle Optional fields (description, started_at, completed_at)",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

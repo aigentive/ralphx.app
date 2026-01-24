@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:21:37
+**Last Updated:** 2026-01-24 07:23:22
 **Phase:** Data Layer
-**Tasks Completed:** 5 / 20
-**Current Task:** Implement Task::from_row for SQLite deserialization
+**Tasks Completed:** 6 / 20
+**Current Task:** Implement Project::from_row for SQLite deserialization
 
 ---
 
@@ -1354,6 +1354,25 @@ Phase 1: Foundation (no dependencies)
 - Phase 1 status → "complete"
 - currentPhase → 2
 - Phase 2 status → "active"
+
+---
+
+### 2026-01-24 07:23:22 - Implement Task::from_row for SQLite deserialization
+
+**What was done:**
+- Implemented `Task::from_row(row: &Row)` method for SQLite deserialization
+- Added `parse_datetime` helper that handles both RFC3339 and SQLite datetime formats
+- Handles all optional fields (description, started_at, completed_at)
+- Unknown internal_status strings default to Backlog
+- Added 10 comprehensive tests:
+  - parse_datetime tests for RFC3339, offset, SQLite format, and invalid input
+  - from_row tests with all fields, null optionals, SQLite datetime format
+  - from_row tests with unknown status and completed tasks
+  - from_row test verifying all 14 statuses parse correctly
+- All 191 tests pass (10 new tests)
+
+**Files modified:**
+- `src-tauri/src/domain/entities/task.rs` - added from_row, parse_datetime, and tests
 
 ---
 
