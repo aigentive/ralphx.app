@@ -581,7 +581,7 @@ Every task follows the TDD cycle:
       "Add path aliases (@/*) for cleaner imports",
       "Verify tests pass and type checking is strict"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
