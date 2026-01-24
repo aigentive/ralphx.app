@@ -558,7 +558,7 @@ Every task follows the TDD cycle:
       "Add the Visual Verification section to PROMPT.md after the Implementation Workflow section",
       "Include the table showing which task types require visual verification"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
