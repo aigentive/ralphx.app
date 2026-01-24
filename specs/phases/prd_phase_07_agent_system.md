@@ -714,7 +714,7 @@ CREATE TABLE agent_profiles (
       "Create Zod schemas for runtime validation",
       "Run npm run typecheck to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
