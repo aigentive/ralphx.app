@@ -131,7 +131,7 @@ Each phase PRD should follow this structure:
       "Verify all transitions from the state diagram are covered"
     ],
     "output": "specs/phases/prd_phase_03_state_machine.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
