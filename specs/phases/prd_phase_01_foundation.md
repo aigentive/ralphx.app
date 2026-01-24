@@ -715,7 +715,7 @@ Every task follows the TDD cycle:
       "Export types from src/types/index.ts",
       "Verify all tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
