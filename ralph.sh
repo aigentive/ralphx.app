@@ -65,15 +65,15 @@ if [ ! -f "PROMPT.md" ]; then
   exit 1
 fi
 
-if [ ! -f "prd.md" ]; then
-  echo -e "${RED}Error: prd.md not found${NC}"
+if [ ! -f "specs/prd.md" ]; then
+  echo -e "${RED}Error: specs/prd.md not found${NC}"
   echo "Please create your PRD or run /create-prd first"
   exit 1
 fi
 
-if [ ! -f "activity.md" ]; then
-  echo -e "${YELLOW}Warning: activity.md not found, creating it...${NC}"
-  cat > activity.md << 'EOF'
+if [ ! -f "logs/activity.md" ]; then
+  echo -e "${YELLOW}Warning: logs/activity.md not found, creating it...${NC}"
+  cat > logs/activity.md << 'EOF'
 # Project Build - Activity Log
 
 ## Current Status
@@ -165,7 +165,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     echo ""
     echo "Next steps:"
     echo "  1. Review the completed work in your project"
-    echo "  2. Check activity.md for the full build log"
+    echo "  2. Check logs/activity.md for the full build log"
     echo "  3. Review screenshots/ for visual verification"
     echo "  4. Run your tests to verify everything works"
     echo ""
@@ -189,8 +189,8 @@ echo -e "Reached max iterations (${RED}$MAX_ITERATIONS${NC}) without completion.
 echo ""
 echo "Options:"
 echo "  1. Run again with more iterations: ./ralph.sh 50"
-echo "  2. Check activity.md to see current progress"
-echo "  3. Check prd.md to see remaining tasks"
+echo "  2. Check logs/activity.md to see current progress"
+echo "  3. Check specs/prd.md to see remaining tasks"
 echo "  4. Manually complete remaining tasks"
 echo ""
 exit 1

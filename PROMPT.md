@@ -1,8 +1,8 @@
-@prd.md @activity.md
+@specs/prd.md @logs/activity.md
 
 We are building the project according to the PRD in this repo.
 
-First read activity.md to see what was recently accomplished.
+First read logs/activity.md to see what was recently accomplished.
 
 ## Start the Application
 
@@ -18,7 +18,7 @@ If the port is taken, try another port.
 
 ## Work on Tasks
 
-Open prd.md and find the single highest priority task where `"passes": false`.
+Open specs/prd.md and find the single highest priority task where `"passes": false`.
 
 Work on exactly ONE task:
 1. Implement the change according to the task steps
@@ -29,14 +29,14 @@ Work on exactly ONE task:
 
 ## Log Progress
 
-Append a dated progress entry to activity.md describing:
+Append a dated progress entry to logs/activity.md describing:
 - What you changed
 - What commands you ran
 - Any issues encountered and how you resolved them
 
 ## Update Task Status
 
-When the task is confirmed working, update that task's `"passes"` field in prd.md from `false` to `true`.
+When the task is confirmed working, update that task's `"passes"` field in specs/prd.md from `false` to `true`.
 
 ## Commit Changes
 
@@ -51,7 +51,7 @@ Do NOT run `git init`, do NOT change git remotes, and do NOT push.
 ## Important Rules
 
 - ONLY work on a SINGLE task per iteration
-- Always log your progress in activity.md
+- Always log your progress in logs/activity.md
 - Always commit after completing a task
 
 ## Completion
