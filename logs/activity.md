@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:41:08
+**Last Updated:** 2026-01-24 07:43:29
 **Phase:** Data Layer
-**Tasks Completed:** 14 / 20
-**Current Task:** Implement SqliteProjectRepository
+**Tasks Completed:** 15 / 20
+**Current Task:** Create application/app_state.rs with AppState
 
 ---
 
@@ -1481,6 +1481,29 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs` - added 14 status/blocker tests
+
+---
+
+### 2026-01-24 07:43:29 - Implement SqliteProjectRepository
+
+**What was done:**
+- Created `SqliteProjectRepository` struct with mutex-protected connection
+- Implemented all ProjectRepository trait methods:
+  - `create`: INSERT with all project fields
+  - `get_by_id`: SELECT with from_row deserialization
+  - `get_all`: SELECT with ORDER BY name ASC
+  - `update`: UPDATE with all modifiable fields
+  - `delete`: DELETE by ID
+  - `get_by_working_directory`: SELECT by working_directory
+- Added 11 integration tests:
+  - CRUD operations (create, get_by_id, get_all, update, delete)
+  - Field preservation (all fields including worktree settings)
+  - get_by_working_directory tests (found, not found, correct project)
+- All 285 tests pass (11 new tests)
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/sqlite_project_repo.rs` - new file
+- `src-tauri/src/infrastructure/sqlite/mod.rs` - added module export
 
 ---
 
