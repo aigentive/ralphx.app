@@ -1,6 +1,7 @@
 // Domain entities - pure Rust types with no external dependencies
 // These represent the core business objects of RalphX
 
+pub mod ideation;
 pub mod project;
 pub mod review;
 pub mod status;
@@ -9,6 +10,10 @@ pub mod task_qa;
 pub mod types;
 
 // Re-export commonly used types for convenience
+pub use ideation::{
+    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus,
+    ParseIdeationSessionStatusError,
+};
 pub use project::{GitMode, Project};
 pub use review::{
     ParseReviewActionTypeError, ParseReviewOutcomeError, ParseReviewStatusError,
@@ -18,4 +23,4 @@ pub use review::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_qa::TaskQA;
-pub use types::{ProjectId, TaskId, TaskQAId};
+pub use types::{IdeationSessionId, ProjectId, TaskId, TaskQAId};

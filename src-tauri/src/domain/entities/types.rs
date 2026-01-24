@@ -18,6 +18,11 @@ pub struct ProjectId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskQAId(pub String);
 
+/// A unique identifier for an IdeationSession
+/// Uses newtype pattern to prevent accidentally using other IDs where IdeationSessionId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct IdeationSessionId(pub String);
+
 impl TaskId {
     /// Creates a new TaskId with a random UUID v4
     pub fn new() -> Self {
@@ -103,6 +108,36 @@ impl Default for TaskQAId {
 }
 
 impl std::fmt::Display for TaskQAId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl IdeationSessionId {
+    /// Creates a new IdeationSessionId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates an IdeationSessionId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for IdeationSessionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for IdeationSessionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -308,5 +343,92 @@ mod tests {
         // But you can't pass TaskId to use_project_id or vice versa (compile error)
         // use_task_id(&project_id); // Would fail to compile
         // use_project_id(&task_id); // Would fail to compile
+    }
+
+    // ===== IdeationSessionId Tests =====
+
+    #[test]
+    fn ideation_session_id_new_generates_valid_uuid() {
+        let id = IdeationSessionId::new();
+        assert_eq!(id.as_str().len(), 36);
+        assert!(id.as_str().chars().filter(|c| *c == '-').count() == 4);
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    #[test]
+    fn ideation_session_id_new_generates_unique_ids() {
+        let ids: HashSet<String> = (0..100).map(|_| IdeationSessionId::new().0).collect();
+        assert_eq!(ids.len(), 100, "All generated IdeationSessionIds should be unique");
+    }
+
+    #[test]
+    fn ideation_session_id_from_string_preserves_value() {
+        let original = "session-custom-id";
+        let id = IdeationSessionId::from_string(original);
+        assert_eq!(id.as_str(), "session-custom-id");
+    }
+
+    #[test]
+    fn ideation_session_id_from_string_accepts_string() {
+        let id = IdeationSessionId::from_string("owned-string".to_string());
+        assert_eq!(id.as_str(), "owned-string");
+    }
+
+    #[test]
+    fn ideation_session_id_equality_works() {
+        let id1 = IdeationSessionId::from_string("session-abc");
+        let id2 = IdeationSessionId::from_string("session-abc");
+        let id3 = IdeationSessionId::from_string("session-xyz");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn ideation_session_id_clone_works() {
+        let id1 = IdeationSessionId::new();
+        let id2 = id1.clone();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn ideation_session_id_hash_works() {
+        let id = IdeationSessionId::from_string("session-test");
+        let mut set = HashSet::new();
+        set.insert(id.clone());
+        assert!(set.contains(&id));
+    }
+
+    #[test]
+    fn ideation_session_id_display_works() {
+        let id = IdeationSessionId::from_string("session-display");
+        assert_eq!(format!("{}", id), "session-display");
+    }
+
+    #[test]
+    fn ideation_session_id_debug_works() {
+        let id = IdeationSessionId::from_string("session-debug");
+        let debug_str = format!("{:?}", id);
+        assert!(debug_str.contains("session-debug"));
+    }
+
+    #[test]
+    fn ideation_session_id_serializes_to_json() {
+        let id = IdeationSessionId::from_string("session-serialize");
+        let json = serde_json::to_string(&id).expect("Should serialize");
+        assert_eq!(json, "\"session-serialize\"");
+    }
+
+    #[test]
+    fn ideation_session_id_deserializes_from_json() {
+        let json = "\"session-deserialize\"";
+        let id: IdeationSessionId = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(id.as_str(), "session-deserialize");
+    }
+
+    #[test]
+    fn ideation_session_id_default_creates_new() {
+        let id = IdeationSessionId::default();
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
     }
 }
