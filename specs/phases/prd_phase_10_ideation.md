@@ -1199,7 +1199,7 @@ All tasks require:
       "  - Attach button (placeholder for future)",
       "Export from src/components/Chat/ChatInput.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
