@@ -589,7 +589,7 @@ All tasks require TDD:
       "Document output format (JSON with qa_results)",
       "Include error handling guidelines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
