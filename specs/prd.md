@@ -244,7 +244,7 @@ Each phase PRD should follow this structure:
       "Verify all extension points are covered"
     ],
     "output": "specs/phases/prd_phase_11_extensibility.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "validation",
