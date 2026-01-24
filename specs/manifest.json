@@ -86,6 +86,13 @@
       "prd": "specs/phases/prd_phase_11_extensibility.md",
       "status": "pending",
       "description": "Custom workflows, methodologies, artifacts"
+    },
+    {
+      "phase": 12,
+      "name": "Reconciliation",
+      "prd": "specs/phases/prd_phase_12_reconciliation.md",
+      "status": "pending",
+      "description": "Consolidate agents/skills into plugin, fix architectural inconsistencies"
     }
   ]
 }
