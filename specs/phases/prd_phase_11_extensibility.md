@@ -1456,7 +1456,7 @@ All tasks require tests written before implementation:
       "Preserve task data, only column mapping changes",
       "Run npm test and npm run typecheck to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
