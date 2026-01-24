@@ -1,14 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:35:00
+**Last Updated:** 2026-01-24 22:42:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 59 / 63
-**Current Task:** Integration test: Methodology activation flow
+**Tasks Completed:** 60 / 63
+**Current Task:** Integration test: Methodology activation and deactivation
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:42:00 - Integration test: Research process lifecycle (Task 60)
+
+**What was done:**
+- Created `src-tauri/tests/research_integration.rs` with 30 comprehensive tests covering:
+  - Start research with quick-scan preset (verify depth, brief, output config)
+  - Start and run research process (transition to running, started_at timestamp)
+  - Pause running research (preserve iteration count, status update)
+  - Resume paused research (verify progress continues from checkpoint)
+  - Full pause-resume cycle preserves progress across transitions
+  - Checkpoint saves progress with artifact ID reference
+  - Multiple checkpoints update correctly (latest replaces previous)
+  - Complete research successfully (completed status, completed_at timestamp)
+  - Fail research with error message (failed status, error preserved)
+  - Query processes by status (pending, running, completed filtering)
+  - Get all processes in created_at order
+  - Delete research process
+  - Progress percentage calculation (0%, 50%, 100%)
+  - Custom depth configuration (25 iterations, 1.5h timeout)
+  - Output configuration persists (target bucket, artifact types)
+- Tests run with both Memory and SQLite repositories for consistency
+- Created `src/components/research/ResearchProcessLifecycle.integration.test.tsx` with 26 frontend tests:
+  - Hook tests: start/pause/resume/stop mutations
+  - Hook tests: fetch processes list, single process, presets
+  - Hook tests: filter by status
+  - ResearchLauncher: preset selector, form submission, custom depth inputs
+  - ResearchProgress: progress bar, pause/resume/stop buttons, status display
+  - Full lifecycle: start -> pause -> resume -> complete cycle
+  - Failure handling, checkpoint preservation
+  - Custom depth and output configuration
+
+**Commands run:**
+- `cargo test --test research_integration` - 30 tests passed
+- `npm test -- src/components/research/ResearchProcessLifecycle.integration.test.tsx --run` - 26 tests passed
 
 ### 2026-01-24 22:35:00 - Integration test: Artifact creation and bucket routing (Task 59)
 
