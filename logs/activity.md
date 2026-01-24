@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:10:00
+**Last Updated:** 2026-01-24 20:15:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 39 / 50
-**Current Task:** Create ChatMessage component
+**Tasks Completed:** 40 / 50
+**Current Task:** Create ChatInput component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:15:00 - Create ChatMessage component
+
+**What was done:**
+- Created `src/components/Chat/ChatMessage.tsx` with:
+  - Role indicator (You/Orchestrator/System) with role-based styling
+  - Markdown rendering using react-markdown package
+  - Formatted timestamp display (compact time or full date+time)
+  - User messages aligned right with accent color
+  - Orchestrator/System messages aligned left with neutral color
+  - Compact mode option for reduced spacing
+  - Accessible article role with proper aria-label
+  - Support for code blocks, lists, links, bold/italic text
+- Created `src/components/Chat/ChatMessage.test.tsx` with 28 unit tests covering:
+  - Rendering of message content and testids
+  - Role-based alignment and styling
+  - Markdown rendering (bold, lists, code blocks, links)
+  - Timestamp formatting (compact vs full)
+  - Content handling (whitespace, empty, long content)
+  - Accessibility (article role, time element)
+  - Compact mode behavior
+- Updated `src/components/Chat/index.ts` to export ChatMessage
+- Installed react-markdown package for markdown rendering
+
+**Commands run:**
+- `npm install react-markdown` (added 78 packages)
+- `npm test -- --run src/components/Chat/ChatMessage.test.tsx` (28 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1830 tests passed)
+
+---
 
 ### 2026-01-24 20:10:00 - Create ChatPanel component
 
