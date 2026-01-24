@@ -663,7 +663,7 @@ Every task follows the TDD cycle:
       "Export selectors",
       "Verify all tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -678,7 +678,7 @@ Every task follows the TDD cycle:
       "Implement all actions and selectors",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -693,7 +693,7 @@ Every task follows the TDD cycle:
       "Include: sidebarOpen, activeModal, notifications",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -709,7 +709,7 @@ Every task follows the TDD cycle:
       "Implement addMessage, addAlert, clearMessages actions",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
