@@ -701,6 +701,295 @@ const qaPrepProfile = {
   },
   {
     "category": "visual-verification",
+    "description": "Visual verification of Project Sidebar and Navigation",
+    "steps": [
+      "Use /agent-browser skill to visually verify Project Sidebar and navigation",
+      "Capture screenshots of: sidebar with project list, project selector dropdown, worktree status indicator",
+      "Test navigation between views (Kanban, Ideation, Activity, Settings, Extensibility)",
+      "Test keyboard shortcuts Cmd+1 through Cmd+5",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Project Sidebar is positioned on the left with appropriate width (200-280px)",
+      "Project list shows project names with git mode indicators clearly",
+      "WorktreeStatus shows 'Local: branch' or 'Worktree: branch from base' format",
+      "New Project button is prominent and accessible",
+      "Active project is visually distinguished from others",
+      "Navigation items (Ideation, Kanban, Activity, Settings) are clearly labeled",
+      "Active navigation item has clear visual indicator",
+      "Keyboard shortcuts work and views switch correctly",
+      "Sidebar doesn't overflow or cause horizontal scroll",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: Project names are readable, git status is secondary",
+      "Typography: Navigation labels use appropriate weight (medium/semibold)",
+      "Spacing: Projects have adequate vertical spacing in list",
+      "Spacing: Navigation items have consistent padding",
+      "Colors: Active states use warm orange accent (#ff6b35)",
+      "Colors: Git mode indicators are subtle but informative",
+      "Depth: Sidebar has subtle separation from main content",
+      "Borders: Clean dividers between sections",
+      "Interactions: Hover states on projects and nav items are smooth",
+      "Polish: Icons (if any) are consistent style",
+      "Overall: Feels like a professional sidebar navigation"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Activity Stream View",
+    "steps": [
+      "Use /agent-browser skill to visually verify Activity Stream View",
+      "Capture screenshots of: activity view overview, expanded tool call, search/filter UI",
+      "Test scrolling behavior with many activity entries",
+      "Test expand/collapse of tool call details",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Activity Stream fills available viewport height",
+      "Agent thinking and actions are clearly displayed",
+      "Tool calls are distinguishable from regular messages",
+      "Expand/collapse for tool call details works smoothly",
+      "Input/output of tool calls are formatted readably",
+      "Search/filter functionality is accessible and visible",
+      "Auto-scroll to new messages works correctly",
+      "Timestamps are visible and formatted appropriately",
+      "Empty state shows helpful message when no activity",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: Activity text is readable size (14-16px)",
+      "Typography: Tool names are distinguishable (monospace or bold)",
+      "Typography: Timestamps use smaller, muted text",
+      "Spacing: Activity entries have consistent vertical rhythm",
+      "Spacing: Expanded details have adequate padding",
+      "Colors: Different message types have subtle color coding",
+      "Colors: Tool calls have distinct background or border",
+      "Depth: Expanded sections feel nested appropriately",
+      "Borders: Entry separators are subtle",
+      "Interactions: Scroll is smooth, expand/collapse animates",
+      "Polish: Long content doesn't break layout",
+      "Overall: Feels like Claude Desktop's execution panel"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Settings View",
+    "steps": [
+      "Use /agent-browser skill to visually verify Settings View",
+      "Capture screenshots of: settings overview, each section (Execution, Model, Review, Supervisor)",
+      "Test form interactions (toggles, dropdowns, number inputs)",
+      "Verify profile management UI",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Settings View has clear section organization",
+      "Each setting has descriptive label and helper text where needed",
+      "Toggle switches clearly show on/off state",
+      "Number inputs have appropriate min/max constraints",
+      "Dropdown selectors show current value and expand properly",
+      "Model selection dropdown shows available options",
+      "Profile management allows create/edit/delete",
+      "Save/cancel actions are clear (if applicable)",
+      "Form validation errors display inline",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: Section headers establish clear hierarchy",
+      "Typography: Setting labels are readable, descriptions are secondary",
+      "Spacing: Sections have adequate separation",
+      "Spacing: Form elements have consistent spacing",
+      "Spacing: Labels and inputs have clear visual association",
+      "Colors: Toggle states use appropriate success/neutral colors",
+      "Colors: Section backgrounds provide subtle grouping",
+      "Depth: Cards/sections have subtle elevation",
+      "Borders: Form inputs have consistent border treatment",
+      "Interactions: Toggles animate smoothly",
+      "Interactions: Dropdowns open/close without jank",
+      "Polish: All inputs have proper focus states",
+      "Overall: Feels like a well-organized settings panel"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Project Creation Wizard and Merge Dialog",
+    "steps": [
+      "Use /agent-browser skill to visually verify Project dialogs",
+      "Capture screenshots of: Project Creation Wizard, Git Mode selection, Merge Workflow Dialog",
+      "Test folder picker interaction (Tauri dialog)",
+      "Test radio button selection for Git Mode and Merge options",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Project Creation Wizard opens as modal with proper backdrop",
+      "Project name input is clearly labeled and focused on open",
+      "Folder picker button triggers Tauri file dialog",
+      "Git Mode radio buttons clearly show Local vs Worktree options",
+      "Worktree-specific fields appear when Worktree is selected",
+      "Branch name auto-generates with ralphx/ prefix",
+      "Base branch dropdown shows available branches",
+      "Merge Workflow Dialog shows completion summary clearly",
+      "View Diff and View Commits buttons are accessible",
+      "Merge options are clearly explained with radio buttons",
+      "Cancel and primary action buttons are properly positioned",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: Modal titles are prominent",
+      "Typography: Option descriptions are readable",
+      "Typography: Warning text (⚠️) stands out appropriately",
+      "Spacing: Form fields have adequate vertical spacing",
+      "Spacing: Modal has generous padding",
+      "Colors: Primary action button uses warm orange accent",
+      "Colors: Warning indicators use amber/yellow",
+      "Depth: Modal has proper elevation over backdrop",
+      "Borders: Radio buttons and inputs have consistent styling",
+      "Interactions: Radio selection is responsive",
+      "Interactions: Modal open/close animates smoothly",
+      "Polish: Tab order is logical for keyboard navigation",
+      "Overall: Wizard feels guided and professional"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Task Re-run Dialog",
+    "steps": [
+      "Use /agent-browser skill to visually verify Task Re-run Dialog",
+      "Capture screenshots of: dialog with all three options, warning state for revert",
+      "Test radio button selection between options",
+      "Verify warning displays when dependent commits exist",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Dialog opens when dragging Done task back to Planned",
+      "Task info and commit SHA are clearly displayed",
+      "Three options are clearly presented as radio buttons",
+      "Recommended option is visually indicated",
+      "Revert option shows warning about dependent commits",
+      "Warning text is clearly visible and alarming",
+      "Cancel and Confirm buttons are properly positioned",
+      "Dialog closes on cancel without side effects",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: Task title is prominent in header",
+      "Typography: Commit SHA uses monospace font",
+      "Typography: Option descriptions are scannable",
+      "Spacing: Options have adequate separation",
+      "Spacing: Warning has breathing room",
+      "Colors: Recommended option has subtle highlight",
+      "Colors: Warning uses amber/yellow appropriately",
+      "Depth: Dialog has proper modal elevation",
+      "Borders: Radio buttons are clearly styled",
+      "Interactions: Selection is immediate and clear",
+      "Polish: Focus management is correct",
+      "Overall: Dialog communicates consequences clearly"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Diff Viewer component",
+    "steps": [
+      "Use /agent-browser skill to visually verify Diff Viewer",
+      "Capture screenshots of: Changes tab, History tab, file tree, diff view",
+      "Test tab switching between Changes and History",
+      "Test file selection in tree view",
+      "Test collapse/expand of diff hunks",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Diff Viewer has two tabs: Changes and History",
+      "File tree shows changed files with status indicators",
+      "Selecting a file shows its diff on the right",
+      "Unified diff displays with proper +/- indicators",
+      "Added lines are visually distinct (green-ish)",
+      "Removed lines are visually distinct (red-ish)",
+      "Context lines are neutral colored",
+      "Diff hunks can collapse/expand",
+      "Syntax highlighting works for common languages",
+      "Open in IDE button is accessible",
+      "History tab shows commit list on left",
+      "Selecting commit shows its diff",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: File names are readable in tree",
+      "Typography: Code uses monospace font (JetBrains Mono)",
+      "Typography: Line numbers are subtle",
+      "Spacing: File tree items have adequate spacing",
+      "Spacing: Diff has comfortable line height",
+      "Colors: Add/remove colors are intuitive but not harsh",
+      "Colors: Syntax highlighting is readable on dark background",
+      "Depth: Selected file has clear indicator",
+      "Borders: Panels have subtle separators",
+      "Interactions: Tab switching is instant",
+      "Interactions: Collapse/expand animates smoothly",
+      "Polish: Large diffs don't cause lag (virtual scrolling)",
+      "Overall: Feels like a professional diff tool"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
+    "description": "Visual verification of Screenshot Gallery in QA Panel",
+    "steps": [
+      "Use /agent-browser skill to visually verify Screenshot Gallery",
+      "Capture screenshots of: thumbnail grid, lightbox view, navigation, expected vs actual comparison",
+      "Test clicking thumbnail to open lightbox",
+      "Test navigation between screenshots in lightbox",
+      "Test expected vs actual comparison view",
+      "Fix any visual issues identified during verification",
+      "Run npm run lint and npm run typecheck after fixes",
+      "Document findings and fixes in activity.md"
+    ],
+    "acceptance_criteria": [
+      "Screenshot Gallery shows thumbnails in a grid layout",
+      "Thumbnails are appropriately sized and don't overflow",
+      "Clicking thumbnail opens lightbox with full-size image",
+      "Lightbox has prev/next navigation",
+      "Close button is clearly visible in lightbox",
+      "Expected vs Actual comparison shows both images",
+      "Differences are highlighted or clearly labeled",
+      "Empty state when no screenshots exist",
+      "Gallery integrates properly in TaskDetailQAPanel",
+      "No purple gradients, no Inter font, no generic icon grids (anti-AI-slop)"
+    ],
+    "design_quality": [
+      "Typography: Screenshot names/labels are readable",
+      "Typography: Comparison labels (Expected/Actual) are clear",
+      "Spacing: Thumbnails have consistent gaps",
+      "Spacing: Lightbox has adequate padding",
+      "Colors: Thumbnail borders are subtle",
+      "Colors: Lightbox backdrop is appropriately dark",
+      "Depth: Lightbox has proper elevation",
+      "Borders: Thumbnails have consistent corner radius",
+      "Interactions: Thumbnail hover shows intent",
+      "Interactions: Lightbox open/close is smooth",
+      "Interactions: Navigation is intuitive",
+      "Polish: Images load without jarring layout shifts",
+      "Overall: Feels like a professional image gallery"
+    ],
+    "passes": false
+  },
+  {
+    "category": "visual-verification",
     "description": "Visual verification of Kanban UI (Phase 6)",
     "steps": [
       "Use /agent-browser skill to visually verify the Kanban board",
