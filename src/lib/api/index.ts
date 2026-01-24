@@ -76,3 +76,21 @@ export {
   type StartResearchInput,
   type CustomDepthInput,
 } from "./research";
+
+// Methodologies API
+export {
+  getMethodologies,
+  getActiveMethodology,
+  activateMethodology,
+  deactivateMethodology,
+  MethodologyResponseSchema,
+  MethodologyPhaseResponseSchema,
+  MethodologyTemplateResponseSchema,
+  MethodologyActivationResponseSchema,
+  WorkflowSchemaResponseSchema,
+  type MethodologyResponse,
+  type MethodologyPhaseResponse,
+  type MethodologyTemplateResponse,
+  type MethodologyActivationResponse,
+  type WorkflowSchemaResponse,
+} from "./methodologies";
