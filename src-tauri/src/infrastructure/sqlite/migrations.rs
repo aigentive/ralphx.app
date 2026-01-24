@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 10;
+pub const SCHEMA_VERSION: i32 = 11;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -65,6 +65,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 10 {
         migrate_v10(conn)?;
         set_schema_version(conn, 10)?;
+    }
+
+    if current_version < 11 {
+        migrate_v11(conn)?;
+        set_schema_version(conn, 11)?;
     }
 
     Ok(())
@@ -488,6 +493,180 @@ fn migrate_v10(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v11: Create ideation system tables
+/// This includes ideation_sessions, task_proposals, proposal_dependencies,
+/// chat_messages, and task_dependencies tables for the ideation workflow.
+fn migrate_v11(conn: &Connection) -> AppResult<()> {
+    // Ideation Sessions table
+    conn.execute(
+        "CREATE TABLE ideation_sessions (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            title TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            archived_at DATETIME,
+            converted_at DATETIME
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on project_id for efficient session lookups
+    conn.execute(
+        "CREATE INDEX idx_ideation_sessions_project_id ON ideation_sessions(project_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on status for filtering active sessions
+    conn.execute(
+        "CREATE INDEX idx_ideation_sessions_status ON ideation_sessions(status)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Task Proposals table
+    conn.execute(
+        "CREATE TABLE task_proposals (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL REFERENCES ideation_sessions(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            steps TEXT,
+            acceptance_criteria TEXT,
+            suggested_priority TEXT NOT NULL,
+            priority_score INTEGER NOT NULL DEFAULT 50,
+            priority_reason TEXT,
+            priority_factors TEXT,
+            estimated_complexity TEXT DEFAULT 'moderate',
+            user_priority TEXT,
+            user_modified INTEGER DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            selected INTEGER DEFAULT 1,
+            created_task_id TEXT REFERENCES tasks(id),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on session_id for efficient proposal lookups
+    conn.execute(
+        "CREATE INDEX idx_task_proposals_session_id ON task_proposals(session_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on sort_order for ordered retrieval
+    conn.execute(
+        "CREATE INDEX idx_task_proposals_sort_order ON task_proposals(session_id, sort_order)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Proposal Dependencies table
+    conn.execute(
+        "CREATE TABLE proposal_dependencies (
+            id TEXT PRIMARY KEY,
+            proposal_id TEXT NOT NULL REFERENCES task_proposals(id) ON DELETE CASCADE,
+            depends_on_proposal_id TEXT NOT NULL REFERENCES task_proposals(id) ON DELETE CASCADE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(proposal_id, depends_on_proposal_id),
+            CHECK(proposal_id != depends_on_proposal_id)
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on proposal_id for efficient dependency lookups
+    conn.execute(
+        "CREATE INDEX idx_proposal_dependencies_proposal_id ON proposal_dependencies(proposal_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on depends_on_proposal_id for reverse dependency lookups
+    conn.execute(
+        "CREATE INDEX idx_proposal_dependencies_depends_on ON proposal_dependencies(depends_on_proposal_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Chat Messages table
+    conn.execute(
+        "CREATE TABLE chat_messages (
+            id TEXT PRIMARY KEY,
+            session_id TEXT REFERENCES ideation_sessions(id) ON DELETE CASCADE,
+            project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+            task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            metadata TEXT,
+            parent_message_id TEXT REFERENCES chat_messages(id),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on session_id for chat history
+    conn.execute(
+        "CREATE INDEX idx_chat_messages_session_id ON chat_messages(session_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on project_id for project-level chat
+    conn.execute(
+        "CREATE INDEX idx_chat_messages_project_id ON chat_messages(project_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on task_id for task-specific chat
+    conn.execute(
+        "CREATE INDEX idx_chat_messages_task_id ON chat_messages(task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Task Dependencies table (for applied tasks)
+    // Only create if it doesn't exist (may have been created elsewhere)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS task_dependencies (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(task_id, depends_on_task_id),
+            CHECK(task_id != depends_on_task_id)
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on task_id for dependency lookups (only if table was just created)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_dependencies_task_id ON task_dependencies(task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on depends_on_task_id for reverse dependency lookups
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on ON task_dependencies(depends_on_task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 10);
+        assert_eq!(SCHEMA_VERSION, 11);
     }
 
     #[test]
@@ -621,7 +800,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
     }
 
     #[test]
@@ -634,7 +813,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
     }
 
     #[test]
@@ -3390,5 +3569,771 @@ mod tests {
             .collect();
 
         assert_eq!(outcomes, vec!["changes_requested", "approved"]);
+    }
+
+    // ==========================================
+    // Migration v11 Tests: Ideation System
+    // ==========================================
+
+    #[test]
+    fn test_run_migrations_creates_ideation_sessions_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ideation_sessions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_ideation_sessions_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert a project first
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        // Try inserting a complete session record
+        let result = conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status, archived_at, converted_at)
+             VALUES ('session-1', 'proj-1', 'Auth Feature', 'active', NULL, NULL)",
+            [],
+        );
+
+        assert!(result.is_ok());
+
+        // Verify default values
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM ideation_sessions WHERE id = 'session-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "active");
+    }
+
+    #[test]
+    fn test_ideation_sessions_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let project_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ideation_sessions_project_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(project_idx, 1);
+
+        let status_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ideation_sessions_status'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status_idx, 1);
+    }
+
+    #[test]
+    fn test_ideation_sessions_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert project and session
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        // Delete project
+        conn.execute("DELETE FROM projects WHERE id = 'proj-1'", [])
+            .unwrap();
+
+        // Session should be gone due to CASCADE
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ideation_sessions WHERE id = 'session-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_run_migrations_creates_task_proposals_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='task_proposals'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_task_proposals_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        // Try inserting a complete proposal record
+        let result = conn.execute(
+            "INSERT INTO task_proposals (
+                id, session_id, title, description, category, steps, acceptance_criteria,
+                suggested_priority, priority_score, priority_reason, priority_factors,
+                estimated_complexity, user_priority, user_modified, status, selected, sort_order
+            ) VALUES (
+                'prop-1', 'session-1', 'Setup Database', 'Create DB schema', 'setup',
+                '[\"Create tables\", \"Add indexes\"]', '[\"Tables exist\", \"Indexes work\"]',
+                'high', 75, 'Blocks other tasks', '{\"dependency\": 25}',
+                'moderate', NULL, 0, 'pending', 1, 0
+            )",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_task_proposals_default_values() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        // Insert minimal proposal
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-1', 'session-1', 'Test', 'feature', 'medium')",
+            [],
+        )
+        .unwrap();
+
+        // Check default values
+        let (score, complexity, modified, status, selected): (i32, String, i32, String, i32) = conn
+            .query_row(
+                "SELECT priority_score, estimated_complexity, user_modified, status, selected
+                 FROM task_proposals WHERE id = 'prop-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+
+        assert_eq!(score, 50);
+        assert_eq!(complexity, "moderate");
+        assert_eq!(modified, 0);
+        assert_eq!(status, "pending");
+        assert_eq!(selected, 1);
+    }
+
+    #[test]
+    fn test_task_proposals_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let session_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_task_proposals_session_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(session_idx, 1);
+
+        let sort_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_task_proposals_sort_order'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sort_idx, 1);
+    }
+
+    #[test]
+    fn test_task_proposals_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-1', 'session-1', 'Test', 'feature', 'medium')",
+            [],
+        )
+        .unwrap();
+
+        // Delete session
+        conn.execute("DELETE FROM ideation_sessions WHERE id = 'session-1'", [])
+            .unwrap();
+
+        // Proposal should be gone due to CASCADE
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_proposals WHERE id = 'prop-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_run_migrations_creates_proposal_dependencies_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='proposal_dependencies'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_proposal_dependencies_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-1', 'session-1', 'Task 1', 'feature', 'high')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-2', 'session-1', 'Task 2', 'feature', 'medium')",
+            [],
+        )
+        .unwrap();
+
+        // Insert dependency
+        let result = conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-1', 'prop-2', 'prop-1')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_proposal_dependencies_unique_constraint() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-1', 'session-1', 'Task 1', 'feature', 'high')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-2', 'session-1', 'Task 2', 'feature', 'medium')",
+            [],
+        )
+        .unwrap();
+
+        // First dependency insert succeeds
+        conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-1', 'prop-2', 'prop-1')",
+            [],
+        )
+        .unwrap();
+
+        // Duplicate should fail
+        let result = conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-2', 'prop-2', 'prop-1')",
+            [],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_proposal_dependencies_self_reference_check() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
+             VALUES ('prop-1', 'session-1', 'Task 1', 'feature', 'high')",
+            [],
+        )
+        .unwrap();
+
+        // Self-reference should fail due to CHECK constraint
+        let result = conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-1', 'prop-1', 'prop-1')",
+            [],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_proposal_dependencies_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let prop_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_proposal_dependencies_proposal_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(prop_idx, 1);
+
+        let dep_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_proposal_dependencies_depends_on'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(dep_idx, 1);
+    }
+
+    #[test]
+    fn test_run_migrations_creates_chat_messages_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chat_messages'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_chat_messages_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        // Insert a chat message
+        let result = conn.execute(
+            "INSERT INTO chat_messages (id, session_id, project_id, role, content, metadata)
+             VALUES ('msg-1', 'session-1', 'proj-1', 'user', 'Hello', '{\"key\": \"value\"}')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_chat_messages_with_task_context() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        // Insert a chat message about a task
+        let result = conn.execute(
+            "INSERT INTO chat_messages (id, project_id, task_id, role, content)
+             VALUES ('msg-1', 'proj-1', 'task-1', 'orchestrator', 'Task analysis')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_chat_messages_parent_reference() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('session-1', 'proj-1', 'Test')",
+            [],
+        )
+        .unwrap();
+
+        // Insert parent message
+        conn.execute(
+            "INSERT INTO chat_messages (id, session_id, role, content)
+             VALUES ('msg-1', 'session-1', 'user', 'First message')",
+            [],
+        )
+        .unwrap();
+
+        // Insert child message with parent reference
+        let result = conn.execute(
+            "INSERT INTO chat_messages (id, session_id, role, content, parent_message_id)
+             VALUES ('msg-2', 'session-1', 'orchestrator', 'Reply', 'msg-1')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_chat_messages_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let session_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_chat_messages_session_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(session_idx, 1);
+
+        let project_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_chat_messages_project_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(project_idx, 1);
+
+        let task_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_chat_messages_task_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_idx, 1);
+    }
+
+    #[test]
+    fn test_run_migrations_creates_task_dependencies_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='task_dependencies'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_task_dependencies_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            [],
+        )
+        .unwrap();
+
+        // Insert task dependency
+        let result = conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', 'task-2', 'task-1')",
+            [],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_task_dependencies_unique_constraint() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            [],
+        )
+        .unwrap();
+
+        // First insert succeeds
+        conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', 'task-2', 'task-1')",
+            [],
+        )
+        .unwrap();
+
+        // Duplicate should fail
+        let result = conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-2', 'task-2', 'task-1')",
+            [],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_task_dependencies_self_reference_check() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        // Self-reference should fail due to CHECK constraint
+        let result = conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', 'task-1', 'task-1')",
+            [],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_task_dependencies_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let task_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_task_dependencies_task_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_idx, 1);
+
+        let dep_idx: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_task_dependencies_depends_on'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(dep_idx, 1);
+    }
+
+    #[test]
+    fn test_task_dependencies_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert prerequisite data
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', 'task-2', 'task-1')",
+            [],
+        )
+        .unwrap();
+
+        // Delete task-2 (the dependent task)
+        conn.execute("DELETE FROM tasks WHERE id = 'task-2'", [])
+            .unwrap();
+
+        // Dependency should be gone due to CASCADE
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_dependencies WHERE task_id = 'task-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }
