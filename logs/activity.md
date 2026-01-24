@@ -1,14 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:21:29
+**Last Updated:** 2026-01-24 19:23:44
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 4 / 63
-**Current Task:** Implement MemoryWorkflowRepository
+**Tasks Completed:** 5 / 63
+**Current Task:** Seed built-in workflows (Default, Jira)
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:23:44 - Implement MemoryWorkflowRepository (Task 5)
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/memory/memory_workflow_repo.rs`
+- Implemented `MemoryWorkflowRepository` with all `WorkflowRepository` methods
+- Uses `RwLock<HashMap>` for thread-safe storage
+- `get_all` returns workflows sorted by name
+- `set_default` properly unsets previous default before setting new one
+- Added `with_workflows` constructor for pre-populating (useful for tests)
+- Added 20 unit tests including concurrent access tests
+- Exported from `infrastructure/memory/mod.rs`
+
+**Commands run:**
+- `cargo test memory_workflow_repo --no-fail-fast` (20 tests passed)
+
+---
 
 ### 2026-01-24 19:21:29 - Implement SqliteWorkflowRepository (Task 4)
 
