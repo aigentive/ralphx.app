@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:35:00
+**Last Updated:** 2026-01-24 20:50:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 22 / 63
-**Current Task:** Implement ResearchService
+**Tasks Completed:** 23 / 63
+**Current Task:** Implement MethodologyService
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:50:00 - Implement ResearchService (Task 23)
+
+**What was done:**
+- Created `src-tauri/src/domain/services/research_service.rs`
+- Implemented `ResearchService<R: ProcessRepository>` generic struct
+- Implemented `start_research()` - creates and starts a new research process
+- Implemented `start_research_with_preset()` - convenience method for preset depths
+- Implemented `start_research_with_custom_depth()` - convenience method for custom depths
+- Implemented `pause_research()` - pauses a running research process (validates state)
+- Implemented `resume_research()` - resumes a paused research process (validates state)
+- Implemented `checkpoint()` - saves checkpoint artifact ID to process
+- Implemented `advance_iteration()` - increments iteration counter
+- Implemented `complete()` - marks process as completed
+- Implemented `fail()` - marks process as failed with error message
+- Implemented `stop_research()` - intelligently stops based on current state
+- Implemented repository delegation methods: get_process, get_all_processes, get_active_processes, get_processes_by_status, delete_process, process_exists
+- Implemented utility methods: preset_to_config, get_all_presets, should_checkpoint, is_max_iterations_reached, progress_percentage
+- Updated `domain/services/mod.rs` to export ResearchService
+- Added 40 unit tests covering:
+  - start_research tests (creates and starts, custom output, preset, custom depth)
+  - pause_research tests (pauses running, fails for non-running, fails for not found)
+  - resume_research tests (resumes paused, fails for non-paused)
+  - checkpoint tests (saves artifact ID, fails for terminal process)
+  - advance_iteration tests (increments counter, fails for non-running)
+  - complete tests (marks completed, fails for already completed)
+  - fail tests (marks failed, fails for already failed)
+  - stop_research tests (completes running, completes paused, fails pending, fails terminal)
+  - Repository delegation tests
+  - Utility method tests (preset_to_config for all presets, get_all_presets, should_checkpoint, is_max_iterations_reached, progress_percentage)
+  - Integration scenario tests (full lifecycle, failure scenario)
+
+**Commands run:**
+- `cargo test research_service --no-fail-fast` (40 tests passed)
+
+---
 
 ### 2026-01-24 20:35:00 - Implement ArtifactFlowService (Task 22)
 
