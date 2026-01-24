@@ -1285,7 +1285,7 @@ All tasks require:
       "  - Compact and full size variants",
       "Export from src/components/Ideation/PriorityBadge.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
