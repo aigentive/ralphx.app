@@ -632,7 +632,7 @@ const qaPrepProfile = {
       "Write unit tests for MergeWorkflowDialog",
       "Reference specs/plan.md 'Merge Workflow Dialog' section for exact layout"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

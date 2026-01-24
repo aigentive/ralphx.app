@@ -1,14 +1,60 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 08:02:00
+**Last Updated:** 2026-01-25 00:07:08
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 14 / 31
-**Current Task:** Implement Merge Workflow Dialog for post-completion
+**Tasks Completed:** 15 / 31
+**Current Task:** Implement Task Re-run Dialog (Done to Planned)
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:07:08 - Implement Merge Workflow Dialog for post-completion (Task 15)
+
+**What was done:**
+- Created `src/components/projects/MergeWorkflowDialog/` directory with component files
+- Implemented `MergeWorkflowDialog.tsx` modal component with:
+  - Project completion summary showing commit count and branch name
+  - View Diff and View Commits buttons (optional callbacks)
+  - Five radio options for merge workflow:
+    - Merge to main (creates merge commit)
+    - Rebase onto main (linear history)
+    - Create Pull Request (review first)
+    - Keep worktree (merge manually later)
+    - Discard changes (delete worktree and branch) - with destructive styling
+  - Two-step confirmation for destructive discard action
+  - Error message display
+  - Processing state with disabled controls
+  - State reset when dialog reopens
+- Following established patterns from ProjectCreationWizard
+- Using CSS variables for design system consistency (warm orange accent, dark mode)
+- Following exact ASCII layout from specs/plan.md "Merge Workflow Dialog" section
+- Wrote 54 unit tests covering:
+  - Rendering and styling
+  - View buttons (Diff/Commits)
+  - All five merge options
+  - Discard confirmation flow
+  - Confirm flow for each option
+  - Close/cancel functionality
+  - Processing state
+  - Error state
+  - State reset on reopen
+  - Styling (accent colors, error colors)
+  - Accessibility (radio inputs)
+  - Different project types
+
+**Files created:**
+- `src/components/projects/MergeWorkflowDialog/MergeWorkflowDialog.tsx`
+- `src/components/projects/MergeWorkflowDialog/MergeWorkflowDialog.test.tsx`
+- `src/components/projects/MergeWorkflowDialog/index.tsx`
+
+**Commands run:**
+- `npm run test -- --run src/components/projects/MergeWorkflowDialog/` - 54 tests passed
+- `npm run typecheck` - passed
+- `npm test -- --run` - All 3525 tests passed
+
+---
 
 ### 2026-01-25 08:02:00 - Implement Project Creation Wizard with Git Mode selection (Task 14)
 
