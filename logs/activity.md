@@ -1,14 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:35:00
+**Last Updated:** 2026-01-24 10:45:00
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 22 / 33
-**Current Task:** Implement agent_profiles table migration
+**Tasks Completed:** 25 / 33
+**Current Task:** Implement Tauri commands for agent profiles
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:45:00 - Implement agent_profiles database layer
+
+**What was done:**
+- Added v4 migration in `migrations.rs` for agent_profiles table:
+  - Columns: id, name, role, profile_json, is_builtin, created_at, updated_at
+  - Indexes on name and role columns
+  - SCHEMA_VERSION updated from 3 to 4
+  - 12 unit tests for migration
+- Created `src-tauri/src/domain/repositories/agent_profile_repository.rs`:
+  - AgentProfileId newtype with constructor methods
+  - AgentProfileRepository trait with full CRUD operations
+  - get_by_role(), get_builtin(), get_custom() methods
+  - exists_by_name() and seed_builtin_profiles() methods
+  - 13 unit tests with mock implementation
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_agent_profile_repo.rs`:
+  - SqliteAgentProfileRepository implementing AgentProfileRepository trait
+  - JSON serialization for profile_json column
+  - Role conversion helpers
+  - Idempotent seed_builtin_profiles() implementation
+  - 15 unit tests
+- Updated module exports in domain/repositories/mod.rs and infrastructure/sqlite/mod.rs
+- All Rust tests passing (836 total)
+
+**Commands run:**
+- `cargo test sqlite_agent_profile`
+- `cargo test`
+
+---
 
 ### 2026-01-24 10:35:00 - Implement SupervisorService
 

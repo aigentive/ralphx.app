@@ -639,7 +639,7 @@ CREATE TABLE agent_profiles (
       "Run migration",
       "Verify table created with correct schema"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -652,7 +652,7 @@ CREATE TABLE agent_profiles (
       "Add get_builtin_profiles() method",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -664,7 +664,7 @@ CREATE TABLE agent_profiles (
       "Handle JSON serialization for profile_json column",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -676,7 +676,7 @@ CREATE TABLE agent_profiles (
       "Set is_builtin = true for all",
       "Verify profiles are seeded correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

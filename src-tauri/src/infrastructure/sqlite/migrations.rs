@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 3;
+pub const SCHEMA_VERSION: i32 = 4;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -30,6 +30,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 3 {
         migrate_v3(conn)?;
         set_schema_version(conn, 3)?;
+    }
+
+    if current_version < 4 {
+        migrate_v4(conn)?;
+        set_schema_version(conn, 4)?;
     }
 
     Ok(())
@@ -207,6 +212,43 @@ fn migrate_v3(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v4: Create agent_profiles table for storing agent configurations
+///
+/// Agent profiles define how agents behave - their model, execution settings,
+/// skills, and behavioral flags. Built-in profiles are seeded on first run.
+fn migrate_v4(conn: &Connection) -> AppResult<()> {
+    // Agent profiles table
+    conn.execute(
+        "CREATE TABLE agent_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            profile_json TEXT NOT NULL,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on role for filtering profiles by role
+    conn.execute(
+        "CREATE INDEX idx_agent_profiles_role ON agent_profiles(role)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on is_builtin for filtering built-in vs custom profiles
+    conn.execute(
+        "CREATE INDEX idx_agent_profiles_is_builtin ON agent_profiles(is_builtin)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 3);
+        assert_eq!(SCHEMA_VERSION, 4);
     }
 
     #[test]
@@ -291,7 +333,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]
@@ -304,7 +346,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]
@@ -1002,6 +1044,249 @@ mod tests {
             )
             .unwrap();
 
+        assert!(updated_at.is_some());
+    }
+
+    // ==================
+    // V4 Migration Tests: agent_profiles table
+    // ==================
+
+    #[test]
+    fn test_run_migrations_creates_agent_profiles_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify agent_profiles table exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_profiles'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_agent_profiles_table_has_correct_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Try inserting a complete agent profile record
+        let profile_json = r#"{"claude_code":{"agent_definition":"agents/worker.md"}}"#;
+        let result = conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json, is_builtin)
+             VALUES ('prof-1', 'Worker', 'worker', ?1, 1)",
+            [profile_json],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_agent_profiles_name_unique_constraint() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let profile_json = r#"{}"#;
+
+        // First insert should succeed
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-1', 'Worker', 'worker', ?1)",
+            [profile_json],
+        )
+        .unwrap();
+
+        // Duplicate name should fail
+        let result = conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-2', 'Worker', 'worker', ?1)",
+            [profile_json],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_agent_profiles_index_on_role_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_agent_profiles_role'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_agent_profiles_index_on_is_builtin_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_agent_profiles_is_builtin'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_agent_profiles_default_values() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert minimal profile
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-1', 'Worker', 'worker', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Check default values
+        let is_builtin: i32 = conn
+            .query_row(
+                "SELECT is_builtin FROM agent_profiles WHERE id = 'prof-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(is_builtin, 0);
+    }
+
+    #[test]
+    fn test_agent_profiles_stores_json() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert JSON profile
+        let json_data = r#"{"name":"worker","execution":{"model":"sonnet","max_iterations":30},"behavior":{"autonomy_level":"semi_autonomous"}}"#;
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-1', 'Worker', 'worker', ?1)",
+            [json_data],
+        )
+        .unwrap();
+
+        // Read it back
+        let retrieved: String = conn
+            .query_row(
+                "SELECT profile_json FROM agent_profiles WHERE id = 'prof-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(retrieved, json_data);
+    }
+
+    #[test]
+    fn test_agent_profiles_filter_by_role() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert profiles with different roles
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-1', 'Worker', 'worker', '{}')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-2', 'Reviewer', 'reviewer', '{}')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-3', 'Another Worker', 'worker', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Query by role
+        let worker_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM agent_profiles WHERE role = 'worker'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(worker_count, 2);
+    }
+
+    #[test]
+    fn test_agent_profiles_filter_by_is_builtin() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert builtin and custom profiles
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json, is_builtin) VALUES ('prof-1', 'Builtin Worker', 'worker', '{}', 1)",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json, is_builtin) VALUES ('prof-2', 'Custom Worker', 'worker', '{}', 0)",
+            [],
+        )
+        .unwrap();
+
+        // Query builtin profiles
+        let builtin_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM agent_profiles WHERE is_builtin = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(builtin_count, 1);
+
+        // Query custom profiles
+        let custom_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM agent_profiles WHERE is_builtin = 0",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(custom_count, 1);
+    }
+
+    #[test]
+    fn test_agent_profiles_timestamps() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert profile
+        conn.execute(
+            "INSERT INTO agent_profiles (id, name, role, profile_json) VALUES ('prof-1', 'Worker', 'worker', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Check timestamps exist
+        let (created_at, updated_at): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT created_at, updated_at FROM agent_profiles WHERE id = 'prof-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert!(created_at.is_some());
         assert!(updated_at.is_some());
     }
 }
