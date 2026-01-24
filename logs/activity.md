@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:10:00
+**Last Updated:** 2026-01-24 08:15:00
 **Phase:** State Machine
-**Tasks Completed:** 1 / 22
-**Current Task:** Create TaskEvent enum with all transition triggers
+**Tasks Completed:** 2 / 22
+**Current Task:** Create Blocker and QaFailure structs
 
 ---
 
@@ -1799,6 +1799,30 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:15:00 - Create TaskEvent enum with all transition triggers
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/events.rs` with TaskEvent enum
+- Implemented all 13 event variants (14 counting QaTestsComplete outcomes):
+  - User actions: Schedule, Cancel, ForceApprove, Retry, SkipQa
+  - Agent signals: ExecutionComplete, ExecutionFailed, NeedsHumanInput, QaRefinementComplete, QaTestsComplete, ReviewComplete
+  - System signals: BlockersResolved, BlockerDetected
+- Added helper methods: is_user_action(), is_agent_signal(), is_system_signal(), name()
+- Derived Debug, Clone, PartialEq, Eq, Serialize, Deserialize
+- Updated mod.rs to export events module and TaskEvent
+- Wrote 28 comprehensive tests covering all variants, serialization, and categorization
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 338 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/events.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added events module export
 
 ---
 
