@@ -1,14 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 18:15:00
+**Last Updated:** 2026-01-24 16:19:43
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 16 / 50
-**Current Task:** Implement DependencyService for graph analysis
+**Tasks Completed:** 17 / 50
+**Current Task:** Implement IdeationService for orchestrating ideation flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:19:43 - Implement DependencyService for graph analysis
+
+**What was done:**
+- Created `src-tauri/src/application/dependency_service.rs`:
+  - `DependencyService<P, D>` generic struct with repository dependencies
+  - Constructor `new()` with `Arc<P>` and `Arc<D>` parameters
+  - Implements all dependency analysis methods:
+    - `build_graph()` - Builds DependencyGraph from proposals and dependencies
+    - `build_graph_from_data()` - Builds graph from provided data (useful for testing)
+    - `detect_cycles()` - DFS-based cycle detection algorithm
+    - `detect_cycles_internal()` - Internal helper for cycle detection
+    - `dfs_detect_cycle()` - DFS helper for finding cycles
+    - `find_critical_path()` - Topological sort + longest path DP algorithm
+    - `find_critical_path_internal()` - Internal critical path calculation
+    - `suggest_dependencies()` - Heuristic-based dependency suggestions (stub for AI)
+    - `validate_no_cycles()` - Validates selection has no circular dependencies
+    - `validate_dependency()` - Validates adding a dependency won't create cycle
+    - `analyze_dependencies()` - Returns full DependencyAnalysis with roots, leaves, blockers
+  - `ValidationResult` struct for cycle validation results
+  - `DependencyAnalysis` struct for complete dependency analysis
+- Updated `application/mod.rs` with module declaration and re-exports
+- Added 29 comprehensive unit tests:
+  - Build graph tests: empty, single, linear chain, parallel tasks, diamond pattern
+  - Detect cycles tests: no cycles, simple cycle, three-node cycle, graph detection
+  - Find critical path tests: empty, single node, linear chain, branches, cycle returns empty
+  - Suggest dependencies tests: empty, setup before feature, test after feature
+  - Validate no cycles tests: empty, valid selection, invalid selection
+  - Validate dependency tests: self-reference, would create cycle, valid
+  - Analyze dependencies tests: empty, identifies roots, leaves, blockers
+  - Integration tests: full workflow, validation result formatting
+
+**Commands run:**
+- `cargo test --lib dependency_service::` (29 tests passed)
+- `cargo test --lib` (1966 tests passed)
+
+---
 
 ### 2026-01-24 18:15:00 - Implement PriorityService for priority calculation
 

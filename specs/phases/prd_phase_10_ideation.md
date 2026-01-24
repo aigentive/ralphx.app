@@ -811,7 +811,7 @@ All tasks require:
       "Implement suggest_dependencies() - AI-based inference (stub for now)",
       "Implement validate_no_cycles() for apply validation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
