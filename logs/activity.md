@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:39:12
+**Last Updated:** 2026-01-24 07:41:08
 **Phase:** Data Layer
-**Tasks Completed:** 12 / 20
-**Current Task:** Implement SqliteTaskRepository status operations
+**Tasks Completed:** 14 / 20
+**Current Task:** Implement SqliteProjectRepository
 
 ---
 
@@ -1455,6 +1455,32 @@ Phase 1: Foundation (no dependencies)
 - `src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs` - new file
 - `src-tauri/src/infrastructure/sqlite/mod.rs` - added module export
 - `src-tauri/src/domain/entities/task.rs` - made parse_datetime public
+
+---
+
+### 2026-01-24 07:41:08 - Complete SqliteTaskRepository status and blocker operations
+
+**What was done:**
+- Added comprehensive tests for status operations:
+  - test_persist_status_change_updates_task_status
+  - test_persist_status_change_creates_history_record
+  - test_status_change_and_history_are_atomic
+  - test_get_status_history_returns_transitions_in_order
+  - test_get_status_history_returns_empty_for_no_transitions
+  - test_get_by_status_filters_correctly
+  - test_get_by_status_returns_empty_for_no_matches
+- Added comprehensive tests for blocker operations:
+  - test_add_blocker_creates_relationship
+  - test_resolve_blocker_removes_relationship
+  - test_get_blockers_returns_blocking_tasks
+  - test_get_dependents_returns_dependent_tasks
+  - test_get_next_executable_excludes_blocked_tasks
+  - test_get_next_executable_returns_highest_priority_ready
+  - test_get_next_executable_returns_none_when_no_ready_tasks
+- All 274 tests pass (14 new tests)
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs` - added 14 status/blocker tests
 
 ---
 
