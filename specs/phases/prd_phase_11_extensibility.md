@@ -937,7 +937,7 @@ All tasks require tests written before implementation:
       "Implement MethodologyTemplate struct for document templates",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:00:00
+**Last Updated:** 2026-01-24 21:20:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 16 / 63
-**Current Task:** Implement MethodologyExtension Rust types
+**Tasks Completed:** 17 / 63
+**Current Task:** Implement MethodologyRepository trait and SQLite implementation
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:20:00 - Implement MethodologyExtension Rust types (Task 17)
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/methodology.rs`
+- Implemented `MethodologyId` newtype with UUID generation and serialization
+- Implemented `MethodologyExtension` struct with:
+  - id, name, description fields
+  - agent_profiles (list of profile IDs)
+  - skills (paths to skill directories)
+  - workflow (WorkflowSchema)
+  - phases (MethodologyPhase list)
+  - templates (MethodologyTemplate list)
+  - hooks_config (optional JSON value)
+  - is_active flag, created_at timestamp
+  - Builder methods for fluent API
+  - Helper methods: phase_count(), agent_count(), sorted_phases(), phase_at_order()
+- Implemented `MethodologyPhase` struct with:
+  - id, name, order fields
+  - agent_profiles for phase-specific agents
+  - description, column_ids for workflow integration
+  - Builder methods for fluent construction
+- Implemented `MethodologyTemplate` struct with:
+  - artifact_type, template_path fields
+  - Optional name and description
+  - Builder methods for fluent construction
+- Implemented `MethodologyStatus` enum (Available, Active, Disabled)
+  - FromStr, Display, serde traits
+  - as_str() method, all() accessor
+- Exported all types from `domain/entities/mod.rs`
+- Added 47 unit tests covering all types, serialization, and builder patterns
+
+**Commands run:**
+- `cargo test domain::entities::methodology --no-fail-fast` (47 tests passed)
+
+---
 
 ### 2026-01-24 21:00:00 - Implement ProcessRepository trait and SQLite implementation (Task 16)
 

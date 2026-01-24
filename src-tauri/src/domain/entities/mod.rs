@@ -4,6 +4,7 @@
 pub mod artifact;
 pub mod artifact_flow;
 pub mod ideation;
+pub mod methodology;
 pub mod research;
 pub mod project;
 pub mod review;
@@ -52,4 +53,8 @@ pub use research::{
     CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchBrief,
     ResearchDepth, ResearchDepthPreset, ResearchOutput, ResearchPresets, ResearchProcess,
     ResearchProcessId, ResearchProcessStatus, ResearchProgress, RESEARCH_PRESETS,
+};
+pub use methodology::{
+    MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyStatus, MethodologyTemplate,
+    ParseMethodologyStatusError,
 };
