@@ -1,14 +1,53 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 02:35:00
+**Last Updated:** 2026-01-25 03:05:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 5 / 18
-**Current Task:** Design requirements for Activity Stream View
+**Tasks Completed:** 6 / 18
+**Current Task:** Design requirements for Extensibility View (4 tabs)
 
 ---
 
 ## Session Log
+
+### 2026-01-25 03:05:00 - Design requirements for Activity Stream View (Task 6)
+
+**What was done:**
+- Created comprehensive Activity Stream design requirements in specs/design/pages/activity-stream.md
+- Documented overall layout with viewport-filling height and subtle warm radial gradient
+- Specified glass-effect header with Activity icon, alert badge, and Clear button
+- Designed search and filter bar with shadcn Input and custom pill-style filter tabs
+- Defined five activity entry types with distinct visual treatments:
+  - Thinking: Brain icon (animated pulse), muted left border, gray tint
+  - Tool Call: Terminal icon, orange left border, orange tint
+  - Tool Result: CheckCircle icon, green left border, green tint
+  - Text: MessageSquare icon, secondary left border, subtle tint
+  - Error: AlertCircle icon, red left border, red tint
+- Created expandable entry design with chevron rotation, metadata details, and copy button
+- Specified JSON syntax highlighting colors for expanded details
+- Designed empty state with dashed Activity icon
+- Documented auto-scroll behavior with manual override and "Scroll to latest" banner
+- Added thinking pulse animation CSS
+- Listed all Lucide icons used (Activity, Brain, Terminal, CheckCircle, MessageSquare, AlertCircle, Search, X, Copy, Check, ChevronDown, Trash2)
+- Created full component hierarchy diagram
+- Defined 20 acceptance criteria for functional requirements
+- Created 20-item design quality checklist
+
+**Design Highlights:**
+- Terminal/console aesthetic with warmth of RalphX design language
+- Type-specific left border colors and background tints
+- Tool name badges in monospace font
+- Expandable entries with smooth chevron rotation
+- Copy button with visual feedback (Check icon on success)
+- Auto-scroll with manual override detection (50px threshold)
+- Thinking icon pulse animation (1.5s ease-in-out)
+- Glass effect header with backdrop-blur
+
+**Files modified:**
+- `specs/design/pages/activity-stream.md` (complete rewrite with full design requirements)
+- `specs/phases/prd_phase_13_design.md` (marked task 6 as passes: true)
+
+---
 
 ### 2026-01-25 02:35:00 - Design requirements for Settings View (Task 5)
 
