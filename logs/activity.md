@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 12:00:00
+**Last Updated:** 2026-01-24 12:15:00
 **Phase:** Foundation
-**Tasks Completed:** 0 / 19
-**Current Task:** Set up agent-browser for visual verification
+**Tasks Completed:** 1 / 19
+**Current Task:** Update Claude Code settings for agent-browser permissions
 
 ---
 
@@ -764,6 +764,22 @@ Phase 1: Foundation (no dependencies)
 - ✅ 65 atomic tasks with TDD requirements
 - ✅ Anti-AI-slop guardrails documented
 - ✅ File size limits specified (100 lines components, 150 lines stores)
+
+---
+
+### 2026-01-24 12:15:00 - Set up agent-browser for visual verification
+
+**What was done:**
+- Verified agent-browser already installed globally (version 0.7.5)
+- Created `.claude/skills/agent-browser/` directory
+- Created `.claude/skills/agent-browser/SKILL.md` with exact content from specs/plan.md lines 3444-3502
+- Created `screenshots/` directory with `.gitkeep`
+
+**Commands run:**
+- `which agent-browser` → `/opt/homebrew/bin/agent-browser`
+- `agent-browser --version` → `agent-browser 0.7.5`
+- `mkdir -p .claude/skills/agent-browser`
+- `mkdir -p screenshots && touch screenshots/.gitkeep`
 
 ---
 
