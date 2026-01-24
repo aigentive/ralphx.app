@@ -586,6 +586,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Implement Project Creation Wizard with Git Mode selection",
     "steps": [
+      "Use /frontend-design skill to create a polished, professional wizard modal",
       "Create src/components/projects/ProjectCreationWizard.tsx modal",
       "Add project name input field",
       "Add folder picker with Browse button (Tauri dialog)",
@@ -602,6 +603,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Implement Merge Workflow Dialog for post-completion",
     "steps": [
+      "Use /frontend-design skill to create a polished, professional dialog",
       "Create src/components/projects/MergeWorkflowDialog.tsx modal",
       "Show project completion summary (commit count, branch name)",
       "Add View Diff and View Commits buttons",
@@ -617,6 +619,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Implement Task Re-run Dialog (Done to Planned)",
     "steps": [
+      "Use /frontend-design skill to create a polished, professional dialog",
       "Create src/components/tasks/TaskRerunDialog.tsx modal",
       "Show task info and associated commit SHA",
       "Add radio options: Keep changes (recommended), Revert commit, Create new task",
@@ -632,6 +635,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Implement Diff Viewer component with Changes and History tabs",
     "steps": [
+      "Use /frontend-design skill to create a polished, professional diff viewer",
       "Install @git-diff-view/react library",
       "Create src/components/diff/DiffViewer.tsx component",
       "Add Tab 1: Changes - real-time uncommitted modifications view",
@@ -650,6 +654,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Implement Screenshot Gallery/Lightbox for QA panel",
     "steps": [
+      "Use /frontend-design skill to create a polished, professional gallery",
       "Create src/components/qa/ScreenshotGallery.tsx component",
       "Display thumbnail grid of captured screenshots",
       "Implement lightbox modal for full-size view",
@@ -664,6 +669,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Integrate Diff Viewer into Reviews Panel",
     "steps": [
+      "Use /frontend-design skill for polished integration styling",
       "Update ReviewsPanel.tsx to include DiffViewer",
       "Add Changes/History tabs to review detail view",
       "Connect to git backend for real-time diff data",
@@ -676,6 +682,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Replace hardcoded Project Selector with functional component",
     "steps": [
+      "Use /frontend-design skill to create a polished dropdown selector",
       "Update App.tsx header to use ProjectSelector component",
       "Create src/components/projects/ProjectSelector.tsx dropdown",
       "Show current project with git mode indicator",
@@ -690,6 +697,7 @@ const qaPrepProfile = {
     "category": "ui-gaps",
     "description": "Add Activity and Settings navigation to app layout",
     "steps": [
+      "Use /frontend-design skill for polished navigation styling",
       "Update App.tsx to include Activity view in navigation",
       "Update App.tsx to include Settings view in navigation",
       "Add keyboard shortcuts: Cmd+4 for Activity, Cmd+5 for Settings",
@@ -707,7 +715,7 @@ const qaPrepProfile = {
       "Capture screenshots of: sidebar with project list, project selector dropdown, worktree status indicator",
       "Test navigation between views (Kanban, Ideation, Activity, Settings, Extensibility)",
       "Test keyboard shortcuts Cmd+1 through Cmd+5",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -746,7 +754,7 @@ const qaPrepProfile = {
       "Capture screenshots of: activity view overview, expanded tool call, search/filter UI",
       "Test scrolling behavior with many activity entries",
       "Test expand/collapse of tool call details",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -786,7 +794,7 @@ const qaPrepProfile = {
       "Capture screenshots of: settings overview, each section (Execution, Model, Review, Supervisor)",
       "Test form interactions (toggles, dropdowns, number inputs)",
       "Verify profile management UI",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -827,7 +835,7 @@ const qaPrepProfile = {
       "Capture screenshots of: Project Creation Wizard, Git Mode selection, Merge Workflow Dialog",
       "Test folder picker interaction (Tauri dialog)",
       "Test radio button selection for Git Mode and Merge options",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -870,7 +878,7 @@ const qaPrepProfile = {
       "Capture screenshots of: dialog with all three options, warning state for revert",
       "Test radio button selection between options",
       "Verify warning displays when dependent commits exist",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -910,7 +918,7 @@ const qaPrepProfile = {
       "Test tab switching between Changes and History",
       "Test file selection in tree view",
       "Test collapse/expand of diff hunks",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -955,7 +963,7 @@ const qaPrepProfile = {
       "Test clicking thumbnail to open lightbox",
       "Test navigation between screenshots in lightbox",
       "Test expected vs actual comparison view",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -994,7 +1002,7 @@ const qaPrepProfile = {
     "steps": [
       "Use /agent-browser skill to visually verify the Kanban board",
       "Capture screenshots of: board overview, individual task cards, drag-drop interaction",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -1039,7 +1047,7 @@ const qaPrepProfile = {
     "steps": [
       "Use /agent-browser skill to visually verify QA components",
       "Capture screenshots of: QA badge, detail panel, acceptance criteria tab, test results tab, settings panel",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -1083,7 +1091,7 @@ const qaPrepProfile = {
     "steps": [
       "Use /agent-browser skill to visually verify Review and Supervisor components",
       "Capture screenshots of: review panel, supervisor dashboard, human approval UI",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
@@ -1129,7 +1137,7 @@ const qaPrepProfile = {
     "steps": [
       "Use /agent-browser skill to visually verify Ideation components",
       "Capture screenshots of: ideation view, chat panel, chat input, proposal list, priority badges",
-      "Fix any visual issues identified during verification",
+      "Use /frontend-design skill to fix any visual issues identified during verification",
       "Run npm run lint and npm run typecheck after fixes",
       "Document findings and fixes in activity.md"
     ],
