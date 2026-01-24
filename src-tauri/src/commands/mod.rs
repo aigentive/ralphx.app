@@ -25,7 +25,8 @@ pub use qa_commands::{
     get_qa_results, get_qa_settings, get_task_qa, retry_qa, skip_qa, update_qa_settings,
 };
 pub use review_commands::{
-    approve_review, get_pending_reviews, get_review_by_id, get_reviews_by_task_id,
-    get_task_state_history, reject_review, request_changes,
+    approve_fix_task, approve_review, get_fix_task_attempts, get_pending_reviews,
+    get_review_by_id, get_reviews_by_task_id, get_task_state_history, reject_fix_task,
+    reject_review, request_changes,
 };
 pub use task_commands::{answer_user_question, create_task, delete_task, get_task, inject_task, list_tasks, update_task};

@@ -1124,7 +1124,7 @@ interface AskUserQuestionResponse {
       "Verify all public APIs are exported",
       "Run cargo build to verify"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
