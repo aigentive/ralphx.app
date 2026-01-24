@@ -4,14 +4,22 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import type { Task } from "@/types/task";
-import { StatusBadge, type ReviewStatus, type QAStatus } from "@/components/ui/StatusBadge";
+import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
+import { TaskQABadge } from "@/components/qa/TaskQABadge";
+import type { QAPrepStatus } from "@/types/qa-config";
+import type { QAOverallStatus } from "@/types/qa";
 
 interface TaskCardProps {
   task: Task;
   onSelect?: (taskId: string) => void;
   isDragging?: boolean;
   reviewStatus?: ReviewStatus;
-  qaStatus?: QAStatus;
+  /** Whether this task needs QA */
+  needsQA?: boolean;
+  /** QA prep status */
+  prepStatus?: QAPrepStatus;
+  /** Overall QA test status */
+  testStatus?: QAOverallStatus;
   hasCheckpoint?: boolean;
 }
 
@@ -35,8 +43,24 @@ function CheckpointIndicator() {
   );
 }
 
-export function TaskCard({ task, onSelect, isDragging, reviewStatus, qaStatus, hasCheckpoint }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onSelect,
+  isDragging,
+  reviewStatus,
+  needsQA,
+  prepStatus,
+  testStatus,
+  hasCheckpoint,
+}: TaskCardProps) {
   const { attributes, listeners, setNodeRef } = useDraggable({ id: task.id });
+
+  // Build QA badge props conditionally to satisfy exactOptionalPropertyTypes
+  const qaBadgeProps = {
+    needsQA: needsQA ?? false,
+    ...(prepStatus !== undefined && { prepStatus }),
+    ...(testStatus !== undefined && { testStatus }),
+  };
 
   return (
     <div
@@ -62,7 +86,7 @@ export function TaskCard({ task, onSelect, isDragging, reviewStatus, qaStatus, h
               P{task.priority}
             </span>
             {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}
-            {qaStatus && <StatusBadge type="qa" status={qaStatus} />}
+            <TaskQABadge {...qaBadgeProps} />
             {hasCheckpoint && <CheckpointIndicator />}
           </div>
         </div>

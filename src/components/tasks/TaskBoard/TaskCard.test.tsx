@@ -7,6 +7,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
 import { createMockTask } from "@/test/mock-data";
 import { TaskCard } from "./TaskCard";
+import type { QAPrepStatus } from "@/types/qa-config";
+import type { QAOverallStatus } from "@/types/qa";
 
 // Wrapper component for dnd-kit context
 function DndWrapper({ children }: { children: React.ReactNode }) {
@@ -63,18 +65,94 @@ describe("TaskCard", () => {
       expect(screen.queryByText("AI Approved")).not.toBeInTheDocument();
     });
 
-    it("should render QA status badge when qaStatus is provided", () => {
+    it("should render checkpoint indicator when hasCheckpoint is true", () => {
       const task = createMockTask();
-      render(<TaskCard task={task} qaStatus="testing" />, {
+      render(<TaskCard task={task} hasCheckpoint />, { wrapper: DndWrapper });
+      expect(screen.getByTestId("checkpoint-indicator")).toBeInTheDocument();
+    });
+  });
+
+  describe("QA badge", () => {
+    it("should render QA badge when needsQA is true", () => {
+      const task = createMockTask();
+      render(<TaskCard task={task} needsQA />, { wrapper: DndWrapper });
+      expect(screen.getByTestId("task-qa-badge")).toBeInTheDocument();
+    });
+
+    it("should not render QA badge when needsQA is false", () => {
+      const task = createMockTask();
+      render(<TaskCard task={task} needsQA={false} />, { wrapper: DndWrapper });
+      expect(screen.queryByTestId("task-qa-badge")).not.toBeInTheDocument();
+    });
+
+    it("should not render QA badge when needsQA is not provided", () => {
+      const task = createMockTask();
+      render(<TaskCard task={task} />, { wrapper: DndWrapper });
+      expect(screen.queryByTestId("task-qa-badge")).not.toBeInTheDocument();
+    });
+
+    it("should show pending status when no prep or test status", () => {
+      const task = createMockTask();
+      render(<TaskCard task={task} needsQA />, { wrapper: DndWrapper });
+      expect(screen.getByText("QA Pending")).toBeInTheDocument();
+    });
+
+    it("should show preparing status when prep is running", () => {
+      const task = createMockTask();
+      const prepStatus: QAPrepStatus = "running";
+      render(<TaskCard task={task} needsQA prepStatus={prepStatus} />, {
+        wrapper: DndWrapper,
+      });
+      expect(screen.getByText("Preparing")).toBeInTheDocument();
+    });
+
+    it("should show ready status when prep is completed", () => {
+      const task = createMockTask();
+      const prepStatus: QAPrepStatus = "completed";
+      render(<TaskCard task={task} needsQA prepStatus={prepStatus} />, {
+        wrapper: DndWrapper,
+      });
+      expect(screen.getByText("QA Ready")).toBeInTheDocument();
+    });
+
+    it("should show testing status when test is running", () => {
+      const task = createMockTask();
+      const testStatus: QAOverallStatus = "running";
+      render(<TaskCard task={task} needsQA testStatus={testStatus} />, {
         wrapper: DndWrapper,
       });
       expect(screen.getByText("Testing")).toBeInTheDocument();
     });
 
-    it("should render checkpoint indicator when hasCheckpoint is true", () => {
+    it("should show passed status when test is passed", () => {
       const task = createMockTask();
-      render(<TaskCard task={task} hasCheckpoint />, { wrapper: DndWrapper });
-      expect(screen.getByTestId("checkpoint-indicator")).toBeInTheDocument();
+      const testStatus: QAOverallStatus = "passed";
+      render(<TaskCard task={task} needsQA testStatus={testStatus} />, {
+        wrapper: DndWrapper,
+      });
+      expect(screen.getByText("Passed")).toBeInTheDocument();
+    });
+
+    it("should show failed status when test is failed", () => {
+      const task = createMockTask();
+      const testStatus: QAOverallStatus = "failed";
+      render(<TaskCard task={task} needsQA testStatus={testStatus} />, {
+        wrapper: DndWrapper,
+      });
+      expect(screen.getByText("Failed")).toBeInTheDocument();
+    });
+
+    it("should prioritize test status over prep status", () => {
+      const task = createMockTask();
+      const prepStatus: QAPrepStatus = "running";
+      const testStatus: QAOverallStatus = "passed";
+      render(
+        <TaskCard task={task} needsQA prepStatus={prepStatus} testStatus={testStatus} />,
+        { wrapper: DndWrapper }
+      );
+      // Test status should take precedence
+      expect(screen.getByText("Passed")).toBeInTheDocument();
+      expect(screen.queryByText("Preparing")).not.toBeInTheDocument();
     });
   });
 
