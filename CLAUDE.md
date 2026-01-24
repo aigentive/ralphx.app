@@ -146,6 +146,7 @@ For detailed context on tech stack, patterns, and conventions, see the dedicated
 |------|----------|
 | [`src/CLAUDE.md`](src/CLAUDE.md) | **Frontend** - React 19, TypeScript 5.8, Zustand stores, TanStack Query, Tailwind CSS, component patterns, testing with Vitest |
 | [`src-tauri/CLAUDE.md`](src-tauri/CLAUDE.md) | **Backend** - Rust, Tauri 2.0, SQLite, clean architecture, repository pattern, newtype IDs, state machine, agent system |
+| [`specs/DESIGN.md`](specs/DESIGN.md) | **Design System** - Color tokens, typography, spacing, shadows, component patterns, anti-AI-slop guardrails, page-specific requirements |
 
 These files contain:
 - Complete tech stack with versions
@@ -153,6 +154,22 @@ These files contain:
 - Key patterns with code examples
 - Coding standards and conventions
 - Testing approaches and commands
+
+---
+
+## Design System
+
+**All UI work must follow `specs/DESIGN.md`** - the definitive design guide for RalphX.
+
+Key principles:
+- **Warm orange accent** (`#ff6b35`) - NOT purple/blue gradients
+- **SF Pro font** - NOT Inter
+- **Layered shadows** for depth - NOT flat surfaces
+- **5% accent rule** - use sparingly for maximum impact
+- **Use shadcn/ui** components from `src/components/ui/`
+- **Use Lucide icons** - NOT inline SVGs
+
+Read `specs/DESIGN.md` before any UI task.
 
 ---
 
