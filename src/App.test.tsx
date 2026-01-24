@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useQueryClient } from "@tanstack/react-query";
 import App from "./App";
 import { useUiStore } from "@/stores/uiStore";
@@ -23,6 +24,41 @@ vi.mock("@/components/tasks/TaskBoard", () => ({
 // Mock IdeationView to avoid complex ideation state issues
 vi.mock("@/components/Ideation", () => ({
   IdeationView: () => <div data-testid="ideation-view-mock">Ideation View</div>,
+}));
+
+// Mock ExtensibilityView
+vi.mock("@/components/ExtensibilityView", () => ({
+  ExtensibilityView: () => <div data-testid="extensibility-view-mock">Extensibility View</div>,
+}));
+
+// Mock ActivityView
+vi.mock("@/components/activity", () => ({
+  ActivityView: ({ showHeader }: { showHeader?: boolean }) => (
+    <div data-testid="activity-view-mock">Activity View {showHeader && "(with header)"}</div>
+  ),
+}));
+
+// Mock SettingsView
+vi.mock("@/components/settings", () => ({
+  SettingsView: () => <div data-testid="settings-view-mock">Settings View</div>,
+}));
+
+// Mock ProjectSelector
+vi.mock("@/components/projects/ProjectSelector", () => ({
+  ProjectSelector: ({ onNewProject }: { onNewProject?: () => void }) => (
+    <button
+      data-testid="project-selector-mock"
+      onClick={onNewProject}
+      aria-label="Select project"
+    >
+      Demo Project
+    </button>
+  ),
+}));
+
+// Mock ProjectCreationWizard
+vi.mock("@/components/projects/ProjectCreationWizard", () => ({
+  ProjectCreationWizard: () => null,
 }));
 
 // Mock ideation hooks
@@ -124,9 +160,10 @@ describe("App", () => {
     expect(screen.getByText(/RalphX/i)).toBeInTheDocument();
   });
 
-  it("should display project name", () => {
+  it("should display project selector", () => {
     render(<App />);
-    expect(screen.getByText(/Demo Project/i)).toBeInTheDocument();
+    // ProjectSelector is mocked, check for the mock element
+    expect(screen.getByTestId("project-selector-mock")).toBeInTheDocument();
   });
 
   it("should have main element with flex layout", () => {
@@ -159,5 +196,173 @@ describe("App", () => {
     render(<App />);
     // If App renders successfully with QueryClientProvider, queries should work
     expect(document.body).toBeDefined();
+  });
+
+  describe("View Navigation", () => {
+    it("should render all navigation buttons", () => {
+      render(<App />);
+      expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();
+      expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
+      expect(screen.getByTestId("nav-extensibility")).toBeInTheDocument();
+      expect(screen.getByTestId("nav-activity")).toBeInTheDocument();
+      expect(screen.getByTestId("nav-settings")).toBeInTheDocument();
+    });
+
+    it("should have correct titles with keyboard shortcuts", () => {
+      render(<App />);
+      expect(screen.getByTestId("nav-kanban")).toHaveAttribute("title", "Kanban (⌘1)");
+      expect(screen.getByTestId("nav-ideation")).toHaveAttribute("title", "Ideation (⌘2)");
+      expect(screen.getByTestId("nav-extensibility")).toHaveAttribute("title", "Extensibility (⌘3)");
+      expect(screen.getByTestId("nav-activity")).toHaveAttribute("title", "Activity (⌘4)");
+      expect(screen.getByTestId("nav-settings")).toHaveAttribute("title", "Settings (⌘5)");
+    });
+
+    it("should start with Kanban view active", () => {
+      render(<App />);
+      expect(screen.getByTestId("nav-kanban")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+    });
+
+    it("should switch to Ideation view when clicked", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await user.click(screen.getByTestId("nav-ideation"));
+
+      expect(screen.getByTestId("nav-ideation")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("ideation-view-mock")).toBeInTheDocument();
+      expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
+    });
+
+    it("should switch to Extensibility view when clicked", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await user.click(screen.getByTestId("nav-extensibility"));
+
+      expect(screen.getByTestId("nav-extensibility")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("extensibility-view-mock")).toBeInTheDocument();
+      expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
+    });
+
+    it("should switch to Activity view when clicked", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await user.click(screen.getByTestId("nav-activity"));
+
+      expect(screen.getByTestId("nav-activity")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("activity-view-mock")).toBeInTheDocument();
+      expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
+    });
+
+    it("should switch to Settings view when clicked", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await user.click(screen.getByTestId("nav-settings"));
+
+      expect(screen.getByTestId("nav-settings")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("settings-view-mock")).toBeInTheDocument();
+      expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
+    });
+
+    it("should switch views correctly multiple times", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      // Start on Kanban
+      expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+
+      // Go to Activity
+      await user.click(screen.getByTestId("nav-activity"));
+      expect(screen.getByTestId("activity-view-mock")).toBeInTheDocument();
+
+      // Go to Settings
+      await user.click(screen.getByTestId("nav-settings"));
+      expect(screen.getByTestId("settings-view-mock")).toBeInTheDocument();
+
+      // Go back to Kanban
+      await user.click(screen.getByTestId("nav-kanban"));
+      expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
+    });
+
+    it("should remove aria-current from previous nav when switching", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      // Kanban is active initially
+      expect(screen.getByTestId("nav-kanban")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("nav-activity")).not.toHaveAttribute("aria-current");
+
+      // Switch to Activity
+      await user.click(screen.getByTestId("nav-activity"));
+
+      // Activity is now active, Kanban is not
+      expect(screen.getByTestId("nav-activity")).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTestId("nav-kanban")).not.toHaveAttribute("aria-current");
+    });
+  });
+
+  describe("Keyboard Shortcuts", () => {
+    it("should switch to Kanban with Cmd+1", () => {
+      render(<App />);
+      // First switch away from Kanban
+      useUiStore.setState({ currentView: "activity" });
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "1", metaKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+
+    it("should switch to Ideation with Cmd+2", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "2", metaKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("ideation");
+    });
+
+    it("should switch to Extensibility with Cmd+3", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "3", metaKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("extensibility");
+    });
+
+    it("should switch to Activity with Cmd+4", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "4", metaKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("activity");
+    });
+
+    it("should switch to Settings with Cmd+5", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "5", metaKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("settings");
+    });
+
+    it("should work with Ctrl key (for non-Mac)", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "4", ctrlKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("activity");
+    });
+
+    it("should not switch views when pressing number without modifier", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "4" });
+
+      // Should still be on kanban (default)
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
   });
 });

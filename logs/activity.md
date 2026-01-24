@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:48:00
+**Last Updated:** 2026-01-25 00:55:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 20 / 31
-**Current Task:** Add Activity and Settings navigation to app layout
+**Tasks Completed:** 21 / 31
+**Current Task:** Visual verification of Project Sidebar and Navigation
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:55:00 - Add Activity and Settings navigation to app layout (Task 21)
+
+**What was done:**
+- Added Activity and Settings navigation buttons to the main app navigation bar
+- Created ActivityIcon (pulse/heartbeat style) and SettingsIcon (sliders style) components
+- Added keyboard shortcuts: Cmd+4 for Activity, Cmd+5 for Settings
+- Integrated ActivityView and SettingsView components into the main content area
+- Updated App.tsx to render the correct view based on currentView state
+- ViewType already included 'activity' and 'settings' in the type definition (src/types/chat.ts)
+- View switching and state preservation work correctly through uiStore
+
+**Files modified:**
+- `src/App.tsx` (added navigation buttons, keyboard shortcuts, view rendering, icons, imports)
+- `src/App.test.tsx` (added 16 new navigation integration tests, updated existing test for ProjectSelector)
+
+**Tests added:**
+- View Navigation tests (8 tests): render all nav buttons, correct titles with shortcuts, view switching via clicks
+- Keyboard Shortcuts tests (7 tests): Cmd+1 through Cmd+5 switch views correctly, Ctrl key works, no switch without modifier
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test:run -- src/App.test.tsx` (23 tests passed)
+- `npm run test:run` (3767 tests passed)
+
+---
 
 ### 2026-01-25 00:48:00 - Replace hardcoded Project Selector with functional component (Task 20)
 
