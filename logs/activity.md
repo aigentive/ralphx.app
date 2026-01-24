@@ -1,14 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:25:00
-**Phase:** Phase 8 (QA System)
-**Tasks Completed:** 33 / 33
-**Current Task:** All tasks complete - Phase 8 finished
+**Last Updated:** 2026-01-24 16:00:00
+**Phase:** Phase 9 (Review & Supervision)
+**Tasks Completed:** 1 / 51
+**Current Task:** Create review_actions table migration
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:00:00 - Create reviews table migration
+
+**What was done:**
+- Added migration v7 for the reviews table in `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- Created reviews table with columns: id, project_id, task_id, reviewer_type, status, notes, created_at, completed_at
+- Added indexes on task_id, project_id, and status for efficient queries
+- Default status is 'pending', created_at defaults to CURRENT_TIMESTAMP
+- Added CASCADE DELETE on task_id foreign key
+- Added 14 integration tests covering:
+  - Table existence and column verification
+  - All three indexes exist
+  - Default status is pending
+  - Cascade delete behavior
+  - All reviewer types (ai, human)
+  - All statuses (pending, approved, changes_requested, rejected)
+  - Nullable columns (notes, completed_at)
+  - Multiple reviews per task
+  - Filter by status queries
+
+**Commands run:**
+- `cargo test migrations --no-default-features -- --test-threads=1`
+
+---
 
 ### 2026-01-24 15:25:00 - Visual verification of QA UI components
 
