@@ -753,7 +753,7 @@ All tasks require TDD:
       "Wire to qaStore for state management",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
