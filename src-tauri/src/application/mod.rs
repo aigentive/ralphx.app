@@ -5,6 +5,7 @@ pub mod app_state;
 pub mod apply_service;
 pub mod dependency_service;
 pub mod ideation_service;
+pub mod orchestrator_service;
 pub mod priority_service;
 pub mod qa_service;
 pub mod review_service;
@@ -23,3 +24,7 @@ pub use priority_service::PriorityService;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
+pub use orchestrator_service::{
+    ClaudeOrchestratorService, MockOrchestratorService, OrchestratorError, OrchestratorEvent,
+    OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
+};

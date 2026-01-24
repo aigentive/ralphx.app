@@ -561,9 +561,11 @@ describe("chatApi namespace", () => {
     expect(chatApi.deleteMessage).toBe(deleteChatMessage);
     expect(chatApi.deleteSessionMessages).toBe(deleteSessionMessages);
     expect(chatApi.countSessionMessages).toBe(countSessionMessages);
+    expect(chatApi.sendOrchestratorMessage).toBeDefined();
+    expect(chatApi.isOrchestratorAvailable).toBeDefined();
   });
 
-  it("should have 9 functions", () => {
-    expect(Object.keys(chatApi)).toHaveLength(9);
+  it("should have 11 functions", () => {
+    expect(Object.keys(chatApi)).toHaveLength(11);
   });
 });

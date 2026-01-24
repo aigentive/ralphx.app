@@ -109,7 +109,10 @@ pub fn run() {
             commands::ideation_commands::get_task_messages,
             commands::ideation_commands::delete_chat_message,
             commands::ideation_commands::delete_session_messages,
-            commands::ideation_commands::count_session_messages
+            commands::ideation_commands::count_session_messages,
+            // Orchestrator commands
+            commands::ideation_commands::send_orchestrator_message,
+            commands::ideation_commands::is_orchestrator_available
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -271,6 +271,114 @@ export async function countSessionMessages(sessionId: string): Promise<number> {
 }
 
 // ============================================================================
+// Orchestrator API Functions
+// ============================================================================
+
+/**
+ * Response from a tool call
+ */
+export interface ToolCallResultResponse {
+  toolName: string;
+  success: boolean;
+  result: unknown | null;
+  error: string | null;
+}
+
+/**
+ * Response from the orchestrator
+ */
+export interface OrchestratorMessageResponse {
+  responseText: string;
+  proposalsCreated: Array<{
+    id: string;
+    sessionId: string;
+    title: string;
+    description: string | null;
+    category: string;
+    suggestedPriority: string;
+    priorityScore: number;
+    priorityReason: string | null;
+  }>;
+  toolCalls: ToolCallResultResponse[];
+}
+
+const OrchestratorResponseSchema = z.object({
+  response_text: z.string(),
+  proposals_created: z.array(z.object({
+    id: z.string(),
+    session_id: z.string(),
+    title: z.string(),
+    description: z.string().nullable(),
+    category: z.string(),
+    suggested_priority: z.string(),
+    priority_score: z.number(),
+    priority_reason: z.string().nullable(),
+    priority_factors: z.unknown().nullable(),
+    estimated_complexity: z.string(),
+    user_priority: z.string().nullable(),
+    user_modified: z.boolean(),
+    status: z.string(),
+    selected: z.boolean(),
+    created_task_id: z.string().nullable(),
+    sort_order: z.number(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  })),
+  tool_calls: z.array(z.object({
+    tool_name: z.string(),
+    success: z.boolean(),
+    result: z.unknown().nullable(),
+    error: z.string().nullable(),
+  })),
+});
+
+/**
+ * Send a message to the orchestrator and get a response
+ * This invokes the Claude CLI with the orchestrator-ideation agent
+ * @param sessionId The ideation session ID
+ * @param content The user message content
+ * @returns The orchestrator response including any created proposals
+ */
+export async function sendOrchestratorMessage(
+  sessionId: string,
+  content: string
+): Promise<OrchestratorMessageResponse> {
+  const raw = await typedInvoke(
+    "send_orchestrator_message",
+    { input: { session_id: sessionId, content } },
+    OrchestratorResponseSchema
+  );
+
+  return {
+    responseText: raw.response_text,
+    proposalsCreated: raw.proposals_created.map((p) => ({
+      id: p.id,
+      sessionId: p.session_id,
+      title: p.title,
+      description: p.description,
+      category: p.category,
+      suggestedPriority: p.suggested_priority,
+      priorityScore: p.priority_score,
+      priorityReason: p.priority_reason,
+    })),
+    toolCalls: raw.tool_calls.map((tc) => ({
+      toolName: tc.tool_name,
+      success: tc.success,
+      result: tc.result,
+      error: tc.error,
+    })),
+  };
+}
+
+/**
+ * Check if the orchestrator agent is available
+ * @returns True if the claude CLI is available
+ */
+export async function isOrchestratorAvailable(): Promise<boolean> {
+  return invoke("is_orchestrator_available");
+}
+
+// ============================================================================
 // Namespace Export for Alternative Usage Pattern
 // ============================================================================
 
@@ -287,4 +395,6 @@ export const chatApi = {
   deleteMessage: deleteChatMessage,
   deleteSessionMessages,
   countSessionMessages,
+  sendOrchestratorMessage,
+  isOrchestratorAvailable,
 } as const;

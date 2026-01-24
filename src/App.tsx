@@ -31,6 +31,7 @@ import {
 } from "@/hooks/useIdeation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
+import { useOrchestratorMessage } from "@/hooks/useOrchestrator";
 import { api } from "@/lib/tauri";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 
@@ -165,6 +166,7 @@ function AppContent() {
   const archiveSession = useArchiveIdeationSession();
   const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
+  const orchestratorMessage = useOrchestratorMessage(activeSession?.id ?? "");
 
   // Load persisted chat width from localStorage on mount
   useEffect(() => {
@@ -288,10 +290,14 @@ function AppContent() {
     }
   }, [archiveSession, setActiveSession]);
 
-  const handleSendIdeationMessage = useCallback((content: string) => {
-    // Message sending will be handled by the Orchestrator agent integration
-    console.log("Send ideation message:", content);
-  }, []);
+  const handleSendIdeationMessage = useCallback(async (content: string) => {
+    if (!activeSession) return;
+    try {
+      await orchestratorMessage.mutateAsync(content);
+    } catch (error) {
+      console.error("Failed to send orchestrator message:", error);
+    }
+  }, [activeSession, orchestratorMessage]);
 
   const handleSelectProposal = useCallback((proposalId: string) => {
     toggleSelection.mutate(proposalId);
@@ -474,7 +480,7 @@ function AppContent() {
                 onRemoveProposal={handleRemoveProposal}
                 onReorderProposals={handleReorderProposals}
                 onApply={handleApplyProposals}
-                isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending}
+                isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending || orchestratorMessage.isPending}
               />
             )}
           </div>
