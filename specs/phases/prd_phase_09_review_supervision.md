@@ -1049,7 +1049,7 @@ interface AskUserQuestionResponse {
       "Verify review removed from list",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
