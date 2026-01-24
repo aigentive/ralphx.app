@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:45:00
+**Last Updated:** 2026-01-24 19:50:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 34 / 50
-**Current Task:** Create usePriorityAssessment hook
+**Tasks Completed:** 35 / 50
+**Current Task:** Create useDependencyGraph hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:50:00 - Create usePriorityAssessment hook
+
+**What was done:**
+- Created `src/hooks/usePriorityAssessment.ts` with TanStack Query wrappers:
+  - `usePriorityAssessment()` - Returns mutations object with:
+    - `assessPriority` - Assess single proposal priority
+    - `assessAllPriorities` - Batch assess all proposals in session
+- Query invalidation for proposals on priority updates
+- Created `src/hooks/usePriorityAssessment.test.ts` with 8 unit tests covering:
+  - Single proposal assessment
+  - Batch assessment
+  - Loading states
+  - Error handling
+
+**Commands run:**
+- `npm test -- --run src/hooks/usePriorityAssessment.test.ts` (8 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1734 tests passed)
+
+---
 
 ### 2026-01-24 19:45:00 - Create useProposals hook
 
