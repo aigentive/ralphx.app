@@ -3,6 +3,7 @@
 
 pub mod agents;
 pub mod entities;
+pub mod qa;
 pub mod repositories;
 pub mod state_machine;
 pub mod supervisor;
