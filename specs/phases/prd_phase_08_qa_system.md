@@ -509,7 +509,7 @@ All tasks require TDD:
       "Run migration and verify columns exist",
       "Test nullable behavior (needs_qa can be NULL)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
