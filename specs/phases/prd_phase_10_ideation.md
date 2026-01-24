@@ -1151,7 +1151,7 @@ All tasks require:
       "  - Return { messages, sendMessage, isLoading }",
       "Export from src/hooks/useChat.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
