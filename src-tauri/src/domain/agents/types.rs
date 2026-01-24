@@ -73,6 +73,10 @@ pub struct AgentConfig {
     pub prompt: String,
     /// Working directory for the agent
     pub working_directory: PathBuf,
+    /// Optional plugin directory for agent/skill discovery (e.g., "./ralphx-plugin")
+    pub plugin_dir: Option<PathBuf>,
+    /// Optional agent name to use (resolved via plugin_dir)
+    pub agent: Option<String>,
     /// Optional model override (e.g., "claude-sonnet-4-5-20250929")
     pub model: Option<String>,
     /// Optional max tokens for response
@@ -89,6 +93,8 @@ impl Default for AgentConfig {
             role: AgentRole::Worker,
             prompt: String::new(),
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            plugin_dir: Some(PathBuf::from("./ralphx-plugin")),
+            agent: None,
             model: None,
             max_tokens: None,
             timeout_secs: None,
@@ -146,6 +152,18 @@ impl AgentConfig {
     /// Add an environment variable
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set the plugin directory for agent/skill discovery
+    pub fn with_plugin_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.plugin_dir = Some(path.into());
+        self
+    }
+
+    /// Set the agent name (resolved via plugin discovery)
+    pub fn with_agent(mut self, agent: impl Into<String>) -> Self {
+        self.agent = Some(agent.into());
         self
     }
 }
@@ -401,6 +419,8 @@ mod tests {
         let config = AgentConfig::default();
         assert_eq!(config.role, AgentRole::Worker);
         assert!(config.prompt.is_empty());
+        assert_eq!(config.plugin_dir, Some(PathBuf::from("./ralphx-plugin")));
+        assert!(config.agent.is_none());
         assert!(config.model.is_none());
         assert!(config.max_tokens.is_none());
         assert!(config.timeout_secs.is_none());
@@ -585,6 +605,18 @@ mod tests {
         assert_eq!(response.content, "test");
         assert_eq!(response.model, Some("opus".to_string()));
         assert_eq!(response.tokens_used, Some(200));
+    }
+
+    #[test]
+    fn test_agent_config_with_plugin_dir() {
+        let config = AgentConfig::default().with_plugin_dir("/custom/plugin");
+        assert_eq!(config.plugin_dir, Some(PathBuf::from("/custom/plugin")));
+    }
+
+    #[test]
+    fn test_agent_config_with_agent() {
+        let config = AgentConfig::default().with_agent("worker");
+        assert_eq!(config.agent, Some("worker".to_string()));
     }
 
     // ResponseChunk tests

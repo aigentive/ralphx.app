@@ -101,6 +101,8 @@ impl AgentSpawner for AgenticClientSpawner {
             role,
             prompt: format!("Execute task {}", task_id),
             working_directory: self.working_directory.clone(),
+            plugin_dir: Some(std::path::PathBuf::from("./ralphx-plugin")),
+            agent: Some(agent_type.to_string()),
             model: None,
             max_tokens: None,
             timeout_secs: None,
