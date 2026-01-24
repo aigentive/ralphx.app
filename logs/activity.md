@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:40:00
+**Last Updated:** 2026-01-24 21:00:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 15 / 63
-**Current Task:** Implement ProcessRepository trait and SQLite implementation
+**Tasks Completed:** 16 / 63
+**Current Task:** Implement MethodologyExtension Rust types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:00:00 - Implement ProcessRepository trait and SQLite implementation (Task 16)
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/process_repo.rs`
+- Defined `ProcessRepository` trait with 11 async methods:
+  - CRUD: `create`, `get_by_id`, `update`, `delete`
+  - Query: `get_all`, `get_by_status`, `get_active`, `exists`
+  - State management: `update_progress`, `complete`, `fail`
+- Added `MockProcessRepository` for testing trait object usage
+- Added 19 unit tests covering all trait methods
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_process_repo.rs`
+- Implemented full `ProcessRepository` trait with SQLite backend
+- Uses `ProcessConfig` internal struct for JSON serialization of:
+  - brief (question, context, scope, constraints)
+  - depth (preset or custom configuration)
+  - agent_profile_id
+  - output (target_bucket, artifact_types)
+  - last_checkpoint, error_message
+- Handles status and current_iteration as direct columns for efficient querying
+- Supports shared connections via `from_shared(Arc<Mutex<Connection>>)`
+- Added 23 integration tests covering all operations:
+  - CRUD operations
+  - Status and active queries
+  - Progress updates, complete, and fail operations
+  - Brief, depth (preset and custom), output preservation
+  - Checkpoint preservation
+  - Timestamp preservation
+  - Shared connection support
+- Exported `ProcessRepository` from `domain/repositories/mod.rs`
+- Exported `SqliteProcessRepository` from `infrastructure/sqlite/mod.rs`
+
+**Commands run:**
+- `cargo test --lib process_repo` (42 tests passed: 19 trait + 23 SQLite)
+
+---
 
 ### 2026-01-24 20:40:00 - Implement ResearchProcess and ResearchDepthPreset Rust types (Task 15)
 
