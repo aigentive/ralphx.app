@@ -8506,3 +8506,874 @@ This architecture enables:
 - Agent specialization through skill composition
 - Research → Planning → Execution artifact flow
 - Third-party plugin ecosystem via Claude Code marketplace
+
+---
+
+## Chat & Ideation System
+
+### Design Philosophy
+
+The chat interface is the primary way users interact with the Orchestrator. Rather than manually creating tasks, users **converse** to brainstorm, explore, and refine ideas. The output of these conversations are **Task Proposals** that can be reviewed and applied to the Kanban.
+
+**Key insight**: Ideation and execution are fundamentally different activities. Mixing them in the same space creates friction. RalphX separates them:
+- **Ideation View**: Open-ended brainstorming with the Orchestrator → produces proposals
+- **Kanban View**: Structured execution → consumes tasks
+
+### Chat Interface Location
+
+The chat is implemented as a **contextual side panel** that's always accessible:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ RalphX                                                        [⌘K] Toggle Chat     │
+├───────────────┬─────────────────────────────────────────────────────┬───────────────┤
+│               │                                                     │               │
+│  PROJECT NAV  │              MAIN VIEW AREA                         │  CHAT PANEL   │
+│               │                                                     │  (Resizable)  │
+│  ┌─────────┐  │   ┌─────────────────────────────────────────────┐   │               │
+│  │Ideation │  │   │                                             │   │  ┌─────────┐  │
+│  └─────────┘  │   │  Current View Content                       │   │  │ Context │  │
+│  ┌─────────┐  │   │  (Kanban / Ideation / Settings / etc.)     │   │  │ Aware   │  │
+│  │ Kanban  │  │   │                                             │   │  │         │  │
+│  └─────────┘  │   │                                             │   │  │ Chat    │  │
+│  ┌─────────┐  │   │                                             │   │  │ History │  │
+│  │Activity │  │   │                                             │   │  │         │  │
+│  └─────────┘  │   │                                             │   │  └─────────┘  │
+│  ┌─────────┐  │   │                                             │   │               │
+│  │Settings │  │   │                                             │   │  ┌─────────┐  │
+│  └─────────┘  │   │                                             │   │  │ Input   │  │
+│               │   └─────────────────────────────────────────────┘   │  └─────────┘  │
+│               │                                                     │               │
+└───────────────┴─────────────────────────────────────────────────────┴───────────────┘
+```
+
+**Chat Panel Behaviors:**
+- **Toggle**: ⌘+K (or ⌘+J) to show/hide
+- **Resizable**: Drag edge to adjust width (min 280px, max 50% of window)
+- **Persistent**: Conversation history maintained across view changes
+- **Context-aware**: Knows current view and selected items
+
+### Context Awareness
+
+The chat panel adapts based on what the user is viewing/selecting:
+
+| Current Context | Chat Behavior |
+|-----------------|---------------|
+| **Kanban View** (nothing selected) | General project chat, can suggest tasks |
+| **Kanban View** (task selected) | Chat about selected task, can modify it |
+| **Ideation View** | Full ideation mode, generates proposals |
+| **Task Detail Modal** | Focused on that specific task |
+| **Settings** | Can help configure settings |
+
+```typescript
+interface ChatContext {
+  view: "kanban" | "ideation" | "activity" | "settings" | "task_detail";
+  projectId: string;
+  selectedTaskId?: string;
+  selectedProposalIds?: string[];
+  ideationSessionId?: string;
+}
+```
+
+---
+
+## Ideation View
+
+A dedicated space for brainstorming that produces **Task Proposals** (not real tasks).
+
+### Ideation View Layout
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  Ideation: MyProject                                    [New Session] [Archive]     │
+├───────────────────────────────────────────────┬─────────────────────────────────────┤
+│  CONVERSATION                                 │  TASK PROPOSALS                      │
+│                                               │                                      │
+│  ┌───────────────────────────────────────┐   │  ┌────────────────────────────────┐  │
+│  │ You: I need user authentication       │   │  │ ☑ 1. Setup auth database       │  │
+│  └───────────────────────────────────────┘   │  │    Priority: HIGH (blocks 2)   │  │
+│                                               │  │    Category: setup             │  │
+│  ┌───────────────────────────────────────┐   │  │    [Edit] [Remove]             │  │
+│  │ Orchestrator: I'll help design that.  │   │  └────────────────────────────────┘  │
+│  │ Based on the tech stack (React +      │   │                                      │
+│  │ Tauri), I suggest these approaches... │   │  ┌────────────────────────────────┐  │
+│  └───────────────────────────────────────┘   │  │ ☑ 2. Implement JWT service     │  │
+│                                               │  │    Priority: HIGH              │  │
+│  ┌───────────────────────────────────────┐   │  │    Depends on: #1              │  │
+│  │ You: Use JWT, not sessions            │   │  │    [Edit] [Remove]             │  │
+│  └───────────────────────────────────────┘   │  └────────────────────────────────┘  │
+│                                               │                                      │
+│  ┌───────────────────────────────────────┐   │  ┌────────────────────────────────┐  │
+│  │ Orchestrator: Updated. JWT is a good  │   │  │ ☑ 3. Create login UI           │  │
+│  │ choice for Tauri. Here are the        │   │  │    Priority: MEDIUM            │  │
+│  │ proposed tasks with dependencies...   │   │  │    Depends on: #2              │  │
+│  │                                        │   │  │    [Edit] [Remove]             │  │
+│  └───────────────────────────────────────┘   │  └────────────────────────────────┘  │
+│                                               │                                      │
+│                                               │  ┌────────────────────────────────┐  │
+│                                               │  │ ☐ 4. Add password reset flow   │  │
+│                                               │  │    Priority: LOW               │  │
+│                                               │  │    Category: feature           │  │
+│                                               │  │    [Edit] [Remove]             │  │
+│                                               │  └────────────────────────────────┘  │
+│                                               │                                      │
+│                                               │  ─────────────────────────────────   │
+│                                               │  Selected: 3 of 4                    │
+│                                               │                                      │
+│                                               │  [Apply to Draft ▼] [Clear All]     │
+├───────────────────────────────────────────────┴─────────────────────────────────────┤
+│  [Send message...]                                                     [Attach ▼]  │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Ideation Sessions
+
+Each ideation conversation is a **session** that can be:
+- **Active**: Currently being worked on
+- **Archived**: Completed or paused for later
+- **Converted**: All proposals applied to Kanban
+
+```typescript
+interface IdeationSession {
+  id: string;
+  projectId: string;
+  title: string;                    // Auto-generated or user-defined
+  status: "active" | "archived" | "converted";
+  messages: ChatMessage[];
+  proposals: TaskProposal[];
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt?: Date;
+  convertedAt?: Date;
+}
+```
+
+### Task Proposals
+
+Proposals are **draft tasks** that exist only within ideation until applied:
+
+```typescript
+interface TaskProposal {
+  id: string;
+  sessionId: string;
+
+  // Core fields
+  title: string;
+  description: string;
+  category: "setup" | "feature" | "integration" | "styling" | "testing" | "documentation";
+
+  // Steps (like PRD tasks)
+  steps?: string[];
+  acceptanceCriteria?: string[];
+
+  // Priority assessment (auto-calculated)
+  suggestedPriority: Priority;
+  priorityScore: number;           // 0-100 for sorting
+  priorityReason: string;          // Human-readable explanation
+
+  // Dependencies (references other proposals in same session)
+  dependsOn: string[];             // Proposal IDs this depends on
+  blocks: string[];                // Proposal IDs this would unblock
+
+  // Complexity estimate
+  estimatedComplexity: "trivial" | "simple" | "moderate" | "complex" | "very_complex";
+
+  // User modifications
+  userPriority?: Priority;         // Override if user disagrees
+  userModified: boolean;           // True if user edited any field
+
+  // Status
+  status: "pending" | "accepted" | "rejected" | "modified";
+  selected: boolean;               // Checkbox state in UI
+
+  // Link to created task (after apply)
+  createdTaskId?: string;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+type Priority = "critical" | "high" | "medium" | "low";
+```
+
+### Apply Proposals to Kanban
+
+When user clicks "Apply", selected proposals become real tasks:
+
+```typescript
+interface ApplyProposalsOptions {
+  proposalIds: string[];
+  targetColumn: "draft" | "backlog" | "todo";
+  preserveDependencies: boolean;    // Create task_dependencies records
+  assignWave?: number;              // For parallel execution grouping
+}
+
+interface ApplyProposalsResult {
+  createdTasks: Task[];
+  dependenciesCreated: number;
+  warnings?: string[];              // e.g., "Circular dependency detected"
+}
+```
+
+**Apply Options in UI:**
+- **Apply to Draft**: Tasks go to Draft column (needs more refinement)
+- **Apply to Backlog**: Tasks go to Backlog (confirmed, not scheduled)
+- **Apply to Todo**: Tasks go to Todo (ready to be planned)
+- **Apply with Dependencies**: Preserves the dependency graph
+
+---
+
+## Priority Assessment System
+
+### Priority Calculation Algorithm
+
+The Orchestrator calculates priority using multiple factors:
+
+```typescript
+interface PriorityAssessment {
+  proposalId: string;
+
+  // Final results
+  suggestedPriority: Priority;
+  priorityScore: number;           // 0-100
+  priorityReason: string;
+
+  // Factor breakdown
+  factors: {
+    dependencyFactor: {
+      score: number;               // 0-30 points
+      blocksCount: number;
+      reason: string;              // "Blocks 3 other tasks"
+    };
+    criticalPathFactor: {
+      score: number;               // 0-25 points
+      isOnCriticalPath: boolean;
+      pathLength: number;
+      reason: string;
+    };
+    businessValueFactor: {
+      score: number;               // 0-20 points
+      keywords: string[];          // ["MVP", "core", "essential"]
+      reason: string;
+    };
+    complexityFactor: {
+      score: number;               // 0-15 points (inverse - simpler = higher)
+      complexity: string;
+      reason: string;              // "Quick win - simple task"
+    };
+    userHintFactor: {
+      score: number;               // 0-10 points
+      hints: string[];             // ["urgent", "blocker", "ASAP"]
+      reason: string;
+    };
+  };
+}
+```
+
+### Priority Scoring Breakdown
+
+| Factor | Max Points | Description |
+|--------|------------|-------------|
+| **Dependency** | 30 | Tasks that unblock others get higher priority |
+| **Critical Path** | 25 | Tasks on the longest path to completion |
+| **Business Value** | 20 | Keywords from conversation indicating importance |
+| **Complexity** | 15 | Simpler tasks scored higher (quick wins first) |
+| **User Hints** | 10 | Explicit urgency signals from user |
+| **Total** | 100 | |
+
+### Score to Priority Mapping
+
+| Score Range | Priority |
+|-------------|----------|
+| 80-100 | Critical |
+| 60-79 | High |
+| 40-59 | Medium |
+| 0-39 | Low |
+
+### Dependency Analysis
+
+```typescript
+interface DependencyGraph {
+  nodes: {
+    proposalId: string;
+    title: string;
+    inDegree: number;              // Number of dependencies
+    outDegree: number;             // Number of tasks this blocks
+  }[];
+  edges: {
+    from: string;                  // Depends on
+    to: string;                    // Is dependency of
+  }[];
+  criticalPath: string[];          // Ordered list of proposal IDs
+  hasCycles: boolean;
+  cycles?: string[][];             // If cycles detected, list them
+}
+```
+
+### Priority Keywords Detection
+
+The Orchestrator scans conversation for priority signals:
+
+```typescript
+const PRIORITY_KEYWORDS = {
+  critical: ["critical", "blocker", "blocking", "urgent", "ASAP", "emergency", "must have"],
+  high: ["important", "priority", "essential", "core", "MVP", "key", "crucial"],
+  low: ["nice to have", "optional", "future", "later", "eventually", "if time"],
+};
+```
+
+---
+
+## Orchestrator Tools for Ideation
+
+The Orchestrator agent needs specific tools for the ideation workflow:
+
+### Tool Definitions
+
+```typescript
+// ═══════════════════════════════════════════════════════════════════════════════
+// IDEATION SESSION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface CreateIdeationSessionTool {
+  name: "create_ideation_session";
+  description: "Start a new ideation session for brainstorming";
+  parameters: {
+    projectId: string;
+    title?: string;
+  };
+  returns: IdeationSession;
+}
+
+interface GetIdeationSessionTool {
+  name: "get_ideation_session";
+  description: "Get current ideation session with all proposals";
+  parameters: {
+    sessionId: string;
+  };
+  returns: IdeationSession;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TASK PROPOSAL CRUD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface CreateTaskProposalTool {
+  name: "create_task_proposal";
+  description: "Create a new task proposal in the current ideation session";
+  parameters: {
+    sessionId: string;
+    title: string;
+    description: string;
+    category: TaskCategory;
+    steps?: string[];
+    acceptanceCriteria?: string[];
+    dependsOn?: string[];          // Other proposal IDs
+    estimatedComplexity?: Complexity;
+  };
+  returns: TaskProposal;
+}
+
+interface UpdateTaskProposalTool {
+  name: "update_task_proposal";
+  description: "Update an existing task proposal";
+  parameters: {
+    proposalId: string;
+    changes: Partial<TaskProposal>;
+  };
+  returns: TaskProposal;
+}
+
+interface DeleteTaskProposalTool {
+  name: "delete_task_proposal";
+  description: "Remove a task proposal from the session";
+  parameters: {
+    proposalId: string;
+  };
+  returns: { success: boolean };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRIORITY & DEPENDENCY ANALYSIS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface AssessPriorityTool {
+  name: "assess_priority";
+  description: "Calculate priority for a proposal based on dependencies and context";
+  parameters: {
+    proposalId: string;
+    conversationContext?: string;  // Recent messages for keyword analysis
+  };
+  returns: PriorityAssessment;
+}
+
+interface AssessAllPrioritiesTool {
+  name: "assess_all_priorities";
+  description: "Recalculate priorities for all proposals in session";
+  parameters: {
+    sessionId: string;
+  };
+  returns: PriorityAssessment[];
+}
+
+interface AnalyzeDependenciesTool {
+  name: "analyze_dependencies";
+  description: "Build dependency graph for proposals in session";
+  parameters: {
+    sessionId: string;
+  };
+  returns: DependencyGraph;
+}
+
+interface SuggestDependenciesTool {
+  name: "suggest_dependencies";
+  description: "AI suggests likely dependencies based on proposal content";
+  parameters: {
+    sessionId: string;
+  };
+  returns: {
+    suggestions: {
+      from: string;              // Proposal ID
+      to: string;                // Proposal ID
+      confidence: number;        // 0-1
+      reason: string;            // "Login UI likely needs auth service"
+    }[];
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APPLY TO KANBAN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ApplyProposalsTool {
+  name: "apply_proposals_to_kanban";
+  description: "Convert selected proposals into real tasks on the Kanban";
+  parameters: {
+    proposalIds: string[];
+    targetColumn: "draft" | "backlog" | "todo";
+    preserveDependencies: boolean;
+  };
+  returns: ApplyProposalsResult;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTEXT RETRIEVAL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface GetProjectContextTool {
+  name: "get_project_context";
+  description: "Get project info, tech stack, existing tasks for context";
+  parameters: {
+    projectId: string;
+  };
+  returns: {
+    project: Project;
+    existingTasks: Task[];
+    techStack?: string[];
+    prdSummary?: string;
+  };
+}
+
+interface GetExistingTasksTool {
+  name: "get_existing_tasks";
+  description: "Get existing tasks that might be related to current ideation";
+  parameters: {
+    projectId: string;
+    filter?: {
+      status?: InternalStatus[];
+      category?: string;
+      searchQuery?: string;
+    };
+  };
+  returns: Task[];
+}
+```
+
+### Orchestrator Agent Definition for Ideation
+
+`.claude/agents/orchestrator-ideation.md`:
+
+```markdown
+---
+name: orchestrator-ideation
+description: Facilitates ideation sessions and generates task proposals
+tools:
+  - create_ideation_session
+  - get_ideation_session
+  - create_task_proposal
+  - update_task_proposal
+  - delete_task_proposal
+  - assess_priority
+  - assess_all_priorities
+  - analyze_dependencies
+  - suggest_dependencies
+  - apply_proposals_to_kanban
+  - get_project_context
+  - get_existing_tasks
+model: sonnet
+---
+
+You are the Ideation Orchestrator for RalphX. Your role is to help users brainstorm, explore ideas, and transform them into well-structured task proposals.
+
+## Your Responsibilities
+
+1. **Active Listening**: Understand what the user wants to build
+2. **Clarifying Questions**: Ask questions to refine vague ideas
+3. **Task Decomposition**: Break features into atomic, actionable tasks
+4. **Dependency Detection**: Identify which tasks depend on others
+5. **Priority Assessment**: Calculate and explain task priorities
+6. **Proposal Generation**: Create task proposals with all necessary detail
+
+## Workflow
+
+### Phase 1: Understand
+- Ask clarifying questions about the feature/idea
+- Understand constraints, requirements, and preferences
+- Get context about existing work and tech stack
+
+### Phase 2: Decompose
+- Break the feature into atomic tasks
+- Each task should be completable in one focused session
+- Include clear acceptance criteria
+
+### Phase 3: Organize
+- Identify dependencies between tasks
+- Calculate priorities based on the dependency graph
+- Order tasks optimally for execution
+
+### Phase 4: Present
+- Show the user the proposed tasks
+- Explain your priority reasoning
+- Allow them to modify, remove, or reorder
+
+## Guidelines
+
+- **Be conversational**: This is brainstorming, not a form
+- **Think out loud**: Share your reasoning as you decompose
+- **Stay focused**: Keep proposals actionable and scoped
+- **Respect user expertise**: They know their domain better
+- **Iterate**: Refine proposals based on feedback
+
+## Priority Reasoning
+
+When explaining priority, mention:
+- Dependency relationships ("This blocks 3 other tasks")
+- Quick wins ("Simple task, good for momentum")
+- Critical path ("On the longest path to completion")
+- Business value ("Core MVP feature")
+
+## Example Interaction
+
+User: "I need to add user authentication"
+
+You: "I'll help you plan that out. A few questions first:
+1. What's your tech stack? (I see this is a Tauri app)
+2. Should users be able to register, or just login?
+3. Any social login (Google, GitHub)?
+4. Password reset flow needed?"
+
+[After discussion]
+
+You: "Based on our discussion, here are the proposed tasks:
+
+**1. Setup authentication database tables** (HIGH priority)
+- Creates the foundation other tasks need
+- Blocks: #2, #3
+
+**2. Implement JWT token service** (HIGH priority)
+- Core auth logic
+- Depends on: #1
+
+**3. Create login page UI** (MEDIUM priority)
+- Frontend implementation
+- Depends on: #2
+
+**4. Add password reset flow** (LOW priority)
+- Nice-to-have, not blocking anything
+
+Want me to adjust any of these?"
+```
+
+---
+
+## Ideation Database Schema
+
+Additional tables for the ideation system:
+
+```sql
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- IDEATION SESSIONS
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE ideation_sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT,                                    -- Auto-generated or user-defined
+  status TEXT NOT NULL DEFAULT 'active',         -- 'active' | 'archived' | 'converted'
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  archived_at DATETIME,
+  converted_at DATETIME
+);
+
+CREATE INDEX idx_ideation_sessions_project ON ideation_sessions(project_id);
+CREATE INDEX idx_ideation_sessions_status ON ideation_sessions(status);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- TASK PROPOSALS
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE task_proposals (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES ideation_sessions(id) ON DELETE CASCADE,
+
+  -- Core fields
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL,                        -- 'setup' | 'feature' | etc.
+
+  -- Detailed content (JSON arrays)
+  steps TEXT,                                    -- JSON array of step strings
+  acceptance_criteria TEXT,                      -- JSON array of criteria strings
+
+  -- Priority assessment
+  suggested_priority TEXT NOT NULL,              -- 'critical' | 'high' | 'medium' | 'low'
+  priority_score INTEGER NOT NULL DEFAULT 50,   -- 0-100
+  priority_reason TEXT,
+  priority_factors TEXT,                         -- JSON: full PriorityAssessment.factors
+
+  -- Complexity
+  estimated_complexity TEXT DEFAULT 'moderate',  -- 'trivial' | 'simple' | 'moderate' | 'complex' | 'very_complex'
+
+  -- User overrides
+  user_priority TEXT,                            -- User's override if they disagree
+  user_modified BOOLEAN DEFAULT FALSE,
+
+  -- Status
+  status TEXT NOT NULL DEFAULT 'pending',        -- 'pending' | 'accepted' | 'rejected' | 'modified'
+  selected BOOLEAN DEFAULT TRUE,                 -- Checkbox state in UI
+
+  -- Link to created task (after apply)
+  created_task_id TEXT REFERENCES tasks(id),
+
+  -- Ordering within session
+  sort_order INTEGER NOT NULL DEFAULT 0,
+
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_task_proposals_session ON task_proposals(session_id);
+CREATE INDEX idx_task_proposals_status ON task_proposals(status);
+CREATE INDEX idx_task_proposals_priority ON task_proposals(priority_score DESC);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- PROPOSAL DEPENDENCIES
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE proposal_dependencies (
+  id TEXT PRIMARY KEY,
+  proposal_id TEXT NOT NULL REFERENCES task_proposals(id) ON DELETE CASCADE,
+  depends_on_proposal_id TEXT NOT NULL REFERENCES task_proposals(id) ON DELETE CASCADE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE(proposal_id, depends_on_proposal_id),
+  CHECK(proposal_id != depends_on_proposal_id)   -- No self-dependencies
+);
+
+CREATE INDEX idx_proposal_deps_proposal ON proposal_dependencies(proposal_id);
+CREATE INDEX idx_proposal_deps_depends_on ON proposal_dependencies(depends_on_proposal_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CHAT MESSAGES
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE chat_messages (
+  id TEXT PRIMARY KEY,
+
+  -- Context (one of these should be set)
+  session_id TEXT REFERENCES ideation_sessions(id) ON DELETE CASCADE,  -- For ideation chat
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,           -- For general project chat
+  task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,                 -- For task-specific chat
+
+  -- Message content
+  role TEXT NOT NULL,                            -- 'user' | 'orchestrator' | 'system'
+  content TEXT NOT NULL,
+
+  -- Rich metadata
+  metadata TEXT,                                 -- JSON: mentioned task IDs, artifacts, etc.
+
+  -- For threading (future)
+  parent_message_id TEXT REFERENCES chat_messages(id),
+
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_messages_session ON chat_messages(session_id);
+CREATE INDEX idx_chat_messages_project ON chat_messages(project_id);
+CREATE INDEX idx_chat_messages_task ON chat_messages(task_id);
+CREATE INDEX idx_chat_messages_created ON chat_messages(created_at);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- TASK DEPENDENCIES (for applied tasks)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Note: This table already exists in the main schema, but documenting here for clarity
+-- When proposals are applied, proposal_dependencies become task_dependencies
+
+CREATE TABLE IF NOT EXISTS task_dependencies (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE(task_id, depends_on_task_id),
+  CHECK(task_id != depends_on_task_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_dependencies(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_deps_depends_on ON task_dependencies(depends_on_task_id);
+```
+
+---
+
+## Ideation → Kanban Transition Flow
+
+Complete flow from ideation to execution:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  IDEATION PHASE                                                                      │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  1. User opens Ideation view                                                        │
+│     └─► New IdeationSession created (status: active)                                │
+│                                                                                      │
+│  2. User converses with Orchestrator                                                │
+│     └─► ChatMessages stored with session_id                                         │
+│                                                                                      │
+│  3. Orchestrator creates TaskProposals                                              │
+│     └─► Proposals created with suggested_priority                                   │
+│     └─► Dependencies inferred and stored in proposal_dependencies                   │
+│                                                                                      │
+│  4. User reviews proposals in side panel                                            │
+│     └─► Can edit title, description, priority                                       │
+│     └─► Can remove unwanted proposals                                               │
+│     └─► Can reorder manually                                                        │
+│                                                                                      │
+│  5. User selects proposals to apply                                                 │
+│     └─► Checkboxes set selected = true/false                                        │
+│                                                                                      │
+└────────────────────────────────────────┬────────────────────────────────────────────┘
+                                         │
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  TRANSITION                                                                          │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  6. User clicks "Apply to [Column]"                                                 │
+│     └─► System validates no circular dependencies                                   │
+│     └─► For each selected proposal:                                                 │
+│         ├─► Create Task in target column                                            │
+│         ├─► Copy priority, description, steps, acceptance_criteria                  │
+│         ├─► Set created_task_id on proposal                                         │
+│         └─► Update proposal status = 'accepted'                                     │
+│     └─► For each proposal_dependency where both proposals accepted:                 │
+│         └─► Create task_dependency record                                           │
+│                                                                                      │
+│  7. Session status updated                                                          │
+│     └─► If all proposals accepted/rejected: status = 'converted'                    │
+│     └─► If some pending: status remains 'active'                                    │
+│                                                                                      │
+└────────────────────────────────────────┬────────────────────────────────────────────┘
+                                         │
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  EXECUTION PHASE (existing Kanban flow)                                             │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  8. Tasks appear in target column                                                   │
+│     └─► Dependencies shown as blockers                                              │
+│     └─► Priority affects sort order within column                                   │
+│                                                                                      │
+│  9. Normal Kanban workflow continues                                                │
+│     └─► User moves tasks to Planned                                                 │
+│     └─► State machine triggers side effects                                         │
+│     └─► Agents execute tasks                                                        │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## UI Components for Ideation
+
+### ProposalCard Component
+
+```typescript
+interface ProposalCardProps {
+  proposal: TaskProposal;
+  onSelect: (id: string, selected: boolean) => void;
+  onEdit: (id: string) => void;
+  onRemove: (id: string) => void;
+  dependencyInfo?: {
+    dependsOnCount: number;
+    blocksCount: number;
+  };
+}
+
+// Visual states:
+// - Default: Dark surface with subtle border
+// - Selected: Accent border (orange)
+// - High priority: Critical/High badge with warm color
+// - Has dependencies: Dependency icon with count
+// - User modified: Small "edited" indicator
+```
+
+### ProposalList Component
+
+```typescript
+interface ProposalListProps {
+  proposals: TaskProposal[];
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onApply: (targetColumn: string) => void;
+  onClearAll: () => void;
+}
+
+// Features:
+// - Drag to reorder
+// - Multi-select with Shift+click
+// - Bulk actions (select all, deselect all)
+// - Dependency visualization (lines between cards)
+// - Priority-based auto-sort option
+```
+
+### ApplyModal Component
+
+```typescript
+interface ApplyModalProps {
+  selectedProposals: TaskProposal[];
+  onApply: (options: ApplyProposalsOptions) => void;
+  onCancel: () => void;
+}
+
+// Shows:
+// - List of selected proposals
+// - Dependency graph preview
+// - Target column selector
+// - "Preserve dependencies" checkbox
+// - Warnings (circular deps, missing deps)
+```
+
+---
+
+## Key Architecture Additions
+
+Add to the Key Architecture Principles:
+
+7. **Ideation ≠ Execution** - Separate brainstorming from task management to reduce friction
+8. **Proposals before Tasks** - Ideas become proposals, proposals become tasks (two-stage commitment)
+9. **Automatic Priority** - System suggests, user confirms (reduce manual work)
+10. **Context-Aware Chat** - Chat adapts to current view and selection
+11. **Dependency-First Planning** - Priority derived from dependency graph, not arbitrary assignment
