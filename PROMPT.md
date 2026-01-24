@@ -40,15 +40,23 @@ In the active PRD, look for tasks with `"passes": false`.
    ```
 6. **Otherwise**, continue with the newly active PRD
 
-## Step 3: Read the Full Task
+## Step 3: Read the Full Task (STOP AND DO THIS)
 
 Find the first task where `"passes": false`.
 
-**If the PRD file is too large to read in one go:**
-1. Use `Grep` to find the task by its description: `Grep pattern="description.*[task name]" path="[prd file]"`
-2. Note the line number where the task starts
-3. Use `Read` with `offset` set to ~20 lines before that line number and `limit` of 100+ lines
-4. This ensures you capture the FULL task object including all fields
+**⚠️ STOP: Before doing ANYTHING else, you MUST read and output the full task JSON object.**
+
+Use Grep to find the task and read its full structure:
+```bash
+Grep pattern="description.*[first few words of task]" path="[prd file]" output_mode="content" -C=50
+```
+
+**Then output the task's fields in your response:**
+- `steps`: [list all steps]
+- `acceptance_criteria`: [list all criteria if present]
+- `design_quality`: [list all design requirements if present]
+
+**If you cannot list the steps, you have NOT read the task properly. Go back and read it.**
 
 **CRITICAL: Read ALL fields of the task before starting work.** Each task may contain:
 
