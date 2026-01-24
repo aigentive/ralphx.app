@@ -699,7 +699,7 @@ Every task follows the TDD cycle:
       "Register command in main.rs",
       "Verify command works via frontend"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
