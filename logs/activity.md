@@ -1,14 +1,62 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:23:11
+**Last Updated:** 2026-01-24 14:35:44
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 36 / 51
-**Current Task:** Implement review points detection
+**Tasks Completed:** 37 / 51
+**Current Task:** Integration test: AI review approve flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:35:44 - Implement review points detection
+
+**What was done:**
+- Created `src-tauri/src/domain/review/review_points.rs` with:
+  - `ReviewPointConfig` struct with `review_before_destructive` and `review_after_complex` settings
+  - `ReviewPointType` enum: BeforeDestructive, AfterComplex, Manual
+  - `is_destructive_task(task)` function detecting destructive operations:
+    - File deletion keywords: delete, remove, rm, unlink, drop, truncate, purge, wipe, erase, destroy, cleanup
+    - Config modification: config/settings/env/credentials + modify/change/update/reset/etc.
+  - `is_complex_task(task)` function detecting complex operations:
+    - Keywords: complex, refactor, rewrite, overhaul, migration, breaking change, architectural, major, critical, security
+    - Category detection for "refactor"
+  - `should_auto_insert_review_point(task, config)` - auto-detection with config toggles
+  - `get_review_point_type(task, config, has_manual)` - prioritizes Manual > BeforeDestructive > AfterComplex
+- Added `needs_review_point` field to Task entity:
+  - Updated `Task` struct in `src-tauri/src/domain/entities/task.rs`
+  - Added `set_needs_review_point()` method
+  - Updated `from_row()` to read from SQLite (with NULL default handling)
+  - Added serde default for backward compatibility
+- Created database migration v10:
+  - `ALTER TABLE tasks ADD COLUMN needs_review_point INTEGER DEFAULT 0`
+  - Updated `SCHEMA_VERSION` to 10
+  - Added migration test
+- Updated `SqliteTaskRepository` SQL queries to include `needs_review_point`:
+  - INSERT, SELECT (all queries), updated column lists
+- Updated `TaskResponse` DTO to include `needs_review_point`
+- Updated TypeScript Task type:
+  - Added `needsReviewPoint: z.boolean().default(false)` to `TaskSchema`
+  - Updated `createMockTask` in test helpers (mock-data.ts and 3 test files)
+- Added 52 unit tests for review_points module covering:
+  - Config serialization/deserialization
+  - ReviewPointType display names and descriptions
+  - is_destructive_task with various keywords
+  - is_complex_task with various keywords
+  - should_auto_insert_review_point with config combinations
+  - get_review_point_type priority handling
+- Added 9 new tests for needs_review_point field in Task entity
+
+**Commands run:**
+- `cargo test --lib review_points` (52 tests passed)
+- `cargo test --lib domain::entities::task` (53 tests passed)
+- `cargo test --lib` (1366 tests passed)
+- `cargo clippy --all-targets` (passed, only pre-existing warnings)
+- `npm run typecheck` (passed)
+- `npm run test -- --run` (1359 tests passed)
+
+---
 
 ### 2026-01-24 14:23:11 - Implement task injection functionality
 

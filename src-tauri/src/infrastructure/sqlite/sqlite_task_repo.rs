@@ -38,8 +38,8 @@ impl TaskRepository for SqliteTaskRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, created_at, updated_at, started_at, completed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 task.id.as_str(),
                 task.project_id.as_str(),
@@ -48,6 +48,7 @@ impl TaskRepository for SqliteTaskRepository {
                 task.description,
                 task.priority,
                 task.internal_status.as_str(),
+                task.needs_review_point,
                 task.created_at.to_rfc3339(),
                 task.updated_at.to_rfc3339(),
                 task.started_at.map(|dt| dt.to_rfc3339()),
@@ -63,7 +64,7 @@ impl TaskRepository for SqliteTaskRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, project_id, category, title, description, priority, internal_status, created_at, updated_at, started_at, completed_at
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, created_at, updated_at, started_at, completed_at
              FROM tasks WHERE id = ?1",
             [id.as_str()],
             |row| Task::from_row(row),
@@ -81,7 +82,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, category, title, description, priority, internal_status, created_at, updated_at, started_at, completed_at
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, created_at, updated_at, started_at, completed_at
                  FROM tasks WHERE project_id = ?1
                  ORDER BY priority DESC, created_at ASC",
             )
@@ -138,7 +139,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, category, title, description, priority, internal_status, created_at, updated_at, started_at, completed_at
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, created_at, updated_at, started_at, completed_at
                  FROM tasks WHERE project_id = ?1 AND internal_status = ?2
                  ORDER BY priority DESC, created_at ASC",
             )
@@ -243,7 +244,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         // Find READY tasks that have no blockers
         let result = conn.query_row(
-            "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.created_at, t.updated_at, t.started_at, t.completed_at
+            "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.created_at, t.updated_at, t.started_at, t.completed_at
              FROM tasks t
              WHERE t.project_id = ?1
                AND t.internal_status = 'ready'
@@ -268,7 +269,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.created_at, t.updated_at, t.started_at, t.completed_at
+                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.created_at, t.updated_at, t.started_at, t.completed_at
                  FROM tasks t
                  INNER JOIN task_blockers tb ON t.id = tb.blocker_id
                  WHERE tb.task_id = ?1",
@@ -289,7 +290,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.created_at, t.updated_at, t.started_at, t.completed_at
+                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.created_at, t.updated_at, t.started_at, t.completed_at
                  FROM tasks t
                  INNER JOIN task_blockers tb ON t.id = tb.task_id
                  WHERE tb.blocker_id = ?1",

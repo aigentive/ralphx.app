@@ -25,6 +25,10 @@ pub struct Task {
     pub priority: i32,
     /// Current internal status (follows state machine)
     pub internal_status: InternalStatus,
+    /// Whether this task needs a review point (human-in-loop checkpoint)
+    /// When true, execution will pause before this task for human approval
+    #[serde(default)]
+    pub needs_review_point: bool,
     /// When the task was created
     pub created_at: DateTime<Utc>,
     /// When the task was last updated
@@ -41,6 +45,7 @@ impl Task {
     /// - category: "feature"
     /// - internal_status: Backlog
     /// - priority: 0
+    /// - needs_review_point: false
     /// - timestamps set to now
     pub fn new(project_id: ProjectId, title: String) -> Self {
         let now = Utc::now();
@@ -52,6 +57,7 @@ impl Task {
             description: None,
             priority: 0,
             internal_status: InternalStatus::Backlog,
+            needs_review_point: false,
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -83,6 +89,12 @@ impl Task {
         self.touch();
     }
 
+    /// Sets whether this task needs a review point (human-in-loop checkpoint)
+    pub fn set_needs_review_point(&mut self, needs_review: bool) {
+        self.needs_review_point = needs_review;
+        self.touch();
+    }
+
     /// Returns true if this task is in a terminal state (Approved, Failed, or Cancelled)
     pub fn is_terminal(&self) -> bool {
         matches!(
@@ -105,7 +117,7 @@ impl Task {
 
     /// Deserialize a Task from a SQLite row.
     /// Expects columns: id, project_id, category, title, description, priority,
-    /// internal_status, created_at, updated_at, started_at, completed_at
+    /// internal_status, needs_review_point, created_at, updated_at, started_at, completed_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: TaskId::from_string(row.get("id")?),
@@ -118,6 +130,7 @@ impl Task {
                 .get::<_, String>("internal_status")?
                 .parse()
                 .unwrap_or(InternalStatus::Backlog),
+            needs_review_point: row.get::<_, Option<bool>>("needs_review_point")?.unwrap_or(false),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
             started_at: row
@@ -164,6 +177,7 @@ mod tests {
         assert!(task.description.is_none());
         assert_eq!(task.priority, 0);
         assert_eq!(task.internal_status, InternalStatus::Backlog);
+        assert!(!task.needs_review_point);
         assert!(task.started_at.is_none());
         assert!(task.completed_at.is_none());
     }
@@ -370,6 +384,7 @@ mod tests {
         assert!(json.contains("\"category\":\"feature\""));
         assert!(json.contains("\"internal_status\":\"backlog\""));
         assert!(json.contains("\"priority\":0"));
+        assert!(json.contains("\"needs_review_point\":false"));
     }
 
     #[test]
@@ -552,6 +567,7 @@ mod tests {
                 description TEXT,
                 priority INTEGER DEFAULT 0,
                 internal_status TEXT NOT NULL DEFAULT 'backlog',
+                needs_review_point INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 started_at TEXT,
@@ -568,9 +584,9 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
-               internal_status, created_at, updated_at, started_at, completed_at)
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
                VALUES ('task-123', 'proj-456', 'bug', 'Fix crash', 'Critical bug fix', 10,
-               'executing', '2026-01-24T10:00:00Z', '2026-01-24T11:00:00Z',
+               'executing', 1, '2026-01-24T10:00:00Z', '2026-01-24T11:00:00Z',
                '2026-01-24T10:30:00Z', NULL)"#,
             [],
         )
@@ -589,6 +605,7 @@ mod tests {
         assert_eq!(task.description, Some("Critical bug fix".to_string()));
         assert_eq!(task.priority, 10);
         assert_eq!(task.internal_status, InternalStatus::Executing);
+        assert!(task.needs_review_point);
         assert!(task.started_at.is_some());
         assert!(task.completed_at.is_none());
     }
@@ -598,9 +615,9 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
-               internal_status, created_at, updated_at, started_at, completed_at)
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
                VALUES ('task-789', 'proj-000', 'feature', 'New feature', NULL, 0,
-               'backlog', '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+               'backlog', 0, '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
             [],
         )
         .unwrap();
@@ -612,6 +629,7 @@ mod tests {
             .unwrap();
 
         assert!(task.description.is_none());
+        assert!(!task.needs_review_point);
         assert!(task.started_at.is_none());
         assert!(task.completed_at.is_none());
     }
@@ -621,9 +639,9 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
-               internal_status, created_at, updated_at, started_at, completed_at)
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
                VALUES ('task-sql', 'proj-sql', 'setup', 'Setup', NULL, 5,
-               'ready', '2026-01-24 12:00:00', '2026-01-24 12:30:00', NULL, NULL)"#,
+               'ready', 0, '2026-01-24 12:00:00', '2026-01-24 12:30:00', NULL, NULL)"#,
             [],
         )
         .unwrap();
@@ -644,9 +662,9 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
-               internal_status, created_at, updated_at, started_at, completed_at)
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
                VALUES ('task-unk', 'proj-unk', 'feature', 'Test', NULL, 0,
-               'unknown_status', '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+               'unknown_status', 0, '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
             [],
         )
         .unwrap();
@@ -666,9 +684,9 @@ mod tests {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
-               internal_status, created_at, updated_at, started_at, completed_at)
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
                VALUES ('task-done', 'proj-done', 'feature', 'Completed', NULL, 0,
-               'approved', '2026-01-24T08:00:00Z', '2026-01-24T12:00:00Z',
+               'approved', 0, '2026-01-24T08:00:00Z', '2026-01-24T12:00:00Z',
                '2026-01-24T09:00:00Z', '2026-01-24T11:00:00Z')"#,
             [],
         )
@@ -710,8 +728,8 @@ mod tests {
             let id = format!("task-{}", i);
             conn.execute(
                 &format!(
-                    r#"INSERT INTO tasks (id, project_id, category, title, internal_status, created_at, updated_at)
-                       VALUES ('{}', 'proj-1', 'feature', 'Test', '{}', '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z')"#,
+                    r#"INSERT INTO tasks (id, project_id, category, title, internal_status, needs_review_point, created_at, updated_at)
+                       VALUES ('{}', 'proj-1', 'feature', 'Test', '{}', 0, '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z')"#,
                     id, status
                 ),
                 [],
@@ -728,5 +746,133 @@ mod tests {
 
             assert_eq!(task.internal_status.as_str(), *status);
         }
+    }
+
+    // ===== needs_review_point Tests =====
+
+    #[test]
+    fn task_new_defaults_needs_review_point_to_false() {
+        let task = Task::new(ProjectId::new(), "Test".to_string());
+        assert!(!task.needs_review_point);
+    }
+
+    #[test]
+    fn task_set_needs_review_point() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        let original_updated = task.updated_at;
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        task.set_needs_review_point(true);
+
+        assert!(task.needs_review_point);
+        assert!(task.updated_at > original_updated);
+    }
+
+    #[test]
+    fn task_set_needs_review_point_to_false() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.needs_review_point = true;
+
+        task.set_needs_review_point(false);
+
+        assert!(!task.needs_review_point);
+    }
+
+    #[test]
+    fn task_serializes_needs_review_point() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.needs_review_point = true;
+
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("\"needs_review_point\":true"));
+
+        task.needs_review_point = false;
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("\"needs_review_point\":false"));
+    }
+
+    #[test]
+    fn task_deserializes_with_needs_review_point() {
+        let json = r#"{
+            "id": "task-id",
+            "project_id": "proj-id",
+            "category": "feature",
+            "title": "Test",
+            "description": null,
+            "priority": 0,
+            "internal_status": "backlog",
+            "needs_review_point": true,
+            "created_at": "2025-01-24T12:00:00Z",
+            "updated_at": "2025-01-24T12:00:00Z",
+            "started_at": null,
+            "completed_at": null
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert!(task.needs_review_point);
+    }
+
+    #[test]
+    fn task_deserializes_without_needs_review_point_defaults_to_false() {
+        // Test backward compatibility - field missing should default to false
+        let json = r#"{
+            "id": "task-id",
+            "project_id": "proj-id",
+            "category": "feature",
+            "title": "Test",
+            "description": null,
+            "priority": 0,
+            "internal_status": "backlog",
+            "created_at": "2025-01-24T12:00:00Z",
+            "updated_at": "2025-01-24T12:00:00Z",
+            "started_at": null,
+            "completed_at": null
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert!(!task.needs_review_point);
+    }
+
+    #[test]
+    fn task_from_row_with_needs_review_point_true() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-rp', 'proj-rp', 'feature', 'Review Point Task', NULL, 0,
+               'backlog', 1, '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-rp'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert!(task.needs_review_point);
+    }
+
+    #[test]
+    fn task_from_row_with_null_needs_review_point_defaults_to_false() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, needs_review_point, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-nrp', 'proj-nrp', 'feature', 'No Review Point', NULL, 0,
+               'backlog', NULL, '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-nrp'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert!(!task.needs_review_point);
     }
 }

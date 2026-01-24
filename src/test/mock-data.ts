@@ -64,6 +64,7 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
     description: null,
     priority: 0,
     internalStatus: "backlog" as InternalStatus,
+    needsReviewPoint: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     startedAt: null,

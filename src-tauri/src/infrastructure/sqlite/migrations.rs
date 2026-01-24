@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 9;
+pub const SCHEMA_VERSION: i32 = 10;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -60,6 +60,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 9 {
         migrate_v9(conn)?;
         set_schema_version(conn, 9)?;
+    }
+
+    if current_version < 10 {
+        migrate_v10(conn)?;
+        set_schema_version(conn, 10)?;
     }
 
     Ok(())
@@ -469,6 +474,20 @@ fn migrate_v9(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v10: Add needs_review_point column to tasks table
+/// This column indicates whether a task requires a human-in-the-loop checkpoint
+/// before execution (e.g., for destructive operations or complex tasks)
+fn migrate_v10(conn: &Connection) -> AppResult<()> {
+    // Add needs_review_point column to tasks table with default value false (0)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN needs_review_point INTEGER DEFAULT 0",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 9);
+        assert_eq!(SCHEMA_VERSION, 10);
     }
 
     #[test]
@@ -531,6 +550,55 @@ mod tests {
     }
 
     #[test]
+    fn test_tasks_table_has_needs_review_point_column() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert a task and verify needs_review_point column works
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('test-proj', 'Test', '/tmp')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, internal_status, needs_review_point)
+             VALUES ('task-1', 'test-proj', 'feature', 'Test Task', 'backlog', 1)",
+            [],
+        )
+        .unwrap();
+
+        // Query the needs_review_point value
+        let needs_review_point: i32 = conn
+            .query_row(
+                "SELECT needs_review_point FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(needs_review_point, 1);
+
+        // Insert task without specifying needs_review_point (should default to 0)
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, internal_status)
+             VALUES ('task-2', 'test-proj', 'feature', 'Test Task 2', 'backlog')",
+            [],
+        )
+        .unwrap();
+
+        let needs_review_point: i32 = conn
+            .query_row(
+                "SELECT needs_review_point FROM tasks WHERE id = 'task-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(needs_review_point, 0);
+    }
+
+    #[test]
     fn test_run_migrations_creates_task_state_history_table() {
         let conn = open_memory_connection().unwrap();
         run_migrations(&conn).unwrap();
@@ -553,7 +621,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
     }
 
     #[test]
@@ -566,7 +634,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
     }
 
     #[test]
