@@ -227,7 +227,7 @@ Include:
 
 ## Important Rules
 
-- Work on ONE task per iteration
+- **Work on ONE task per iteration, then STOP** - Complete exactly one task, commit, and end your response. Do not continue to the next task.
 - Always log progress in `logs/activity.md`
 - Always commit after completing a task
 - Do NOT run `git init`, change remotes, or push
