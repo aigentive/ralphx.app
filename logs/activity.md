@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:26:54
+**Last Updated:** 2026-01-24 07:28:51
 **Phase:** Data Layer
-**Tasks Completed:** 8 / 20
-**Current Task:** Implement MemoryTaskRepository
+**Tasks Completed:** 9 / 20
+**Current Task:** Implement MemoryProjectRepository
 
 ---
 
@@ -1354,6 +1354,28 @@ Phase 1: Foundation (no dependencies)
 - Phase 1 status → "complete"
 - currentPhase → 2
 - Phase 2 status → "active"
+
+---
+
+### 2026-01-24 07:28:51 - Implement MemoryTaskRepository
+
+**What was done:**
+- Implemented full `TaskRepository` trait for `MemoryTaskRepository`
+- Implemented all CRUD methods (create, get_by_id, get_by_project, update, delete)
+- Implemented status operations (get_by_status, persist_status_change, get_status_history)
+- Implemented query operations (get_next_executable, get_blockers, get_dependents, add_blocker, resolve_blocker)
+- Proper sorting by priority (desc) and created_at (asc)
+- Blocker cleanup on delete (removes references to deleted tasks)
+- Added 21 comprehensive tests covering all methods:
+  - CRUD operations
+  - Status filtering and history recording
+  - Executable task selection with blocker exclusion
+  - Blocker relationship management
+  - with_tasks constructor
+- All 223 tests pass (21 new tests)
+
+**Files modified:**
+- `src-tauri/src/infrastructure/memory/memory_task_repo.rs` - full TaskRepository implementation
 
 ---
 
