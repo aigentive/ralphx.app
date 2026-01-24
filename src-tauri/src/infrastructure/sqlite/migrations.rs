@@ -120,7 +120,7 @@ fn migrate_v1(conn: &Connection) -> AppResult<()> {
     conn.execute(
         "CREATE TABLE task_state_history (
             id TEXT PRIMARY KEY,
-            task_id TEXT NOT NULL REFERENCES tasks(id),
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
             from_status TEXT,
             to_status TEXT NOT NULL,
             changed_by TEXT NOT NULL,

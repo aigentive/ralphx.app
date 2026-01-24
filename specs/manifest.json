@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 2,
+  "currentPhase": 3,
   "phases": [
     {
       "phase": 0,
@@ -21,14 +21,14 @@
       "phase": 2,
       "name": "Data Layer",
       "prd": "specs/phases/prd_phase_02_data_layer.md",
-      "status": "active",
+      "status": "complete",
       "description": "Repository pattern, SQLite, migrations"
     },
     {
       "phase": 3,
       "name": "State Machine",
       "prd": "specs/phases/prd_phase_03_state_machine.md",
-      "status": "pending",
+      "status": "active",
       "description": "statig, 14 internal statuses, transitions, side effects"
     },
     {
