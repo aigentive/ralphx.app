@@ -687,7 +687,7 @@ Every task follows the TDD cycle:
       "Write tests for database initialization",
       "Verify tables are created correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
