@@ -602,7 +602,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Define get_by_working_directory method",
       "Verify cargo build succeeds"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
