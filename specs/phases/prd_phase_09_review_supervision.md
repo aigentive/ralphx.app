@@ -1061,7 +1061,7 @@ interface AskUserQuestionResponse {
       "Position as slide-out panel or modal",
       "Run tauri dev to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
