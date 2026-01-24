@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:23:22
+**Last Updated:** 2026-01-24 07:25:02
 **Phase:** Data Layer
-**Tasks Completed:** 6 / 20
-**Current Task:** Implement Project::from_row for SQLite deserialization
+**Tasks Completed:** 7 / 20
+**Current Task:** Create infrastructure/memory module for in-memory repositories
 
 ---
 
@@ -1354,6 +1354,26 @@ Phase 1: Foundation (no dependencies)
 - Phase 1 status → "complete"
 - currentPhase → 2
 - Phase 2 status → "active"
+
+---
+
+### 2026-01-24 07:25:02 - Implement Project::from_row for SQLite deserialization
+
+**What was done:**
+- Implemented `Project::from_row(row: &Row)` method for SQLite deserialization
+- Added `FromStr` trait for GitMode (local, worktree parsing)
+- Added `ParseGitModeError` for invalid git mode strings
+- Added `parse_datetime` helper (same pattern as Task)
+- Handles all optional fields (worktree_path, worktree_branch, base_branch)
+- Unknown git_mode strings default to Local
+- Added 11 comprehensive tests:
+  - GitMode FromStr tests (local, worktree, invalid, error display)
+  - parse_datetime tests for RFC3339 and SQLite formats
+  - from_row tests for local mode, worktree mode, unknown mode, datetime formats
+- All 202 tests pass (11 new tests)
+
+**Files modified:**
+- `src-tauri/src/domain/entities/project.rs` - added from_row, FromStr for GitMode, and tests
 
 ---
 
