@@ -468,7 +468,7 @@ const qaPrepProfile = {
       "Check logs for --plugin-dir in Claude commands",
       "Verify no errors related to missing agents/skills"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "documentation",
