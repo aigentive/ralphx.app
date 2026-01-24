@@ -28,4 +28,4 @@ pub use review_commands::{
     approve_review, get_pending_reviews, get_review_by_id, get_reviews_by_task_id,
     get_task_state_history, reject_review, request_changes,
 };
-pub use task_commands::{answer_user_question, create_task, delete_task, get_task, list_tasks, update_task};
+pub use task_commands::{answer_user_question, create_task, delete_task, get_task, inject_task, list_tasks, update_task};
