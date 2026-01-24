@@ -576,7 +576,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Update domain/mod.rs to export repositories module",
       "Verify cargo build succeeds"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
