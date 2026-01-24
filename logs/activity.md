@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:50:00
+**Last Updated:** 2026-01-24 19:55:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 35 / 50
-**Current Task:** Create useDependencyGraph hook
+**Tasks Completed:** 36 / 50
+**Current Task:** Create useApplyProposals hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:55:00 - Create useDependencyGraph hook
+
+**What was done:**
+- Created `src/hooks/useDependencyGraph.ts` with TanStack Query wrappers:
+  - `dependencyKeys` factory for query key management
+  - `useDependencyGraph(sessionId)` - Fetch dependency graph with nodes, edges, critical path
+  - `useDependencyMutations()` - Returns mutations object with:
+    - `addDependency` - Add dependency between proposals
+    - `removeDependency` - Remove dependency between proposals
+- Query invalidation for graphs and proposals on mutations
+- Created `src/hooks/useDependencyGraph.test.ts` with 13 unit tests covering:
+  - Query key generation
+  - Graph fetch with nodes and edges
+  - Cycle detection
+  - Critical path
+  - Add/remove dependency mutations
+  - Error handling
+
+**Commands run:**
+- `npm test -- --run src/hooks/useDependencyGraph.test.ts` (13 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1747 tests passed)
+
+---
 
 ### 2026-01-24 19:50:00 - Create usePriorityAssessment hook
 

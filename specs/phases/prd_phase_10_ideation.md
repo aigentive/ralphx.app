@@ -1125,7 +1125,7 @@ All tasks require:
       "  - removeDependency mutation",
       "Export from src/hooks/useDependencyGraph.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
