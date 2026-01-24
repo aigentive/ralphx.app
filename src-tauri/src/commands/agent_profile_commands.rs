@@ -23,7 +23,7 @@ pub struct AgentProfileResponse {
 
 #[derive(Debug, Serialize)]
 pub struct ClaudeCodeConfigResponse {
-    pub agent_definition: String,
+    pub agent: String,
     pub skills: Vec<String>,
     pub hooks: Option<serde_json::Value>,
     pub mcp_servers: Vec<String>,
@@ -58,7 +58,7 @@ impl From<AgentProfile> for AgentProfileResponse {
             description: profile.description,
             role: format!("{:?}", profile.role).to_lowercase(),
             claude_code: ClaudeCodeConfigResponse {
-                agent_definition: profile.claude_code.agent_definition,
+                agent: profile.claude_code.agent,
                 skills: profile.claude_code.skills,
                 hooks: profile.claude_code.hooks,
                 mcp_servers: profile.claude_code.mcp_servers,
