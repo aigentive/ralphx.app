@@ -1,14 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:20:00
+**Last Updated:** 2026-01-24 20:07:08
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 17 / 63
-**Current Task:** Implement MethodologyRepository trait and SQLite implementation
+**Tasks Completed:** 18 / 63
+**Current Task:** Seed built-in methodologies (BMAD, GSD)
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:07:08 - Implement MethodologyRepository trait and SQLite implementation (Task 18)
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/methodology_repo.rs`
+- Defined `MethodologyRepository` trait with 9 async methods:
+  - CRUD: `create`, `get_by_id`, `update`, `delete`
+  - Query: `get_all`, `get_active`, `exists`
+  - State management: `activate`, `deactivate`
+- Added `MockMethodologyRepository` for testing trait object usage
+- Added 19 unit tests covering all trait methods
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_methodology_repo.rs`
+- Implemented full `MethodologyRepository` trait with SQLite backend
+- Uses `MethodologyConfig` internal struct for JSON serialization of:
+  - agent_profiles, skills, workflow, phases, templates, hooks_config
+- Handles `is_active` as direct column for efficient querying
+- `activate()` method atomically deactivates all other methodologies before activating the target
+- Supports shared connections via `from_shared(Arc<Mutex<Connection>>)`
+- Added 27 integration tests covering all operations:
+  - CRUD operations
+  - Active methodology queries
+  - Activate/deactivate with atomicity (deactivates others)
+  - Full methodology preservation (phases, templates, hooks, workflow)
+  - Timestamp preservation
+  - Shared connection support
+- Exported `MethodologyRepository` from `domain/repositories/mod.rs`
+- Exported `SqliteMethodologyRepository` from `infrastructure/sqlite/mod.rs`
+
+**Commands run:**
+- `cargo test methodology_repo --no-fail-fast` (46 tests passed: 19 trait + 27 SQLite)
+
+---
 
 ### 2026-01-24 21:20:00 - Implement MethodologyExtension Rust types (Task 17)
 
