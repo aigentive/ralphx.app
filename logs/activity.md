@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:52:00
+**Last Updated:** 2026-01-24 07:55:00
 **Phase:** Data Layer
-**Tasks Completed:** 18 / 20
-**Current Task:** Create Tauri commands for project CRUD
+**Tasks Completed:** 19 / 20
+**Current Task:** Create integration test demonstrating repository swapping
 
 ---
 
@@ -1728,6 +1728,33 @@ Phase 1: Foundation (no dependencies)
 **Files modified:**
 - `src-tauri/src/commands/mod.rs` - added task_commands module
 - `src-tauri/src/lib.rs` - registered task commands in invoke_handler
+
+---
+
+### 2026-01-24 07:55:00 - Create Tauri commands for project CRUD
+
+**What was done:**
+- Created `src-tauri/src/commands/project_commands.rs` with:
+  - CreateProjectInput struct supporting worktree configuration
+  - UpdateProjectInput struct for partial updates
+  - ProjectResponse struct for frontend serialization
+  - From<Project> for ProjectResponse implementation
+  - list_projects command using project_repo.get_all()
+  - get_project command using project_repo.get_by_id()
+  - create_project command supporting both local and worktree modes
+  - update_project command with partial field updates
+  - delete_project command
+- Updated `commands/mod.rs` to export project_commands module
+- Registered all 5 project commands in lib.rs invoke_handler
+- Added 7 tests for command functionality
+- All 303 tests pass
+
+**Files created:**
+- `src-tauri/src/commands/project_commands.rs`
+
+**Files modified:**
+- `src-tauri/src/commands/mod.rs` - added project_commands module
+- `src-tauri/src/lib.rs` - registered project commands in invoke_handler
 
 ---
 
