@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:30:00
+**Last Updated:** 2026-01-24 23:08:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 29 / 63
-**Current Task:** Implement TypeScript types for workflows with Zod schemas
+**Tasks Completed:** 30 / 63
+**Current Task:** Implement TypeScript types for artifacts with Zod schemas
 
 ---
 
 ## Session Log
+
+### 2026-01-24 23:08:00 - Implement TypeScript types for workflows with Zod schemas (Task 30)
+
+**What was done:**
+- Extended `src/types/workflow.ts` with external sync configuration types:
+  - `SyncProviderSchema` enum: jira, github, linear, notion
+  - `SyncDirectionSchema` enum: pull, push, bidirectional
+  - `ConflictResolutionSchema` enum: external_wins, internal_wins, manual
+  - `ExternalStatusMappingSchema` for mapping external to internal statuses
+  - `SyncSettingsSchema` for sync direction and webhook config
+  - `ExternalSyncConfigSchema` combining all sync configuration
+- Updated `WorkflowSchemaZ` to include `externalSync` and `isDefault` fields
+- Added `jiraCompatibleWorkflow` constant with external sync config
+- Added `BUILTIN_WORKFLOWS` array and `getBuiltinWorkflow()` helper
+- Updated `src/types/index.ts` to export all new types
+- Added 33 new tests to `workflow.test.ts` (60 total tests now)
+
+**Commands run:**
+- `npm test -- src/types/workflow.test.ts` - 60 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 22:30:00 - Create Tauri commands for methodologies (Task 29)
 

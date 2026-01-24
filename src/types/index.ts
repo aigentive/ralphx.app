@@ -54,8 +54,33 @@ export type {
 } from "./events";
 
 // Workflow types and schemas
-export { WorkflowColumnSchema, WorkflowSchemaZ } from "./workflow";
-export type { WorkflowColumn, WorkflowSchema } from "./workflow";
+export {
+  WorkflowColumnSchema,
+  WorkflowSchemaZ,
+  SyncProviderSchema,
+  SyncDirectionSchema,
+  ConflictResolutionSchema,
+  ExternalStatusMappingSchema,
+  SyncSettingsSchema,
+  ExternalSyncConfigSchema,
+  SYNC_PROVIDER_VALUES,
+  SYNC_DIRECTION_VALUES,
+  CONFLICT_RESOLUTION_VALUES,
+  defaultWorkflow,
+  jiraCompatibleWorkflow,
+  BUILTIN_WORKFLOWS,
+  getBuiltinWorkflow,
+} from "./workflow";
+export type {
+  WorkflowColumn,
+  WorkflowSchema,
+  SyncProvider,
+  SyncDirection,
+  ConflictResolution,
+  ExternalStatusMapping,
+  SyncSettings,
+  ExternalSyncConfig,
+} from "./workflow";
 
 // Plugin types and schemas
 export {
