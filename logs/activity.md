@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:20:00
+**Last Updated:** 2026-01-24 20:30:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 13 / 63
-**Current Task:** Implement ArtifactFlowRepository trait and SQLite implementation
+**Tasks Completed:** 14 / 63
+**Current Task:** Implement ResearchProcess and ResearchDepthPreset Rust types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:30:00 - Implement ArtifactFlowRepository trait and SQLite implementation (Task 14)
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/artifact_flow_repository.rs`
+- Defined `ArtifactFlowRepository` trait with 8 async methods:
+  - CRUD: `create`, `get_by_id`, `update`, `delete`
+  - Query: `get_all`, `get_active`, `exists`
+  - State management: `set_active`
+- Added `MockArtifactFlowRepository` for testing trait object usage
+- Added 16 unit tests covering all trait methods
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_artifact_flow_repo.rs`
+- Implemented full `ArtifactFlowRepository` trait with SQLite backend
+- Handles JSON serialization/deserialization of trigger_json and steps_json columns
+- Preserves created_at timestamps via RFC3339 format
+- Supports shared connections via `from_shared(Arc<Mutex<Connection>>)`
+- Added 20 integration tests covering all CRUD operations
+- Exported `ArtifactFlowRepository` from `domain/repositories/mod.rs`
+- Exported `SqliteArtifactFlowRepository` from `infrastructure/sqlite/mod.rs`
+
+**Commands run:**
+- `cargo test artifact_flow_repository --no-fail-fast` (16 tests passed)
+- `cargo test sqlite_artifact_flow_repo --no-fail-fast` (20 tests passed)
+
+---
 
 ### 2026-01-24 20:20:00 - Implement ArtifactFlow and ArtifactFlowEngine Rust types (Task 13)
 

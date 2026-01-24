@@ -5,6 +5,7 @@ pub mod connection;
 pub mod migrations;
 pub mod sqlite_agent_profile_repo;
 pub mod sqlite_artifact_bucket_repo;
+pub mod sqlite_artifact_flow_repo;
 pub mod sqlite_artifact_repo;
 pub mod sqlite_chat_message_repo;
 pub mod sqlite_ideation_session_repo;
@@ -23,6 +24,7 @@ pub use connection::{get_default_db_path, open_connection, open_memory_connectio
 pub use migrations::{run_migrations, SCHEMA_VERSION};
 pub use sqlite_agent_profile_repo::SqliteAgentProfileRepository;
 pub use sqlite_artifact_bucket_repo::SqliteArtifactBucketRepository;
+pub use sqlite_artifact_flow_repo::SqliteArtifactFlowRepository;
 pub use sqlite_artifact_repo::SqliteArtifactRepository;
 pub use sqlite_chat_message_repo::SqliteChatMessageRepository;
 pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
