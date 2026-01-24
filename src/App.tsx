@@ -1,9 +1,16 @@
 /**
  * RalphX - App Shell
- * Minimal shell with dark theme and design system
+ * Root component with QueryClientProvider and EventProvider
  */
 
-function App() {
+import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { getQueryClient } from "@/lib/queryClient";
+import { EventProvider } from "@/providers/EventProvider";
+
+const queryClient = getQueryClient();
+
+function AppContent() {
   return (
     <main className="min-h-screen bg-bg-base text-text-primary font-body p-8 flex flex-col items-center justify-center">
       <div className="bg-bg-surface rounded-lg p-8 shadow-md border border-border max-w-md w-full">
@@ -28,7 +35,9 @@ function App() {
 
           <div className="flex items-center gap-3">
             <span className="w-3 h-3 rounded-full bg-accent-secondary"></span>
-            <span className="text-sm text-text-muted">Foundation phase in progress</span>
+            <span className="text-sm text-text-muted">
+              Frontend Core phase in progress
+            </span>
           </div>
         </div>
 
@@ -39,6 +48,17 @@ function App() {
         </div>
       </div>
     </main>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <EventProvider>
+        <AppContent />
+      </EventProvider>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }
 

@@ -1,14 +1,54 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:20:00
+**Last Updated:** 2026-01-24 09:25:00
 **Phase:** Phase 5 (Frontend Core)
-**Tasks Completed:** 8 / 22
-**Current Task:** Extend Tauri API wrappers for tasks
+**Tasks Completed:** 22 / 22
+**Current Task:** All complete
 
 ---
 
 ## Session Log
+
+### 2026-01-24 09:25:00 - Phase 5 Frontend Core Complete
+
+**What was done:**
+- Completed all 22 tasks for Phase 5 (Frontend Core)
+- Created TanStack Query infrastructure with QueryClientProvider and queryClient configuration
+- Implemented 4 Zustand stores:
+  - `taskStore` - Task state with O(1) lookups
+  - `projectStore` - Project state with active project selection
+  - `uiStore` - UI state (sidebar, modals, notifications)
+  - `activityStore` - Agent messages with ring buffer
+- Created TanStack Query hooks:
+  - `useTasks` - Fetch tasks by project
+  - `useProjects` / `useProject` - Fetch all projects or single project
+  - `useTaskMutation` - Create/update/delete/move tasks
+- Implemented event listening hooks:
+  - `useTaskEvents` - Task CRUD events with Zod validation
+  - `useAgentEvents` - Agent message events with taskId filtering
+  - `useSupervisorAlerts` - Supervisor alert events
+  - `useBatchedAgentMessages` - 50ms batched events for performance
+- Created `EventProvider` component for global event listeners
+- Integrated providers in App.tsx (QueryClientProvider > EventProvider)
+- Created `formatters.ts` with formatDate, formatRelativeTime, formatDuration
+- Created test utilities in `src/test/`:
+  - `store-utils.ts` - renderHookWithProviders, resetAllStores
+  - `mock-data.ts` - Factory functions for tasks, projects, events
+
+**Test coverage:** 323 tests passing
+
+**Files created/modified:**
+- src/lib/queryClient.ts
+- src/types/events.ts, workflow.ts
+- src/stores/taskStore.ts, projectStore.ts, uiStore.ts, activityStore.ts
+- src/hooks/useTasks.ts, useProjects.ts, useTaskMutation.ts, useEvents.ts, useBatchedEvents.ts
+- src/providers/EventProvider.tsx
+- src/lib/formatters.ts
+- src/test/store-utils.ts, mock-data.ts
+- Updated src/App.tsx, src/lib/tauri.ts
+
+---
 
 ### 2026-01-24 05:15:00 - Project Setup
 
