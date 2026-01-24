@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:20:00
+**Last Updated:** 2026-01-24 19:25:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 29 / 50
-**Current Task:** Create ideationStore with Zustand
+**Tasks Completed:** 30 / 50
+**Current Task:** Create proposalStore with Zustand
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:25:00 - Create ideationStore with Zustand
+
+**What was done:**
+- Created `src/stores/ideationStore.ts` with Zustand + immer middleware:
+  - State: sessions (Record<string, IdeationSession>), activeSessionId, isLoading, error
+  - Actions: setActiveSession, addSession, setSessions, updateSession, removeSession, setLoading, setError, clearError
+  - Selectors: selectActiveSession, selectSessionsByProject, selectSessionsByStatus
+- Uses Record<string, IdeationSession> for O(1) lookup (following taskStore pattern)
+- Created `src/stores/ideationStore.test.ts` with 36 unit tests covering:
+  - Initial state verification
+  - All action methods
+  - All selector functions
+  - Edge cases (missing sessions, null handling)
+
+**Commands run:**
+- `npm test -- --run src/stores/ideationStore.test.ts` (36 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1602 tests passed)
+
+---
 
 ### 2026-01-24 19:20:00 - Create Tauri API wrappers for chat
 
