@@ -83,7 +83,7 @@ Present findings clearly and let the user make the final decision.
 
 ## Phase 3: Generate the PRD
 
-Once you have all the information, create the PRD file at `prd.md` in the project root.
+Once you have all the information, create the PRD file at `specs/prd.md`.
 
 ### PRD Structure
 
@@ -160,12 +160,12 @@ Once you have all the information, create the PRD file at `prd.md` in the projec
 
 ## Agent Instructions
 
-1. Read `activity.md` first to understand current state
+1. Read `logs/activity.md` first to understand current state
 2. Find next task with `"passes": false`
 3. Complete all steps for that task
 4. Verify in browser using agent-browser
 5. Update task to `"passes": true`
-6. Log completion in `activity.md`
+6. Log completion in `logs/activity.md`
 7. Repeat until all tasks pass
 
 **Important:** Only modify the `passes` field. Do not remove or rewrite tasks.
@@ -285,7 +285,7 @@ Add permissions based on what was chosen in the PRD:
 
 After creating the PRD and updating PROMPT.md and settings.json:
 
-1. **Create activity.md** if it doesn't exist:
+1. **Create logs/activity.md** if it doesn't exist:
 ```markdown
 # [Project Name] - Activity Log
 
@@ -310,7 +310,7 @@ After completing all phases, present the user with a verification checklist:
 ```
 Your PRD is ready! Before running ralph.sh, please verify:
 
-**prd.md:**
+**specs/prd.md:**
 - [ ] All features captured in task list
 - [ ] Tasks are atomic and verifiable
 - [ ] Tasks are in correct dependency order
@@ -326,7 +326,7 @@ Your PRD is ready! Before running ralph.sh, please verify:
 
 Once verified, run: ./ralph.sh 20
 
-Monitor progress in activity.md and screenshots/
+Monitor progress in logs/activity.md and screenshots/
 ```
 
 Explicitly tell the user to verify these files before running the loop. This verification step is critical for a successful Ralph Wiggum run.
