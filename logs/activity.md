@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:42:00
+**Last Updated:** 2026-01-24 14:45:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 19 / 33
-**Current Task:** Create qaStore with Zustand
+**Tasks Completed:** 20 / 33
+**Current Task:** Create useQA hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:45:00 - Create qaStore with Zustand
+
+**What was done:**
+- Created `src/stores/qaStore.ts` with Zustand and immer middleware:
+  - State: `settings`, `settingsLoaded`, `taskQA` (Record by task ID), `isLoadingSettings`, `loadingTasks` (Set), `error`
+  - Actions: `setSettings`, `updateSettings`, `setLoadingSettings`, `setTaskQA`, `updateTaskQA`, `setLoadingTask`, `setError`, `clearTaskQA`, `removeTaskQA`
+  - Enabled `immer` MapSet plugin for Set support
+- Created selectors:
+  - `selectTaskQA(taskId)`: Get QA data for a task
+  - `selectIsQAEnabled`: Check if QA is globally enabled
+  - `selectIsTaskLoading(taskId)`: Check if task QA is loading
+  - `selectTaskQAResults(taskId)`: Get test results for a task
+  - `selectHasTaskQA(taskId)`: Check if task has QA data
+- Created comprehensive test suite with 32 tests covering all actions and selectors
+- All 730 TypeScript tests passing
+
+**Commands run:**
+- `npm test -- src/stores/qaStore.test.ts --reporter=verbose`
+- `npm run typecheck`
+- `npm test`
+
+---
 
 ### 2026-01-24 14:42:00 - Create Tauri API wrappers for QA
 
