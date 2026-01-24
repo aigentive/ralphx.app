@@ -766,7 +766,7 @@ All tasks require:
       "Implement get_by_task() ordered by created_at",
       "Implement delete_by_session() for cleanup"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
