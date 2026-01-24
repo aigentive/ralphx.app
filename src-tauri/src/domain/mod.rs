@@ -3,3 +3,4 @@
 
 pub mod entities;
 pub mod repositories;
+pub mod state_machine;
