@@ -40,9 +40,28 @@ In the active PRD, look for tasks with `"passes": false`.
    ```
 6. **Otherwise**, continue with the newly active PRD
 
-## Step 3: Identify Task Type
+## Step 3: Read the Full Task
 
-Find the single highest priority task where `"passes": false`.
+Find the first task where `"passes": false`.
+
+**CRITICAL: Read ALL fields of the task before starting work.** Each task may contain:
+
+| Field | Purpose |
+|-------|---------|
+| `description` | What the task is about (summary only - not sufficient on its own) |
+| `steps` | **Required actions** - follow these step by step |
+| `acceptance_criteria` | **What to verify** - task is NOT complete until all criteria pass |
+| `design_quality` | **Visual standards** - for UI tasks, verify these design requirements |
+| `passes` | Mark `true` only when ALL steps completed AND all criteria verified |
+
+**For visual-verification tasks specifically:**
+1. Read the `steps` to know what to capture and test
+2. Read `acceptance_criteria` to know what functional requirements to check
+3. Read `design_quality` to know what design standards to verify
+4. Fix ANY issue found in steps 2 or 3 using `/frontend-design` skill
+5. Only mark `passes: true` when everything in all three sections is satisfied
+
+## Step 4: Identify Task Type
 
 Check the task's `"category"` field:
 - If `"planning"` → Follow **PRD Generation Workflow**
