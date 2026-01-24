@@ -93,6 +93,27 @@
       "prd": "specs/phases/prd_phase_12_reconciliation.md",
       "status": "active",
       "description": "Consolidate agents/skills into plugin, fix architectural inconsistencies"
+    },
+    {
+      "phase": 13,
+      "name": "Design System",
+      "prd": "specs/phases/prd_phase_13_design.md",
+      "status": "pending",
+      "description": "Setup Lucide + shadcn/ui, create DESIGN.md with page requirements"
+    },
+    {
+      "phase": 14,
+      "name": "Design Implementation",
+      "prd": "specs/phases/prd_phase_14_implementation.md",
+      "status": "pending",
+      "description": "Implement premium designs from Phase 13 using shadcn/ui and Lucide"
+    },
+    {
+      "phase": 15,
+      "name": "Auditor System",
+      "prd": "specs/phases/prd_phase_15_auditor.md",
+      "status": "pending",
+      "description": "Automatic detection and correction of systemic issues in completed work"
     }
   ]
 }
