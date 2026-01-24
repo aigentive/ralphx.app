@@ -597,7 +597,7 @@ const qaPrepProfile = {
       "Write unit tests for ProjectCreationWizard",
       "Reference specs/plan.md 'Project Creation Wizard' section for exact ASCII layout"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

@@ -1,14 +1,55 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 07:52:00
+**Last Updated:** 2026-01-25 08:02:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 13 / 31
-**Current Task:** Implement ProjectSidebar component with project list and navigation
+**Tasks Completed:** 14 / 31
+**Current Task:** Implement Merge Workflow Dialog for post-completion
 
 ---
 
 ## Session Log
+
+### 2026-01-25 08:02:00 - Implement Project Creation Wizard with Git Mode selection (Task 14)
+
+**What was done:**
+- Created `src/components/projects/ProjectCreationWizard/` directory with component files
+- Implemented `ProjectCreationWizard.tsx` modal component with:
+  - Project name input field with validation
+  - Folder input with optional Browse button (Tauri dialog integration)
+  - Git Mode radio selector (Local vs Isolated Worktree)
+  - For Worktree mode: branch name input (auto-generated from project name), base branch dropdown, worktree path display
+  - Validation errors shown after first submit attempt
+  - Error message display for API errors
+  - Creating state with disabled inputs
+  - Form reset when modal reopens
+- Following established patterns from ReviewNotesModal
+- Using CSS variables for design system consistency (warm orange accent, dark mode)
+- Following exact ASCII layout from specs/plan.md "Project Creation Wizard" section
+- Wrote 45 unit tests covering:
+  - Rendering and styling
+  - Git mode selection
+  - Worktree mode fields
+  - Branch name generation
+  - Worktree path generation
+  - Form validation
+  - Submission with both modes
+  - Browse folder integration
+  - Close/cancel functionality
+  - Error display
+  - Form reset
+
+**Files created:**
+- `src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx`
+- `src/components/projects/ProjectCreationWizard/ProjectCreationWizard.test.tsx`
+- `src/components/projects/ProjectCreationWizard/index.tsx`
+
+**Commands run:**
+- `npm run test -- --run src/components/projects/ProjectCreationWizard/` - 45 tests passed
+- `npm run typecheck` - passed
+- `npm test -- --run` - All 3471 tests passed
+
+---
 
 ### 2026-01-25 07:52:00 - Implement Settings View (Task 13)
 
