@@ -1,14 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:55:00
+**Last Updated:** 2026-01-24 17:10:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 11 / 50
-**Current Task:** Implement SqliteTaskProposalRepository
+**Tasks Completed:** 12 / 50
+**Current Task:** Implement SqliteProposalDependencyRepository
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:10:00 - Implement SqliteTaskProposalRepository
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo.rs`:
+  - `SqliteTaskProposalRepository` struct with `Arc<Mutex<Connection>>` pattern
+  - Constructor methods: `new()` and `from_shared()`
+  - Implements all 12 `TaskProposalRepository` trait methods:
+    - `create()` - INSERT with JSON serialization for steps, acceptance_criteria, priority_factors
+    - `get_by_id()` - SELECT with `from_row` deserialization
+    - `get_by_session()` - SELECT ordered by `sort_order ASC`
+    - `update()` - Full proposal update preserving timestamps
+    - `update_priority()` - Updates priority assessment fields (suggested_priority, priority_score, priority_reason, priority_factors as JSON)
+    - `update_selection()` - Updates checkbox state
+    - `set_created_task_id()` - Links proposal to created task (with FK constraint)
+    - `delete()` - DELETE with CASCADE to dependencies
+    - `reorder()` - UPDATE sort_order for each proposal in list
+    - `get_selected_by_session()` - Filters by selected = true
+    - `count_by_session()` - COUNT all proposals in session
+    - `count_selected_by_session()` - COUNT selected proposals only
+- Updated `infrastructure/sqlite/mod.rs` with module declaration and re-export
+- Added 31 comprehensive integration tests:
+  - CRUD operation tests (create, get_by_id, delete)
+  - Filtering tests (get_by_session, get_selected_by_session)
+  - Ordering tests (sort_order verification)
+  - Update tests (full update, priority, selection)
+  - Reorder tests (including session isolation)
+  - Task linking tests (with FK constraint handling)
+  - Count operations tests
+  - Timestamp verification tests
+  - Priority factors JSON serialization tests
+  - Shared connection tests
+
+**Commands run:**
+- `cargo test --lib sqlite_task_proposal_repo::` (31 tests passed)
+- `cargo test --lib` (1797 tests passed)
+
+---
 
 ### 2026-01-24 16:55:00 - Implement SqliteIdeationSessionRepository
 
