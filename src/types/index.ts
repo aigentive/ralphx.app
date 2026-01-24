@@ -32,3 +32,23 @@ export {
   TASK_CATEGORIES,
 } from "./task";
 export type { Task, TaskCategory, CreateTask, UpdateTask, TaskList } from "./task";
+
+// Event types and schemas
+export {
+  AgentMessageEventSchema,
+  TaskStatusEventSchema,
+  SupervisorAlertEventSchema,
+  ReviewEventSchema,
+  FileChangeEventSchema,
+  ProgressEventSchema,
+  TaskEventSchema,
+} from "./events";
+export type {
+  AgentMessageEvent,
+  TaskStatusEvent,
+  SupervisorAlertEvent,
+  ReviewEvent,
+  FileChangeEvent,
+  ProgressEvent,
+  TaskEvent,
+} from "./events";
