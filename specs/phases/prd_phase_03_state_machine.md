@@ -605,7 +605,7 @@ pub struct MockNotifier {
       "Run migration and verify table exists",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
