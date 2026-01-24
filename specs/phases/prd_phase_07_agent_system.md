@@ -424,7 +424,7 @@ CREATE TABLE agent_profiles (
       "Write focused system prompt for task execution",
       "Keep file under 100 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -436,7 +436,7 @@ CREATE TABLE agent_profiles (
       "Write system prompt focused on code review tasks",
       "Keep file under 100 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
