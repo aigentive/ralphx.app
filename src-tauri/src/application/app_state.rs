@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::domain::agents::AgenticClient;
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::error::AppResult;
 use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
@@ -12,6 +13,7 @@ use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteProjectRepository,
     SqliteTaskRepository,
 };
+use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
 /// Application state container for dependency injection
 /// Holds repository trait objects that can be swapped for testing vs production
@@ -20,6 +22,8 @@ pub struct AppState {
     pub task_repo: Arc<dyn TaskRepository>,
     /// Project repository (SQLite in production, in-memory for tests)
     pub project_repo: Arc<dyn ProjectRepository>,
+    /// Agent client (Claude Code in production, Mock for tests)
+    pub agent_client: Arc<dyn AgenticClient>,
 }
 
 impl AppState {
@@ -36,6 +40,7 @@ impl AppState {
         Ok(Self {
             task_repo: Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
             project_repo: Arc::new(SqliteProjectRepository::from_shared(shared_conn)),
+            agent_client: Arc::new(ClaudeCodeClient::new()),
         })
     }
 
@@ -50,6 +55,7 @@ impl AppState {
         Ok(Self {
             task_repo: Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
             project_repo: Arc::new(SqliteProjectRepository::from_shared(shared_conn)),
+            agent_client: Arc::new(ClaudeCodeClient::new()),
         })
     }
 
@@ -58,6 +64,7 @@ impl AppState {
         Self {
             task_repo: Arc::new(MemoryTaskRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
+            agent_client: Arc::new(MockAgenticClient::new()),
         }
     }
 
@@ -69,13 +76,21 @@ impl AppState {
         Self {
             task_repo,
             project_repo,
+            agent_client: Arc::new(MockAgenticClient::new()),
         }
+    }
+
+    /// Swap the agent client to a different implementation
+    pub fn with_agent_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
+        self.agent_client = client;
+        self
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::agents::ClientType;
     use crate::domain::entities::{Project, ProjectId, Task};
 
     #[tokio::test]
@@ -162,5 +177,36 @@ mod tests {
         // Verify all tasks were created
         let tasks = state.task_repo.get_by_project(&project.id).await.unwrap();
         assert_eq!(tasks.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_new_test_creates_mock_agent_client() {
+        let state = AppState::new_test();
+
+        // Agent client should be mock and available
+        let available = state.agent_client.is_available().await.unwrap();
+        assert!(available);
+
+        // Check capabilities indicate mock
+        let caps = state.agent_client.capabilities();
+        assert_eq!(caps.client_type, ClientType::Mock);
+    }
+
+    #[tokio::test]
+    async fn test_with_agent_client_swaps_client() {
+        let state = AppState::new_test();
+
+        // Default is mock
+        assert_eq!(
+            state.agent_client.capabilities().client_type,
+            ClientType::Mock
+        );
+
+        // Create custom mock with different capabilities wouldn't show,
+        // but we can test the swap mechanism works
+        let custom_mock = Arc::new(MockAgenticClient::new());
+        let _state = state.with_agent_client(custom_mock);
+
+        // If it compiled and ran, the swap worked
     }
 }

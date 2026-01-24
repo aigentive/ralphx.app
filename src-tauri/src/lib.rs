@@ -7,6 +7,7 @@ pub mod commands;
 pub mod domain;
 pub mod error;
 pub mod infrastructure;
+pub mod testing;
 
 // Re-export common types
 pub use application::AppState;
