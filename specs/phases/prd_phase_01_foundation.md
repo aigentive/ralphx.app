@@ -594,7 +594,7 @@ Every task follows the TDD cycle:
       "Add test scripts to package.json",
       "Verify `npm run test` works"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
