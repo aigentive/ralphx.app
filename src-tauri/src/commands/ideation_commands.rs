@@ -1170,6 +1170,192 @@ pub async fn get_blocked_tasks(
         .map_err(|e| e.to_string())
 }
 
+// ============================================================================
+// Chat Message Commands
+// ============================================================================
+
+/// Input for sending a chat message
+#[derive(Debug, Deserialize)]
+pub struct SendChatMessageInput {
+    /// Session ID for session context (optional, mutually exclusive with project_id and task_id)
+    pub session_id: Option<String>,
+    /// Project ID for project context (optional, only used if session_id is None)
+    pub project_id: Option<String>,
+    /// Task ID for task context (optional, only used if session_id and project_id are None)
+    pub task_id: Option<String>,
+    /// Role of the message sender
+    pub role: String,
+    /// Message content (supports Markdown)
+    pub content: String,
+    /// Optional metadata (JSON)
+    pub metadata: Option<String>,
+    /// Optional parent message ID for threading
+    pub parent_message_id: Option<String>,
+}
+
+/// Send a chat message
+#[tauri::command]
+pub async fn send_chat_message(
+    input: SendChatMessageInput,
+    state: State<'_, AppState>,
+) -> Result<ChatMessageResponse, String> {
+    use crate::domain::entities::{ChatMessageId, MessageRole};
+
+    // Determine the context and create the appropriate message
+    let mut message = if let Some(session_id_str) = input.session_id {
+        let session_id = IdeationSessionId::from_string(session_id_str);
+
+        // Validate session exists
+        let session = state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Session not found".to_string())?;
+
+        if session.status != IdeationSessionStatus::Active {
+            return Err("Cannot send messages to an inactive session".to_string());
+        }
+
+        // Create message based on role
+        let role: MessageRole = input.role.parse().map_err(|_| format!("Invalid role: {}", input.role))?;
+        match role {
+            MessageRole::User => ChatMessage::user_in_session(session_id, &input.content),
+            MessageRole::Orchestrator => ChatMessage::orchestrator_in_session(session_id, &input.content),
+            MessageRole::System => ChatMessage::system_in_session(session_id, &input.content),
+        }
+    } else if let Some(project_id_str) = input.project_id {
+        let project_id = ProjectId::from_string(project_id_str);
+        ChatMessage::user_in_project(project_id, &input.content)
+    } else if let Some(task_id_str) = input.task_id {
+        let task_id = TaskId::from_string(task_id_str);
+        ChatMessage::user_about_task(task_id, &input.content)
+    } else {
+        return Err("Must provide session_id, project_id, or task_id".to_string());
+    };
+
+    // Set optional fields
+    if let Some(metadata) = input.metadata {
+        message.metadata = Some(metadata);
+    }
+    if let Some(parent_id_str) = input.parent_message_id {
+        message.parent_message_id = Some(ChatMessageId::from_string(parent_id_str));
+    }
+
+    state
+        .chat_message_repo
+        .create(message)
+        .await
+        .map(ChatMessageResponse::from)
+        .map_err(|e| e.to_string())
+}
+
+/// Get all messages for a session
+#[tauri::command]
+pub async fn get_session_messages(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ChatMessageResponse>, String> {
+    let session_id = IdeationSessionId::from_string(session_id);
+
+    state
+        .chat_message_repo
+        .get_by_session(&session_id)
+        .await
+        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Get recent messages for a session with a limit
+#[tauri::command]
+pub async fn get_recent_session_messages(
+    session_id: String,
+    limit: u32,
+    state: State<'_, AppState>,
+) -> Result<Vec<ChatMessageResponse>, String> {
+    let session_id = IdeationSessionId::from_string(session_id);
+
+    state
+        .chat_message_repo
+        .get_recent_by_session(&session_id, limit)
+        .await
+        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Get all messages for a project (not in any session)
+#[tauri::command]
+pub async fn get_project_messages(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ChatMessageResponse>, String> {
+    let project_id = ProjectId::from_string(project_id);
+
+    state
+        .chat_message_repo
+        .get_by_project(&project_id)
+        .await
+        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Get all messages for a task
+#[tauri::command]
+pub async fn get_task_messages(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ChatMessageResponse>, String> {
+    let task_id = TaskId::from_string(task_id);
+
+    state
+        .chat_message_repo
+        .get_by_task(&task_id)
+        .await
+        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a chat message
+#[tauri::command]
+pub async fn delete_chat_message(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    use crate::domain::entities::ChatMessageId;
+
+    let message_id = ChatMessageId::from_string(id);
+    state
+        .chat_message_repo
+        .delete(&message_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete all messages in a session
+#[tauri::command]
+pub async fn delete_session_messages(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let session_id = IdeationSessionId::from_string(session_id);
+    state
+        .chat_message_repo
+        .delete_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Count messages in a session
+#[tauri::command]
+pub async fn count_session_messages(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<u32, String> {
+    let session_id = IdeationSessionId::from_string(session_id);
+    state
+        .chat_message_repo
+        .count_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1840,5 +2026,283 @@ mod tests {
             .unwrap();
         assert_eq!(blocked.len(), 1);
         assert_eq!(blocked[0], t1.id);
+    }
+
+    // ========================================================================
+    // Chat Message Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_send_chat_message_to_session() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session first
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Send a message
+        let message = ChatMessage::user_in_session(created_session.id.clone(), "Hello world");
+        let created = state.chat_message_repo.create(message).await.unwrap();
+
+        assert_eq!(created.content, "Hello world");
+        assert_eq!(created.session_id, Some(created_session.id));
+    }
+
+    #[tokio::test]
+    async fn test_send_chat_message_to_project() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Send a message to project
+        let message = ChatMessage::user_in_project(project_id.clone(), "Project message");
+        let created = state.chat_message_repo.create(message).await.unwrap();
+
+        assert_eq!(created.content, "Project message");
+        assert_eq!(created.project_id, Some(project_id));
+        assert!(created.session_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_send_chat_message_about_task() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create a task
+        let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
+        let created_task = state.task_repo.create(task).await.unwrap();
+
+        // Send a message about the task
+        let message = ChatMessage::user_about_task(created_task.id.clone(), "Task message");
+        let created = state.chat_message_repo.create(message).await.unwrap();
+
+        assert_eq!(created.content, "Task message");
+        assert_eq!(created.task_id, Some(created_task.id));
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Send multiple messages
+        for i in 1..=3 {
+            let message =
+                ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
+            state.chat_message_repo.create(message).await.unwrap();
+        }
+
+        // Get all messages
+        let messages = state
+            .chat_message_repo
+            .get_by_session(&created_session.id)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_project_messages() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Send messages to project
+        for i in 1..=2 {
+            let message =
+                ChatMessage::user_in_project(project_id.clone(), format!("Project message {}", i));
+            state.chat_message_repo.create(message).await.unwrap();
+        }
+
+        // Get all project messages
+        let messages = state
+            .chat_message_repo
+            .get_by_project(&project_id)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_task_messages() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create a task
+        let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
+        let created_task = state.task_repo.create(task).await.unwrap();
+
+        // Send messages about the task
+        for i in 1..=2 {
+            let message =
+                ChatMessage::user_about_task(created_task.id.clone(), format!("Task message {}", i));
+            state.chat_message_repo.create(message).await.unwrap();
+        }
+
+        // Get all task messages
+        let messages = state
+            .chat_message_repo
+            .get_by_task(&created_task.id)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_chat_message() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session and message
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        let message = ChatMessage::user_in_session(created_session.id.clone(), "To delete");
+        let created = state.chat_message_repo.create(message).await.unwrap();
+
+        // Delete the message
+        state.chat_message_repo.delete(&created.id).await.unwrap();
+
+        // Verify it's gone
+        let result = state.chat_message_repo.get_by_id(&created.id).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_session_messages() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Create multiple messages
+        for i in 1..=3 {
+            let message =
+                ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
+            state.chat_message_repo.create(message).await.unwrap();
+        }
+
+        // Delete all session messages
+        state
+            .chat_message_repo
+            .delete_by_session(&created_session.id)
+            .await
+            .unwrap();
+
+        // Verify they're gone
+        let messages = state
+            .chat_message_repo
+            .get_by_session(&created_session.id)
+            .await
+            .unwrap();
+        assert!(messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_count_session_messages() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Create messages
+        for i in 1..=5 {
+            let message =
+                ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
+            state.chat_message_repo.create(message).await.unwrap();
+        }
+
+        // Count messages
+        let count = state
+            .chat_message_repo
+            .count_by_session(&created_session.id)
+            .await
+            .unwrap();
+        assert_eq!(count, 5);
+    }
+
+    #[tokio::test]
+    async fn test_get_recent_session_messages() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Create 5 messages
+        for i in 1..=5 {
+            let message =
+                ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
+            state.chat_message_repo.create(message).await.unwrap();
+        }
+
+        // Get only 3 recent messages
+        let messages = state
+            .chat_message_repo
+            .get_recent_by_session(&created_session.id, 3)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_chat_message_response_includes_all_fields() {
+        let session_id = IdeationSessionId::new();
+        let mut message = ChatMessage::user_in_session(session_id.clone(), "Test message");
+        message.metadata = Some(r#"{"key": "value"}"#.to_string());
+
+        let response = ChatMessageResponse::from(message.clone());
+
+        assert_eq!(response.content, "Test message");
+        assert_eq!(response.role, "user");
+        assert_eq!(response.session_id, Some(session_id.as_str().to_string()));
+        assert!(response.project_id.is_none());
+        assert!(response.task_id.is_none());
+        assert_eq!(response.metadata, Some(r#"{"key": "value"}"#.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_message_in_session() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Create orchestrator message
+        let message =
+            ChatMessage::orchestrator_in_session(created_session.id.clone(), "AI response");
+        let created = state.chat_message_repo.create(message).await.unwrap();
+
+        let response = ChatMessageResponse::from(created);
+        assert_eq!(response.role, "orchestrator");
+        assert_eq!(response.content, "AI response");
+    }
+
+    #[tokio::test]
+    async fn test_system_message_in_session() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Create system message
+        let message = ChatMessage::system_in_session(created_session.id.clone(), "Session started");
+        let created = state.chat_message_repo.create(message).await.unwrap();
+
+        let response = ChatMessageResponse::from(created);
+        assert_eq!(response.role, "system");
+        assert_eq!(response.content, "Session started");
     }
 }

@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 18:10:00
+**Last Updated:** 2026-01-24 18:25:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 23 / 50
-**Current Task:** Create Tauri commands for chat messages
+**Tasks Completed:** 24 / 50
+**Current Task:** Register ideation commands in Tauri builder
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:25:00 - Create Tauri commands for chat messages
+
+**What was done:**
+- Extended `src-tauri/src/commands/ideation_commands.rs` with chat message commands:
+  - Input types:
+    - `SendChatMessageInput` - session_id, project_id, task_id, role, content, metadata, parent_message_id
+  - Commands:
+    - `send_chat_message` - Create a new chat message (session, project, or task context)
+    - `get_session_messages` - Get all messages for a session
+    - `get_recent_session_messages` - Get recent messages with limit
+    - `get_project_messages` - Get all messages for a project
+    - `get_task_messages` - Get all messages for a task
+    - `delete_chat_message` - Delete a single message
+    - `delete_session_messages` - Delete all messages in a session
+    - `count_session_messages` - Count messages in a session
+- Updated `commands/mod.rs` with new exports
+- 13 new unit tests for chat message operations
+- Total: 38 tests in ideation_commands module
+
+**Commands run:**
+- `cargo test --lib ideation_commands::` (38 tests passed)
+- `cargo test --lib` (2078 tests passed)
+
+---
 
 ### 2026-01-24 18:10:00 - Create Tauri commands for dependencies and apply
 
