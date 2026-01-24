@@ -1,14 +1,56 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:16:27
+**Last Updated:** 2026-01-24 20:20:33
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 20 / 63
-**Current Task:** Implement ArtifactService
+**Tasks Completed:** 21 / 63
+**Current Task:** Implement ArtifactFlowService
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:20:33 - Implement ArtifactService (Task 21)
+
+**What was done:**
+- Created `src-tauri/src/domain/services/artifact_service.rs`
+- Implemented `ArtifactService<A: ArtifactRepository, B: ArtifactBucketRepository>` generic struct
+- Implemented `create_artifact()` - creates artifacts with bucket validation:
+  - Validates bucket exists when specified
+  - Validates artifact type is accepted by bucket
+  - Validates creator can write to bucket
+- Implemented `get_artifact(id)` - retrieves artifact by ID
+- Implemented `get_artifacts_for_task(task_id)` - retrieves all artifacts for a task
+- Implemented `get_artifacts_for_process(process_id)` - retrieves all artifacts for a process
+- Implemented `get_artifacts_in_bucket(bucket_id)` - retrieves all artifacts in a bucket
+- Implemented `get_artifacts_by_type(type)` - retrieves all artifacts of a specific type
+- Implemented `copy_to_bucket()` - copies artifact to another bucket:
+  - Creates new artifact with new ID
+  - Adds derived_from relation to source
+  - Validates bucket constraints
+  - Preserves task/process associations
+- Implemented `version_artifact()` - creates new version of artifact:
+  - Increments version number
+  - Adds derived_from relation to previous version
+  - Preserves bucket and task/process associations
+- Implemented `get_buckets()`, `get_bucket(id)` - bucket retrieval
+- Implemented `add_relation()` - adds relation between artifacts with validation
+- Implemented `get_derived_from()`, `get_related()` - relation queries
+- Updated `domain/services/mod.rs` to export ArtifactService
+- Added 37 unit tests covering all service methods:
+  - create_artifact tests (with/without bucket, validation errors)
+  - get_artifact tests (found/not found)
+  - get_artifacts_for_task/process/bucket/type tests
+  - copy_to_bucket tests (success, errors for source/target not found, type not accepted, writer not allowed)
+  - version_artifact tests (success, not found, preserves bucket/task, increments version)
+  - add_relation tests (success, from/to not found)
+  - Content handling tests (inline vs file)
+
+**Commands run:**
+- `cargo test artifact_service --no-fail-fast` (37 tests passed)
+- `cargo clippy --lib` (no new warnings)
+
+---
 
 ### 2026-01-24 20:16:27 - Implement WorkflowService (Task 20)
 
