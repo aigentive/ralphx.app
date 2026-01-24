@@ -963,7 +963,7 @@ All tasks require tests written before implementation:
       "Call seeding on database initialization",
       "Run cargo test to verify methodologies are seeded"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

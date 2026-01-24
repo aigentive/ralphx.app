@@ -188,6 +188,253 @@ impl MethodologyExtension {
     pub fn phase_at_order(&self, order: u32) -> Option<&MethodologyPhase> {
         self.phases.iter().find(|p| p.order == order)
     }
+
+    /// Returns the built-in BMAD methodology
+    ///
+    /// BMAD (Breakthrough Method for Agile AI-Driven Development) uses:
+    /// - 8 agents: Analyst, PM, Architect, UX Designer, Developer, Scrum Master, TEA, Tech Writer
+    /// - 4 phases: Analysis → Planning → Solutioning → Implementation
+    /// - Document-centric: PRD, Architecture Doc, UX Design, Stories/Epics
+    pub fn bmad() -> Self {
+        use super::status::InternalStatus;
+        use super::workflow::{ColumnBehavior, WorkflowColumn, WorkflowId, WorkflowSchema};
+
+        let workflow = WorkflowSchema {
+            id: WorkflowId::from_string("bmad-method"),
+            name: "BMAD Method".to_string(),
+            description: Some("Breakthrough Method for Agile AI-Driven Development".to_string()),
+            columns: vec![
+                // Phase 1: Analysis
+                WorkflowColumn::new("brainstorm", "Brainstorm", InternalStatus::Backlog)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-analyst")),
+                WorkflowColumn::new("research", "Research", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-analyst")),
+                // Phase 2: Planning
+                WorkflowColumn::new("prd-draft", "PRD Draft", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-pm")),
+                WorkflowColumn::new("prd-review", "PRD Review", InternalStatus::PendingReview)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-pm")),
+                WorkflowColumn::new("ux-design", "UX Design", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-ux")),
+                // Phase 3: Solutioning
+                WorkflowColumn::new("architecture", "Architecture", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-architect")),
+                WorkflowColumn::new("stories", "Stories", InternalStatus::Ready)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-pm")),
+                // Phase 4: Implementation
+                WorkflowColumn::new("sprint", "Sprint", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-developer")),
+                WorkflowColumn::new("code-review", "Code Review", InternalStatus::PendingReview)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("bmad-developer")),
+                WorkflowColumn::new("done", "Done", InternalStatus::Approved),
+            ],
+            external_sync: None,
+            defaults: Default::default(),
+            is_default: false,
+        };
+
+        Self {
+            id: MethodologyId::from_string("bmad-method"),
+            name: "BMAD Method".to_string(),
+            description: Some(
+                "Breakthrough Method for Agile AI-Driven Development - a document-centric \
+                 methodology with 4 phases: Analysis, Planning, Solutioning, Implementation"
+                    .to_string(),
+            ),
+            agent_profiles: vec![
+                "bmad-analyst".to_string(),
+                "bmad-pm".to_string(),
+                "bmad-architect".to_string(),
+                "bmad-ux".to_string(),
+                "bmad-developer".to_string(),
+                "bmad-scrum-master".to_string(),
+                "bmad-tea".to_string(),
+                "bmad-tech-writer".to_string(),
+            ],
+            skills: vec![
+                "skills/prd-creation".to_string(),
+                "skills/architecture-design".to_string(),
+                "skills/ux-review".to_string(),
+                "skills/story-writing".to_string(),
+            ],
+            workflow,
+            phases: vec![
+                MethodologyPhase::new("analysis", "Analysis", 0)
+                    .with_description("Analyze requirements and research domain")
+                    .with_agent_profiles(["bmad-analyst"])
+                    .with_columns(["brainstorm", "research"]),
+                MethodologyPhase::new("planning", "Planning", 1)
+                    .with_description("Create PRD and UX design documents")
+                    .with_agent_profiles(["bmad-pm", "bmad-ux"])
+                    .with_columns(["prd-draft", "prd-review", "ux-design"]),
+                MethodologyPhase::new("solutioning", "Solutioning", 2)
+                    .with_description("Design architecture and create user stories")
+                    .with_agent_profiles(["bmad-architect", "bmad-pm"])
+                    .with_columns(["architecture", "stories"]),
+                MethodologyPhase::new("implementation", "Implementation", 3)
+                    .with_description("Execute sprints and code review")
+                    .with_agent_profiles(["bmad-developer"])
+                    .with_columns(["sprint", "code-review", "done"]),
+            ],
+            templates: vec![
+                MethodologyTemplate::new("prd", "templates/bmad/prd.md")
+                    .with_name("PRD Template")
+                    .with_description("Product Requirements Document for BMAD"),
+                MethodologyTemplate::new("design_doc", "templates/bmad/architecture.md")
+                    .with_name("Architecture Document")
+                    .with_description("System architecture design document"),
+                MethodologyTemplate::new("specification", "templates/bmad/ux-design.md")
+                    .with_name("UX Design Spec")
+                    .with_description("User experience design specification"),
+            ],
+            hooks_config: Some(serde_json::json!({
+                "phase_gates": {
+                    "analysis": ["requirements_documented"],
+                    "planning": ["prd_approved", "ux_approved"],
+                    "solutioning": ["architecture_approved"]
+                },
+                "validation_checklists": {
+                    "prd": ["clear_objectives", "success_metrics", "scope_defined"],
+                    "architecture": ["scalability", "security", "maintainability"]
+                }
+            })),
+            is_active: false,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Returns the built-in GSD methodology
+    ///
+    /// GSD (Get Shit Done) uses:
+    /// - 11 agents: project-researcher, phase-researcher, planner, executor, verifier, debugger, etc.
+    /// - Wave-based parallelization: Plans grouped into waves for parallel execution
+    /// - Checkpoint protocol: human-verify, decision, human-action types
+    /// - Goal-backward verification: must-haves derived from phase goals
+    pub fn gsd() -> Self {
+        use super::status::InternalStatus;
+        use super::workflow::{ColumnBehavior, WorkflowColumn, WorkflowId, WorkflowSchema};
+
+        let workflow = WorkflowSchema {
+            id: WorkflowId::from_string("gsd-method"),
+            name: "GSD (Get Shit Done)".to_string(),
+            description: Some(
+                "Spec-driven development with wave-based parallelization".to_string(),
+            ),
+            columns: vec![
+                // Initialize
+                WorkflowColumn::new("initialize", "Initialize", InternalStatus::Backlog)
+                    .with_behavior(
+                        ColumnBehavior::new().with_agent_profile("gsd-project-researcher"),
+                    ),
+                // Discuss (optional)
+                WorkflowColumn::new("discuss", "Discuss", InternalStatus::Blocked)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("gsd-orchestrator")),
+                // Plan
+                WorkflowColumn::new("research", "Research", InternalStatus::Executing)
+                    .with_behavior(
+                        ColumnBehavior::new().with_agent_profile("gsd-phase-researcher"),
+                    ),
+                WorkflowColumn::new("planning", "Planning", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("gsd-planner")),
+                WorkflowColumn::new("plan-check", "Plan Check", InternalStatus::PendingReview)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("gsd-plan-checker")),
+                // Execute (wave-based)
+                WorkflowColumn::new("queued", "Queued", InternalStatus::Ready),
+                WorkflowColumn::new("executing", "Executing", InternalStatus::Executing)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("gsd-executor")),
+                WorkflowColumn::new("checkpoint", "Checkpoint", InternalStatus::Blocked),
+                // Verify
+                WorkflowColumn::new("verifying", "Verifying", InternalStatus::PendingReview)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("gsd-verifier")),
+                WorkflowColumn::new("debugging", "Debugging", InternalStatus::RevisionNeeded)
+                    .with_behavior(ColumnBehavior::new().with_agent_profile("gsd-debugger")),
+                // Complete
+                WorkflowColumn::new("done", "Done", InternalStatus::Approved),
+            ],
+            external_sync: None,
+            defaults: Default::default(),
+            is_default: false,
+        };
+
+        Self {
+            id: MethodologyId::from_string("gsd-method"),
+            name: "GSD (Get Shit Done)".to_string(),
+            description: Some(
+                "Spec-driven development with wave-based parallelization. Features checkpoint \
+                 protocols (human-verify, decision, human-action) and goal-backward verification \
+                 with must-haves derived from phase goals."
+                    .to_string(),
+            ),
+            agent_profiles: vec![
+                "gsd-project-researcher".to_string(),
+                "gsd-phase-researcher".to_string(),
+                "gsd-planner".to_string(),
+                "gsd-plan-checker".to_string(),
+                "gsd-executor".to_string(),
+                "gsd-verifier".to_string(),
+                "gsd-debugger".to_string(),
+                "gsd-orchestrator".to_string(),
+                "gsd-monitor".to_string(),
+                "gsd-qa".to_string(),
+                "gsd-docs".to_string(),
+            ],
+            skills: vec![
+                "skills/project-analysis".to_string(),
+                "skills/phase-research".to_string(),
+                "skills/wave-planning".to_string(),
+                "skills/checkpoint-handling".to_string(),
+                "skills/verification".to_string(),
+            ],
+            workflow,
+            phases: vec![
+                MethodologyPhase::new("initialize", "Initialize", 0)
+                    .with_description("Project research and initialization")
+                    .with_agent_profiles(["gsd-project-researcher"])
+                    .with_column("initialize"),
+                MethodologyPhase::new("plan", "Plan", 1)
+                    .with_description("Research, planning, and plan verification")
+                    .with_agent_profiles(["gsd-phase-researcher", "gsd-planner", "gsd-plan-checker"])
+                    .with_columns(["discuss", "research", "planning", "plan-check"]),
+                MethodologyPhase::new("execute", "Execute", 2)
+                    .with_description("Wave-based parallel execution with checkpoints")
+                    .with_agent_profiles(["gsd-executor"])
+                    .with_columns(["queued", "executing", "checkpoint"]),
+                MethodologyPhase::new("verify", "Verify", 3)
+                    .with_description("Verification and debugging")
+                    .with_agent_profiles(["gsd-verifier", "gsd-debugger"])
+                    .with_columns(["verifying", "debugging", "done"]),
+            ],
+            templates: vec![
+                MethodologyTemplate::new("specification", "templates/gsd/phase-spec.md")
+                    .with_name("Phase Specification")
+                    .with_description("Specification for a GSD phase"),
+                MethodologyTemplate::new("task_spec", "templates/gsd/plan-spec.md")
+                    .with_name("Plan Specification")
+                    .with_description("Detailed plan specification with must-haves"),
+                MethodologyTemplate::new("context", "templates/gsd/state.md")
+                    .with_name("STATE.md Template")
+                    .with_description("State tracking document for GSD execution"),
+            ],
+            hooks_config: Some(serde_json::json!({
+                "checkpoint_types": ["auto", "human-verify", "decision", "human-action"],
+                "wave_execution": {
+                    "max_parallel": 5,
+                    "wave_completion_required": true
+                },
+                "verification": {
+                    "must_haves_required": true,
+                    "goal_backward_check": true
+                }
+            })),
+            is_active: false,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Returns all built-in methodologies
+    pub fn builtin_methodologies() -> Vec<Self> {
+        vec![Self::bmad(), Self::gsd()]
+    }
 }
 
 /// A phase or stage in a methodology
@@ -824,5 +1071,246 @@ mod tests {
     #[test]
     fn methodology_status_default_is_available() {
         assert_eq!(MethodologyStatus::default(), MethodologyStatus::Available);
+    }
+
+    // ===== Built-in Methodology Tests =====
+
+    #[test]
+    fn bmad_methodology_has_correct_id() {
+        let bmad = MethodologyExtension::bmad();
+        assert_eq!(bmad.id.as_str(), "bmad-method");
+    }
+
+    #[test]
+    fn bmad_methodology_has_correct_name() {
+        let bmad = MethodologyExtension::bmad();
+        assert_eq!(bmad.name, "BMAD Method");
+    }
+
+    #[test]
+    fn bmad_methodology_has_8_agent_profiles() {
+        let bmad = MethodologyExtension::bmad();
+        assert_eq!(bmad.agent_profiles.len(), 8);
+        assert!(bmad.agent_profiles.contains(&"bmad-analyst".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-pm".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-architect".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-ux".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-developer".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-scrum-master".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-tea".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-tech-writer".to_string()));
+    }
+
+    #[test]
+    fn bmad_methodology_has_4_phases() {
+        let bmad = MethodologyExtension::bmad();
+        assert_eq!(bmad.phases.len(), 4);
+
+        let sorted = bmad.sorted_phases();
+        assert_eq!(sorted[0].name, "Analysis");
+        assert_eq!(sorted[1].name, "Planning");
+        assert_eq!(sorted[2].name, "Solutioning");
+        assert_eq!(sorted[3].name, "Implementation");
+    }
+
+    #[test]
+    fn bmad_methodology_has_10_workflow_columns() {
+        let bmad = MethodologyExtension::bmad();
+        assert_eq!(bmad.workflow.columns.len(), 10);
+
+        let column_ids: Vec<_> = bmad.workflow.columns.iter().map(|c| c.id.as_str()).collect();
+        assert!(column_ids.contains(&"brainstorm"));
+        assert!(column_ids.contains(&"research"));
+        assert!(column_ids.contains(&"prd-draft"));
+        assert!(column_ids.contains(&"prd-review"));
+        assert!(column_ids.contains(&"ux-design"));
+        assert!(column_ids.contains(&"architecture"));
+        assert!(column_ids.contains(&"stories"));
+        assert!(column_ids.contains(&"sprint"));
+        assert!(column_ids.contains(&"code-review"));
+        assert!(column_ids.contains(&"done"));
+    }
+
+    #[test]
+    fn bmad_methodology_has_templates() {
+        let bmad = MethodologyExtension::bmad();
+        assert_eq!(bmad.templates.len(), 3);
+
+        let template_types: Vec<_> = bmad.templates.iter().map(|t| t.artifact_type.as_str()).collect();
+        assert!(template_types.contains(&"prd"));
+        assert!(template_types.contains(&"design_doc"));
+        assert!(template_types.contains(&"specification"));
+    }
+
+    #[test]
+    fn bmad_methodology_has_hooks_config() {
+        let bmad = MethodologyExtension::bmad();
+        assert!(bmad.hooks_config.is_some());
+
+        let hooks = bmad.hooks_config.unwrap();
+        assert!(hooks.get("phase_gates").is_some());
+        assert!(hooks.get("validation_checklists").is_some());
+    }
+
+    #[test]
+    fn bmad_methodology_not_active_by_default() {
+        let bmad = MethodologyExtension::bmad();
+        assert!(!bmad.is_active);
+    }
+
+    #[test]
+    fn gsd_methodology_has_correct_id() {
+        let gsd = MethodologyExtension::gsd();
+        assert_eq!(gsd.id.as_str(), "gsd-method");
+    }
+
+    #[test]
+    fn gsd_methodology_has_correct_name() {
+        let gsd = MethodologyExtension::gsd();
+        assert_eq!(gsd.name, "GSD (Get Shit Done)");
+    }
+
+    #[test]
+    fn gsd_methodology_has_11_agent_profiles() {
+        let gsd = MethodologyExtension::gsd();
+        assert_eq!(gsd.agent_profiles.len(), 11);
+        assert!(gsd.agent_profiles.contains(&"gsd-project-researcher".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-phase-researcher".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-planner".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-plan-checker".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-executor".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-verifier".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-debugger".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-orchestrator".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-monitor".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-qa".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-docs".to_string()));
+    }
+
+    #[test]
+    fn gsd_methodology_has_4_phases() {
+        let gsd = MethodologyExtension::gsd();
+        assert_eq!(gsd.phases.len(), 4);
+
+        let sorted = gsd.sorted_phases();
+        assert_eq!(sorted[0].name, "Initialize");
+        assert_eq!(sorted[1].name, "Plan");
+        assert_eq!(sorted[2].name, "Execute");
+        assert_eq!(sorted[3].name, "Verify");
+    }
+
+    #[test]
+    fn gsd_methodology_has_11_workflow_columns() {
+        let gsd = MethodologyExtension::gsd();
+        assert_eq!(gsd.workflow.columns.len(), 11);
+
+        let column_ids: Vec<_> = gsd.workflow.columns.iter().map(|c| c.id.as_str()).collect();
+        assert!(column_ids.contains(&"initialize"));
+        assert!(column_ids.contains(&"discuss"));
+        assert!(column_ids.contains(&"research"));
+        assert!(column_ids.contains(&"planning"));
+        assert!(column_ids.contains(&"plan-check"));
+        assert!(column_ids.contains(&"queued"));
+        assert!(column_ids.contains(&"executing"));
+        assert!(column_ids.contains(&"checkpoint"));
+        assert!(column_ids.contains(&"verifying"));
+        assert!(column_ids.contains(&"debugging"));
+        assert!(column_ids.contains(&"done"));
+    }
+
+    #[test]
+    fn gsd_methodology_has_templates() {
+        let gsd = MethodologyExtension::gsd();
+        assert_eq!(gsd.templates.len(), 3);
+
+        let template_types: Vec<_> = gsd.templates.iter().map(|t| t.artifact_type.as_str()).collect();
+        assert!(template_types.contains(&"specification"));
+        assert!(template_types.contains(&"task_spec"));
+        assert!(template_types.contains(&"context"));
+    }
+
+    #[test]
+    fn gsd_methodology_has_hooks_config() {
+        let gsd = MethodologyExtension::gsd();
+        assert!(gsd.hooks_config.is_some());
+
+        let hooks = gsd.hooks_config.unwrap();
+        assert!(hooks.get("checkpoint_types").is_some());
+        assert!(hooks.get("wave_execution").is_some());
+        assert!(hooks.get("verification").is_some());
+    }
+
+    #[test]
+    fn gsd_methodology_not_active_by_default() {
+        let gsd = MethodologyExtension::gsd();
+        assert!(!gsd.is_active);
+    }
+
+    #[test]
+    fn builtin_methodologies_returns_two() {
+        let methodologies = MethodologyExtension::builtin_methodologies();
+        assert_eq!(methodologies.len(), 2);
+    }
+
+    #[test]
+    fn builtin_methodologies_includes_bmad_and_gsd() {
+        let methodologies = MethodologyExtension::builtin_methodologies();
+        let names: Vec<_> = methodologies.iter().map(|m| m.name.as_str()).collect();
+        assert!(names.contains(&"BMAD Method"));
+        assert!(names.contains(&"GSD (Get Shit Done)"));
+    }
+
+    #[test]
+    fn bmad_workflow_column_behaviors_have_agent_profiles() {
+        let bmad = MethodologyExtension::bmad();
+
+        // Check that columns have correct agent behaviors
+        let brainstorm = bmad.workflow.columns.iter().find(|c| c.id == "brainstorm").unwrap();
+        assert!(brainstorm.behavior.is_some());
+        assert_eq!(brainstorm.behavior.as_ref().unwrap().agent_profile, Some("bmad-analyst".to_string()));
+
+        let sprint = bmad.workflow.columns.iter().find(|c| c.id == "sprint").unwrap();
+        assert!(sprint.behavior.is_some());
+        assert_eq!(sprint.behavior.as_ref().unwrap().agent_profile, Some("bmad-developer".to_string()));
+    }
+
+    #[test]
+    fn gsd_workflow_column_behaviors_have_agent_profiles() {
+        let gsd = MethodologyExtension::gsd();
+
+        // Check that columns have correct agent behaviors
+        let initialize = gsd.workflow.columns.iter().find(|c| c.id == "initialize").unwrap();
+        assert!(initialize.behavior.is_some());
+        assert_eq!(initialize.behavior.as_ref().unwrap().agent_profile, Some("gsd-project-researcher".to_string()));
+
+        let executing = gsd.workflow.columns.iter().find(|c| c.id == "executing").unwrap();
+        assert!(executing.behavior.is_some());
+        assert_eq!(executing.behavior.as_ref().unwrap().agent_profile, Some("gsd-executor".to_string()));
+    }
+
+    #[test]
+    fn bmad_methodology_serializes_roundtrip() {
+        let bmad = MethodologyExtension::bmad();
+        let json = serde_json::to_string(&bmad).unwrap();
+        let parsed: MethodologyExtension = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.id.as_str(), "bmad-method");
+        assert_eq!(parsed.name, "BMAD Method");
+        assert_eq!(parsed.agent_profiles.len(), 8);
+        assert_eq!(parsed.phases.len(), 4);
+        assert_eq!(parsed.workflow.columns.len(), 10);
+    }
+
+    #[test]
+    fn gsd_methodology_serializes_roundtrip() {
+        let gsd = MethodologyExtension::gsd();
+        let json = serde_json::to_string(&gsd).unwrap();
+        let parsed: MethodologyExtension = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.id.as_str(), "gsd-method");
+        assert_eq!(parsed.name, "GSD (Get Shit Done)");
+        assert_eq!(parsed.agent_profiles.len(), 11);
+        assert_eq!(parsed.phases.len(), 4);
+        assert_eq!(parsed.workflow.columns.len(), 11);
     }
 }

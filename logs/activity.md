@@ -1,14 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:07:08
+**Last Updated:** 2026-01-24 20:12:38
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 18 / 63
-**Current Task:** Seed built-in methodologies (BMAD, GSD)
+**Tasks Completed:** 19 / 63
+**Current Task:** Implement WorkflowService
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:12:38 - Seed built-in methodologies (BMAD, GSD) (Task 19)
+
+**What was done:**
+- Added `MethodologyExtension::bmad()` static method creating BMAD methodology:
+  - 8 agent profiles: analyst, pm, architect, ux, developer, scrum-master, tea, tech-writer
+  - 4 phases: Analysis, Planning, Solutioning, Implementation
+  - 10 workflow columns with agent profile behaviors
+  - 3 document templates (PRD, Architecture, UX Design)
+  - Hooks config with phase gates and validation checklists
+- Added `MethodologyExtension::gsd()` static method creating GSD methodology:
+  - 11 agent profiles: project-researcher, phase-researcher, planner, plan-checker, executor, verifier, debugger, orchestrator, monitor, qa, docs
+  - 4 phases: Initialize, Plan, Execute, Verify
+  - 11 workflow columns with wave-based execution support
+  - 3 document templates (Phase Spec, Plan Spec, STATE.md)
+  - Hooks config with checkpoint types, wave execution, and verification settings
+- Added `MethodologyExtension::builtin_methodologies()` returning both BMAD and GSD
+- Added `SqliteMethodologyRepository::seed_builtin_methodologies()` function
+  - Idempotent seeding - only creates methodologies if they don't exist
+  - Returns count of methodologies seeded
+- Added 37 unit tests for BMAD/GSD entity definitions in `methodology.rs`
+- Added 14 integration tests for seeding in `sqlite_methodology_repo.rs`
+
+**Commands run:**
+- `cargo test methodology --no-fail-fast` (129 tests passed)
+- `cargo test` (all tests passed)
+- `cargo clippy` (no new warnings)
+
+---
 
 ### 2026-01-24 20:07:08 - Implement MethodologyRepository trait and SQLite implementation (Task 18)
 
