@@ -1330,7 +1330,7 @@ All tasks require:
       "  - Compact mode for ApplyModal",
       "Export from src/components/Ideation/DependencyVisualization.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
