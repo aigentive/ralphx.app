@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 1,
+  "currentPhase": 2,
   "phases": [
     {
       "phase": 0,
@@ -14,14 +14,14 @@
       "phase": 1,
       "name": "Foundation",
       "prd": "specs/phases/prd_phase_01_foundation.md",
-      "status": "active",
+      "status": "complete",
       "description": "Project setup, Tauri, React, TypeScript, basic types"
     },
     {
       "phase": 2,
       "name": "Data Layer",
       "prd": "specs/phases/prd_phase_02_data_layer.md",
-      "status": "pending",
+      "status": "active",
       "description": "Repository pattern, SQLite, migrations"
     },
     {
