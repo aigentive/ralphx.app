@@ -307,13 +307,13 @@ impl ClaudeCodeClient {
                 max_context_tokens: 200_000,
                 models: vec![
                     ModelInfo {
-                        id: "claude-sonnet-4-20250514".into(),
-                        name: "Claude Sonnet 4".into(),
+                        id: "claude-sonnet-4-5-20250929".into(),
+                        name: "Claude Sonnet 4.5".into(),
                         max_tokens: 64_000,
                     },
                     ModelInfo {
-                        id: "claude-opus-4-20250514".into(),
-                        name: "Claude Opus 4".into(),
+                        id: "claude-opus-4-5-20251101".into(),
+                        name: "Claude Opus 4.5".into(),
                         max_tokens: 32_000,
                     },
                 ],
@@ -827,7 +827,7 @@ The ClaudeCodeClient should gracefully handle missing CLI:
       "Create claude_code_client.rs with ClaudeCodeClient struct",
       "Use which::which(\"claude\") for CLI path detection",
       "Define capabilities with supports_shell, supports_mcp, etc.",
-      "Add models: claude-sonnet-4, claude-opus-4",
+      "Add models: claude-sonnet-4-5-20250929 (Sonnet 4.5), claude-opus-4-5-20251101 (Opus 4.5), claude-haiku-4-5-20251001 (Haiku 4.5)",
       "Run cargo test"
     ],
     "passes": false

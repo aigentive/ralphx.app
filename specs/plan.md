@@ -5206,8 +5206,8 @@ impl ClaudeCodeClient {
                 supports_mcp: true,
                 max_context_tokens: 200_000,
                 models: vec![
-                    ModelInfo { id: "claude-sonnet-4-20250514".into(), name: "Claude Sonnet 4".into(), .. },
-                    ModelInfo { id: "claude-opus-4-20250514".into(), name: "Claude Opus 4".into(), .. },
+                    ModelInfo { id: "claude-sonnet-4-5-20250929".into(), name: "Claude Sonnet 4.5".into(), .. },
+                    ModelInfo { id: "claude-opus-4-5-20251101".into(), name: "Claude Opus 4.5".into(), .. },
                 ],
             },
         }
@@ -5332,7 +5332,7 @@ client = "claude"  # Options: "claude", "codex" (future), "gemini" (future), "mo
 
 [agent.claude]
 cli_path = "/usr/local/bin/claude"  # Optional
-default_model = "claude-sonnet-4-20250514"
+default_model = "claude-sonnet-4-5-20250929"
 
 [agent.codex]  # Future
 api_key = "${OPENAI_API_KEY}"
@@ -6206,7 +6206,7 @@ Minimal essential settings with good defaults:
 | `auto_commit` | `true` | Matches original Ralph behavior. Each completed task = one atomic commit. |
 | `commit_message_prefix` | `"feat: "` | Conventional commits format. Can be `fix:`, `chore:`, etc. |
 | `pause_on_failure` | `true` | Stop queue when task fails, so user can investigate before continuing. |
-| `model` | `"claude-sonnet-4-20250514"` | Best balance of speed/cost/quality. User can upgrade to Opus for complex tasks. |
+| `model` | `"claude-sonnet-4-5-20250929"` | Best balance of speed/cost/quality. User can upgrade to Opus for complex tasks. |
 | `review_before_destructive` | `true` | Auto-insert review point before tasks that delete files or modify configs. |
 | `ai_review_enabled` | `true` | Auto-review completed tasks with AI agent. |
 | `ai_review_auto_fix` | `true` | Auto-create fix tasks for AI review failures (false = send to backlog). |

@@ -52,6 +52,10 @@ interface AgentProfile {
   };
 
   // Execution configuration
+  // Model short forms map to Claude 4.5 models:
+  //   opus   → claude-opus-4-5-20251101 (Opus 4.5)
+  //   sonnet → claude-sonnet-4-5-20250929 (Sonnet 4.5)
+  //   haiku  → claude-haiku-4-5-20251001 (Haiku 4.5)
   execution: {
     model: "opus" | "sonnet" | "haiku";
     maxIterations: number;
