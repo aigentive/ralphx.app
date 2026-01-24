@@ -293,7 +293,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Activity redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Activity section:",
+      "Write full design requirements to specs/design/pages/activity-stream.md:",
       "",
       "### Layout",
       "  - Viewport-filling with scrollable content",
@@ -318,8 +318,9 @@ All design work MUST include:
       "  - Errors highlighted with --status-error",
       "  - Success indicators with --status-success",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Activity design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Activity Stream design requirements"
     ],
     "passes": false
   },
@@ -329,7 +330,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Extensibility redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Extensibility section:",
+      "Write full design requirements to specs/design/pages/extensibility-view.md:",
       "",
       "### Tab Navigation",
       "  - Using shadcn Tabs with underline indicator",
@@ -358,8 +359,9 @@ All design work MUST include:
       "  - Description and phase information",
       "  - Active methodology highlighted",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Extensibility design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Extensibility View design requirements"
     ],
     "passes": false
   },
@@ -369,7 +371,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Task Detail redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Task Detail section:",
+      "Write full design requirements to specs/design/pages/task-detail.md:",
       "",
       "### Modal Structure",
       "  - Using shadcn Dialog with custom sizing",
@@ -395,8 +397,9 @@ All design work MUST include:
       "  - Connected line between dots",
       "  - Current state highlighted",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Task Detail design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Task Detail design requirements"
     ],
     "passes": false
   },
@@ -406,7 +409,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Reviews redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Reviews section:",
+      "Write full design requirements to specs/design/pages/reviews-panel.md:",
       "",
       "### Panel Structure",
       "  - Right slide-in panel (width 384px)",
@@ -431,8 +434,9 @@ All design work MUST include:
       "  - Request Changes (secondary, amber)",
       "  - Clear hover states",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Reviews design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Reviews Panel design requirements"
     ],
     "passes": false
   },
@@ -442,7 +446,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Chat Panel redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Chat Panel section:",
+      "Write full design requirements to specs/design/pages/chat-panel.md:",
       "",
       "### Panel Structure",
       "  - Right resizable panel (280px min, 50% max)",
@@ -462,8 +466,9 @@ All design work MUST include:
       "  - Send button with keyboard hint (Enter)",
       "  - Disabled state when processing",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Chat Panel design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Chat Panel design requirements"
     ],
     "passes": false
   },
@@ -473,7 +478,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan QA components redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → QA section:",
+      "Write full design requirements to specs/design/pages/qa-components.md:",
       "",
       "### TaskQABadge",
       "  - Compact, doesn't dominate TaskCard",
@@ -500,8 +505,9 @@ All design work MUST include:
       "  - Zoom and pan for detail inspection",
       "  - Pass/fail indicators on thumbnails",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add QA design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add QA Components design requirements"
     ],
     "passes": false
   },
@@ -511,7 +517,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Project Sidebar redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Project Sidebar section:",
+      "Write full design requirements to specs/design/pages/project-sidebar.md:",
       "",
       "### Sidebar Structure",
       "  - Fixed left position, width 240-280px",
@@ -539,8 +545,9 @@ All design work MUST include:
       "  - Lucide icons for each",
       "  - Active state with background + accent indicator",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Project Sidebar design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Project Sidebar design requirements"
     ],
     "passes": false
   },
@@ -550,7 +557,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Project Dialogs redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Project Dialogs section:",
+      "Write full design requirements to specs/design/pages/project-dialogs.md:",
       "",
       "### Common Modal Patterns",
       "  - Using shadcn Dialog",
@@ -578,8 +585,9 @@ All design work MUST include:
       "  - Recommended option highlighted",
       "  - Warning for revert option (amber)",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Project Dialogs design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Project Dialogs design requirements"
     ],
     "passes": false
   },
@@ -589,7 +597,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Diff Viewer redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Diff Viewer section:",
+      "Write full design requirements to specs/design/pages/diff-viewer.md:",
       "",
       "### Layout",
       "  - Two tabs: Changes (uncommitted), History (commits)",
@@ -619,8 +627,9 @@ All design work MUST include:
       "### Actions",
       "  - Open in IDE button (Lucide ExternalLink)",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Diff Viewer design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Diff Viewer design requirements"
     ],
     "passes": false
   },
@@ -630,7 +639,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Execution Control redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Execution Control section:",
+      "Write full design requirements to specs/design/pages/execution-control-bar.md:",
       "",
       "### Bar Structure",
       "  - Fixed at bottom of Kanban view",
@@ -652,8 +661,9 @@ All design work MUST include:
       "  - Current task name (truncated)",
       "  - Progress indicator if determinable",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Execution Control design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Execution Control Bar design requirements"
     ],
     "passes": false
   },
@@ -663,7 +673,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Header redesign",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Header section:",
+      "Write full design requirements to specs/design/pages/header-navigation.md:",
       "",
       "### Header Structure",
       "  - Fixed at top, full width",
@@ -688,8 +698,9 @@ All design work MUST include:
       "  - Reviews toggle button with count badge",
       "  - Activity/Settings navigation (Cmd+4/5)",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Header design requirements to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Header and Navigation design requirements"
     ],
     "passes": false
   },
@@ -699,7 +710,7 @@ All design work MUST include:
     "steps": [
       "Read specs/DESIGN.md for design guidelines",
       "Use /frontend-design skill to plan Modal patterns",
-      "Add to specs/DESIGN.md → Page-Specific Patterns → Modal Standards section:",
+      "Write full design requirements to specs/design/pages/modal-standards.md:",
       "",
       "### Base Modal Pattern",
       "  - All modals use shadcn Dialog",
@@ -733,8 +744,9 @@ All design work MUST include:
       "  - ProposalEditModal",
       "  - All Project dialogs",
       "",
-      "Define acceptance_criteria and design_quality arrays",
-      "Commit: docs: add Modal Standards to DESIGN.md"
+      "Include component hierarchy, acceptance_criteria, and design_quality arrays",
+      "DESIGN.md already references this file - just update the dedicated page",
+      "Commit: docs: add Modal Standards design requirements"
     ],
     "passes": false
   },
@@ -742,19 +754,20 @@ All design work MUST include:
     "category": "verification",
     "description": "Final consistency check and design document review",
     "steps": [
-      "Read specs/DESIGN.md completely",
-      "Verify all page sections are complete with:",
+      "Read specs/DESIGN.md and all specs/design/pages/*.md files",
+      "Verify all page files are complete with:",
       "  - Specific styling requirements",
       "  - shadcn component references",
       "  - Lucide icon specifications",
-      "  - acceptance_criteria arrays",
-      "  - design_quality arrays",
-      "Check for inconsistencies between sections",
+      "  - Component hierarchy section",
+      "  - acceptance_criteria section",
+      "  - design_quality section",
+      "Check for inconsistencies between page files",
       "Ensure anti-AI-slop guardrails are documented throughout",
-      "Add summary table of all pages and their key components",
-      "Add implementation checklist for Phase 14",
+      "Update DESIGN.md reference table with completion status",
+      "Add implementation checklist for Phase 14 in DESIGN.md",
       "Run npm run lint",
-      "Commit: docs: finalize DESIGN.md and add Phase 14 checklist"
+      "Commit: docs: finalize design documents and add Phase 14 checklist"
     ],
     "passes": false
   }
