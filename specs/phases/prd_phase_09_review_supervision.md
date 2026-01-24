@@ -1020,7 +1020,7 @@ interface AskUserQuestionResponse {
       "Verify answer sent to agent",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -1035,7 +1035,7 @@ interface AskUserQuestionResponse {
       "Verify queue processing resumes",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
