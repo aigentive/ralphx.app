@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 08:35:00
+**Last Updated:** 2026-01-24 08:40:00
 **Phase:** State Machine
-**Tasks Completed:** 6 / 22
-**Current Task:** Create TaskServices container and TaskContext struct
+**Tasks Completed:** 7 / 22
+**Current Task:** Implement TaskStateMachine idle states (Backlog, Ready, Blocked)
 
 ---
 
@@ -1799,6 +1799,30 @@ All 20 tasks completed successfully. Phase 2 established the data persistence fo
 
 **Next Phase:**
 Phase 3 - State Machine (statig, 14 internal statuses, transitions)
+
+---
+
+### 2026-01-24 08:40:00 - Create TaskServices container and TaskContext struct
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/context.rs` with:
+  - TaskServices container holding Arc references to all services
+  - TaskServices::new_mock() for testing with all mock services
+  - TaskContext struct with task_id, project_id, qa_enabled, blockers, etc.
+  - Builder pattern methods: with_qa_enabled(), with_blockers(), etc.
+  - Helper methods: has_unresolved_blockers(), can_execute(), should_run_qa()
+  - Blocker management: add_blocker(), resolve_blocker(), resolve_all_blockers()
+- Updated mod.rs to export TaskContext and TaskServices
+- Wrote 25 comprehensive tests
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 442 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/context.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added context module export
 
 ---
 

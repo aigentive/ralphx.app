@@ -484,7 +484,7 @@ pub struct MockNotifier {
       "Add helper methods for blocker checking: has_unresolved_blockers(), etc.",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
