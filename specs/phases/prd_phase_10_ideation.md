@@ -753,7 +753,7 @@ All tasks require:
       "Implement get_all_for_session() joining through proposals table",
       "Verify CHECK constraint prevents self-dependencies"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
