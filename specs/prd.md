@@ -188,7 +188,7 @@ Each phase PRD should follow this structure:
       "Verify all agent profiles and plugin components are covered"
     ],
     "output": "specs/phases/prd_phase_07_agent_system.md",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
