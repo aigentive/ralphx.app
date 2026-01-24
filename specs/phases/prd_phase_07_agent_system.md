@@ -585,7 +585,7 @@ CREATE TABLE agent_profiles (
       "Add subscribe() method for receiving events",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

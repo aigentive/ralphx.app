@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:15:00
+**Last Updated:** 2026-01-24 10:25:00
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 20 / 33
-**Current Task:** Implement EventBus for supervisor
+**Tasks Completed:** 21 / 33
+**Current Task:** Implement Supervisor service
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:25:00 - Implement EventBus for supervisor
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/supervisor/mod.rs`:
+  - Module definition with EventBus and EventSubscriber exports
+- Created `src-tauri/src/infrastructure/supervisor/event_bus.rs`:
+  - EventBus struct with tokio::broadcast channel
+  - publish() method for emitting events
+  - subscribe() method for receiving events
+  - subscriber_count() and events_published() metrics
+  - EventSubscriber with try_recv() and async recv() methods
+  - 20 unit tests including concurrency tests
+- Updated `src-tauri/src/infrastructure/mod.rs` to export supervisor module
+- All 779 Rust tests passing
+
+**Commands run:**
+- `cargo test event_bus`
+
+---
 
 ### 2026-01-24 10:15:00 - Implement supervisor system (events, patterns, actions)
 
