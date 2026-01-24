@@ -695,7 +695,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Run migrations and verify schema",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
