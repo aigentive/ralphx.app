@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:30:00
+**Last Updated:** 2026-01-24 19:35:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 31 / 50
-**Current Task:** Create chatStore with Zustand
+**Tasks Completed:** 32 / 50
+**Current Task:** Create useIdeationSession hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:35:00 - Create chatStore with Zustand
+
+**What was done:**
+- Created `src/stores/chatStore.ts` with Zustand + immer middleware:
+  - State: messages (Record<string, ChatMessage[]>), context (ChatContext | null),
+    isOpen, width (clamped 280-800), isLoading
+  - Actions: setContext, togglePanel, setOpen, setWidth, addMessage,
+    setMessages, clearMessages, setLoading
+  - Helper: getContextKey(context) - generates key from ChatContext
+  - Selectors: selectMessagesForContext, selectMessageCount
+- Messages keyed by context (e.g., "session:abc", "task:def", "project:xyz")
+- Width clamping (min 280px, max 800px, default 320px)
+- Created `src/stores/chatStore.test.ts` with 38 unit tests covering:
+  - Initial state verification
+  - All action methods
+  - Context key generation
+  - All selector functions
+
+**Commands run:**
+- `npm test -- --run src/stores/chatStore.test.ts` (38 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1686 tests passed)
+
+---
 
 ### 2026-01-24 19:30:00 - Create proposalStore with Zustand
 
