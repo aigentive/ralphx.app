@@ -1,14 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:56:30
+**Last Updated:** 2026-01-24 13:58:44
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 29 / 51
-**Current Task:** Implement useAskUserQuestion hook
+**Tasks Completed:** 30 / 51
+**Current Task:** Implement AskUserQuestionModal component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:58:44 - Implement useAskUserQuestion hook
+
+**What was done:**
+- Created `src/hooks/useAskUserQuestion.ts`:
+  - Listens for `agent:ask_user_question` Tauri events
+  - Runtime validation using `AskUserQuestionPayloadSchema`
+  - Stores question payload in uiStore via `setActiveQuestion`
+  - Returns `activeQuestion`, `submitAnswer`, `clearQuestion`, and `isLoading`
+  - `submitAnswer` calls Tauri `answer_user_question` command
+  - Clears question after successful submission
+  - Handles errors gracefully without clearing question
+- Created `src/hooks/useAskUserQuestion.test.tsx` with 20 tests:
+  - Listener registration and cleanup tests
+  - Event handling with valid/invalid payloads
+  - Return value tests (activeQuestion, functions, isLoading)
+  - submitAnswer tests (invoke calls, loading states, error handling)
+  - clearQuestion tests
+  - Multiple questions replacement test
+  - Multi-select question handling tests
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/hooks/useAskUserQuestion.test.tsx` (20 tests passed)
+
+---
 
 ### 2026-01-24 13:56:30 - Implement AskUserQuestion types and store
 
