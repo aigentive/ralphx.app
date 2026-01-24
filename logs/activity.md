@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:47:15
+**Last Updated:** 2026-01-24 21:49:41
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 44 / 63
-**Current Task:** Create WorkflowSelector component
+**Tasks Completed:** 45 / 63
+**Current Task:** Create WorkflowEditor component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:49:41 - Create WorkflowSelector component (Task 45)
+
+**What was done:**
+- Created `src/components/workflows/WorkflowSelector.tsx` with features:
+  - Dropdown listing available workflows
+  - Shows current workflow with default badge if applicable
+  - Column count per workflow in dropdown
+  - Keyboard navigation (Escape to close)
+  - Click outside to close
+  - Uses design tokens for anti-AI-slop styling (warm orange accent)
+  - Component kept under 100 lines (82 lines)
+- Created `src/components/workflows/WorkflowSelector.test.tsx` with 31 comprehensive tests covering:
+  - Rendering, dropdown behavior, workflow selection
+  - Default workflow indicator, empty state, loading state
+  - Accessibility (ARIA attributes, roles)
+  - Styling with design tokens
+
+**Commands run:**
+- `npm test -- src/components/workflows/WorkflowSelector.test.tsx --run` - 31 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:47:15 - Implement useMethodologies hook with TanStack Query (Task 44)
 
