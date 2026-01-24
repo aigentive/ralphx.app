@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:05:00
+**Last Updated:** 2026-01-24 19:10:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 26 / 50
-**Current Task:** Create Tauri API wrappers for ideation
+**Tasks Completed:** 27 / 50
+**Current Task:** Create Tauri API wrappers for proposals
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:10:00 - Create Tauri API wrappers for ideation
+
+**What was done:**
+- Created `src/api/` directory for Tauri API wrappers
+- Created `src/api/ideation.ts` with type-safe invoke wrappers:
+  - Sessions: create, get, getWithData, list, archive, delete
+  - Proposals: create, get, list, update, delete, toggleSelection, setSelection, reorder, assessPriority, assessAllPriorities
+  - Dependencies: add, remove, getDependencies, getDependents, analyze
+  - Apply: toKanban
+  - Task dependencies: getBlockers, getBlocked
+- Response schemas (snake_case from Rust → camelCase transforms)
+- Input types: CreateProposalInput, UpdateProposalInput, ApplyProposalsInput
+- Created `src/api/ideation.test.ts` with 43 unit tests
+
+**Commands run:**
+- `npm test -- --run src/api/ideation.test.ts` (43 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1504 tests passed)
+
+---
 
 ### 2026-01-24 19:05:00 - Create TypeScript types for chat context
 

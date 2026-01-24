@@ -964,7 +964,7 @@ All tasks require:
       "  - deleteIdeationSession(sessionId)",
       "Export from src/api/ideation.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
