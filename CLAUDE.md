@@ -48,11 +48,93 @@ ralphx/
 │
 ├── .claude/                    # Claude Code configuration
 │   ├── settings.json           # Permissions for autonomous operation
-│   └── commands/
-│       └── create-prd.md       # PRD creation wizard
+│   └── commands/               # Slash commands for this project
+│       ├── create-prd.md       # PRD creation wizard
+│       └── activate-prd.md     # Switch active PRD
+│
+├── ralphx-plugin/              # Claude Code plugin (agents, skills, hooks)
+│   ├── .claude-plugin/
+│   │   └── plugin.json         # Plugin manifest
+│   ├── agents/                 # All agent definitions
+│   │   ├── worker.md
+│   │   ├── reviewer.md
+│   │   ├── supervisor.md
+│   │   ├── orchestrator.md
+│   │   ├── deep-researcher.md
+│   │   ├── qa-prep.md
+│   │   ├── qa-executor.md
+│   │   └── orchestrator-ideation.md
+│   ├── skills/                 # All skill definitions
+│   │   ├── coding-standards/
+│   │   ├── testing-patterns/
+│   │   ├── code-review-checklist/
+│   │   ├── research-methodology/
+│   │   ├── git-workflow/
+│   │   ├── acceptance-criteria-writing/
+│   │   ├── qa-step-generation/
+│   │   ├── qa-evaluation/
+│   │   ├── agent-browser/
+│   │   ├── task-decomposition/
+│   │   ├── priority-assessment/
+│   │   └── dependency-analysis/
+│   └── hooks/                  # Plugin hooks
+│       └── hooks.json
 │
 └── screenshots/                # Visual verification (if agent-browser used)
 ```
+
+---
+
+## Plugin Architecture
+
+RalphX uses a **Claude Code plugin** to organize all agents, skills, and hooks. This consolidates agent definitions in one place for easier discovery and management.
+
+### Plugin Structure
+
+The plugin lives in `ralphx-plugin/` and uses folder-based auto-discovery:
+- **Agents:** `ralphx-plugin/agents/*.md` - Agent definitions with frontmatter
+- **Skills:** `ralphx-plugin/skills/*/SKILL.md` - Skill definitions in directories
+- **Hooks:** `ralphx-plugin/hooks/hooks.json` - Hook configurations
+
+### Using the Plugin
+
+When spawning agents, use the `--plugin-dir` flag:
+
+```bash
+claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute the task"
+```
+
+The Rust `ClaudeCodeClient` automatically adds `--plugin-dir ./ralphx-plugin` to all spawn calls.
+
+### Available Agents
+
+| Agent | Role | Description |
+|-------|------|-------------|
+| `worker` | Worker | Executes implementation tasks |
+| `reviewer` | Reviewer | Reviews code changes |
+| `supervisor` | Supervisor | Monitors task execution |
+| `orchestrator` | Orchestrator | Coordinates multi-step tasks |
+| `deep-researcher` | Researcher | Conducts thorough research |
+| `qa-prep` | QA | Generates acceptance criteria |
+| `qa-executor` | QA | Executes browser tests |
+| `orchestrator-ideation` | Ideation | Facilitates brainstorming |
+
+### Available Skills
+
+| Skill | Used By | Purpose |
+|-------|---------|---------|
+| `coding-standards` | worker | Code quality guidelines |
+| `testing-patterns` | worker | TDD patterns |
+| `git-workflow` | worker | Git conventions |
+| `code-review-checklist` | reviewer | Review criteria |
+| `research-methodology` | deep-researcher | Research approach |
+| `acceptance-criteria-writing` | qa-prep | AC generation |
+| `qa-step-generation` | qa-prep | Test step creation |
+| `qa-evaluation` | qa-executor | Test evaluation |
+| `agent-browser` | qa-executor | Browser automation |
+| `task-decomposition` | orchestrator-ideation | Task breakdown |
+| `priority-assessment` | orchestrator-ideation | Priority scoring |
+| `dependency-analysis` | orchestrator-ideation | Dependency mapping |
 
 ---
 

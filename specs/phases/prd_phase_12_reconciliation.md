@@ -479,7 +479,7 @@ const qaPrepProfile = {
       "Document --plugin-dir usage in README if applicable",
       "Update any PRD references to .claude/ paths"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "visual-verification",
