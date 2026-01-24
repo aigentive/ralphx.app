@@ -13,6 +13,8 @@ pub mod testing;
 pub use application::AppState;
 pub use error::{AppError, AppResult};
 
+use std::sync::Arc;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -24,9 +26,13 @@ pub fn run() {
     // Create application state with production SQLite repositories
     let app_state = AppState::new_production().expect("Failed to initialize AppState");
 
+    // Create execution state for global execution control
+    let execution_state = Arc::new(commands::ExecutionState::new());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
+        .manage(execution_state)
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::health::health_check,
@@ -62,7 +68,11 @@ pub fn run() {
             commands::review_commands::reject_review,
             commands::review_commands::approve_fix_task,
             commands::review_commands::reject_fix_task,
-            commands::review_commands::get_fix_task_attempts
+            commands::review_commands::get_fix_task_attempts,
+            commands::execution_commands::get_execution_status,
+            commands::execution_commands::pause_execution,
+            commands::execution_commands::resume_execution,
+            commands::execution_commands::stop_execution
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
