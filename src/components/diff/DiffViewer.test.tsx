@@ -1,0 +1,597 @@
+/**
+ * DiffViewer component tests
+ * Split-view diff component with Changes and History tabs
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { DiffViewer, type FileChange, type Commit, type DiffData } from "./DiffViewer";
+
+// Mock the git-diff-view library
+vi.mock("@git-diff-view/react", () => ({
+  DiffView: ({ data }: { data: unknown }) => (
+    <div data-testid="mock-diff-view" data-diff={JSON.stringify(data)}>
+      Mock DiffView
+    </div>
+  ),
+  DiffModeEnum: {
+    Unified: "unified",
+    Split: "split",
+  },
+}));
+
+// Test data factories
+const createFileChange = (overrides: Partial<FileChange> = {}): FileChange => ({
+  path: "src/components/Test.tsx",
+  status: "modified",
+  additions: 10,
+  deletions: 5,
+  ...overrides,
+});
+
+const createCommit = (overrides: Partial<Commit> = {}): Commit => ({
+  sha: "abc123def456",
+  shortSha: "abc123d",
+  message: "feat: add new feature",
+  author: "Test Author",
+  date: new Date("2026-01-24T10:00:00Z"),
+  ...overrides,
+});
+
+const createDiffData = (overrides: Partial<DiffData> = {}): DiffData => ({
+  filePath: "src/components/Test.tsx",
+  oldContent: "const old = 'value';",
+  newContent: "const new = 'value';",
+  hunks: ["@@ -1,3 +1,3 @@"],
+  ...overrides,
+});
+
+const defaultProps = {
+  changes: [] as FileChange[],
+  commits: [] as Commit[],
+  onFetchDiff: vi.fn().mockResolvedValue(null),
+};
+
+describe("DiffViewer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("rendering", () => {
+    it("renders diff viewer container with correct testid", () => {
+      render(<DiffViewer {...defaultProps} />);
+      expect(screen.getByTestId("diff-viewer")).toBeInTheDocument();
+    });
+
+    it("applies design system background color", () => {
+      render(<DiffViewer {...defaultProps} />);
+      const viewer = screen.getByTestId("diff-viewer");
+      expect(viewer).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+    });
+
+    it("renders Changes and History tabs", () => {
+      render(<DiffViewer {...defaultProps} />);
+      expect(screen.getByTestId("tab-changes")).toBeInTheDocument();
+      expect(screen.getByTestId("tab-history")).toBeInTheDocument();
+    });
+
+    it("shows Changes tab as active by default", () => {
+      render(<DiffViewer {...defaultProps} />);
+      const changesTab = screen.getByTestId("tab-changes");
+      expect(changesTab).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("shows History tab as active when defaultTab is history", () => {
+      render(<DiffViewer {...defaultProps} defaultTab="history" />);
+      const historyTab = screen.getByTestId("tab-history");
+      expect(historyTab).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  describe("tab bar", () => {
+    it("displays file count badge on Changes tab", () => {
+      const changes = [
+        createFileChange({ path: "file1.ts" }),
+        createFileChange({ path: "file2.ts" }),
+      ];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+      expect(screen.getByText("2")).toBeInTheDocument();
+    });
+
+    it("displays commit count badge on History tab", () => {
+      const commits = [
+        createCommit({ sha: "sha1" }),
+        createCommit({ sha: "sha2" }),
+        createCommit({ sha: "sha3" }),
+      ];
+      render(<DiffViewer {...defaultProps} commits={commits} />);
+      expect(screen.getByText("3")).toBeInTheDocument();
+    });
+
+    it("switches to History tab when clicked", () => {
+      render(<DiffViewer {...defaultProps} />);
+
+      const historyTab = screen.getByTestId("tab-history");
+      fireEvent.click(historyTab);
+
+      expect(historyTab).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByTestId("tab-changes")).toHaveAttribute("aria-selected", "false");
+    });
+
+    it("calls onTabChange callback when tab is changed", () => {
+      const onTabChange = vi.fn();
+      render(<DiffViewer {...defaultProps} onTabChange={onTabChange} />);
+
+      fireEvent.click(screen.getByTestId("tab-history"));
+
+      expect(onTabChange).toHaveBeenCalledWith("history");
+    });
+  });
+
+  describe("Changes tab - empty state", () => {
+    it("shows empty file tree when no changes", () => {
+      render(<DiffViewer {...defaultProps} changes={[]} />);
+      expect(screen.getByTestId("file-tree-empty")).toBeInTheDocument();
+      expect(screen.getByText(/no changes/i)).toBeInTheDocument();
+    });
+
+    it("shows helpful message in empty state", () => {
+      render(<DiffViewer {...defaultProps} changes={[]} />);
+      expect(screen.getByText(/working tree is clean/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("Changes tab - file tree", () => {
+    it("renders file tree with files", () => {
+      const changes = [
+        createFileChange({ path: "src/index.ts" }),
+        createFileChange({ path: "src/app.ts" }),
+      ];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      expect(screen.getByTestId("file-tree")).toBeInTheDocument();
+    });
+
+    it("displays file names", () => {
+      const changes = [
+        createFileChange({ path: "src/components/Button.tsx" }),
+      ];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      expect(screen.getByText("Button.tsx")).toBeInTheDocument();
+    });
+
+    it("displays addition and deletion counts", () => {
+      const changes = [
+        createFileChange({ path: "test.ts", additions: 15, deletions: 3 }),
+      ];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      expect(screen.getByText("+15 -3")).toBeInTheDocument();
+    });
+
+    it("shows directory structure for nested files", () => {
+      const changes = [
+        createFileChange({ path: "src/components/Button.tsx" }),
+      ];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      // Directory should be shown
+      expect(screen.getByTestId("dir-src")).toBeInTheDocument();
+      expect(screen.getByTestId("dir-src/components")).toBeInTheDocument();
+    });
+
+    it("allows expanding/collapsing directories", () => {
+      const changes = [
+        createFileChange({ path: "src/deep/nested/file.ts" }),
+      ];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      // Click to collapse src directory
+      fireEvent.click(screen.getByTestId("dir-src"));
+
+      // Nested directories should be hidden
+      expect(screen.queryByTestId("dir-src/deep")).not.toBeInTheDocument();
+
+      // Click to expand again
+      fireEvent.click(screen.getByTestId("dir-src"));
+      expect(screen.getByTestId("dir-src/deep")).toBeInTheDocument();
+    });
+
+    it("calls onFetchDiff when file is selected", async () => {
+      const onFetchDiff = vi.fn().mockResolvedValue(createDiffData());
+      const changes = [createFileChange({ path: "test.ts" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      fireEvent.click(screen.getByTestId("file-test.ts"));
+
+      await waitFor(() => {
+        expect(onFetchDiff).toHaveBeenCalledWith("test.ts");
+      });
+    });
+  });
+
+  describe("Changes tab - file status icons", () => {
+    it("shows added file icon for new files", () => {
+      const changes = [createFileChange({ path: "new.ts", status: "added" })];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      const fileButton = screen.getByTestId("file-new.ts");
+      expect(fileButton).toBeInTheDocument();
+    });
+
+    it("shows modified file icon for changed files", () => {
+      const changes = [createFileChange({ path: "modified.ts", status: "modified" })];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      const fileButton = screen.getByTestId("file-modified.ts");
+      expect(fileButton).toBeInTheDocument();
+    });
+
+    it("shows deleted file icon for removed files", () => {
+      const changes = [createFileChange({ path: "deleted.ts", status: "deleted" })];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      const fileButton = screen.getByTestId("file-deleted.ts");
+      expect(fileButton).toBeInTheDocument();
+    });
+
+    it("shows renamed file icon for renamed files", () => {
+      const changes = [createFileChange({ path: "renamed.ts", status: "renamed" })];
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      const fileButton = screen.getByTestId("file-renamed.ts");
+      expect(fileButton).toBeInTheDocument();
+    });
+  });
+
+  describe("Changes tab - diff panel", () => {
+    it("shows empty state when no file selected", () => {
+      render(<DiffViewer {...defaultProps} changes={[]} />);
+      expect(screen.getByTestId("diff-empty")).toBeInTheDocument();
+    });
+
+    it("shows loading state while fetching diff", async () => {
+      const onFetchDiff = vi.fn().mockImplementation(() => new Promise(() => {})); // Never resolves
+      const changes = [createFileChange({ path: "test.ts" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      // Auto-selects first file, triggering loading
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-loading")).toBeInTheDocument();
+      });
+    });
+
+    it("shows diff content when loaded", async () => {
+      const diffData = createDiffData();
+      const onFetchDiff = vi.fn().mockResolvedValue(diffData);
+      const changes = [createFileChange({ path: "test.ts" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-content")).toBeInTheDocument();
+      });
+    });
+
+    it("renders DiffView component with correct data", async () => {
+      const diffData = createDiffData({ filePath: "src/app.ts" });
+      const onFetchDiff = vi.fn().mockResolvedValue(diffData);
+      const changes = [createFileChange({ path: "src/app.ts" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mock-diff-view")).toBeInTheDocument();
+      });
+    });
+
+    it("shows error state when diff fetch fails", async () => {
+      const onFetchDiff = vi.fn().mockResolvedValue(null);
+      const changes = [createFileChange({ path: "test.ts" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-error")).toBeInTheDocument();
+      });
+    });
+
+    it("displays file name in diff panel header", async () => {
+      const diffData = createDiffData({ filePath: "src/components/Button.tsx" });
+      const onFetchDiff = vi.fn().mockResolvedValue(diffData);
+      const changes = [createFileChange({ path: "src/components/Button.tsx" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Button.tsx")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("Changes tab - Open in IDE button", () => {
+    it("renders Open in IDE button when onOpenInIDE provided", async () => {
+      const onOpenInIDE = vi.fn();
+      const diffData = createDiffData();
+      const onFetchDiff = vi.fn().mockResolvedValue(diffData);
+      const changes = [createFileChange({ path: "test.ts" })];
+
+      render(
+        <DiffViewer
+          {...defaultProps}
+          changes={changes}
+          onFetchDiff={onFetchDiff}
+          onOpenInIDE={onOpenInIDE}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("open-in-ide")).toBeInTheDocument();
+      });
+    });
+
+    it("calls onOpenInIDE with file path when clicked", async () => {
+      const onOpenInIDE = vi.fn();
+      const diffData = createDiffData({ filePath: "src/app.ts" });
+      const onFetchDiff = vi.fn().mockResolvedValue(diffData);
+      const changes = [createFileChange({ path: "src/app.ts" })];
+
+      render(
+        <DiffViewer
+          {...defaultProps}
+          changes={changes}
+          onFetchDiff={onFetchDiff}
+          onOpenInIDE={onOpenInIDE}
+        />
+      );
+
+      await waitFor(() => {
+        const button = screen.getByTestId("open-in-ide");
+        fireEvent.click(button);
+      });
+
+      expect(onOpenInIDE).toHaveBeenCalledWith("src/app.ts");
+    });
+
+    it("does not render Open in IDE button when onOpenInIDE not provided", async () => {
+      const diffData = createDiffData();
+      const onFetchDiff = vi.fn().mockResolvedValue(diffData);
+      const changes = [createFileChange({ path: "test.ts" })];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("diff-content")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("open-in-ide")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("History tab - empty state", () => {
+    it("shows empty commit list when no commits", () => {
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={[]} />);
+      expect(screen.getByTestId("commit-list-empty")).toBeInTheDocument();
+      expect(screen.getByText(/no commits/i)).toBeInTheDocument();
+    });
+
+    it("shows helpful message in empty state", () => {
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={[]} />);
+      expect(screen.getByText(/commit history will appear here/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("History tab - commit list", () => {
+    it("renders commit list", () => {
+      const commits = [createCommit()];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByTestId("commit-list")).toBeInTheDocument();
+    });
+
+    it("displays commit messages", () => {
+      const commits = [
+        createCommit({ message: "feat: add new feature" }),
+        createCommit({ sha: "def456", message: "fix: resolve bug" }),
+      ];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+
+      expect(screen.getByText("feat: add new feature")).toBeInTheDocument();
+      expect(screen.getByText("fix: resolve bug")).toBeInTheDocument();
+    });
+
+    it("displays commit short SHA", () => {
+      const commits = [createCommit({ shortSha: "abc1234" })];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText("abc1234")).toBeInTheDocument();
+    });
+
+    it("displays commit author", () => {
+      const commits = [createCommit({ author: "John Doe" })];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText(/by John Doe/)).toBeInTheDocument();
+    });
+
+    it("calls onCommitSelect when commit is clicked", () => {
+      const onCommitSelect = vi.fn();
+      const commit = createCommit({ shortSha: "abc1234" });
+
+      render(
+        <DiffViewer
+          {...defaultProps}
+          defaultTab="history"
+          commits={[commit]}
+          onCommitSelect={onCommitSelect}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("commit-abc1234"));
+
+      expect(onCommitSelect).toHaveBeenCalledWith(commit);
+    });
+  });
+
+  describe("History tab - commit diff panel", () => {
+    it("shows empty state when no commit selected", () => {
+      const commits = [createCommit()];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByTestId("commit-diff-empty")).toBeInTheDocument();
+    });
+
+    it("shows helpful message in empty state", () => {
+      const commits = [createCommit()];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText(/select a commit to view changes/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("loading states", () => {
+    it("shows loading spinner when isLoadingChanges is true", () => {
+      render(<DiffViewer {...defaultProps} isLoadingChanges={true} />);
+      // Spinner should be visible in the file tree area
+      const fileTreeArea = screen.getByTestId("diff-viewer").querySelector(".animate-spin");
+      expect(fileTreeArea).toBeInTheDocument();
+    });
+
+    it("shows loading spinner when isLoadingHistory is true", () => {
+      render(<DiffViewer {...defaultProps} defaultTab="history" isLoadingHistory={true} />);
+      // Spinner should be visible in the commit list area
+      const commitListArea = screen.getByTestId("diff-viewer").querySelector(".animate-spin");
+      expect(commitListArea).toBeInTheDocument();
+    });
+  });
+
+  describe("auto-selection", () => {
+    it("auto-selects first file when changes tab is active", async () => {
+      const onFetchDiff = vi.fn().mockResolvedValue(createDiffData());
+      const changes = [
+        createFileChange({ path: "first.ts" }),
+        createFileChange({ path: "second.ts" }),
+      ];
+
+      render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
+
+      await waitFor(() => {
+        expect(onFetchDiff).toHaveBeenCalledWith("first.ts");
+      });
+    });
+  });
+
+  describe("tab switching behavior", () => {
+    it("resets selection when switching tabs", async () => {
+      const onFetchDiff = vi.fn().mockResolvedValue(createDiffData());
+      const changes = [createFileChange({ path: "test.ts" })];
+      const commits = [createCommit()];
+
+      render(
+        <DiffViewer
+          {...defaultProps}
+          changes={changes}
+          commits={commits}
+          onFetchDiff={onFetchDiff}
+        />
+      );
+
+      // Wait for initial file selection
+      await waitFor(() => {
+        expect(onFetchDiff).toHaveBeenCalled();
+      });
+
+      // Switch to history tab
+      fireEvent.click(screen.getByTestId("tab-history"));
+
+      // Should show empty commit diff state
+      expect(screen.getByTestId("commit-diff-empty")).toBeInTheDocument();
+
+      // Switch back to changes tab
+      fireEvent.click(screen.getByTestId("tab-changes"));
+
+      // onFetchDiff should be called again for auto-selection
+      await waitFor(() => {
+        expect(onFetchDiff).toHaveBeenCalledTimes(2);
+      });
+    });
+  });
+
+  describe("file tree sorting", () => {
+    it("sorts directories before files", () => {
+      const changes = [
+        createFileChange({ path: "zebra.ts" }),
+        createFileChange({ path: "src/alpha.ts" }),
+        createFileChange({ path: "beta.ts" }),
+      ];
+
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      const fileTree = screen.getByTestId("file-tree");
+      const buttons = fileTree.querySelectorAll("button");
+
+      // First button should be the 'src' directory
+      expect(buttons[0]).toHaveAttribute("data-testid", "dir-src");
+    });
+
+    it("sorts files alphabetically within directories", () => {
+      const changes = [
+        createFileChange({ path: "c.ts" }),
+        createFileChange({ path: "a.ts" }),
+        createFileChange({ path: "b.ts" }),
+      ];
+
+      render(<DiffViewer {...defaultProps} changes={changes} />);
+
+      const fileTree = screen.getByTestId("file-tree");
+      const fileButtons = fileTree.querySelectorAll('button[data-testid^="file-"]');
+
+      expect(fileButtons[0]).toHaveAttribute("data-testid", "file-a.ts");
+      expect(fileButtons[1]).toHaveAttribute("data-testid", "file-b.ts");
+      expect(fileButtons[2]).toHaveAttribute("data-testid", "file-c.ts");
+    });
+  });
+
+  describe("relative date formatting", () => {
+    it("shows 'just now' for very recent commits", () => {
+      const commits = [
+        createCommit({ date: new Date() }),
+      ];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText(/just now/)).toBeInTheDocument();
+    });
+
+    it("shows minutes ago for recent commits", () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const commits = [createCommit({ date: fiveMinutesAgo })];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText(/5m ago/)).toBeInTheDocument();
+    });
+
+    it("shows hours ago for older commits", () => {
+      const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      const commits = [createCommit({ date: threeHoursAgo })];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText(/3h ago/)).toBeInTheDocument();
+    });
+
+    it("shows days ago for older commits", () => {
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      const commits = [createCommit({ date: twoDaysAgo })];
+      render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
+      expect(screen.getByText(/2d ago/)).toBeInTheDocument();
+    });
+  });
+
+  describe("accessibility", () => {
+    it("tabs have correct role", () => {
+      render(<DiffViewer {...defaultProps} />);
+      expect(screen.getByTestId("tab-changes")).toHaveAttribute("role", "tab");
+      expect(screen.getByTestId("tab-history")).toHaveAttribute("role", "tab");
+    });
+
+    it("active tab has aria-selected true", () => {
+      render(<DiffViewer {...defaultProps} />);
+      expect(screen.getByTestId("tab-changes")).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByTestId("tab-history")).toHaveAttribute("aria-selected", "false");
+    });
+  });
+});
