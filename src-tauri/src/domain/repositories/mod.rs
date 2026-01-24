@@ -6,5 +6,6 @@ pub mod status_transition;
 pub mod task_repository;
 
 // Re-exports for convenience
+pub use project_repository::ProjectRepository;
 pub use status_transition::StatusTransition;
 pub use task_repository::TaskRepository;
