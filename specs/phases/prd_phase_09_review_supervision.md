@@ -733,7 +733,7 @@ interface AskUserQuestionResponse {
       "Keep file under 50 lines",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
