@@ -11,6 +11,7 @@ pub mod memory_task_dependency_repo;
 pub mod memory_task_proposal_repo;
 pub mod memory_task_qa_repo;
 pub mod memory_task_repo;
+pub mod memory_workflow_repo;
 
 // Re-exports for convenience
 pub use memory_agent_profile_repo::MemoryAgentProfileRepository;
@@ -23,3 +24,4 @@ pub use memory_task_dependency_repo::MemoryTaskDependencyRepository;
 pub use memory_task_proposal_repo::MemoryTaskProposalRepository;
 pub use memory_task_qa_repo::MemoryTaskQARepository;
 pub use memory_task_repo::MemoryTaskRepository;
+pub use memory_workflow_repo::MemoryWorkflowRepository;
