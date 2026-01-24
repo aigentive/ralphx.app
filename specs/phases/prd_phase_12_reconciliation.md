@@ -667,7 +667,7 @@ const qaPrepProfile = {
       "Write unit tests for DiffViewer",
       "Reference specs/plan.md 'Diff Viewer' section"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

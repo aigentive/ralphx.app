@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:14:00
+**Last Updated:** 2026-01-25 00:24:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 16 / 31
-**Current Task:** Implement Diff Viewer component with Changes and History tabs
+**Tasks Completed:** 17 / 31
+**Current Task:** [Next incomplete task]
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:24:00 - Implement Diff Viewer Component (Task 17)
+
+**What was done:**
+- Installed @git-diff-view/react and @git-diff-view/core libraries
+- Created DiffViewer component with two tabs: Changes and History
+- Implemented file tree with directory grouping and expand/collapse
+- Implemented Changes tab showing uncommitted modifications with real-time diff view
+- Implemented History tab showing commit list with SHA, author, and relative dates
+- Added unified diff view with syntax highlighting using @git-diff-view/react
+- Added Open in IDE button using Tauri shell commands integration
+- Added custom CSS overrides for dark theme diff styling
+- Library uses built-in Web Workers for off-main-thread diff computation
+- Wrote 51 unit tests covering all functionality
+
+**Files created:**
+- `src/components/diff/DiffViewer.tsx`
+- `src/components/diff/DiffViewer.test.tsx`
+- `src/components/diff/index.tsx`
+
+**Files modified:**
+- `src/styles/globals.css` (added diff viewer styles)
+- `package.json` (added git-diff-view dependencies)
+
+**Commands run:**
+- `npm install @git-diff-view/react @git-diff-view/core`
+- `npm run typecheck` (passed)
+- `npm run test -- --run src/components/diff/` (51 tests passed)
+
+---
 
 ### 2026-01-25 00:14:00 - Implement Task Re-run Dialog (Task 16)
 

@@ -128,3 +128,105 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* ============================================================================
+ * DiffViewer Styles - Override @git-diff-view/react for dark theme
+ * ============================================================================ */
+
+.diff-viewer-container {
+  /* Ensure the diff view uses our dark theme */
+  --diff-view-bg: var(--bg-base);
+  --diff-view-line-bg: var(--bg-surface);
+  --diff-view-add-line-bg: rgba(16, 185, 129, 0.15);
+  --diff-view-del-line-bg: rgba(239, 68, 68, 0.15);
+  --diff-view-add-content-bg: rgba(16, 185, 129, 0.25);
+  --diff-view-del-content-bg: rgba(239, 68, 68, 0.25);
+}
+
+/* Override diff view container backgrounds */
+.diff-viewer-container .diff-view {
+  background-color: var(--bg-base) !important;
+  font-family: var(--font-mono) !important;
+}
+
+/* Override line number styling */
+.diff-viewer-container .diff-view-line-num {
+  color: var(--text-muted) !important;
+  background-color: var(--bg-surface) !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  user-select: none;
+}
+
+/* Override content line styling */
+.diff-viewer-container .diff-view-line {
+  border-bottom: none !important;
+}
+
+.diff-viewer-container .diff-view-line-content {
+  color: var(--text-primary) !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  padding: 0 16px !important;
+}
+
+/* Addition lines (green-ish) */
+.diff-viewer-container .diff-view-line.diff-add .diff-view-line-num,
+.diff-viewer-container .diff-view-line.add .diff-view-line-num {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: var(--status-success) !important;
+}
+
+.diff-viewer-container .diff-view-line.diff-add .diff-view-line-content,
+.diff-viewer-container .diff-view-line.add .diff-view-line-content {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+/* Deletion lines (red-ish) */
+.diff-viewer-container .diff-view-line.diff-del .diff-view-line-num,
+.diff-viewer-container .diff-view-line.del .diff-view-line-num {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  color: var(--status-error) !important;
+}
+
+.diff-viewer-container .diff-view-line.diff-del .diff-view-line-content,
+.diff-viewer-container .diff-view-line.del .diff-view-line-content {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Word-level diff highlighting */
+.diff-viewer-container .diff-add-content-highlight {
+  background-color: rgba(16, 185, 129, 0.3) !important;
+  border-radius: 2px;
+}
+
+.diff-viewer-container .diff-del-content-highlight {
+  background-color: rgba(239, 68, 68, 0.3) !important;
+  border-radius: 2px;
+}
+
+/* Hunk header styling */
+.diff-viewer-container .diff-view-hunk-header {
+  background-color: var(--bg-elevated) !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+  padding: 8px 16px !important;
+  border-top: 1px solid var(--border-subtle) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+
+/* Syntax highlighting overrides for dark theme */
+.diff-viewer-container .token.keyword { color: #ff79c6 !important; }
+.diff-viewer-container .token.string { color: #f1fa8c !important; }
+.diff-viewer-container .token.number { color: #bd93f9 !important; }
+.diff-viewer-container .token.comment { color: #6272a4 !important; }
+.diff-viewer-container .token.function { color: #50fa7b !important; }
+.diff-viewer-container .token.class-name { color: #8be9fd !important; }
+.diff-viewer-container .token.operator { color: #ff79c6 !important; }
+.diff-viewer-container .token.punctuation { color: var(--text-secondary) !important; }
+
+/* Empty lines should have consistent background */
+.diff-viewer-container .diff-view-line.empty {
+  background-color: var(--bg-surface) !important;
+}
