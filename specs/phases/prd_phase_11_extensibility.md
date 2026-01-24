@@ -989,7 +989,7 @@ All tasks require tests written before implementation:
       "Handle content storage (inline vs file)",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
