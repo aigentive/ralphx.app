@@ -1,14 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:40:00
+**Last Updated:** 2026-01-24 17:55:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 14 / 50
-**Current Task:** Implement SqliteTaskDependencyRepository
+**Tasks Completed:** 15 / 50
+**Current Task:** Implement PriorityService for priority calculation
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:55:00 - Implement SqliteTaskDependencyRepository
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_task_dependency_repo.rs`:
+  - `SqliteTaskDependencyRepository` struct with `Arc<Mutex<Connection>>` pattern
+  - Constructor methods: `new()` and `from_shared()`
+  - Implements all 9 `TaskDependencyRepository` trait methods:
+    - `add_dependency()` - INSERT OR IGNORE with UNIQUE constraint handling
+    - `remove_dependency()` - DELETE with task_id and depends_on_task_id
+    - `get_blockers()` - SELECT tasks that this task depends on
+    - `get_blocked_by()` - SELECT tasks that depend on this task
+    - `has_circular_dependency()` - DFS-based cycle detection algorithm
+    - `clear_dependencies()` - DELETE both directions (outgoing and incoming)
+    - `count_blockers()` - COUNT of blockers for a task
+    - `count_blocked_by()` - COUNT of tasks blocked by this task
+    - `has_dependency()` - Check if specific dependency exists
+- Updated `infrastructure/sqlite/mod.rs` with module declaration and re-export
+- Added 32 comprehensive integration tests:
+  - ADD DEPENDENCY tests: create record, duplicate ignored, multiple dependencies
+  - REMOVE DEPENDENCY tests: delete record, nonexistent succeeds, only specified
+  - GET BLOCKERS tests: empty, correct direction
+  - GET BLOCKED BY tests: empty, correct direction, multiple
+  - HAS CIRCULAR DEPENDENCY tests: self-reference, direct cycle, indirect cycle, no cycle, empty graph, long chain
+  - CLEAR DEPENDENCIES tests: removes outgoing, removes incoming, removes both directions
+  - COUNT tests: blockers zero/multiple, blocked_by zero/multiple
+  - HAS DEPENDENCY tests: true, false, direction matters
+  - SHARED CONNECTION tests
+  - CASCADE DELETE tests: when task deleted, when depends_on_task deleted
+  - CHECK CONSTRAINT tests: self-dependency prevention
+  - COMPLEX GRAPH tests: diamond dependency pattern
+
+**Commands run:**
+- `cargo test --lib sqlite_task_dependency_repo::` (32 tests passed)
+- `cargo test --lib` (1895 tests passed)
+
+---
 
 ### 2026-01-24 17:40:00 - Implement SqliteChatMessageRepository
 

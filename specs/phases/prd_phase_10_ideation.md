@@ -780,7 +780,7 @@ All tasks require:
       "Implement has_circular_dependency() with recursive CTE or DFS",
       "Verify CHECK constraint prevents self-dependencies"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
