@@ -3,6 +3,8 @@
 
 pub mod config;
 pub mod criteria;
+pub mod results;
 
 pub use config::*;
 pub use criteria::*;
+pub use results::*;

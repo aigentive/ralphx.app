@@ -535,7 +535,7 @@ All tasks require TDD:
       "Implement from_json and to_json",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
