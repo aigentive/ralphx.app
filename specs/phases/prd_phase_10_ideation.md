@@ -1110,7 +1110,7 @@ All tasks require:
       "  - Return assessment results and loading state",
       "Export from src/hooks/usePriorityAssessment.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
