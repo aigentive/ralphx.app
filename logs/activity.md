@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:48:01
+**Last Updated:** 2026-01-24 14:49:54
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 41 / 51
-**Current Task:** Integration test: human review flow
+**Tasks Completed:** 42 / 51
+**Current Task:** Integration test: AskUserQuestion flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:49:54 - Integration test: human review flow
+
+**What was done:**
+- Added 8 new tests to `src-tauri/tests/review_flows.rs` (now 49 tests total):
+  - `test_human_review_approval_flow` - Full human review flow with require_human_review
+  - `test_human_review_request_changes` - Human request_changes creates fix task
+  - `test_human_review_rejection` - Human reject_human_review
+  - `test_human_review_after_escalation` - Human review after AI escalates
+  - `test_cannot_start_human_review_with_pending_ai_review` - Proper sequencing
+  - `test_human_review_recorded_in_history` - Both AI and human reviews in history
+  - `test_human_review_request_changes_without_fix` - No fix task without fix description
+  - `test_multiple_human_review_iterations` - Multiple rounds of human review
+- Tests verify:
+  - Human review after AI approval (require_human_review setting)
+  - Human review after AI escalation
+  - Request changes with/without fix description
+  - Human rejection with notes
+  - Multiple human review iterations
+  - Review history contains both AI and human reviews
+
+**Commands run:**
+- `cargo test --test review_flows` (49 tests passed)
+
+---
 
 ### 2026-01-24 14:48:01 - Integration test: fix task rejection and retry
 

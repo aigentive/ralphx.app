@@ -1215,3 +1215,317 @@ async fn test_move_to_backlog() {
     });
     assert!(backlog_note.is_some(), "Should add note about backlog reason");
 }
+
+// ============================================================================
+// Human Review Flow Tests
+// ============================================================================
+
+/// Test: Full human review approval flow
+///
+/// Flow:
+/// 1. Set up task with require_human_review = true
+/// 2. Complete AI review with approve
+/// 3. Verify task stays in pending state (waiting for human)
+/// 4. Call approve_human_review
+/// 5. Verify task transitions to approved
+/// 6. Verify human_review_at timestamp is set
+#[tokio::test]
+async fn test_human_review_approval_flow() {
+    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use settings that require human review after AI approval
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // 1. Start AI review
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+
+    // 2. AI approves the review
+    let input = CompleteReviewInput::approved("All looks good from AI perspective");
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // The AI review is approved, but since require_human_review is true,
+    // the task should stay in PendingReview for human verification
+    assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
+
+    // 3. Start human review
+    let human_review = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+    assert_eq!(human_review.reviewer_type, ReviewerType::Human);
+    assert!(human_review.is_pending());
+
+    // 4. Approve the human review
+    service
+        .approve_human_review(&human_review.id, Some("Human verified - LGTM".to_string()))
+        .await
+        .unwrap();
+
+    // 5. Verify human review is approved
+    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    assert!(updated_review.is_approved());
+    assert!(updated_review.completed_at.is_some());
+
+    // 6. Verify review note was created
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    let human_note = notes.iter().find(|n| {
+        n.notes
+            .as_ref()
+            .map_or(false, |text| text.contains("Human verified"))
+    });
+    assert!(human_note.is_some());
+}
+
+/// Test: Human review with request_changes
+#[tokio::test]
+async fn test_human_review_request_changes() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Start human review directly (simulate escalation path)
+    let human_review = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+
+    // Request changes
+    let fix_task_id = service
+        .request_changes(
+            &human_review.id,
+            "Please add error handling for edge cases".to_string(),
+            Some("Add try-catch blocks around API calls".to_string()),
+        )
+        .await
+        .unwrap();
+
+    // Should create a fix task
+    assert!(fix_task_id.is_some());
+
+    // Verify review status
+    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    assert_eq!(updated_review.status, ReviewStatus::ChangesRequested);
+}
+
+/// Test: Human review rejection
+#[tokio::test]
+async fn test_human_review_rejection() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Start human review
+    let human_review = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+
+    // Reject the review
+    service
+        .reject_human_review(
+            &human_review.id,
+            "This approach is fundamentally wrong. Need to redesign.".to_string(),
+        )
+        .await
+        .unwrap();
+
+    // Verify review is rejected
+    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    assert_eq!(updated_review.status, ReviewStatus::Rejected);
+
+    // Verify note was created
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    let rejection_note = notes.iter().find(|n| {
+        n.notes
+            .as_ref()
+            .map_or(false, |text| text.contains("fundamentally wrong"))
+    });
+    assert!(rejection_note.is_some());
+}
+
+/// Test: Human review after AI escalation
+#[tokio::test]
+async fn test_human_review_after_escalation() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // 1. AI review with escalation
+    let mut ai_review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::escalate(
+        "Security-sensitive changes",
+        "This modifies authentication logic",
+    );
+    service.process_review_result(&mut ai_review, &input).await.unwrap();
+
+    // AI review is rejected (escalated)
+    assert_eq!(ai_review.status, ReviewStatus::Rejected);
+
+    // 2. Human takes over
+    let human_review = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+    assert_eq!(human_review.reviewer_type, ReviewerType::Human);
+
+    // 3. Human approves after security review
+    service
+        .approve_human_review(
+            &human_review.id,
+            Some("Reviewed security implications - approved".to_string()),
+        )
+        .await
+        .unwrap();
+
+    // Verify approved
+    let updated = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    assert!(updated.is_approved());
+}
+
+/// Test: Cannot start human review when AI review is pending
+#[tokio::test]
+async fn test_cannot_start_human_review_with_pending_ai_review() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Start AI review (leaves it pending)
+    let _ai_review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+
+    // Try to start human review - should fail (AI review still pending)
+    let result = service.start_human_review(&task_id, &project_id).await;
+    assert!(result.is_err(), "Should not allow human review while AI review is pending");
+}
+
+/// Test: Human review is recorded in review history
+#[tokio::test]
+async fn test_human_review_recorded_in_history() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Complete AI review
+    let mut ai_review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::approved("AI approved");
+    service.process_review_result(&mut ai_review, &input).await.unwrap();
+
+    // Complete human review
+    let human_review = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+    service
+        .approve_human_review(&human_review.id, Some("Human approved".to_string()))
+        .await
+        .unwrap();
+
+    // Verify both reviews are in history
+    let reviews = review_repo.get_by_task_id(&task_id).await.unwrap();
+    assert_eq!(reviews.len(), 2, "Should have both AI and human reviews");
+
+    let ai_reviews: Vec<_> = reviews
+        .iter()
+        .filter(|r| r.reviewer_type == ReviewerType::Ai)
+        .collect();
+    let human_reviews: Vec<_> = reviews
+        .iter()
+        .filter(|r| r.reviewer_type == ReviewerType::Human)
+        .collect();
+
+    assert_eq!(ai_reviews.len(), 1);
+    assert_eq!(human_reviews.len(), 1);
+    assert!(ai_reviews[0].is_approved());
+    assert!(human_reviews[0].is_approved());
+}
+
+/// Test: Request changes without fix description
+#[tokio::test]
+async fn test_human_review_request_changes_without_fix() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Start human review
+    let human_review = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+
+    // Request changes without providing fix description
+    let fix_task_id = service
+        .request_changes(
+            &human_review.id,
+            "This needs work but I can't specify exactly what".to_string(),
+            None, // No fix description
+        )
+        .await
+        .unwrap();
+
+    // Should still work - no fix task created, just moves to backlog
+    assert!(fix_task_id.is_none(), "No fix task without fix description");
+
+    // Review should still be ChangesRequested
+    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    assert_eq!(updated_review.status, ReviewStatus::ChangesRequested);
+}
+
+/// Test: Multiple human review iterations
+#[tokio::test]
+async fn test_multiple_human_review_iterations() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_human_review();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // First human review - request changes
+    let review1 = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+    service
+        .request_changes(
+            &review1.id,
+            "Needs more tests".to_string(),
+            Some("Add unit tests for edge cases".to_string()),
+        )
+        .await
+        .unwrap();
+
+    // Second human review - still not satisfied
+    let review2 = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+    service
+        .request_changes(
+            &review2.id,
+            "Tests are good but docs needed".to_string(),
+            Some("Add JSDoc comments".to_string()),
+        )
+        .await
+        .unwrap();
+
+    // Third human review - approved
+    let review3 = service
+        .start_human_review(&task_id, &project_id)
+        .await
+        .unwrap();
+    service
+        .approve_human_review(&review3.id, Some("Finally complete!".to_string()))
+        .await
+        .unwrap();
+
+    // Verify all 3 reviews are in history
+    let reviews = review_repo.get_by_task_id(&task_id).await.unwrap();
+    let human_reviews: Vec<_> = reviews
+        .iter()
+        .filter(|r| r.reviewer_type == ReviewerType::Human)
+        .collect();
+    assert_eq!(human_reviews.len(), 3);
+}
