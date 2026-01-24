@@ -498,7 +498,7 @@ All tasks require TDD:
       "Create index on task_id",
       "Run migration and verify schema"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
