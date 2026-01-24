@@ -1235,7 +1235,7 @@ All tasks require:
       "  - Empty state when no proposals",
       "Export from src/components/Ideation/ProposalList.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
