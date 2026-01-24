@@ -183,7 +183,21 @@ RalphX is built in 12 phases (0-11):
 
 ## Activity Log Format
 
-All entries in `logs/activity.md` use full datetime stamps:
+The `logs/activity.md` has two parts that must be kept in sync:
+
+### Header Section (updated after each task)
+
+```markdown
+## Current Status
+**Last Updated:** YYYY-MM-DD HH:MM:SS
+**Phase:** [Current phase name]
+**Tasks Completed:** X / Y
+**Current Task:** [Next incomplete task, or "All complete"]
+```
+
+### Log Entries (appended after each task)
+
+All entries use full datetime stamps:
 
 ```markdown
 ### YYYY-MM-DD HH:MM:SS - [Title]

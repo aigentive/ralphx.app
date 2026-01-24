@@ -84,7 +84,24 @@ Based on user's choices, update `specs/manifest.json`:
 }
 ```
 
-### Step 5: Log the Change
+### Step 5: Update Activity Log Header
+
+The `logs/activity.md` file has a header section that must be updated to reflect the new active phase:
+
+```markdown
+## Current Status
+**Last Updated:** YYYY-MM-DD HH:MM:SS
+**Phase:** [New phase name]
+**Tasks Completed:** X / Y
+**Current Task:** [First task with passes: false, or "All complete"]
+```
+
+Read the new active PRD to count:
+- Total tasks
+- Tasks with `"passes": true`
+- First task with `"passes": false`
+
+### Step 6: Append Log Entry
 
 Append to `logs/activity.md` with full timestamp:
 
@@ -103,14 +120,14 @@ Append to `logs/activity.md` with full timestamp:
 - Target phase: X/Y tasks complete
 ```
 
-### Step 6: Commit Changes
+### Step 7: Commit Changes
 
 ```bash
 git add specs/manifest.json logs/activity.md
 git commit -m "chore: manual PRD switch - activate [target phase name]"
 ```
 
-### Step 7: Confirm
+### Step 8: Confirm
 
 Tell the user:
 - The manifest has been updated

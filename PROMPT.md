@@ -20,17 +20,25 @@ In the active PRD, look for tasks with `"passes": false`.
    - Set current phase's `"status"` to `"complete"`
    - Set `"currentPhase"` to next phase number
    - Set next phase's `"status"` to `"active"`
-2. Log the phase completion in `logs/activity.md` with full timestamp (`### YYYY-MM-DD HH:MM:SS - Phase N Complete`)
-3. Commit the manifest update:
+2. Update the `logs/activity.md` header section:
+   ```markdown
+   ## Current Status
+   **Last Updated:** YYYY-MM-DD HH:MM:SS
+   **Phase:** [New phase name]
+   **Tasks Completed:** 0 / [total tasks in new PRD]
+   **Current Task:** [First task description]
+   ```
+3. Append a phase completion entry with full timestamp (`### YYYY-MM-DD HH:MM:SS - Phase N Complete`)
+4. Commit the changes:
    ```
    git add specs/manifest.json logs/activity.md
    git commit -m "chore: complete phase N, activate phase N+1"
    ```
-4. **If no next phase exists** (all phases complete), output:
+5. **If no next phase exists** (all phases complete), output:
    ```
    <promise>COMPLETE</promise>
    ```
-5. **Otherwise**, continue with the newly active PRD
+6. **Otherwise**, continue with the newly active PRD
 
 ## Step 3: Identify Task Type
 
@@ -95,10 +103,12 @@ Check the task's `"category"` field:
 - Check code examples and patterns are preserved
 
 ### 4. Log Progress
-Append a timestamped entry to `logs/activity.md` using format `### YYYY-MM-DD HH:MM:SS - [Title]`:
-- Which phase PRD was created
-- Number of tasks generated
-- Key sections covered
+Update `logs/activity.md`:
+- Update the **header section** with current task count and next task
+- Append a timestamped entry using format `### YYYY-MM-DD HH:MM:SS - [Title]`:
+  - Which phase PRD was created
+  - Number of tasks generated
+  - Key sections covered
 
 ### 5. Update Task Status
 Set `"passes": true` for this task in the active PRD
@@ -133,10 +143,12 @@ cargo test           # For Rust-only work
   ```
 
 ### 3. Log Progress
-Append a timestamped entry to `logs/activity.md` using format `### YYYY-MM-DD HH:MM:SS - [Title]`:
-- What changed
-- Commands run
-- Test results
+Update `logs/activity.md`:
+- Update the **header section** with current task count and next task
+- Append a timestamped entry using format `### YYYY-MM-DD HH:MM:SS - [Title]`:
+  - What changed
+  - Commands run
+  - Test results
 
 ### 4. Update Task Status
 Set `"passes": true` in the active PRD
