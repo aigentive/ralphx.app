@@ -1465,7 +1465,7 @@ All tasks require:
       "Verify screenshots exist: ls -la screenshots/ideation-*.png",
       "Task FAILS if no screenshots captured"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
