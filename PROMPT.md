@@ -161,6 +161,70 @@ git commit -m "feat: [description]"
 
 ---
 
+## Visual Verification (UI Tasks)
+
+After ALL tests pass, verify UI changes visually:
+
+### 1. Start the development server
+```bash
+npm run tauri dev
+```
+
+### 2. Open in headless browser
+```bash
+agent-browser open http://localhost:1420
+```
+
+### 3. Analyze the page structure
+```bash
+agent-browser snapshot -i -c
+```
+
+### 4. Capture screenshot as proof
+```bash
+agent-browser screenshot screenshots/[task-name].png
+```
+
+### 5. Verify specific behaviors (examples)
+```bash
+# Check if element exists and is visible
+agent-browser is visible @e1
+
+# Test click interaction
+agent-browser click @e1
+agent-browser screenshot screenshots/[task-name]-after-click.png
+
+# Verify text content
+agent-browser get text @e1
+```
+
+### 6. Close browser
+```bash
+agent-browser close
+```
+
+### 7. Document in activity.md
+Include:
+- Screenshot filename
+- What was verified
+- Any issues found and resolved
+
+### When Visual Verification is Required
+
+| Task Type | TDD Required | Visual Verification Required |
+|-----------|--------------|------------------------------|
+| Rust core logic | Yes | No |
+| TypeScript types/schemas | Yes | No |
+| React hooks (no UI) | Yes | No |
+| React components | Yes | **Yes** |
+| Tauri commands | Yes | No (unless UI-facing) |
+| Layout/styling changes | Yes (snapshot tests) | **Yes** |
+| User interactions | Yes | **Yes** |
+| Agent activity stream | Yes | **Yes** |
+| Settings modal | Yes | **Yes** |
+
+---
+
 ## Important Rules
 
 - Work on ONE task per iteration

@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 12:20:00
+**Last Updated:** 2026-01-24 12:25:00
 **Phase:** Foundation
-**Tasks Completed:** 2 / 19
-**Current Task:** Update PROMPT.md with visual verification workflow
+**Tasks Completed:** 3 / 19
+**Current Task:** Initialize Tauri 2.0 project with React + TypeScript
 
 ---
 
@@ -800,6 +800,23 @@ Phase 1: Foundation (no dependencies)
   - `Bash(agent-browser wait:*)`
 - Merged with existing permissions
 - Validated JSON with `jq`
+
+---
+
+### 2026-01-24 12:25:00 - Update PROMPT.md with visual verification workflow
+
+**What was done:**
+- Added Visual Verification section after Implementation Workflow in PROMPT.md
+- Included 7-step workflow from specs/plan.md lines 3541-3589:
+  1. Start development server
+  2. Open in headless browser
+  3. Analyze page structure
+  4. Capture screenshot as proof
+  5. Verify specific behaviors
+  6. Close browser
+  7. Document in activity.md
+- Added task type verification table from specs/plan.md lines 3709-3719
+- React components, layout/styling, user interactions, agent activity stream, and settings modal all require visual verification
 
 ---
 
