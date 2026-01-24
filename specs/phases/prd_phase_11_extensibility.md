@@ -1028,7 +1028,7 @@ All tasks require tests written before implementation:
       "Handle workflow switching, agent profile loading, skill injection",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
