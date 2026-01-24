@@ -2,11 +2,13 @@
  * UI store using Zustand with immer middleware
  *
  * Manages ephemeral UI state: sidebar visibility, modal state,
- * notifications, loading states, and confirmation dialogs.
+ * notifications, loading states, confirmation dialogs, and
+ * active user questions from agents.
  */
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
 // ============================================================================
 // Types
@@ -60,6 +62,8 @@ interface UiState {
   loading: Record<string, boolean>;
   /** Active confirmation dialog */
   confirmation: ConfirmationConfig | null;
+  /** Active question from agent requiring user response */
+  activeQuestion: AskUserQuestionPayload | null;
 }
 
 // ============================================================================
@@ -87,6 +91,10 @@ interface UiActions {
   showConfirmation: (config: ConfirmationConfig) => void;
   /** Hide the confirmation dialog */
   hideConfirmation: () => void;
+  /** Set active question from agent */
+  setActiveQuestion: (question: AskUserQuestionPayload) => void;
+  /** Clear active question after answer submitted */
+  clearActiveQuestion: () => void;
 }
 
 // ============================================================================
@@ -102,6 +110,7 @@ export const useUiStore = create<UiState & UiActions>()(
     notifications: [],
     loading: {},
     confirmation: null,
+    activeQuestion: null,
 
     // Actions
     toggleSidebar: () =>
@@ -154,6 +163,16 @@ export const useUiStore = create<UiState & UiActions>()(
     hideConfirmation: () =>
       set((state) => {
         state.confirmation = null;
+      }),
+
+    setActiveQuestion: (question) =>
+      set((state) => {
+        state.activeQuestion = question;
+      }),
+
+    clearActiveQuestion: () =>
+      set((state) => {
+        state.activeQuestion = null;
       }),
   }))
 );

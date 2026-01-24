@@ -822,7 +822,7 @@ interface AskUserQuestionResponse {
       "Add to uiStore: activeQuestion, submitAnswer action",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

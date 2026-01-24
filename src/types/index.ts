@@ -266,3 +266,23 @@ export type {
   ReviewNoteList,
   ReviewSettings,
 } from "./review";
+
+// AskUserQuestion types and schemas
+export {
+  AskUserQuestionOptionSchema,
+  AskUserQuestionPayloadSchema,
+  AskUserQuestionResponseSchema,
+  AskUserQuestionPayloadListSchema,
+  hasSelection,
+  hasCustomResponse,
+  isValidResponse,
+  createSingleSelectResponse,
+  createMultiSelectResponse,
+  createCustomResponse,
+} from "./ask-user-question";
+export type {
+  AskUserQuestionOption,
+  AskUserQuestionPayload,
+  AskUserQuestionResponse,
+  AskUserQuestionPayloadList,
+} from "./ask-user-question";

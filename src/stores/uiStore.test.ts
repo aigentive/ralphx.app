@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useUiStore } from "./uiStore";
+import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
 describe("uiStore", () => {
   beforeEach(() => {
@@ -7,7 +8,11 @@ describe("uiStore", () => {
     useUiStore.setState({
       sidebarOpen: true,
       activeModal: null,
+      modalContext: undefined,
       notifications: [],
+      loading: {},
+      confirmation: null,
+      activeQuestion: null,
     });
   });
 
@@ -192,6 +197,73 @@ describe("uiStore", () => {
 
       const state = useUiStore.getState();
       expect(state.confirmation).toBeNull();
+    });
+  });
+
+  describe("active question", () => {
+    const mockQuestion: AskUserQuestionPayload = {
+      taskId: "task-123",
+      question: "Which authentication method should we use?",
+      header: "Auth method",
+      options: [
+        { label: "JWT tokens", description: "Use JSON Web Tokens" },
+        { label: "Session cookies", description: "Use server-side sessions" },
+      ],
+      multiSelect: false,
+    };
+
+    it("sets active question", () => {
+      useUiStore.getState().setActiveQuestion(mockQuestion);
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestion).toEqual(mockQuestion);
+    });
+
+    it("clears active question", () => {
+      useUiStore.setState({ activeQuestion: mockQuestion });
+
+      useUiStore.getState().clearActiveQuestion();
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestion).toBeNull();
+    });
+
+    it("replaces existing question when setting new one", () => {
+      useUiStore.setState({ activeQuestion: mockQuestion });
+
+      const newQuestion: AskUserQuestionPayload = {
+        taskId: "task-456",
+        question: "Which database?",
+        header: "Database",
+        options: [
+          { label: "PostgreSQL", description: "Relational database" },
+          { label: "MongoDB", description: "Document database" },
+        ],
+        multiSelect: false,
+      };
+
+      useUiStore.getState().setActiveQuestion(newQuestion);
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestion?.taskId).toBe("task-456");
+      expect(state.activeQuestion?.question).toBe("Which database?");
+    });
+
+    it("initializes with null active question", () => {
+      const state = useUiStore.getState();
+      expect(state.activeQuestion).toBeNull();
+    });
+
+    it("preserves multiSelect in question", () => {
+      const multiSelectQuestion: AskUserQuestionPayload = {
+        ...mockQuestion,
+        multiSelect: true,
+      };
+
+      useUiStore.getState().setActiveQuestion(multiSelectQuestion);
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestion?.multiSelect).toBe(true);
     });
   });
 });
