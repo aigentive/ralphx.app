@@ -779,7 +779,7 @@ All tasks require TDD:
       "Verify badge updates when QA status changes",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

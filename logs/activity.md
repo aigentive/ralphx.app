@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:06:00
+**Last Updated:** 2026-01-24 15:08:00
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 25 / 33
-**Current Task:** Integrate TaskQABadge with TaskCard
+**Tasks Completed:** 26 / 33
+**Current Task:** Create QA event handlers
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:08:00 - Integrate TaskQABadge with TaskCard
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Replaced StatusBadge QA prop with TaskQABadge component
+  - Changed props from simple `qaStatus` to rich interface (`needsQA`, `prepStatus`, `testStatus`)
+  - TaskQABadge shows sophisticated status derivation (prep + test status → display status)
+  - Handle exactOptionalPropertyTypes with conditional prop spreading
+- Updated `src/components/tasks/TaskBoard/TaskCard.test.tsx`:
+  - Added 10 new tests for QA badge integration
+  - Tests cover: needsQA true/false/undefined, all status states, status priority
+  - Verify badge updates correctly when QA status changes
+- All 890 TypeScript tests passing
+
+**Commands run:**
+- `npm test -- src/components/tasks/TaskBoard/TaskCard.test.tsx --reporter=verbose`
+- `npm run typecheck`
+- `npm test`
+
+---
 
 ### 2026-01-24 15:06:00 - Add QA toggle to task creation form
 
