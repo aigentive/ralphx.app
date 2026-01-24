@@ -13,6 +13,7 @@ import {
   type CreateProject,
   type UpdateProject,
 } from "@/types/project";
+import { WorkflowSchemaZ } from "@/types/workflow";
 
 /**
  * Generic invoke wrapper with runtime Zod validation
@@ -44,6 +45,11 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
  * Project list schema for array responses
  */
 const ProjectListSchema = z.array(ProjectSchema);
+
+/**
+ * Workflow list schema for array responses
+ */
+const WorkflowListSchema = z.array(WorkflowSchemaZ);
 
 /**
  * API object containing all typed Tauri command wrappers
@@ -147,5 +153,21 @@ export const api = {
      */
     delete: (projectId: string) =>
       typedInvoke("delete_project", { projectId }, z.boolean()),
+  },
+
+  workflows: {
+    /**
+     * Get a workflow by ID
+     * @param workflowId The workflow ID
+     * @returns The workflow
+     */
+    get: (workflowId: string) =>
+      typedInvoke("get_workflow", { workflowId }, WorkflowSchemaZ),
+
+    /**
+     * List all workflows
+     * @returns Array of workflows
+     */
+    list: () => typedInvoke("list_workflows", {}, WorkflowListSchema),
   },
 } as const;

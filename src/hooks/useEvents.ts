@@ -10,6 +10,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { TaskEventSchema, type AgentMessageEvent } from "@/types/events";
 import { useTaskStore } from "@/stores/taskStore";
 import { useActivityStore } from "@/stores/activityStore";
+import type { Task } from "@/types/task";
 
 /**
  * Hook to listen for task events from the backend
@@ -49,7 +50,8 @@ export function useTaskEvents() {
           addTask(taskEvent.task);
           break;
         case "updated":
-          updateTask(taskEvent.taskId, taskEvent.changes);
+          // Cast to Partial<Task> for exactOptionalPropertyTypes compatibility
+          updateTask(taskEvent.taskId, taskEvent.changes as Partial<Task>);
           break;
         case "deleted":
           removeTask(taskEvent.taskId);
@@ -121,12 +123,14 @@ export function useSupervisorAlerts() {
   useEffect(() => {
     let unlisten: Promise<UnlistenFn>;
 
-    unlisten = listen<{ taskId: string; severity: string; type: string; message: string }>(
-      "supervisor:alert",
-      (event) => {
-        addAlert(event.payload);
-      }
-    );
+    unlisten = listen<{
+      taskId: string;
+      severity: "low" | "medium" | "high" | "critical";
+      type: "error" | "loop_detected" | "stuck" | "escalation";
+      message: string;
+    }>("supervisor:alert", (event) => {
+      addAlert(event.payload);
+    });
 
     return () => {
       unlisten.then((fn) => fn());

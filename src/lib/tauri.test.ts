@@ -367,3 +367,92 @@ describe("api.projects", () => {
     });
   });
 });
+
+// Helper to create mock workflow
+const createMockWorkflow = (overrides = {}) => ({
+  id: "ralphx-default",
+  name: "RalphX Default",
+  description: "Standard kanban workflow",
+  columns: [
+    { id: "draft", name: "Draft", mapsTo: "backlog" },
+    { id: "backlog", name: "Backlog", mapsTo: "backlog" },
+    { id: "todo", name: "To Do", mapsTo: "ready" },
+    { id: "planned", name: "Planned", mapsTo: "ready" },
+    { id: "in_progress", name: "In Progress", mapsTo: "executing" },
+    { id: "in_review", name: "In Review", mapsTo: "pending_review" },
+    { id: "done", name: "Done", mapsTo: "approved" },
+  ],
+  ...overrides,
+});
+
+describe("api.workflows", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  describe("get", () => {
+    it("should call get_workflow with workflowId", async () => {
+      mockInvoke.mockResolvedValue(createMockWorkflow());
+
+      await api.workflows.get("ralphx-default");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_workflow", {
+        workflowId: "ralphx-default",
+      });
+    });
+
+    it("should return workflow", async () => {
+      const workflow = createMockWorkflow({ name: "Custom Workflow" });
+      mockInvoke.mockResolvedValue(workflow);
+
+      const result = await api.workflows.get("custom");
+
+      expect(result.name).toBe("Custom Workflow");
+    });
+
+    it("should validate workflow schema", async () => {
+      mockInvoke.mockResolvedValue({ invalid: "workflow" });
+
+      await expect(api.workflows.get("invalid")).rejects.toThrow();
+    });
+
+    it("should validate columns have valid mapsTo values", async () => {
+      const invalidWorkflow = {
+        ...createMockWorkflow(),
+        columns: [{ id: "col", name: "Col", mapsTo: "invalid_status" }],
+      };
+      mockInvoke.mockResolvedValue(invalidWorkflow);
+
+      await expect(api.workflows.get("invalid")).rejects.toThrow();
+    });
+  });
+
+  describe("list", () => {
+    it("should call list_workflows", async () => {
+      mockInvoke.mockResolvedValue([createMockWorkflow()]);
+
+      await api.workflows.list();
+
+      expect(mockInvoke).toHaveBeenCalledWith("list_workflows", {});
+    });
+
+    it("should return array of workflows", async () => {
+      const workflows = [
+        createMockWorkflow({ id: "w1" }),
+        createMockWorkflow({ id: "w2" }),
+      ];
+      mockInvoke.mockResolvedValue(workflows);
+
+      const result = await api.workflows.list();
+
+      expect(result).toHaveLength(2);
+      expect(result[0]?.id).toBe("w1");
+    });
+
+    it("should validate workflow schema for each item", async () => {
+      mockInvoke.mockResolvedValue([{ invalid: "workflow" }]);
+
+      await expect(api.workflows.list()).rejects.toThrow();
+    });
+  });
+});

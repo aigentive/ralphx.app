@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   WorkflowColumnSchema,
   WorkflowSchemaZ,
+  defaultWorkflow,
   type WorkflowColumn,
   type WorkflowSchema,
 } from "./workflow";
@@ -229,6 +230,51 @@ describe("WorkflowSchemaZ", () => {
 
     const result = WorkflowSchemaZ.safeParse(workflow);
     expect(result.success).toBe(false);
+  });
+});
+
+describe("defaultWorkflow", () => {
+  it("has 7 columns", () => {
+    expect(defaultWorkflow.columns).toHaveLength(7);
+  });
+
+  it("has correct column ids", () => {
+    const columnIds = defaultWorkflow.columns.map((c) => c.id);
+    expect(columnIds).toEqual([
+      "draft",
+      "backlog",
+      "todo",
+      "planned",
+      "in_progress",
+      "in_review",
+      "done",
+    ]);
+  });
+
+  it("has correct column names", () => {
+    const columnNames = defaultWorkflow.columns.map((c) => c.name);
+    expect(columnNames).toEqual([
+      "Draft",
+      "Backlog",
+      "To Do",
+      "Planned",
+      "In Progress",
+      "In Review",
+      "Done",
+    ]);
+  });
+
+  it("maps columns to valid internal statuses", () => {
+    const result = WorkflowSchemaZ.safeParse(defaultWorkflow);
+    expect(result.success).toBe(true);
+  });
+
+  it("has id 'ralphx-default'", () => {
+    expect(defaultWorkflow.id).toBe("ralphx-default");
+  });
+
+  it("has name 'RalphX Default'", () => {
+    expect(defaultWorkflow.name).toBe("RalphX Default");
   });
 });
 
