@@ -1,14 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:42:00
+**Last Updated:** 2026-01-24 22:50:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 60 / 63
-**Current Task:** Integration test: Methodology activation and deactivation
+**Tasks Completed:** 61 / 63
+**Current Task:** Integration test: GSD-specific task fields (wave, checkpoint)
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:50:00 - Integration test: Methodology activation and deactivation (Task 61)
+
+**What was done:**
+- Created `src-tauri/tests/methodology_integration.rs` with 30 comprehensive tests covering:
+  - Create BMAD methodology (verify name, description, agent profiles, phases)
+  - Create GSD methodology (11 agents, wave-based workflow)
+  - Activate BMAD methodology (verify workflow columns switch to BMAD)
+  - Verify BMAD workflow has 10 columns (Brainstorm → Done)
+  - Verify BMAD agent profiles loaded (8 agents)
+  - Deactivate methodology returns to no active state
+  - Switch from BMAD to GSD (verify columns switch to GSD)
+  - GSD workflow has 11 columns including Checkpoint, Discuss, Debugging
+  - Phase structure verification (Analysis, Planning, Solutioning, Implementation)
+  - Agent profile assignments per phase
+  - Column behavior preservation (skip_review, auto_advance, agent_profile)
+  - Multiple methodologies can coexist (get_all returns both)
+  - CRUD operations on methodologies (create, read, update, delete)
+- Tests run with both Memory and SQLite repositories for consistency
+- Created `src/components/methodologies/MethodologyActivation.integration.test.tsx` with 20 frontend tests:
+  - Hook tests: fetch all methodologies, fetch active methodology
+  - Hook tests: activate BMAD methodology, deactivate methodology
+  - Hook tests: activation response contains workflow column count and agent profiles
+  - MethodologyBrowser: renders BMAD and GSD, shows active badge
+  - MethodologyBrowser: phase and agent counts, activate/deactivate button callbacks
+  - MethodologyConfig: displays name, description, workflow columns with color chips
+  - MethodologyConfig: displays phase progression with arrows, agent profiles list
+  - MethodologyConfig: empty state when no methodology
+  - Lifecycle tests: full activate → verify → deactivate cycle
+  - Lifecycle tests: switch from BMAD to GSD methodology
+  - Lifecycle tests: verify GSD phase structure
+
+**Commands run:**
+- `cargo test --test methodology_integration` - 30 tests passed
+- `npm test -- src/components/methodologies/MethodologyActivation.integration.test.tsx --run` - 20 tests passed
 
 ### 2026-01-24 22:42:00 - Integration test: Research process lifecycle (Task 60)
 
