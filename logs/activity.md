@@ -1,14 +1,59 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:07:08
+**Last Updated:** 2026-01-25 00:14:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 15 / 31
-**Current Task:** Implement Task Re-run Dialog (Done to Planned)
+**Tasks Completed:** 16 / 31
+**Current Task:** Implement Diff Viewer component with Changes and History tabs
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:14:00 - Implement Task Re-run Dialog (Task 16)
+
+**What was done:**
+- Verified existing `src/components/tasks/TaskRerunDialog/` implementation
+- Component includes:
+  - Task info display with title in quotes
+  - Commit SHA (monospace font, accent color) and commit message
+  - Three radio options for re-run workflow:
+    - Keep changes (recommended) - AI sees current state
+    - Revert commit - Undo previous work
+    - Create new task - Keep original, spawn new
+  - Warning display when revert is selected and dependent commits exist
+  - Error message display
+  - Processing state with disabled controls
+  - State reset when dialog reopens
+- Following exact ASCII layout from specs/plan.md "Task Re-run Dialog" section
+- Following established patterns from MergeWorkflowDialog
+- Wrote 53 unit tests covering:
+  - Rendering and display of task/commit info
+  - All three re-run options
+  - Dependent commits warning behavior
+  - Confirm flow for each option
+  - Close/cancel functionality
+  - Processing state
+  - Error state
+  - State reset on reopen
+  - Styling (accent colors, monospace font)
+  - Accessibility (radio inputs)
+  - Different task types and commits
+  - Icon rendering
+
+**Files verified:**
+- `src/components/tasks/TaskRerunDialog/TaskRerunDialog.tsx` (already implemented)
+- `src/components/tasks/TaskRerunDialog/index.tsx` (already implemented)
+
+**Files created:**
+- `src/components/tasks/TaskRerunDialog/TaskRerunDialog.test.tsx`
+
+**Commands run:**
+- `npm run test -- --run src/components/tasks/TaskRerunDialog/` - 53 tests passed
+- `npm run typecheck` - passed
+- `npm test -- --run` - All 3578 tests passed
+
+---
 
 ### 2026-01-25 00:07:08 - Implement Merge Workflow Dialog for post-completion (Task 15)
 
