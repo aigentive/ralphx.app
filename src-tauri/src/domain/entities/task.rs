@@ -1,7 +1,8 @@
 // Task entity - represents a task in RalphX
 // Contains task metadata, status, and timestamps
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
+use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
 use super::{InternalStatus, ProjectId, TaskId};
@@ -101,11 +102,54 @@ impl Task {
                 | InternalStatus::PendingReview
         )
     }
+
+    /// Deserialize a Task from a SQLite row.
+    /// Expects columns: id, project_id, category, title, description, priority,
+    /// internal_status, created_at, updated_at, started_at, completed_at
+    pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: TaskId::from_string(row.get("id")?),
+            project_id: ProjectId::from_string(row.get("project_id")?),
+            category: row.get("category")?,
+            title: row.get("title")?,
+            description: row.get("description")?,
+            priority: row.get("priority")?,
+            internal_status: row
+                .get::<_, String>("internal_status")?
+                .parse()
+                .unwrap_or(InternalStatus::Backlog),
+            created_at: Self::parse_datetime(row.get("created_at")?),
+            updated_at: Self::parse_datetime(row.get("updated_at")?),
+            started_at: row
+                .get::<_, Option<String>>("started_at")?
+                .map(Self::parse_datetime),
+            completed_at: row
+                .get::<_, Option<String>>("completed_at")?
+                .map(Self::parse_datetime),
+        })
+    }
+
+    /// Parse a datetime string from SQLite into a DateTime<Utc>
+    /// Handles both RFC3339 format and SQLite's CURRENT_TIMESTAMP format
+    fn parse_datetime(s: String) -> DateTime<Utc> {
+        // Try RFC3339 first (our preferred format)
+        if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
+            return dt.with_timezone(&Utc);
+        }
+        // Try SQLite's default datetime format (YYYY-MM-DD HH:MM:SS)
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S") {
+            return Utc.from_utc_datetime(&dt);
+        }
+        // Fallback to now if parsing fails
+        Utc::now()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Datelike;
+    use chrono::Timelike;
 
     // ===== Task Creation Tests =====
 
@@ -451,5 +495,238 @@ mod tests {
         assert!(debug.contains("Debug Test"));
         assert!(debug.contains("feature"));
         assert!(debug.contains("Backlog"));
+    }
+
+    // ===== parse_datetime Tests =====
+
+    #[test]
+    fn task_parse_datetime_rfc3339() {
+        let dt = Task::parse_datetime("2026-01-24T12:30:00Z".to_string());
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 24);
+        assert_eq!(dt.hour(), 12);
+        assert_eq!(dt.minute(), 30);
+    }
+
+    #[test]
+    fn task_parse_datetime_rfc3339_with_offset() {
+        let dt = Task::parse_datetime("2026-01-24T12:30:00+05:00".to_string());
+        // Should convert to UTC
+        assert_eq!(dt.hour(), 7); // 12:30 - 5 hours = 7:30 UTC
+    }
+
+    #[test]
+    fn task_parse_datetime_sqlite_format() {
+        let dt = Task::parse_datetime("2026-01-24 15:45:30".to_string());
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 24);
+        assert_eq!(dt.hour(), 15);
+        assert_eq!(dt.minute(), 45);
+        assert_eq!(dt.second(), 30);
+    }
+
+    #[test]
+    fn task_parse_datetime_invalid_returns_now() {
+        let before = Utc::now();
+        let dt = Task::parse_datetime("not-a-date".to_string());
+        let after = Utc::now();
+
+        assert!(dt >= before);
+        assert!(dt <= after);
+    }
+
+    // ===== from_row Integration Tests =====
+
+    use rusqlite::Connection;
+
+    fn setup_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            r#"CREATE TABLE tasks (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'feature',
+                title TEXT NOT NULL,
+                description TEXT,
+                priority INTEGER DEFAULT 0,
+                internal_status TEXT NOT NULL DEFAULT 'backlog',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            )"#,
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn task_from_row_with_all_fields() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-123', 'proj-456', 'bug', 'Fix crash', 'Critical bug fix', 10,
+               'executing', '2026-01-24T10:00:00Z', '2026-01-24T11:00:00Z',
+               '2026-01-24T10:30:00Z', NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-123'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(task.id.as_str(), "task-123");
+        assert_eq!(task.project_id.as_str(), "proj-456");
+        assert_eq!(task.category, "bug");
+        assert_eq!(task.title, "Fix crash");
+        assert_eq!(task.description, Some("Critical bug fix".to_string()));
+        assert_eq!(task.priority, 10);
+        assert_eq!(task.internal_status, InternalStatus::Executing);
+        assert!(task.started_at.is_some());
+        assert!(task.completed_at.is_none());
+    }
+
+    #[test]
+    fn task_from_row_with_null_optionals() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-789', 'proj-000', 'feature', 'New feature', NULL, 0,
+               'backlog', '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-789'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert!(task.description.is_none());
+        assert!(task.started_at.is_none());
+        assert!(task.completed_at.is_none());
+    }
+
+    #[test]
+    fn task_from_row_with_sqlite_datetime_format() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-sql', 'proj-sql', 'setup', 'Setup', NULL, 5,
+               'ready', '2026-01-24 12:00:00', '2026-01-24 12:30:00', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-sql'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(task.created_at.hour(), 12);
+        assert_eq!(task.updated_at.hour(), 12);
+        assert_eq!(task.updated_at.minute(), 30);
+    }
+
+    #[test]
+    fn task_from_row_with_unknown_status_defaults_to_backlog() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-unk', 'proj-unk', 'feature', 'Test', NULL, 0,
+               'unknown_status', '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-unk'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        // Unknown status should default to Backlog
+        assert_eq!(task.internal_status, InternalStatus::Backlog);
+    }
+
+    #[test]
+    fn task_from_row_with_completed_at() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, created_at, updated_at, started_at, completed_at)
+               VALUES ('task-done', 'proj-done', 'feature', 'Completed', NULL, 0,
+               'approved', '2026-01-24T08:00:00Z', '2026-01-24T12:00:00Z',
+               '2026-01-24T09:00:00Z', '2026-01-24T11:00:00Z')"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-done'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(task.internal_status, InternalStatus::Approved);
+        assert!(task.started_at.is_some());
+        assert!(task.completed_at.is_some());
+        assert_eq!(task.completed_at.unwrap().hour(), 11);
+    }
+
+    #[test]
+    fn task_from_row_all_14_statuses() {
+        let conn = setup_test_db();
+        let statuses = [
+            "backlog",
+            "ready",
+            "blocked",
+            "executing",
+            "execution_done",
+            "qa_refining",
+            "qa_testing",
+            "qa_passed",
+            "qa_failed",
+            "pending_review",
+            "revision_needed",
+            "approved",
+            "failed",
+            "cancelled",
+        ];
+
+        for (i, status) in statuses.iter().enumerate() {
+            let id = format!("task-{}", i);
+            conn.execute(
+                &format!(
+                    r#"INSERT INTO tasks (id, project_id, category, title, internal_status, created_at, updated_at)
+                       VALUES ('{}', 'proj-1', 'feature', 'Test', '{}', '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z')"#,
+                    id, status
+                ),
+                [],
+            )
+            .unwrap();
+
+            let task: Task = conn
+                .query_row(
+                    &format!("SELECT * FROM tasks WHERE id = '{}'", id),
+                    [],
+                    |row| Task::from_row(row),
+                )
+                .unwrap();
+
+            assert_eq!(task.internal_status.as_str(), *status);
+        }
     }
 }
