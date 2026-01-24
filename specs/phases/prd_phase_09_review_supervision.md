@@ -836,7 +836,7 @@ interface AskUserQuestionResponse {
       "Clear question after answer submitted",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
