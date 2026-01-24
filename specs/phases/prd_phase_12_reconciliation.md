@@ -104,7 +104,58 @@ ralphx-plugin/
 
 ---
 
-## Issue 2: Missing Visual Verification
+## Issue 2: Missing UI Components and Views
+
+### Problem
+
+Gap analysis between the master plan (`specs/plan.md`) and current implementation reveals significant UI elements that were specified but not implemented. These gaps affect core functionality and user experience.
+
+### Layout Gaps
+
+| Element | Plan Spec | Current State |
+|---------|-----------|---------------|
+| **Project Sidebar** | Left sidebar with project list, status indicators, New Project button | Only header with hardcoded "Demo Project" |
+| **Activity Navigation** | Activity view showing agent execution | View type exists but no UI |
+| **Settings Navigation** | Settings view with configuration | View type exists but no UI |
+
+### Missing Screens/Views
+
+1. **Activity Stream View** - Real-time agent execution monitoring with expandable tool calls, search, filters
+2. **Settings View** - Configuration for execution, model, review, supervisor settings, and profile management
+3. **Project Creation Wizard** - Git mode selection (Local vs Worktree), folder picker, branch config
+4. **Merge Workflow Dialog** - Post-completion options (merge, rebase, PR, keep, discard)
+5. **Task Re-run Dialog** - Options when moving completed task back to Planned
+
+### Missing Components
+
+1. **Diff Viewer** - Split-view with Changes/History tabs, file tree, syntax highlighting, Web Worker support
+2. **Project Sidebar** - Project list with git mode indicators, navigation items
+3. **Worktree Status Indicator** - Shows "Local: main" or "Worktree: branch from base"
+4. **Screenshot Gallery/Lightbox** - For QA visual verification with Expected vs Actual comparison
+5. **Project Selector** - Dropdown in header replacing hardcoded project name
+
+### Design Requirements
+
+All components must follow the established design system:
+- Warm orange accent (#ff6b35), no purple gradients
+- SF Pro fonts (not Inter)
+- 8pt grid spacing system
+- Dark theme with 4.5:1 minimum contrast
+- 150-200ms transitions
+
+### Reference
+
+See `specs/plan.md` for exact specifications:
+- "Project Creation Wizard" section
+- "Merge Workflow Dialog" section
+- "Task Re-run Dialog" section
+- "Diff Viewer" section
+- "Minimal Essential Settings" section
+- "Activity Stream" section
+
+---
+
+## Issue 3: Missing Visual Verification
 
 ### Problem
 
@@ -164,7 +215,7 @@ Retroactively verify all UI components from Phases 5, 6, 8, 9, 10:
 
 ---
 
-## Issue 3: Missing Automatic Reconciliation (Auditor System)
+## Issue 4: Missing Automatic Reconciliation (Auditor System)
 
 ### Problem
 
@@ -301,7 +352,7 @@ const defaultAuditRules: AuditRule[] = [
 
 ---
 
-## Issue 4: (Placeholder for future issues)
+## Issue 5: (Placeholder for future issues)
 
 _Add additional reconciliation issues here as they are discovered._
 
@@ -480,6 +531,171 @@ const qaPrepProfile = {
       "Update any PRD references to .claude/ paths"
     ],
     "passes": true
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Project Sidebar with project list and navigation",
+    "steps": [
+      "Create src/components/projects/ProjectSidebar.tsx component",
+      "Add project list with status indicators (git mode, branch, dirty state)",
+      "Add 'New Project' button that triggers creation wizard",
+      "Add project switching functionality",
+      "Implement WorktreeStatus indicator component",
+      "Integrate with projectStore for state management",
+      "Add navigation items: Ideation, Kanban, Activity, Settings",
+      "Write unit tests for ProjectSidebar",
+      "Reference specs/plan.md 'Project Sidebar' section for exact layout"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Activity Stream View",
+    "steps": [
+      "Create src/components/activity/ActivityView.tsx component",
+      "Display agent thinking and actions in real-time",
+      "Add expandable tool call details (inputs/outputs)",
+      "Implement scrollable history with auto-scroll to new messages",
+      "Add search/filter functionality by tool name or action type",
+      "Connect to activityStore for message streaming",
+      "Style similar to Claude Desktop execution panel",
+      "Write unit tests for ActivityView",
+      "Reference specs/plan.md 'Activity Stream' section"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Settings View with all configuration sections",
+    "steps": [
+      "Create src/components/settings/SettingsView.tsx component",
+      "Add Execution section: max_concurrent_tasks, auto_commit, pause_on_failure",
+      "Add Model section: model selection dropdown, Opus upgrade option",
+      "Add Review section: ai_review_enabled, ai_review_auto_fix, require_human_review, max_fix_attempts",
+      "Add Supervisor section: supervisor_enabled, loop_threshold, stuck_timeout",
+      "Add Profile Management: create/edit/delete custom profiles",
+      "Connect to settings store and Tauri backend for persistence",
+      "Write unit tests for SettingsView",
+      "Reference specs/plan.md 'Minimal Essential Settings' section for defaults"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Project Creation Wizard with Git Mode selection",
+    "steps": [
+      "Create src/components/projects/ProjectCreationWizard.tsx modal",
+      "Add project name input field",
+      "Add folder picker with Browse button (Tauri dialog)",
+      "Add Git Mode radio selector: Local vs Isolated Worktree",
+      "For Worktree mode: branch name input, base branch dropdown, worktree path display",
+      "Add validation and error states",
+      "Connect to Tauri backend for git operations",
+      "Write unit tests for ProjectCreationWizard",
+      "Reference specs/plan.md 'Project Creation Wizard' section for exact ASCII layout"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Merge Workflow Dialog for post-completion",
+    "steps": [
+      "Create src/components/projects/MergeWorkflowDialog.tsx modal",
+      "Show project completion summary (commit count, branch name)",
+      "Add View Diff and View Commits buttons",
+      "Add radio options: Merge to main, Rebase onto main, Create PR, Keep worktree, Discard changes",
+      "Connect to Tauri backend for git merge/rebase operations",
+      "Handle confirmation for destructive actions (Discard)",
+      "Write unit tests for MergeWorkflowDialog",
+      "Reference specs/plan.md 'Merge Workflow Dialog' section for exact layout"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Task Re-run Dialog (Done to Planned)",
+    "steps": [
+      "Create src/components/tasks/TaskRerunDialog.tsx modal",
+      "Show task info and associated commit SHA",
+      "Add radio options: Keep changes (recommended), Revert commit, Create new task",
+      "Add warning for revert option about dependent commits",
+      "Implement revert logic with conflict detection",
+      "Update task run_number and previous_commit_sha in database",
+      "Write unit tests for TaskRerunDialog",
+      "Reference specs/plan.md 'Task Re-run Dialog' section for exact layout"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Diff Viewer component with Changes and History tabs",
+    "steps": [
+      "Install @git-diff-view/react library",
+      "Create src/components/diff/DiffViewer.tsx component",
+      "Add Tab 1: Changes - real-time uncommitted modifications view",
+      "Add Tab 2: History - commit list with diff view",
+      "Add file tree on left side showing changed files",
+      "Add unified diff view on right with syntax highlighting",
+      "Implement collapse/expand for diff hunks",
+      "Add 'Open in IDE' button using Tauri shell commands",
+      "Use Web Worker for off-main-thread diff computation",
+      "Write unit tests for DiffViewer",
+      "Reference specs/plan.md 'Diff Viewer' section"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Implement Screenshot Gallery/Lightbox for QA panel",
+    "steps": [
+      "Create src/components/qa/ScreenshotGallery.tsx component",
+      "Display thumbnail grid of captured screenshots",
+      "Implement lightbox modal for full-size view",
+      "Add navigation between screenshots (prev/next)",
+      "Add Expected vs Actual comparison view for failures",
+      "Integrate with TaskDetailQAPanel",
+      "Write unit tests for ScreenshotGallery"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Integrate Diff Viewer into Reviews Panel",
+    "steps": [
+      "Update ReviewsPanel.tsx to include DiffViewer",
+      "Add Changes/History tabs to review detail view",
+      "Connect to git backend for real-time diff data",
+      "Ensure proper loading states during diff computation",
+      "Write integration tests for Reviews with DiffViewer"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Replace hardcoded Project Selector with functional component",
+    "steps": [
+      "Update App.tsx header to use ProjectSelector component",
+      "Create src/components/projects/ProjectSelector.tsx dropdown",
+      "Show current project with git mode indicator",
+      "Add project list in dropdown with status badges",
+      "Add 'New Project' option that opens wizard",
+      "Connect to projectStore for state management",
+      "Write unit tests for ProjectSelector"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ui-gaps",
+    "description": "Add Activity and Settings navigation to app layout",
+    "steps": [
+      "Update App.tsx to include Activity view in navigation",
+      "Update App.tsx to include Settings view in navigation",
+      "Add keyboard shortcuts: Cmd+4 for Activity, Cmd+5 for Settings",
+      "Update uiStore currentView type to include 'activity' and 'settings'",
+      "Ensure proper view switching and state preservation",
+      "Write integration tests for navigation"
+    ],
+    "passes": false
   },
   {
     "category": "visual-verification",
