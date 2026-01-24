@@ -16,6 +16,8 @@ import { TaskDetailView } from "@/components/tasks/TaskDetailView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { IdeationView } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
+import { ActivityView } from "@/components/activity";
+import { SettingsView } from "@/components/settings";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
 import { useUiStore } from "@/stores/uiStore";
@@ -132,6 +134,33 @@ function GearIcon() {
   );
 }
 
+function ActivityIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M2 10h3l2-6 3 12 2.5-6H18"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M8 3h4M8 10h8M8 17h4M4 3v0a1 1 0 100 2 1 1 0 000-2zM4 10v0a1 1 0 100 2 1 1 0 000-2zM16 17v0a1 1 0 100 2 1 1 0 000-2z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 // Transform API messages to component-compatible format
 function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null }>): ChatMessageType[] {
   return messages.map((msg) => ({
@@ -221,7 +250,7 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Keyboard shortcuts for view switching (Cmd+1 for Kanban, Cmd+2 for Ideation, Cmd+3 for Extensibility)
+  // Keyboard shortcuts for view switching (Cmd+1-5 for main views)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
@@ -234,6 +263,12 @@ function AppContent() {
         } else if (e.key === "3") {
           e.preventDefault();
           setCurrentView("extensibility");
+        } else if (e.key === "4") {
+          e.preventDefault();
+          setCurrentView("activity");
+        } else if (e.key === "5") {
+          e.preventDefault();
+          setCurrentView("settings");
         }
       }
     };
@@ -509,6 +544,42 @@ function AppContent() {
               <GearIcon />
               <span className="text-sm font-medium">Extensibility</span>
             </button>
+            <button
+              onClick={() => setCurrentView("activity")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                backgroundColor: currentView === "activity"
+                  ? "var(--bg-elevated)"
+                  : "transparent",
+                color: currentView === "activity"
+                  ? "var(--accent-primary)"
+                  : "var(--text-secondary)",
+              }}
+              data-testid="nav-activity"
+              aria-current={currentView === "activity" ? "page" : undefined}
+              title="Activity (⌘4)"
+            >
+              <ActivityIcon />
+              <span className="text-sm font-medium">Activity</span>
+            </button>
+            <button
+              onClick={() => setCurrentView("settings")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                backgroundColor: currentView === "settings"
+                  ? "var(--bg-elevated)"
+                  : "transparent",
+                color: currentView === "settings"
+                  ? "var(--accent-primary)"
+                  : "var(--text-secondary)",
+              }}
+              data-testid="nav-settings"
+              aria-current={currentView === "settings" ? "page" : undefined}
+              title="Settings (⌘5)"
+            >
+              <SettingsIcon />
+              <span className="text-sm font-medium">Settings</span>
+            </button>
           </nav>
         </div>
         <div className="flex items-center gap-3">
@@ -602,6 +673,8 @@ function AppContent() {
               />
             )}
             {currentView === "extensibility" && <ExtensibilityView />}
+            {currentView === "activity" && <ActivityView showHeader />}
+            {currentView === "settings" && <SettingsView />}
           </div>
           {/* ExecutionControlBar at bottom (only show in kanban view) */}
           {currentView === "kanban" && (
