@@ -1,14 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:57:00
+**Last Updated:** 2026-01-24 18:00:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 44 / 50
-**Current Task:** Create ApplyModal component
+**Tasks Completed:** 45 / 50
+**Current Task:** Create PriorityBadge component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:00:00 - Create ApplyModal component
+
+**What was done:**
+- Created `src/components/Ideation/ApplyModal.tsx` with:
+  - Modal overlay with fixed positioning and semi-transparent background
+  - Selected proposals summary section with count and list of titles/categories
+  - Dependency graph preview showing edges and critical path
+  - Warnings display for circular dependencies and missing dependencies (role=alert)
+  - Target column selector (Draft, Backlog, Todo) defaulting to Backlog
+  - Preserve dependencies checkbox with helper text
+  - Apply button with proposal count in label and loading state
+  - Cancel button
+  - Escape key to close (disabled while applying)
+  - Overlay click to close (disabled while applying)
+  - All controls disabled during applying state
+  - Proper accessibility: dialog role, aria-labelledby, form labels
+- Created `src/components/Ideation/ApplyModal.test.tsx` with 53 unit tests covering:
+  - Rendering (modal, overlay, content, header, open/closed state)
+  - Selected proposals summary (count, titles, categories, singular/plural)
+  - Dependency graph preview (count, edges, critical path, empty state)
+  - Target column selector (label, options, default, changing)
+  - Preserve dependencies checkbox (label, default checked, toggle, helper)
+  - Warnings display (cycles, missing deps, multiple warnings, styling)
+  - Apply and Cancel buttons (render, callbacks, options, disabled states)
+  - Loading state (button text, all controls disabled)
+  - Overlay click behavior (close, content click stops propagation, disabled while applying)
+  - Accessibility (dialog role, labels, alert role for warnings)
+  - Keyboard navigation (Escape to close, disabled while applying)
+  - Styling (overlay, positioning, elevated background, accent colors, anti-AI-slop)
+- Updated `src/components/Ideation/index.ts` to export ApplyModal
+
+**Commands run:**
+- `npm test -- --run src/components/Ideation/ApplyModal.test.tsx` (53 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (2065 tests passed)
+
+---
 
 ### 2026-01-24 17:57:00 - Create ProposalEditModal component
 
