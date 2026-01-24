@@ -592,7 +592,7 @@ pub struct MockNotifier {
       "Handle state-local data variants (qa_failed, failed) with defaults",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",

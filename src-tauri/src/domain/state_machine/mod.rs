@@ -15,7 +15,7 @@ pub mod types;
 // Re-export key types
 pub use context::{TaskContext, TaskServices};
 pub use events::TaskEvent;
-pub use machine::{Response, State, TaskStateMachine};
+pub use machine::{ParseStateError, Response, State, TaskStateMachine};
 pub use mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, ServiceCall,
 };

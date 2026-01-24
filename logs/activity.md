@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:00:00
+**Last Updated:** 2026-01-24 09:10:00
 **Phase:** State Machine
-**Tasks Completed:** 13 / 22
-**Current Task:** Implement State Display and FromStr for SQLite serialization
+**Tasks Completed:** 14 / 22
+**Current Task:** Create task_state_data table migration
 
 ---
 
@@ -2025,6 +2025,37 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 
 **Files modified:**
 - `src-tauri/src/domain/state_machine/machine.rs` - added logging hooks and tests
+
+---
+
+### 2026-01-24 09:10:00 - Implement State Display and FromStr for SQLite serialization
+
+**What was done:**
+- Added State::as_str() returning snake_case strings matching InternalStatus format
+- Implemented Display trait for State (uses as_str())
+- Implemented FromStr trait for State with ParseStateError
+- Created ParseStateError with invalid_value field, Display, and std::error::Error
+- For states with local data (QaFailed, Failed), parsing returns variant with default data
+- Exported ParseStateError from state_machine module
+- Wrote 12 comprehensive tests:
+  - as_str returns snake_case for all 14 states
+  - Display uses snake_case format
+  - Display works for all 14 states
+  - FromStr parses all 14 states correctly
+  - FromStr returns error for invalid strings
+  - FromStr returns error for empty string
+  - FromStr is case-sensitive (rejects "Backlog", "BACKLOG")
+  - Roundtrip test for all states
+  - States with data lose data on roundtrip (by design)
+  - ParseStateError display, std::error::Error, clone, eq
+
+**Commands run:**
+- `cargo test state_machine` - 179 tests pass
+- `cargo test` - 487 tests pass
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/machine.rs` - added Display, FromStr, as_str
+- `src-tauri/src/domain/state_machine/mod.rs` - exported ParseStateError
 
 ---
 
