@@ -1,14 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:35:00
+**Last Updated:** 2026-01-24 16:42:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 9 / 50
-**Current Task:** Implement TaskDependencyRepository trait
+**Tasks Completed:** 10 / 50
+**Current Task:** Implement SqliteIdeationSessionRepository
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:42:00 - Implement TaskDependencyRepository trait
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/task_dependency_repository.rs`:
+  - Defined `TaskDependencyRepository` trait with `Send + Sync` bounds
+  - 9 async methods: `add_dependency`, `remove_dependency`, `get_blockers`, `get_blocked_by`, `has_circular_dependency`, `clear_dependencies`, `count_blockers`, `count_blocked_by`, `has_dependency`
+  - Additional helper methods beyond PRD: `clear_dependencies`, `count_blockers`, `count_blocked_by`, `has_dependency`
+  - Created `MockTaskDependencyRepository` with HashMap-based dependency tracking
+- Updated `domain/repositories/mod.rs` with module and re-export
+- Added 22 comprehensive unit tests:
+  - Trait object safety test
+  - Add/remove dependency tests
+  - Blocker and blocked-by traversal tests
+  - Cycle detection tests (direct cycles, self-dependency)
+  - Count operations tests
+  - Has dependency check tests
+  - Arc<dyn TaskDependencyRepository> usage tests
+
+**Commands run:**
+- `cargo test --lib task_dependency_repository::` (22 tests passed)
+- `cargo test --lib` (1740 tests passed)
+
+---
 
 ### 2026-01-24 16:35:00 - Implement ChatMessageRepository trait
 
