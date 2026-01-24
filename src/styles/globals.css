@@ -1,3 +1,7 @@
+@import "tw-animate-css";
+@plugin "tailwindcss-animate";
+@custom-variant dark (&:is(.dark *));
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,6 +12,10 @@
  */
 
 :root {
+  /* ============================================================================
+   * Original RalphX Design Tokens
+   * ============================================================================ */
+
   /* Backgrounds - dark grays, NOT pure black */
   --bg-base: #0f0f0f;
   --bg-surface: #1a1a1a;
@@ -78,9 +86,176 @@
   --transition-fast: 150ms ease;
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
+
+  /* ============================================================================
+   * shadcn/ui CSS Variables - Mapped to RalphX Design Tokens
+   * Using our dark theme as default (RalphX is dark-only)
+   * ============================================================================ */
+
+  /* Base radius for shadcn calculations */
+  --radius: 0.5rem;
+
+  /* Core colors mapped from RalphX tokens */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+
+  --card: var(--bg-elevated);
+  --card-foreground: var(--text-primary);
+
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+
+  /* Primary = our warm orange accent */
+  --primary: var(--accent-primary);
+  --primary-foreground: #ffffff;
+
+  /* Secondary = elevated background for subtle actions */
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+
+  /* Muted = surface with muted text */
+  --muted: var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+
+  /* Accent = hover state */
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+
+  /* Destructive = error red */
+  --destructive: var(--status-error);
+  --destructive-foreground: #ffffff;
+
+  /* Border and input */
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+
+  /* Chart colors - using status colors and accent */
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--status-success);
+  --chart-3: var(--status-info);
+  --chart-4: var(--accent-secondary);
+  --chart-5: var(--status-warning);
+
+  /* Sidebar - using our dark theme colors */
+  --sidebar: var(--bg-surface);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--accent-primary);
 }
 
-/* Base body styles */
+/* Dark mode - same as default since RalphX is dark-only */
+.dark {
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+
+  --card: var(--bg-elevated);
+  --card-foreground: var(--text-primary);
+
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+
+  --primary: var(--accent-primary);
+  --primary-foreground: #ffffff;
+
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+
+  --muted: var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+
+  --destructive: var(--status-error);
+  --destructive-foreground: #ffffff;
+
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--status-success);
+  --chart-3: var(--status-info);
+  --chart-4: var(--accent-secondary);
+  --chart-5: var(--status-warning);
+
+  --sidebar: var(--bg-surface);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--accent-primary);
+}
+
+/* ============================================================================
+ * shadcn/ui Theme Mapping
+ * ============================================================================ */
+
+@theme inline {
+  /* Radius tokens for shadcn components */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Color mappings for Tailwind */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ============================================================================
+ * Base Layer Styles
+ * ============================================================================ */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Base body styles - RalphX specific */
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
