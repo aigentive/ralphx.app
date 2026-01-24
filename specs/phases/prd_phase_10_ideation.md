@@ -847,7 +847,7 @@ All tasks require:
       "Implement map_column_to_status() (draft→Backlog, backlog→Backlog, todo→Ready)",
       "Return ApplyProposalsResult with created tasks and warnings"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
