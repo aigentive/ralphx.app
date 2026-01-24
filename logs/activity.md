@@ -1,14 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:25:00
+**Last Updated:** 2026-01-24 10:54:32
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 5 / 33
-**Current Task:** Create task_qa table migration
+**Tasks Completed:** 6 / 33
+**Current Task:** Add QA columns to tasks table migration
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:54:32 - Create task_qa table migration
+
+**What was done:**
+- Updated `SCHEMA_VERSION` from 4 to 5 in `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- Added `migrate_v5()` function creating `task_qa` table with all required columns:
+  - QA Prep Phase: `acceptance_criteria`, `qa_test_steps`, `prep_agent_id`, `prep_started_at`, `prep_completed_at`
+  - QA Refinement Phase: `actual_implementation`, `refined_test_steps`, `refinement_agent_id`, `refinement_completed_at`
+  - Test Execution Phase: `test_results`, `screenshots`, `test_agent_id`, `test_completed_at`
+  - Metadata: `id` (PRIMARY KEY), `task_id` (FK), `created_at` (DEFAULT)
+- Created index `idx_task_qa_task_id` for efficient lookups
+- Updated existing migration tests for schema version 5
+- Added 8 new tests for v5 migration:
+  - `test_run_migrations_creates_task_qa_table`
+  - `test_task_qa_table_has_correct_columns`
+  - `test_task_qa_index_on_task_id_exists`
+  - `test_task_qa_cascade_delete`
+  - `test_task_qa_stores_json`
+  - `test_task_qa_allows_null_columns`
+  - `test_task_qa_created_at_default`
+  - `test_task_qa_multiple_per_task_prevented`
+- All 49 migration tests passing
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml infrastructure::sqlite::migrations::tests`
+
+---
 
 ### 2026-01-24 13:25:00 - Create QA configuration types in TypeScript
 
