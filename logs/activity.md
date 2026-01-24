@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:48:40
+**Last Updated:** 2026-01-24 07:52:00
 **Phase:** Data Layer
-**Tasks Completed:** 17 / 20
-**Current Task:** Create Tauri commands for task CRUD
+**Tasks Completed:** 18 / 20
+**Current Task:** Create Tauri commands for project CRUD
 
 ---
 
@@ -1701,6 +1701,33 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `src-tauri/Cargo.toml` - added async-trait and tokio dependencies
+
+---
+
+### 2026-01-24 07:52:00 - Create Tauri commands for task CRUD
+
+**What was done:**
+- Created `src-tauri/src/commands/task_commands.rs` with:
+  - CreateTaskInput struct for task creation
+  - UpdateTaskInput struct for partial updates
+  - TaskResponse struct for frontend serialization
+  - From<Task> for TaskResponse implementation
+  - list_tasks command using task_repo.get_by_project()
+  - get_task command using task_repo.get_by_id()
+  - create_task command with category defaulting to "feature"
+  - update_task command with partial field updates
+  - delete_task command
+- Updated `commands/mod.rs` to export task_commands module
+- Registered all 5 commands in lib.rs invoke_handler
+- Added 7 tests for command functionality
+- All 296 tests pass
+
+**Files created:**
+- `src-tauri/src/commands/task_commands.rs`
+
+**Files modified:**
+- `src-tauri/src/commands/mod.rs` - added task_commands module
+- `src-tauri/src/lib.rs` - registered task commands in invoke_handler
 
 ---
 
