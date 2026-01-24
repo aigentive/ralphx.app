@@ -805,7 +805,7 @@ All tasks require tests written before implementation:
       "Implement ArtifactRelation struct",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
