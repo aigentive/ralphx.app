@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:00:00
+**Last Updated:** 2026-01-24 16:30:00
 **Phase:** Foundation
-**Tasks Completed:** 9 / 19
-**Current Task:** Implement InternalStatus enum with transition validation
+**Tasks Completed:** 10 / 19
+**Current Task:** Implement Project entity struct
 
 ---
 
@@ -1005,6 +1005,47 @@ Phase 1: Foundation (no dependencies)
 **Files modified:**
 - `src-tauri/Cargo.toml` - added uuid dependency
 - `src-tauri/src/domain/entities/mod.rs` - added types module export
+
+---
+
+### 2026-01-24 16:30:00 - Implement InternalStatus enum with transition validation
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/status.rs` with InternalStatus enum
+- Implemented all 14 status variants:
+  - Backlog, Ready, Blocked (Idle states)
+  - Executing, ExecutionDone (Execution states)
+  - QaRefining, QaTesting, QaPassed, QaFailed (QA states)
+  - PendingReview, RevisionNeeded (Review states)
+  - Approved, Failed, Cancelled (Terminal states)
+- Implemented `valid_transitions()` returning allowed next states per state machine rules
+- Implemented `can_transition_to()` using valid_transitions()
+- Added `#[serde(rename_all = "snake_case")]` for JSON serialization
+- Implemented Display, FromStr traits for string conversion
+- Implemented `all_variants()` helper for iteration
+- Implemented `as_str()` returning snake_case string representation
+- Created ParseInternalStatusError for FromStr error handling
+- Updated `domain/entities/mod.rs` to export status module and types
+- Wrote 44 comprehensive tests covering:
+  - All 14 variants exist and serialize correctly
+  - Serialization/deserialization with snake_case
+  - FromStr parsing for all variants and error cases
+  - All transition rules for each status
+  - Invalid transition rejection
+  - Self-transition rejection
+  - Happy path flows (with and without QA)
+  - Retry paths (QA failure, review rejection)
+  - Blocking/unblocking paths
+  - Clone, Copy, Eq, Hash trait implementations
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 80 tests pass (44 new + 36 existing)
+
+**Files created:**
+- `src-tauri/src/domain/entities/status.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/entities/mod.rs` - added status module export
 
 ---
 
