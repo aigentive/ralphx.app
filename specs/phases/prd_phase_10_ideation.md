@@ -693,7 +693,7 @@ All tasks require:
       "  - delete_by_session(session_id: &str) -> Result<()>",
       "Export from domain/repositories module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

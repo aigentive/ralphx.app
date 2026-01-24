@@ -2,6 +2,7 @@
 // These traits define the contract; implementations live in infrastructure layer
 
 pub mod agent_profile_repository;
+pub mod chat_message_repository;
 pub mod ideation_session_repository;
 pub mod project_repository;
 pub mod proposal_dependency_repository;
@@ -13,6 +14,7 @@ pub mod task_repository;
 
 // Re-exports for convenience
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
+pub use chat_message_repository::ChatMessageRepository;
 pub use ideation_session_repository::IdeationSessionRepository;
 pub use project_repository::ProjectRepository;
 pub use proposal_dependency_repository::ProposalDependencyRepository;
