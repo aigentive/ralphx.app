@@ -861,7 +861,7 @@ All tasks require:
       "Update Tauri state initialization",
       "Write test verifying all repos accessible"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

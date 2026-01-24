@@ -8,16 +8,22 @@ use tokio::sync::Mutex;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
-    AgentProfileRepository, ProjectRepository, ReviewRepository, TaskQARepository, TaskRepository,
+    AgentProfileRepository, ChatMessageRepository, IdeationSessionRepository, ProjectRepository,
+    ProposalDependencyRepository, ReviewRepository, TaskDependencyRepository,
+    TaskProposalRepository, TaskQARepository, TaskRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryAgentProfileRepository, MemoryProjectRepository, MemoryReviewRepository,
-    MemoryTaskQARepository, MemoryTaskRepository,
+    MemoryAgentProfileRepository, MemoryChatMessageRepository, MemoryIdeationSessionRepository,
+    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryReviewRepository,
+    MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
+    MemoryTaskRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
-    SqliteProjectRepository, SqliteReviewRepository, SqliteTaskQARepository, SqliteTaskRepository,
+    SqliteChatMessageRepository, SqliteIdeationSessionRepository, SqliteProjectRepository,
+    SqliteProposalDependencyRepository, SqliteReviewRepository, SqliteTaskDependencyRepository,
+    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -38,6 +44,16 @@ pub struct AppState {
     pub agent_client: Arc<dyn AgenticClient>,
     /// Global QA settings
     pub qa_settings: Arc<tokio::sync::RwLock<QASettings>>,
+    /// Ideation session repository
+    pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    /// Task proposal repository
+    pub task_proposal_repo: Arc<dyn TaskProposalRepository>,
+    /// Proposal dependency repository
+    pub proposal_dependency_repo: Arc<dyn ProposalDependencyRepository>,
+    /// Chat message repository
+    pub chat_message_repo: Arc<dyn ChatMessageRepository>,
+    /// Task dependency repository
+    pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
 }
 
 impl AppState {
@@ -60,9 +76,24 @@ impl AppState {
                 &shared_conn,
             ))),
             task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(&shared_conn))),
-            review_repo: Arc::new(SqliteReviewRepository::from_shared(shared_conn)),
+            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(&shared_conn))),
             agent_client: Arc::new(ClaudeCodeClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
+            ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            chat_message_repo: Arc::new(SqliteChatMessageRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
+                shared_conn,
+            )),
         })
     }
 
@@ -83,9 +114,24 @@ impl AppState {
                 &shared_conn,
             ))),
             task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(&shared_conn))),
-            review_repo: Arc::new(SqliteReviewRepository::from_shared(shared_conn)),
+            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(&shared_conn))),
             agent_client: Arc::new(ClaudeCodeClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
+            ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            chat_message_repo: Arc::new(SqliteChatMessageRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
+                shared_conn,
+            )),
         })
     }
 
@@ -99,6 +145,11 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
+            ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
+            task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
+            proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
+            chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
+            task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
         }
     }
 
@@ -115,6 +166,11 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
+            ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
+            task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
+            proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
+            chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
+            task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
         }
     }
 
@@ -135,7 +191,10 @@ impl AppState {
 mod tests {
     use super::*;
     use crate::domain::agents::ClientType;
-    use crate::domain::entities::{Project, ProjectId, Task};
+    use crate::domain::entities::{
+        ChatMessage, IdeationSession, Priority, Project, ProjectId, Task, TaskCategory,
+        TaskProposal,
+    };
 
     #[tokio::test]
     async fn test_new_test_creates_empty_repositories() {
@@ -252,5 +311,119 @@ mod tests {
         let _state = state.with_agent_client(custom_mock);
 
         // If it compiled and ran, the swap worked
+    }
+
+    #[tokio::test]
+    async fn test_ideation_repos_accessible() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Create an ideation session
+        let session = IdeationSession::new_with_title(project_id.clone(), "Test Session");
+        let session_id = session.id.clone();
+        state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .unwrap();
+
+        // Verify we can retrieve it
+        let retrieved = state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .unwrap();
+        assert!(retrieved.is_some());
+
+        // Create a proposal
+        let proposal = TaskProposal::new(
+            session_id.clone(),
+            "Test Proposal",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let proposal_id = proposal.id.clone();
+        state.task_proposal_repo.create(proposal).await.unwrap();
+
+        // Verify we can retrieve proposals
+        let proposals = state
+            .task_proposal_repo
+            .get_by_session(&session_id)
+            .await
+            .unwrap();
+        assert_eq!(proposals.len(), 1);
+
+        // Create a chat message
+        let message = ChatMessage::user_in_session(session_id.clone(), "Hello");
+        state.chat_message_repo.create(message).await.unwrap();
+
+        // Verify we can retrieve messages
+        let messages = state
+            .chat_message_repo
+            .get_by_session(&session_id)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+
+        // Add a dependency
+        let proposal2 = TaskProposal::new(
+            session_id.clone(),
+            "Another Proposal",
+            TaskCategory::Feature,
+            Priority::Low,
+        );
+        let proposal2_id = proposal2.id.clone();
+        state.task_proposal_repo.create(proposal2).await.unwrap();
+
+        state
+            .proposal_dependency_repo
+            .add_dependency(&proposal_id, &proposal2_id)
+            .await
+            .unwrap();
+
+        let deps = state
+            .proposal_dependency_repo
+            .get_dependencies(&proposal_id)
+            .await
+            .unwrap();
+        assert_eq!(deps.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_task_dependency_repo_accessible() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Create two tasks
+        let task1 = Task::new(project_id.clone(), "Task 1".to_string());
+        let task2 = Task::new(project_id.clone(), "Task 2".to_string());
+
+        let task1_id = task1.id.clone();
+        let task2_id = task2.id.clone();
+
+        state.task_repo.create(task1).await.unwrap();
+        state.task_repo.create(task2).await.unwrap();
+
+        // Add a dependency
+        state
+            .task_dependency_repo
+            .add_dependency(&task1_id, &task2_id)
+            .await
+            .unwrap();
+
+        // Verify the dependency exists
+        let has_dep = state
+            .task_dependency_repo
+            .has_dependency(&task1_id, &task2_id)
+            .await
+            .unwrap();
+        assert!(has_dep);
+
+        let blockers = state
+            .task_dependency_repo
+            .get_blockers(&task1_id)
+            .await
+            .unwrap();
+        assert_eq!(blockers.len(), 1);
     }
 }
