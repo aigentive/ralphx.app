@@ -4,6 +4,7 @@
 pub mod agent_profile_commands;
 pub mod execution_commands;
 pub mod health;
+pub mod ideation_commands;
 pub mod project_commands;
 pub mod qa_commands;
 pub mod review_commands;
@@ -18,6 +19,11 @@ pub use execution_commands::{
     get_execution_status, pause_execution, resume_execution, stop_execution, ExecutionState,
 };
 pub use health::health_check;
+pub use ideation_commands::{
+    archive_ideation_session, create_ideation_session, delete_ideation_session,
+    get_ideation_session, get_ideation_session_with_data, list_ideation_sessions,
+    ChatMessageResponse, IdeationSessionResponse, SessionWithDataResponse, TaskProposalResponse,
+};
 pub use project_commands::{
     create_project, delete_project, get_project, list_projects, update_project,
 };

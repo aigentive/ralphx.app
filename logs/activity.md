@@ -1,14 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:25:00
+**Last Updated:** 2026-01-24 17:35:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 20 / 50
-**Current Task:** Create Tauri commands for ideation sessions
+**Tasks Completed:** 21 / 50
+**Current Task:** Create Tauri commands for task proposals
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:35:00 - Create Tauri commands for ideation sessions
+
+**What was done:**
+- Created `src-tauri/src/commands/ideation_commands.rs`:
+  - Input types: `CreateSessionInput` for session creation
+  - Response types:
+    - `IdeationSessionResponse` - session data with timestamps as ISO strings
+    - `TaskProposalResponse` - proposal data with JSON array parsing for steps/criteria
+    - `ChatMessageResponse` - message data with optional context fields
+    - `SessionWithDataResponse` - combined session, proposals, and messages
+  - Commands:
+    - `create_ideation_session` - Create new session with optional title
+    - `get_ideation_session` - Get session by ID
+    - `get_ideation_session_with_data` - Get session with proposals and messages
+    - `list_ideation_sessions` - List sessions by project
+    - `archive_ideation_session` - Archive a session
+    - `delete_ideation_session` - Delete a session
+- Updated `commands/mod.rs`:
+  - Added module declaration and re-exports for all ideation commands
+  - Exported response types for frontend use
+- 11 unit tests covering session CRUD, serialization, and data fetching
+
+**Commands run:**
+- `cargo test --lib ideation_commands::` (11 tests passed)
+- `cargo test --lib` (2051 tests passed)
+
+---
 
 ### 2026-01-24 17:25:00 - Update AppState with ideation repositories
 
