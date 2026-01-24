@@ -2,12 +2,13 @@
  * TaskBoard - Main kanban board component with drag-drop support
  */
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { DndContext, DragOverlay, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
 import { useTaskBoard } from "./hooks";
 import { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 import { Column } from "./Column";
 import { TaskCard } from "./TaskCard";
+import { useUiStore } from "@/stores/uiStore";
 import type { Task } from "@/types/task";
 
 export interface TaskBoardProps {
@@ -19,6 +20,17 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, workflowId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
+  const openModal = useUiStore((s) => s.openModal);
+
+  const handleTaskSelect = useCallback(
+    (taskId: string) => {
+      const task = columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
+      if (task) {
+        openModal("task-detail", { task });
+      }
+    },
+    [columns, openModal]
+  );
 
   if (isLoading) {
     return <TaskBoardSkeleton />;
@@ -64,6 +76,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
             column={column}
             isOver={overColumnId === column.id}
             isInvalid={overColumnId === column.id && lockedColumns.includes(column.id)}
+            onTaskSelect={handleTaskSelect}
           />
         ))}
       </div>
