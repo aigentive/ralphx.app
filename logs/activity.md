@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 11:00:00
+**Last Updated:** 2026-01-24 11:10:00
 **Phase:** Phase 5 (Frontend Core)
-**Tasks Completed:** 1 / 22
-**Current Task:** Create event type definitions
+**Tasks Completed:** 3 / 22
+**Current Task:** Create WorkflowSchema type definitions
 
 ---
 
@@ -2332,6 +2332,30 @@ Phase 4 (Agentic Client) is now complete with all 23 tasks passing.
 - `npm install @tanstack/react-query zustand immer`
 - `npm install -D @tanstack/react-query-devtools`
 - `npm run test:run`
+
+---
+
+### 2026-01-24 11:10:00 - Create event type definitions and TaskEvent Zod schema
+
+**What was done:**
+- Created `src/types/events.ts` with:
+  - AgentMessageEvent interface and schema
+  - TaskStatusEvent interface and schema
+  - SupervisorAlertEvent interface and schema
+  - ReviewEvent interface and schema
+  - FileChangeEvent interface and schema
+  - ProgressEvent interface and schema
+  - TaskEventSchema discriminated union (created, updated, deleted, status_changed)
+- Created `src/types/events.test.ts` with 29 tests
+- Updated `src/types/index.ts` to export all event types and schemas
+- All 128 tests pass
+
+**Files created:**
+- `src/types/events.ts`
+- `src/types/events.test.ts`
+
+**Files modified:**
+- `src/types/index.ts`
 
 ---
 

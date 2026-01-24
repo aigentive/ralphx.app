@@ -617,7 +617,7 @@ Every task follows the TDD cycle:
       "Define ProgressEvent interface",
       "Export all types from src/types/index.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -630,7 +630,7 @@ Every task follows the TDD cycle:
       "Export TaskEvent type from src/types/index.ts",
       "Verify all tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
