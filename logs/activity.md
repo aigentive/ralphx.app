@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:45:00
-**Phase:** Phase 4 Complete - Transitioning to Phase 5 (Frontend Core)
-**Tasks Completed:** 23 / 23
-**Current Task:** Phase transition to Phase 5
+**Last Updated:** 2026-01-24 11:00:00
+**Phase:** Phase 5 (Frontend Core)
+**Tasks Completed:** 1 / 22
+**Current Task:** Create event type definitions
 
 ---
 
@@ -2317,6 +2317,21 @@ Phase 4 (Agentic Client) is now complete with all 23 tasks passing.
 - 11 test_prompts tests
 - 12 spawner tests
 - 10 integration tests (1 ignored for real CLI)
+
+---
+
+### 2026-01-24 11:00:00 - Install TanStack Query and Zustand dependencies
+
+**What was done:**
+- Installed TanStack Query: `@tanstack/react-query@5.90.20`
+- Installed Zustand with immer: `zustand@5.0.10`, `immer@11.1.3`
+- Installed dev tools: `@tanstack/react-query-devtools@5.91.2`
+- Verified all 99 frontend tests still pass
+
+**Commands run:**
+- `npm install @tanstack/react-query zustand immer`
+- `npm install -D @tanstack/react-query-devtools`
+- `npm run test:run`
 
 ---
 
