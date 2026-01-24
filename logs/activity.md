@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:52:13
+**Last Updated:** 2026-01-24 13:56:30
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 28 / 51
-**Current Task:** Implement AskUserQuestion types and store
+**Tasks Completed:** 29 / 51
+**Current Task:** Implement useAskUserQuestion hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:56:30 - Implement AskUserQuestion types and store
+
+**What was done:**
+- Created `src/types/ask-user-question.ts` with full type definitions:
+  - `AskUserQuestionOption` interface with label and description
+  - `AskUserQuestionPayload` interface with taskId, question, header, options, multiSelect
+  - `AskUserQuestionResponse` interface with taskId, selectedOptions, customResponse (optional)
+  - Zod schemas for runtime validation of all types
+  - Helper functions: `hasSelection`, `hasCustomResponse`, `isValidResponse`
+  - Factory functions: `createSingleSelectResponse`, `createMultiSelectResponse`, `createCustomResponse`
+- Created `src/types/ask-user-question.test.ts` with 41 tests:
+  - Option schema validation tests
+  - Payload schema validation tests (minimum 2 options required)
+  - Response schema validation tests
+  - List schema tests
+  - Helper function tests for validation and creation
+- Updated `src/types/index.ts` to export all new types and schemas
+- Updated `src/stores/uiStore.ts`:
+  - Added `activeQuestion: AskUserQuestionPayload | null` to state
+  - Added `setActiveQuestion(question)` action
+  - Added `clearActiveQuestion()` action
+- Updated `src/stores/uiStore.test.ts` with 6 new tests for active question functionality
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/types/ask-user-question.test.ts` (41 tests passed)
+- `npm run test -- src/stores/uiStore.test.ts` (21 tests passed)
+
+---
 
 ### 2026-01-24 13:52:13 - Implement TaskDetailView with state history
 
