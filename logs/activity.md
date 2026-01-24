@@ -1,14 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:26:00
+**Last Updated:** 2026-01-25 00:28:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 6 / 21
-**Current Task:** Consolidate Phase 10 ideation components
+**Tasks Completed:** 7 / 21
+**Current Task:** Clean up .claude/ directory
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:28:00 - Consolidate Phase 10 ideation components (Task 7)
+
+**What was done:**
+- Moved ideation skills from `.claude/skills/` to `ralphx-plugin/skills/`:
+  - `task-decomposition.md` → `task-decomposition/SKILL.md`
+  - `priority-assessment.md` → `priority-assessment/SKILL.md`
+  - `dependency-analysis.md` → `dependency-analysis/SKILL.md`
+- Converted single-file skills to directory format (name/SKILL.md)
+- Verified `orchestrator-ideation.md` agent references skills by name
+- Removed empty `.claude/skills/` directory
+- Plugin now has 12 skill directories
+
+**Commands run:**
+- `mkdir -p ralphx-plugin/skills/task-decomposition && mv .claude/skills/task-decomposition.md ralphx-plugin/skills/task-decomposition/SKILL.md`
+- (same for priority-assessment and dependency-analysis)
+- `rmdir .claude/skills/`
+
+---
 
 ### 2026-01-25 00:26:00 - Update TypeScript types for plugin-based agents (Task 6)
 
