@@ -1383,7 +1383,7 @@ All tasks require:
       "  - Example interaction",
       "  - Guidelines for conversational style"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -1397,7 +1397,7 @@ All tasks require:
       "  - Guide for identifying task dependencies",
       "Reference skills in orchestrator agent definition"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
