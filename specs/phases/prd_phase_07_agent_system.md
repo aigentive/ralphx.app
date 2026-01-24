@@ -412,7 +412,7 @@ CREATE TABLE agent_profiles (
       "Export all types and schemas",
       "Run npm run typecheck to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:57:25
+**Last Updated:** 2026-01-24 09:59:43
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 3 / 33
-**Current Task:** Implement AgentProfile TypeScript types
+**Tasks Completed:** 4 / 33
+**Current Task:** Create worker agent definition
 
 ---
 
 ## Session Log
+
+### 2026-01-24 09:59:43 - Implement AgentProfile TypeScript types
+
+**What was done:**
+- Created `src/types/agent-profile.ts` with:
+  - ProfileRoleSchema, ModelSchema, PermissionModeSchema, AutonomyLevelSchema
+  - ClaudeCodeConfigSchema, ExecutionConfigSchema, IoConfigSchema, BehaviorConfigSchema
+  - AgentProfileSchema, CreateAgentProfileSchema, UpdateAgentProfileSchema
+  - 5 built-in profile constants (WORKER_PROFILE, etc.)
+  - getModelId(), getBuiltinProfile(), getBuiltinProfileByRole() helpers
+  - parseAgentProfile(), safeParseAgentProfile() utilities
+- Created `src/types/agent-profile.test.ts` with 40 tests
+- Updated `src/types/index.ts` to export all agent-profile types
+- All 531 tests passing
+
+**Commands run:**
+- `npm run test:run -- src/types/agent-profile.test.ts`
+- `npm run typecheck`
+
+---
 
 ### 2026-01-24 09:57:25 - Implement AgentProfile Rust struct
 
