@@ -259,9 +259,11 @@ Each phase PRD should follow this structure:
       "Cross-reference ralph.sh patterns with specs/plan.md Agentic Client sections (lines 5078-5400)",
       "Verify ClaudeCodeClient implementation in plan matches actual CLI capabilities",
       "Update specs/phases/prd_phase_04_agentic_client.md if CLI capabilities differ from plan",
+      "Verify specs/phases/prd_phase_07_agent_system.md agent profiles use correct 4.5 model references",
+      "Add model version note to Phase 7 PRD: opus→Opus 4.5, sonnet→Sonnet 4.5, haiku→Haiku 4.5",
       "Document any discrepancies found and changes made in activity log"
     ],
-    "output": "Updated model names in specs/plan.md, verified/updated specs/phases/prd_phase_04_agentic_client.md",
+    "output": "Updated model names in specs/plan.md, verified/updated specs/phases/prd_phase_04_agentic_client.md and specs/phases/prd_phase_07_agent_system.md",
     "passes": false
   }
 ]
