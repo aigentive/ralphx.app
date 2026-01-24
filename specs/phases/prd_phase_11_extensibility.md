@@ -924,7 +924,7 @@ All tasks require tests written before implementation:
       "Implement SQLite repository",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
