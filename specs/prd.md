@@ -89,7 +89,7 @@ Each phase PRD should follow this structure:
       "Create a dependency graph showing phase relationships"
     ],
     "output": "Updated specs/prd.md and specs/manifest.json (if changes needed), dependency analysis in activity log",
-    "passes": false
+    "passes": true
   },
   {
     "category": "planning",
