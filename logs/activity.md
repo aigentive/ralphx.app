@@ -1,14 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:15:42
+**Last Updated:** 2026-01-24 13:45:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 13 / 51
-**Current Task:** Implement Tauri commands for reviews
+**Tasks Completed:** 14 / 51
+**Current Task:** Implement Tauri commands for fix tasks
 
 ---
 
 ## Session Log
+
+### 2026-01-24 13:45:00 - Implement Tauri commands for reviews
+
+**What was done:**
+- Created `MemoryReviewRepository` for testing
+  - Implements all `ReviewRepository` trait methods
+  - Uses `HashMap` with `RwLock` for thread-safe in-memory storage
+  - Added to `infrastructure/memory/mod.rs` exports
+- Created `review_commands.rs` with all Tauri commands:
+  - `get_pending_reviews(project_id)` - returns pending reviews for a project
+  - `get_review_by_id(review_id)` - returns a single review by ID
+  - `get_reviews_by_task_id(task_id)` - returns all reviews for a task
+  - `get_task_state_history(task_id)` - returns review notes (state history)
+  - `approve_review(input)` - approves a pending review
+  - `request_changes(input)` - marks review as changes requested
+  - `reject_review(input)` - rejects a pending review
+- Added `ReviewResponse`, `ReviewActionResponse`, `ReviewNoteResponse` types
+  - Proper serialization with `From` trait implementations
+  - `serde(skip_serializing_if = "Option::is_none")` for optional fields
+- Updated `AppState` to include `review_repo`:
+  - Added `Arc<dyn ReviewRepository>` field
+  - Updated `new_production()` with `SqliteReviewRepository`
+  - Updated `new_test()` with `MemoryReviewRepository`
+  - Updated `with_db_path()` and `with_repos()` constructors
+- Registered all review commands in `lib.rs` invoke_handler
+- Added 10 unit tests for review commands
+
+**Commands run:**
+- `cargo test review --no-default-features` (220 passed)
+- `cargo clippy --no-default-features` (no new warnings from review code)
+
+---
 
 ### 2026-01-24 13:15:42 - Integrate ReviewService with state machine transitions
 
