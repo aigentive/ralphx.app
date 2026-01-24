@@ -564,7 +564,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Add tokio = { version = \"1\", features = [\"sync\", \"rt-multi-thread\"] } to dependencies",
       "Verify cargo build succeeds"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
