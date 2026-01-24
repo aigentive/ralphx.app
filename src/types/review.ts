@@ -166,3 +166,77 @@ export function isOutcomePositive(outcome: ReviewOutcome): boolean {
 export function isOutcomeNegative(outcome: ReviewOutcome): boolean {
   return outcome === "changes_requested" || outcome === "rejected";
 }
+
+// ========================================
+// Review Settings / Configuration
+// ========================================
+
+/**
+ * Default values for review settings
+ * Matches Rust ReviewSettings::default()
+ */
+export const DEFAULT_REVIEW_SETTINGS = {
+  aiReviewEnabled: true,
+  aiReviewAutoFix: true,
+  requireFixApproval: false,
+  requireHumanReview: false,
+  maxFixAttempts: 3,
+} as const;
+
+/**
+ * Global review settings stored in project settings
+ * Controls how the review system behaves
+ */
+export const ReviewSettingsSchema = z.object({
+  /** Master toggle for AI review system */
+  aiReviewEnabled: z.boolean().default(DEFAULT_REVIEW_SETTINGS.aiReviewEnabled),
+  /** Automatically create fix tasks when AI review fails (if false, goes to backlog) */
+  aiReviewAutoFix: z.boolean().default(DEFAULT_REVIEW_SETTINGS.aiReviewAutoFix),
+  /** Require human approval before executing AI-proposed fix tasks */
+  requireFixApproval: z.boolean().default(DEFAULT_REVIEW_SETTINGS.requireFixApproval),
+  /** Require human review even after AI approval */
+  requireHumanReview: z.boolean().default(DEFAULT_REVIEW_SETTINGS.requireHumanReview),
+  /** Maximum fix attempts before giving up and moving to backlog */
+  maxFixAttempts: z.number().int().nonnegative().default(DEFAULT_REVIEW_SETTINGS.maxFixAttempts),
+});
+
+export type ReviewSettings = z.infer<typeof ReviewSettingsSchema>;
+
+// ========================================
+// Review Settings Helper Functions
+// ========================================
+
+/**
+ * Check if AI review should run
+ */
+export function shouldRunAiReview(settings: ReviewSettings): boolean {
+  return settings.aiReviewEnabled;
+}
+
+/**
+ * Check if fix tasks should be auto-created on review failure
+ */
+export function shouldAutoCreateFix(settings: ReviewSettings): boolean {
+  return settings.aiReviewAutoFix;
+}
+
+/**
+ * Check if human review is required after AI approval
+ */
+export function needsHumanReview(settings: ReviewSettings): boolean {
+  return settings.requireHumanReview;
+}
+
+/**
+ * Check if fix tasks need human approval before execution
+ */
+export function needsFixApproval(settings: ReviewSettings): boolean {
+  return settings.requireFixApproval;
+}
+
+/**
+ * Check if we've exceeded the max fix attempts
+ */
+export function exceededMaxAttempts(settings: ReviewSettings, attempts: number): boolean {
+  return attempts >= settings.maxFixAttempts;
+}

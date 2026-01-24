@@ -1,14 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:22:00
+**Last Updated:** 2026-01-24 15:24:00
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 16 / 51
-**Current Task:** Implement ReviewConfig TypeScript types
+**Tasks Completed:** 17 / 51
+**Current Task:** Implement Tauri API wrappers for reviews
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:24:00 - Implement ReviewConfig TypeScript types
+
+**What was done:**
+- Added `ReviewSettingsSchema` to `src/types/review.ts`:
+  - `aiReviewEnabled` (boolean, default: true) - master toggle for AI review
+  - `aiReviewAutoFix` (boolean, default: true) - auto-create fix tasks on failure
+  - `requireFixApproval` (boolean, default: false) - human approval for fix tasks
+  - `requireHumanReview` (boolean, default: false) - human review after AI approval
+  - `maxFixAttempts` (number, default: 3) - max attempts before backlog
+- Added `DEFAULT_REVIEW_SETTINGS` constant with all defaults
+- Added helper functions:
+  - `shouldRunAiReview`, `shouldAutoCreateFix`, `needsHumanReview`
+  - `needsFixApproval`, `exceededMaxAttempts`
+- Added 17 new tests for ReviewSettings schema and helpers
+- Exported new types and functions from `src/types/index.ts`
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/types/review.test.ts` (62 tests passed)
+
+---
 
 ### 2026-01-24 15:22:00 - Implement Review TypeScript types
 
