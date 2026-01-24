@@ -471,7 +471,7 @@ pub struct MockNotifier {
       "Add helper methods: new(), get_calls(), clear()",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
