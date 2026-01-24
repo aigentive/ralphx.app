@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 06:55:26
+**Last Updated:** 2026-01-24 06:58:23
 **Phase:** Foundation
-**Tasks Completed:** 11 / 19
-**Current Task:** Implement Task entity struct
+**Tasks Completed:** 12 / 19
+**Current Task:** Set up SQLite database with rusqlite
 
 ---
 
@@ -1077,6 +1077,44 @@ Phase 1: Foundation (no dependencies)
 **Files modified:**
 - `src-tauri/Cargo.toml` - added chrono dependency
 - `src-tauri/src/domain/entities/mod.rs` - added project module export and re-exports
+
+---
+
+### 2026-01-24 06:58:23 - Implement Task entity struct
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/task.rs` with Task entity
+- Implemented Task struct with all fields from the PRD:
+  - id, project_id, category, title, description, priority
+  - internal_status (defaults to Backlog)
+  - created_at, updated_at, started_at, completed_at
+- Implemented Task::new() constructor with sensible defaults:
+  - category: "feature"
+  - internal_status: Backlog
+  - priority: 0
+  - timestamps set to now
+- Implemented Task::new_with_category() for specifying category
+- Implemented helper methods: touch(), set_description(), set_priority()
+- Implemented state helper methods: is_terminal(), is_active()
+- Updated `domain/entities/mod.rs` to export task module and re-export Task
+- Wrote 24 comprehensive tests covering:
+  - Task creation and defaults
+  - Unique ID generation
+  - Timestamp handling
+  - Category support
+  - State helper methods (is_terminal, is_active)
+  - JSON serialization/deserialization
+  - Roundtrip serialization
+  - Clone independence
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 125 tests pass (24 new + 101 existing)
+
+**Files created:**
+- `src-tauri/src/domain/entities/task.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/entities/mod.rs` - added task module export and re-export
 
 ---
 
