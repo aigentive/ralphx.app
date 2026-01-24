@@ -8,6 +8,7 @@ pub mod health;
 pub mod ideation_commands;
 pub mod project_commands;
 pub mod qa_commands;
+pub mod research_commands;
 pub mod review_commands;
 pub mod task_commands;
 pub mod workflow_commands;
@@ -58,4 +59,9 @@ pub use workflow_commands::{
     create_workflow, delete_workflow, get_active_workflow_columns, get_builtin_workflows,
     get_workflow, get_workflows, set_default_workflow, update_workflow, CreateWorkflowInput,
     UpdateWorkflowInput, WorkflowColumnInput, WorkflowColumnResponse, WorkflowResponse,
+};
+pub use research_commands::{
+    get_research_presets, get_research_process, get_research_processes, pause_research,
+    resume_research, start_research, stop_research, CustomDepthInput, ResearchPresetResponse,
+    ResearchProcessResponse, StartResearchInput,
 };

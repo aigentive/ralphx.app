@@ -136,7 +136,15 @@ pub fn run() {
             commands::artifact_commands::get_system_buckets,
             // Artifact relation commands
             commands::artifact_commands::add_artifact_relation,
-            commands::artifact_commands::get_artifact_relations
+            commands::artifact_commands::get_artifact_relations,
+            // Research commands
+            commands::research_commands::start_research,
+            commands::research_commands::pause_research,
+            commands::research_commands::resume_research,
+            commands::research_commands::stop_research,
+            commands::research_commands::get_research_processes,
+            commands::research_commands::get_research_process,
+            commands::research_commands::get_research_presets
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

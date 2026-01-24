@@ -1,14 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:00:00
+**Last Updated:** 2026-01-24 22:15:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 27 / 63
-**Current Task:** Create Tauri commands for research processes
+**Tasks Completed:** 28 / 63
+**Current Task:** Create Tauri commands for methodologies
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:15:00 - Create Tauri commands for research processes (Task 28)
+
+**What was done:**
+- Created `src-tauri/src/commands/research_commands.rs` with:
+  - Input structs: StartResearchInput, CustomDepthInput
+  - Response structs: ResearchProcessResponse, ResearchPresetResponse
+  - Research commands: start_research, pause_research, resume_research, stop_research
+  - Query commands: get_research_processes, get_research_process
+  - Utility command: get_research_presets (returns all 4 depth presets)
+- Updated `commands/mod.rs` to export research commands
+- Registered 7 research commands in `lib.rs`
+- Added 9 integration tests for research commands
+
+**Commands run:**
+- `cargo test research_commands` - 9 tests passed
 
 ### 2026-01-24 22:00:00 - Create Tauri commands for artifacts (Task 27)
 
