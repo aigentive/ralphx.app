@@ -1,5 +1,9 @@
 // Test prompts module
 // Minimal prompts for cost-effective integration testing
+//
+// These prompts are ~5-10 tokens vs 500-2000 tokens for real prompts,
+// achieving ~98% cost savings in integration tests while still verifying
+// agent communication and state machine transitions.
 
 /// Minimal prompt that verifies agent received input and can respond
 pub const ECHO_MARKER: &str = "Respond with exactly: TEST_ECHO_OK";
