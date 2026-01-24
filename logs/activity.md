@@ -129,4 +129,28 @@ Phase 1: Foundation (no dependencies)
 
 ---
 
+### 2026-01-24 06:30:00 - Phase 1 PRD Updated: Added Development Infrastructure
+
+**What was done:**
+- Reviewed master plan Visual Verification Layer section (lines 3395-3590)
+- Identified missing development infrastructure in Phase 1 PRD:
+  - Agent-browser skill setup for visual testing
+  - Settings.json permissions for agent-browser
+  - PROMPT.md updates for visual verification workflow
+- Added 3 new tasks to beginning of Phase 1 PRD:
+  1. Set up agent-browser for visual verification
+  2. Update Claude Code settings for agent-browser permissions
+  3. Update PROMPT.md with visual verification workflow
+
+**Phase 1 PRD now has 19 tasks** (was 16):
+- 3 development infrastructure tasks (new)
+- 16 application foundation tasks (existing)
+
+**Why this matters:**
+- Visual verification is required for UI tasks per the master plan
+- Must be set up BEFORE building UI components
+- Ensures the Ralph loop can properly verify visual work
+
+---
+
 <!-- Agent will append dated entries below -->
