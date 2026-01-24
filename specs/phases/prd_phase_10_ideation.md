@@ -938,7 +938,7 @@ All tasks require:
       "Create ApplyProposalsOptions and ApplyProposalsResult types",
       "Export from src/types/ideation.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
