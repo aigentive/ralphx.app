@@ -710,7 +710,7 @@ const qaPrepProfile = {
       "Connect to projectStore for state management",
       "Write unit tests for ProjectSelector"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",

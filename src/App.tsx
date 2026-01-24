@@ -16,13 +16,17 @@ import { TaskDetailView } from "@/components/tasks/TaskDetailView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { IdeationView } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
+import { ProjectSelector } from "@/components/projects/ProjectSelector";
+import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
+import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
 import type { ChatContext } from "@/types/chat";
 import type { ChatMessage as ChatMessageType, ApplyProposalsInput } from "@/types/ideation";
+import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
 import {
@@ -156,6 +160,16 @@ function AppContent() {
   const toggleChatPanel = useChatStore((s) => s.togglePanel);
   const setChatWidth = useChatStore((s) => s.setWidth);
 
+  // Project state
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const addProject = useProjectStore((s) => s.addProject);
+  const selectProject = useProjectStore((s) => s.selectProject);
+
+  // Project creation wizard state
+  const [isProjectWizardOpen, setIsProjectWizardOpen] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [projectCreationError, setProjectCreationError] = useState<string | null>(null);
+
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
@@ -177,8 +191,11 @@ function AppContent() {
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
   const [isQuestionLoading, setIsQuestionLoading] = useState(false);
 
-  const { count: pendingReviewCount } = usePendingReviews(DEFAULT_PROJECT_ID);
-  const { data: tasks = [] } = useTasks(DEFAULT_PROJECT_ID);
+  // Use active project ID or fallback for development
+  const currentProjectId = activeProjectId ?? DEFAULT_PROJECT_ID;
+
+  const { count: pendingReviewCount } = usePendingReviews(currentProjectId);
+  const { data: tasks = [] } = useTasks(currentProjectId);
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
@@ -230,23 +247,23 @@ function AppContent() {
     if (selectedTask) {
       return {
         view: "task_detail",
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: currentProjectId,
         selectedTaskId: selectedTask.id,
       };
     }
     if (currentView === "ideation" && activeSession) {
       return {
         view: "ideation",
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: currentProjectId,
         ideationSessionId: activeSession.id,
         selectedProposalIds: proposals.filter((p) => p.selected).map((p) => p.id),
       };
     }
     return {
       view: currentView,
-      projectId: DEFAULT_PROJECT_ID,
+      projectId: currentProjectId,
     };
-  }, [selectedTask, currentView, activeSession, proposals]);
+  }, [selectedTask, currentView, activeSession, proposals, currentProjectId]);
 
   const handlePauseToggle = async () => {
     setIsExecutionLoading(true);
@@ -296,13 +313,13 @@ function AppContent() {
   const handleNewSession = useCallback(async () => {
     try {
       const session = await createSession.mutateAsync({
-        projectId: DEFAULT_PROJECT_ID,
+        projectId: currentProjectId,
       });
       setActiveSession(session.id);
     } catch (error) {
       console.error("Failed to create session:", error);
     }
-  }, [createSession, setActiveSession]);
+  }, [createSession, setActiveSession, currentProjectId]);
 
   const handleArchiveSession = useCallback(async (sessionId: string) => {
     try {
@@ -357,6 +374,67 @@ function AppContent() {
     }
     return titles;
   }, [tasks]);
+
+  // Project wizard handlers
+  const handleOpenProjectWizard = useCallback(() => {
+    setProjectCreationError(null);
+    setIsProjectWizardOpen(true);
+  }, []);
+
+  const handleCloseProjectWizard = useCallback(() => {
+    setIsProjectWizardOpen(false);
+    setProjectCreationError(null);
+  }, []);
+
+  const handleCreateProject = useCallback(async (projectData: CreateProject) => {
+    setIsCreatingProject(true);
+    setProjectCreationError(null);
+    try {
+      // TODO: Call Tauri backend to create project
+      // For now, create a mock project with generated ID
+      const newProject = {
+        id: `project-${Date.now()}`,
+        name: projectData.name,
+        workingDirectory: projectData.workingDirectory,
+        gitMode: projectData.gitMode,
+        worktreePath: projectData.worktreePath ?? null,
+        worktreeBranch: projectData.worktreeBranch ?? null,
+        baseBranch: projectData.baseBranch ?? null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      addProject(newProject);
+      selectProject(newProject.id);
+      setIsProjectWizardOpen(false);
+    } catch (error) {
+      console.error("Failed to create project:", error);
+      setProjectCreationError(error instanceof Error ? error.message : "Failed to create project");
+    } finally {
+      setIsCreatingProject(false);
+    }
+  }, [addProject, selectProject]);
+
+  const handleBrowseFolder = useCallback(async (): Promise<string | null> => {
+    try {
+      // TODO: Call Tauri file dialog
+      // For now, return null (no selection)
+      return null;
+    } catch (error) {
+      console.error("Failed to browse folder:", error);
+      return null;
+    }
+  }, []);
+
+  const handleFetchBranches = useCallback(async (_workingDirectory: string): Promise<string[]> => {
+    try {
+      // TODO: Call Tauri backend to fetch git branches
+      // For now, return mock branches
+      return ["main", "develop", "feature/example"];
+    } catch (error) {
+      console.error("Failed to fetch branches:", error);
+      return [];
+    }
+  }, []);
 
   return (
     <main
@@ -434,9 +512,8 @@ function AppContent() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Demo Project
-          </span>
+          {/* Project Selector */}
+          <ProjectSelector onNewProject={handleOpenProjectWizard} />
           {/* Chat Panel Toggle */}
           <button
             onClick={toggleChatPanel}
@@ -504,7 +581,7 @@ function AppContent() {
           <div className="flex-1 overflow-hidden">
             {currentView === "kanban" && (
               <TaskBoard
-                projectId={DEFAULT_PROJECT_ID}
+                projectId={currentProjectId}
                 workflowId={DEFAULT_WORKFLOW_ID}
               />
             )}
@@ -549,7 +626,7 @@ function AppContent() {
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <ReviewsPanel
-              projectId={DEFAULT_PROJECT_ID}
+              projectId={currentProjectId}
               taskTitles={taskTitles}
               onClose={() => setReviewsPanelOpen(false)}
               onApprove={(reviewId) => {
@@ -609,6 +686,17 @@ function AppContent() {
           </div>
         </div>
       )}
+
+      {/* Project Creation Wizard */}
+      <ProjectCreationWizard
+        isOpen={isProjectWizardOpen}
+        onClose={handleCloseProjectWizard}
+        onCreate={handleCreateProject}
+        onBrowseFolder={handleBrowseFolder}
+        onFetchBranches={handleFetchBranches}
+        isCreating={isCreatingProject}
+        error={projectCreationError}
+      />
     </main>
   );
 }
