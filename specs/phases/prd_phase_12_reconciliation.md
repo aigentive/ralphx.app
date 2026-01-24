@@ -420,7 +420,7 @@ const qaPrepProfile = {
       "Test spawning qa-prep agent with new flags",
       "Test spawning worker agent with new flags"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "refactoring",

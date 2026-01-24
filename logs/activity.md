@@ -1,14 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:15:00
+**Last Updated:** 2026-01-25 00:22:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 4 / 21
-**Current Task:** Update Claude spawning to use --plugin-dir
+**Tasks Completed:** 5 / 21
+**Current Task:** Update TypeScript types for plugin-based agents
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:22:00 - Update Claude spawning to use --plugin-dir (Task 5)
+
+**What was done:**
+- Added `plugin_dir` and `agent` fields to `AgentConfig` struct in `types.rs`:
+  - `plugin_dir: Option<PathBuf>` - Plugin directory for agent/skill discovery
+  - `agent: Option<String>` - Agent name to use (resolved via plugin)
+- Default `plugin_dir` set to `"./ralphx-plugin"`
+- Updated `ClaudeCodeClient::spawn_agent()` to add CLI flags:
+  - `--plugin-dir` when `plugin_dir` is set
+  - `--agent` when `agent` is set
+- Updated `spawner.rs` to set plugin_dir and agent in config
+- Added builder methods `with_plugin_dir()` and `with_agent()`
+- All tests pass
+
+**Commands run:**
+- `cargo test` - All tests passed
+
+---
 
 ### 2026-01-25 00:15:00 - Update Rust AgentProfile to use plugin pattern (Task 4)
 
