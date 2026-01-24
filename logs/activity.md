@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 13:58:44
+**Last Updated:** 2026-01-24 14:01:43
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 30 / 51
-**Current Task:** Implement AskUserQuestionModal component
+**Tasks Completed:** 31 / 51
+**Current Task:** Implement Tauri command for answering questions
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:01:43 - Implement AskUserQuestionModal component
+
+**What was done:**
+- Created `src/components/modals/` directory structure
+- Created `src/components/modals/AskUserQuestionModal.tsx` (99 lines, under 100 limit):
+  - Displays question header and question text
+  - Renders options as radio buttons for single select
+  - Renders options as checkboxes for multi-select
+  - Always includes "Other" option with conditional text input
+  - Submit button disabled until valid selection or custom response
+  - Loading state disables all inputs and shows "Submitting..." text
+  - Uses design system tokens: `--bg-elevated`, `--bg-base`, `--text-primary`, `--text-secondary`, `--text-muted`, `--status-success`, `--border-subtle`
+  - Data attributes: `data-testid`, `data-task-id`, `data-multi-select`
+- Created `src/components/modals/AskUserQuestionModal.test.tsx` with 35 tests:
+  - Basic rendering tests (null question, modal display, header, question text)
+  - Single select tests (radio buttons, option selection, deselection)
+  - Multi-select tests (checkboxes, multiple selection, toggle behavior)
+  - Other option tests (text input visibility, typing)
+  - Submit behavior tests (single/multi/custom responses, button states)
+  - Loading state tests (disabled inputs, loading text)
+  - Close/cancel behavior tests
+  - Data attribute and styling tests
+  - Accessibility tests
+- Created `src/components/modals/index.ts` barrel export
+
+**Commands run:**
+- `npm run typecheck` (passed)
+- `npm run test -- src/components/modals/AskUserQuestionModal.test.tsx` (35 tests passed)
+
+---
 
 ### 2026-01-24 13:58:44 - Implement useAskUserQuestion hook
 
