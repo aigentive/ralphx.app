@@ -644,7 +644,7 @@ All tasks require:
       "  - delete(id: &str) -> Result<()>",
       "Export from domain/repositories module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
