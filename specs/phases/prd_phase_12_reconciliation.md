@@ -413,6 +413,8 @@ const qaPrepProfile = {
 
 ## Task List
 
+**IMPORTANT: Work on ONE task per iteration.** Find the first task with `"passes": false`, complete it, update `"passes": true`, commit, and stop. The Issues above are documentation - the tasks below are the actual work items.
+
 ```json
 [
   {
