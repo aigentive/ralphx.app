@@ -721,7 +721,7 @@ All tasks require TDD:
       "Style with Tailwind classes (no inline styles)",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
