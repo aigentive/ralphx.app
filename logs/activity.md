@@ -1,14 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:36:00
+**Last Updated:** 2026-01-24 21:38:45
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 39 / 63
-**Current Task:** Implement methodologyStore with Zustand
+**Tasks Completed:** 40 / 63
+**Current Task:** Implement useWorkflows hook with TanStack Query
 
 ---
 
 ## Session Log
+
+### 2026-01-24 21:38:45 - Implement methodologyStore with Zustand (Task 40)
+
+**What was done:**
+- Created `src/stores/methodologyStore.ts` with Zustand + immer middleware:
+  - State: `methodologies` (Record by ID), `activeMethodologyId`, `isLoading`, `isActivating`, `error`
+  - Actions: `setMethodologies`, `setActiveMethodology`, `activateMethodology`, `deactivateMethodology`, `updateMethodology`, `setLoading`, `setActivating`, `setError`
+  - Auto-detects and sets active methodology from list
+  - Handles deactivating previous methodology when activating new one
+  - Supports methodology switching with workflow/agent profile updates
+- Created `src/stores/methodologyStore.test.ts` with 31 comprehensive tests covering:
+  - All store actions with edge cases
+  - Selectors: `selectActiveMethodology`, `selectMethodologyById`, `selectMethodologyPhases`
+  - Activation/deactivation logic, previous methodology handling
+
+**Commands run:**
+- `npm test -- src/stores/methodologyStore.test.ts` - 31 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:36:00 - Implement artifactStore with Zustand (Task 39)
 
