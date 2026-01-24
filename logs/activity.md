@@ -1,14 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:41:42
+**Last Updated:** 2026-01-24 14:43:52
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 38 / 51
-**Current Task:** Integration test: AI review needs_changes flow
+**Tasks Completed:** 39 / 51
+**Current Task:** Integration test: AI review escalate flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:43:52 - Integration test: AI review needs_changes flow
+
+**What was done:**
+- Added 10 new tests to `src-tauri/tests/review_flows.rs` (now 24 tests total):
+  - `test_ai_review_needs_changes_flow` - Full flow: start review, process NEEDS_CHANGES outcome, verify fix task created
+  - `test_ai_review_needs_changes_state_machine_transition` - Verify PendingReview → RevisionNeeded transition
+  - `test_ai_review_needs_changes_auto_fix_disabled` - Verify backlog fallback when auto_fix is disabled
+  - `test_fix_task_has_higher_priority` - Fix task priority = original priority + 1
+  - `test_fix_task_requires_approval` - Fix task is Blocked when require_fix_approval = true
+  - `test_fix_task_ready_without_approval` - Fix task is Ready when approval not required
+  - `test_complete_review_input_needs_changes` - Helper test for CompleteReviewInput
+  - `test_complete_review_input_needs_changes_requires_fix_description` - Validation test
+  - `test_count_fix_actions` - Track fix attempt count
+  - `test_multiple_fix_attempts_tracked` - Multiple fix tasks increment counter
+- Tests verify:
+  - Fix task creation with correct title prefix "Fix:"
+  - Fix task category is "fix"
+  - Fix task description contains the fix_description from review
+  - Review status changes to ChangesRequested
+  - Review action recorded as CreatedFixTask with target_task_id
+  - Fix action count tracking for max attempts logic
+
+**Commands run:**
+- `cargo test --test review_flows` (24 tests passed)
+
+---
 
 ### 2026-01-24 14:41:42 - Integration test: AI review approve flow
 

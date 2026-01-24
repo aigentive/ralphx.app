@@ -403,3 +403,292 @@ async fn test_get_reviews_by_status() {
         .unwrap();
     assert_eq!(pending.len(), 0);
 }
+
+// ============================================================================
+// AI Review Needs Changes Flow Tests
+// ============================================================================
+
+/// Test: Full AI review needs_changes flow
+///
+/// Flow:
+/// 1. Task is in pending_review state
+/// 2. Start AI review via ReviewService
+/// 3. Mock reviewer agent returns NEEDS_CHANGES outcome
+/// 4. Process review result
+/// 5. Verify fix task created
+/// 6. Verify original task transitions to revision_needed
+/// 7. Verify review_action record created
+#[tokio::test]
+async fn test_ai_review_needs_changes_flow() {
+    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+
+    // Verify task is in PendingReview state
+    let state = sm_repo.load_state(&task_id).unwrap();
+    assert_eq!(state, State::PendingReview);
+
+    // Create ReviewService
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // 1. Start AI review
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    assert!(review.is_pending());
+
+    // 2. Simulate reviewer agent returning NEEDS_CHANGES outcome
+    let input = CompleteReviewInput::needs_changes(
+        "Missing error handling in the login function",
+        "Add try-catch blocks around the API call and handle network errors",
+    );
+
+    // 3. Process the review result
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+
+    // 4. Verify fix task was created
+    assert!(fix_task_id.is_some(), "NEEDS_CHANGES should create fix task");
+    let fix_task_id = fix_task_id.unwrap();
+
+    // 5. Verify fix task properties
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
+    assert!(fix_task.title.starts_with("Fix:"), "Fix task title should start with 'Fix:'");
+    assert_eq!(fix_task.category, "fix", "Fix task category should be 'fix'");
+    assert!(
+        fix_task
+            .description
+            .as_ref()
+            .map_or(false, |d| d.contains("Add try-catch")),
+        "Fix task should contain fix description"
+    );
+
+    // 6. Verify review status is ChangesRequested
+    assert_eq!(review.status, ReviewStatus::ChangesRequested);
+    let persisted_review = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+    assert_eq!(persisted_review.status, ReviewStatus::ChangesRequested);
+
+    // 7. Verify review note was created
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].outcome, ReviewOutcome::ChangesRequested);
+    assert!(notes[0]
+        .notes
+        .as_ref()
+        .map_or(false, |n| n.contains("Missing error handling")));
+
+    // 8. Verify review action was recorded with fix task reference
+    let actions = review_repo.get_actions(&review.id).await.unwrap();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].action_type, ReviewActionType::CreatedFixTask);
+    assert_eq!(actions[0].target_task_id, Some(fix_task_id));
+}
+
+/// Test: Needs changes flow with state machine transition
+#[tokio::test]
+async fn test_ai_review_needs_changes_state_machine_transition() {
+    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+
+    // Start in PendingReview
+    assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
+
+    // Conduct AI review with NEEDS_CHANGES
+    let service = ReviewService::new(review_repo, task_repo);
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Transition state machine: PendingReview -> RevisionNeeded
+    let new_state = sm_repo
+        .process_event(
+            &task_id,
+            &TaskEvent::ReviewComplete {
+                approved: false,
+                feedback: Some("Bug found".to_string()),
+            },
+        )
+        .unwrap();
+
+    assert_eq!(new_state, State::RevisionNeeded);
+}
+
+/// Test: Needs changes with auto_fix disabled moves to backlog
+#[tokio::test]
+async fn test_ai_review_needs_changes_auto_fix_disabled() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Create service with auto_fix disabled
+    let settings = ReviewSettings {
+        ai_review_auto_fix: false,
+        ..Default::default()
+    };
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo, settings);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Missing tests", "Add unit tests");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Should NOT create a fix task when auto_fix is disabled
+    assert!(fix_task_id.is_none(), "Should not create fix task when auto_fix disabled");
+
+    // Verify action recorded as moved to backlog
+    let actions = review_repo.get_actions(&review.id).await.unwrap();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].action_type, ReviewActionType::MovedToBacklog);
+}
+
+/// Test: Fix task has higher priority than original task
+#[tokio::test]
+async fn test_fix_task_has_higher_priority() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // First, set the original task's priority
+    use ralphx_lib::domain::repositories::TaskRepository;
+    {
+        let mut task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        task.set_priority(100);
+        task_repo.update(&task).await.unwrap();
+    }
+
+    let service = ReviewService::new(review_repo, task_repo.clone());
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Fix needed", "Apply the fix");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+
+    let fix_task = task_repo
+        .get_by_id(&fix_task_id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Fix task should have higher priority (priority + 1)
+    assert_eq!(fix_task.priority, 101);
+}
+
+/// Test: Fix task requires approval when configured
+#[tokio::test]
+async fn test_fix_task_requires_approval() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Create service with fix approval required
+    let settings = ReviewSettings::with_fix_approval();
+    let service = ReviewService::with_settings(review_repo, task_repo.clone(), settings);
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Fix task should be in Blocked status (waiting for approval)
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let fix_task = task_repo
+        .get_by_id(&fix_task_id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fix_task.internal_status,
+        InternalStatus::Blocked,
+        "Fix task should be Blocked when fix approval required"
+    );
+}
+
+/// Test: Fix task is Ready when approval not required
+#[tokio::test]
+async fn test_fix_task_ready_without_approval() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Default settings don't require fix approval
+    let service = ReviewService::new(review_repo, task_repo.clone());
+
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Fix task should be in Ready status
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let fix_task = task_repo
+        .get_by_id(&fix_task_id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fix_task.internal_status,
+        InternalStatus::Ready,
+        "Fix task should be Ready when fix approval not required"
+    );
+}
+
+/// Test: CompleteReviewInput::needs_changes validation
+#[test]
+fn test_complete_review_input_needs_changes() {
+    let input = CompleteReviewInput::needs_changes("Missing tests", "Add unit tests");
+
+    assert_eq!(input.outcome, ReviewToolOutcome::NeedsChanges);
+    assert_eq!(input.notes, "Missing tests");
+    assert_eq!(
+        input.fix_description,
+        Some("Add unit tests".to_string())
+    );
+    assert!(input.escalation_reason.is_none());
+    assert!(input.validate().is_ok());
+}
+
+/// Test: CompleteReviewInput::needs_changes requires fix_description
+#[test]
+fn test_complete_review_input_needs_changes_requires_fix_description() {
+    use ralphx_lib::domain::tools::complete_review::CompleteReviewInput;
+
+    let input = CompleteReviewInput {
+        outcome: ReviewToolOutcome::NeedsChanges,
+        notes: "Missing tests".to_string(),
+        fix_description: None, // Missing!
+        escalation_reason: None,
+    };
+
+    assert!(input.validate().is_err(), "Should fail validation without fix_description");
+}
+
+/// Test: Count fix actions for a task
+#[tokio::test]
+async fn test_count_fix_actions() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    // Initially no fix actions
+    let count = service.get_fix_attempt_count(&task_id).await.unwrap();
+    assert_eq!(count, 0);
+
+    // Create a review with needs_changes
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug 1", "Fix 1");
+    service.process_review_result(&mut review, &input).await.unwrap();
+
+    // Now should be 1
+    let count = service.get_fix_attempt_count(&task_id).await.unwrap();
+    assert_eq!(count, 1);
+}
+
+/// Test: Multiple fix tasks increment fix action count
+#[tokio::test]
+async fn test_multiple_fix_attempts_tracked() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // First review with needs_changes
+    let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input1 = CompleteReviewInput::needs_changes("Bug 1", "Fix 1");
+    let fix1_id = service.process_review_result(&mut review1, &input1).await.unwrap();
+    assert!(fix1_id.is_some());
+
+    // Complete the first review (so we can start another)
+    // Start a second review on the same task
+    let mut review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input2 = CompleteReviewInput::needs_changes("Bug 2", "Fix 2");
+    let fix2_id = service.process_review_result(&mut review2, &input2).await.unwrap();
+    assert!(fix2_id.is_some());
+
+    // Should now have 2 fix actions
+    let count = service.get_fix_attempt_count(&task_id).await.unwrap();
+    assert_eq!(count, 2);
+}
