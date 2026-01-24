@@ -173,7 +173,7 @@ All design work MUST include:
       "Run npm run lint",
       "Commit: docs: create specs/DESIGN.md master design document"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "design-req",
