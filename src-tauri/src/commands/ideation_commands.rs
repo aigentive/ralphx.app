@@ -2,12 +2,14 @@
 // Thin layer that delegates to repositories
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    ChatMessage, Complexity, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority,
-    ProjectId, TaskCategory, TaskProposal, TaskProposalId,
+    ChatMessage, Complexity, DependencyGraph, DependencyGraphEdge, DependencyGraphNode,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority,
+    ProjectId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
 
 /// Input for creating a new ideation session
@@ -592,6 +594,582 @@ pub async fn assess_all_priorities(
         .collect())
 }
 
+// ============================================================================
+// Dependency and Apply Commands
+// ============================================================================
+
+/// Response for DependencyGraph
+#[derive(Debug, Serialize)]
+pub struct DependencyGraphResponse {
+    pub nodes: Vec<DependencyGraphNodeResponse>,
+    pub edges: Vec<DependencyGraphEdgeResponse>,
+    pub critical_path: Vec<String>,
+    pub has_cycles: bool,
+    pub cycles: Option<Vec<Vec<String>>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DependencyGraphNodeResponse {
+    pub proposal_id: String,
+    pub title: String,
+    pub in_degree: usize,
+    pub out_degree: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DependencyGraphEdgeResponse {
+    pub from: String,
+    pub to: String,
+}
+
+impl From<DependencyGraph> for DependencyGraphResponse {
+    fn from(graph: DependencyGraph) -> Self {
+        Self {
+            nodes: graph
+                .nodes
+                .into_iter()
+                .map(|n| DependencyGraphNodeResponse {
+                    proposal_id: n.proposal_id.as_str().to_string(),
+                    title: n.title,
+                    in_degree: n.in_degree,
+                    out_degree: n.out_degree,
+                })
+                .collect(),
+            edges: graph
+                .edges
+                .into_iter()
+                .map(|e| DependencyGraphEdgeResponse {
+                    from: e.from.as_str().to_string(),
+                    to: e.to.as_str().to_string(),
+                })
+                .collect(),
+            critical_path: graph
+                .critical_path
+                .into_iter()
+                .map(|id| id.as_str().to_string())
+                .collect(),
+            has_cycles: graph.has_cycles,
+            cycles: graph.cycles.map(|cs| {
+                cs.into_iter()
+                    .map(|c| c.into_iter().map(|id| id.as_str().to_string()).collect())
+                    .collect()
+            }),
+        }
+    }
+}
+
+/// Input for apply proposals
+#[derive(Debug, Deserialize)]
+pub struct ApplyProposalsInput {
+    pub session_id: String,
+    pub proposal_ids: Vec<String>,
+    pub target_column: String,
+    pub preserve_dependencies: bool,
+}
+
+/// Response for apply proposals
+#[derive(Debug, Serialize)]
+pub struct ApplyProposalsResultResponse {
+    pub created_task_ids: Vec<String>,
+    pub dependencies_created: usize,
+    pub warnings: Vec<String>,
+    pub session_converted: bool,
+}
+
+/// Add a dependency between proposals
+#[tauri::command]
+pub async fn add_proposal_dependency(
+    proposal_id: String,
+    depends_on_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let proposal_id = TaskProposalId::from_string(proposal_id);
+    let depends_on_id = TaskProposalId::from_string(depends_on_id);
+
+    // Prevent self-dependency
+    if proposal_id == depends_on_id {
+        return Err("A proposal cannot depend on itself".to_string());
+    }
+
+    state
+        .proposal_dependency_repo
+        .add_dependency(&proposal_id, &depends_on_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove a dependency between proposals
+#[tauri::command]
+pub async fn remove_proposal_dependency(
+    proposal_id: String,
+    depends_on_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let proposal_id = TaskProposalId::from_string(proposal_id);
+    let depends_on_id = TaskProposalId::from_string(depends_on_id);
+
+    state
+        .proposal_dependency_repo
+        .remove_dependency(&proposal_id, &depends_on_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get dependencies for a proposal
+#[tauri::command]
+pub async fn get_proposal_dependencies(
+    proposal_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let proposal_id = TaskProposalId::from_string(proposal_id);
+
+    state
+        .proposal_dependency_repo
+        .get_dependencies(&proposal_id)
+        .await
+        .map(|deps| deps.into_iter().map(|id| id.as_str().to_string()).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Get dependents for a proposal (proposals that depend on this one)
+#[tauri::command]
+pub async fn get_proposal_dependents(
+    proposal_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let proposal_id = TaskProposalId::from_string(proposal_id);
+
+    state
+        .proposal_dependency_repo
+        .get_dependents(&proposal_id)
+        .await
+        .map(|deps| deps.into_iter().map(|id| id.as_str().to_string()).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Analyze dependencies for a session and return the dependency graph
+#[tauri::command]
+pub async fn analyze_dependencies(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<DependencyGraphResponse, String> {
+    let session_id = IdeationSessionId::from_string(session_id);
+
+    // Get proposals for this session
+    let proposals = state
+        .task_proposal_repo
+        .get_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Get all dependencies for this session
+    let deps = state
+        .proposal_dependency_repo
+        .get_all_for_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Build the graph directly (inline version of DependencyService logic)
+    let graph = build_dependency_graph(&proposals, &deps);
+
+    Ok(DependencyGraphResponse::from(graph))
+}
+
+/// Build a dependency graph from proposals and their dependencies
+fn build_dependency_graph(
+    proposals: &[TaskProposal],
+    dependencies: &[(TaskProposalId, TaskProposalId)],
+) -> DependencyGraph {
+    // Build adjacency lists
+    let mut from_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
+    let mut to_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
+
+    for (from, to) in dependencies {
+        from_map.entry(from.clone()).or_default().push(to.clone());
+        to_map.entry(to.clone()).or_default().push(from.clone());
+    }
+
+    // Build nodes with degree counts
+    let mut nodes = Vec::new();
+    for proposal in proposals {
+        let in_degree = from_map.get(&proposal.id).map(|v| v.len()).unwrap_or(0);
+        let out_degree = to_map.get(&proposal.id).map(|v| v.len()).unwrap_or(0);
+
+        let mut node = DependencyGraphNode::new(proposal.id.clone(), &proposal.title);
+        node.in_degree = in_degree;
+        node.out_degree = out_degree;
+        nodes.push(node);
+    }
+
+    // Build edges
+    let edges: Vec<DependencyGraphEdge> = dependencies
+        .iter()
+        .map(|(from, to)| DependencyGraphEdge::new(from.clone(), to.clone()))
+        .collect();
+
+    // Detect cycles using DFS
+    let (has_cycles, cycles) = detect_cycles(&from_map, proposals);
+
+    // Find critical path if no cycles
+    let critical_path = if !has_cycles {
+        find_critical_path(&from_map, proposals)
+    } else {
+        Vec::new()
+    };
+
+    DependencyGraph {
+        nodes,
+        edges,
+        critical_path,
+        has_cycles,
+        cycles: if has_cycles { Some(cycles) } else { None },
+    }
+}
+
+/// Detect cycles in the dependency graph using DFS
+fn detect_cycles(
+    from_map: &HashMap<TaskProposalId, Vec<TaskProposalId>>,
+    proposals: &[TaskProposal],
+) -> (bool, Vec<Vec<TaskProposalId>>) {
+    let proposal_ids: HashSet<TaskProposalId> = proposals.iter().map(|p| p.id.clone()).collect();
+    let mut visited = HashSet::new();
+    let mut rec_stack = HashSet::new();
+    let mut cycles = Vec::new();
+
+    for proposal in proposals {
+        if !visited.contains(&proposal.id) {
+            let mut path = Vec::new();
+            if dfs_detect_cycle(
+                &proposal.id,
+                from_map,
+                &proposal_ids,
+                &mut visited,
+                &mut rec_stack,
+                &mut path,
+                &mut cycles,
+            ) {
+                // Continue to find all cycles
+            }
+        }
+    }
+
+    (!cycles.is_empty(), cycles)
+}
+
+fn dfs_detect_cycle(
+    node: &TaskProposalId,
+    from_map: &HashMap<TaskProposalId, Vec<TaskProposalId>>,
+    proposal_ids: &HashSet<TaskProposalId>,
+    visited: &mut HashSet<TaskProposalId>,
+    rec_stack: &mut HashSet<TaskProposalId>,
+    path: &mut Vec<TaskProposalId>,
+    cycles: &mut Vec<Vec<TaskProposalId>>,
+) -> bool {
+    visited.insert(node.clone());
+    rec_stack.insert(node.clone());
+    path.push(node.clone());
+
+    if let Some(deps) = from_map.get(node) {
+        for dep in deps {
+            if !proposal_ids.contains(dep) {
+                continue;
+            }
+            if !visited.contains(dep) {
+                if dfs_detect_cycle(dep, from_map, proposal_ids, visited, rec_stack, path, cycles) {
+                    // Found a cycle
+                }
+            } else if rec_stack.contains(dep) {
+                // Found a cycle - extract it
+                let cycle_start = path.iter().position(|p| p == dep).unwrap_or(0);
+                let cycle: Vec<TaskProposalId> = path[cycle_start..].to_vec();
+                cycles.push(cycle);
+            }
+        }
+    }
+
+    path.pop();
+    rec_stack.remove(node);
+
+    !cycles.is_empty()
+}
+
+/// Find the critical path (longest path through the graph)
+fn find_critical_path(
+    from_map: &HashMap<TaskProposalId, Vec<TaskProposalId>>,
+    proposals: &[TaskProposal],
+) -> Vec<TaskProposalId> {
+    if proposals.is_empty() {
+        return Vec::new();
+    }
+
+    // Build reverse map for topological sort
+    let mut in_degree: HashMap<TaskProposalId, usize> = HashMap::new();
+    for proposal in proposals {
+        in_degree.insert(proposal.id.clone(), 0);
+    }
+
+    for deps in from_map.values() {
+        for dep in deps {
+            if in_degree.contains_key(dep) {
+                *in_degree.get_mut(dep).unwrap() += 1;
+            }
+        }
+    }
+
+    // Topological sort using Kahn's algorithm
+    let mut queue: VecDeque<TaskProposalId> = in_degree
+        .iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    let mut sorted = Vec::new();
+    while let Some(node) = queue.pop_front() {
+        sorted.push(node.clone());
+        if let Some(deps) = from_map.get(&node) {
+            for dep in deps {
+                if let Some(deg) = in_degree.get_mut(dep) {
+                    *deg -= 1;
+                    if *deg == 0 {
+                        queue.push_back(dep.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Find longest path using dynamic programming
+    let mut dist: HashMap<TaskProposalId, usize> = HashMap::new();
+    let mut prev: HashMap<TaskProposalId, Option<TaskProposalId>> = HashMap::new();
+
+    for id in &sorted {
+        dist.insert(id.clone(), 0);
+        prev.insert(id.clone(), None);
+    }
+
+    for node in &sorted {
+        if let Some(deps) = from_map.get(node) {
+            for dep in deps {
+                if let Some(&node_dist) = dist.get(node) {
+                    if let Some(dep_dist) = dist.get_mut(dep) {
+                        if node_dist + 1 > *dep_dist {
+                            *dep_dist = node_dist + 1;
+                            prev.insert(dep.clone(), Some(node.clone()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Find the end of the longest path
+    let (end_node, _) = dist.iter().max_by_key(|(_, &d)| d).unwrap_or((&sorted[0], &0));
+
+    // Reconstruct path
+    let mut path = vec![end_node.clone()];
+    let mut current = end_node.clone();
+    while let Some(Some(prev_node)) = prev.get(&current) {
+        path.push(prev_node.clone());
+        current = prev_node.clone();
+    }
+
+    path.reverse();
+    path
+}
+
+/// Apply selected proposals to the Kanban board as tasks
+#[tauri::command]
+pub async fn apply_proposals_to_kanban(
+    input: ApplyProposalsInput,
+    state: State<'_, AppState>,
+) -> Result<ApplyProposalsResultResponse, String> {
+    let session_id = IdeationSessionId::from_string(input.session_id);
+
+    // Parse target column and map to internal status
+    let target_status = match input.target_column.to_lowercase().as_str() {
+        "draft" => InternalStatus::Backlog,
+        "backlog" => InternalStatus::Backlog,
+        "todo" => InternalStatus::Ready,
+        _ => return Err(format!("Invalid target column: {}", input.target_column)),
+    };
+
+    // Get the session to know the project_id
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session {} not found", session_id))?;
+
+    if session.status != IdeationSessionStatus::Active {
+        return Err("Cannot apply proposals from an inactive session".to_string());
+    }
+
+    let proposal_ids: HashSet<TaskProposalId> = input
+        .proposal_ids
+        .into_iter()
+        .map(TaskProposalId::from_string)
+        .collect();
+
+    // Validate that all proposals exist and belong to this session
+    let all_proposals = state
+        .task_proposal_repo
+        .get_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let proposals_to_apply: Vec<TaskProposal> = all_proposals
+        .into_iter()
+        .filter(|p| proposal_ids.contains(&p.id))
+        .collect();
+
+    if proposals_to_apply.len() != proposal_ids.len() {
+        return Err("Some proposals not found in session".to_string());
+    }
+
+    // Create tasks and track dependencies
+    let mut created_tasks = Vec::new();
+    let mut proposal_to_task: HashMap<TaskProposalId, TaskId> = HashMap::new();
+    let mut warnings = Vec::new();
+
+    for proposal in &proposals_to_apply {
+        // Create task from proposal
+        let mut task = Task::new(session.project_id.clone(), proposal.title.clone());
+        task.description = proposal.description.clone();
+        task.category = proposal.category.to_string();
+        task.internal_status = target_status.clone();
+
+        // Set priority based on user override or suggested (use priority score as i32)
+        if proposal.user_priority.is_some() {
+            task.priority = proposal.priority_score; // Use calculated score
+        } else {
+            task.priority = proposal.priority_score;
+        }
+
+        let created_task = state
+            .task_repo
+            .create(task)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        proposal_to_task.insert(proposal.id.clone(), created_task.id.clone());
+        created_tasks.push(created_task);
+    }
+
+    // Create task dependencies if requested
+    let mut dependencies_created = 0;
+    if input.preserve_dependencies {
+        for proposal in &proposals_to_apply {
+            let deps = state
+                .proposal_dependency_repo
+                .get_dependencies(&proposal.id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            for dep_proposal_id in deps {
+                if let (Some(task_id), Some(dep_task_id)) = (
+                    proposal_to_task.get(&proposal.id),
+                    proposal_to_task.get(&dep_proposal_id),
+                ) {
+                    state
+                        .task_dependency_repo
+                        .add_dependency(task_id, dep_task_id)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    dependencies_created += 1;
+                } else {
+                    warnings.push(format!(
+                        "Dependency from {} to {} not preserved (not in selection)",
+                        proposal.id, dep_proposal_id
+                    ));
+                }
+            }
+        }
+    }
+
+    // Update proposal statuses and link to created tasks
+    for proposal in &proposals_to_apply {
+        if let Some(task_id) = proposal_to_task.get(&proposal.id) {
+            state
+                .task_proposal_repo
+                .set_created_task_id(&proposal.id, task_id)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Check if all proposals in session are now applied
+    let remaining = state
+        .task_proposal_repo
+        .get_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|p| p.created_task_id.is_none())
+        .count();
+
+    let session_converted = remaining == 0;
+    if session_converted {
+        state
+            .ideation_session_repo
+            .update_status(&session_id, IdeationSessionStatus::Converted)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(ApplyProposalsResultResponse {
+        created_task_ids: created_tasks
+            .into_iter()
+            .map(|t| t.id.as_str().to_string())
+            .collect(),
+        dependencies_created,
+        warnings,
+        session_converted,
+    })
+}
+
+/// Get blockers for a task (tasks it depends on)
+#[tauri::command]
+pub async fn get_task_blockers(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let task_id = TaskId::from_string(task_id);
+
+    state
+        .task_dependency_repo
+        .get_blockers(&task_id)
+        .await
+        .map(|blockers| {
+            blockers
+                .into_iter()
+                .map(|id| id.as_str().to_string())
+                .collect()
+        })
+        .map_err(|e| e.to_string())
+}
+
+/// Get tasks blocked by a task (tasks that depend on this one)
+#[tauri::command]
+pub async fn get_blocked_tasks(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let task_id = TaskId::from_string(task_id);
+
+    state
+        .task_dependency_repo
+        .get_blocked_by(&task_id)
+        .await
+        .map(|blocked| {
+            blocked
+                .into_iter()
+                .map(|id| id.as_str().to_string())
+                .collect()
+        })
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1049,5 +1627,218 @@ mod tests {
         // Verify it serializes to JSON
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"priority\":\"critical\""));
+    }
+
+    // ========================================================================
+    // Dependency and Apply Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_add_proposal_dependency() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session and proposals
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        let proposal1 = TaskProposal::new(
+            created_session.id.clone(),
+            "Proposal 1",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let proposal2 = TaskProposal::new(
+            created_session.id.clone(),
+            "Proposal 2",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+
+        let p1 = state.task_proposal_repo.create(proposal1).await.unwrap();
+        let p2 = state.task_proposal_repo.create(proposal2).await.unwrap();
+
+        // Add dependency: p1 depends on p2
+        state
+            .proposal_dependency_repo
+            .add_dependency(&p1.id, &p2.id)
+            .await
+            .unwrap();
+
+        // Verify dependency exists
+        let deps = state
+            .proposal_dependency_repo
+            .get_dependencies(&p1.id)
+            .await
+            .unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], p2.id);
+    }
+
+    #[tokio::test]
+    async fn test_remove_proposal_dependency() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session and proposals
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        let proposal1 = TaskProposal::new(
+            created_session.id.clone(),
+            "Proposal 1",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let proposal2 = TaskProposal::new(
+            created_session.id.clone(),
+            "Proposal 2",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+
+        let p1 = state.task_proposal_repo.create(proposal1).await.unwrap();
+        let p2 = state.task_proposal_repo.create(proposal2).await.unwrap();
+
+        // Add then remove dependency
+        state
+            .proposal_dependency_repo
+            .add_dependency(&p1.id, &p2.id)
+            .await
+            .unwrap();
+        state
+            .proposal_dependency_repo
+            .remove_dependency(&p1.id, &p2.id)
+            .await
+            .unwrap();
+
+        // Verify dependency was removed
+        let deps = state
+            .proposal_dependency_repo
+            .get_dependencies(&p1.id)
+            .await
+            .unwrap();
+        assert!(deps.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_proposal_dependents() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session and proposals
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        let proposal1 = TaskProposal::new(
+            created_session.id.clone(),
+            "Proposal 1",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let proposal2 = TaskProposal::new(
+            created_session.id.clone(),
+            "Proposal 2",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+
+        let p1 = state.task_proposal_repo.create(proposal1).await.unwrap();
+        let p2 = state.task_proposal_repo.create(proposal2).await.unwrap();
+
+        // p1 depends on p2, so p2 should have p1 as a dependent
+        state
+            .proposal_dependency_repo
+            .add_dependency(&p1.id, &p2.id)
+            .await
+            .unwrap();
+
+        let dependents = state
+            .proposal_dependency_repo
+            .get_dependents(&p2.id)
+            .await
+            .unwrap();
+        assert_eq!(dependents.len(), 1);
+        assert_eq!(dependents[0], p1.id);
+    }
+
+    #[tokio::test]
+    async fn test_analyze_dependencies_empty_session() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session with no proposals
+        let session = IdeationSession::new(project_id);
+        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+
+        // Get dependencies (should be empty graph)
+        let proposals = state
+            .task_proposal_repo
+            .get_by_session(&created_session.id)
+            .await
+            .unwrap();
+        let deps = state
+            .proposal_dependency_repo
+            .get_all_for_session(&created_session.id)
+            .await
+            .unwrap();
+
+        let graph = build_dependency_graph(&proposals, &deps);
+
+        assert!(graph.nodes.is_empty());
+        assert!(graph.edges.is_empty());
+        assert!(!graph.has_cycles);
+    }
+
+    #[tokio::test]
+    async fn test_dependency_graph_response_serialization() {
+        let graph = DependencyGraph::new();
+        let response = DependencyGraphResponse::from(graph);
+
+        assert!(response.nodes.is_empty());
+        assert!(response.edges.is_empty());
+        assert!(!response.has_cycles);
+
+        // Verify it serializes to JSON
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"has_cycles\":false"));
+    }
+
+    #[tokio::test]
+    async fn test_task_blockers() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create tasks
+        let task1 = crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
+        let task2 = crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
+
+        let t1 = state.task_repo.create(task1).await.unwrap();
+        let t2 = state.task_repo.create(task2).await.unwrap();
+
+        // Add dependency: t1 depends on t2
+        state
+            .task_dependency_repo
+            .add_dependency(&t1.id, &t2.id)
+            .await
+            .unwrap();
+
+        // t2 should be a blocker for t1
+        let blockers = state
+            .task_dependency_repo
+            .get_blockers(&t1.id)
+            .await
+            .unwrap();
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0], t2.id);
+
+        // t1 should be blocked by t2
+        let blocked = state
+            .task_dependency_repo
+            .get_blocked_by(&t2.id)
+            .await
+            .unwrap();
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0], t1.id);
     }
 }

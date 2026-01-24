@@ -905,7 +905,7 @@ All tasks require:
       "Create get_task_blockers command",
       "Register commands in Tauri builder"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

@@ -1,14 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:50:00
+**Last Updated:** 2026-01-24 18:10:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 22 / 50
-**Current Task:** Create Tauri commands for dependencies and apply
+**Tasks Completed:** 23 / 50
+**Current Task:** Create Tauri commands for chat messages
 
 ---
 
 ## Session Log
+
+### 2026-01-24 18:10:00 - Create Tauri commands for dependencies and apply
+
+**What was done:**
+- Extended `src-tauri/src/commands/ideation_commands.rs` with dependency and apply commands:
+  - Response types:
+    - `DependencyGraphResponse` - nodes, edges, critical_path, has_cycles, cycles
+    - `DependencyGraphNodeResponse` - proposal_id, title, in_degree, out_degree
+    - `DependencyGraphEdgeResponse` - from, to
+    - `ApplyProposalsResultResponse` - created_task_ids, dependencies_created, warnings, session_converted
+  - Input types:
+    - `ApplyProposalsInput` - session_id, proposal_ids, target_column, preserve_dependencies
+  - Commands:
+    - `add_proposal_dependency` - Add dependency between proposals
+    - `remove_proposal_dependency` - Remove dependency
+    - `get_proposal_dependencies` - Get proposals this one depends on
+    - `get_proposal_dependents` - Get proposals that depend on this one
+    - `analyze_dependencies` - Build and return full dependency graph
+    - `apply_proposals_to_kanban` - Convert proposals to tasks
+    - `get_task_blockers` - Get tasks that block a task
+    - `get_blocked_tasks` - Get tasks blocked by a task
+  - Helper functions:
+    - `build_dependency_graph()` - Build graph from proposals and deps
+    - `detect_cycles()` - DFS cycle detection
+    - `find_critical_path()` - Topological sort + longest path
+- Updated `commands/mod.rs` with new exports
+- 6 new unit tests for dependencies, graph building, and task blockers
+- Total: 25 tests in ideation_commands module
+
+**Commands run:**
+- `cargo test --lib ideation_commands::` (25 tests passed)
+- `cargo test --lib` (2065 tests passed)
+
+---
 
 ### 2026-01-24 17:50:00 - Create Tauri commands for task proposals
 
