@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:56:52
+**Last Updated:** 2026-01-24 10:59:34
 **Phase:** Phase 8 (QA System)
-**Tasks Completed:** 7 / 33
-**Current Task:** Create AcceptanceCriteria and QATestStep types
+**Tasks Completed:** 8 / 33
+**Current Task:** Create QAResult types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:59:34 - Create AcceptanceCriteria and QATestStep types
+
+**What was done:**
+- Created `src-tauri/src/domain/qa/criteria.rs` with:
+  - `AcceptanceCriteriaType` enum (Visual, Behavior, Data, Accessibility)
+  - `AcceptanceCriterion` struct (id, description, testable, criteria_type)
+  - `AcceptanceCriteria` collection with JSON serialization helpers
+  - `QATestStep` struct (id, criteria_id, description, commands, expected)
+  - `QATestSteps` collection with JSON serialization helpers
+  - Helper methods: `testable()`, `testable_count()`, `for_criterion()`, `total_commands()`
+  - Factory methods: `visual()`, `behavior()` for convenience
+  - 29 comprehensive tests for all types and PRD format parsing
+- Updated `src-tauri/src/domain/qa/mod.rs` to export criteria module
+- All 943 Rust tests passing
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml domain::qa::criteria::tests`
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+
+---
 
 ### 2026-01-24 10:56:52 - Add QA columns to tasks table migration
 

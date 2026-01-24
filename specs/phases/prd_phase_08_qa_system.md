@@ -522,7 +522,7 @@ All tasks require TDD:
       "Implement JSON parsing for storage",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
