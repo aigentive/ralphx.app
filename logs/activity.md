@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:25:02
+**Last Updated:** 2026-01-24 07:26:54
 **Phase:** Data Layer
-**Tasks Completed:** 7 / 20
-**Current Task:** Create infrastructure/memory module for in-memory repositories
+**Tasks Completed:** 8 / 20
+**Current Task:** Implement MemoryTaskRepository
 
 ---
 
@@ -1354,6 +1354,32 @@ Phase 1: Foundation (no dependencies)
 - Phase 1 status → "complete"
 - currentPhase → 2
 - Phase 2 status → "active"
+
+---
+
+### 2026-01-24 07:26:54 - Create infrastructure/memory module for in-memory repositories
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/memory/` directory
+- Created `mod.rs` with pub mod declarations for memory_task_repo and memory_project_repo
+- Created `MemoryTaskRepository` struct with:
+  - RwLock<HashMap> for tasks, history, and blockers
+  - new() and with_tasks() constructors
+  - Default trait implementation
+- Created `MemoryProjectRepository` struct with:
+  - RwLock<HashMap> for projects
+  - new() and with_projects() constructors
+  - Default trait implementation
+- Updated `infrastructure/mod.rs` to export memory module
+- All 202 tests pass (no new tests, module structure only)
+
+**Files created:**
+- `src-tauri/src/infrastructure/memory/mod.rs`
+- `src-tauri/src/infrastructure/memory/memory_task_repo.rs`
+- `src-tauri/src/infrastructure/memory/memory_project_repo.rs`
+
+**Files modified:**
+- `src-tauri/src/infrastructure/mod.rs` - export memory module
 
 ---
 

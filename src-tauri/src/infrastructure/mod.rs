@@ -1,6 +1,7 @@
 // Infrastructure layer - external implementations
 // SQLite, file system, Claude CLI interactions
 
+pub mod memory;
 pub mod sqlite;
 
 // Re-export commonly used items
