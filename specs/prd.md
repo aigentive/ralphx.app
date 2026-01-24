@@ -251,9 +251,9 @@ Each phase PRD should follow this structure:
     "description": "Verify model names and Claude Code CLI capabilities",
     "steps": [
       "Search specs/plan.md for all model name references (opus, sonnet, haiku, claude-)",
-      "Verify correct short-form model names for Claude Code CLI: opus, sonnet, haiku (or opus-4, sonnet-4, haiku-4 if versioned)",
-      "Check Claude Code CLI documentation for current model naming conventions",
-      "Update any outdated model IDs in specs/plan.md (e.g., claude-sonnet-4-20250514 → correct format)",
+      "Current 4.5 models: claude-opus-4-5-20251101, claude-sonnet-4-5-20250929, claude-haiku-4-5-20251001",
+      "Short forms for Claude Code CLI: opus, sonnet, haiku (used with /model command or --model flag)",
+      "Update outdated v4 model IDs in specs/plan.md (e.g., claude-sonnet-4-20250514 → claude-sonnet-4-5-20250929)",
       "Read ralph.sh to understand actual CLI usage: -p flag, --output-format stream-json, --verbose, --dangerously-skip-permissions",
       "Read ralph.sh parsing logic: stream-json format, jq parsing of assistant/user messages, tool_use/tool_result extraction",
       "Cross-reference ralph.sh patterns with specs/plan.md Agentic Client sections (lines 5078-5400)",
