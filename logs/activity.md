@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:55:00
+**Last Updated:** 2026-01-24 20:00:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 36 / 50
-**Current Task:** Create useApplyProposals hook
+**Tasks Completed:** 37 / 50
+**Current Task:** Create useChat hook
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:00:00 - Create useApplyProposals hook
+
+**What was done:**
+- Created `src/hooks/useApplyProposals.ts` with TanStack Query wrapper:
+  - `useApplyProposals()` - Returns mutations object with:
+    - `apply` - Apply selected proposals to Kanban board
+- Invalidates task, proposal, and session queries on success
+- Handles session conversion state
+- Created `src/hooks/useApplyProposals.test.ts` with 8 unit tests covering:
+  - Successful apply
+  - Apply with warnings
+  - Session conversion
+  - Target column variations
+  - Loading states
+  - Error handling
+
+**Commands run:**
+- `npm test -- --run src/hooks/useApplyProposals.test.ts` (8 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1755 tests passed)
+
+---
 
 ### 2026-01-24 19:55:00 - Create useDependencyGraph hook
 
