@@ -279,6 +279,25 @@ impl MethodologyRepository for SqliteMethodologyRepository {
     }
 }
 
+impl SqliteMethodologyRepository {
+    /// Seeds built-in methodologies (BMAD and GSD) if they don't exist.
+    /// Returns the number of methodologies seeded.
+    pub async fn seed_builtin_methodologies(&self) -> AppResult<usize> {
+        let builtin_methodologies = MethodologyExtension::builtin_methodologies();
+        let mut seeded_count = 0;
+
+        for methodology in builtin_methodologies {
+            // Check if methodology already exists
+            if !self.exists(&methodology.id).await? {
+                self.create(methodology).await?;
+                seeded_count += 1;
+            }
+        }
+
+        Ok(seeded_count)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,5 +799,196 @@ mod tests {
         assert!(loaded.phases.is_empty());
         assert!(loaded.templates.is_empty());
         assert!(loaded.hooks_config.is_none());
+    }
+
+    // ===== Seeding Tests =====
+
+    #[tokio::test]
+    async fn test_seed_builtin_methodologies_seeds_two() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        let seeded_count = repo.seed_builtin_methodologies().await.unwrap();
+        assert_eq!(seeded_count, 2);
+
+        let all = repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_methodologies_idempotent() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        // First seeding
+        let first_count = repo.seed_builtin_methodologies().await.unwrap();
+        assert_eq!(first_count, 2);
+
+        // Second seeding should seed nothing
+        let second_count = repo.seed_builtin_methodologies().await.unwrap();
+        assert_eq!(second_count, 0);
+
+        // Should still have exactly 2 methodologies
+        let all = repo.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_methodologies_includes_bmad() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad = repo.get_by_id(&bmad_id).await.unwrap();
+        assert!(bmad.is_some());
+
+        let bmad = bmad.unwrap();
+        assert_eq!(bmad.name, "BMAD Method");
+        assert_eq!(bmad.agent_profiles.len(), 8);
+        assert_eq!(bmad.phases.len(), 4);
+        assert!(bmad.agent_profiles.contains(&"bmad-analyst".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-pm".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-architect".to_string()));
+        assert!(bmad.agent_profiles.contains(&"bmad-developer".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_seed_builtin_methodologies_includes_gsd() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let gsd_id = crate::domain::entities::methodology::MethodologyId::from_string("gsd-method");
+        let gsd = repo.get_by_id(&gsd_id).await.unwrap();
+        assert!(gsd.is_some());
+
+        let gsd = gsd.unwrap();
+        assert_eq!(gsd.name, "GSD (Get Shit Done)");
+        assert_eq!(gsd.agent_profiles.len(), 11);
+        assert_eq!(gsd.phases.len(), 4);
+        assert!(gsd.agent_profiles.contains(&"gsd-executor".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-verifier".to_string()));
+        assert!(gsd.agent_profiles.contains(&"gsd-planner".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_bmad_workflow_has_10_columns() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
+
+        assert_eq!(bmad.workflow.columns.len(), 10);
+        assert_eq!(bmad.workflow.columns[0].id, "brainstorm");
+        assert_eq!(bmad.workflow.columns[9].id, "done");
+    }
+
+    #[tokio::test]
+    async fn test_gsd_workflow_has_11_columns() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let gsd_id = crate::domain::entities::methodology::MethodologyId::from_string("gsd-method");
+        let gsd = repo.get_by_id(&gsd_id).await.unwrap().unwrap();
+
+        assert_eq!(gsd.workflow.columns.len(), 11);
+        assert_eq!(gsd.workflow.columns[0].id, "initialize");
+        assert_eq!(gsd.workflow.columns[10].id, "done");
+    }
+
+    #[tokio::test]
+    async fn test_bmad_phases_have_correct_columns() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
+
+        let analysis_phase = bmad.phase_at_order(0).unwrap();
+        assert_eq!(analysis_phase.name, "Analysis");
+        assert!(analysis_phase.column_ids.contains(&"brainstorm".to_string()));
+        assert!(analysis_phase.column_ids.contains(&"research".to_string()));
+
+        let implementation_phase = bmad.phase_at_order(3).unwrap();
+        assert_eq!(implementation_phase.name, "Implementation");
+        assert!(implementation_phase.column_ids.contains(&"sprint".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_gsd_phases_have_correct_columns() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let gsd_id = crate::domain::entities::methodology::MethodologyId::from_string("gsd-method");
+        let gsd = repo.get_by_id(&gsd_id).await.unwrap().unwrap();
+
+        let initialize_phase = gsd.phase_at_order(0).unwrap();
+        assert_eq!(initialize_phase.name, "Initialize");
+        assert!(initialize_phase.column_ids.contains(&"initialize".to_string()));
+
+        let execute_phase = gsd.phase_at_order(2).unwrap();
+        assert_eq!(execute_phase.name, "Execute");
+        assert!(execute_phase.column_ids.contains(&"queued".to_string()));
+        assert!(execute_phase.column_ids.contains(&"executing".to_string()));
+        assert!(execute_phase.column_ids.contains(&"checkpoint".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_builtin_methodologies_have_templates() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
+        assert_eq!(bmad.templates.len(), 3);
+
+        let gsd_id = crate::domain::entities::methodology::MethodologyId::from_string("gsd-method");
+        let gsd = repo.get_by_id(&gsd_id).await.unwrap().unwrap();
+        assert_eq!(gsd.templates.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_builtin_methodologies_have_hooks_config() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
+        assert!(bmad.hooks_config.is_some());
+        let hooks = bmad.hooks_config.unwrap();
+        assert!(hooks.get("phase_gates").is_some());
+
+        let gsd_id = crate::domain::entities::methodology::MethodologyId::from_string("gsd-method");
+        let gsd = repo.get_by_id(&gsd_id).await.unwrap().unwrap();
+        assert!(gsd.hooks_config.is_some());
+        let hooks = gsd.hooks_config.unwrap();
+        assert!(hooks.get("checkpoint_types").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_builtin_methodologies_not_active_by_default() {
+        let conn = setup_test_db();
+        let repo = SqliteMethodologyRepository::new(conn);
+
+        repo.seed_builtin_methodologies().await.unwrap();
+
+        let active = repo.get_active().await.unwrap();
+        assert!(active.is_none(), "No methodology should be active by default after seeding");
     }
 }
