@@ -473,7 +473,7 @@ All tasks require TDD:
       "Implement Default trait for QASettings",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
