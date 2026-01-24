@@ -875,7 +875,7 @@ All tasks require:
       "Create delete_ideation_session command",
       "Register commands in Tauri builder"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
