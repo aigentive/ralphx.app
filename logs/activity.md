@@ -1,14 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:13:38
+**Last Updated:** 2026-01-24 19:16:54
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 1 / 63
-**Current Task:** Implement WorkflowSchema and WorkflowColumn Rust types
+**Tasks Completed:** 2 / 63
+**Current Task:** Implement WorkflowRepository trait
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:16:54 - Implement WorkflowSchema and WorkflowColumn Rust types (Task 2)
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/workflow.rs`
+- Implemented types:
+  - `WorkflowId` - newtype for workflow identifiers
+  - `WorkflowSchema` - main workflow definition with columns, defaults, sync config
+  - `WorkflowColumn` - Kanban column with maps_to internal status
+  - `ColumnBehavior` - optional column behavior overrides
+  - `WorkflowDefaults` - default agent profile configuration
+  - `ExternalSyncConfig` - placeholder for external sync (Jira, GitHub, etc.)
+  - `SyncProvider`, `SyncDirection`, `ConflictResolution` enums
+- Added built-in workflows:
+  - `default_ralphx()` - 7 columns mapping to standard RalphX flow
+  - `jira_compatible()` - 5 columns matching Jira-style workflow
+- Added 33 unit tests covering serialization, builder patterns, equality
+- Exported from `domain/entities/mod.rs`
+
+**Commands run:**
+- `cargo test workflow:: --no-fail-fast` (33 tests passed)
+
+---
 
 ### 2026-01-24 19:13:38 - Create extensibility database migrations (Task 1)
 

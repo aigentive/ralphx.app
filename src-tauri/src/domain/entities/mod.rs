@@ -8,6 +8,7 @@ pub mod status;
 pub mod task;
 pub mod task_qa;
 pub mod types;
+pub mod workflow;
 
 // Re-export commonly used types for convenience
 pub use ideation::{
@@ -29,3 +30,8 @@ pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_qa::TaskQA;
 pub use types::{ChatMessageId, IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId};
+pub use workflow::{
+    ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,
+    ParseSyncDirectionError, SyncDirection, SyncProvider, SyncSettings, WorkflowColumn,
+    WorkflowDefaults, WorkflowId, WorkflowSchema,
+};
