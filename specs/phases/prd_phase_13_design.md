@@ -169,6 +169,7 @@ All design work MUST include:
       "  - Placeholder sections for each page (filled in by subsequent tasks)",
       "",
       "Reference specs/DESIGN_OVERHAUL_PLAN.md for detailed specifications",
+      "Reference specs/DESIGN.md in main CLAUDE.md file as the official design system to follow in all UI tasks - without details as claude will read it when needed."
       "Run npm run lint",
       "Commit: docs: create specs/DESIGN.md master design document"
     ],
