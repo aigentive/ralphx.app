@@ -448,7 +448,7 @@ CREATE TABLE agent_profiles (
       "Write system prompt for watchdog monitoring",
       "Keep file under 100 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -460,7 +460,7 @@ CREATE TABLE agent_profiles (
       "Write system prompt for planning and coordination",
       "Keep file under 100 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -472,7 +472,7 @@ CREATE TABLE agent_profiles (
       "Write system prompt for deep research tasks",
       "Keep file under 100 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -485,7 +485,7 @@ CREATE TABLE agent_profiles (
       "Document testing standards (RTL, mocking)",
       "Keep file under 150 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -498,7 +498,7 @@ CREATE TABLE agent_profiles (
       "Document TypeScript testing patterns (Vitest)",
       "Keep file under 150 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -511,7 +511,7 @@ CREATE TABLE agent_profiles (
       "Document performance considerations",
       "Keep file under 150 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -524,7 +524,7 @@ CREATE TABLE agent_profiles (
       "Document synthesis patterns",
       "Keep file under 150 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -537,7 +537,7 @@ CREATE TABLE agent_profiles (
       "Document atomic commit principles",
       "Keep file under 150 lines"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -549,7 +549,7 @@ CREATE TABLE agent_profiles (
       "Create hooks/scripts/lint-fix.sh placeholder",
       "Verify JSON is valid"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -559,7 +559,7 @@ CREATE TABLE agent_profiles (
       "Add empty mcpServers object (placeholder for future MCP integrations)",
       "Verify JSON is valid"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -572,7 +572,7 @@ CREATE TABLE agent_profiles (
       "Implement serde traits",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -600,7 +600,7 @@ CREATE TABLE agent_profiles (
       "Implement detect_poor_task_definition() function",
       "Run cargo test to verify all detection patterns"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -613,7 +613,7 @@ CREATE TABLE agent_profiles (
       "Implement action_for_severity() function",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
