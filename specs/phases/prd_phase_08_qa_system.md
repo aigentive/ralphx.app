@@ -575,7 +575,7 @@ All tasks require TDD:
       "Document output format (JSON with acceptance_criteria and qa_steps)",
       "Include guidelines for testability and specificity"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
