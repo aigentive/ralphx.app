@@ -450,7 +450,7 @@ All tasks require TDD:
       "Create .claude/skills/agent-browser/SKILL.md with all commands documented",
       "Verify skill structure follows Claude Code skill format"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "setup",
@@ -461,7 +461,7 @@ All tasks require TDD:
       "Include: open, close, snapshot, screenshot, click, fill, get, is, wait, drag",
       "Verify JSON is valid"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
