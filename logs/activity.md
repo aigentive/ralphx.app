@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:20:56
+**Last Updated:** 2026-01-24 07:21:37
 **Phase:** Data Layer
-**Tasks Completed:** 4 / 20
-**Current Task:** Add InternalStatus string conversion methods
+**Tasks Completed:** 5 / 20
+**Current Task:** Implement Task::from_row for SQLite deserialization
 
 ---
 
@@ -1354,6 +1354,20 @@ Phase 1: Foundation (no dependencies)
 - Phase 1 status → "complete"
 - currentPhase → 2
 - Phase 2 status → "active"
+
+---
+
+### 2026-01-24 07:21:37 - Add InternalStatus string conversion methods (Already Complete)
+
+**What was done:**
+- Verified InternalStatus already has Display and FromStr traits from Phase 1
+- Display trait uses as_str() for snake_case output
+- FromStr parses all 14 snake_case status strings
+- All variants round-trip correctly (tested in existing tests)
+- No additional work needed - marking as complete
+
+**Files verified:**
+- `src-tauri/src/domain/entities/status.rs` - already has Display, FromStr, as_str()
 
 ---
 

@@ -614,7 +614,7 @@ Use `async_trait` crate for async methods in traits. This adds some overhead but
       "Ensure all 14 status variants round-trip correctly",
       "Verify all tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
