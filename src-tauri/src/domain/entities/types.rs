@@ -23,6 +23,11 @@ pub struct TaskQAId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct IdeationSessionId(pub String);
 
+/// A unique identifier for a TaskProposal
+/// Uses newtype pattern to prevent accidentally using other IDs where TaskProposalId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaskProposalId(pub String);
+
 impl TaskId {
     /// Creates a new TaskId with a random UUID v4
     pub fn new() -> Self {
@@ -138,6 +143,36 @@ impl Default for IdeationSessionId {
 }
 
 impl std::fmt::Display for IdeationSessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TaskProposalId {
+    /// Creates a new TaskProposalId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates a TaskProposalId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for TaskProposalId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for TaskProposalId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -429,6 +464,93 @@ mod tests {
     #[test]
     fn ideation_session_id_default_creates_new() {
         let id = IdeationSessionId::default();
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    // ===== TaskProposalId Tests =====
+
+    #[test]
+    fn task_proposal_id_new_generates_valid_uuid() {
+        let id = TaskProposalId::new();
+        assert_eq!(id.as_str().len(), 36);
+        assert!(id.as_str().chars().filter(|c| *c == '-').count() == 4);
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    #[test]
+    fn task_proposal_id_new_generates_unique_ids() {
+        let ids: HashSet<String> = (0..100).map(|_| TaskProposalId::new().0).collect();
+        assert_eq!(ids.len(), 100, "All generated TaskProposalIds should be unique");
+    }
+
+    #[test]
+    fn task_proposal_id_from_string_preserves_value() {
+        let original = "proposal-custom-id";
+        let id = TaskProposalId::from_string(original);
+        assert_eq!(id.as_str(), "proposal-custom-id");
+    }
+
+    #[test]
+    fn task_proposal_id_from_string_accepts_string() {
+        let id = TaskProposalId::from_string("owned-proposal".to_string());
+        assert_eq!(id.as_str(), "owned-proposal");
+    }
+
+    #[test]
+    fn task_proposal_id_equality_works() {
+        let id1 = TaskProposalId::from_string("prop-abc");
+        let id2 = TaskProposalId::from_string("prop-abc");
+        let id3 = TaskProposalId::from_string("prop-xyz");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn task_proposal_id_clone_works() {
+        let id1 = TaskProposalId::new();
+        let id2 = id1.clone();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn task_proposal_id_hash_works() {
+        let id = TaskProposalId::from_string("proposal-test");
+        let mut set = HashSet::new();
+        set.insert(id.clone());
+        assert!(set.contains(&id));
+    }
+
+    #[test]
+    fn task_proposal_id_display_works() {
+        let id = TaskProposalId::from_string("proposal-display");
+        assert_eq!(format!("{}", id), "proposal-display");
+    }
+
+    #[test]
+    fn task_proposal_id_debug_works() {
+        let id = TaskProposalId::from_string("proposal-debug");
+        let debug_str = format!("{:?}", id);
+        assert!(debug_str.contains("proposal-debug"));
+    }
+
+    #[test]
+    fn task_proposal_id_serializes_to_json() {
+        let id = TaskProposalId::from_string("proposal-serialize");
+        let json = serde_json::to_string(&id).expect("Should serialize");
+        assert_eq!(json, "\"proposal-serialize\"");
+    }
+
+    #[test]
+    fn task_proposal_id_deserializes_from_json() {
+        let json = "\"proposal-deserialize\"";
+        let id: TaskProposalId = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(id.as_str(), "proposal-deserialize");
+    }
+
+    #[test]
+    fn task_proposal_id_default_creates_new() {
+        let id = TaskProposalId::default();
         assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
     }
 }

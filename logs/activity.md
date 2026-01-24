@@ -1,14 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:28:00
+**Last Updated:** 2026-01-24 15:38:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 2 / 50
-**Current Task:** Implement TaskProposal Rust domain entity
+**Tasks Completed:** 3 / 50
+**Current Task:** Implement PriorityAssessment domain types
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:38:00 - Implement TaskProposal Rust domain entity
+
+**What was done:**
+- Added to `src-tauri/src/domain/entities/ideation.rs`:
+  - `Priority` enum (Critical, High, Medium, Low) with FromStr/Display
+  - `Complexity` enum (Trivial, Simple, Moderate, Complex, VeryComplex)
+  - `ProposalStatus` enum (Pending, Accepted, Rejected, Modified)
+  - `TaskCategory` enum with 12 variants (Setup, Feature, Fix, etc.)
+  - `PriorityFactors` struct for scoring breakdown
+  - `TaskProposal` struct with 20 fields
+  - Methods: effective_priority, accept, reject, set_user_priority, link_to_task, toggle_selection
+  - `from_row` method for SQLite deserialization
+- Added `TaskProposalId` newtype to `types.rs`
+- Updated `domain/entities/mod.rs` exports
+- Added 54 new tests (12 for TaskProposalId, 42 for proposal types)
+
+**Commands run:**
+- `cargo test --lib ideation::` (83 tests passed)
+- `cargo test --lib` (1498 tests passed)
+
+---
 
 ### 2026-01-24 15:28:00 - Implement IdeationSession Rust domain entity
 
