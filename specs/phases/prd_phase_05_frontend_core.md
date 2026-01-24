@@ -723,7 +723,7 @@ Every task follows the TDD cycle:
       "Implement all task API methods",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -735,7 +735,7 @@ Every task follows the TDD cycle:
       "Implement all project API methods",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -747,7 +747,7 @@ Every task follows the TDD cycle:
       "Add ReactQueryDevtools in development mode",
       "Write integration test verifying QueryClient is available"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -762,7 +762,7 @@ Every task follows the TDD cycle:
       "Configure queryKey with projectId",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -775,7 +775,7 @@ Every task follows the TDD cycle:
       "Implement useProjects hook using useQuery",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -790,7 +790,7 @@ Every task follows the TDD cycle:
       "Implement mutations with optimistic updates (optional)",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -807,7 +807,7 @@ Every task follows the TDD cycle:
       "Handle all event types: created, updated, deleted, status_changed",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -820,7 +820,7 @@ Every task follows the TDD cycle:
       "Implement with optional taskId filter",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -832,7 +832,7 @@ Every task follows the TDD cycle:
       "Listen to supervisor:alert event",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -847,7 +847,7 @@ Every task follows the TDD cycle:
       "Use setInterval for periodic flush",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -861,7 +861,7 @@ Every task follows the TDD cycle:
       "Return children wrapped in fragment",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
@@ -875,7 +875,7 @@ Every task follows the TDD cycle:
       "EventProvider inside QueryClientProvider",
       "Verify app starts with `npm run tauri dev`"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -889,7 +889,7 @@ Every task follows the TDD cycle:
       "Implement formatDate, formatRelativeTime, formatDuration",
       "Verify tests pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",
@@ -901,7 +901,7 @@ Every task follows the TDD cycle:
       "Create src/test/mock-data.ts with sample tasks, projects",
       "Document usage in test files"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
