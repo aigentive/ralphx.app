@@ -13,6 +13,13 @@ describe("uiStore", () => {
       loading: {},
       confirmation: null,
       activeQuestion: null,
+      executionStatus: {
+        isPaused: false,
+        runningCount: 0,
+        maxConcurrent: 2,
+        queuedCount: 0,
+        canStartTask: true,
+      },
     });
   });
 
@@ -264,6 +271,76 @@ describe("uiStore", () => {
 
       const state = useUiStore.getState();
       expect(state.activeQuestion?.multiSelect).toBe(true);
+    });
+  });
+
+  describe("execution state", () => {
+    it("initializes with default execution state", () => {
+      const state = useUiStore.getState();
+      expect(state.executionStatus).toEqual({
+        isPaused: false,
+        runningCount: 0,
+        maxConcurrent: 2,
+        queuedCount: 0,
+        canStartTask: true,
+      });
+    });
+
+    it("updates execution status", () => {
+      useUiStore.getState().setExecutionStatus({
+        isPaused: true,
+        runningCount: 1,
+        maxConcurrent: 2,
+        queuedCount: 3,
+        canStartTask: false,
+      });
+
+      const state = useUiStore.getState();
+      expect(state.executionStatus.isPaused).toBe(true);
+      expect(state.executionStatus.runningCount).toBe(1);
+      expect(state.executionStatus.queuedCount).toBe(3);
+      expect(state.executionStatus.canStartTask).toBe(false);
+    });
+
+    it("sets paused state directly", () => {
+      useUiStore.getState().setExecutionPaused(true);
+
+      const state = useUiStore.getState();
+      expect(state.executionStatus.isPaused).toBe(true);
+
+      useUiStore.getState().setExecutionPaused(false);
+      expect(useUiStore.getState().executionStatus.isPaused).toBe(false);
+    });
+
+    it("updates running count", () => {
+      useUiStore.getState().setExecutionRunningCount(2);
+
+      const state = useUiStore.getState();
+      expect(state.executionStatus.runningCount).toBe(2);
+    });
+
+    it("updates queued count", () => {
+      useUiStore.getState().setExecutionQueuedCount(5);
+
+      const state = useUiStore.getState();
+      expect(state.executionStatus.queuedCount).toBe(5);
+    });
+
+    it("partial update preserves other fields", () => {
+      useUiStore.getState().setExecutionStatus({
+        isPaused: true,
+        runningCount: 1,
+        maxConcurrent: 4,
+        queuedCount: 10,
+        canStartTask: false,
+      });
+
+      useUiStore.getState().setExecutionPaused(false);
+
+      const state = useUiStore.getState();
+      expect(state.executionStatus.isPaused).toBe(false);
+      expect(state.executionStatus.runningCount).toBe(1);
+      expect(state.executionStatus.queuedCount).toBe(10);
     });
   });
 });

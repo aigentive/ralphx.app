@@ -905,7 +905,7 @@ interface AskUserQuestionResponse {
       "Create useStopExecution hook",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

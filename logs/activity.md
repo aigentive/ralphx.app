@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:17:30
+**Last Updated:** 2026-01-24 14:19:30
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 34 / 51
-**Current Task:** Implement execution control store and hooks
+**Tasks Completed:** 35 / 51
+**Current Task:** Implement task injection functionality
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:19:30 - Implement execution control store and hooks
+
+**What was done:**
+- Added execution API wrappers to `src/lib/tauri.ts`:
+  - `ExecutionStatusResponseSchema` for runtime validation
+  - `ExecutionCommandResponseSchema` for pause/resume/stop responses
+  - `api.execution.getStatus()`, `api.execution.pause()`, `api.execution.resume()`, `api.execution.stop()`
+- Updated `src/stores/uiStore.ts`:
+  - Added `executionStatus: ExecutionStatusResponse` to state with defaults
+  - Added actions: `setExecutionStatus()`, `setExecutionPaused()`, `setExecutionRunningCount()`, `setExecutionQueuedCount()`
+- Created `src/hooks/useExecutionControl.ts` with three hooks:
+  - `useExecutionStatus()`: TanStack Query hook for fetching execution status with auto-refresh (5s interval, on window focus)
+  - `usePauseExecution()`: Mutation hook with `toggle()`, `pause()`, `resume()` methods
+  - `useStopExecution()`: Mutation hook with `stop()` method and `canStop` computed property
+- Added `executionKeys` query key factory for cache management
+- Created `src/hooks/useExecutionControl.test.tsx` with 23 tests:
+  - Query key generation tests
+  - useExecutionStatus tests (fetch, store sync, convenience accessors, error handling)
+  - usePauseExecution tests (toggle, pause, resume, pending state, error handling)
+  - useStopExecution tests (stop, pending state, error handling, canStop computed)
+- Updated `src/stores/uiStore.test.ts` with 6 new execution state tests
+
+**Commands run:**
+- `npm run test -- src/stores/uiStore.test.ts` (27 tests passed)
+- `npm run test -- src/hooks/useExecutionControl.test.tsx` (23 tests passed)
+- `npm run typecheck` (passed)
+- `npm run test -- --run` (1359 tests passed)
+
+---
 
 ### 2026-01-24 14:17:30 - Implement Tauri commands for execution control
 
