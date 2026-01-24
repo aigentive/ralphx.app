@@ -665,7 +665,7 @@ interface AskUserQuestionResponse {
       "Implement getTaskStateHistory(taskId) function",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -678,7 +678,7 @@ interface AskUserQuestionResponse {
       "Implement getFixTaskAttempts(taskId) function",
       "Run npm run test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

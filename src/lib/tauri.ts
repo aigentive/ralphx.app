@@ -19,6 +19,9 @@ import {
   AcceptanceCriteriaTypeSchema,
   QAStepStatusSchema,
   QAOverallStatusSchema,
+  ReviewerTypeSchema,
+  ReviewStatusSchema,
+  ReviewOutcomeSchema,
 } from "@/types";
 
 /**
@@ -156,6 +159,99 @@ export interface UpdateQASettingsInput {
   qa_prep_enabled?: boolean;
   browser_testing_enabled?: boolean;
   browser_testing_url?: string;
+}
+
+// ============================================================================
+// Review Response Schemas (matching Rust responses)
+// ============================================================================
+
+/**
+ * Review response from Rust
+ * Note: field names use snake_case as that's what Rust serde produces
+ */
+export const ReviewResponseSchema = z.object({
+  id: z.string(),
+  project_id: z.string(),
+  task_id: z.string(),
+  reviewer_type: ReviewerTypeSchema,
+  status: ReviewStatusSchema,
+  notes: z.string().nullable().optional(),
+  created_at: z.string(),
+  completed_at: z.string().nullable().optional(),
+});
+
+export type ReviewResponse = z.infer<typeof ReviewResponseSchema>;
+
+/**
+ * Review action response from Rust
+ */
+export const ReviewActionResponseSchema = z.object({
+  id: z.string(),
+  review_id: z.string(),
+  action_type: z.string(),
+  target_task_id: z.string().nullable().optional(),
+  created_at: z.string(),
+});
+
+export type ReviewActionResponse = z.infer<typeof ReviewActionResponseSchema>;
+
+/**
+ * Review note response from Rust (state history)
+ */
+export const ReviewNoteResponseSchema = z.object({
+  id: z.string(),
+  task_id: z.string(),
+  reviewer: ReviewerTypeSchema,
+  outcome: ReviewOutcomeSchema,
+  notes: z.string().nullable().optional(),
+  created_at: z.string(),
+});
+
+export type ReviewNoteResponse = z.infer<typeof ReviewNoteResponseSchema>;
+
+/**
+ * Fix task attempts response from Rust
+ */
+export const FixTaskAttemptsResponseSchema = z.object({
+  task_id: z.string(),
+  attempt_count: z.number().int().nonnegative(),
+});
+
+export type FixTaskAttemptsResponse = z.infer<typeof FixTaskAttemptsResponseSchema>;
+
+/**
+ * List schemas for array responses
+ */
+const ReviewListResponseSchema = z.array(ReviewResponseSchema);
+const ReviewNoteListResponseSchema = z.array(ReviewNoteResponseSchema);
+
+/**
+ * Input types for review operations
+ */
+export interface ApproveReviewInput {
+  review_id: string;
+  notes?: string;
+}
+
+export interface RequestChangesInput {
+  review_id: string;
+  notes: string;
+  fix_description?: string;
+}
+
+export interface RejectReviewInput {
+  review_id: string;
+  notes: string;
+}
+
+export interface ApproveFixTaskInput {
+  fix_task_id: string;
+}
+
+export interface RejectFixTaskInput {
+  fix_task_id: string;
+  feedback: string;
+  original_task_id: string;
 }
 
 /**
@@ -334,5 +430,89 @@ export const api = {
      */
     skip: (taskId: string) =>
       typedInvoke("skip_qa", { taskId }, TaskQAResponseSchema),
+  },
+
+  reviews: {
+    /**
+     * Get all pending reviews for a project
+     * @param projectId The project ID
+     * @returns Array of pending reviews
+     */
+    getPending: (projectId: string) =>
+      typedInvoke("get_pending_reviews", { project_id: projectId }, ReviewListResponseSchema),
+
+    /**
+     * Get a single review by ID
+     * @param reviewId The review ID
+     * @returns The review or null if not found
+     */
+    getById: (reviewId: string) =>
+      typedInvoke("get_review_by_id", { review_id: reviewId }, ReviewResponseSchema.nullable()),
+
+    /**
+     * Get all reviews for a task
+     * @param taskId The task ID
+     * @returns Array of reviews for the task
+     */
+    getByTaskId: (taskId: string) =>
+      typedInvoke("get_reviews_by_task_id", { task_id: taskId }, ReviewListResponseSchema),
+
+    /**
+     * Get task state history (review notes)
+     * @param taskId The task ID
+     * @returns Array of review notes (state transitions)
+     */
+    getTaskStateHistory: (taskId: string) =>
+      typedInvoke("get_task_state_history", { task_id: taskId }, ReviewNoteListResponseSchema),
+
+    /**
+     * Approve a pending review
+     * @param input Approval input with review_id and optional notes
+     * @returns void on success
+     */
+    approve: (input: ApproveReviewInput) =>
+      typedInvoke("approve_review", { input }, z.void()),
+
+    /**
+     * Request changes on a pending review
+     * @param input Request changes input with review_id, notes, and optional fix_description
+     * @returns The created fix task ID if fix_description provided, otherwise null
+     */
+    requestChanges: (input: RequestChangesInput) =>
+      typedInvoke("request_changes", { input }, z.string().nullable()),
+
+    /**
+     * Reject a pending review
+     * @param input Rejection input with review_id and notes
+     * @returns void on success
+     */
+    reject: (input: RejectReviewInput) =>
+      typedInvoke("reject_review", { input }, z.void()),
+  },
+
+  fixTasks: {
+    /**
+     * Approve a fix task (allows it to be executed)
+     * @param input Approval input with fix_task_id
+     * @returns void on success
+     */
+    approve: (input: ApproveFixTaskInput) =>
+      typedInvoke("approve_fix_task", { input }, z.void()),
+
+    /**
+     * Reject a fix task with feedback
+     * @param input Rejection input with fix_task_id, feedback, and original_task_id
+     * @returns The new fix task ID if under max attempts, otherwise null (moved to backlog)
+     */
+    reject: (input: RejectFixTaskInput) =>
+      typedInvoke("reject_fix_task", { input }, z.string().nullable()),
+
+    /**
+     * Get the number of fix attempts for a task
+     * @param taskId The task ID
+     * @returns Fix task attempts response with task_id and attempt_count
+     */
+    getAttempts: (taskId: string) =>
+      typedInvoke("get_fix_task_attempts", { task_id: taskId }, FixTaskAttemptsResponseSchema),
   },
 } as const;
