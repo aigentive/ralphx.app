@@ -500,7 +500,7 @@ pub struct MockNotifier {
       "Add #[action] enter_ready for QA prep spawning",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -515,7 +515,7 @@ pub struct MockNotifier {
       "Add enter_executing action to spawn worker and emit events",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -535,7 +535,7 @@ pub struct MockNotifier {
       "Add entry actions for each state",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -551,7 +551,7 @@ pub struct MockNotifier {
       "Add entry actions",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
@@ -566,7 +566,7 @@ pub struct MockNotifier {
       "Add entry actions for each",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
