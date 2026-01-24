@@ -15,6 +15,7 @@ import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailView } from "@/components/tasks/TaskDetailView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { IdeationView } from "@/components/Ideation";
+import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
@@ -108,6 +109,25 @@ function IdeationIcon() {
   );
 }
 
+function GearIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M16.2 10a6.2 6.2 0 01-.1 1.2l2.1 1.6a.5.5 0 01.1.6l-2 3.5a.5.5 0 01-.6.2l-2.5-1a6.5 6.5 0 01-2.1 1.2l-.4 2.6a.5.5 0 01-.5.4h-4a.5.5 0 01-.5-.4l-.4-2.6a6.5 6.5 0 01-2.1-1.2l-2.5 1a.5.5 0 01-.6-.2l-2-3.5a.5.5 0 01.1-.6l2.1-1.6a6.2 6.2 0 010-2.4L.6 5.7a.5.5 0 01-.1-.6l2-3.5a.5.5 0 01.6-.2l2.5 1a6.5 6.5 0 012.1-1.2l.4-2.6a.5.5 0 01.5-.4h4a.5.5 0 01.5.4l.4 2.6a6.5 6.5 0 012.1 1.2l2.5-1a.5.5 0 01.6.2l2 3.5a.5.5 0 01-.1.6l-2.1 1.6c.1.4.1.8.1 1.2z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // Transform API messages to component-compatible format
 function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null }>): ChatMessageType[] {
   return messages.map((msg) => ({
@@ -184,7 +204,7 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Keyboard shortcuts for view switching (Cmd+1 for Kanban, Cmd+2 for Ideation)
+  // Keyboard shortcuts for view switching (Cmd+1 for Kanban, Cmd+2 for Ideation, Cmd+3 for Extensibility)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
@@ -194,6 +214,9 @@ function AppContent() {
         } else if (e.key === "2") {
           e.preventDefault();
           setCurrentView("ideation");
+        } else if (e.key === "3") {
+          e.preventDefault();
+          setCurrentView("extensibility");
         }
       }
     };
@@ -390,6 +413,24 @@ function AppContent() {
               <IdeationIcon />
               <span className="text-sm font-medium">Ideation</span>
             </button>
+            <button
+              onClick={() => setCurrentView("extensibility")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                backgroundColor: currentView === "extensibility"
+                  ? "var(--bg-elevated)"
+                  : "transparent",
+                color: currentView === "extensibility"
+                  ? "var(--accent-primary)"
+                  : "var(--text-secondary)",
+              }}
+              data-testid="nav-extensibility"
+              aria-current={currentView === "extensibility" ? "page" : undefined}
+              title="Extensibility (⌘3)"
+            >
+              <GearIcon />
+              <span className="text-sm font-medium">Extensibility</span>
+            </button>
           </nav>
         </div>
         <div className="flex items-center gap-3">
@@ -483,6 +524,7 @@ function AppContent() {
                 isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending || orchestratorMessage.isPending}
               />
             )}
+            {currentView === "extensibility" && <ExtensibilityView />}
           </div>
           {/* ExecutionControlBar at bottom (only show in kanban view) */}
           {currentView === "kanban" && (

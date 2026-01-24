@@ -1562,7 +1562,7 @@ All tasks require tests written before implementation:
       "Verify anti-AI-slop styling (warm orange, no purple gradients)",
       "Save screenshots to screenshots/phase_11_*.png"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
