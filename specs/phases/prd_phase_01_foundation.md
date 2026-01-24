@@ -766,7 +766,7 @@ Every task follows the TDD cycle:
       "Add placeholder text confirming app works",
       "Verify visual appearance with `npm run tauri dev`"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
