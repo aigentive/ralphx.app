@@ -1482,7 +1482,7 @@ All tasks require tests written before implementation:
       "Show toast notification on successful activation",
       "Run npm test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "testing",

@@ -1,14 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 22:15:30
+**Last Updated:** 2026-01-24 22:21:42
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 56 / 63
-**Current Task:** Integrate methodology activation with app state
+**Tasks Completed:** 57 / 63
+**Current Task:** Integration test: Workflow CRUD and column rendering
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:21:42 - Integrate methodology activation with app state (Task 57)
+
+**What was done:**
+- Created `src/hooks/useMethodologyActivation.ts` with features:
+  - `activate(methodologyId)` - Activates methodology, updates stores, invalidates queries
+  - `deactivate(methodologyId)` - Deactivates methodology, restores default workflow
+  - `isActivating` - Loading state during activation/deactivation
+  - `activeMethodology` - Selector for currently active methodology
+  - Converts API response (snake_case) to store types (camelCase)
+  - Shows success/error toast notifications via uiStore
+  - Invalidates workflow and methodology queries for automatic data refresh
+- Created `src/hooks/useMethodologyActivation.test.ts` with 12 comprehensive tests covering:
+  - API calls for activate/deactivate
+  - Methodology store updates
+  - Success notifications on activation/deactivation
+  - Error notifications on failure
+  - Loading state (isActivating) during async operations
+  - Response return values
+  - Active methodology selector
+- Updated `src/components/ExtensibilityView.tsx`:
+  - Integrated `useMethodologies` hook to fetch methodology data
+  - Integrated `useMethodologyActivation` hook for activation/deactivation
+  - Added `convertMethodologyResponse` helper to transform API response to UI types
+  - Wired up `MethodologyBrowser` with real data and handlers
+- Updated `src/components/ExtensibilityView.test.tsx`:
+  - Added mocks for `useMethodologies` and `useMethodologyActivation` hooks
+  - Wrapped renders in `QueryClientProvider` for TanStack Query support
+
+**Commands run:**
+- `npm test -- src/hooks/useMethodologyActivation.test.ts --run` - 12 tests passed
+- `npm test -- src/components/ExtensibilityView.test.tsx --run` - 17 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 22:15:30 - Create ExtensibilityView for settings/configuration (Task 56)
 

@@ -12,6 +12,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement } from "react";
 import { ExtensibilityView } from "./ExtensibilityView";
 
 // Mock child components
@@ -31,6 +33,36 @@ vi.mock("@/components/methodologies/MethodologyBrowser", () => ({
   MethodologyBrowser: () => <div data-testid="methodology-browser">MethodologyBrowser</div>,
 }));
 
+// Mock hooks
+vi.mock("@/hooks/useMethodologies", () => ({
+  useMethodologies: () => ({ data: [], isLoading: false, error: null }),
+}));
+
+vi.mock("@/hooks/useMethodologyActivation", () => ({
+  useMethodologyActivation: () => ({
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    isActivating: false,
+    activeMethodology: null,
+  }),
+}));
+
+// Test query client
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient();
+  return render(
+    createElement(QueryClientProvider, { client: queryClient }, ui)
+  );
+}
+
 describe("ExtensibilityView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,17 +74,17 @@ describe("ExtensibilityView", () => {
 
   describe("rendering", () => {
     it("renders component with testid", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByTestId("extensibility-view")).toBeInTheDocument();
     });
 
     it("renders tab navigation", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByTestId("tab-navigation")).toBeInTheDocument();
     });
 
     it("renders all four tabs", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByTestId("tab-workflows")).toBeInTheDocument();
       expect(screen.getByTestId("tab-artifacts")).toBeInTheDocument();
       expect(screen.getByTestId("tab-research")).toBeInTheDocument();
@@ -60,7 +92,7 @@ describe("ExtensibilityView", () => {
     });
 
     it("displays tab labels", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByText("Workflows")).toBeInTheDocument();
       expect(screen.getByText("Artifacts")).toBeInTheDocument();
       expect(screen.getByText("Research")).toBeInTheDocument();
@@ -74,13 +106,13 @@ describe("ExtensibilityView", () => {
 
   describe("default tab", () => {
     it("shows Workflows tab as active by default", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       const workflowsTab = screen.getByTestId("tab-workflows");
       expect(workflowsTab).toHaveAttribute("aria-selected", "true");
     });
 
     it("renders Workflows content by default", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByTestId("workflow-editor")).toBeInTheDocument();
     });
   });
@@ -91,7 +123,7 @@ describe("ExtensibilityView", () => {
 
   describe("tab switching", () => {
     it("switches to Artifacts tab when clicked", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       fireEvent.click(screen.getByTestId("tab-artifacts"));
 
       expect(screen.getByTestId("tab-artifacts")).toHaveAttribute("aria-selected", "true");
@@ -100,7 +132,7 @@ describe("ExtensibilityView", () => {
     });
 
     it("switches to Research tab when clicked", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       fireEvent.click(screen.getByTestId("tab-research"));
 
       expect(screen.getByTestId("tab-research")).toHaveAttribute("aria-selected", "true");
@@ -108,7 +140,7 @@ describe("ExtensibilityView", () => {
     });
 
     it("switches to Methodologies tab when clicked", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       fireEvent.click(screen.getByTestId("tab-methodologies"));
 
       expect(screen.getByTestId("tab-methodologies")).toHaveAttribute("aria-selected", "true");
@@ -116,7 +148,7 @@ describe("ExtensibilityView", () => {
     });
 
     it("hides previous tab content when switching", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByTestId("workflow-editor")).toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId("tab-artifacts"));
@@ -131,22 +163,22 @@ describe("ExtensibilityView", () => {
 
   describe("accessibility", () => {
     it("uses tablist role for navigation", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByRole("tablist")).toBeInTheDocument();
     });
 
     it("uses tab role for each tab", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getAllByRole("tab")).toHaveLength(4);
     });
 
     it("uses tabpanel role for content", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       expect(screen.getByRole("tabpanel")).toBeInTheDocument();
     });
 
     it("links tab to tabpanel via aria-controls", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       const workflowsTab = screen.getByTestId("tab-workflows");
       const panel = screen.getByRole("tabpanel");
       expect(workflowsTab.getAttribute("aria-controls")).toBe(panel.id);
@@ -159,20 +191,20 @@ describe("ExtensibilityView", () => {
 
   describe("styling", () => {
     it("uses design tokens for background", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       const view = screen.getByTestId("extensibility-view");
       expect(view).toHaveStyle({ backgroundColor: "var(--bg-base)" });
     });
 
     it("uses accent color for active tab", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       const activeTab = screen.getByTestId("tab-workflows");
       const style = activeTab.getAttribute("style");
       expect(style).toContain("border-color: var(--accent-primary)");
     });
 
     it("uses muted color for inactive tabs", () => {
-      render(<ExtensibilityView />);
+      renderWithProviders(<ExtensibilityView />);
       const inactiveTab = screen.getByTestId("tab-artifacts");
       const style = inactiveTab.getAttribute("style");
       expect(style).toContain("border-color: transparent");
