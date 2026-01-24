@@ -1,20 +1,20 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 0,
+  "currentPhase": 1,
   "phases": [
     {
       "phase": 0,
       "name": "PRD Generation",
       "prd": "specs/prd.md",
-      "status": "active",
+      "status": "complete",
       "description": "Generate phase-specific PRDs from master plan"
     },
     {
       "phase": 1,
       "name": "Foundation",
       "prd": "specs/phases/prd_phase_01_foundation.md",
-      "status": "pending",
+      "status": "active",
       "description": "Project setup, Tauri, React, TypeScript, basic types"
     },
     {
