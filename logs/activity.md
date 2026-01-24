@@ -1,14 +1,27 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:07:00
+**Last Updated:** 2026-01-25 00:09:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 2 / 21
-**Current Task:** Move agent-browser skill to ralphx-plugin/
+**Tasks Completed:** 3 / 21
+**Current Task:** Update Rust AgentProfile to use plugin pattern
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:09:00 - Move agent-browser skill to ralphx-plugin/ (Task 3)
+
+**What was done:**
+- Moved `.claude/skills/agent-browser/` to `ralphx-plugin/skills/`
+- Verified qa-executor agent references `agent-browser` by name (correct for plugin)
+- Plugin skills folder now has 9 skill directories
+- Remaining in `.claude/skills/`: 3 ideation-related files (will be handled in Task 7)
+
+**Commands run:**
+- `mv .claude/skills/agent-browser ralphx-plugin/skills/`
+
+---
 
 ### 2026-01-25 00:07:00 - Move QA skills from .claude/ to ralphx-plugin/ (Task 2)
 
