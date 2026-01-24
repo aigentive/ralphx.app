@@ -736,7 +736,7 @@ All tasks require TDD:
       "Show failure details with expected vs actual",
       "Run npm test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
