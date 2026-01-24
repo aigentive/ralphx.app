@@ -21,6 +21,17 @@ Headless browser automation for visual verification of UI implementations.
 - `agent-browser snapshot -i -c` — Interactive + compact (best for verification)
 
 ### Screenshots
+
+**Naming Convention**: Use timestamp prefix for chronological ordering:
+```
+screenshots/YYYY-MM-DD_HH-MM-SS_[task-name].png
+```
+
+Example: `screenshots/2026-01-24_14-30-45_kanban-drag-drop.png`
+
+This ensures screenshots sort oldest→newest when browsing the folder.
+
+**Commands**:
 - `agent-browser screenshot "body" <path.png>` — Capture viewport
 - `agent-browser screenshot --full "body" <path.png>` — Full page screenshot
 
@@ -56,10 +67,10 @@ Headless browser automation for visual verification of UI implementations.
 2. Wait for Tauri to compile (can take 30-60 seconds first time)
 3. Open browser: `agent-browser open http://localhost:1420`
 4. Analyze page: `agent-browser snapshot -i -c`
-5. Capture proof: `agent-browser screenshot "body" screenshots/[task-name].png`
+5. Capture proof: `agent-browser screenshot "body" screenshots/$(date +%Y-%m-%d_%H-%M-%S)_[task-name].png`
 6. Test interactions if applicable
 7. Close: `agent-browser close`
-8. Verify screenshot exists: `ls -la screenshots/[task-name].png`
+8. Verify screenshot exists: `ls -la screenshots/` (should see timestamped file)
 
 **IMPORTANT**:
 - Task FAILS if no screenshot is captured
