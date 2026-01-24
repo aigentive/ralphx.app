@@ -615,7 +615,7 @@ All tasks require:
       "Create PriorityAssessment struct with all fields",
       "Export from domain/entities module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

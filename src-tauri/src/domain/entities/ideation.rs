@@ -745,6 +745,424 @@ fn parse_datetime_helper(s: String) -> DateTime<Utc> {
     Utc::now()
 }
 
+// ============================================================================
+// PriorityAssessment and detailed factor types
+// ============================================================================
+
+/// Factor for dependency analysis - tasks that unblock others get higher priority
+/// Max score: 30 points
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct DependencyFactor {
+    /// Score from 0-30 based on how many tasks this blocks
+    pub score: i32,
+    /// Number of tasks that depend on this one (blocked by this task)
+    pub blocks_count: i32,
+    /// Human-readable explanation (e.g., "Blocks 3 other tasks")
+    pub reason: String,
+}
+
+impl DependencyFactor {
+    /// Create a new dependency factor
+    pub fn new(score: i32, blocks_count: i32, reason: impl Into<String>) -> Self {
+        Self {
+            score: score.clamp(0, 30),
+            blocks_count,
+            reason: reason.into(),
+        }
+    }
+
+    /// Maximum possible score for this factor
+    pub const MAX_SCORE: i32 = 30;
+
+    /// Calculate score based on blocks count
+    /// 0 blocks = 0, 1 = 10, 2 = 18, 3 = 24, 4+ = 30
+    pub fn calculate(blocks_count: i32) -> Self {
+        let score = match blocks_count {
+            0 => 0,
+            1 => 10,
+            2 => 18,
+            3 => 24,
+            _ => 30,
+        };
+        let reason = if blocks_count == 0 {
+            "Does not block other tasks".to_string()
+        } else if blocks_count == 1 {
+            "Blocks 1 other task".to_string()
+        } else {
+            format!("Blocks {} other tasks", blocks_count)
+        };
+        Self::new(score, blocks_count, reason)
+    }
+}
+
+/// Factor for critical path analysis - tasks on the longest path get higher priority
+/// Max score: 25 points
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct CriticalPathFactor {
+    /// Score from 0-25 based on critical path position
+    pub score: i32,
+    /// Whether this task is on the critical path
+    pub is_on_critical_path: bool,
+    /// Length of the critical path this task is on
+    pub path_length: i32,
+    /// Human-readable explanation
+    pub reason: String,
+}
+
+impl CriticalPathFactor {
+    /// Create a new critical path factor
+    pub fn new(
+        score: i32,
+        is_on_critical_path: bool,
+        path_length: i32,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            score: score.clamp(0, 25),
+            is_on_critical_path,
+            path_length,
+            reason: reason.into(),
+        }
+    }
+
+    /// Maximum possible score for this factor
+    pub const MAX_SCORE: i32 = 25;
+
+    /// Calculate score based on critical path analysis
+    pub fn calculate(is_on_critical_path: bool, path_length: i32) -> Self {
+        if !is_on_critical_path {
+            return Self::new(0, false, 0, "Not on critical path");
+        }
+        // Score based on path length: longer paths = higher priority
+        let score = match path_length {
+            1 => 10,
+            2 => 15,
+            3 => 20,
+            _ => 25,
+        };
+        let reason = format!("On critical path of length {}", path_length);
+        Self::new(score, true, path_length, reason)
+    }
+}
+
+/// Factor for business value analysis - keyword-based importance detection
+/// Max score: 20 points
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct BusinessValueFactor {
+    /// Score from 0-20 based on detected keywords
+    pub score: i32,
+    /// Keywords detected that indicate importance (e.g., ["MVP", "core", "essential"])
+    pub keywords: Vec<String>,
+    /// Human-readable explanation
+    pub reason: String,
+}
+
+impl BusinessValueFactor {
+    /// Create a new business value factor
+    pub fn new(score: i32, keywords: Vec<String>, reason: impl Into<String>) -> Self {
+        Self {
+            score: score.clamp(0, 20),
+            keywords,
+            reason: reason.into(),
+        }
+    }
+
+    /// Maximum possible score for this factor
+    pub const MAX_SCORE: i32 = 20;
+
+    /// Keywords that indicate critical business value
+    pub const CRITICAL_KEYWORDS: &'static [&'static str] = &[
+        "critical",
+        "blocker",
+        "blocking",
+        "urgent",
+        "asap",
+        "emergency",
+        "must have",
+        "must-have",
+    ];
+
+    /// Keywords that indicate high business value
+    pub const HIGH_KEYWORDS: &'static [&'static str] = &[
+        "important",
+        "priority",
+        "essential",
+        "core",
+        "mvp",
+        "key",
+        "crucial",
+    ];
+
+    /// Keywords that indicate low business value
+    pub const LOW_KEYWORDS: &'static [&'static str] = &[
+        "nice to have",
+        "nice-to-have",
+        "optional",
+        "future",
+        "later",
+        "eventually",
+        "if time",
+    ];
+
+    /// Calculate score based on keywords found in text
+    pub fn calculate(text: &str) -> Self {
+        let text_lower = text.to_lowercase();
+        let mut detected = Vec::new();
+
+        // Check for critical keywords (high score)
+        for &kw in Self::CRITICAL_KEYWORDS {
+            if text_lower.contains(kw) {
+                detected.push(kw.to_string());
+            }
+        }
+        if !detected.is_empty() {
+            return Self::new(
+                20,
+                detected,
+                "Contains critical business value keywords".to_string(),
+            );
+        }
+
+        // Check for high keywords (medium-high score)
+        for &kw in Self::HIGH_KEYWORDS {
+            if text_lower.contains(kw) {
+                detected.push(kw.to_string());
+            }
+        }
+        if !detected.is_empty() {
+            return Self::new(
+                15,
+                detected,
+                "Contains high business value keywords".to_string(),
+            );
+        }
+
+        // Check for low keywords (low score)
+        for &kw in Self::LOW_KEYWORDS {
+            if text_lower.contains(kw) {
+                detected.push(kw.to_string());
+            }
+        }
+        if !detected.is_empty() {
+            return Self::new(
+                5,
+                detected,
+                "Contains low priority keywords".to_string(),
+            );
+        }
+
+        Self::new(10, vec![], "No business value keywords detected".to_string())
+    }
+}
+
+/// Factor for complexity analysis - simpler tasks score higher (quick wins first)
+/// Max score: 15 points
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComplexityFactor {
+    /// Score from 0-15 (simpler = higher score)
+    pub score: i32,
+    /// The complexity level
+    pub complexity: Complexity,
+    /// Human-readable explanation
+    pub reason: String,
+}
+
+impl ComplexityFactor {
+    /// Create a new complexity factor
+    pub fn new(score: i32, complexity: Complexity, reason: impl Into<String>) -> Self {
+        Self {
+            score: score.clamp(0, 15),
+            complexity,
+            reason: reason.into(),
+        }
+    }
+
+    /// Maximum possible score for this factor
+    pub const MAX_SCORE: i32 = 15;
+
+    /// Calculate score based on complexity (inverse - simpler = higher)
+    pub fn calculate(complexity: Complexity) -> Self {
+        let (score, reason) = match complexity {
+            Complexity::Trivial => (15, "Quick win - trivial task"),
+            Complexity::Simple => (12, "Low effort - simple task"),
+            Complexity::Moderate => (9, "Moderate complexity"),
+            Complexity::Complex => (5, "Complex task - higher effort"),
+            Complexity::VeryComplex => (2, "Very complex - significant effort required"),
+        };
+        Self::new(score, complexity, reason)
+    }
+}
+
+/// Factor for user hint analysis - explicit urgency signals from user
+/// Max score: 10 points
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct UserHintFactor {
+    /// Score from 0-10 based on detected hints
+    pub score: i32,
+    /// Hints detected from user input (e.g., ["urgent", "blocker", "ASAP"])
+    pub hints: Vec<String>,
+    /// Human-readable explanation
+    pub reason: String,
+}
+
+impl UserHintFactor {
+    /// Create a new user hint factor
+    pub fn new(score: i32, hints: Vec<String>, reason: impl Into<String>) -> Self {
+        Self {
+            score: score.clamp(0, 10),
+            hints,
+            reason: reason.into(),
+        }
+    }
+
+    /// Maximum possible score for this factor
+    pub const MAX_SCORE: i32 = 10;
+
+    /// Urgency hint keywords
+    pub const URGENCY_HINTS: &'static [&'static str] = &[
+        "urgent",
+        "asap",
+        "immediately",
+        "now",
+        "today",
+        "deadline",
+        "blocker",
+        "blocking",
+        "priority",
+        "first",
+    ];
+
+    /// Calculate score based on hints found in user input
+    pub fn calculate(text: &str) -> Self {
+        let text_lower = text.to_lowercase();
+        let mut detected = Vec::new();
+
+        for &hint in Self::URGENCY_HINTS {
+            if text_lower.contains(hint) {
+                detected.push(hint.to_string());
+            }
+        }
+
+        if detected.is_empty() {
+            return Self::new(0, vec![], "No urgency hints from user".to_string());
+        }
+
+        let score = (detected.len() as i32 * 3).min(10);
+        let reason = format!("User indicated urgency: {}", detected.join(", "));
+        Self::new(score, detected, reason)
+    }
+}
+
+/// Container for all priority factors used in priority assessment
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct PriorityAssessmentFactors {
+    /// Dependency factor (0-30 points)
+    pub dependency_factor: DependencyFactor,
+    /// Critical path factor (0-25 points)
+    pub critical_path_factor: CriticalPathFactor,
+    /// Business value factor (0-20 points)
+    pub business_value_factor: BusinessValueFactor,
+    /// Complexity factor (0-15 points)
+    pub complexity_factor: ComplexityFactor,
+    /// User hint factor (0-10 points)
+    pub user_hint_factor: UserHintFactor,
+}
+
+impl PriorityAssessmentFactors {
+    /// Maximum possible total score (30 + 25 + 20 + 15 + 10 = 100)
+    pub const MAX_TOTAL_SCORE: i32 = 100;
+
+    /// Calculate total score from all factors
+    pub fn total_score(&self) -> i32 {
+        self.dependency_factor.score
+            + self.critical_path_factor.score
+            + self.business_value_factor.score
+            + self.complexity_factor.score
+            + self.user_hint_factor.score
+    }
+}
+
+/// Complete priority assessment result for a task proposal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PriorityAssessment {
+    /// ID of the proposal this assessment is for
+    pub proposal_id: TaskProposalId,
+    /// Final suggested priority level
+    pub suggested_priority: Priority,
+    /// Numeric priority score (0-100)
+    pub priority_score: i32,
+    /// Human-readable explanation of the priority
+    pub priority_reason: String,
+    /// Detailed breakdown of all factors
+    pub factors: PriorityAssessmentFactors,
+}
+
+impl PriorityAssessment {
+    /// Create a new priority assessment
+    pub fn new(
+        proposal_id: TaskProposalId,
+        factors: PriorityAssessmentFactors,
+    ) -> Self {
+        let priority_score = factors.total_score();
+        let suggested_priority = Self::score_to_priority(priority_score);
+        let priority_reason = Self::generate_reason(&factors, priority_score);
+
+        Self {
+            proposal_id,
+            suggested_priority,
+            priority_score,
+            priority_reason,
+            factors,
+        }
+    }
+
+    /// Convert a numeric score (0-100) to a Priority level
+    /// 80-100: Critical
+    /// 60-79: High
+    /// 40-59: Medium
+    /// 0-39: Low
+    pub fn score_to_priority(score: i32) -> Priority {
+        match score {
+            80..=100 => Priority::Critical,
+            60..=79 => Priority::High,
+            40..=59 => Priority::Medium,
+            _ => Priority::Low,
+        }
+    }
+
+    /// Generate a human-readable reason from factors
+    fn generate_reason(factors: &PriorityAssessmentFactors, score: i32) -> String {
+        let mut reasons = Vec::new();
+
+        if factors.dependency_factor.score > 0 {
+            reasons.push(factors.dependency_factor.reason.clone());
+        }
+        if factors.critical_path_factor.score > 10 {
+            reasons.push(factors.critical_path_factor.reason.clone());
+        }
+        if factors.business_value_factor.score >= 15 {
+            reasons.push(factors.business_value_factor.reason.clone());
+        }
+        if factors.complexity_factor.score >= 12 {
+            reasons.push(factors.complexity_factor.reason.clone());
+        }
+        if factors.user_hint_factor.score > 0 {
+            reasons.push(factors.user_hint_factor.reason.clone());
+        }
+
+        if reasons.is_empty() {
+            format!("Standard priority (score: {})", score)
+        } else {
+            reasons.join("; ")
+        }
+    }
+
+    /// Create a default/neutral assessment for a proposal
+    pub fn neutral(proposal_id: TaskProposalId) -> Self {
+        Self::new(proposal_id, PriorityAssessmentFactors::default())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1863,5 +2281,560 @@ mod tests {
             .unwrap();
 
         assert_eq!(proposal.category, TaskCategory::Feature);
+    }
+
+    // ==========================================
+    // DependencyFactor Tests
+    // ==========================================
+
+    #[test]
+    fn dependency_factor_default() {
+        let factor = DependencyFactor::default();
+        assert_eq!(factor.score, 0);
+        assert_eq!(factor.blocks_count, 0);
+        assert_eq!(factor.reason, "");
+    }
+
+    #[test]
+    fn dependency_factor_new() {
+        let factor = DependencyFactor::new(25, 3, "Blocks 3 tasks");
+        assert_eq!(factor.score, 25);
+        assert_eq!(factor.blocks_count, 3);
+        assert_eq!(factor.reason, "Blocks 3 tasks");
+    }
+
+    #[test]
+    fn dependency_factor_new_clamps_score() {
+        let factor = DependencyFactor::new(50, 5, "Too high");
+        assert_eq!(factor.score, 30); // Max is 30
+    }
+
+    #[test]
+    fn dependency_factor_calculate_zero_blocks() {
+        let factor = DependencyFactor::calculate(0);
+        assert_eq!(factor.score, 0);
+        assert_eq!(factor.blocks_count, 0);
+        assert_eq!(factor.reason, "Does not block other tasks");
+    }
+
+    #[test]
+    fn dependency_factor_calculate_one_block() {
+        let factor = DependencyFactor::calculate(1);
+        assert_eq!(factor.score, 10);
+        assert_eq!(factor.blocks_count, 1);
+        assert_eq!(factor.reason, "Blocks 1 other task");
+    }
+
+    #[test]
+    fn dependency_factor_calculate_two_blocks() {
+        let factor = DependencyFactor::calculate(2);
+        assert_eq!(factor.score, 18);
+        assert_eq!(factor.blocks_count, 2);
+    }
+
+    #[test]
+    fn dependency_factor_calculate_three_blocks() {
+        let factor = DependencyFactor::calculate(3);
+        assert_eq!(factor.score, 24);
+    }
+
+    #[test]
+    fn dependency_factor_calculate_many_blocks() {
+        let factor = DependencyFactor::calculate(10);
+        assert_eq!(factor.score, 30); // Max score
+        assert_eq!(factor.blocks_count, 10);
+    }
+
+    #[test]
+    fn dependency_factor_serializes() {
+        let factor = DependencyFactor::new(20, 2, "Test");
+        let json = serde_json::to_string(&factor).unwrap();
+        assert!(json.contains("\"score\":20"));
+        assert!(json.contains("\"blocks_count\":2"));
+    }
+
+    #[test]
+    fn dependency_factor_deserializes() {
+        let json = r#"{"score":15,"blocks_count":1,"reason":"Blocks 1 task"}"#;
+        let factor: DependencyFactor = serde_json::from_str(json).unwrap();
+        assert_eq!(factor.score, 15);
+        assert_eq!(factor.blocks_count, 1);
+    }
+
+    #[test]
+    fn dependency_factor_max_score_constant() {
+        assert_eq!(DependencyFactor::MAX_SCORE, 30);
+    }
+
+    // ==========================================
+    // CriticalPathFactor Tests
+    // ==========================================
+
+    #[test]
+    fn critical_path_factor_default() {
+        let factor = CriticalPathFactor::default();
+        assert_eq!(factor.score, 0);
+        assert!(!factor.is_on_critical_path);
+        assert_eq!(factor.path_length, 0);
+    }
+
+    #[test]
+    fn critical_path_factor_new() {
+        let factor = CriticalPathFactor::new(20, true, 3, "On critical path");
+        assert_eq!(factor.score, 20);
+        assert!(factor.is_on_critical_path);
+        assert_eq!(factor.path_length, 3);
+    }
+
+    #[test]
+    fn critical_path_factor_new_clamps_score() {
+        let factor = CriticalPathFactor::new(50, true, 5, "Too high");
+        assert_eq!(factor.score, 25); // Max is 25
+    }
+
+    #[test]
+    fn critical_path_factor_calculate_not_on_path() {
+        let factor = CriticalPathFactor::calculate(false, 0);
+        assert_eq!(factor.score, 0);
+        assert!(!factor.is_on_critical_path);
+    }
+
+    #[test]
+    fn critical_path_factor_calculate_path_length_1() {
+        let factor = CriticalPathFactor::calculate(true, 1);
+        assert_eq!(factor.score, 10);
+        assert!(factor.is_on_critical_path);
+    }
+
+    #[test]
+    fn critical_path_factor_calculate_path_length_2() {
+        let factor = CriticalPathFactor::calculate(true, 2);
+        assert_eq!(factor.score, 15);
+    }
+
+    #[test]
+    fn critical_path_factor_calculate_path_length_3() {
+        let factor = CriticalPathFactor::calculate(true, 3);
+        assert_eq!(factor.score, 20);
+    }
+
+    #[test]
+    fn critical_path_factor_calculate_long_path() {
+        let factor = CriticalPathFactor::calculate(true, 10);
+        assert_eq!(factor.score, 25); // Max score
+    }
+
+    #[test]
+    fn critical_path_factor_serializes() {
+        let factor = CriticalPathFactor::new(15, true, 2, "On path");
+        let json = serde_json::to_string(&factor).unwrap();
+        assert!(json.contains("\"is_on_critical_path\":true"));
+        assert!(json.contains("\"path_length\":2"));
+    }
+
+    #[test]
+    fn critical_path_factor_max_score_constant() {
+        assert_eq!(CriticalPathFactor::MAX_SCORE, 25);
+    }
+
+    // ==========================================
+    // BusinessValueFactor Tests
+    // ==========================================
+
+    #[test]
+    fn business_value_factor_default() {
+        let factor = BusinessValueFactor::default();
+        assert_eq!(factor.score, 0);
+        assert!(factor.keywords.is_empty());
+    }
+
+    #[test]
+    fn business_value_factor_new() {
+        let factor = BusinessValueFactor::new(15, vec!["mvp".to_string()], "Contains MVP");
+        assert_eq!(factor.score, 15);
+        assert_eq!(factor.keywords.len(), 1);
+    }
+
+    #[test]
+    fn business_value_factor_new_clamps_score() {
+        let factor = BusinessValueFactor::new(50, vec![], "Too high");
+        assert_eq!(factor.score, 20); // Max is 20
+    }
+
+    #[test]
+    fn business_value_factor_calculate_critical_keywords() {
+        let factor = BusinessValueFactor::calculate("This is URGENT and blocking other work");
+        assert_eq!(factor.score, 20);
+        assert!(factor.keywords.contains(&"urgent".to_string()));
+        assert!(factor.keywords.contains(&"blocking".to_string()));
+    }
+
+    #[test]
+    fn business_value_factor_calculate_high_keywords() {
+        let factor = BusinessValueFactor::calculate("This is essential for the MVP");
+        assert_eq!(factor.score, 15);
+        assert!(factor.keywords.contains(&"essential".to_string()) || factor.keywords.contains(&"mvp".to_string()));
+    }
+
+    #[test]
+    fn business_value_factor_calculate_low_keywords() {
+        let factor = BusinessValueFactor::calculate("Nice to have feature for later");
+        assert_eq!(factor.score, 5);
+        assert!(factor.keywords.contains(&"nice to have".to_string()) || factor.keywords.contains(&"later".to_string()));
+    }
+
+    #[test]
+    fn business_value_factor_calculate_no_keywords() {
+        let factor = BusinessValueFactor::calculate("Just a regular task description");
+        assert_eq!(factor.score, 10);
+        assert!(factor.keywords.is_empty());
+    }
+
+    #[test]
+    fn business_value_factor_serializes() {
+        let factor = BusinessValueFactor::new(15, vec!["important".to_string()], "Has important");
+        let json = serde_json::to_string(&factor).unwrap();
+        assert!(json.contains("\"keywords\":[\"important\"]"));
+    }
+
+    #[test]
+    fn business_value_factor_max_score_constant() {
+        assert_eq!(BusinessValueFactor::MAX_SCORE, 20);
+    }
+
+    #[test]
+    fn business_value_factor_critical_keywords_exist() {
+        assert!(!BusinessValueFactor::CRITICAL_KEYWORDS.is_empty());
+        assert!(BusinessValueFactor::CRITICAL_KEYWORDS.contains(&"urgent"));
+        assert!(BusinessValueFactor::CRITICAL_KEYWORDS.contains(&"blocker"));
+    }
+
+    #[test]
+    fn business_value_factor_high_keywords_exist() {
+        assert!(!BusinessValueFactor::HIGH_KEYWORDS.is_empty());
+        assert!(BusinessValueFactor::HIGH_KEYWORDS.contains(&"important"));
+        assert!(BusinessValueFactor::HIGH_KEYWORDS.contains(&"mvp"));
+    }
+
+    #[test]
+    fn business_value_factor_low_keywords_exist() {
+        assert!(!BusinessValueFactor::LOW_KEYWORDS.is_empty());
+        assert!(BusinessValueFactor::LOW_KEYWORDS.contains(&"optional"));
+        assert!(BusinessValueFactor::LOW_KEYWORDS.contains(&"future"));
+    }
+
+    // ==========================================
+    // ComplexityFactor Tests
+    // ==========================================
+
+    #[test]
+    fn complexity_factor_default() {
+        let factor = ComplexityFactor::default();
+        assert_eq!(factor.score, 0);
+        assert_eq!(factor.complexity, Complexity::Moderate);
+    }
+
+    #[test]
+    fn complexity_factor_new() {
+        let factor = ComplexityFactor::new(12, Complexity::Simple, "Simple task");
+        assert_eq!(factor.score, 12);
+        assert_eq!(factor.complexity, Complexity::Simple);
+    }
+
+    #[test]
+    fn complexity_factor_new_clamps_score() {
+        let factor = ComplexityFactor::new(50, Complexity::Trivial, "Too high");
+        assert_eq!(factor.score, 15); // Max is 15
+    }
+
+    #[test]
+    fn complexity_factor_calculate_trivial() {
+        let factor = ComplexityFactor::calculate(Complexity::Trivial);
+        assert_eq!(factor.score, 15);
+        assert_eq!(factor.complexity, Complexity::Trivial);
+        assert!(factor.reason.contains("trivial"));
+    }
+
+    #[test]
+    fn complexity_factor_calculate_simple() {
+        let factor = ComplexityFactor::calculate(Complexity::Simple);
+        assert_eq!(factor.score, 12);
+    }
+
+    #[test]
+    fn complexity_factor_calculate_moderate() {
+        let factor = ComplexityFactor::calculate(Complexity::Moderate);
+        assert_eq!(factor.score, 9);
+    }
+
+    #[test]
+    fn complexity_factor_calculate_complex() {
+        let factor = ComplexityFactor::calculate(Complexity::Complex);
+        assert_eq!(factor.score, 5);
+    }
+
+    #[test]
+    fn complexity_factor_calculate_very_complex() {
+        let factor = ComplexityFactor::calculate(Complexity::VeryComplex);
+        assert_eq!(factor.score, 2);
+    }
+
+    #[test]
+    fn complexity_factor_serializes() {
+        let factor = ComplexityFactor::calculate(Complexity::Simple);
+        let json = serde_json::to_string(&factor).unwrap();
+        assert!(json.contains("\"complexity\":\"simple\""));
+    }
+
+    #[test]
+    fn complexity_factor_max_score_constant() {
+        assert_eq!(ComplexityFactor::MAX_SCORE, 15);
+    }
+
+    // ==========================================
+    // UserHintFactor Tests
+    // ==========================================
+
+    #[test]
+    fn user_hint_factor_default() {
+        let factor = UserHintFactor::default();
+        assert_eq!(factor.score, 0);
+        assert!(factor.hints.is_empty());
+    }
+
+    #[test]
+    fn user_hint_factor_new() {
+        let factor = UserHintFactor::new(8, vec!["urgent".to_string()], "User said urgent");
+        assert_eq!(factor.score, 8);
+        assert_eq!(factor.hints.len(), 1);
+    }
+
+    #[test]
+    fn user_hint_factor_new_clamps_score() {
+        let factor = UserHintFactor::new(50, vec![], "Too high");
+        assert_eq!(factor.score, 10); // Max is 10
+    }
+
+    #[test]
+    fn user_hint_factor_calculate_no_hints() {
+        let factor = UserHintFactor::calculate("Just a regular request");
+        assert_eq!(factor.score, 0);
+        assert!(factor.hints.is_empty());
+    }
+
+    #[test]
+    fn user_hint_factor_calculate_one_hint() {
+        let factor = UserHintFactor::calculate("I need this done ASAP");
+        assert_eq!(factor.score, 3);
+        assert!(factor.hints.contains(&"asap".to_string()));
+    }
+
+    #[test]
+    fn user_hint_factor_calculate_multiple_hints() {
+        let factor = UserHintFactor::calculate("This is urgent and blocking, do it first");
+        assert!(factor.score >= 6);
+        assert!(factor.hints.len() >= 2);
+    }
+
+    #[test]
+    fn user_hint_factor_calculate_max_score() {
+        let factor = UserHintFactor::calculate("urgent asap immediately now today deadline blocker");
+        assert_eq!(factor.score, 10); // Capped at max
+    }
+
+    #[test]
+    fn user_hint_factor_serializes() {
+        let factor = UserHintFactor::new(6, vec!["urgent".to_string(), "asap".to_string()], "User hints");
+        let json = serde_json::to_string(&factor).unwrap();
+        assert!(json.contains("\"hints\":["));
+    }
+
+    #[test]
+    fn user_hint_factor_max_score_constant() {
+        assert_eq!(UserHintFactor::MAX_SCORE, 10);
+    }
+
+    #[test]
+    fn user_hint_factor_urgency_hints_exist() {
+        assert!(!UserHintFactor::URGENCY_HINTS.is_empty());
+        assert!(UserHintFactor::URGENCY_HINTS.contains(&"urgent"));
+        assert!(UserHintFactor::URGENCY_HINTS.contains(&"asap"));
+    }
+
+    // ==========================================
+    // PriorityAssessmentFactors Tests
+    // ==========================================
+
+    #[test]
+    fn priority_assessment_factors_default() {
+        let factors = PriorityAssessmentFactors::default();
+        assert_eq!(factors.dependency_factor.score, 0);
+        assert_eq!(factors.critical_path_factor.score, 0);
+        assert_eq!(factors.business_value_factor.score, 0);
+        assert_eq!(factors.complexity_factor.score, 0);
+        assert_eq!(factors.user_hint_factor.score, 0);
+    }
+
+    #[test]
+    fn priority_assessment_factors_total_score() {
+        let factors = PriorityAssessmentFactors {
+            dependency_factor: DependencyFactor::new(20, 2, ""),
+            critical_path_factor: CriticalPathFactor::new(15, true, 2, ""),
+            business_value_factor: BusinessValueFactor::new(10, vec![], ""),
+            complexity_factor: ComplexityFactor::new(8, Complexity::Moderate, ""),
+            user_hint_factor: UserHintFactor::new(5, vec![], ""),
+        };
+        assert_eq!(factors.total_score(), 58);
+    }
+
+    #[test]
+    fn priority_assessment_factors_max_total() {
+        assert_eq!(PriorityAssessmentFactors::MAX_TOTAL_SCORE, 100);
+    }
+
+    #[test]
+    fn priority_assessment_factors_serializes() {
+        let factors = PriorityAssessmentFactors::default();
+        let json = serde_json::to_string(&factors).unwrap();
+        assert!(json.contains("\"dependency_factor\""));
+        assert!(json.contains("\"critical_path_factor\""));
+        assert!(json.contains("\"business_value_factor\""));
+        assert!(json.contains("\"complexity_factor\""));
+        assert!(json.contains("\"user_hint_factor\""));
+    }
+
+    // ==========================================
+    // PriorityAssessment Tests
+    // ==========================================
+
+    #[test]
+    fn priority_assessment_new() {
+        let proposal_id = TaskProposalId::new();
+        let factors = PriorityAssessmentFactors {
+            dependency_factor: DependencyFactor::calculate(2),
+            critical_path_factor: CriticalPathFactor::calculate(true, 3),
+            business_value_factor: BusinessValueFactor::calculate("This is essential"),
+            complexity_factor: ComplexityFactor::calculate(Complexity::Simple),
+            user_hint_factor: UserHintFactor::calculate("urgent"),
+        };
+
+        let assessment = PriorityAssessment::new(proposal_id.clone(), factors);
+
+        assert_eq!(assessment.proposal_id, proposal_id);
+        assert!(assessment.priority_score > 0);
+        assert!(!assessment.priority_reason.is_empty());
+    }
+
+    #[test]
+    fn priority_assessment_score_to_priority_critical() {
+        assert_eq!(PriorityAssessment::score_to_priority(100), Priority::Critical);
+        assert_eq!(PriorityAssessment::score_to_priority(85), Priority::Critical);
+        assert_eq!(PriorityAssessment::score_to_priority(80), Priority::Critical);
+    }
+
+    #[test]
+    fn priority_assessment_score_to_priority_high() {
+        assert_eq!(PriorityAssessment::score_to_priority(79), Priority::High);
+        assert_eq!(PriorityAssessment::score_to_priority(70), Priority::High);
+        assert_eq!(PriorityAssessment::score_to_priority(60), Priority::High);
+    }
+
+    #[test]
+    fn priority_assessment_score_to_priority_medium() {
+        assert_eq!(PriorityAssessment::score_to_priority(59), Priority::Medium);
+        assert_eq!(PriorityAssessment::score_to_priority(50), Priority::Medium);
+        assert_eq!(PriorityAssessment::score_to_priority(40), Priority::Medium);
+    }
+
+    #[test]
+    fn priority_assessment_score_to_priority_low() {
+        assert_eq!(PriorityAssessment::score_to_priority(39), Priority::Low);
+        assert_eq!(PriorityAssessment::score_to_priority(20), Priority::Low);
+        assert_eq!(PriorityAssessment::score_to_priority(0), Priority::Low);
+    }
+
+    #[test]
+    fn priority_assessment_neutral() {
+        let proposal_id = TaskProposalId::new();
+        let assessment = PriorityAssessment::neutral(proposal_id.clone());
+
+        assert_eq!(assessment.proposal_id, proposal_id);
+        assert_eq!(assessment.priority_score, 0);
+        assert_eq!(assessment.suggested_priority, Priority::Low);
+    }
+
+    #[test]
+    fn priority_assessment_serializes() {
+        let proposal_id = TaskProposalId::new();
+        let assessment = PriorityAssessment::neutral(proposal_id);
+        let json = serde_json::to_string(&assessment).unwrap();
+
+        assert!(json.contains("\"proposal_id\""));
+        assert!(json.contains("\"suggested_priority\""));
+        assert!(json.contains("\"priority_score\""));
+        assert!(json.contains("\"priority_reason\""));
+        assert!(json.contains("\"factors\""));
+    }
+
+    #[test]
+    fn priority_assessment_deserializes() {
+        let json = r#"{
+            "proposal_id": "prop-123",
+            "suggested_priority": "high",
+            "priority_score": 75,
+            "priority_reason": "Important task",
+            "factors": {
+                "dependency_factor": {"score": 20, "blocks_count": 2, "reason": "Blocks 2 tasks"},
+                "critical_path_factor": {"score": 15, "is_on_critical_path": true, "path_length": 2, "reason": "On path"},
+                "business_value_factor": {"score": 15, "keywords": ["important"], "reason": "High value"},
+                "complexity_factor": {"score": 12, "complexity": "simple", "reason": "Simple"},
+                "user_hint_factor": {"score": 6, "hints": ["urgent"], "reason": "User urgent"}
+            }
+        }"#;
+
+        let assessment: PriorityAssessment = serde_json::from_str(json).unwrap();
+
+        assert_eq!(assessment.proposal_id.as_str(), "prop-123");
+        assert_eq!(assessment.suggested_priority, Priority::High);
+        assert_eq!(assessment.priority_score, 75);
+        assert_eq!(assessment.factors.dependency_factor.score, 20);
+        assert_eq!(assessment.factors.critical_path_factor.path_length, 2);
+    }
+
+    #[test]
+    fn priority_assessment_roundtrip_serialization() {
+        let proposal_id = TaskProposalId::new();
+        let factors = PriorityAssessmentFactors {
+            dependency_factor: DependencyFactor::calculate(3),
+            critical_path_factor: CriticalPathFactor::calculate(true, 4),
+            business_value_factor: BusinessValueFactor::calculate("critical blocker"),
+            complexity_factor: ComplexityFactor::calculate(Complexity::Trivial),
+            user_hint_factor: UserHintFactor::calculate("urgent asap"),
+        };
+        let original = PriorityAssessment::new(proposal_id, factors);
+
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: PriorityAssessment = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.proposal_id, restored.proposal_id);
+        assert_eq!(original.suggested_priority, restored.suggested_priority);
+        assert_eq!(original.priority_score, restored.priority_score);
+        assert_eq!(original.factors.dependency_factor.score, restored.factors.dependency_factor.score);
+    }
+
+    #[test]
+    fn priority_assessment_high_score_yields_critical_priority() {
+        let proposal_id = TaskProposalId::new();
+        let factors = PriorityAssessmentFactors {
+            dependency_factor: DependencyFactor::new(30, 5, ""),
+            critical_path_factor: CriticalPathFactor::new(25, true, 5, ""),
+            business_value_factor: BusinessValueFactor::new(20, vec![], ""),
+            complexity_factor: ComplexityFactor::new(15, Complexity::Trivial, ""),
+            user_hint_factor: UserHintFactor::new(10, vec![], ""),
+        };
+        let assessment = PriorityAssessment::new(proposal_id, factors);
+
+        assert_eq!(assessment.priority_score, 100);
+        assert_eq!(assessment.suggested_priority, Priority::Critical);
     }
 }

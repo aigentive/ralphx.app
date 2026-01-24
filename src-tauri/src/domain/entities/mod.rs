@@ -11,10 +11,11 @@ pub mod types;
 
 // Re-export commonly used types for convenience
 pub use ideation::{
-    Complexity, IdeationSession, IdeationSessionBuilder, IdeationSessionStatus,
-    ParseComplexityError, ParseIdeationSessionStatusError, ParsePriorityError,
-    ParseProposalStatusError, ParseTaskCategoryError, Priority, PriorityFactors, ProposalStatus,
-    TaskCategory, TaskProposal,
+    BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
+    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, ParseComplexityError,
+    ParseIdeationSessionStatusError, ParsePriorityError, ParseProposalStatusError,
+    ParseTaskCategoryError, Priority, PriorityAssessment, PriorityAssessmentFactors,
+    PriorityFactors, ProposalStatus, TaskCategory, TaskProposal, UserHintFactor,
 };
 pub use project::{GitMode, Project};
 pub use review::{
