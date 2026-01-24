@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:06:44
+**Last Updated:** 2026-01-24 07:08:41
 **Phase:** Foundation
-**Tasks Completed:** 15 / 19
-**Current Task:** Implement Tauri invoke wrapper with type safety
+**Tasks Completed:** 16 / 19
+**Current Task:** Create design system foundation (CSS variables)
 
 ---
 
@@ -1211,6 +1211,32 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `package.json` - added zod dependency
+
+---
+
+### 2026-01-24 07:08:41 - Implement Tauri invoke wrapper with type safety
+
+**What was done:**
+- Created `src/lib/tauri.ts` with:
+  - `typedInvoke<T>()` - generic invoke wrapper with Zod validation
+  - `HealthResponseSchema` - Zod schema for health check response
+  - `api.health.check()` - typed wrapper for health_check command
+- Created `src/lib/tauri.test.ts` with 14 tests:
+  - typedInvoke tests for argument passing, validation, error handling
+  - HealthResponseSchema validation tests
+  - api.health.check integration tests
+- Updated `src/lib/index.ts` to export tauri module
+
+**Commands run:**
+- `npm run test:run` - 94 tests pass (14 new tauri tests)
+- `npm run typecheck` - passes
+
+**Files created:**
+- `src/lib/tauri.ts`
+- `src/lib/tauri.test.ts`
+
+**Files modified:**
+- `src/lib/index.ts` - added tauri export
 
 ---
 
