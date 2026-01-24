@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:12:00
+**Last Updated:** 2026-01-24 15:20:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 0 / 50
-**Current Task:** Create ideation database migrations
+**Tasks Completed:** 1 / 50
+**Current Task:** Implement IdeationSession Rust domain entity
 
 ---
 
 ## Session Log
+
+### 2026-01-24 15:20:00 - Create ideation database migrations
+
+**What was done:**
+- Created migrate_v11 in `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- Updated SCHEMA_VERSION from 10 to 11
+- Added 5 new tables for ideation system:
+  - `ideation_sessions`: session_id, project_id, title, status, timestamps
+  - `task_proposals`: 20 columns including priority scoring and complexity
+  - `proposal_dependencies`: with UNIQUE constraint and self-reference CHECK
+  - `chat_messages`: supports session, project, and task contexts with parent messages
+  - `task_dependencies`: for applied tasks with CASCADE deletes
+- Added indexes for efficient queries:
+  - ideation_sessions: project_id, status
+  - task_proposals: session_id, sort_order (composite)
+  - proposal_dependencies: proposal_id, depends_on_proposal_id
+  - chat_messages: session_id, project_id, task_id
+  - task_dependencies: task_id, depends_on_task_id
+- Added 25 new tests for migration v11:
+  - Table creation tests
+  - Column verification tests
+  - Index existence tests
+  - Cascade delete tests
+  - Constraint tests (UNIQUE, CHECK for self-reference)
+
+**Commands run:**
+- `cargo test --lib migrations::` (117 tests passed)
+- `cargo test --lib` (1391 tests passed)
+
+---
 
 ### 2026-01-24 15:12:00 - Phase 9 Complete
 

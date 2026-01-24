@@ -571,7 +571,7 @@ All tasks require:
       "Run migrations and verify with sqlite3 .schema",
       "Test foreign key constraints work correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
