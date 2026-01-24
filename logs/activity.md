@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 07:35:56
+**Last Updated:** 2026-01-24 07:39:12
 **Phase:** Data Layer
-**Tasks Completed:** 11 / 20
-**Current Task:** Implement SqliteTaskRepository CRUD operations
+**Tasks Completed:** 12 / 20
+**Current Task:** Implement SqliteTaskRepository status operations
 
 ---
 
@@ -1429,6 +1429,32 @@ Phase 1: Foundation (no dependencies)
 
 **Files modified:**
 - `src-tauri/src/infrastructure/sqlite/migrations.rs` - added v2 migration for task_blockers
+
+---
+
+### 2026-01-24 07:39:12 - Implement SqliteTaskRepository CRUD operations
+
+**What was done:**
+- Created `SqliteTaskRepository` struct with mutex-protected connection
+- Implemented all TaskRepository trait methods using rusqlite:
+  - `create`: INSERT with all task fields
+  - `get_by_id`: SELECT with from_row deserialization
+  - `get_by_project`: SELECT with ORDER BY priority DESC, created_at ASC
+  - `update`: UPDATE with all modifiable fields
+  - `delete`: DELETE by ID
+- Also implemented status and blocker operations (full trait):
+  - `get_by_status`, `persist_status_change`, `get_status_history`
+  - `get_next_executable`, `get_blockers`, `get_dependents`
+  - `add_blocker`, `resolve_blocker`
+- Transaction support for atomic status changes
+- Made `Task::parse_datetime` public for SQLite datetime parsing
+- Added 9 integration tests using in-memory SQLite
+- All 260 tests pass (9 new tests)
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs` - new file
+- `src-tauri/src/infrastructure/sqlite/mod.rs` - added module export
+- `src-tauri/src/domain/entities/task.rs` - made parse_datetime public
 
 ---
 
