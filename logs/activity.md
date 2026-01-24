@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 21:58:20
+**Last Updated:** 2026-01-24 22:00:27
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 49 / 63
-**Current Task:** Create ResearchLauncher component
+**Tasks Completed:** 50 / 63
+**Current Task:** Create ResearchProgress component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 22:00:27 - Create ResearchLauncher component (Task 50)
+
+**What was done:**
+- Created `src/components/research/ResearchLauncher.tsx` with features:
+  - Question, context, scope input fields
+  - Depth preset selector (quick-scan, standard, deep-dive, exhaustive)
+  - Custom depth option with iteration/timeout inputs
+  - Form validation (question required)
+  - Loading state support
+  - Uses design tokens for anti-AI-slop styling
+  - Component under 100 lines (90 lines)
+- Created `src/components/research/ResearchLauncher.test.tsx` with 26 comprehensive tests covering:
+  - Form field rendering
+  - Depth preset selection
+  - Custom depth inputs
+  - Form submission with brief and depth
+  - Validation (launch disabled without question)
+  - Loading state
+  - Accessibility (labels, radiogroup)
+  - Styling with design tokens
+
+**Commands run:**
+- `npm test -- src/components/research/ResearchLauncher.test.tsx --run` - 26 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 21:58:20 - Create ArtifactFlow component (Task 49)
 
