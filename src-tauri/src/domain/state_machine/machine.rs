@@ -6,6 +6,8 @@ use super::events::TaskEvent;
 use super::types::{FailedData, QaFailedData};
 #[allow(unused_imports)]
 use statig::prelude::*;
+use std::fmt;
+use std::str::FromStr;
 use tracing::{debug, info};
 
 /// The task state machine shared data (context)
@@ -346,6 +348,79 @@ impl State {
             State::Approved => "Approved",
             State::Failed(_) => "Failed",
             State::Cancelled => "Cancelled",
+        }
+    }
+
+    /// Returns the snake_case string representation for SQLite storage.
+    ///
+    /// This matches the InternalStatus as_str() format for consistency
+    /// with the tasks table internal_status column.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            State::Backlog => "backlog",
+            State::Ready => "ready",
+            State::Blocked => "blocked",
+            State::Executing => "executing",
+            State::ExecutionDone => "execution_done",
+            State::QaRefining => "qa_refining",
+            State::QaTesting => "qa_testing",
+            State::QaPassed => "qa_passed",
+            State::QaFailed(_) => "qa_failed",
+            State::PendingReview => "pending_review",
+            State::RevisionNeeded => "revision_needed",
+            State::Approved => "approved",
+            State::Failed(_) => "failed",
+            State::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// Error returned when parsing a State from a string fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseStateError {
+    pub invalid_value: String,
+}
+
+impl fmt::Display for ParseStateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid state: '{}'", self.invalid_value)
+    }
+}
+
+impl std::error::Error for ParseStateError {}
+
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for State {
+    type Err = ParseStateError;
+
+    /// Parses a snake_case string into a State.
+    ///
+    /// For states with local data (QaFailed, Failed), this returns the variant
+    /// with default data. To restore actual data, use the persistence helpers.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "backlog" => Ok(State::Backlog),
+            "ready" => Ok(State::Ready),
+            "blocked" => Ok(State::Blocked),
+            "executing" => Ok(State::Executing),
+            "execution_done" => Ok(State::ExecutionDone),
+            "qa_refining" => Ok(State::QaRefining),
+            "qa_testing" => Ok(State::QaTesting),
+            "qa_passed" => Ok(State::QaPassed),
+            "qa_failed" => Ok(State::QaFailed(QaFailedData::default())),
+            "pending_review" => Ok(State::PendingReview),
+            "revision_needed" => Ok(State::RevisionNeeded),
+            "approved" => Ok(State::Approved),
+            "failed" => Ok(State::Failed(FailedData::default())),
+            "cancelled" => Ok(State::Cancelled),
+            _ => Err(ParseStateError {
+                invalid_value: s.to_string(),
+            }),
         }
     }
 }
@@ -729,5 +804,210 @@ mod tests {
 
         // Dispatch triggers logging with this context
         let _ = machine.dispatch(&State::Backlog, &TaskEvent::Schedule);
+    }
+
+    // ==================
+    // State as_str tests
+    // ==================
+
+    #[test]
+    fn test_state_as_str_returns_snake_case() {
+        assert_eq!(State::Backlog.as_str(), "backlog");
+        assert_eq!(State::Ready.as_str(), "ready");
+        assert_eq!(State::Blocked.as_str(), "blocked");
+        assert_eq!(State::Executing.as_str(), "executing");
+        assert_eq!(State::ExecutionDone.as_str(), "execution_done");
+        assert_eq!(State::QaRefining.as_str(), "qa_refining");
+        assert_eq!(State::QaTesting.as_str(), "qa_testing");
+        assert_eq!(State::QaPassed.as_str(), "qa_passed");
+        assert_eq!(State::QaFailed(QaFailedData::default()).as_str(), "qa_failed");
+        assert_eq!(State::PendingReview.as_str(), "pending_review");
+        assert_eq!(State::RevisionNeeded.as_str(), "revision_needed");
+        assert_eq!(State::Approved.as_str(), "approved");
+        assert_eq!(State::Failed(FailedData::default()).as_str(), "failed");
+        assert_eq!(State::Cancelled.as_str(), "cancelled");
+    }
+
+    // ==================
+    // Display trait tests
+    // ==================
+
+    #[test]
+    fn test_state_display_uses_snake_case() {
+        assert_eq!(format!("{}", State::Backlog), "backlog");
+        assert_eq!(format!("{}", State::Ready), "ready");
+        assert_eq!(format!("{}", State::ExecutionDone), "execution_done");
+        assert_eq!(format!("{}", State::QaFailed(QaFailedData::default())), "qa_failed");
+        assert_eq!(format!("{}", State::Failed(FailedData::default())), "failed");
+    }
+
+    #[test]
+    fn test_state_display_all_14_states() {
+        let states = [
+            (State::Backlog, "backlog"),
+            (State::Ready, "ready"),
+            (State::Blocked, "blocked"),
+            (State::Executing, "executing"),
+            (State::ExecutionDone, "execution_done"),
+            (State::QaRefining, "qa_refining"),
+            (State::QaTesting, "qa_testing"),
+            (State::QaPassed, "qa_passed"),
+            (State::QaFailed(QaFailedData::default()), "qa_failed"),
+            (State::PendingReview, "pending_review"),
+            (State::RevisionNeeded, "revision_needed"),
+            (State::Approved, "approved"),
+            (State::Failed(FailedData::default()), "failed"),
+            (State::Cancelled, "cancelled"),
+        ];
+
+        for (state, expected) in states {
+            assert_eq!(format!("{}", state), expected);
+        }
+    }
+
+    // ==================
+    // FromStr trait tests
+    // ==================
+
+    #[test]
+    fn test_state_from_str_parses_all_14_states() {
+        assert_eq!("backlog".parse::<State>().unwrap(), State::Backlog);
+        assert_eq!("ready".parse::<State>().unwrap(), State::Ready);
+        assert_eq!("blocked".parse::<State>().unwrap(), State::Blocked);
+        assert_eq!("executing".parse::<State>().unwrap(), State::Executing);
+        assert_eq!("execution_done".parse::<State>().unwrap(), State::ExecutionDone);
+        assert_eq!("qa_refining".parse::<State>().unwrap(), State::QaRefining);
+        assert_eq!("qa_testing".parse::<State>().unwrap(), State::QaTesting);
+        assert_eq!("qa_passed".parse::<State>().unwrap(), State::QaPassed);
+        // QaFailed and Failed parse with default data
+        if let State::QaFailed(data) = "qa_failed".parse::<State>().unwrap() {
+            assert!(!data.has_failures());
+        } else {
+            panic!("Expected QaFailed");
+        }
+        assert_eq!("pending_review".parse::<State>().unwrap(), State::PendingReview);
+        assert_eq!("revision_needed".parse::<State>().unwrap(), State::RevisionNeeded);
+        assert_eq!("approved".parse::<State>().unwrap(), State::Approved);
+        if let State::Failed(data) = "failed".parse::<State>().unwrap() {
+            assert!(data.error.is_empty());
+        } else {
+            panic!("Expected Failed");
+        }
+        assert_eq!("cancelled".parse::<State>().unwrap(), State::Cancelled);
+    }
+
+    #[test]
+    fn test_state_from_str_invalid_returns_error() {
+        let result = "invalid_state".parse::<State>();
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert_eq!(err.invalid_value, "invalid_state");
+        assert_eq!(format!("{}", err), "invalid state: 'invalid_state'");
+    }
+
+    #[test]
+    fn test_state_from_str_empty_string_returns_error() {
+        let result = "".parse::<State>();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_state_from_str_case_sensitive() {
+        // FromStr should be case-sensitive (snake_case only)
+        let result = "Backlog".parse::<State>();
+        assert!(result.is_err());
+
+        let result = "BACKLOG".parse::<State>();
+        assert!(result.is_err());
+    }
+
+    // ==================
+    // Roundtrip tests
+    // ==================
+
+    #[test]
+    fn test_state_roundtrip_all_states() {
+        let states = [
+            State::Backlog,
+            State::Ready,
+            State::Blocked,
+            State::Executing,
+            State::ExecutionDone,
+            State::QaRefining,
+            State::QaTesting,
+            State::QaPassed,
+            State::QaFailed(QaFailedData::default()),
+            State::PendingReview,
+            State::RevisionNeeded,
+            State::Approved,
+            State::Failed(FailedData::default()),
+            State::Cancelled,
+        ];
+
+        for state in states {
+            let s = state.to_string();
+            let parsed: State = s.parse().expect("should parse");
+            // For states with data, we can only compare the variant name
+            assert_eq!(state.as_str(), parsed.as_str());
+        }
+    }
+
+    #[test]
+    fn test_state_with_data_loses_data_on_roundtrip() {
+        // States with local data will lose that data when parsed from string
+        // This is by design - the persistence layer stores data separately
+        let qa_failed = State::QaFailed(QaFailedData::single(
+            super::super::types::QaFailure::new("test", "error"),
+        ));
+        let s = qa_failed.to_string();
+        let parsed: State = s.parse().unwrap();
+
+        if let State::QaFailed(data) = parsed {
+            // Parsed state has default (empty) data
+            assert!(!data.has_failures());
+        } else {
+            panic!("Expected QaFailed");
+        }
+
+        let failed = State::Failed(FailedData::new("original error"));
+        let s = failed.to_string();
+        let parsed: State = s.parse().unwrap();
+
+        if let State::Failed(data) = parsed {
+            // Parsed state has default (empty) data
+            assert!(data.error.is_empty());
+        } else {
+            panic!("Expected Failed");
+        }
+    }
+
+    // ==================
+    // ParseStateError tests
+    // ==================
+
+    #[test]
+    fn test_parse_state_error_display() {
+        let err = ParseStateError {
+            invalid_value: "foo".to_string(),
+        };
+        assert_eq!(format!("{}", err), "invalid state: 'foo'");
+    }
+
+    #[test]
+    fn test_parse_state_error_is_std_error() {
+        let err = ParseStateError {
+            invalid_value: "test".to_string(),
+        };
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_parse_state_error_clone_and_eq() {
+        let err1 = ParseStateError {
+            invalid_value: "test".to_string(),
+        };
+        let err2 = err1.clone();
+        assert_eq!(err1, err2);
     }
 }
