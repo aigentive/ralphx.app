@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
+import type { ExecutionStatusResponse } from "@/lib/tauri";
 
 // ============================================================================
 // Types
@@ -64,6 +65,8 @@ interface UiState {
   confirmation: ConfirmationConfig | null;
   /** Active question from agent requiring user response */
   activeQuestion: AskUserQuestionPayload | null;
+  /** Current execution status (pause state, running/queued counts) */
+  executionStatus: ExecutionStatusResponse;
 }
 
 // ============================================================================
@@ -95,6 +98,14 @@ interface UiActions {
   setActiveQuestion: (question: AskUserQuestionPayload) => void;
   /** Clear active question after answer submitted */
   clearActiveQuestion: () => void;
+  /** Update full execution status from backend */
+  setExecutionStatus: (status: ExecutionStatusResponse) => void;
+  /** Set just the paused state */
+  setExecutionPaused: (isPaused: boolean) => void;
+  /** Set running count */
+  setExecutionRunningCount: (count: number) => void;
+  /** Set queued count */
+  setExecutionQueuedCount: (count: number) => void;
 }
 
 // ============================================================================
@@ -111,6 +122,13 @@ export const useUiStore = create<UiState & UiActions>()(
     loading: {},
     confirmation: null,
     activeQuestion: null,
+    executionStatus: {
+      isPaused: false,
+      runningCount: 0,
+      maxConcurrent: 2,
+      queuedCount: 0,
+      canStartTask: true,
+    },
 
     // Actions
     toggleSidebar: () =>
@@ -173,6 +191,26 @@ export const useUiStore = create<UiState & UiActions>()(
     clearActiveQuestion: () =>
       set((state) => {
         state.activeQuestion = null;
+      }),
+
+    setExecutionStatus: (status) =>
+      set((state) => {
+        state.executionStatus = status;
+      }),
+
+    setExecutionPaused: (isPaused) =>
+      set((state) => {
+        state.executionStatus.isPaused = isPaused;
+      }),
+
+    setExecutionRunningCount: (count) =>
+      set((state) => {
+        state.executionStatus.runningCount = count;
+      }),
+
+    setExecutionQueuedCount: (count) =>
+      set((state) => {
+        state.executionStatus.queuedCount = count;
       }),
   }))
 );

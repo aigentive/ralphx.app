@@ -254,6 +254,34 @@ export interface RejectFixTaskInput {
   original_task_id: string;
 }
 
+// ============================================================================
+// Execution Control Response Schemas (matching Rust responses)
+// ============================================================================
+
+/**
+ * Execution status response from Rust
+ * Note: field names use camelCase as that's what Rust serde produces with rename_all
+ */
+export const ExecutionStatusResponseSchema = z.object({
+  isPaused: z.boolean(),
+  runningCount: z.number().int().nonnegative(),
+  maxConcurrent: z.number().int().nonnegative(),
+  queuedCount: z.number().int().nonnegative(),
+  canStartTask: z.boolean(),
+});
+
+export type ExecutionStatusResponse = z.infer<typeof ExecutionStatusResponseSchema>;
+
+/**
+ * Execution command response from Rust (for pause/resume/stop)
+ */
+export const ExecutionCommandResponseSchema = z.object({
+  success: z.boolean(),
+  status: ExecutionStatusResponseSchema,
+});
+
+export type ExecutionCommandResponse = z.infer<typeof ExecutionCommandResponseSchema>;
+
 /**
  * API object containing all typed Tauri command wrappers
  */
@@ -514,5 +542,35 @@ export const api = {
      */
     getAttempts: (taskId: string) =>
       typedInvoke("get_fix_task_attempts", { task_id: taskId }, FixTaskAttemptsResponseSchema),
+  },
+
+  execution: {
+    /**
+     * Get current execution status
+     * @returns Execution status with pause state, running count, queued count
+     */
+    getStatus: () =>
+      typedInvoke("get_execution_status", {}, ExecutionStatusResponseSchema),
+
+    /**
+     * Pause execution (stops picking up new tasks)
+     * @returns Command response with success and current status
+     */
+    pause: () =>
+      typedInvoke("pause_execution", {}, ExecutionCommandResponseSchema),
+
+    /**
+     * Resume execution (allows picking up new tasks)
+     * @returns Command response with success and current status
+     */
+    resume: () =>
+      typedInvoke("resume_execution", {}, ExecutionCommandResponseSchema),
+
+    /**
+     * Stop execution (cancels current tasks and pauses)
+     * @returns Command response with success and current status
+     */
+    stop: () =>
+      typedInvoke("stop_execution", {}, ExecutionCommandResponseSchema),
   },
 } as const;
