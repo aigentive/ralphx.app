@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 20:10:00
+**Last Updated:** 2026-01-24 20:20:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 12 / 63
-**Current Task:** Implement ArtifactFlow and ArtifactFlowEngine Rust types
+**Tasks Completed:** 13 / 63
+**Current Task:** Implement ArtifactFlowRepository trait and SQLite implementation
 
 ---
 
 ## Session Log
+
+### 2026-01-24 20:20:00 - Implement ArtifactFlow and ArtifactFlowEngine Rust types (Task 13)
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/artifact_flow.rs`
+- Implemented `ArtifactFlowId` unique identifier type
+- Implemented `ArtifactFlowEvent` enum with 3 events:
+  - `artifact_created` - triggered when an artifact is created
+  - `task_completed` - triggered when a task is completed
+  - `process_completed` - triggered when a process is completed
+- Implemented `ArtifactFlowFilter` for filtering by artifact types and source bucket
+- Implemented `ArtifactFlowTrigger` with event and optional filter
+- Implemented `ArtifactFlowStep` enum with two variants:
+  - `Copy { to_bucket }` - copies artifact to another bucket
+  - `SpawnProcess { process_type, agent_profile }` - spawns a new process
+- Implemented `ArtifactFlow` struct with name, trigger, steps, is_active, created_at
+- Implemented `ArtifactFlowContext` for evaluating triggers with event and artifact info
+- Implemented `ArtifactFlowEvaluation` result type with flow_id, flow_name, and steps
+- Implemented `ArtifactFlowEngine` with:
+  - `register_flow`, `register_flows`, `unregister_flow` methods
+  - `evaluate_triggers` method that matches flows to contexts
+  - Convenience methods: `on_artifact_created`, `on_task_completed`, `on_process_completed`
+- Added `create_research_to_dev_flow()` function implementing the PRD example flow
+- Exported all types from `domain/entities/mod.rs`
+- Added 54 unit tests covering all types and functionality
+
+**Commands run:**
+- `cargo test artifact_flow --no-fail-fast` (54 tests passed)
+
+---
 
 ### 2026-01-24 20:10:00 - Implement SqliteArtifactBucketRepository + Seed Buckets (Tasks 11-12)
 
