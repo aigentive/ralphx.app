@@ -3,12 +3,11 @@
 
 pub mod project;
 pub mod status;
+pub mod task;
 pub mod types;
-
-// Placeholder modules - will be implemented in subsequent tasks
-// pub mod task;
 
 // Re-export commonly used types for convenience
 pub use project::{GitMode, Project};
 pub use status::{InternalStatus, ParseInternalStatusError};
+pub use task::Task;
 pub use types::{ProjectId, TaskId};
