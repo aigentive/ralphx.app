@@ -6,16 +6,13 @@
 
 <p align="center">
   <strong>The control room for autonomous AI development.</strong>
-  <br />
-  <sub>Born from the Ralph Wiggum Loop. Built for engineers who run AI in production.</sub>
 </p>
 
 <p align="center">
-  <a href="#youve-outgrown-the-terminal">Why</a> •
+  <a href="#the-core-insight">Core Insight</a> •
+  <a href="#architecture">Architecture</a> •
   <a href="#features">Features</a> •
-  <a href="#how-it-works">How It Works</a> •
-  <a href="#getting-started">Get Started</a> •
-  <a href="#architecture">Architecture</a>
+  <a href="#getting-started">Get Started</a>
 </p>
 
 <p align="center">
@@ -24,56 +21,99 @@
 
 ---
 
-## You've Outgrown the Terminal
+**RalphX** is a native Mac desktop application for orchestrating autonomous AI development. It evolved from the [Ralph Wiggum Loop](https://github.com/anthropics/claude-code/discussions/1574) pattern—fresh context per task, specialized agents, human checkpoints—but serves anyone running Claude for serious development work.
 
-You're already running Claude in loops. Fresh context per iteration.
-Tasks completing while you sleep. No context debt.
+### Core Concept
 
-But the interface hasn't caught up:
+You can run Claude CLI in multiple terminal tabs, but you're managing each session manually—no unified view, no coordination, no checkpoints. RalphX gives you a proper control room:
 
-- **Editing JSON by hand** — `manifest.json`, `prd.md`, task lists
-- **Tailing logs** — `tail -f logs/iteration_42.json` to see what's happening
-- **No mid-loop control** — Can't inject a task without stopping everything
-- **Parallel projects = chaos** — Multiple terminals, mental overhead
-- **Review after the fact** — Reading git diffs when it's already committed
+- Orchestrates Claude agents via the **Claude Agent SDK**
+- Stores project state in a **local database** (not scattered files)
+- Provides **real-time visibility** across all running agents
+- Supports **multiple concurrent projects** in one window
+- Enables **human-in-the-loop checkpoints** and task injection mid-execution
+- **Extensible architecture** supporting custom workflows, methodologies (BMAD, GSD), and Claude Code plugins
 
-The loop works. The tooling doesn't.
+### The Problem It Solves
 
----
-
-## Your Loop, With a Dashboard
-
-RalphX wraps your autonomous workflows in a native Mac app:
-
-| Instead of... | You get... |
-|---------------|------------|
-| `tail -f logs/` | Real-time activity stream |
-| Editing JSON task lists | Drag-and-drop Kanban |
-| Stopping the loop to add a task | Task injection mid-execution |
-| One project per terminal | Parallel projects, one window |
-| Reading diffs after commit | Review gates before merge |
-| Manual worktree setup | Automatic isolation per project |
-
-Same principles. Proper tooling.
+| Terminal Tabs | RalphX |
+|---------------|--------|
+| Editing specs and task lists by hand | Visual task management with Kanban |
+| Multiple terminals, mental overhead | Unified dashboard for all projects |
+| No visibility into what Claude is doing | Real-time activity stream |
+| Can't inject tasks mid-execution | Task injection without stopping |
+| Review diffs after the fact | Review gates before merge |
+| Manual git worktree setup | Automatic branch isolation |
 
 ---
 
-## Why "RalphX"?
+## Architecture
 
-RalphX evolved from the [Ralph Wiggum Loop](https://github.com/anthropics/claude-code/discussions/1574) — an autonomous development pattern that runs Claude iteratively with fresh context windows until all tasks complete.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     RalphX (Tauri Application)                   │
+├─────────────────────────────────────────────────────────────────┤
+│  Frontend (React + TypeScript)                                   │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐    │
+│  │ Project     │ │ Task Board  │ │ Agent Activity Stream   │    │
+│  │ Selector    │ │ (Kanban)    │ │                         │    │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘    │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐    │
+│  │ Ideation    │ │ Review      │ │ Settings                │    │
+│  │ Chat        │ │ Panel       │ │                         │    │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘    │
+├─────────────────────────────────────────────────────────────────┤
+│  Tauri IPC Bridge                                                │
+├─────────────────────────────────────────────────────────────────┤
+│  Backend (Rust)                                                  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐    │
+│  │ Agent       │ │ State       │ │ Database                │    │
+│  │ Scheduler   │ │ Machine     │ │ (SQLite)                │    │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘    │
+├─────────────────────────────────────────────────────────────────┤
+│  Claude Agent SDK (via Claude CLI)                               │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────┐  │
+│  │ Worker      │ │ Reviewer    │ │ Supervisor  │ │ Orchestr │  │
+│  │ (Sonnet)    │ │ (Sonnet)    │ │ (Haiku)     │ │ (Opus)   │  │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-The loop proved that AI can build entire systems autonomously.
-RalphX is the interface that makes it practical.
+**Design decisions:**
+
+| Aspect | Choice | Why |
+|--------|--------|-----|
+| Desktop | Tauri 2.0 | 10MB bundle, 30MB RAM (vs Electron's 100MB/300MB) |
+| Frontend | React 19 + TypeScript | Type-safe, fast iteration |
+| Backend | Rust | Performance, safety |
+| Database | SQLite | Local-first, portable, no server |
+| State | 14-status state machine | Predictable task lifecycle |
+| Updates | Event-driven | Real-time UI, no polling |
+
+---
+
+## Multi-Agent System
+
+**Specialized agents. Not one model doing everything.**
+
+| Agent | Role | Model | When It Runs |
+|-------|------|-------|--------------|
+| **Worker** | Writes code, runs tests, commits | Sonnet | Task execution |
+| **Reviewer** | Code review, security checks | Sonnet | After task completion |
+| **Supervisor** | Watchdog for infinite loops | Haiku | Continuous monitoring |
+| **Orchestrator** | Plans tasks, answers questions | Opus | Chat interface |
+| **QA Prep** | Generates acceptance criteria | Sonnet | Background, parallel with execution |
+| **QA Executor** | Browser testing, visual verification | Sonnet | After implementation |
+
+Each agent has its own tools, guardrails, and context. The Worker writes. The Reviewer critiques. The Supervisor intervenes if something goes wrong.
 
 ---
 
 ## Features
 
-### Task Management
+### Task Board (Kanban)
 
-**Drag-and-drop Kanban with auto-execution**
-
-Move a task to "Planned" and it executes automatically. No buttons to click.
+**Drag to Planned = auto-executes**
 
 | Column | What Happens |
 |--------|--------------|
@@ -85,24 +125,37 @@ Move a task to "Planned" and it executes automatically. No buttons to click.
 | In Review | AI verifying the work |
 | Done | Approved and complete |
 
+Move a task to "Planned" and it executes automatically. No buttons to click. Priority determined by position—drag to top means "do next."
+
 <p align="center">
   <img src="assets/kanban.png" alt="Kanban board" width="700" />
 </p>
 
 ---
 
-### Multi-Agent System
+### 14-State Task Lifecycle
 
-**Specialized agents. Not one model doing everything.**
+Every task moves through a predictable state machine:
 
-| Agent | Job | Model |
-|-------|-----|-------|
-| **Worker** | Writes code, runs tests, commits | Sonnet |
-| **Reviewer** | Code review, security checks | Sonnet |
-| **Supervisor** | Watchdog for infinite loops | Haiku |
-| **Orchestrator** | Plans tasks, answers questions | Opus |
+```
+backlog → ready → executing → execution_done
+                      ↓
+              qa_refining → qa_testing → qa_passed
+                                ↓
+                           qa_failed → revision_needed
+                                            ↓
+                                       (retry execution)
+                                            ↓
+              pending_review → approved (terminal)
+                    ↓
+               revision_needed → executing (rework)
+```
 
-Each agent has its own tools, guardrails, and context. The Worker writes. The Reviewer critiques. The Supervisor intervenes if something goes wrong.
+**Each state = one operation:**
+- `executing` = Worker agent running
+- `qa_testing` = Browser tests only
+- `pending_review` = AI reviewer only
+- No compound states. Full observability.
 
 ---
 
@@ -114,12 +167,16 @@ Open the chat panel (`⌘K`) and talk to the Orchestrator:
 
 > "Let's add user authentication with OAuth"
 
-The Orchestrator breaks it down into **proposals** with:
-- Priority scores
-- Dependency analysis
-- Effort estimates
+The Orchestrator breaks it down into **task proposals** with:
 
-Review, adjust, then apply to your Kanban with one click.
+| Field | Description |
+|-------|-------------|
+| Priority score | 0-100 based on dependencies, critical path, business value |
+| Dependencies | Which tasks must complete first |
+| Complexity | trivial / simple / moderate / complex / very_complex |
+| Acceptance criteria | Auto-generated steps |
+
+Review, adjust, apply to Kanban with one click.
 
 <p align="center">
   <img src="assets/ideation.png" alt="Ideation panel" width="700" />
@@ -127,15 +184,39 @@ Review, adjust, then apply to your Kanban with one click.
 
 ---
 
-### Real-Time Activity Stream
+### Review System
 
-**Watch Claude think**
+**Multi-level verification before anything reaches Done**
 
-Every tool call, file read, and decision—streamed live. Expand any action to see the full context. Search through history.
+| Stage | Reviewer | Action |
+|-------|----------|--------|
+| AI Review | Sonnet | Auto-triggered after execution |
+| Human Review | You | Escalated for security/architecture |
+| QA Testing | Browser agent | Visual verification against criteria |
 
-<p align="center">
-  <img src="assets/activity.gif" alt="Activity stream" width="700" />
-</p>
+**Review outcomes:**
+- **Approve** → Task moves to Done
+- **Request Changes** → Auto-creates fix task, re-executes
+- **Escalate** → Requires human decision
+
+Max 3 automatic fix attempts before requiring human intervention.
+
+---
+
+### Supervisor (Watchdog)
+
+**Lightweight monitoring, heavy intervention**
+
+The Supervisor doesn't run constantly. It monitors events and escalates only when needed:
+
+| Pattern | Trigger | Response |
+|---------|---------|----------|
+| Loop detected | Same tool called 3+ times | Inject guidance or pause |
+| Stuck | No file changes for 5+ minutes | Alert + analysis |
+| Runaway | Token usage > 50k without progress | Kill task |
+| Error loop | Same error repeating | Pause for investigation |
+
+Uses Haiku for analysis—fast and cheap. Only invoked when anomaly detected.
 
 ---
 
@@ -143,84 +224,77 @@ Every tool call, file read, and decision—streamed live. Expand any action to s
 
 **Your branch stays untouched**
 
-RalphX creates an isolated worktree for each project. AI commits go to a separate branch while you keep working on yours.
+RalphX creates an isolated worktree for each project:
 
 ```
 Your repo:        ~/projects/my-app (your branch)
 RalphX worktree:  ~/ralphx-worktrees/my-app (ralphx/feature-auth)
 ```
 
-When done: review the diff, merge, cherry-pick, or discard. Your choice.
+AI commits go to a separate branch. When done:
+- View the diff
+- Merge, cherry-pick, or discard
+- Your choice
 
 ---
 
-### QA & Review System
+### Activity Stream
 
-**Multi-level verification before anything reaches "Done"**
+**Watch Claude think**
 
-1. **AI Review** — Automatic code review after each task
-2. **Human Review** — Escalation for architecture or security decisions
-3. **QA Testing** — Acceptance criteria validation with test steps
+Every tool call, file read, and decision—streamed live. Events batched at 50ms for smooth UI. Expand any action to see full context.
 
-Tasks can't slip through. Every state change is logged with timestamps and reasons.
-
----
-
-### Extensible Workflows
-
-**Your methodology, your rules**
-
-Built-in support for:
-- **BMAD** — Breakthrough Method for Agile AI-Driven Development
-- **GSD** — Get Shit Done spec-driven workflows
-- **Custom** — Define your own columns, agents, and artifact flows
-
-Swap methodologies per project. The internal state machine handles the mapping.
+<p align="center">
+  <img src="assets/activity.gif" alt="Activity stream" width="700" />
+</p>
 
 ---
 
-## How It Works
+## Extensibility
 
-```
-1. Create a project     →  Point RalphX at any folder
-2. Add tasks            →  Chat, import, or create manually
-3. Drag to Planned      →  Task queues for execution
-4. Watch it work        →  Real-time activity stream
-5. Review and approve   →  AI or human checkpoints
-6. Merge when ready     →  Git handles the rest
-```
+### Workflows
 
-### Under the Hood
+Define your own Kanban columns while RalphX handles the underlying state machine. Want a simple 4-column board? A complex review pipeline? Your columns, your labels—the execution engine adapts.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      RalphX (Native Mac App)                     │
-├─────────────────────────────────────────────────────────────────┤
-│  React UI           │  Tauri Bridge      │  Rust Backend        │
-│  • Kanban board     │  • IPC events      │  • SQLite database   │
-│  • Activity stream  │  • Commands        │  • State machine     │
-│  • Chat interface   │  • Real-time sync  │  • Agent scheduler   │
-└─────────────────────┴────────────────────┴──────────────────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    │    Claude CLI       │
-                    │  (your credentials) │
-                    └─────────────────────┘
-```
+### Methodologies
 
-**Key design decisions:**
-- **Fresh context per task** — No accumulated context debt
-- **14-state lifecycle** — Predictable task progression
-- **Event-driven UI** — Real-time updates, no polling
-- **Local SQLite** — Your data stays on your machine
+Plug in structured development approaches:
+
+| Methodology | What It Brings |
+|-------------|----------------|
+| **BMAD** | 8 specialized agents, 4-phase delivery, document-driven workflow |
+| **GSD** | 11 agents, wave-based parallel execution, checkpoint protocols |
+| **Custom** | Define your own agent roles, phases, and artifacts |
+
+### Claude Code Plugin
+
+RalphX ships as a Claude Code plugin—agents, skills, and hooks you can use standalone or extend:
+- **Agents**: Worker, Reviewer, Supervisor, Orchestrator, QA
+- **Skills**: Coding standards, testing patterns, git workflow, review checklists
+- **Hooks**: Event-driven automation for your own workflows
 
 ---
 
-## Who It's For
+## Tech Stack
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| Desktop | Tauri | 2.0 |
+| Frontend | React | 19 |
+| Language | TypeScript | 5.8 |
+| State | Zustand + TanStack Query | Latest |
+| Backend | Rust | 1.83+ |
+| Database | SQLite (rusqlite) | 3.x |
+| AI | Claude Agent SDK | Latest |
+| Styling | Tailwind CSS | 4.x |
+
+---
+
+## Who This Is For
 
 **Engineers who already:**
 - Run Claude in autonomous loops
-- Understand fresh context windows and iteration patterns
+- Understand context engineering
 - Use git worktrees for parallel work
 - Want to scale from one project to many
 
@@ -231,9 +305,9 @@ Swap methodologies per project. The internal state machine handles the mapping.
 - A proper interface instead of shell scripts
 
 **Not for you if:**
-- You're looking for a Copilot replacement (this is orchestration, not autocomplete)
-- You want zero human oversight
-- You're on Windows/Linux (Mac-only for now)
+- Looking for a Copilot replacement (this is orchestration, not autocomplete)
+- Want zero human oversight
+- On Windows/Linux (Mac-only for now)
 
 ---
 
@@ -247,14 +321,9 @@ Swap methodologies per project. The internal state machine handles the mapping.
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/anthropics/ralphx
 cd ralphx
-
-# Install dependencies
 npm install
-
-# Build and run
 npm run tauri dev
 ```
 
@@ -264,24 +333,8 @@ npm run tauri dev
 2. Create a new project (select any folder)
 3. Press `⌘K` to open chat
 4. Describe what you want to build
-5. Apply the generated proposals to your Kanban
+5. Apply generated proposals to Kanban
 6. Drag tasks to "Planned" and watch them execute
-
----
-
-## Architecture
-
-| Layer | Technology | Why |
-|-------|------------|-----|
-| Desktop | **Tauri 2.0** | 10MB bundle, 30MB RAM |
-| Frontend | **React 19 + TypeScript** | Type-safe, fast iteration |
-| State | **Zustand + TanStack Query** | Minimal, reactive |
-| Backend | **Rust** | Performance, safety |
-| Database | **SQLite** | Local-first, portable |
-| AI | **Claude Agent SDK** | Native streaming |
-| Styling | **Tailwind CSS** | Utility-first |
-
-For the complete 9,000+ line specification, see [specs/plan.md](specs/plan.md).
 
 ---
 
@@ -295,6 +348,14 @@ For the complete 9,000+ line specification, see [specs/plan.md](specs/plan.md).
 | Ideation System | Complete |
 | Workflows & Methodologies | In Progress |
 | VM Isolation | Planned |
+
+---
+
+## Building RalphX
+
+**This app is built autonomously by the Ralph loop itself.**
+
+The specification lives in [`specs/plan.md`](specs/plan.md) (9,000+ lines). Tasks are ordered so progress is incremental and visible at each phase.
 
 ---
 
