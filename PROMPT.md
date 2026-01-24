@@ -77,10 +77,27 @@ Grep pattern="description.*[first few words of task]" path="[prd file]" output_m
 4. Fix ANY issue found in steps 2 or 3 using `/frontend-design` skill
 5. Only mark `passes: true` when everything in all three sections is satisfied
 
-## Step 4: Identify Task Type
+## Step 4: Read Required Context Documents
+
+**For Design Phases (13-14):** Before starting ANY task, you MUST read the design plan:
+```
+Read specs/DESIGN_OVERHAUL_PLAN.md
+```
+This contains:
+- Premium design principles (layered shadows, micro-interactions, typography)
+- Anti-AI-slop guardrails (no purple, no Inter, warm orange accent)
+- Reference apps (Linear, Raycast, Arc, Vercel)
+- Component patterns and shadcn/ui integration
+
+**For Phase 13 specifically:** Also read `specs/DESIGN.md` once it exists (created in Task 2).
+
+**For Phase 14 specifically:** You MUST read `specs/DESIGN.md` for the design requirements before implementing each page.
+
+## Step 5: Identify Task Type
 
 Check the task's `"category"` field:
 - If `"planning"` → Follow **PRD Generation Workflow**
+- If `"design"` or `"design-req"` or `"design-doc"` → Follow **Design Workflow** (read design plan first!)
 - Otherwise → Follow **Implementation Workflow**
 
 ---
@@ -153,6 +170,49 @@ Set `"passes": true` for this task in the active PRD
 git add .
 git commit -m "docs: create Phase N PRD - [phase name]"
 ```
+
+---
+
+## Design Workflow (category: design, design-req, design-doc)
+
+### 1. Read the Design Plan (MANDATORY)
+```bash
+Read specs/DESIGN_OVERHAUL_PLAN.md
+```
+Understand:
+- Premium design principles
+- Anti-AI-slop guardrails
+- Reference apps for inspiration
+- shadcn/ui and Lucide integration patterns
+
+### 2. Read specs/DESIGN.md (if it exists)
+For Phase 13 Task 3+, and all of Phase 14, read the master design document.
+
+### 3. Use /frontend-design Skill
+For design requirement tasks:
+```
+/frontend-design
+```
+This skill helps plan and document premium design patterns.
+
+### 4. Follow Task Steps
+- Document requirements in specs/DESIGN.md (Phase 13)
+- Implement designs (Phase 14)
+- Always verify against acceptance_criteria and design_quality arrays
+
+### 5. Anti-AI-Slop Checklist (EVERY DESIGN TASK)
+Before marking complete, verify:
+- ❌ NO purple/blue gradients
+- ❌ NO Inter font (use SF Pro)
+- ❌ NO generic icon grids
+- ❌ NO flat, lifeless surfaces
+- ✅ Warm orange accent (#ff6b35)
+- ✅ Layered shadows for depth
+- ✅ Micro-interactions (hover lift, press scale)
+- ✅ Proper typography (letter-spacing, line-height)
+
+### 6. Log, Update, Commit
+Same as Implementation Workflow.
 
 ---
 
