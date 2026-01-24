@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 15:30:00
+**Last Updated:** 2026-01-24 16:00:00
 **Phase:** Foundation
-**Tasks Completed:** 8 / 19
-**Current Task:** Implement newtype IDs (TaskId, ProjectId)
+**Tasks Completed:** 9 / 19
+**Current Task:** Implement InternalStatus enum with transition validation
 
 ---
 
@@ -976,6 +976,35 @@ Phase 1: Foundation (no dependencies)
 **Files modified:**
 - `src-tauri/Cargo.toml` - added thiserror dependency
 - `src-tauri/src/error.rs` - full implementation with tests
+
+---
+
+### 2026-01-24 16:00:00 - Implement newtype IDs (TaskId, ProjectId)
+
+**What was done:**
+- Added `uuid = { version = "1", features = ["v4"] }` dependency to Cargo.toml
+- Created `src-tauri/src/domain/entities/types.rs` with:
+  - TaskId newtype with new(), from_string(), as_str() methods
+  - ProjectId newtype with new(), from_string(), as_str() methods
+  - Both types implement: Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default, Display
+- Updated `src-tauri/src/domain/entities/mod.rs` to export types module and re-export TaskId, ProjectId
+- Wrote 23 comprehensive tests covering:
+  - UUID generation and uniqueness
+  - from_string and as_str conversions
+  - Equality, cloning, hashing
+  - Display and Debug formatting
+  - JSON serialization/deserialization
+  - Type safety verification (compile-time type distinction)
+
+**Commands run:**
+- `cargo test --manifest-path src-tauri/Cargo.toml` - 36 tests pass (13 error + 23 types)
+
+**Files created:**
+- `src-tauri/src/domain/entities/types.rs`
+
+**Files modified:**
+- `src-tauri/Cargo.toml` - added uuid dependency
+- `src-tauri/src/domain/entities/mod.rs` - added types module export
 
 ---
 
