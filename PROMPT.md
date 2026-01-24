@@ -1,61 +1,166 @@
-@specs/prd.md @logs/activity.md
+@specs/manifest.json @specs/plan.md @logs/activity.md
 
-We are building the project according to the PRD in this repo.
+We are building the RalphX project. The master plan is in `specs/plan.md`.
 
-First read logs/activity.md to see what was recently accomplished.
+## Step 1: Determine Active PRD
 
-## Start the Application
+Read `specs/manifest.json` to find the current phase:
+- Find the phase where `"status": "active"`
+- The `"prd"` field contains the path to the active PRD file
+- Read that PRD file
 
-<!-- START_COMMAND_PLACEHOLDER: Update this section after creating your PRD -->
-Start the site locally. Use the appropriate command for your tech stack:
-- `npm run dev` (for Next.js, Vite, or similar)
-- `pnpm dev` (if using pnpm)
-- `bun dev` (if using Bun)
-- `python3 -m http.server 8000 --bind 127.0.0.1` (for static HTML)
+## Step 2: Check for Remaining Tasks
 
-If the port is taken, try another port.
-<!-- END_START_COMMAND_PLACEHOLDER -->
+In the active PRD, look for tasks with `"passes": false`.
 
-## Work on Tasks
+**If tasks remain** → Continue to Step 3
 
-Open specs/prd.md and find the single highest priority task where `"passes": false`.
+**If ALL tasks have `"passes": true`** → Handle Phase Transition:
+1. Update `specs/manifest.json`:
+   - Set current phase's `"status"` to `"complete"`
+   - Set `"currentPhase"` to next phase number
+   - Set next phase's `"status"` to `"active"`
+2. Log the phase completion in `logs/activity.md` with full timestamp (`### YYYY-MM-DD HH:MM:SS - Phase N Complete`)
+3. Commit the manifest update:
+   ```
+   git add specs/manifest.json logs/activity.md
+   git commit -m "chore: complete phase N, activate phase N+1"
+   ```
+4. **If no next phase exists** (all phases complete), output:
+   ```
+   <promise>COMPLETE</promise>
+   ```
+5. **Otherwise**, continue with the newly active PRD
 
-Work on exactly ONE task:
-1. Implement the change according to the task steps
-2. Run any available checks:
-   - `npm run lint` (if available)
-   - `npm run typecheck` (if available)
-   - `npm run build` (if available)
+## Step 3: Identify Task Type
 
-## Log Progress
+Find the single highest priority task where `"passes": false`.
 
-Append a dated progress entry to logs/activity.md describing:
-- What you changed
-- What commands you ran
-- Any issues encountered and how you resolved them
+Check the task's `"category"` field:
+- If `"planning"` → Follow **PRD Generation Workflow**
+- Otherwise → Follow **Implementation Workflow**
 
-## Update Task Status
+---
 
-When the task is confirmed working, update that task's `"passes"` field in specs/prd.md from `false` to `true`.
+## PRD Generation Workflow (category: planning)
 
-## Commit Changes
+### 1. Read the Master Plan
+- Open `specs/plan.md` and thoroughly read all sections mentioned in the task steps
+- Understand the full scope and details for this phase
+- Note all implementation patterns, code examples, and requirements
 
-Make one git commit for that task only with a clear, descriptive message:
+### 2. Create the Phase PRD
+- Create the PRD file at the path specified in `"output"` field
+- Follow the PRD template structure:
+  ```markdown
+  # RalphX - Phase N: [Phase Name]
+
+  ## Overview
+  [Brief description]
+
+  ## Dependencies
+  - Previous phases that must be complete
+
+  ## Scope
+  [What's included and excluded]
+
+  ## Detailed Requirements
+  [Extracted from master plan - preserve ALL specifics]
+
+  ## Implementation Notes
+  [Key patterns, decisions, gotchas]
+
+  ## Task List
+
+  ```json
+  [
+    {
+      "category": "setup|feature|testing",
+      "description": "Task description",
+      "steps": ["Step 1", "Step 2"],
+      "passes": false
+    }
+  ]
+  ```
+  ```
+
+- Extract ALL relevant details - don't summarize, preserve specifics
+- Create atomic tasks - each completable in one session
+- Include TDD requirements - tests before implementation
+- Add clear acceptance criteria
+
+### 3. Verify Against Master Plan
+- Cross-reference each task against the master plan
+- Ensure no requirements are missed
+- Check code examples and patterns are preserved
+
+### 4. Log Progress
+Append a timestamped entry to `logs/activity.md` using format `### YYYY-MM-DD HH:MM:SS - [Title]`:
+- Which phase PRD was created
+- Number of tasks generated
+- Key sections covered
+
+### 5. Update Task Status
+Set `"passes": true` for this task in the active PRD
+
+### 6. Commit
 ```
 git add .
-git commit -m "feat: [brief description of what was implemented]"
+git commit -m "docs: create Phase N PRD - [phase name]"
 ```
 
-Do NOT run `git init`, do NOT change git remotes, and do NOT push.
+---
+
+## Implementation Workflow (other categories)
+
+### 1. Start the Application (if needed)
+```bash
+npm run tauri dev    # For Tauri apps
+npm run dev          # For Vite/React only
+cargo test           # For Rust-only work
+```
+
+### 2. Implement the Task
+- Follow task steps exactly
+- Write tests FIRST (TDD mandatory)
+- Implement to make tests pass
+- Run checks:
+  ```bash
+  npm run lint
+  npm run typecheck
+  cargo clippy
+  cargo test
+  ```
+
+### 3. Log Progress
+Append a timestamped entry to `logs/activity.md` using format `### YYYY-MM-DD HH:MM:SS - [Title]`:
+- What changed
+- Commands run
+- Test results
+
+### 4. Update Task Status
+Set `"passes": true` in the active PRD
+
+### 5. Commit
+```
+git add .
+git commit -m "feat: [description]"
+```
+
+---
 
 ## Important Rules
 
-- ONLY work on a SINGLE task per iteration
-- Always log your progress in logs/activity.md
+- Work on ONE task per iteration
+- Always log progress in `logs/activity.md`
 - Always commit after completing a task
+- Do NOT run `git init`, change remotes, or push
+- For planning: preserve ALL details from master plan
+- For implementation: write tests FIRST
+- Handle phase transitions automatically via manifest
 
 ## Completion
 
-When ALL tasks have `"passes": true`, output:
+When ALL phases are complete (no more active phases in manifest):
 
 <promise>COMPLETE</promise>
