@@ -1,14 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:18:53
+**Last Updated:** 2026-01-24 19:21:29
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 3 / 63
-**Current Task:** Implement SqliteWorkflowRepository
+**Tasks Completed:** 4 / 63
+**Current Task:** Implement MemoryWorkflowRepository
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:21:29 - Implement SqliteWorkflowRepository (Task 4)
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_workflow_repo.rs`
+- Implemented `SqliteWorkflowRepository` with all `WorkflowRepository` methods:
+  - `create`, `get_by_id`, `get_all`, `get_default`
+  - `update`, `delete`, `set_default`
+- Handled JSON serialization of `WorkflowSchema` for `schema_json` column
+- `set_default` properly unsets previous default before setting new one
+- Supports shared connections via `from_shared(Arc<Mutex<Connection>>)`
+- Added 14 integration tests with in-memory database
+- Exported from `infrastructure/sqlite/mod.rs`
+
+**Commands run:**
+- `cargo test sqlite_workflow_repo --no-fail-fast` (14 tests passed)
+
+---
 
 ### 2026-01-24 19:18:53 - Implement WorkflowRepository trait (Task 3)
 
