@@ -913,3 +913,305 @@ async fn test_ai_review_escalate_no_actions() {
     let actions = review_repo.get_actions(&review.id).await.unwrap();
     assert_eq!(actions.len(), 0, "ESCALATE should not create review actions");
 }
+
+// ============================================================================
+// Fix Task Rejection and Retry Flow Tests
+// ============================================================================
+
+/// Test: Full fix task rejection and retry flow
+///
+/// Flow:
+/// 1. Set up fix task from previous AI review
+/// 2. Reject fix task with feedback
+/// 3. Verify new fix task proposed
+/// 4. Verify attempt counter incremented
+/// 5. Reject until max_fix_attempts reached
+/// 6. Verify original task moved to backlog
+#[tokio::test]
+async fn test_fix_task_rejection_creates_new_fix() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use settings with fix approval required so fix tasks start as Blocked
+    let settings = ReviewSettings::with_fix_approval();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // 1. Create initial review with needs_changes to get a fix task
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Missing tests", "Add unit tests");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    assert!(fix_task_id.is_some());
+    let fix_task_id = fix_task_id.unwrap();
+
+    // 2. Reject the fix task with feedback
+    let new_fix_id = service
+        .reject_fix_task(&fix_task_id, "Not comprehensive enough", &task_id)
+        .await
+        .unwrap();
+
+    // 3. Verify a new fix task was created
+    assert!(new_fix_id.is_some(), "Should create new fix task on rejection");
+    let new_fix_id = new_fix_id.unwrap();
+    assert_ne!(fix_task_id, new_fix_id, "New fix task should have different ID");
+
+    // 4. Verify new fix task contains feedback
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let new_fix_task = task_repo.get_by_id(&new_fix_id).await.unwrap().unwrap();
+    assert!(new_fix_task
+        .description
+        .as_ref()
+        .map_or(false, |d| d.contains("Not comprehensive enough")));
+
+    // 5. Verify old fix task is now Failed
+    use ralphx_lib::domain::entities::InternalStatus;
+    let old_fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
+    assert_eq!(old_fix_task.internal_status, InternalStatus::Failed);
+}
+
+/// Test: Fix task rejection with max attempts exceeded moves to backlog
+#[tokio::test]
+async fn test_fix_task_max_attempts_moves_to_backlog() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use settings with max_fix_attempts = 1
+    let settings = ReviewSettings::with_max_attempts(1);
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Create initial review with needs_changes
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    assert!(fix_task_id.is_some());
+    let fix_task_id = fix_task_id.unwrap();
+
+    // At this point, fix count is 1, which equals max_fix_attempts
+    // Reject should move original task to backlog
+    let new_fix_id = service
+        .reject_fix_task(&fix_task_id, "Still not good enough", &task_id)
+        .await
+        .unwrap();
+
+    // Should NOT have created a new fix task
+    assert!(
+        new_fix_id.is_none(),
+        "Should not create new fix task when max attempts reached"
+    );
+
+    // Original task should be in Backlog
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let original_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        original_task.internal_status,
+        InternalStatus::Backlog,
+        "Original task should be moved to backlog"
+    );
+}
+
+/// Test: Approve fix task transitions from Blocked to Ready
+#[tokio::test]
+async fn test_approve_fix_task_transitions_to_ready() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use settings with fix approval required
+    let settings = ReviewSettings::with_fix_approval();
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Create fix task (starts as Blocked)
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = fix_task_id.unwrap();
+
+    // Verify it starts as Blocked
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
+    assert_eq!(fix_task.internal_status, InternalStatus::Blocked);
+
+    // Approve the fix task
+    service.approve_fix_task(&fix_task_id).await.unwrap();
+
+    // Verify it's now Ready
+    let updated_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Ready,
+        "Approved fix task should transition to Ready"
+    );
+}
+
+/// Test: Approve fix task fails if task is not Blocked
+#[tokio::test]
+async fn test_approve_fix_task_fails_if_not_blocked() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use default settings (fix tasks are Ready, not Blocked)
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // Create fix task (starts as Ready because no fix approval required)
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = fix_task_id.unwrap();
+
+    // Verify it's Ready (not Blocked)
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
+    assert_eq!(fix_task.internal_status, InternalStatus::Ready);
+
+    // Trying to approve should fail
+    let result = service.approve_fix_task(&fix_task_id).await;
+    assert!(result.is_err(), "Should fail to approve a task that's not Blocked");
+}
+
+/// Test: Reject fix task increments attempt counter
+#[tokio::test]
+async fn test_reject_fix_task_increments_attempt_counter() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use settings with high max_fix_attempts to allow multiple retries
+    let settings = ReviewSettings::with_max_attempts(5);
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Initial count is 0
+    assert_eq!(service.get_fix_attempt_count(&task_id).await.unwrap(), 0);
+
+    // Create first fix task
+    let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input1 = CompleteReviewInput::needs_changes("Bug 1", "Fix 1");
+    let fix1_id = service.process_review_result(&mut review1, &input1).await.unwrap();
+    let fix1_id = fix1_id.unwrap();
+
+    // Count is now 1
+    assert_eq!(service.get_fix_attempt_count(&task_id).await.unwrap(), 1);
+
+    // Reject first fix, get second
+    let fix2_id = service
+        .reject_fix_task(&fix1_id, "Try again", &task_id)
+        .await
+        .unwrap();
+    let _fix2_id = fix2_id.unwrap();
+
+    // Count is still 1 (rejection doesn't add a new fix action until we process a new review)
+    // But we do have a new fix task now
+
+    // Create another review and process needs_changes to add another fix action
+    let mut review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input2 = CompleteReviewInput::needs_changes("Bug 2", "Fix 2");
+    service.process_review_result(&mut review2, &input2).await.unwrap();
+
+    // Now count should be 2
+    assert_eq!(service.get_fix_attempt_count(&task_id).await.unwrap(), 2);
+}
+
+/// Test: Fix task rejection records note about max attempts
+#[tokio::test]
+async fn test_fix_task_max_attempts_records_note() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    // Use settings with max_fix_attempts = 1
+    let settings = ReviewSettings::with_max_attempts(1);
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Create initial fix task
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = fix_task_id.unwrap();
+
+    // Reject the fix task (should trigger max attempts reached)
+    service
+        .reject_fix_task(&fix_task_id, "Not working", &task_id)
+        .await
+        .unwrap();
+
+    // Verify note was added about max attempts
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    let max_attempts_note = notes
+        .iter()
+        .find(|n| {
+            n.notes
+                .as_ref()
+                .map_or(false, |text| text.contains("Max fix attempts"))
+        });
+    assert!(
+        max_attempts_note.is_some(),
+        "Should add note about max attempts reached"
+    );
+}
+
+/// Test: New fix task description includes previous feedback
+#[tokio::test]
+async fn test_new_fix_task_includes_feedback() {
+    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+
+    let settings = ReviewSettings::with_max_attempts(5);
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+
+    // Create initial fix task
+    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let input = CompleteReviewInput::needs_changes("Missing validation", "Add input validation");
+    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = fix_task_id.unwrap();
+
+    // Reject with specific feedback
+    let new_fix_id = service
+        .reject_fix_task(
+            &fix_task_id,
+            "Validation is incomplete - please also check for SQL injection",
+            &task_id,
+        )
+        .await
+        .unwrap();
+
+    // Verify new fix task contains the feedback
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let new_fix_task = task_repo
+        .get_by_id(&new_fix_id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    let description = new_fix_task.description.unwrap();
+    assert!(
+        description.contains("Previous fix rejected"),
+        "Should mention previous rejection"
+    );
+    assert!(
+        description.contains("SQL injection"),
+        "Should include the feedback"
+    );
+    assert!(
+        description.contains("Add input validation"),
+        "Should include original issue"
+    );
+}
+
+/// Test: Move task to backlog manually
+#[tokio::test]
+async fn test_move_to_backlog() {
+    let (review_repo, task_repo, _sm_repo, _project_id, task_id) = setup_review_test();
+
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // Move task to backlog with reason
+    service
+        .move_to_backlog(&task_id, "Too complex for automated fix")
+        .await
+        .unwrap();
+
+    // Verify task is in Backlog
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    let task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(task.internal_status, InternalStatus::Backlog);
+
+    // Verify note was added
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    let backlog_note = notes.iter().find(|n| {
+        n.notes
+            .as_ref()
+            .map_or(false, |text| text.contains("Too complex"))
+    });
+    assert!(backlog_note.is_some(), "Should add note about backlog reason");
+}

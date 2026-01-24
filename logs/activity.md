@@ -1,14 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 14:45:56
+**Last Updated:** 2026-01-24 14:48:01
 **Phase:** Phase 9 (Review & Supervision)
-**Tasks Completed:** 40 / 51
-**Current Task:** Integration test: fix task rejection and retry
+**Tasks Completed:** 41 / 51
+**Current Task:** Integration test: human review flow
 
 ---
 
 ## Session Log
+
+### 2026-01-24 14:48:01 - Integration test: fix task rejection and retry
+
+**What was done:**
+- Added 8 new tests to `src-tauri/tests/review_flows.rs` (now 41 tests total):
+  - `test_fix_task_rejection_creates_new_fix` - Reject fix task with feedback, verify new fix created
+  - `test_fix_task_max_attempts_moves_to_backlog` - Verify backlog fallback when max attempts exceeded
+  - `test_approve_fix_task_transitions_to_ready` - Approve blocked fix task transitions to Ready
+  - `test_approve_fix_task_fails_if_not_blocked` - Cannot approve a task that's not Blocked
+  - `test_reject_fix_task_increments_attempt_counter` - Verify attempt counter increments
+  - `test_fix_task_max_attempts_records_note` - Verify note added about max attempts
+  - `test_new_fix_task_includes_feedback` - New fix includes previous feedback and original issue
+  - `test_move_to_backlog` - Manual move to backlog with reason
+- Tests verify:
+  - Rejected fix task becomes Failed, new fix task created
+  - New fix task contains rejection feedback
+  - Max attempts exceeded moves original task to backlog
+  - Blocked -> Ready transition on fix approval
+  - Proper tracking of fix attempt counts
+  - Notes recorded for max attempts and backlog reasons
+
+**Commands run:**
+- `cargo test --test review_flows` (41 tests passed)
+
+---
 
 ### 2026-01-24 14:45:56 - Integration test: AI review escalate flow
 
