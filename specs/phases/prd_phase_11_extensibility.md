@@ -911,7 +911,7 @@ All tasks require tests written before implementation:
       "Implement RESEARCH_PRESETS constant with default values",
       "Run cargo test to verify"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
