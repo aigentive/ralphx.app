@@ -53,6 +53,8 @@ export interface ConfirmationConfig {
 interface UiState {
   /** Whether the sidebar is open */
   sidebarOpen: boolean;
+  /** Whether the reviews panel is open */
+  reviewsPanelOpen: boolean;
   /** Currently active modal type, or null if none */
   activeModal: ModalType;
   /** Context data for the active modal */
@@ -78,6 +80,10 @@ interface UiActions {
   toggleSidebar: () => void;
   /** Set sidebar visibility directly */
   setSidebarOpen: (open: boolean) => void;
+  /** Toggle reviews panel visibility */
+  toggleReviewsPanel: () => void;
+  /** Set reviews panel visibility directly */
+  setReviewsPanelOpen: (open: boolean) => void;
   /** Open a modal with optional context */
   openModal: (type: ModalType, context?: Record<string, unknown>) => void;
   /** Close the current modal */
@@ -116,6 +122,7 @@ export const useUiStore = create<UiState & UiActions>()(
   immer((set) => ({
     // Initial state
     sidebarOpen: true,
+    reviewsPanelOpen: false,
     activeModal: null,
     modalContext: undefined,
     notifications: [],
@@ -139,6 +146,16 @@ export const useUiStore = create<UiState & UiActions>()(
     setSidebarOpen: (open) =>
       set((state) => {
         state.sidebarOpen = open;
+      }),
+
+    toggleReviewsPanel: () =>
+      set((state) => {
+        state.reviewsPanelOpen = !state.reviewsPanelOpen;
+      }),
+
+    setReviewsPanelOpen: (open) =>
+      set((state) => {
+        state.reviewsPanelOpen = open;
       }),
 
     openModal: (type, context) =>
