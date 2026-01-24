@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 09:20:00
+**Last Updated:** 2026-01-24 09:30:00
 **Phase:** State Machine
-**Tasks Completed:** 15 / 22
-**Current Task:** Implement state-local data persistence helpers
+**Tasks Completed:** 16 / 22
+**Current Task:** Create TaskStateMachineRepository
 
 ---
 
@@ -2086,6 +2086,36 @@ Phase 3 - State Machine (statig, 14 internal statuses, transitions)
 
 **Files modified:**
 - `src-tauri/src/infrastructure/sqlite/migrations.rs` - added v3 migration
+
+---
+
+### 2026-01-24 09:30:00 - Implement state-local data persistence helpers
+
+**What was done:**
+- Created `src-tauri/src/domain/state_machine/persistence.rs` with:
+  - StateData struct: state_type and JSON data container
+  - StateData::from_state(): extracts data from QaFailed/Failed states
+  - StateData::into_state(): reconstructs state from persisted data
+  - StateData::apply_to_state(): applies persisted data to parsed state
+  - state_has_data(): checks if a state variant has local data
+  - serialize_qa_failed_data/deserialize_qa_failed_data helpers
+  - serialize_failed_data/deserialize_failed_data helpers
+- Exported new module and functions from state_machine/mod.rs
+- Handles edge cases:
+  - Returns None for states without local data
+  - Returns default data on invalid JSON
+  - Ignores type mismatches (qa_failed data for Failed state)
+- Wrote 29 comprehensive tests covering all functionality
+
+**Commands run:**
+- `cargo test state_machine::persistence` - 29 tests pass
+- `cargo test` - 524 tests pass
+
+**Files created:**
+- `src-tauri/src/domain/state_machine/persistence.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/state_machine/mod.rs` - added persistence module
 
 ---
 

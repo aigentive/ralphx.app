@@ -9,6 +9,7 @@ pub mod context;
 pub mod events;
 pub mod machine;
 pub mod mocks;
+pub mod persistence;
 pub mod services;
 pub mod types;
 
@@ -20,6 +21,10 @@ pub use mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, ServiceCall,
 };
 pub use services::{AgentSpawner, DependencyManager, EventEmitter, Notifier};
+pub use persistence::{
+    deserialize_failed_data, deserialize_qa_failed_data, serialize_failed_data,
+    serialize_qa_failed_data, state_has_data, StateData,
+};
 pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
 
 #[cfg(test)]
