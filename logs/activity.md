@@ -1,14 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 16:12:00
+**Last Updated:** 2026-01-24 16:20:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 6 / 50
-**Current Task:** Implement TaskProposalRepository trait
+**Tasks Completed:** 7 / 50
+**Current Task:** Implement ProposalDependencyRepository trait
 
 ---
 
 ## Session Log
+
+### 2026-01-24 16:20:00 - Implement TaskProposalRepository trait
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/task_proposal_repository.rs`:
+  - Defined `TaskProposalRepository` trait with `Send + Sync` bounds
+  - 12 async methods: `create`, `get_by_id`, `get_by_session`, `update`, `update_priority`, `update_selection`, `set_created_task_id`, `delete`, `reorder`, `get_selected_by_session`, `count_by_session`, `count_selected_by_session`
+  - Additional helper methods beyond PRD: `get_selected_by_session`, `count_by_session`, `count_selected_by_session`
+  - Created `MockTaskProposalRepository` for testing with sort_order ordering
+- Updated `domain/repositories/mod.rs` with module and re-export
+- Added 25 comprehensive unit tests:
+  - Trait object safety test
+  - CRUD operation tests
+  - Filtering tests (by session, by selection)
+  - Sort order verification tests
+  - Priority assessment tests
+  - Count operations tests
+  - Arc<dyn TaskProposalRepository> usage tests
+
+**Commands run:**
+- `cargo test --lib task_proposal_repository::` (25 tests passed)
+- `cargo test --lib` (1676 tests passed)
+
+---
 
 ### 2026-01-24 16:12:00 - Implement IdeationSessionRepository trait
 
