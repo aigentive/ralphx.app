@@ -619,7 +619,7 @@ pub struct MockNotifier {
       "Handle missing data with Default trait",
       "Run cargo test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
