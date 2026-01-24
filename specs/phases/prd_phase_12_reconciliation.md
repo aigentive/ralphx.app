@@ -548,7 +548,7 @@ const qaPrepProfile = {
       "Write unit tests for ProjectSidebar",
       "Reference specs/plan.md 'Project Sidebar' section for exact layout"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ui-gaps",
