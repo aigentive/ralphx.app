@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 23:26:00
+**Last Updated:** 2026-01-24 23:29:00
 **Phase:** Phase 11 (Extensibility)
-**Tasks Completed:** 35 / 63
-**Current Task:** Create Tauri API wrappers for research
+**Tasks Completed:** 36 / 63
+**Current Task:** Create Tauri API wrappers for methodologies
 
 ---
 
 ## Session Log
+
+### 2026-01-24 23:29:00 - Create Tauri API wrappers for research (Task 36)
+
+**What was done:**
+- Created `src/lib/api/research.ts` with type-safe Tauri command wrappers:
+  - Response schemas: `ResearchProcessResponseSchema`, `ResearchPresetResponseSchema`
+  - Input schemas: `StartResearchInputSchema`, `CustomDepthInputSchema`
+  - Lifecycle API: `startResearch`, `pauseResearch`, `resumeResearch`, `stopResearch`
+  - Query API: `getResearchProcesses`, `getResearchProcess`
+  - Preset API: `getResearchPresets`
+  - All responses validated with Zod before returning
+- Created `src/lib/api/research.test.ts` with 41 tests covering:
+  - Schema validation for all response and input types
+  - All 7 API functions with success and error cases
+  - Edge cases: nullable fields, status transitions, custom depth config
+- Updated `src/lib/api/index.ts` to export all research API functions and types
+
+**Commands run:**
+- `npm test -- src/lib/api/research.test.ts` - 41 tests passed
+- `npm run typecheck` - No errors
 
 ### 2026-01-24 23:26:00 - Create Tauri API wrappers for artifacts (Task 35)
 
