@@ -1343,7 +1343,7 @@ All tasks require:
       "Persist panel width in localStorage",
       "Test chat opens/closes correctly across views"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
