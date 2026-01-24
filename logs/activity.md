@@ -1,14 +1,56 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 17:52:23
+**Last Updated:** 2026-01-24 17:57:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 43 / 50
-**Current Task:** Create ProposalEditModal component
+**Tasks Completed:** 44 / 50
+**Current Task:** Create ApplyModal component
 
 ---
 
 ## Session Log
+
+### 2026-01-24 17:57:00 - Create ProposalEditModal component
+
+**What was done:**
+- Created `src/components/Ideation/ProposalEditModal.tsx` with:
+  - Modal overlay with fixed positioning and semi-transparent background
+  - Title input with auto-focus on modal open
+  - Description textarea (handles null values)
+  - Category selector (6 categories: setup, feature, integration, styling, testing, documentation)
+  - Steps editor with add/remove/reorder functionality
+  - Acceptance criteria editor with add/remove functionality
+  - Priority override selector (Auto with suggested priority display, Critical, High, Medium, Low)
+  - Complexity selector (Trivial, Simple, Moderate, Complex, Very Complex)
+  - Save and Cancel buttons with proper disabled/loading states
+  - Escape key to close modal
+  - Overlay click to close
+  - Filters out empty steps and acceptance criteria on save
+  - Converts empty priority override to undefined
+  - Proper accessibility: dialog role, aria-labelledby, input labels, aria-labels
+- Created `src/components/Ideation/ProposalEditModal.test.tsx` with 64 unit tests covering:
+  - Rendering (modal, overlay, content, header, null proposal)
+  - Title input (label, value, editing)
+  - Description textarea (label, value, editing, null handling)
+  - Category selector (label, options, current value, changing)
+  - Steps editor (label, display, editing, add, remove, empty state)
+  - Acceptance criteria editor (label, display, editing, add, remove, empty state)
+  - Priority override (label, options, auto display, user priority, changing)
+  - Complexity selector (label, options, current value, changing)
+  - Save and Cancel buttons (render, callbacks, disabled states, loading)
+  - Overlay click behavior (closes modal, content click stops propagation)
+  - Accessibility (dialog role, focus, labels, aria-labels)
+  - Styling (overlay, positioning, elevated background, accent colors, anti-AI-slop)
+  - Form data handling (all fields, filter empty, priority conversion)
+  - Keyboard navigation (Escape to close)
+- Updated `src/components/Ideation/index.ts` to export ProposalEditModal
+
+**Commands run:**
+- `npm test -- --run src/components/Ideation/ProposalEditModal.test.tsx` (64 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (2012 tests passed)
+
+---
 
 ### 2026-01-24 17:52:23 - Create ProposalList component
 

@@ -1253,7 +1253,7 @@ All tasks require:
       "  - Save and Cancel buttons",
       "Export from src/components/Ideation/ProposalEditModal.tsx"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
