@@ -52,3 +52,7 @@ export type {
   ProgressEvent,
   TaskEvent,
 } from "./events";
+
+// Workflow types and schemas
+export { WorkflowColumnSchema, WorkflowSchemaZ } from "./workflow";
+export type { WorkflowColumn, WorkflowSchema } from "./workflow";
