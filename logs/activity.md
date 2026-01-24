@@ -1,14 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 19:10:00
+**Last Updated:** 2026-01-24 19:15:00
 **Phase:** Phase 10 (Ideation)
-**Tasks Completed:** 27 / 50
-**Current Task:** Create Tauri API wrappers for proposals
+**Tasks Completed:** 28 / 50
+**Current Task:** Create Tauri API wrappers for chat
 
 ---
 
 ## Session Log
+
+### 2026-01-24 19:15:00 - Create Tauri API wrappers for proposals
+
+**What was done:**
+- Created `src/api/proposal.ts` with type-safe Tauri invoke wrappers:
+  - `createTaskProposal(sessionId, data)` - Create new proposal with validation
+  - `updateTaskProposal(proposalId, changes)` - Update proposal fields
+  - `deleteTaskProposal(proposalId)` - Delete a proposal
+  - `toggleProposalSelection(proposalId)` - Toggle selection state
+  - `reorderProposals(sessionId, proposalIds)` - Reorder proposals in session
+  - `assessProposalPriority(proposalId)` - Get priority assessment
+  - `assessAllPriorities(sessionId)` - Batch priority assessment
+  - `addProposalDependency(proposalId, dependsOnId)` - Add dependency
+  - `removeProposalDependency(proposalId, dependsOnId)` - Remove dependency
+  - `analyzeDependencies(sessionId)` - Build dependency graph
+  - `applyProposalsToKanban(options)` - Convert proposals to tasks
+- Input types: CreateProposalData, UpdateProposalChanges, ApplyToKanbanOptions
+- Response types reuse from ideation.ts with snake_case → camelCase transforms
+- Zod schema validation for all responses
+- Created `src/api/proposal.test.ts` with 30 unit tests
+- Namespace export as `proposalApi` for alternative usage pattern
+
+**Commands run:**
+- `npm test -- --run src/api/proposal.test.ts` (30 tests passed)
+- `npm run typecheck` (passed)
+- `npm test -- --run` (1534 tests passed)
+
+---
 
 ### 2026-01-24 19:10:00 - Create Tauri API wrappers for ideation
 

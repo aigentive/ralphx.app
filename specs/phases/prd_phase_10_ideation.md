@@ -985,7 +985,7 @@ All tasks require:
       "  - applyProposalsToKanban(options)",
       "Export from src/api/proposal.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
