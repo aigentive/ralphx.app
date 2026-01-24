@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 11;
+pub const SCHEMA_VERSION: i32 = 19;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -70,6 +70,46 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 11 {
         migrate_v11(conn)?;
         set_schema_version(conn, 11)?;
+    }
+
+    if current_version < 12 {
+        migrate_v12(conn)?;
+        set_schema_version(conn, 12)?;
+    }
+
+    if current_version < 13 {
+        migrate_v13(conn)?;
+        set_schema_version(conn, 13)?;
+    }
+
+    if current_version < 14 {
+        migrate_v14(conn)?;
+        set_schema_version(conn, 14)?;
+    }
+
+    if current_version < 15 {
+        migrate_v15(conn)?;
+        set_schema_version(conn, 15)?;
+    }
+
+    if current_version < 16 {
+        migrate_v16(conn)?;
+        set_schema_version(conn, 16)?;
+    }
+
+    if current_version < 17 {
+        migrate_v17(conn)?;
+        set_schema_version(conn, 17)?;
+    }
+
+    if current_version < 18 {
+        migrate_v18(conn)?;
+        set_schema_version(conn, 18)?;
+    }
+
+    if current_version < 19 {
+        migrate_v19(conn)?;
+        set_schema_version(conn, 19)?;
     }
 
     Ok(())
@@ -667,6 +707,280 @@ fn migrate_v11(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v12: Create workflows table for custom workflow schemas
+fn migrate_v12(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE workflows (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            schema_json TEXT NOT NULL,
+            is_default INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on is_default for quick default workflow lookup
+    conn.execute(
+        "CREATE INDEX idx_workflows_is_default ON workflows(is_default)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v13: Create artifact_buckets table for artifact storage organization
+fn migrate_v13(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE artifact_buckets (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            is_system INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on is_system for system bucket queries
+    conn.execute(
+        "CREATE INDEX idx_artifact_buckets_is_system ON artifact_buckets(is_system)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v14: Create artifacts table for typed documents
+fn migrate_v14(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE artifacts (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            content_text TEXT,
+            content_path TEXT,
+            bucket_id TEXT REFERENCES artifact_buckets(id),
+            task_id TEXT REFERENCES tasks(id),
+            process_id TEXT,
+            created_by TEXT NOT NULL,
+            version INTEGER DEFAULT 1,
+            previous_version_id TEXT REFERENCES artifacts(id),
+            metadata_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on bucket_id for bucket queries
+    conn.execute(
+        "CREATE INDEX idx_artifacts_bucket ON artifacts(bucket_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on type for type filtering
+    conn.execute(
+        "CREATE INDEX idx_artifacts_type ON artifacts(type)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on task_id for task-related artifact queries
+    conn.execute(
+        "CREATE INDEX idx_artifacts_task ON artifacts(task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v15: Create artifact_relations table for artifact derivation/relations
+fn migrate_v15(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE artifact_relations (
+            id TEXT PRIMARY KEY,
+            from_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+            to_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+            relation_type TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(from_artifact_id, to_artifact_id, relation_type)
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on from_artifact_id for forward relation lookups
+    conn.execute(
+        "CREATE INDEX idx_artifact_relations_from ON artifact_relations(from_artifact_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on to_artifact_id for reverse relation lookups
+    conn.execute(
+        "CREATE INDEX idx_artifact_relations_to ON artifact_relations(to_artifact_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v16: Create artifact_flows table for automated artifact routing
+fn migrate_v16(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE artifact_flows (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            trigger_json TEXT NOT NULL,
+            steps_json TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on is_active for active flow queries
+    conn.execute(
+        "CREATE INDEX idx_artifact_flows_active ON artifact_flows(is_active)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v17: Create processes table for research and other long-running processes
+fn migrate_v17(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE processes (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            current_iteration INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            started_at DATETIME,
+            completed_at DATETIME
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on status for process status queries
+    conn.execute(
+        "CREATE INDEX idx_processes_status ON processes(status)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on type for process type queries
+    conn.execute(
+        "CREATE INDEX idx_processes_type ON processes(type)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v18: Add extensibility columns to tasks table for methodology support
+fn migrate_v18(conn: &Connection) -> AppResult<()> {
+    // Add external_status for custom workflow column mapping
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN external_status TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add wave for parallel execution grouping (GSD method)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN wave INTEGER",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add checkpoint_type for human-in-loop checkpoints
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN checkpoint_type TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add phase_id for methodology phase tracking
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN phase_id TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add plan_id for methodology plan tracking
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN plan_id TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add must_haves_json for goal-backward verification (GSD method)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN must_haves_json TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on wave for wave-based queries
+    conn.execute(
+        "CREATE INDEX idx_tasks_wave ON tasks(wave)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on external_status for external status queries
+    conn.execute(
+        "CREATE INDEX idx_tasks_external_status ON tasks(external_status)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Migration v19: Create methodology_extensions table for methodology support
+fn migrate_v19(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "CREATE TABLE methodology_extensions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            config_json TEXT NOT NULL,
+            is_active INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index on is_active for active methodology lookup
+    conn.execute(
+        "CREATE INDEX idx_methodology_extensions_active ON methodology_extensions(is_active)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,7 +988,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 11);
+        assert_eq!(SCHEMA_VERSION, 19);
     }
 
     #[test]
@@ -800,7 +1114,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 19);
     }
 
     #[test]
@@ -813,7 +1127,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 19);
     }
 
     #[test]
@@ -4335,5 +4649,525 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    // ============== Extensibility Migrations Tests (v12-v19) ==============
+
+    #[test]
+    fn test_workflows_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflows'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_workflows_table_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert a workflow with all columns
+        let result = conn.execute(
+            "INSERT INTO workflows (id, name, description, schema_json, is_default)
+             VALUES ('wf-1', 'Test Workflow', 'A test workflow', '{\"columns\":[]}', 1)",
+            [],
+        );
+        assert!(result.is_ok());
+
+        // Verify is_default column
+        let is_default: i32 = conn
+            .query_row(
+                "SELECT is_default FROM workflows WHERE id = 'wf-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_default, 1);
+    }
+
+    #[test]
+    fn test_workflows_index_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_workflows_is_default'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_artifact_buckets_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='artifact_buckets'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_artifact_buckets_table_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let result = conn.execute(
+            "INSERT INTO artifact_buckets (id, name, config_json, is_system)
+             VALUES ('bucket-1', 'Research Outputs', '{\"acceptedTypes\":[\"research_document\"]}', 1)",
+            [],
+        );
+        assert!(result.is_ok());
+
+        let is_system: i32 = conn
+            .query_row(
+                "SELECT is_system FROM artifact_buckets WHERE id = 'bucket-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_system, 1);
+    }
+
+    #[test]
+    fn test_artifacts_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='artifacts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_artifacts_table_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Create a bucket first
+        conn.execute(
+            "INSERT INTO artifact_buckets (id, name, config_json)
+             VALUES ('bucket-1', 'Test Bucket', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Insert an artifact with inline content
+        let result = conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, bucket_id, created_by, version, metadata_json)
+             VALUES ('art-1', 'prd', 'Test PRD', 'inline', 'PRD content here', 'bucket-1', 'user', 1, '{}')",
+            [],
+        );
+        assert!(result.is_ok());
+
+        // Insert an artifact with file content
+        let result = conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_path, bucket_id, created_by, version)
+             VALUES ('art-2', 'code_change', 'Feature Code', 'file', '/path/to/file.rs', 'bucket-1', 'worker-agent', 1)",
+            [],
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_artifacts_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        for index_name in &["idx_artifacts_bucket", "idx_artifacts_type", "idx_artifacts_task"] {
+            let count: i32 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='{}'",
+                        index_name
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "Index {} should exist", index_name);
+        }
+    }
+
+    #[test]
+    fn test_artifact_relations_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='artifact_relations'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_artifact_relations_constraints() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Create bucket and artifacts
+        conn.execute(
+            "INSERT INTO artifact_buckets (id, name, config_json) VALUES ('b-1', 'Test', '{}')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, bucket_id, created_by)
+             VALUES ('art-1', 'prd', 'PRD 1', 'inline', 'Content', 'b-1', 'user')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, bucket_id, created_by)
+             VALUES ('art-2', 'specification', 'Spec from PRD', 'inline', 'Content', 'b-1', 'agent')",
+            [],
+        )
+        .unwrap();
+
+        // Create a relation
+        conn.execute(
+            "INSERT INTO artifact_relations (id, from_artifact_id, to_artifact_id, relation_type)
+             VALUES ('rel-1', 'art-2', 'art-1', 'derived_from')",
+            [],
+        )
+        .unwrap();
+
+        // Duplicate with same type should fail
+        let result = conn.execute(
+            "INSERT INTO artifact_relations (id, from_artifact_id, to_artifact_id, relation_type)
+             VALUES ('rel-2', 'art-2', 'art-1', 'derived_from')",
+            [],
+        );
+        assert!(result.is_err());
+
+        // Different relation type should succeed
+        let result = conn.execute(
+            "INSERT INTO artifact_relations (id, from_artifact_id, to_artifact_id, relation_type)
+             VALUES ('rel-3', 'art-2', 'art-1', 'related_to')",
+            [],
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_artifact_relations_cascade_delete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Create bucket and artifacts
+        conn.execute(
+            "INSERT INTO artifact_buckets (id, name, config_json) VALUES ('b-1', 'Test', '{}')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, bucket_id, created_by)
+             VALUES ('art-1', 'prd', 'PRD', 'inline', 'Content', 'b-1', 'user')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, bucket_id, created_by)
+             VALUES ('art-2', 'spec', 'Spec', 'inline', 'Content', 'b-1', 'user')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO artifact_relations (id, from_artifact_id, to_artifact_id, relation_type)
+             VALUES ('rel-1', 'art-2', 'art-1', 'derived_from')",
+            [],
+        )
+        .unwrap();
+
+        // Delete artifact should cascade to relations
+        conn.execute("DELETE FROM artifacts WHERE id = 'art-1'", [])
+            .unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_relations WHERE to_artifact_id = 'art-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_artifact_flows_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='artifact_flows'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_artifact_flows_table_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let result = conn.execute(
+            "INSERT INTO artifact_flows (id, name, trigger_json, steps_json, is_active)
+             VALUES ('flow-1', 'Research to Dev', '{\"event\":\"artifact_created\"}', '[{\"type\":\"copy\",\"toBucket\":\"prd-library\"}]', 1)",
+            [],
+        );
+        assert!(result.is_ok());
+
+        let is_active: i32 = conn
+            .query_row(
+                "SELECT is_active FROM artifact_flows WHERE id = 'flow-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_active, 1);
+    }
+
+    #[test]
+    fn test_processes_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='processes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_processes_table_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let result = conn.execute(
+            "INSERT INTO processes (id, type, name, config_json, status, current_iteration)
+             VALUES ('proc-1', 'research', 'Deep Research', '{\"maxIterations\":200}', 'running', 42)",
+            [],
+        );
+        assert!(result.is_ok());
+
+        let (status, iteration): (String, i32) = conn
+            .query_row(
+                "SELECT status, current_iteration FROM processes WHERE id = 'proc-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "running");
+        assert_eq!(iteration, 42);
+    }
+
+    #[test]
+    fn test_processes_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        for index_name in &["idx_processes_status", "idx_processes_type"] {
+            let count: i32 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='{}'",
+                        index_name
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "Index {} should exist", index_name);
+        }
+    }
+
+    #[test]
+    fn test_tasks_extensibility_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Create project
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
+
+        // Create task with all extensibility columns
+        let result = conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, external_status, wave, checkpoint_type, phase_id, plan_id, must_haves_json)
+             VALUES ('task-1', 'proj-1', 'feature', 'Test Task', 'in_qa', 2, 'human-verify', '01-setup', '01-02', '{\"truths\":[\"tests pass\"]}')",
+            [],
+        );
+        assert!(result.is_ok());
+
+        // Verify columns
+        let (external_status, wave, checkpoint_type, phase_id, plan_id): (
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
+                "SELECT external_status, wave, checkpoint_type, phase_id, plan_id FROM tasks WHERE id = 'task-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(external_status, Some("in_qa".to_string()));
+        assert_eq!(wave, Some(2));
+        assert_eq!(checkpoint_type, Some("human-verify".to_string()));
+        assert_eq!(phase_id, Some("01-setup".to_string()));
+        assert_eq!(plan_id, Some("01-02".to_string()));
+    }
+
+    #[test]
+    fn test_tasks_wave_index_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_tasks_wave'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_tasks_external_status_index_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_tasks_external_status'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_methodology_extensions_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='methodology_extensions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_methodology_extensions_table_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let result = conn.execute(
+            "INSERT INTO methodology_extensions (id, name, description, config_json, is_active)
+             VALUES ('bmad', 'BMAD Method', 'Breakthrough Method for Agile AI-Driven Development', '{\"workflow\":{},\"agents\":[]}', 1)",
+            [],
+        );
+        assert!(result.is_ok());
+
+        let (name, is_active): (String, i32) = conn
+            .query_row(
+                "SELECT name, is_active FROM methodology_extensions WHERE id = 'bmad'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "BMAD Method");
+        assert_eq!(is_active, 1);
+    }
+
+    #[test]
+    fn test_methodology_extensions_index_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_methodology_extensions_active'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_extensibility_migrations_complete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify all extensibility tables exist
+        let tables = vec![
+            "workflows",
+            "artifact_buckets",
+            "artifacts",
+            "artifact_relations",
+            "artifact_flows",
+            "processes",
+            "methodology_extensions",
+        ];
+
+        for table in tables {
+            let count: i32 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{}'",
+                        table
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "Table {} should exist", table);
+        }
+
+        // Verify schema version
+        let version = get_schema_version(&conn).unwrap();
+        assert_eq!(version, 19);
     }
 }

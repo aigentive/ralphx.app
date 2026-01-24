@@ -727,7 +727,7 @@ All tasks require tests written before implementation:
       "Create migration file: 018_extensibility_indexes.sql with all indexes",
       "Run cargo test to verify migrations apply correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
