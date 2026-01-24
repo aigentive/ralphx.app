@@ -6,6 +6,7 @@ pub mod ideation_session_repository;
 pub mod project_repository;
 pub mod review_repository;
 pub mod status_transition;
+pub mod task_proposal_repository;
 pub mod task_qa_repository;
 pub mod task_repository;
 
@@ -15,5 +16,6 @@ pub use ideation_session_repository::IdeationSessionRepository;
 pub use project_repository::ProjectRepository;
 pub use review_repository::ReviewRepository;
 pub use status_transition::StatusTransition;
+pub use task_proposal_repository::TaskProposalRepository;
 pub use task_qa_repository::TaskQARepository;
 pub use task_repository::TaskRepository;

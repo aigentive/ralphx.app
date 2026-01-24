@@ -663,7 +663,7 @@ All tasks require:
       "  - reorder(session_id: &str, proposal_ids: Vec<String>) -> Result<()>",
       "Export from domain/repositories module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",
