@@ -443,7 +443,7 @@ const qaPrepProfile = {
       "If exists, move ideation skills to ralphx-plugin/skills/",
       "Update any references"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cleanup",
