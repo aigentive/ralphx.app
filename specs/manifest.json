@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 5,
+  "currentPhase": 6,
   "phases": [
     {
       "phase": 0,
@@ -42,14 +42,14 @@
       "phase": 5,
       "name": "Frontend Core",
       "prd": "specs/phases/prd_phase_05_frontend_core.md",
-      "status": "active",
+      "status": "complete",
       "description": "React setup, Zustand stores, Tauri bindings, events"
     },
     {
       "phase": 6,
       "name": "Kanban UI",
       "prd": "specs/phases/prd_phase_06_kanban_ui.md",
-      "status": "pending",
+      "status": "active",
       "description": "TaskBoard, columns, drag-drop, task cards"
     },
     {
