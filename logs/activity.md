@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 00:00:00
+**Last Updated:** 2026-01-25 00:05:00
 **Phase:** Phase 12 (Reconciliation)
-**Tasks Completed:** 0 / 21
-**Current Task:** Move QA agents from .claude/ to ralphx-plugin/
+**Tasks Completed:** 1 / 21
+**Current Task:** Move QA skills from .claude/ to ralphx-plugin/
 
 ---
 
 ## Session Log
+
+### 2026-01-25 00:05:00 - Move QA agents from .claude/ to ralphx-plugin/ (Task 1)
+
+**What was done:**
+- Moved `.claude/agents/qa-prep.md` to `ralphx-plugin/agents/qa-prep.md`
+- Moved `.claude/agents/qa-executor.md` to `ralphx-plugin/agents/qa-executor.md`
+- Also moved `.claude/agents/orchestrator-ideation.md` to `ralphx-plugin/agents/orchestrator-ideation.md`
+- Verified plugin.json already has agents path configured (`"agents": "./agents/"`)
+- Plugin uses folder-based discovery, so all .md files in agents/ are discovered
+- Removed empty `.claude/agents/` directory
+- Plugin now has 8 agents: worker, reviewer, supervisor, orchestrator, deep-researcher, qa-prep, qa-executor, orchestrator-ideation
+
+**Commands run:**
+- `mv .claude/agents/qa-prep.md ralphx-plugin/agents/`
+- `mv .claude/agents/qa-executor.md ralphx-plugin/agents/`
+- `mv .claude/agents/orchestrator-ideation.md ralphx-plugin/agents/`
+- `rmdir .claude/agents/`
+- `claude --plugin-dir ./ralphx-plugin --help` (verified CLI recognizes plugin)
+
+---
 
 ### 2026-01-25 00:00:00 - Phase 11 Complete, Phase 12 Active
 
