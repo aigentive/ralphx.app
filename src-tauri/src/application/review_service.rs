@@ -269,6 +269,158 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
             reason,
         ).await
     }
+
+    // ========================================
+    // Human Review Methods
+    // ========================================
+
+    /// Start a human review for a task
+    ///
+    /// Creates a Review record in Pending status for manual human review.
+    /// The task should already be in a state that requires human review
+    /// (e.g., escalated from AI, or require_human_review is enabled).
+    pub async fn start_human_review(&self, task_id: &TaskId, project_id: &ProjectId) -> AppResult<Review> {
+        // Check if task already has a pending review
+        if self.review_repo.has_pending_review(task_id).await? {
+            return Err(AppError::Validation(format!(
+                "Task {} already has a pending review",
+                task_id.as_str()
+            )));
+        }
+
+        // Verify task exists
+        let _task = self.task_repo.get_by_id(task_id).await?
+            .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+        let review = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Human);
+        self.review_repo.create(&review).await?;
+        Ok(review)
+    }
+
+    /// Approve a human review
+    ///
+    /// Marks the review as approved with optional notes.
+    /// The task should transition to the approved state.
+    pub async fn approve_human_review(
+        &self,
+        review_id: &crate::domain::entities::ReviewId,
+        notes: Option<String>,
+    ) -> AppResult<()> {
+        let mut review = self.review_repo.get_by_id(review_id).await?
+            .ok_or_else(|| AppError::Validation(format!(
+                "Review {} not found",
+                review_id.as_str()
+            )))?;
+
+        if !review.is_pending() {
+            return Err(AppError::Validation(format!(
+                "Review {} is not pending (current: {})",
+                review_id.as_str(),
+                review.status
+            )));
+        }
+
+        review.approve(notes.clone());
+        self.review_repo.update(&review).await?;
+
+        // Add review note for history
+        self.add_review_note(
+            &review.task_id,
+            ReviewerType::Human,
+            ReviewOutcome::Approved,
+            notes.as_deref().unwrap_or("Approved by human reviewer"),
+        ).await?;
+
+        // Add action record
+        self.add_action(&review.id, ReviewActionType::Approved, None).await
+    }
+
+    /// Request changes during human review
+    ///
+    /// Marks the review as changes_requested and optionally creates a fix task.
+    /// Returns the fix task ID if one was created.
+    pub async fn request_changes(
+        &self,
+        review_id: &crate::domain::entities::ReviewId,
+        notes: String,
+        fix_description: Option<String>,
+    ) -> AppResult<Option<TaskId>> {
+        let mut review = self.review_repo.get_by_id(review_id).await?
+            .ok_or_else(|| AppError::Validation(format!(
+                "Review {} not found",
+                review_id.as_str()
+            )))?;
+
+        if !review.is_pending() {
+            return Err(AppError::Validation(format!(
+                "Review {} is not pending (current: {})",
+                review_id.as_str(),
+                review.status
+            )));
+        }
+
+        review.request_changes(notes.clone());
+        self.review_repo.update(&review).await?;
+
+        // Add review note for history
+        self.add_review_note(
+            &review.task_id,
+            ReviewerType::Human,
+            ReviewOutcome::ChangesRequested,
+            &notes,
+        ).await?;
+
+        // Create fix task if description provided
+        if let Some(fix_desc) = fix_description {
+            let fix_task = self.create_fix_task(&review.task_id, &review.project_id, &fix_desc).await?;
+            self.add_action(&review.id, ReviewActionType::CreatedFixTask, Some(fix_task.id.clone())).await?;
+            Ok(Some(fix_task.id))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Reject a human review
+    ///
+    /// Marks the review as rejected with notes.
+    /// The task should transition to a failed/rejected state.
+    pub async fn reject_human_review(
+        &self,
+        review_id: &crate::domain::entities::ReviewId,
+        notes: String,
+    ) -> AppResult<()> {
+        let mut review = self.review_repo.get_by_id(review_id).await?
+            .ok_or_else(|| AppError::Validation(format!(
+                "Review {} not found",
+                review_id.as_str()
+            )))?;
+
+        if !review.is_pending() {
+            return Err(AppError::Validation(format!(
+                "Review {} is not pending (current: {})",
+                review_id.as_str(),
+                review.status
+            )));
+        }
+
+        review.reject(notes.clone());
+        self.review_repo.update(&review).await?;
+
+        // Add review note for history
+        self.add_review_note(
+            &review.task_id,
+            ReviewerType::Human,
+            ReviewOutcome::Rejected,
+            &notes,
+        ).await?;
+
+        // Move task to failed status
+        let mut task = self.task_repo.get_by_id(&review.task_id).await?
+            .ok_or_else(|| AppError::TaskNotFound(review.task_id.as_str().to_string()))?;
+
+        task.internal_status = InternalStatus::Failed;
+        self.task_repo.update(&task).await
+    }
 }
 
 #[cfg(test)]
@@ -611,5 +763,193 @@ mod tests {
         // Verify it's in Backlog
         let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
         assert_eq!(updated.internal_status, InternalStatus::Backlog);
+    }
+
+    // ========================================
+    // Human Review Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_start_human_review_success() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+
+        assert_eq!(review.task_id, task_id);
+        assert_eq!(review.reviewer_type, ReviewerType::Human);
+        assert!(review.is_pending());
+    }
+
+    #[tokio::test]
+    async fn test_start_human_review_already_pending() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        // Start first human review
+        service.start_human_review(&task_id, &project_id).await.unwrap();
+
+        // Trying to start another should fail
+        let result = service.start_human_review(&task_id, &project_id).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_start_human_review_task_not_found() {
+        let (review_repo, task_repo, project_id, _task_id) = setup();
+        let service = ReviewService::new(review_repo, task_repo);
+
+        let nonexistent_id = TaskId::from_string("nonexistent".to_string());
+        let result = service.start_human_review(&nonexistent_id, &project_id).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_approve_human_review_success() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        // Start a human review
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+
+        // Approve it
+        service.approve_human_review(&review.id, Some("Looks good!".to_string())).await.unwrap();
+
+        // Verify review is approved
+        let updated = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+        assert!(updated.is_approved());
+        assert_eq!(updated.notes, Some("Looks good!".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_approve_human_review_without_notes() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        service.approve_human_review(&review.id, None).await.unwrap();
+
+        let updated = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+        assert!(updated.is_approved());
+    }
+
+    #[tokio::test]
+    async fn test_approve_human_review_not_pending() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        // Start and approve a review
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        service.approve_human_review(&review.id, None).await.unwrap();
+
+        // Trying to approve again should fail
+        let result = service.approve_human_review(&review.id, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_approve_human_review_not_found() {
+        let (review_repo, task_repo, _project_id, _task_id) = setup();
+        let service = ReviewService::new(review_repo, task_repo);
+
+        let nonexistent_id = ReviewId::from_string("nonexistent");
+        let result = service.approve_human_review(&nonexistent_id, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_request_changes_without_fix() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        let result = service.request_changes(&review.id, "Missing tests".to_string(), None).await.unwrap();
+
+        // Should not create a fix task
+        assert!(result.is_none());
+
+        // Review should be changes_requested
+        let updated = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+        assert_eq!(updated.status, ReviewStatus::ChangesRequested);
+        assert_eq!(updated.notes, Some("Missing tests".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_request_changes_with_fix() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        let result = service.request_changes(
+            &review.id,
+            "Missing tests".to_string(),
+            Some("Add unit tests for validation".to_string()),
+        ).await.unwrap();
+
+        // Should have created a fix task
+        assert!(result.is_some());
+        let fix_task_id = result.unwrap();
+
+        // Verify fix task was created
+        let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
+        assert!(fix_task.title.starts_with("Fix:"));
+        assert_eq!(fix_task.category, "fix");
+        assert!(fix_task.description.as_ref().unwrap().contains("Add unit tests"));
+    }
+
+    #[tokio::test]
+    async fn test_request_changes_not_pending() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        // Start and approve a review
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        service.approve_human_review(&review.id, None).await.unwrap();
+
+        // Trying to request changes should fail
+        let result = service.request_changes(&review.id, "Changes needed".to_string(), None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_reject_human_review_success() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        service.reject_human_review(&review.id, "Fundamentally wrong approach".to_string()).await.unwrap();
+
+        // Verify review is rejected
+        let updated_review = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
+        assert_eq!(updated_review.status, ReviewStatus::Rejected);
+        assert_eq!(updated_review.notes, Some("Fundamentally wrong approach".to_string()));
+
+        // Verify task is Failed
+        let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        assert_eq!(updated_task.internal_status, InternalStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_reject_human_review_not_pending() {
+        let (review_repo, task_repo, project_id, task_id) = setup();
+        let service = ReviewService::new(review_repo.clone(), task_repo);
+
+        // Start and reject a review
+        let review = service.start_human_review(&task_id, &project_id).await.unwrap();
+        service.reject_human_review(&review.id, "Bad approach".to_string()).await.unwrap();
+
+        // Trying to reject again should fail
+        let result = service.reject_human_review(&review.id, "Still bad".to_string()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_reject_human_review_not_found() {
+        let (review_repo, task_repo, _project_id, _task_id) = setup();
+        let service = ReviewService::new(review_repo, task_repo);
+
+        let nonexistent_id = ReviewId::from_string("nonexistent");
+        let result = service.reject_human_review(&nonexistent_id, "Rejected".to_string()).await;
+        assert!(result.is_err());
     }
 }
