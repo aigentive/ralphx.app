@@ -754,7 +754,7 @@ All tasks require tests written before implementation:
       "Export from domain/repositories/mod.rs",
       "Run cargo test to verify trait compiles"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

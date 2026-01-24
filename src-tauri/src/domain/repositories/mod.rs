@@ -12,6 +12,7 @@ pub mod task_dependency_repository;
 pub mod task_proposal_repository;
 pub mod task_qa_repository;
 pub mod task_repository;
+pub mod workflow_repository;
 
 // Re-exports for convenience
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
@@ -25,3 +26,4 @@ pub use task_dependency_repository::TaskDependencyRepository;
 pub use task_proposal_repository::TaskProposalRepository;
 pub use task_qa_repository::TaskQARepository;
 pub use task_repository::TaskRepository;
+pub use workflow_repository::WorkflowRepository;
