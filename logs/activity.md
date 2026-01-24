@@ -1,14 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-24 10:45:00
+**Last Updated:** 2026-01-24 10:55:00
 **Phase:** Phase 7 (Agent System)
-**Tasks Completed:** 25 / 33
-**Current Task:** Implement Tauri commands for agent profiles
+**Tasks Completed:** 26 / 33
+**Current Task:** Implement supervisor event emission in AgenticClientSpawner
 
 ---
 
 ## Session Log
+
+### 2026-01-24 10:55:00 - Implement Tauri commands for agent profiles
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/memory/memory_agent_profile_repo.rs`:
+  - MemoryAgentProfileRepository for testing
+  - Full implementation of AgentProfileRepository trait
+  - 11 unit tests
+- Updated `src-tauri/src/application/app_state.rs`:
+  - Added agent_profile_repo field to AppState
+  - Updated new_production() to include SqliteAgentProfileRepository
+  - Updated with_db_path() to include SqliteAgentProfileRepository
+  - Updated new_test() to include MemoryAgentProfileRepository
+  - Updated with_repos() to include MemoryAgentProfileRepository
+- Created `src-tauri/src/commands/agent_profile_commands.rs`:
+  - AgentProfileResponse struct with nested response types
+  - list_agent_profiles command
+  - get_agent_profile command
+  - get_agent_profiles_by_role command
+  - get_builtin_agent_profiles command
+  - get_custom_agent_profiles command
+  - seed_builtin_profiles command
+  - 7 unit tests
+- Updated `src-tauri/src/commands/mod.rs` to export agent_profile_commands
+- Updated `src-tauri/src/lib.rs` to register 6 new Tauri commands
+- All Rust tests passing
+
+**Commands run:**
+- `cargo test agent_profile`
+- `cargo test`
+
+---
 
 ### 2026-01-24 10:45:00 - Implement agent_profiles database layer
 

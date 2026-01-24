@@ -688,7 +688,7 @@ CREATE TABLE agent_profiles (
       "Create get_agent_profile_by_role command",
       "Run tauri dev to verify commands work"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "feature",

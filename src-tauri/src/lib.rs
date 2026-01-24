@@ -39,7 +39,13 @@ pub fn run() {
             commands::project_commands::get_project,
             commands::project_commands::create_project,
             commands::project_commands::update_project,
-            commands::project_commands::delete_project
+            commands::project_commands::delete_project,
+            commands::agent_profile_commands::list_agent_profiles,
+            commands::agent_profile_commands::get_agent_profile,
+            commands::agent_profile_commands::get_agent_profiles_by_role,
+            commands::agent_profile_commands::get_builtin_agent_profiles,
+            commands::agent_profile_commands::get_custom_agent_profiles,
+            commands::agent_profile_commands::seed_builtin_profiles
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
