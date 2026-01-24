@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 9,
+  "currentPhase": 10,
   "phases": [
     {
       "phase": 0,
@@ -70,14 +70,14 @@
       "phase": 9,
       "name": "Review & Supervision",
       "prd": "specs/phases/prd_phase_09_review_supervision.md",
-      "status": "active",
+      "status": "complete",
       "description": "Review workflow, watchdog, human-in-loop"
     },
     {
       "phase": 10,
       "name": "Ideation",
       "prd": "specs/phases/prd_phase_10_ideation.md",
-      "status": "pending",
+      "status": "active",
       "description": "Chat interface, ideation view, proposals, priority"
     },
     {
