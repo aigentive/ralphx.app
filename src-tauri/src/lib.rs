@@ -31,6 +31,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .manage(execution_state)
         .invoke_handler(tauri::generate_handler![
@@ -48,6 +49,7 @@ pub fn run() {
             commands::project_commands::create_project,
             commands::project_commands::update_project,
             commands::project_commands::delete_project,
+            commands::project_commands::get_git_branches,
             commands::agent_profile_commands::list_agent_profiles,
             commands::agent_profile_commands::get_agent_profile,
             commands::agent_profile_commands::get_agent_profiles_by_role,
@@ -122,6 +124,7 @@ pub fn run() {
             commands::workflow_commands::set_default_workflow,
             commands::workflow_commands::get_active_workflow_columns,
             commands::workflow_commands::get_builtin_workflows,
+            commands::workflow_commands::seed_builtin_workflows,
             // Artifact commands
             commands::artifact_commands::get_artifacts,
             commands::artifact_commands::get_artifact,

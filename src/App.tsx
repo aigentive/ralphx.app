@@ -244,6 +244,13 @@ function AppContent() {
   const { apply: applyProposalsMutation } = useApplyProposals();
   const orchestratorMessage = useOrchestratorMessage(activeSession?.id ?? "");
 
+  // Seed builtin workflows on app startup
+  useEffect(() => {
+    api.workflows.seedBuiltin().catch((err) => {
+      console.error("Failed to seed builtin workflows:", err);
+    });
+  }, []);
+
   // Sync fetched projects to store and auto-select first project
   useEffect(() => {
     if (fetchedProjects && fetchedProjects.length > 0) {

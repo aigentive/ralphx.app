@@ -320,6 +320,16 @@ export interface InjectTaskInput {
 /**
  * API object containing all typed Tauri command wrappers
  */
+/**
+ * Get git branches for a working directory
+ * @param workingDirectory The path to the git repository
+ * @returns Array of branch names (main/master sorted first)
+ */
+export async function getGitBranches(workingDirectory: string): Promise<string[]> {
+  const result = await invoke<string[]>("get_git_branches", { workingDirectory });
+  return result;
+}
+
 export const api = {
   health: {
     /**
@@ -439,13 +449,24 @@ export const api = {
      * @returns The workflow
      */
     get: (workflowId: string) =>
-      typedInvoke("get_workflow", { workflowId }, WorkflowSchemaZ),
+      typedInvoke("get_workflow", { id: workflowId }, WorkflowSchemaZ.nullable()).then(
+        (result) => {
+          if (!result) throw new Error(`Workflow not found: ${workflowId}`);
+          return result;
+        }
+      ),
 
     /**
      * List all workflows
      * @returns Array of workflows
      */
     list: () => typedInvoke("list_workflows", {}, WorkflowListSchema),
+
+    /**
+     * Seed builtin workflows if they don't exist
+     * @returns Number of workflows created
+     */
+    seedBuiltin: () => typedInvoke("seed_builtin_workflows", {}, z.number()),
   },
 
   qa: {

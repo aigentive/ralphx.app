@@ -21,8 +21,9 @@ export const ProjectSchema = z.object({
   worktreePath: z.string().nullable(),
   worktreeBranch: z.string().nullable(),
   baseBranch: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  // Accept RFC3339 timestamps with offset (e.g., +00:00) not just Z
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
 });
 
 export type Project = z.infer<typeof ProjectSchema>;

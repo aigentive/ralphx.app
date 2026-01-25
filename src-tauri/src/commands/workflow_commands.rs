@@ -77,14 +77,20 @@ pub struct UpdateWorkflowInput {
 
 /// Response wrapper for workflow column
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowColumnResponse {
     pub id: String,
     pub name: String,
     pub maps_to: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_review: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_advance: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_profile: Option<String>,
 }
 
@@ -110,13 +116,17 @@ impl From<&WorkflowColumn> for WorkflowColumnResponse {
 
 /// Response wrapper for workflow operations
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowResponse {
     pub id: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub columns: Vec<WorkflowColumnResponse>,
     pub is_default: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub worker_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reviewer_profile: Option<String>,
 }
 
@@ -256,6 +266,49 @@ pub async fn delete_workflow(id: String, state: State<'_, AppState>) -> Result<(
         .delete(&workflow_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Seed builtin workflows if they don't exist
+/// Returns the number of workflows created
+#[tauri::command]
+pub async fn seed_builtin_workflows(state: State<'_, AppState>) -> Result<usize, String> {
+    let mut created = 0;
+
+    // Check and create RalphX default workflow
+    let default_id = WorkflowId::from_string("ralphx-default");
+    if state
+        .workflow_repo
+        .get_by_id(&default_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        state
+            .workflow_repo
+            .create(WorkflowSchema::default_ralphx())
+            .await
+            .map_err(|e| e.to_string())?;
+        created += 1;
+    }
+
+    // Check and create Jira workflow
+    let jira_id = WorkflowId::from_string("jira-compatible");
+    if state
+        .workflow_repo
+        .get_by_id(&jira_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        state
+            .workflow_repo
+            .create(WorkflowSchema::jira_compatible())
+            .await
+            .map_err(|e| e.to_string())?;
+        created += 1;
+    }
+
+    Ok(created)
 }
 
 /// Set the default workflow

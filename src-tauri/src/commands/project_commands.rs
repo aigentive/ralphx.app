@@ -2,6 +2,7 @@
 // Thin layer that delegates to ProjectRepository
 
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use tauri::State;
 
 use crate::application::AppState;
@@ -9,6 +10,7 @@ use crate::domain::entities::{GitMode, Project, ProjectId};
 
 /// Input for creating a new project
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateProjectInput {
     pub name: String,
     pub working_directory: String,
@@ -20,6 +22,7 @@ pub struct CreateProjectInput {
 
 /// Input for updating a project
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateProjectInput {
     pub name: Option<String>,
     pub working_directory: Option<String>,
@@ -31,6 +34,7 @@ pub struct UpdateProjectInput {
 
 /// Response wrapper for project operations
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectResponse {
     pub id: String,
     pub name: String,
@@ -176,6 +180,54 @@ pub async fn delete_project(id: String, state: State<'_, AppState>) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+/// Get git branches for a working directory
+/// Executes `git branch -a` in the specified directory and parses the output
+#[tauri::command]
+pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, String> {
+    let output = Command::new("git")
+        .args(["branch", "-a"])
+        .current_dir(&working_directory)
+        .output()
+        .map_err(|e| format!("Failed to execute git: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git branch failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<String> = stdout
+        .lines()
+        .map(|line| {
+            // Remove leading whitespace and asterisk (for current branch)
+            let trimmed = line.trim().trim_start_matches("* ");
+            // Handle remote branches like "remotes/origin/main" -> just "main"
+            if let Some(remote_branch) = trimmed.strip_prefix("remotes/origin/") {
+                // Skip HEAD pointer
+                if remote_branch.starts_with("HEAD") {
+                    return None;
+                }
+                Some(remote_branch.to_string())
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .flatten()
+        .collect::<std::collections::HashSet<_>>() // Deduplicate
+        .into_iter()
+        .collect();
+
+    // Sort branches with main/master first
+    let mut sorted: Vec<String> = branches;
+    sorted.sort_by(|a, b| {
+        let a_priority = if a == "main" || a == "master" { 0 } else { 1 };
+        let b_priority = if b == "main" || b == "master" { 0 } else { 1 };
+        a_priority.cmp(&b_priority).then(a.cmp(b))
+    });
+
+    Ok(sorted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,8 +356,10 @@ mod tests {
         assert_eq!(response.working_directory, "/test/path");
         assert_eq!(response.git_mode, "local");
 
-        // Verify it serializes to JSON
+        // Verify it serializes to JSON with camelCase
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"name\":\"Test Project\""));
+        assert!(json.contains("\"workingDirectory\":\"/test/path\""));
+        assert!(json.contains("\"gitMode\":\"local\""));
     }
 }

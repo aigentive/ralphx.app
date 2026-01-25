@@ -143,10 +143,24 @@ The Project Creation Wizard guides users through creating a new project with Git
 ### Purpose
 
 Allow users to:
-1. Name their project
-2. Select a working directory
+1. Select a working directory (primary action)
+2. Optionally name their project (auto-inferred from folder name)
 3. Choose between Local and Worktree git modes
 4. Configure worktree-specific options (branch name, base branch)
+
+### First-Run Experience
+
+When no projects exist (empty project list), the Project Creation Wizard is shown as a **full-screen centered modal** instead of opening from a button:
+
+| Property | Value |
+|----------|-------|
+| Trigger | Automatic on app launch when `projects.length === 0` |
+| Positioning | Centered on screen (both axes) |
+| Backdrop | Full screen with blur, no app chrome visible behind |
+| Dismissal | Only via creating a project (no close button, no escape key) |
+| Animation | Fade in from center (no translateY) |
+
+This ensures users immediately understand they need to set up a project before using RalphX.
 
 ### Layout
 
@@ -155,15 +169,16 @@ Allow users to:
 │  Create New Project                                      [✕] │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
-│  Project Name                                                │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │ My Awesome Project                                    │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-│  Folder                                                      │
+│  Location *                                                  │
 │  ┌────────────────────────────────────────────┐ ┌─────────┐ │
 │  │ /Users/dev/my-app                          │ │ Browse  │ │
 │  └────────────────────────────────────────────┘ └─────────┘ │
+│                                                              │
+│  Project Name (optional)                                     │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ my-app                                     [auto-fill] │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  Inferred from folder name. Override if desired.            │
 │                                                              │
 │  ─────────────────────────────────────────────────────────  │
 │                                                              │
@@ -185,6 +200,8 @@ Allow users to:
 └──────────────────────────────────────────────────────────────┘
 ```
 
+**Note:** The `[✕]` close button is hidden when shown as first-run experience (no projects exist).
+
 ### Content Area
 
 | Property | Value |
@@ -194,6 +211,10 @@ Allow users to:
 
 ### Input Fields
 
+Fields are displayed in this order:
+1. **Location** (required) - folder picker with Browse button
+2. **Project Name** (optional) - auto-inferred from folder name
+
 #### Label
 
 | Property | Value |
@@ -201,6 +222,17 @@ Allow users to:
 | Font | `text-sm`, `font-medium` |
 | Color | `--text-secondary` |
 | Margin bottom | 6px (`space-y-1.5`) |
+| Required indicator | `*` suffix for required fields |
+| Optional indicator | "(optional)" suffix in `--text-muted` |
+
+#### Location Field (First, Required)
+
+| Property | Value |
+|----------|-------|
+| Label | "Location *" |
+| Placeholder | "Select a folder..." |
+| Read-only | Yes (populated via Browse button only) |
+| Validation | Required - shows error if empty on submit |
 
 #### Input (using shadcn Input)
 
@@ -219,6 +251,25 @@ Allow users to:
 | Error border | `--status-error` |
 | Disabled opacity | 0.5 |
 
+#### Project Name Field (Second, Optional)
+
+| Property | Value |
+|----------|-------|
+| Label | "Project Name (optional)" |
+| Auto-inference | When location is selected, extract folder name (e.g., `/Users/dev/my-app` → `my-app`) |
+| Placeholder | Shows inferred name in `--text-muted` when empty |
+| Editable | Yes - user can override the inferred name |
+| Helper text | "Inferred from folder name. Override if desired." |
+| Helper text style | `text-xs`, `--text-muted`, 4px margin top |
+
+#### Auto-Inference Behavior
+
+When user selects a folder via Browse:
+1. Extract the last path segment (folder name)
+2. If Project Name field is empty OR matches previous inferred value, update it
+3. If user has manually typed a custom name, do NOT override
+4. Track `isNameManuallySet` state to determine override behavior
+
 #### Error Message
 
 | Property | Value |
@@ -231,7 +282,7 @@ Allow users to:
 
 | Property | Value |
 |----------|-------|
-| Icon | Lucide `Folder` (16px) |
+| Icon | Lucide `FolderOpen` (16px) |
 | Background | `--bg-elevated` |
 | Color | `--text-primary` |
 | Padding | `px-3 py-2` |
@@ -722,7 +773,7 @@ Only displayed when:
 | Icon | Component | Usage | Size |
 |------|-----------|-------|------|
 | `X` | All dialogs | Close button | 16px |
-| `Folder` | ProjectCreationWizard | Browse button | 16px |
+| `FolderOpen` | ProjectCreationWizard | Browse button | 16px |
 | `AlertTriangle` | All dialogs | Warning indicators | 14px |
 | `ChevronDown` | ProjectCreationWizard | Select dropdown | 12px |
 | `GitBranch` | ProjectCreationWizard | Worktree path display | 14px |
@@ -748,19 +799,20 @@ ProjectCreationWizard
 │   └── DialogContent
 │       ├── Header
 │       │   ├── Title ("Create New Project")
-│       │   └── CloseButton (Lucide X)
+│       │   └── CloseButton (Lucide X) [hidden in first-run mode]
 │       │
 │       ├── ContentArea
-│       │   ├── ProjectNameField
-│       │   │   ├── Label
-│       │   │   └── Input (shadcn)
-│       │   │
-│       │   ├── FolderField
-│       │   │   ├── Label
-│       │   │   ├── Input (shadcn)
+│       │   ├── LocationField (FIRST - required)
+│       │   │   ├── Label ("Location *")
+│       │   │   ├── Input (shadcn, read-only)
 │       │   │   └── BrowseButton
-│       │   │       ├── FolderIcon
+│       │   │       ├── FolderOpenIcon
 │       │   │       └── "Browse"
+│       │   │
+│       │   ├── ProjectNameField (SECOND - optional)
+│       │   │   ├── Label ("Project Name (optional)")
+│       │   │   ├── Input (shadcn, auto-populated)
+│       │   │   └── HelperText ("Inferred from folder name...")
 │       │   │
 │       │   ├── Divider
 │       │   │
@@ -785,7 +837,7 @@ ProjectCreationWizard
 │       │   └── ErrorBanner (conditional)
 │       │
 │       └── Footer
-│           ├── CancelButton
+│           ├── CancelButton [hidden in first-run mode]
 │           └── CreateButton
 
 MergeWorkflowDialog
@@ -879,22 +931,36 @@ TaskRerunDialog
 
 ### Project Creation Wizard
 
-10. [ ] Project name input receives autofocus on open
-11. [ ] Project name validation: required, shows error message
-12. [ ] Folder input shows validation error when empty
-13. [ ] Browse button opens system folder picker (when handler provided)
-14. [ ] Git Mode defaults to "Local"
-15. [ ] Local mode shows warning about uncommitted changes
-16. [ ] Worktree mode shows additional fields with slide animation
-17. [ ] Branch name auto-generates from project name in format `ralphx/{slug}`
-18. [ ] Base branch dropdown fetches branches from git repository
-19. [ ] Base branch dropdown shows loading state while fetching
-20. [ ] Base branch defaults to "main" or "master" if available
-21. [ ] Worktree path displays generated path
-22. [ ] Form validates all required fields on submit
-23. [ ] Create button shows loading state while creating
-24. [ ] Error banner displays API errors
-25. [ ] Form resets when dialog is reopened
+10. [ ] Browse button receives visual focus indicator on open (Location is primary action)
+11. [ ] Location field is required, shows error message when empty on submit
+12. [ ] Browse button opens system folder picker via Tauri dialog API
+13. [ ] When folder is selected, Project Name auto-populates from folder name
+14. [ ] Project Name is optional - uses inferred name if left empty
+15. [ ] User can override inferred Project Name by typing
+16. [ ] Overridden Project Name is preserved when Location changes (tracks `isNameManuallySet`)
+17. [ ] Git Mode defaults to "Local"
+18. [ ] Local mode shows warning about uncommitted changes
+19. [ ] Worktree mode shows additional fields with slide animation
+20. [ ] Branch name auto-generates from project name in format `ralphx/{slug}`
+21. [ ] Base branch dropdown fetches branches from git repository
+22. [ ] Base branch dropdown shows loading state while fetching
+23. [ ] Base branch defaults to "main" or "master" if available
+24. [ ] Worktree path displays generated path
+25. [ ] Form validates Location field on submit (Project Name optional)
+26. [ ] Create button shows loading state while creating
+27. [ ] Error banner displays API errors
+28. [ ] Form resets when dialog is reopened
+
+### First-Run Experience (No Projects)
+
+29. [ ] When projects list is empty, wizard shows immediately on app launch
+30. [ ] Wizard is centered on screen (both horizontal and vertical axes)
+31. [ ] Close button is hidden in first-run mode
+32. [ ] Escape key does not close dialog in first-run mode
+33. [ ] Backdrop click does not close dialog in first-run mode
+34. [ ] Cancel button is hidden in first-run mode
+35. [ ] Only way to dismiss is to successfully create a project
+36. [ ] After first project created, normal dialog behavior resumes
 
 ### Merge Workflow Dialog
 
