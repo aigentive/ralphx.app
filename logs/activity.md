@@ -1,14 +1,96 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 08:00:00
+**Last Updated:** 2026-01-25 08:30:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 13 / 18
-**Current Task:** Design requirements for Diff Viewer
+**Tasks Completed:** 14 / 18
+**Current Task:** Design requirements for Execution Control Bar
 
 ---
 
 ## Session Log
+
+### 2026-01-25 08:30:00 - Design requirements for Diff Viewer (Task 14)
+
+**What was done:**
+- Created comprehensive Diff Viewer design requirements in specs/design/pages/diff-viewer.md
+- Documented split-pane component with file tree (left) and diff panel (right)
+
+**Layout Structure:**
+  - Two tabs: Changes (uncommitted) and History (commits)
+  - Using shadcn Tabs with underline indicator style
+  - Resizable split pane: 25% file tree / 75% diff panel default
+  - Min file tree width: 200px, max: 40%
+  - Divider highlights with accent color on hover
+
+**File Tree (Left Panel):**
+  - Background: `--bg-surface`
+  - Collapsible directories with chevron animation (150ms)
+  - File status icons: Modified (amber), Added (green), Deleted (red), Renamed (blue)
+  - Status badges: Single letter (M/A/D/R) right-aligned
+  - Tree item height: 28px, 16px indent per level
+  - Selected state: `--bg-elevated` background
+
+**Diff Panel (Right Panel):**
+  - Background: `--bg-base` (darkest for code viewing)
+  - File header: 40px height, monospace path, Open in IDE button
+  - Unified diff format with dual line number columns (48px each)
+  - Line backgrounds: 15% opacity of status colors
+  - Change indicators (+/-) in 16px gutter
+  - Code font: JetBrains Mono, 13px, 20px line height
+
+**Syntax Highlighting (Dracula-Inspired):**
+  - Custom dark palette optimized for readability
+  - Keywords: #ff79c6 (pink)
+  - Strings: #f1fa8c (yellow)
+  - Functions: #50fa7b (green)
+  - Comments: #6272a4 (muted blue)
+  - Types: #8be9fd (cyan)
+  - Word-level diff highlighting with 30% opacity backgrounds
+
+**History Tab:**
+  - Commit list replaces file tree in left panel
+  - Commit item: 48px height, short SHA (accent monospace), message, author, time
+  - Selected commit: `--bg-elevated` + 2px left accent border
+  - Click shows commit diff in right panel
+
+**Empty States:**
+  - No changes: CheckCircle2 icon, "Your working directory is clean"
+  - No history: GitCommit icon, "Make your first commit..."
+  - No file selected: FileSearch icon, "Select a file to view changes"
+
+**Keyboard Shortcuts:**
+  - Cmd+1/2 for tab switching
+  - Arrow keys for navigation
+  - Cmd+O to open in IDE
+  - Tab to switch between panels
+
+- Listed 17 Lucide icons used across the component
+- Created detailed component hierarchy diagram
+- Defined 26 acceptance criteria for functional requirements
+- Created comprehensive design quality checklist with 46 items covering:
+  - Colors & theming (no purple gradients, Dracula-inspired syntax theme)
+  - Typography (JetBrains Mono for code, proper sizes)
+  - Spacing & layout (8pt grid, proper column widths)
+  - Shadows & depth (minimal, border-only separation)
+  - Borders & radius (panel separators, tab underlines)
+  - Motion & interactions (chevron rotation, divider highlight)
+  - Icons (sizes per context)
+  - Accessibility (ARIA attributes, keyboard navigation)
+
+**Design Highlights:**
+- Developer-focused precision with warmth
+- Dracula-inspired syntax highlighting reduces eye strain
+- Split pane with smooth resize functionality
+- Clear visual hierarchy for code review workflow
+- Warm orange accent for tab indicator and commit SHAs
+
+**Files modified:**
+- `specs/design/pages/diff-viewer.md` (complete rewrite with full design requirements)
+- `specs/DESIGN.md` (updated Diff Viewer status to Complete)
+- `specs/phases/prd_phase_13_design.md` (marked task 14 as passes: true)
+
+---
 
 ### 2026-01-25 08:00:00 - Design requirements for Project Dialogs (Task 13)
 
