@@ -206,9 +206,6 @@ function AppContent() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectCreationError, setProjectCreationError] = useState<string | null>(null);
 
-  // Demo data loading state
-  const [isLoadingDemoData, setIsLoadingDemoData] = useState(false);
-
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
@@ -284,23 +281,7 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Load demo data for visual audits (Cmd+Shift+D)
-  const handleLoadDemoData = useCallback(async () => {
-    setIsLoadingDemoData(true);
-    try {
-      const result = await api.testData.seedVisualAudit();
-      console.log("Demo data seeded:", result);
-      // Refresh projects to pick up the new one
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-    } catch (error) {
-      console.error("Failed to load demo data:", error);
-    } finally {
-      setIsLoadingDemoData(false);
-    }
-  }, []);
-
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views)
-  // Cmd+Shift+D to load demo data (for visual audits)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
@@ -319,17 +300,13 @@ function AppContent() {
         } else if (e.key === "5") {
           e.preventDefault();
           setCurrentView("settings");
-        } else if (e.shiftKey && (e.key === "d" || e.key === "D")) {
-          // Cmd+Shift+D: Load demo data for visual audits
-          e.preventDefault();
-          handleLoadDemoData();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, handleLoadDemoData]);
+  }, [setCurrentView]);
 
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {
@@ -724,19 +701,6 @@ function AppContent() {
               data-testid="create-first-project-button"
             >
               Create Project
-            </button>
-            <button
-              onClick={handleLoadDemoData}
-              disabled={isLoadingDemoData}
-              className="ml-3 px-6 py-3 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: "var(--bg-elevated)",
-                color: "var(--text-secondary)",
-                opacity: isLoadingDemoData ? 0.5 : 1,
-              }}
-              data-testid="load-demo-data-button"
-            >
-              {isLoadingDemoData ? "Loading..." : "Load Demo Data"}
             </button>
           </div>
         </div>

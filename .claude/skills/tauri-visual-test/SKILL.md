@@ -49,27 +49,12 @@ end tell'
 | Cmd+4 | Activity view |
 | Cmd+5 | Settings view |
 | Cmd+K | Toggle Chat |
-| Cmd+Shift+D | **Load Demo Data** (creates test project + tasks) |
 
 ### Test Data Setup
 
-For visual audits that need sample data, use **Cmd+Shift+D** to load demo data:
-
-```bash
-# Focus app and send Cmd+Shift+D
-osascript -e '
-tell application "System Events"
-  set frontmost of process "ralphx" to true
-  delay 0.3
-  keystroke "d" using {command down, shift down}
-end tell
-'
-sleep 2  # Wait for data to load
-```
+Test data is seeded programmatically via Tauri commands. Before visual audits, ensure test data exists.
 
 #### Test Data Profiles
-
-The test data system supports profiles for different screens:
 
 | Profile | Creates | Use For |
 |---------|---------|---------|
@@ -78,9 +63,22 @@ The test data system supports profiles for different screens:
 | `ideation` | Kanban + sessions/proposals | Ideation view audits (TODO) |
 | `full` | All data types | Comprehensive testing |
 
-#### Programmatic Usage
+#### Seeding Test Data
 
-From frontend code:
+**Option 1: Via Tauri invoke (from browser console when app is running)**
+```javascript
+await window.__TAURI__.core.invoke('seed_test_data', { profile: 'kanban' });
+```
+
+**Option 2: Direct database check/seed script**
+```bash
+# Check if data exists
+sqlite3 src-tauri/ralphx.db "SELECT COUNT(*) FROM projects;"
+
+# If empty (0), the visual audit task should call the seed command
+```
+
+**Option 3: From frontend code (in tests or hooks)**
 ```typescript
 await api.testData.seed("kanban");  // Specific profile
 await api.testData.seedVisualAudit(); // Alias for kanban
