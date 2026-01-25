@@ -126,7 +126,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Build and test standalone: npm run build",
       "Commit: feat(mcp): create RalphX MCP server proxy"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",

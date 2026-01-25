@@ -30,7 +30,7 @@ pub fn run() {
     // Start HTTP server for MCP proxy on port 3847
     // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
     let http_state = Arc::new(AppState::new_production().expect("Failed to initialize AppState for HTTP server"));
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         http_server::start_http_server(http_state).await;
     });
 

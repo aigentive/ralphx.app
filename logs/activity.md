@@ -1,14 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:30:00
+**Last Updated:** 2026-01-26 02:35:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 3 / 26
-**Current Task:** Create RalphX MCP Server (TypeScript proxy)
+**Tasks Completed:** 4 / 26
+**Current Task:** Implement MCP tool scoping based on agent type
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:35:00 - RalphX MCP Server (TypeScript proxy)
+
+**What was done:**
+- Created `ralphx-mcp-server/` directory with TypeScript MCP server
+- Set up package.json with `@modelcontextprotocol/sdk` dependency
+- Created tsconfig.json with proper module resolution (Node16)
+- Implemented `src/tauri-client.ts` - HTTP client for calling Tauri backend:
+  - Calls Tauri backend at http://127.0.0.1:3847
+  - Proper error handling with TauriClientError class
+  - Parses error responses from backend
+- Implemented `src/tools.ts` - MCP tool definitions:
+  - ALL_TOOLS array with 11 tools covering ideation, task, project, and review workflows
+  - TOOL_ALLOWLIST mapping agent types to allowed tools:
+    - orchestrator-ideation: 4 ideation tools (create/update/delete proposal, add dependency)
+    - chat-task: 3 task tools (update task, add note, get details)
+    - chat-project: 2 project tools (suggest task, list tasks)
+    - reviewer: 1 review tool (complete review)
+    - worker/supervisor/qa-prep/qa-tester: no MCP tools (use filesystem tools only)
+  - Helper functions: getAllowedToolNames(), getFilteredTools(), isToolAllowed()
+- Implemented `src/index.ts` - MCP server entry point:
+  - Reads RALPHX_AGENT_TYPE from environment (set by Rust when spawning)
+  - ListToolsRequestSchema handler: returns filtered tools based on agent type
+  - CallToolRequestSchema handler: validates authorization, forwards to Tauri, returns results
+  - Proper error handling and logging
+  - Runs on stdio transport (standard for MCP servers)
+- Built successfully with `npm run build`
+- Tested server starts without errors
+
+**Commands run:**
+- `npm install`
+- `npm run build`
+- `timeout 2 node build/index.js` (verification test)
+
+---
 
 ### 2026-01-26 02:30:00 - HTTP server for MCP proxy
 
