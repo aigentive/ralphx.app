@@ -63,18 +63,21 @@ create_task() {
     echo "  Created task: $TITLE ($STATUS)"
 }
 
-# Backlog task
-create_task "Add notifications" "Toast notifications for actions" "feature" 0 "backlog" "NULL" "NULL"
+# Priority values: 1=Critical, 2=High, 3=Medium, 4=Low, 0=None
+# These must match TaskCard.tsx getPriorityColor() switch cases
 
-# Ready tasks
-create_task "Implement dark mode" "Add dark mode support to the application" "feature" 10 "ready" "NULL" "NULL"
-create_task "Fix sidebar scroll" "Sidebar content overflows on small screens" "bug" 20 "ready" "NULL" "NULL"
+# Backlog task - Low priority
+create_task "Add notifications" "Toast notifications for actions" "feature" 4 "backlog" "NULL" "NULL"
 
-# Executing task
-create_task "Add keyboard shortcuts" "Implement Cmd+K for quick actions" "feature" 15 "executing" "'$NOW'" "NULL"
+# Ready tasks - various priorities
+create_task "Implement dark mode" "Add dark mode support to the application" "feature" 3 "ready" "NULL" "NULL"
+create_task "Fix sidebar scroll" "Sidebar content overflows on small screens" "bug" 1 "ready" "NULL" "NULL"
 
-# Completed task
-create_task "Setup project structure" "Initial Tauri + React setup" "setup" 5 "approved" "'$NOW'" "'$NOW'"
+# Executing task - High priority
+create_task "Add keyboard shortcuts" "Implement Cmd+K for quick actions" "feature" 2 "executing" "'$NOW'" "NULL"
+
+# Completed task - Medium priority
+create_task "Setup project structure" "Initial Tauri + React setup" "setup" 3 "approved" "'$NOW'" "'$NOW'"
 
 echo ""
 echo "Test data seeded successfully!"

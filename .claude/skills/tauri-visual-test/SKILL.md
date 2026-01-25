@@ -32,14 +32,18 @@ screencapture -l$WID -o "screenshots/$(date +%Y-%m-%d_%H-%M-%S)_kanban-default.p
 
 ### Keyboard Navigation
 
+**Important**: Focus the app using the process name "ralphx" (lowercase), NOT by PID:
+
 ```bash
-# Focus app and send shortcut
+# Focus app using process name and send shortcut
 osascript -e 'tell application "System Events"
-  set frontmost of (first process whose unix id is '$PID') to true
+  set frontmost of process "ralphx" to true
   delay 0.3
   keystroke "2" using command down
 end tell'
 ```
+
+**Note**: Using `unix id` doesn't work reliably. Always use the process name "ralphx" instead.
 
 | Shortcut | Action |
 |----------|--------|
@@ -127,12 +131,12 @@ fi
 
 # 3. Capture each view (using YYYY-MM-DD_HH-MM-SS_task-name.png convention)
 
-# Kanban (Cmd+1)
-osascript -e "tell application \"System Events\"
-  set frontmost of (first process whose unix id is $PID) to true
+# Kanban (Cmd+1) - use process name "ralphx" instead of PID
+osascript -e 'tell application "System Events"
+  set frontmost of process "ralphx" to true
   delay 0.3
-  keystroke \"1\" using command down
-end tell"
+  keystroke "1" using command down
+end tell'
 sleep 0.5
 screencapture -l$WID -o "screenshots/$(date +%Y-%m-%d_%H-%M-%S)_kanban-default.png"
 
