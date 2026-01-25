@@ -55,7 +55,7 @@ describe("StateHistoryTimeline", () => {
       renderWithProviders(<StateHistoryTimeline taskId="task-123" />);
 
       expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
-      expect(screen.getByText("No history")).toBeInTheDocument();
+      expect(screen.getByText("No history yet")).toBeInTheDocument();
     });
   });
 
@@ -114,8 +114,8 @@ describe("StateHistoryTimeline", () => {
 
       renderWithProviders(<StateHistoryTimeline taskId="task-123" />);
 
-      expect(screen.getByText("by: user")).toBeInTheDocument();
-      expect(screen.getByText("by: ai_reviewer")).toBeInTheDocument();
+      expect(screen.getByText("by: Human Reviewer")).toBeInTheDocument();
+      expect(screen.getByText("by: AI Reviewer")).toBeInTheDocument();
     });
 
     it("should display notes when present", () => {
@@ -238,7 +238,7 @@ describe("StateHistoryTimeline", () => {
   });
 
   describe("actor mapping", () => {
-    it("should map 'human' reviewer to 'user'", () => {
+    it("should map 'human' reviewer to 'Human Reviewer'", () => {
       mockUseTaskStateHistory.mockReturnValue({
         data: [
           {
@@ -256,10 +256,10 @@ describe("StateHistoryTimeline", () => {
 
       renderWithProviders(<StateHistoryTimeline taskId="task-123" />);
 
-      expect(screen.getByText("by: user")).toBeInTheDocument();
+      expect(screen.getByText("by: Human Reviewer")).toBeInTheDocument();
     });
 
-    it("should map 'ai' reviewer to 'ai_reviewer'", () => {
+    it("should map 'ai' reviewer to 'AI Reviewer'", () => {
       mockUseTaskStateHistory.mockReturnValue({
         data: [
           {
@@ -277,7 +277,7 @@ describe("StateHistoryTimeline", () => {
 
       renderWithProviders(<StateHistoryTimeline taskId="task-123" />);
 
-      expect(screen.getByText("by: ai_reviewer")).toBeInTheDocument();
+      expect(screen.getByText("by: AI Reviewer")).toBeInTheDocument();
     });
   });
 
