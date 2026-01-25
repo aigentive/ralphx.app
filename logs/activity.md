@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:15:00
+**Last Updated:** 2026-01-26 01:45:40
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 10 / 26
-**Current Task:** Create PermissionDialog component
+**Tasks Completed:** 11 / 26
+**Current Task:** Mount PermissionDialog globally in App
 
 ---
 
 ## Session Log
+
+### 2026-01-26 01:45:40 - Permission Bridge: PermissionDialog Component
+
+**What was done:**
+- Created `src/components/PermissionDialog.tsx` with full permission dialog implementation:
+  - Listens to `permission:request` Tauri events
+  - Queues multiple permission requests (shows first, displays count of remaining)
+  - Formats tool input preview based on tool type:
+    - Bash: shows command directly
+    - Write: shows file path + first 200 chars of content
+    - Edit: shows file path + old/new string diff
+    - Read: shows file path
+    - Default: JSON.stringify for other tools
+  - Allow/Deny buttons that call `resolve_permission_request` Tauri command
+  - Closing dialog triggers deny decision
+  - Uses shadcn Dialog component with design system tokens (CSS variables)
+  - Premium design with warning icon, proper spacing, and elevated surfaces
+
+- Created `src/components/PermissionDialog.test.tsx` with comprehensive test suite:
+  - 16 tests covering all functionality
+  - Tests event listening, request queueing, tool formatting, user interactions
+  - Tests Allow/Deny buttons, dialog close behavior, cleanup
+  - All tests passing
+
+**Implementation details:**
+- Used Lucide icons: AlertTriangle (warning), Shield (approve), Terminal (tool indicator)
+- CSS variables from design system: `--status-warning`, `--bg-surface`, `--text-primary`, etc.
+- Fixed Vitest mocking by properly hoisting vi.mock calls
+- Fixed async cleanup test using waitFor for unlisten function
+
+**Commands run:**
+- `npm run lint` (successful - only pre-existing warnings)
+- `npm run typecheck` (successful)
+- `npm run test -- src/components/PermissionDialog.test.tsx` (16/16 tests passed)
+
+---
 
 ### 2026-01-26 02:15:00 - Permission Bridge: Frontend Types
 
