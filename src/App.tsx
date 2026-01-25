@@ -14,6 +14,7 @@ import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar"
 import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
+import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
@@ -767,6 +768,9 @@ function AppContent() {
         error={projectCreationError}
         isFirstRun={hasNoProjects}
       />
+
+      {/* Permission Dialog - Global UI-based permission approval */}
+      <PermissionDialog />
     </main>
   );
 }
