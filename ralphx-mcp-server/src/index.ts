@@ -25,6 +25,10 @@ import {
   isToolAllowed,
   getAllowedToolNames,
 } from "./tools.js";
+import {
+  permissionRequestTool,
+  handlePermissionRequest,
+} from "./permission-handler.js";
 
 // Agent type from environment (set by Rust backend when spawning Claude CLI)
 const AGENT_TYPE = process.env.RALPHX_AGENT_TYPE || "unknown";
@@ -46,17 +50,21 @@ const server = new Server(
 
 /**
  * List available tools (filtered by agent type)
+ * Note: permission_request tool is always included (not scoped by agent type)
  */
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = getFilteredTools();
 
+  // Always include permission_request tool (not scoped by agent type)
+  const allTools = [...tools, permissionRequestTool];
+
   // Log tool scoping for debugging
   const allowedNames = getAllowedToolNames();
   console.error(
-    `[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${allowedNames.length > 0 ? allowedNames.join(", ") : "none"}`
+    `[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${allowedNames.length > 0 ? allowedNames.join(", ") : "none"} + permission_request`
   );
 
-  return { tools };
+  return { tools: allTools };
 });
 
 /**
@@ -64,6 +72,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+
+  // Special handling for permission_request tool (always allowed, not scoped by agent type)
+  if (name === "permission_request") {
+    return handlePermissionRequest(
+      args as Parameters<typeof handlePermissionRequest>[0]
+    );
+  }
 
   // Authorization check (defense in depth)
   if (!isToolAllowed(name)) {

@@ -1,14 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:47:00
+**Last Updated:** 2026-01-26 08:15:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 5 / 26
-**Current Task:** Add permission_request tool to MCP server for UI-based permission handling
+**Tasks Completed:** 6 / 26
+**Current Task:** Add PermissionState and permission HTTP endpoints to Tauri backend
 
 ---
 
 ## Session Log
+
+### 2026-01-26 08:15:00 - Permission Bridge: MCP Tool Implementation
+
+**What was done:**
+- Created `ralphx-mcp-server/src/permission-handler.ts` with permission_request MCP tool:
+  - Tool definition with inputSchema (tool_name, tool_input, context)
+  - handlePermissionRequest function that:
+    - POSTs to Tauri /api/permission/request to register the request
+    - Long-polls /api/permission/await/:request_id with 5 minute timeout
+    - Returns allow/deny decision to Claude CLI
+  - Comprehensive error handling (timeouts, network failures, abort signals)
+- Updated `ralphx-mcp-server/src/index.ts`:
+  - Imported permissionRequestTool and handlePermissionRequest
+  - Added permission_request to ListToolsRequestSchema response (always included, not scoped by agent type)
+  - Added special handling in CallToolRequestSchema to route permission_request calls to handler
+  - Updated logging to show permission_request is always available
+- Verified TypeScript compilation succeeds with `npm run build`
+
+**Implementation details:**
+- Permission request tool is NOT scoped by agent type - it's always available
+- Uses fetch with AbortController for timeout handling
+- Returns MCP-compatible response with JSON: `{ allowed: boolean, reason: string }`
+- Long-poll endpoint will be created in next task (Tauri backend)
+
+**Commands run:**
+- `npm run build` in ralphx-mcp-server/ (successful compilation)
+
+---
 
 ### 2026-01-26 05:47:00 - MCP Tool Scoping Implementation
 
