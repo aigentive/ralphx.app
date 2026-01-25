@@ -1,14 +1,61 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 02:26:29
+**Last Updated:** 2026-01-25 03:45:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 15 / 18
-**Current Task:** Design requirements for Header and Navigation
+**Tasks Completed:** 16 / 18
+**Current Task:** Design requirements for All Modals (standardized pattern)
 
 ---
 
 ## Session Log
+
+### 2026-01-25 03:45:00 - Design requirements for Header and Navigation (Task 16)
+
+**What was done:**
+- Created comprehensive Header and Navigation design requirements in specs/design/pages/header-navigation.md
+- Documented fixed top header bar with Mac-native window drag region support
+
+**Layout Structure:**
+  - Fixed position at top, height 48px
+  - Three sections: Left (branding + nav), Center (project selector), Right (panel toggles)
+  - Background: `--bg-surface` with subtle bottom border and shadow
+  - Z-index: 50 (above content, below modals)
+  - `-webkit-app-region: drag` for Tauri window dragging
+
+**Left Section (Branding + Navigation):**
+  - RalphX wordmark in warm orange accent (`--accent-primary`)
+  - Five view navigation items: Kanban, Ideation, Extensibility, Activity, Settings
+  - Using shadcn Button (ghost variant)
+  - Active view: elevated background + accent color
+  - Lucide icons: LayoutGrid, Lightbulb, Puzzle, Activity, SlidersHorizontal
+  - Keyboard shortcuts: ⌘1-5 for view switching
+
+**Center Section (Project Selector):**
+  - Using shadcn DropdownMenu
+  - Trigger shows: FolderOpen icon, project name (truncated), git status dot, ChevronDown
+  - Dropdown: project list with active indicator, branch names, dirty status
+  - "New Project..." action with Plus icon
+  - Active project highlighted with left border accent
+
+**Right Section (Panel Toggles):**
+  - Chat toggle: MessageSquare icon, "Chat" label, ⌘K kbd indicator
+  - Reviews toggle: CheckCircle icon, "Reviews" label, pending count badge
+  - Badge: absolute positioned, `--status-warning` background, 18px circle
+  - Active panel states: elevated background + accent color
+
+**Micro-interactions:**
+  - Nav hover transitions: 150ms ease
+  - Nav press: scale(0.98)
+  - Dropdown open: scale 0.95→1, translateY -4px→0, 150ms ease-out
+  - Badge pop: scale 0.5→1.1→1, 200ms ease-spring
+
+**Updated files:**
+  - specs/design/pages/header-navigation.md (full rewrite)
+  - specs/DESIGN.md (status: Complete)
+  - specs/phases/prd_phase_13_design.md (passes: true)
+
+---
 
 ### 2026-01-25 02:26:29 - Design requirements for Execution Control Bar (Task 15)
 
