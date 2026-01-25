@@ -5,7 +5,6 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { getQueryClient } from "@/lib/queryClient";
 import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
@@ -842,7 +841,6 @@ function App() {
       <EventProvider>
         <AppContent />
       </EventProvider>
-      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 }
