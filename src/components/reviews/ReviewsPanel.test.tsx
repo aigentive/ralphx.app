@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReviewsPanel } from "./ReviewsPanel";
 import type { ReviewResponse } from "@/lib/tauri";
@@ -180,15 +181,15 @@ describe("ReviewsPanel", () => {
       });
     });
 
-    it("renders All, AI Review, Human Review tabs", () => {
+    it("renders All, AI, Human tabs with counts", () => {
       render(
         <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
         { wrapper: createWrapper() }
       );
 
-      expect(screen.getByRole("tab", { name: /all/i })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: /ai review/i })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: /human review/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /all.*\(3\)/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /ai.*\(2\)/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /human.*\(1\)/i })).toBeInTheDocument();
     });
 
     it("shows all reviews when All tab is active (default)", () => {
@@ -202,33 +203,40 @@ describe("ReviewsPanel", () => {
       expect(screen.getByTestId("review-card-review-3")).toBeInTheDocument();
     });
 
-    it("filters to AI reviews when AI Review tab clicked", () => {
+    it("filters to AI reviews when AI tab clicked", async () => {
+      const user = userEvent.setup();
       render(
         <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
         { wrapper: createWrapper() }
       );
 
-      fireEvent.click(screen.getByRole("tab", { name: /ai review/i }));
+      await user.click(screen.getByRole("tab", { name: /ai.*\(2\)/i }));
 
-      expect(screen.getByTestId("review-card-review-1")).toBeInTheDocument();
-      expect(screen.queryByTestId("review-card-review-2")).not.toBeInTheDocument();
-      expect(screen.getByTestId("review-card-review-3")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId("review-card-review-1")).toBeInTheDocument();
+        expect(screen.queryByTestId("review-card-review-2")).not.toBeInTheDocument();
+        expect(screen.getByTestId("review-card-review-3")).toBeInTheDocument();
+      });
     });
 
-    it("filters to Human reviews when Human Review tab clicked", () => {
+    it("filters to Human reviews when Human tab clicked", async () => {
+      const user = userEvent.setup();
       render(
         <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
         { wrapper: createWrapper() }
       );
 
-      fireEvent.click(screen.getByRole("tab", { name: /human review/i }));
+      await user.click(screen.getByRole("tab", { name: /human.*\(1\)/i }));
 
-      expect(screen.queryByTestId("review-card-review-1")).not.toBeInTheDocument();
-      expect(screen.getByTestId("review-card-review-2")).toBeInTheDocument();
-      expect(screen.queryByTestId("review-card-review-3")).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.queryByTestId("review-card-review-1")).not.toBeInTheDocument();
+        expect(screen.getByTestId("review-card-review-2")).toBeInTheDocument();
+        expect(screen.queryByTestId("review-card-review-3")).not.toBeInTheDocument();
+      });
     });
 
-    it("shows empty state for filter with no matching reviews", () => {
+    it("shows empty state for filter with no matching reviews", async () => {
+      const user = userEvent.setup();
       const aiOnlyReviews = [
         createMockReview({ id: "review-1", task_id: "task-1", reviewer_type: "ai" }),
       ];
@@ -247,24 +255,30 @@ describe("ReviewsPanel", () => {
         { wrapper: createWrapper() }
       );
 
-      fireEvent.click(screen.getByRole("tab", { name: /human review/i }));
+      await user.click(screen.getByRole("tab", { name: /human.*\(0\)/i }));
 
-      expect(screen.getByTestId("reviews-panel-empty")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId("reviews-panel-empty")).toBeInTheDocument();
+      });
     });
 
-    it("highlights active tab", () => {
+    it("highlights active tab using data-state attribute", async () => {
+      const user = userEvent.setup();
       render(
         <ReviewsPanel projectId="project-1" taskTitles={mockTaskTitles} />,
         { wrapper: createWrapper() }
       );
 
-      const allTab = screen.getByRole("tab", { name: /all/i });
-      expect(allTab).toHaveAttribute("data-active", "true");
+      const allTab = screen.getByRole("tab", { name: /all.*\(3\)/i });
+      expect(allTab).toHaveAttribute("data-state", "active");
 
-      fireEvent.click(screen.getByRole("tab", { name: /ai review/i }));
-      const aiTab = screen.getByRole("tab", { name: /ai review/i });
-      expect(aiTab).toHaveAttribute("data-active", "true");
-      expect(allTab).toHaveAttribute("data-active", "false");
+      await user.click(screen.getByRole("tab", { name: /ai.*\(2\)/i }));
+
+      await waitFor(() => {
+        const aiTab = screen.getByRole("tab", { name: /ai.*\(2\)/i });
+        expect(aiTab).toHaveAttribute("data-state", "active");
+        expect(allTab).toHaveAttribute("data-state", "inactive");
+      });
     });
   });
 
@@ -412,7 +426,7 @@ describe("ReviewsPanel", () => {
   });
 
   describe("styling", () => {
-    it("applies design system background color", () => {
+    it("applies design system background color via class", () => {
       vi.mocked(usePendingReviews).mockReturnValue({
         data: [],
         isLoading: false,
@@ -428,7 +442,7 @@ describe("ReviewsPanel", () => {
       );
 
       const panel = screen.getByTestId("reviews-panel");
-      expect(panel).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      expect(panel).toHaveClass("bg-[var(--bg-surface)]");
     });
   });
 

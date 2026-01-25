@@ -1,69 +1,72 @@
 /**
  * ReviewStatusBadge - Displays review status with appropriate styling
- * Colors: pending (orange), approved (green), changes_requested (orange), rejected (red)
+ * Uses Lucide icons and semi-transparent backgrounds per design spec
  */
 
+import { Clock, CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ReviewStatus } from "@/types/review";
 
 interface ReviewStatusBadgeProps {
   status: ReviewStatus;
+  className?: string;
 }
 
-const STATUS_CONFIG: Record<ReviewStatus, { label: string; color: string; icon: "clock" | "check" | "warning" | "x" }> = {
-  pending: { label: "Pending", color: "var(--status-warning)", icon: "clock" },
-  approved: { label: "Approved", color: "var(--status-success)", icon: "check" },
-  changes_requested: { label: "Changes Requested", color: "var(--status-warning)", icon: "warning" },
-  rejected: { label: "Rejected", color: "var(--status-error)", icon: "x" },
+const STATUS_CONFIG: Record<
+  ReviewStatus,
+  {
+    label: string;
+    bgClass: string;
+    textClass: string;
+    Icon: typeof Clock;
+  }
+> = {
+  pending: {
+    label: "Pending",
+    bgClass: "bg-[var(--bg-hover)]",
+    textClass: "text-[var(--text-secondary)]",
+    Icon: Clock,
+  },
+  approved: {
+    label: "Approved",
+    bgClass: "bg-emerald-500/15",
+    textClass: "text-[var(--status-success)]",
+    Icon: CheckCircle,
+  },
+  changes_requested: {
+    label: "Changes Requested",
+    bgClass: "bg-amber-500/15",
+    textClass: "text-[var(--status-warning)]",
+    Icon: AlertCircle,
+  },
+  rejected: {
+    label: "Rejected",
+    bgClass: "bg-red-500/15",
+    textClass: "text-[var(--status-error)]",
+    Icon: XCircle,
+  },
 };
 
-function ClockIcon() {
-  return (
-    <svg data-testid="icon-clock" width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M6 3V6L8 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg data-testid="icon-check" width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function WarningIcon() {
-  return (
-    <svg data-testid="icon-warning" width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M6 1L11 10H1L6 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M6 4.5V6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="6" cy="8.25" r="0.75" fill="currentColor" />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg data-testid="icon-x" width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-export function ReviewStatusBadge({ status }: ReviewStatusBadgeProps) {
+export function ReviewStatusBadge({ status, className }: ReviewStatusBadgeProps) {
   const config = STATUS_CONFIG[status];
-  const Icon = { clock: ClockIcon, check: CheckIcon, warning: WarningIcon, x: XIcon }[config.icon];
+  const { Icon } = config;
 
   return (
-    <span
+    <Badge
       data-testid="review-status-badge"
       data-status={status}
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
-      style={{ backgroundColor: config.color, color: "var(--bg-base)" }}
+      variant="outline"
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border-0",
+        "rounded-[var(--radius-sm)]",
+        config.bgClass,
+        config.textClass,
+        className
+      )}
     >
-      <Icon />
+      <Icon className="w-3 h-3" data-testid={`icon-${status === "pending" ? "clock" : status}`} />
       {config.label}
-    </span>
+    </Badge>
   );
 }

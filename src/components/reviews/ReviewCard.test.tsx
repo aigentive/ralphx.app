@@ -241,7 +241,7 @@ describe("ReviewCard", () => {
   });
 
   describe("styling", () => {
-    it("applies design system background color", () => {
+    it("applies design system background color via class", () => {
       render(
         <ReviewCard
           review={createMockReview()}
@@ -249,7 +249,7 @@ describe("ReviewCard", () => {
         />
       );
       const card = screen.getByTestId("review-card-review-1");
-      expect(card).toHaveStyle({ backgroundColor: "var(--bg-elevated)" });
+      expect(card).toHaveClass("bg-[var(--bg-elevated)]");
     });
   });
 });
