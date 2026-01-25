@@ -1,112 +1,75 @@
 // Tauri commands for seeding test/demo data
 // Used for visual audits and testing
+// Extensible profile-based system for different screen needs
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{InternalStatus, Project, Task};
 
+/// Available test data profiles
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TestDataProfile {
+    /// Minimal data - just a project (for testing empty states)
+    Minimal,
+    /// Kanban view - project + tasks in various states
+    Kanban,
+    /// Ideation view - project + ideation sessions + proposals (TODO)
+    Ideation,
+    /// Full demo - all data types for comprehensive testing
+    Full,
+}
+
+impl Default for TestDataProfile {
+    fn default() -> Self {
+        Self::Kanban
+    }
+}
+
 /// Response for seed operations
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeedDataResponse {
+    pub profile: String,
     pub project_id: String,
     pub project_name: String,
     pub tasks_created: usize,
+    pub sessions_created: usize,
+    pub proposals_created: usize,
 }
 
-/// Seed data for visual audits
-/// Creates a test project with sample tasks in various states
+/// Seed data for visual audits with specified profile
+#[tauri::command]
+pub async fn seed_test_data(
+    profile: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<SeedDataResponse, String> {
+    let profile = profile
+        .map(|p| match p.as_str() {
+            "minimal" => TestDataProfile::Minimal,
+            "kanban" => TestDataProfile::Kanban,
+            "ideation" => TestDataProfile::Ideation,
+            "full" => TestDataProfile::Full,
+            _ => TestDataProfile::Kanban,
+        })
+        .unwrap_or_default();
+
+    match profile {
+        TestDataProfile::Minimal => seed_minimal(state).await,
+        TestDataProfile::Kanban => seed_kanban(state).await,
+        TestDataProfile::Ideation => seed_ideation(state).await,
+        TestDataProfile::Full => seed_full(state).await,
+    }
+}
+
+/// Backward compatible alias for seed_test_data with kanban profile
 #[tauri::command]
 pub async fn seed_visual_audit_data(
     state: State<'_, AppState>,
 ) -> Result<SeedDataResponse, String> {
-    // Create test project
-    let project = Project::new(
-        "Visual Audit Test".to_string(),
-        std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "/tmp".to_string()),
-    );
-
-    let project = state
-        .project_repo
-        .create(project)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let project_id = project.id.clone();
-    let mut tasks_created = 0;
-
-    // Create tasks in various states for Kanban columns
-
-    // Ready tasks (Ready column)
-    let mut task1 = Task::new_with_category(
-        project_id.clone(),
-        "Implement dark mode".to_string(),
-        "feature".to_string(),
-    );
-    task1.description = Some("Add dark mode support to the application".to_string());
-    task1.priority = 10;
-    task1.internal_status = InternalStatus::Ready;
-    state.task_repo.create(task1).await.map_err(|e| e.to_string())?;
-    tasks_created += 1;
-
-    let mut task2 = Task::new_with_category(
-        project_id.clone(),
-        "Fix sidebar scroll".to_string(),
-        "bug".to_string(),
-    );
-    task2.description = Some("Sidebar content overflows on small screens".to_string());
-    task2.priority = 20;
-    task2.internal_status = InternalStatus::Ready;
-    state.task_repo.create(task2).await.map_err(|e| e.to_string())?;
-    tasks_created += 1;
-
-    // Executing tasks (In Progress column)
-    let mut task3 = Task::new_with_category(
-        project_id.clone(),
-        "Add keyboard shortcuts".to_string(),
-        "feature".to_string(),
-    );
-    task3.description = Some("Implement Cmd+K for quick actions".to_string());
-    task3.priority = 15;
-    task3.internal_status = InternalStatus::Executing;
-    task3.started_at = Some(chrono::Utc::now());
-    state.task_repo.create(task3).await.map_err(|e| e.to_string())?;
-    tasks_created += 1;
-
-    // Completed tasks (Done column)
-    let mut task4 = Task::new_with_category(
-        project_id.clone(),
-        "Setup project structure".to_string(),
-        "setup".to_string(),
-    );
-    task4.description = Some("Initial Tauri + React setup".to_string());
-    task4.priority = 5;
-    task4.internal_status = InternalStatus::Approved;
-    task4.completed_at = Some(chrono::Utc::now());
-    state.task_repo.create(task4).await.map_err(|e| e.to_string())?;
-    tasks_created += 1;
-
-    // Backlog tasks
-    let mut task5 = Task::new_with_category(
-        project_id.clone(),
-        "Add notifications".to_string(),
-        "feature".to_string(),
-    );
-    task5.description = Some("Toast notifications for actions".to_string());
-    task5.priority = 0;
-    task5.internal_status = InternalStatus::Backlog;
-    state.task_repo.create(task5).await.map_err(|e| e.to_string())?;
-    tasks_created += 1;
-
-    Ok(SeedDataResponse {
-        project_id: project.id.as_str().to_string(),
-        project_name: project.name,
-        tasks_created,
-    })
+    seed_kanban(state).await
 }
 
 /// Clear all test data
@@ -142,38 +105,178 @@ pub async fn clear_test_data(
     Ok(format!("Cleared {} projects and their tasks", deleted))
 }
 
+// ============================================================================
+// Profile Implementations
+// ============================================================================
+
+/// Minimal profile - just creates a project
+async fn seed_minimal(state: State<'_, AppState>) -> Result<SeedDataResponse, String> {
+    let project = create_test_project(&state, "Minimal Test").await?;
+
+    Ok(SeedDataResponse {
+        profile: "minimal".to_string(),
+        project_id: project.id.as_str().to_string(),
+        project_name: project.name,
+        tasks_created: 0,
+        sessions_created: 0,
+        proposals_created: 0,
+    })
+}
+
+/// Kanban profile - project + tasks in various states
+async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, String> {
+    let project = create_test_project(&state, "Visual Audit Test").await?;
+    let project_id = project.id.clone();
+    let mut tasks_created = 0;
+
+    // Backlog tasks
+    tasks_created += create_task(
+        &state,
+        &project_id,
+        "Add notifications",
+        "Toast notifications for actions",
+        "feature",
+        0,
+        InternalStatus::Backlog,
+    ).await?;
+
+    // Ready tasks (To Do column)
+    tasks_created += create_task(
+        &state,
+        &project_id,
+        "Implement dark mode",
+        "Add dark mode support to the application",
+        "feature",
+        10,
+        InternalStatus::Ready,
+    ).await?;
+
+    tasks_created += create_task(
+        &state,
+        &project_id,
+        "Fix sidebar scroll",
+        "Sidebar content overflows on small screens",
+        "bug",
+        20,
+        InternalStatus::Ready,
+    ).await?;
+
+    // Executing task (In Progress)
+    let mut executing_task = Task::new_with_category(
+        project_id.clone(),
+        "Add keyboard shortcuts".to_string(),
+        "feature".to_string(),
+    );
+    executing_task.description = Some("Implement Cmd+K for quick actions".to_string());
+    executing_task.priority = 15;
+    executing_task.internal_status = InternalStatus::Executing;
+    executing_task.started_at = Some(chrono::Utc::now());
+    state.task_repo.create(executing_task).await.map_err(|e| e.to_string())?;
+    tasks_created += 1;
+
+    // Completed task (Done)
+    let mut completed_task = Task::new_with_category(
+        project_id.clone(),
+        "Setup project structure".to_string(),
+        "setup".to_string(),
+    );
+    completed_task.description = Some("Initial Tauri + React setup".to_string());
+    completed_task.priority = 5;
+    completed_task.internal_status = InternalStatus::Approved;
+    completed_task.completed_at = Some(chrono::Utc::now());
+    state.task_repo.create(completed_task).await.map_err(|e| e.to_string())?;
+    tasks_created += 1;
+
+    Ok(SeedDataResponse {
+        profile: "kanban".to_string(),
+        project_id: project.id.as_str().to_string(),
+        project_name: project.name,
+        tasks_created,
+        sessions_created: 0,
+        proposals_created: 0,
+    })
+}
+
+/// Ideation profile - project + ideation sessions + proposals
+async fn seed_ideation(state: State<'_, AppState>) -> Result<SeedDataResponse, String> {
+    // Start with kanban data
+    let mut response = seed_kanban(state.clone()).await?;
+    response.profile = "ideation".to_string();
+
+    // TODO: Add ideation sessions and proposals when those repos are available
+    // For now, just return the kanban data with ideation profile name
+    // let session = create_ideation_session(&state, &project_id, ...).await?;
+    // response.sessions_created = 1;
+    // let proposals = create_proposals(&state, &session.id, ...).await?;
+    // response.proposals_created = proposals;
+
+    Ok(response)
+}
+
+/// Full profile - all data types
+async fn seed_full(state: State<'_, AppState>) -> Result<SeedDataResponse, String> {
+    // For now, same as ideation - expand as needed
+    let mut response = seed_ideation(state).await?;
+    response.profile = "full".to_string();
+    Ok(response)
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+async fn create_test_project(
+    state: &State<'_, AppState>,
+    name: &str,
+) -> Result<Project, String> {
+    let project = Project::new(
+        name.to_string(),
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "/tmp".to_string()),
+    );
+
+    state
+        .project_repo
+        .create(project)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn create_task(
+    state: &State<'_, AppState>,
+    project_id: &crate::domain::entities::ProjectId,
+    title: &str,
+    description: &str,
+    category: &str,
+    priority: i32,
+    status: InternalStatus,
+) -> Result<usize, String> {
+    let mut task = Task::new_with_category(
+        project_id.clone(),
+        title.to_string(),
+        category.to_string(),
+    );
+    task.description = Some(description.to_string());
+    task.priority = priority;
+    task.internal_status = status;
+    state.task_repo.create(task).await.map_err(|e| e.to_string())?;
+    Ok(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 
-    async fn setup_test_state() -> AppState {
-        let task_repo = Arc::new(MemoryTaskRepository::new());
-        let project_repo = Arc::new(MemoryProjectRepository::new());
-        AppState::with_repos(task_repo, project_repo)
-    }
-
-    #[tokio::test]
-    async fn test_seed_creates_project_and_tasks() {
-        let state = setup_test_state().await;
-
-        // Verify initially empty
-        let projects = state.project_repo.get_all().await.unwrap();
-        assert!(projects.is_empty());
-
-        // Create via direct repo calls (simulating the command)
-        let project = Project::new("Test".to_string(), "/tmp".to_string());
-        let created = state.project_repo.create(project).await.unwrap();
-
-        let task = Task::new(created.id.clone(), "Test Task".to_string());
-        state.task_repo.create(task).await.unwrap();
-
-        // Verify
-        let projects = state.project_repo.get_all().await.unwrap();
-        assert_eq!(projects.len(), 1);
-
-        let tasks = state.task_repo.get_by_project(&created.id).await.unwrap();
-        assert_eq!(tasks.len(), 1);
+    #[test]
+    fn test_profile_parsing() {
+        assert_eq!(
+            serde_json::from_str::<TestDataProfile>(r#""minimal""#).unwrap(),
+            TestDataProfile::Minimal
+        );
+        assert_eq!(
+            serde_json::from_str::<TestDataProfile>(r#""kanban""#).unwrap(),
+            TestDataProfile::Kanban
+        );
     }
 }

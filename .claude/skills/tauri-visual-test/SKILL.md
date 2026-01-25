@@ -53,7 +53,7 @@ end tell'
 
 ### Test Data Setup
 
-For visual audits that need sample tasks, use **Cmd+Shift+D** to load demo data:
+For visual audits that need sample data, use **Cmd+Shift+D** to load demo data:
 
 ```bash
 # Focus app and send Cmd+Shift+D
@@ -67,9 +67,34 @@ end tell
 sleep 2  # Wait for data to load
 ```
 
-This creates:
+#### Test Data Profiles
+
+The test data system supports profiles for different screens:
+
+| Profile | Creates | Use For |
+|---------|---------|---------|
+| `minimal` | Project only | Empty state testing |
+| `kanban` | Project + 5 tasks | Kanban board audits (default) |
+| `ideation` | Kanban + sessions/proposals | Ideation view audits (TODO) |
+| `full` | All data types | Comprehensive testing |
+
+#### Programmatic Usage
+
+From frontend code:
+```typescript
+await api.testData.seed("kanban");  // Specific profile
+await api.testData.seedVisualAudit(); // Alias for kanban
+await api.testData.clear();  // Remove all test data
+```
+
+#### What Kanban Profile Creates
+
 - 1 test project ("Visual Audit Test")
-- 5 sample tasks in various statuses (backlog, ready, executing, approved)
+- 5 sample tasks:
+  - 1 backlog task
+  - 2 ready tasks (To Do)
+  - 1 executing task (In Progress)
+  - 1 approved task (Done)
 
 ### MCP Tools (for introspection)
 

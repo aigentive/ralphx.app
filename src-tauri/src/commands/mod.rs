@@ -73,4 +73,4 @@ pub use methodology_commands::{
     MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,
     MethodologyTemplateResponse, WorkflowSchemaResponse,
 };
-pub use test_data_commands::{clear_test_data, seed_visual_audit_data};
+pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_data};
