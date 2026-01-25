@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 19;
+pub const SCHEMA_VERSION: i32 = 20;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -110,6 +110,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 19 {
         migrate_v19(conn)?;
         set_schema_version(conn, 19)?;
+    }
+
+    if current_version < 20 {
+        migrate_v20(conn)?;
+        set_schema_version(conn, 20)?;
     }
 
     Ok(())
@@ -981,6 +986,115 @@ fn migrate_v19(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v20: Chat conversations, agent runs, and tool calls
+fn migrate_v20(conn: &Connection) -> AppResult<()> {
+    // ============================================================================
+    // Chat Conversations Table
+    // Links a context (ideation session, task, project) to Claude sessions
+    // ============================================================================
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chat_conversations (
+            id TEXT PRIMARY KEY,
+            context_type TEXT NOT NULL,
+            context_id TEXT NOT NULL,
+            claude_session_id TEXT,
+            title TEXT,
+            message_count INTEGER NOT NULL DEFAULT 0,
+            last_message_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Multiple conversations per context allowed
+    conn.execute(
+        "CREATE INDEX idx_chat_conversations_context ON chat_conversations(context_type, context_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    conn.execute(
+        "CREATE INDEX idx_chat_conversations_claude_session ON chat_conversations(claude_session_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // ============================================================================
+    // Agent Runs Table
+    // Tracks active/completed agent runs for streaming persistence
+    // ============================================================================
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'running',
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            error_message TEXT
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    conn.execute(
+        "CREATE INDEX idx_agent_runs_conversation ON agent_runs(conversation_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    conn.execute(
+        "CREATE INDEX idx_agent_runs_status ON agent_runs(status)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // ============================================================================
+    // Modify chat_messages Table
+    // Add conversation reference and tool_calls
+    // ============================================================================
+    conn.execute(
+        "ALTER TABLE chat_messages ADD COLUMN conversation_id TEXT REFERENCES chat_conversations(id) ON DELETE CASCADE",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    conn.execute(
+        "ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Index for conversation lookup
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // ============================================================================
+    // Update message_count trigger
+    // ============================================================================
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS update_conversation_message_count
+        AFTER INSERT ON chat_messages
+        FOR EACH ROW
+        WHEN NEW.conversation_id IS NOT NULL
+        BEGIN
+            UPDATE chat_conversations
+            SET message_count = message_count + 1,
+                last_message_at = NEW.created_at,
+                updated_at = datetime('now')
+            WHERE id = NEW.conversation_id;
+        END",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -988,7 +1102,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 19);
+        assert_eq!(SCHEMA_VERSION, 20);
     }
 
     #[test]
@@ -1114,7 +1228,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
     }
 
     #[test]
@@ -1127,7 +1241,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
     }
 
     #[test]
@@ -5168,6 +5282,139 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
+    }
+
+    #[test]
+    fn test_chat_conversations_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chat_conversations'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_agent_runs_table_exists() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_runs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_chat_messages_conversation_id_column() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Try to query the new column
+        let result: Result<Option<String>, _> = conn.query_row(
+            "SELECT conversation_id FROM chat_messages LIMIT 1",
+            [],
+            |row| row.get(0),
+        );
+        // Should not error (column exists)
+        assert!(result.is_ok() || result.unwrap_err().to_string().contains("no such column") == false);
+    }
+
+    #[test]
+    fn test_chat_messages_tool_calls_column() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Try to query the new column
+        let result: Result<Option<String>, _> = conn.query_row(
+            "SELECT tool_calls FROM chat_messages LIMIT 1",
+            [],
+            |row| row.get(0),
+        );
+        // Should not error (column exists)
+        assert!(result.is_ok() || result.unwrap_err().to_string().contains("no such column") == false);
+    }
+
+    #[test]
+    fn test_chat_conversation_indexes_exist() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let indexes = vec![
+            "idx_chat_conversations_context",
+            "idx_chat_conversations_claude_session",
+            "idx_agent_runs_conversation",
+            "idx_agent_runs_status",
+            "idx_chat_messages_conversation",
+        ];
+
+        for index in indexes {
+            let count: i32 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='{}'",
+                        index
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "Index {} should exist", index);
+        }
+    }
+
+    #[test]
+    fn test_conversation_message_count_trigger() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='update_conversation_message_count'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_chat_conversations_migration_complete() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify all chat-related tables exist
+        let tables = vec![
+            "chat_conversations",
+            "agent_runs",
+        ];
+
+        for table in tables {
+            let count: i32 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{}'",
+                        table
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "Table {} should exist", table);
+        }
+
+        // Verify schema version
+        let version = get_schema_version(&conn).unwrap();
+        assert_eq!(version, 20);
     }
 }
