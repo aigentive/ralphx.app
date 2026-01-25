@@ -43,12 +43,11 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
 
   // Clear movingTaskId after React has re-rendered with new position
   useEffect(() => {
-    if (movingTaskId) {
-      const id = requestAnimationFrame(() => {
-        setMovingTaskId(null);
-      });
-      return () => cancelAnimationFrame(id);
-    }
+    if (!movingTaskId) return;
+    const id = requestAnimationFrame(() => {
+      setMovingTaskId(null);
+    });
+    return () => cancelAnimationFrame(id);
   }, [movingTaskId]);
 
   // Distance-based activation - drag starts after moving 8px
