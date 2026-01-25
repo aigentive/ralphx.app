@@ -1,14 +1,76 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 03:45:00
+**Last Updated:** 2026-01-25 04:15:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 16 / 18
-**Current Task:** Design requirements for All Modals (standardized pattern)
+**Tasks Completed:** 17 / 18
+**Current Task:** Final consistency check and design document review
 
 ---
 
 ## Session Log
+
+### 2026-01-25 04:15:00 - Design requirements for All Modals (Task 17)
+
+**What was done:**
+- Created comprehensive Modal Standards design requirements in specs/design/pages/modal-standards.md
+- Used /frontend-design skill to plan standardized modal patterns
+- Explored existing modal implementations in the codebase
+
+**Base Modal Pattern:**
+  - All modals use shadcn Dialog (Radix UI wrapper)
+  - Backdrop: rgba(0,0,0,0.6) + backdrop-filter blur(8px)
+  - Content: --bg-elevated background with --border-subtle border
+  - Border radius: 12px (--radius-lg)
+  - Shadow: --shadow-lg for depth
+  - Animation: scale 0.95→1.0, opacity 0→1, 200ms ease-out
+
+**Modal Size Variants:**
+  - Small (max-w-sm, 384px): Simple confirmations
+  - Medium (max-w-md, 448px): Forms, single-purpose dialogs
+  - Large (max-w-lg, 512px): Complex forms, multi-section
+  - XLarge (max-w-xl, 640px): Task detail, wizards
+  - 2XLarge (max-w-2xl, 672px): Full-featured dialogs
+
+**Header Pattern:**
+  - Title: text-lg, font-semibold, --text-primary, tight tracking
+  - Optional icon before title (20px, semantic color)
+  - Close button top-right: Lucide X icon, hover state
+  - Border-bottom: 1px solid --border-subtle
+
+**Footer Pattern:**
+  - Right-aligned buttons with gap-3
+  - Cancel: ghost variant
+  - Primary: accent or destructive variant based on action
+  - Loading state: Loader2 icon with animate-spin
+
+**Specific Modals Documented:**
+  - AskUserQuestionModal: Agent questions with radio/checkbox options
+  - TaskDetailView: Comprehensive task display with collapsibles
+  - ReviewNotesModal: Notes and fix description textareas
+  - ProposalEditModal: Form with dynamic lists, category, priority
+  - MergeWorkflowDialog: Post-completion workflow options
+  - TaskRerunDialog: Re-run options with recommended badge
+  - ProjectCreationWizard: Git mode selection with conditional fields
+  - ApplyModal: Proposal application with dependency preview
+
+**Accessibility Requirements:**
+  - Focus trapped within modal
+  - ARIA: role="dialog", aria-modal="true", aria-labelledby
+  - Keyboard: Escape closes, Tab cycles, Enter activates
+  - Screen reader: descriptive labels, aria-live for errors
+
+**Migration Notes:**
+  - Priority 1 (High): AskUserQuestionModal, ProjectCreationWizard
+  - Priority 2 (Medium): MergeWorkflowDialog, TaskRerunDialog, ProposalEditModal
+  - Priority 3 (Low): ReviewNotesModal, ApplyModal
+
+**Updated files:**
+  - specs/design/pages/modal-standards.md (comprehensive rewrite)
+  - specs/DESIGN.md (status: Complete)
+  - specs/phases/prd_phase_13_design.md (passes: true)
+
+---
 
 ### 2026-01-25 03:45:00 - Design requirements for Header and Navigation (Task 16)
 

@@ -435,7 +435,7 @@ Each page has its own detailed design specification. See the individual files fo
 | Diff Viewer | [diff-viewer.md](design/pages/diff-viewer.md) | Complete |
 | Execution Control Bar | [execution-control-bar.md](design/pages/execution-control-bar.md) | Complete |
 | Header and Navigation | [header-navigation.md](design/pages/header-navigation.md) | Complete |
-| Modal Standards | [modal-standards.md](design/pages/modal-standards.md) | Task 17 |
+| Modal Standards | [modal-standards.md](design/pages/modal-standards.md) | Complete |
 
 ---
 
