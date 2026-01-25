@@ -70,13 +70,6 @@ Grep pattern="description.*[first few words of task]" path="[prd file]" output_m
 
 **DO NOT start working until you have read the full task JSON object.** If you only see the `description`, you have NOT read the full task.
 
-**For visual-verification tasks specifically:**
-1. Read the `steps` to know what to capture and test
-2. Read `acceptance_criteria` to know what functional requirements to check
-3. Read `design_quality` to know what design standards to verify
-4. Fix ANY issue found in steps 2 or 3 using `/frontend-design` skill
-5. Only mark `passes: true` when everything in all three sections is satisfied
-
 ## Step 4: Read Required Context Documents
 
 **For Design Phases (13-14):** Before starting ANY task, you MUST read the design plan:
@@ -253,41 +246,6 @@ Set `"passes": true` in the active PRD
 git add .
 git commit -m "feat: [description]"
 ```
-
----
-
-## Visual Verification (UI Tasks)
-
-After ALL tests pass, verify UI changes visually.
-
-**Use the `/tauri-visual-test` skill** - it contains complete instructions for:
-- Screenshot capture (clean window-only)
-- Keyboard navigation between views
-- MCP tools for app introspection
-- Screenshot naming conventions
-- Verification checklist
-
-See: `.claude/skills/tauri-visual-test/SKILL.md`
-
-### Document in activity.md
-Include:
-- Screenshot filename
-- What was verified
-- Any issues found and resolved
-
-### When Visual Verification is Required
-
-| Task Type | TDD Required | Visual Verification Required |
-|-----------|--------------|------------------------------|
-| Rust core logic | Yes | No |
-| TypeScript types/schemas | Yes | No |
-| React hooks (no UI) | Yes | No |
-| React components | Yes | **Yes** |
-| Tauri commands | Yes | No (unless UI-facing) |
-| Layout/styling changes | Yes (snapshot tests) | **Yes** |
-| User interactions | Yes | **Yes** |
-| Agent activity stream | Yes | **Yes** |
-| Settings modal | Yes | **Yes** |
 
 ---
 
