@@ -24,6 +24,7 @@ interface TaskCardProps {
   onSelect?: (taskId: string) => void;
   isDragging?: boolean;
   isSelected?: boolean;
+  isHidden?: boolean;
   reviewStatus?: ReviewStatus;
   /** Whether this task needs QA */
   needsQA?: boolean;
@@ -73,17 +74,24 @@ export function TaskCard({
   onSelect,
   isDragging,
   isSelected,
+  isHidden,
   reviewStatus,
   needsQA,
   prepStatus,
   testStatus,
   hasCheckpoint,
 }: TaskCardProps) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform, isDragging: isBeingDragged } = useDraggable({ id: task.id });
 
-  const dragStyle = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-  } : undefined;
+  // Hide when being dragged OR when transitioning after drop
+  const shouldHide = isBeingDragged || isHidden;
+
+  const dragStyle: React.CSSProperties = {
+    ...(transform && { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }),
+    opacity: shouldHide ? 0 : 1,
+    // Pop-in animation when card appears in new column
+    animation: shouldHide ? 'none' : 'card-pop-in 150ms ease-out',
+  };
 
   // Build QA badge props conditionally to satisfy exactOptionalPropertyTypes
   const qaBadgeProps = {

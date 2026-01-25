@@ -21,6 +21,7 @@ interface ColumnProps {
   isOver?: boolean;
   isInvalid?: boolean;
   onTaskSelect?: (taskId: string) => void;
+  hiddenTaskId?: string | null;
 }
 
 function InvalidDropIcon() {
@@ -47,7 +48,7 @@ function EmptyState() {
   );
 }
 
-export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps) {
+export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
 
   // Drop zone styles
@@ -116,6 +117,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
             <TaskCard
               key={task.id}
               task={task}
+              isHidden={task.id === hiddenTaskId}
               {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
             />
           ))
