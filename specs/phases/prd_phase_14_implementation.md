@@ -251,7 +251,7 @@ Before marking any task complete, verify:
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Project Sidebar design"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "implementation",
