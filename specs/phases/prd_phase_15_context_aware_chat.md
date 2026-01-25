@@ -190,7 +190,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(backend): add permission state and HTTP endpoints for permission bridge"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
