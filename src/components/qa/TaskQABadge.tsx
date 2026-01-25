@@ -1,15 +1,25 @@
 /**
  * TaskQABadge - Shows QA status on task cards
  *
- * Displays QA status with color coding:
- * - pending: gray (--text-muted)
- * - preparing: yellow (--status-warning)
- * - ready: blue (--status-info)
- * - testing: purple (--accent-secondary)
- * - passed: green (--status-success)
- * - failed: red (--status-error)
+ * Premium design with shadcn Badge and Lucide icons:
+ * - pending: muted background with Clock icon
+ * - preparing: amber/warning with spinning Loader2
+ * - ready: blue/info with CheckCircle
+ * - testing: accent with spinning Loader2
+ * - passed: emerald/success with CheckCircle
+ * - failed: red/error with XCircle
+ * - skipped: muted with MinusCircle
  */
 
+import { Clock, Loader2, CheckCircle, XCircle, MinusCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { QAOverallStatus } from "@/types/qa";
 import type { QAPrepStatus } from "@/types/qa-config";
 
@@ -32,40 +42,58 @@ interface TaskQABadgeProps {
   testStatus?: QAOverallStatus;
   /** Optional className for additional styling */
   className?: string;
+  /** Use compact (icon-only) variant with tooltip */
+  compact?: boolean;
 }
 
 /** Configuration for each display status */
-const STATUS_CONFIG: Record<
-  QADisplayStatus,
-  { label: string; colorClass: string }
-> = {
+interface StatusConfig {
+  label: string;
+  /** Tailwind classes for the badge background and text */
+  colorClass: string;
+  /** Lucide icon component */
+  Icon: React.ComponentType<{ className?: string }>;
+  /** Whether icon should spin */
+  spin?: boolean;
+}
+
+const STATUS_CONFIG: Record<QADisplayStatus, StatusConfig> = {
   pending: {
     label: "QA Pending",
-    colorClass: "bg-[--text-muted] text-[--bg-base]",
+    colorClass: "bg-[var(--bg-hover)] text-[var(--text-muted)]",
+    Icon: Clock,
   },
   preparing: {
     label: "Preparing",
-    colorClass: "bg-[--status-warning] text-[--bg-base]",
+    colorClass: "bg-amber-500/15 text-[var(--status-warning)]",
+    Icon: Loader2,
+    spin: true,
   },
   ready: {
     label: "QA Ready",
-    colorClass: "bg-[--status-info] text-[--bg-base]",
+    colorClass: "bg-blue-500/15 text-[var(--status-info)]",
+    Icon: CheckCircle,
   },
   testing: {
     label: "Testing",
-    colorClass: "bg-[--accent-secondary] text-[--bg-base]",
+    colorClass: "bg-[var(--accent-muted)] text-[var(--accent-primary)]",
+    Icon: Loader2,
+    spin: true,
   },
   passed: {
     label: "Passed",
-    colorClass: "bg-[--status-success] text-[--bg-base]",
+    colorClass: "bg-emerald-500/15 text-[var(--status-success)]",
+    Icon: CheckCircle,
   },
   failed: {
     label: "Failed",
-    colorClass: "bg-[--status-error] text-[--bg-base]",
+    colorClass: "bg-red-500/15 text-[var(--status-error)]",
+    Icon: XCircle,
   },
   skipped: {
     label: "Skipped",
-    colorClass: "bg-[--text-muted] text-[--bg-base]",
+    colorClass: "bg-[var(--bg-hover)] text-[var(--text-muted)]",
+    Icon: MinusCircle,
   },
 };
 
@@ -111,14 +139,16 @@ export function deriveQADisplayStatus(
 /**
  * TaskQABadge component
  *
- * Displays QA status with appropriate color and label.
+ * Displays QA status with appropriate color, icon, and label.
  * Hidden when task doesn't need QA.
+ * Supports compact mode (icon-only with tooltip).
  */
 export function TaskQABadge({
   needsQA,
   prepStatus,
   testStatus,
   className = "",
+  compact = false,
 }: TaskQABadgeProps) {
   // Don't render if task doesn't need QA
   if (!needsQA) {
@@ -127,14 +157,49 @@ export function TaskQABadge({
 
   const displayStatus = deriveQADisplayStatus(prepStatus, testStatus);
   const config = STATUS_CONFIG[displayStatus];
+  const { Icon, spin, label, colorClass } = config;
 
+  // Compact variant: icon-only with tooltip
+  if (compact) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              data-testid="task-qa-badge"
+              data-status={displayStatus}
+              variant="outline"
+              className={cn(
+                "p-1 border-0",
+                colorClass,
+                className
+              )}
+            >
+              <Icon className={cn("w-3.5 h-3.5", spin && "animate-spin")} />
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{label}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Full variant: icon + label
   return (
-    <span
+    <Badge
       data-testid="task-qa-badge"
       data-status={displayStatus}
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${config.colorClass} ${className}`}
+      variant="outline"
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border-0",
+        colorClass,
+        className
+      )}
     >
-      {config.label}
-    </span>
+      <Icon className={cn("w-3 h-3", spin && "animate-spin")} />
+      {label}
+    </Badge>
   );
 }
