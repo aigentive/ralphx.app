@@ -83,31 +83,16 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
     >
       {/* Glass effect header */}
       <div
-        className="flex items-center gap-2 px-2 py-1 rounded-md mb-2"
-        style={{
-          background: "rgba(26, 26, 26, 0.85)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-        }}
+        className="flex items-center gap-2 px-2 py-1.5 rounded-md mb-2 bg-bg-surface/85 backdrop-blur-md"
       >
         {/* Orange accent dot */}
-        <span
-          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          style={{ backgroundColor: "#ff6b35" }}
-        />
-        <h3
-          className="text-xs font-medium flex-1"
-          style={{
-            color: "#f0f0f0",
-            letterSpacing: "-0.02em",
-          }}
-        >
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-accent-primary" />
+        <h3 className="text-xs font-medium flex-1 text-text-primary tracking-tight">
           {column.name}
         </h3>
         <Badge
           variant="secondary"
-          className="text-[10px] px-1.5 py-0"
-          style={{ backgroundColor: "#242424", color: "#a0a0a0" }}
+          className="text-[10px] px-1.5 py-0 bg-bg-elevated text-text-secondary"
         >
           {column.tasks.length}
         </Badge>
@@ -118,7 +103,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
-        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all"
+        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface"
         style={{
           minHeight: "100px",
           ...getDropZoneStyles(),

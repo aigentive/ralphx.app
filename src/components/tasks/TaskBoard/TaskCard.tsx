@@ -91,10 +91,7 @@ export function TaskCard({
   // Card styles based on state
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
-      backgroundColor: "#242424", // --bg-elevated
       borderLeft: `3px solid ${getPriorityColor(task.priority)}`,
-      borderRadius: "8px",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.1)",
       cursor: isDragging ? "grabbing" : "grab",
       transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
     };
@@ -129,7 +126,7 @@ export function TaskCard({
       {...listeners}
       data-testid={`task-card-${task.id}`}
       onClick={() => onSelect?.(task.id)}
-      className="group relative p-3 hover:translate-y-[-2px] hover:shadow-[var(--shadow-sm)] focus-visible:outline-none focus-visible:shadow-[var(--shadow-glow)]"
+      className="group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
       style={getCardStyles()}
       tabIndex={0}
     >
