@@ -73,14 +73,13 @@ ralphx/
 │   │   ├── acceptance-criteria-writing/
 │   │   ├── qa-step-generation/
 │   │   ├── qa-evaluation/
-│   │   ├── agent-browser/
 │   │   ├── task-decomposition/
 │   │   ├── priority-assessment/
 │   │   └── dependency-analysis/
 │   └── hooks/                  # Plugin hooks
 │       └── hooks.json
 │
-└── screenshots/                # Visual verification (if agent-browser used)
+└── screenshots/                # Visual verification (via tauri-visual-test skill)
 ```
 
 ---
@@ -131,7 +130,6 @@ The Rust `ClaudeCodeClient` automatically adds `--plugin-dir ./ralphx-plugin` to
 | `acceptance-criteria-writing` | qa-prep | AC generation |
 | `qa-step-generation` | qa-prep | Test step creation |
 | `qa-evaluation` | qa-executor | Test evaluation |
-| `agent-browser` | qa-executor | Browser automation |
 | `task-decomposition` | orchestrator-ideation | Task breakdown |
 | `priority-assessment` | orchestrator-ideation | Priority scoring |
 | `dependency-analysis` | orchestrator-ideation | Dependency mapping |

@@ -1452,7 +1452,7 @@ All tasks require:
     "category": "testing",
     "description": "Visual verification of ideation UI",
     "steps": [
-      "Start the app with npm run tauri dev (NOT npm run dev)",
+      "Ensure app is running (check with `pgrep -f ralphx`; if not running, start with `npm run tauri dev` - NOT npm run dev)",
       "Wait for Tauri to compile",
       "Navigate to Ideation view",
       "Use agent-browser screenshot \"body\" screenshots/ideation-empty.png",

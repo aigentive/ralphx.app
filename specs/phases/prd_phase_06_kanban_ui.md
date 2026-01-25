@@ -537,7 +537,7 @@ agent-browser screenshot screenshots/kanban-drag-drop.png
     "category": "testing",
     "description": "Visual verification of TaskBoard",
     "steps": [
-      "Run npm run tauri dev to start app",
+      "Ensure app is running (check with `pgrep -f ralphx`; if not running, start with `npm run tauri dev`)",
       "Use agent-browser to open localhost",
       "Verify task-board element is visible",
       "Verify 7 columns render correctly",

@@ -535,7 +535,7 @@ const qaPrepProfile = {
     "category": "testing",
     "description": "Verify plugin integration end-to-end",
     "steps": [
-      "Start the app with npm run tauri dev",
+      "Ensure app is running (check with `pgrep -f ralphx`; if not running, start with `npm run tauri dev`)",
       "Create a test task",
       "Trigger QA prep flow - verify qa-prep agent spawns correctly",
       "Trigger worker execution - verify worker agent spawns correctly",

@@ -1553,7 +1553,7 @@ All tasks require tests written before implementation:
     "category": "testing",
     "description": "Visual verification of extensibility UI components",
     "steps": [
-      "Start application with npm run tauri dev",
+      "Ensure app is running (check with `pgrep -f ralphx`; if not running, start with `npm run tauri dev`)",
       "Navigate to ExtensibilityView",
       "Capture screenshot of Workflows tab",
       "Capture screenshot of Artifacts tab with sample artifacts",
