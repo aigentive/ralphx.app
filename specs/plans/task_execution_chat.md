@@ -409,7 +409,10 @@ Each retry gets a completely fresh context with only the task details. Rationale
 5. **Frontend context detection** - ChatPanel detects execution mode
 6. **Execution selector** - Add past execution switching via ConversationSelector
 7. **Queue UI** - Reuse Phase 15A queue components for execution context
-8. **Testing** - End-to-end test: viewing, message injection, execution history
+8. **Functional Testing** (no end-to-end tests - autonomous agent implementation):
+   - `execution_chat_service_tests.rs`: Test spawn creates conversation, test stream persistence
+   - `transition_handler_tests.rs`: Test on_enter(Executing) uses spawn_with_persistence
+   - `ChatPanel.test.tsx`: Test execution context detection, test switching between executions
 
 ---
 
@@ -429,5 +432,14 @@ Each retry gets a completely fresh context with only the task details. Rationale
 - Message queue system (frontend and backend)
 - Chat UI components (`ToolCallIndicator`, `QueuedMessage`, `QueuedMessageList`, `ConversationSelector`)
 - Context-aware chat service foundation
+- **Permission Bridge System** - UI-based tool approval via `--permission-prompt-tool` and `PermissionDialog`
 
 Phase 15B extends this infrastructure with the `'task_execution'` context type.
+
+**Permission Handling in Task Execution:**
+
+Worker agents during task execution will use the same Permission Bridge from Phase 15A:
+- `--permission-prompt-tool mcp__ralphx__permission_request` is passed when spawning
+- When worker tries to use a non-pre-approved tool, `PermissionDialog` appears
+- User can approve/deny; worker continues or receives denial message
+- Permission requests are tracked per-task in the `PermissionDialog` queue
