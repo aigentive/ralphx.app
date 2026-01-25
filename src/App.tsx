@@ -738,7 +738,7 @@ function AppContent() {
             </div>
             {/* ExecutionControlBar at bottom (only show in kanban view) */}
             {currentView === "kanban" && (
-              <div className="p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+              <div className="flex-shrink-0 p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
                 <ExecutionControlBar
                   runningCount={executionStatus.runningCount}
                   maxConcurrent={executionStatus.maxConcurrent}
