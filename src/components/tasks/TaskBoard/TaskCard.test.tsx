@@ -35,10 +35,12 @@ describe("TaskCard", () => {
       expect(screen.getByText("feature")).toBeInTheDocument();
     });
 
-    it("should render priority indicator", () => {
+    it("should render priority stripe via left border", () => {
       const task = createMockTask({ priority: 2 });
       render(<TaskCard task={task} />, { wrapper: DndWrapper });
-      expect(screen.getByTestId("priority-indicator")).toBeInTheDocument();
+      const card = screen.getByTestId(`task-card-${task.id}`);
+      // Priority 2 (High) should have a colored left border stripe
+      expect(card.style.borderLeft).toContain("3px solid");
     });
 
     it("should truncate long titles", () => {
@@ -179,22 +181,23 @@ describe("TaskCard", () => {
   });
 
   describe("dragging state", () => {
-    it("should apply opacity-50 class when isDragging is true", () => {
+    it("should apply dragging styles when isDragging is true", () => {
       const task = createMockTask();
       render(<TaskCard task={task} isDragging />, { wrapper: DndWrapper });
 
       const card = screen.getByTestId(`task-card-${task.id}`);
-      expect(card).toHaveClass("opacity-50");
+      // Dragging state applies inline opacity style
+      expect(card.style.opacity).toBe("0.9");
     });
 
-    it("should not apply opacity-50 class when isDragging is false", () => {
+    it("should not apply dragging styles when isDragging is false", () => {
       const task = createMockTask();
       render(<TaskCard task={task} isDragging={false} />, {
         wrapper: DndWrapper,
       });
 
       const card = screen.getByTestId(`task-card-${task.id}`);
-      expect(card).not.toHaveClass("opacity-50");
+      expect(card.style.opacity).not.toBe("0.9");
     });
   });
 

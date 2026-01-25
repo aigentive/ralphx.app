@@ -101,14 +101,25 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
       {/* TaskBoard container with radial gradient and scroll-snap */}
       <div
         data-testid="task-board"
-        className="task-board relative flex gap-6 p-6 overflow-x-auto"
+        className="task-board relative flex overflow-x-auto"
         style={{
           background:
             "radial-gradient(ellipse at top, rgba(255,107,53,0.03) 0%, var(--bg-base) 50%)",
           minHeight: "calc(100vh - 48px - 48px)", // header + control bar
           scrollSnapType: "x proximity",
+          gap: "var(--space-6)",
+          padding: "var(--space-6)",
         }}
       >
+        {/* Left fade edge */}
+        <div
+          className="sticky left-0 w-8 flex-shrink-0 pointer-events-none z-10"
+          style={{
+            background: "linear-gradient(to right, var(--bg-base), transparent)",
+            marginRight: "calc(-1 * var(--space-8))",
+          }}
+        />
+
         {columns.map((column) => (
           <Column
             key={column.id}
@@ -120,6 +131,15 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
             onTaskSelect={handleTaskSelect}
           />
         ))}
+
+        {/* Right fade edge */}
+        <div
+          className="sticky right-0 w-8 flex-shrink-0 pointer-events-none z-10"
+          style={{
+            background: "linear-gradient(to left, var(--bg-base), transparent)",
+            marginLeft: "calc(-1 * var(--space-8))",
+          }}
+        />
       </div>
       <DragOverlay>
         {activeTask && <TaskCard task={activeTask} isDragging />}
