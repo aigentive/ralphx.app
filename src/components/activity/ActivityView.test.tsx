@@ -41,10 +41,13 @@ describe("ActivityView", () => {
       expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     });
 
-    it("applies design system background color", () => {
+    it("applies premium radial gradient background", () => {
       render(<ActivityView />);
       const view = screen.getByTestId("activity-view");
-      expect(view).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      // Premium design uses radial gradient background
+      expect(view).toHaveStyle({
+        background: "radial-gradient(ellipse at bottom left, rgba(255,107,53,0.015) 0%, var(--bg-surface) 50%)",
+      });
     });
   });
 
@@ -159,9 +162,10 @@ describe("ActivityView", () => {
       const clickableHeader = message.querySelector(".cursor-pointer");
       fireEvent.click(clickableHeader!);
 
-      // Should show metadata - it shows as JSON
+      // Should show metadata - it shows as JSON with syntax highlighting
       expect(screen.getByText("Details")).toBeInTheDocument();
-      expect(screen.getByText(/"path":/)).toBeInTheDocument();
+      // JSON is syntax highlighted so keys and values are in separate elements
+      expect(screen.getByText(/"path"/)).toBeInTheDocument();
     });
 
     it("toggles expanded state on click", () => {
