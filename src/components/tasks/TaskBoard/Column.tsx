@@ -83,7 +83,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
     >
       {/* Glass effect header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3"
+        className="flex items-center gap-2 px-2 py-1 rounded-md mb-2"
         style={{
           background: "rgba(26, 26, 26, 0.85)",
           backdropFilter: "blur(12px)",
@@ -93,20 +93,21 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
         {/* Orange accent dot */}
         <span
           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          style={{ backgroundColor: "var(--accent-primary)" }}
+          style={{ backgroundColor: "#ff6b35" }}
         />
         <h3
-          className="text-sm font-semibold flex-1"
+          className="text-xs font-medium flex-1"
           style={{
-            color: "var(--text-primary)",
-            letterSpacing: "var(--tracking-tight)",
+            color: "#f0f0f0",
+            letterSpacing: "-0.02em",
           }}
         >
           {column.name}
         </h3>
         <Badge
           variant="secondary"
-          className="bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+          className="text-[10px] px-1.5 py-0"
+          style={{ backgroundColor: "#242424", color: "#a0a0a0" }}
         >
           {column.tasks.length}
         </Badge>
