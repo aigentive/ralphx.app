@@ -106,6 +106,7 @@ function AppContent() {
   const currentView = useUiStore((s) => s.currentView);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
 
+
   // Chat panel state
   const chatIsOpen = useChatStore((s) => s.isOpen);
   const chatWidth = useChatStore((s) => s.width);
@@ -497,8 +498,8 @@ function AppContent() {
                         size="sm"
                         onClick={() => setCurrentView(view)}
                         className={cn(
-                          "group gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                          // Responsive padding: icon-only until xl (1280px), with text on larger screens
+                          "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                          // Compact on small screens, expanded on xl+
                           isActive ? "px-3" : "px-2 xl:px-3",
                           isActive
                             ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
@@ -508,22 +509,16 @@ function AppContent() {
                         aria-current={isActive ? "page" : undefined}
                       >
                         <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                        <span
-                          className={cn(
-                            "text-sm font-medium whitespace-nowrap transition-all duration-150",
-                            // Active: always visible
-                            // Inactive: hidden until xl (1280px), visible on hover
-                            isActive
-                              ? "inline"
-                              : "hidden xl:inline group-hover:inline"
-                          )}
-                        >
+                        <span className={cn(
+                          "text-sm font-medium whitespace-nowrap",
+                          isActive ? "inline" : "hidden xl:inline"
+                        )}>
                           {label}
                         </span>
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="text-xs">
-                      {label} <kbd className="ml-1 text-[var(--text-muted)]">{shortcut}</kbd>
+                      {label} <kbd className="ml-1 opacity-70">{shortcut}</kbd>
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -531,19 +526,18 @@ function AppContent() {
             </nav>
           </div>
 
-          {/* Center Section: Project Selector */}
-          <div
-            className="absolute left-1/2 -translate-x-1/2"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            <ProjectSelector onNewProject={handleOpenProjectWizard} />
-          </div>
+          {/* Spacer */}
+          <div className="flex-1" />
 
-          {/* Right Section: Panel Toggles */}
+          {/* Right Section: Project Selector + Panel Toggles */}
           <div
             className="flex items-center gap-2"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
+            {/* Project selector - always aligned end */}
+            <div className="mr-2">
+              <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
+            </div>
             {/* Chat Panel Toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -552,7 +546,7 @@ function AppContent() {
                   size="sm"
                   onClick={toggleChatPanel}
                   className={cn(
-                    "group gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                    "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
                     chatIsOpen ? "px-3" : "px-2 xl:px-3",
                     chatIsOpen
                       ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
@@ -561,18 +555,16 @@ function AppContent() {
                   data-testid="chat-toggle"
                 >
                   <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span
-                    className={cn(
-                      "text-sm font-medium whitespace-nowrap transition-all duration-150",
-                      chatIsOpen ? "inline" : "hidden xl:inline group-hover:inline"
-                    )}
-                  >
+                  <span className={cn(
+                    "text-sm font-medium whitespace-nowrap",
+                    chatIsOpen ? "inline" : "hidden xl:inline"
+                  )}>
                     Chat
                   </span>
                   <kbd
                     className={cn(
-                      "ml-1 px-1.5 py-0.5 text-xs rounded transition-all duration-150",
-                      chatIsOpen ? "inline" : "hidden xl:inline group-hover:inline"
+                      "ml-1 px-1.5 py-0.5 text-xs rounded",
+                      chatIsOpen ? "inline" : "hidden xl:inline"
                     )}
                     style={{
                       backgroundColor: "var(--bg-elevated)",
@@ -584,7 +576,7 @@ function AppContent() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                Toggle Chat <kbd className="ml-1 text-[var(--text-muted)]">⌘K</kbd>
+                Toggle Chat <kbd className="ml-1 opacity-70">⌘K</kbd>
               </TooltipContent>
             </Tooltip>
 
@@ -596,8 +588,8 @@ function AppContent() {
                   size="sm"
                   onClick={toggleReviewsPanel}
                   className={cn(
-                    "group relative gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                    reviewsPanelOpen ? "px-3" : "px-2 lg:px-3",
+                    "relative gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                    reviewsPanelOpen ? "px-3" : "px-2 xl:px-3",
                     reviewsPanelOpen
                       ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
@@ -605,12 +597,10 @@ function AppContent() {
                   data-testid="reviews-toggle"
                 >
                   <CheckCircle className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span
-                    className={cn(
-                      "text-sm font-medium whitespace-nowrap transition-all duration-150",
-                      reviewsPanelOpen ? "inline" : "hidden lg:inline group-hover:inline"
-                    )}
-                  >
+                  <span className={cn(
+                    "text-sm font-medium whitespace-nowrap",
+                    reviewsPanelOpen ? "inline" : "hidden xl:inline"
+                  )}>
                     Reviews
                   </span>
                   {/* Badge with pending count */}
