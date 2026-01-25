@@ -589,7 +589,7 @@ All design work MUST include:
       "DESIGN.md already references this file - just update the dedicated page",
       "Commit: docs: add Project Dialogs design requirements"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "design-req",
