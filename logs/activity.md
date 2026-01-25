@@ -1,14 +1,53 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 07:48:00
+**Last Updated:** 2026-01-25 07:55:00
 **Phase:** Phase 14 (Design Implementation)
-**Tasks Completed:** 13 / 17
-**Current Task:** Implement Diff Viewer premium design
+**Tasks Completed:** 14 / 17
+**Current Task:** Implement Settings Page premium design
 
 ---
 
 ## Session Log
+
+### 2026-01-25 07:55:00 - Implement Diff Viewer premium design
+
+**What was done:**
+- Rewrote `DiffViewer` component with premium design:
+  - Migrated from custom TabBar to shadcn Tabs component (Radix primitives)
+  - Replaced all inline SVG icons with Lucide icons:
+    - GitBranch, History for tab icons
+    - Folder, FolderOpen for directory nodes
+    - File, FileCode, FileJson for file type indicators
+    - ChevronRight for expandable directories
+    - ExternalLink for Open in IDE button
+    - GitCommit for commit list items
+    - CheckCircle2, FileSearch, Loader2 for empty/loading states
+  - Implemented file tree with collapsible directories:
+    - Chevron rotation animation (0° → 90°)
+    - Proper indentation (16px per level)
+    - File type icons based on extension
+    - Status letters (A/M/D/R) with color-coded styling
+  - Implemented commit list with short SHA display:
+    - Accent-colored SHA in monospace font
+    - Author and relative date metadata
+    - Left border indicator for selected commit
+  - Added shadcn ScrollArea for scrollable panels
+  - Added shadcn Tooltip on Open in IDE button
+  - Added shadcn Skeleton for loading states
+  - Applied design tokens (--bg-base, --bg-surface, --bg-elevated, --accent-primary)
+- Updated test file to match new implementation:
+  - Changed aria-selected to data-state assertions for Radix Tabs
+  - Migrated tab click tests from fireEvent to userEvent for proper Radix compatibility
+  - Updated text assertions to match new messages
+  - Changed loading indicators from animate-spin to animate-pulse (skeleton)
+
+**Commands run:**
+- `npm run lint` - passed (only pre-existing warnings)
+- `npm run typecheck` - passed
+- `npm run test -- --run src/components/diff/DiffViewer.test.tsx` - 51 passed
+
+---
 
 ### 2026-01-25 07:48:00 - Implement Project Dialogs premium design
 
