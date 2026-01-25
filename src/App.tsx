@@ -12,7 +12,7 @@ import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
 import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
-import { TaskDetailView } from "@/components/tasks/TaskDetailView";
+import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { IdeationView } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
@@ -812,35 +812,12 @@ function AppContent() {
         isLoading={isQuestionLoading}
       />
 
-      {/* TaskDetailView Modal - renders when task-detail modal is active */}
-      {selectedTask && (
-        <div
-          data-testid="task-detail-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center"
-        >
-          <div
-            className="absolute inset-0"
-            style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-            onClick={closeModal}
-          />
-          <div
-            className="relative w-full max-w-2xl max-h-[80vh] overflow-auto m-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={closeModal}
-              className="absolute top-2 right-2 p-1 rounded hover:bg-black/10 z-10"
-              style={{ color: "var(--text-secondary)" }}
-              data-testid="task-detail-close"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 5L5 15M5 5l10 10" />
-              </svg>
-            </button>
-            <TaskDetailView task={selectedTask} />
-          </div>
-        </div>
-      )}
+      {/* TaskDetailModal - renders when task-detail modal is active */}
+      <TaskDetailModal
+        task={selectedTask}
+        isOpen={!!selectedTask}
+        onClose={closeModal}
+      />
 
       {/* Project Creation Wizard */}
       <ProjectCreationWizard
