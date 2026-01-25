@@ -76,6 +76,58 @@ pub struct TaskProposal {
 }
 ```
 
+#### 1b. Add Traceability Fields to Task Entity
+
+**CRITICAL:** For worker execution to access artifacts, the Task must retain
+links to its source proposal and plan artifact.
+
+```rust
+// src-tauri/src/domain/entities/task.rs
+
+pub struct Task {
+    // ... existing fields ...
+
+    /// Source proposal this task was created from (for traceability)
+    pub source_proposal_id: Option<TaskProposalId>,
+    /// Plan artifact linked to this task (inherited from proposal)
+    /// Used by worker to fetch implementation context
+    pub plan_artifact_id: Option<ArtifactId>,
+}
+```
+
+#### 1c. Update ApplyService to Copy References
+
+```rust
+// src-tauri/src/application/apply_service.rs
+
+fn create_task_from_proposal(
+    &self,
+    proposal: &TaskProposal,
+    project_id: &ProjectId,
+    status: InternalStatus,
+) -> Task {
+    let mut task = Task::new_with_category(
+        project_id.clone(),
+        proposal.title.clone(),
+        proposal.category.to_string(),
+    );
+
+    task.description = proposal.description.clone();
+    task.priority = proposal.priority_score;
+    task.internal_status = status;
+
+    // NEW: Copy traceability references for worker context
+    task.source_proposal_id = Some(proposal.id.clone());
+    task.plan_artifact_id = proposal.plan_artifact_id.clone();
+
+    task
+}
+```
+
+This ensures the worker can access:
+1. The original proposal (for acceptance criteria, steps)
+2. The implementation plan artifact (for architectural context)
+
 #### 2. Add Ideation Settings Module
 
 ```rust
@@ -710,5 +762,6 @@ INSERT OR IGNORE INTO ideation_settings (id) VALUES (1);
 
 - `specs/plans/context_aware_chat_implementation.md` - Phase 15A infrastructure
 - `specs/plans/task_execution_chat.md` - Phase 15B worker execution
+- `specs/plans/worker_artifact_context.md` - Phase 17, worker artifact access during execution
 - `specs/plans/workflow_management_ui.md` - Methodology-workflow relationship
 - `src-tauri/src/domain/entities/artifact.rs` - Artifact types and system buckets

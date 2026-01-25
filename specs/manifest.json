@@ -124,8 +124,15 @@
     },
     {
       "phase": 16,
+      "name": "Ideation Plan Artifacts",
+      "prd": "specs/phases/prd_phase_16_ideation_plan_artifacts.md",
+      "status": "pending",
+      "description": "Implementation plans as artifacts in ideation flow, methodology integration, proactive sync"
+    },
+    {
+      "phase": 17,
       "name": "Auditor System",
-      "prd": "specs/phases/prd_phase_16_auditor.md",
+      "prd": "specs/phases/prd_phase_17_auditor.md",
       "status": "pending",
       "description": "Automatic detection and correction of systemic issues in completed work"
     }

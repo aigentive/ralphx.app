@@ -1,4 +1,4 @@
-# RalphX - Phase 16: Auditor System
+# RalphX - Phase 17: Auditor System
 
 ## Overview
 
@@ -17,7 +17,7 @@ This phase implements the Auditor System - automatic detection and correction of
 
 ## Dependencies
 
-- Phase 15 must be complete (context-aware chat implementation finished)
+- Phase 16 must be complete (ideation plan artifacts implementation finished)
 - Task state machine from Phase 3
 - Activity log system
 - Project settings infrastructure
