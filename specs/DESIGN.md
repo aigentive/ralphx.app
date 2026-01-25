@@ -431,7 +431,7 @@ Each page has its own detailed design specification. See the individual files fo
 | Chat Panel (Global) | [chat-panel.md](design/pages/chat-panel.md) | Complete |
 | QA Components | [qa-components.md](design/pages/qa-components.md) | Complete |
 | Project Sidebar | [project-sidebar.md](design/pages/project-sidebar.md) | Complete |
-| Project Dialogs | [project-dialogs.md](design/pages/project-dialogs.md) | Task 13 |
+| Project Dialogs | [project-dialogs.md](design/pages/project-dialogs.md) | Complete |
 | Diff Viewer | [diff-viewer.md](design/pages/diff-viewer.md) | Task 14 |
 | Execution Control Bar | [execution-control-bar.md](design/pages/execution-control-bar.md) | Task 15 |
 | Header and Navigation | [header-navigation.md](design/pages/header-navigation.md) | Task 16 |

@@ -1,14 +1,92 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 07:30:00
+**Last Updated:** 2026-01-25 08:00:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 12 / 18
-**Current Task:** Design requirements for Project Dialogs
+**Tasks Completed:** 13 / 18
+**Current Task:** Design requirements for Diff Viewer
 
 ---
 
 ## Session Log
+
+### 2026-01-25 08:00:00 - Design requirements for Project Dialogs (Task 13)
+
+**What was done:**
+- Created comprehensive Project Dialogs design requirements in specs/design/pages/project-dialogs.md
+- Documented three dialog components with shared modal patterns
+
+**Common Modal Patterns:**
+  - Using shadcn Dialog with max-width 512px (max-w-lg)
+  - Background: `--bg-surface`, border: 1px `--border-subtle`
+  - Border radius: `--radius-xl` (16px), shadow: `--shadow-lg`
+  - Backdrop: rgba(0,0,0,0.5) with 8px blur
+  - Open animation: scale(0.95) → scale(1), 200ms ease-out
+  - Header pattern: Icon + title + close button
+  - Footer pattern: Cancel (ghost) + Primary (accent), right-aligned
+
+**Project Creation Wizard:**
+  - Project name input with autofocus
+  - Folder picker with Browse button (Lucide Folder icon)
+  - Git Mode radio group: Local vs Worktree
+  - Local mode: warning about uncommitted changes
+  - Worktree mode: conditional fields (branch name, base branch, worktree path)
+  - Branch name auto-generates from project name: `ralphx/{slug}`
+  - Base branch Select fetches from git repository
+  - Worktree path display with GitBranch icon
+  - Validation states and error messages
+
+**Merge Workflow Dialog:**
+  - Header with CheckCircle icon in success green
+  - Completion summary: "RalphX made N commits on branch: {branch}"
+  - Action buttons: View Diff, View Commits
+  - 5 radio options: merge, rebase, create_pr, keep_worktree, discard
+  - Discard option uses destructive styling (error border/color)
+  - Two-step confirmation for discard action
+  - Footer button changes to "Confirm Discard" with error color
+
+**Task Re-run Dialog:**
+  - Header with RefreshCw icon in accent color
+  - Task title in quotes, commit SHA in monospace with accent color
+  - 3 radio options: keep_changes, revert_commit, create_new
+  - "Recommended" badge on keep_changes option
+  - Revert option shows warning styling when hasDependentCommits
+  - Dependent commits warning banner
+
+**Radio Option Card Pattern:**
+  - Default: transparent background, 1px `--border-subtle`
+  - Selected: `--bg-elevated` background, 1px `--accent-primary` border
+  - Destructive selected: 1px `--status-error` border
+  - Warning selected: 1px `--status-warning` border
+  - Radio indicator: 16px outer, 8px inner dot
+
+- Listed 15 Lucide icons used across all three dialogs
+- Created detailed component hierarchy diagrams for all 3 components
+- Defined 55 acceptance criteria covering all functional requirements
+- Created comprehensive design quality checklist with 59 items covering:
+  - Colors & theming (no purple gradients, proper token usage)
+  - Typography (sizes, weights, monospace for SHAs)
+  - Spacing & layout (8pt grid alignment, padding values)
+  - Shadows & depth (dialog shadow, backdrop blur, focus glows)
+  - Borders & radius (xl for dialogs, lg for inputs/cards)
+  - Motion & interactions (dialog animations, hover states, loading)
+  - Icons (sizes per context, stroke widths)
+  - Accessibility (contrast, focus states, ARIA, keyboard nav)
+
+**Design Highlights:**
+- Shared modal foundation ensures consistency across all project dialogs
+- Clear visual hierarchy guides users through multi-step decisions
+- Destructive actions (discard) require two-step confirmation
+- Warning states use amber color to distinguish from errors
+- Recommended badge uses muted accent background for subtle emphasis
+- Mac-native feel with SF Pro fonts and Lucide icons
+
+**Files modified:**
+- `specs/design/pages/project-dialogs.md` (complete rewrite with full design requirements)
+- `specs/DESIGN.md` (updated Project Dialogs status to Complete)
+- `specs/phases/prd_phase_13_design.md` (marked task 13 as passes: true)
+
+---
 
 ### 2026-01-25 07:30:00 - Design requirements for Project Sidebar (Task 12)
 
