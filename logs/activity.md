@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 05:30:00
+**Last Updated:** 2026-01-25 09:45:00
 **Phase:** Phase 14 (Design Implementation)
-**Tasks Completed:** 0 / TBD
-**Current Task:** Phase 13 complete - transitioning to Phase 14
+**Tasks Completed:** 1 / 17
+**Current Task:** Implement Kanban Board premium design
 
 ---
 
 ## Session Log
+
+### 2026-01-25 09:45:00 - Fix project creation with folder selection and git branches
+
+**What was done:**
+- Verified backend functionality already implemented:
+  - Tauri dialog plugin configured in Cargo.toml and capabilities
+  - `get_git_branches` Rust command implemented and registered
+  - `getGitBranches` TypeScript wrapper in tauri.ts
+  - `handleBrowseFolder` uses `@tauri-apps/plugin-dialog` for native folder picker
+  - `handleFetchBranches` calls backend to get real git branches
+  - `handleCreateProject` calls `api.projects.create()` to persist to database
+  - Form order: Location FIRST, Project Name SECOND
+  - Project name auto-inferred from folder name
+  - Empty state shows centered ProjectCreationWizard when no projects exist
+- Fixed TypeScript error in App.tsx (line 253 - undefined check)
+- Implemented additional requirements from design doc:
+  - Added `isNameManuallySet` state to track if user typed custom name
+  - Added `lastInferredName` state to preserve user overrides when location changes
+  - Added `isFirstRun` prop to ProjectCreationWizard
+  - In first-run mode: close button hidden, cancel button hidden, Escape key disabled, backdrop click disabled
+  - Backdrop blur (8px) added in first-run mode
+- All linting and type checking passes
+- All Rust tests pass
+
+**Commands run:**
+- `npm run lint` (0 errors, 10 warnings)
+- `npm run typecheck` (passed after fix)
+- `cargo test` in src-tauri (all tests pass)
+
+---
 
 ### 2026-01-25 05:30:00 - Phase 13 Complete: Design System
 

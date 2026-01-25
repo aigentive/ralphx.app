@@ -31,6 +31,7 @@ import type { ChatMessage as ChatMessageType, ApplyProposalsInput } from "@/type
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
+import { useProjects } from "@/hooks/useProjects";
 import {
   useIdeationSession,
   useCreateIdeationSession,
@@ -39,7 +40,8 @@ import {
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useOrchestratorMessage } from "@/hooks/useOrchestrator";
-import { api } from "@/lib/tauri";
+import { api, getGitBranches } from "@/lib/tauri";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 
 // Local storage key for persisting chat panel width
@@ -190,9 +192,14 @@ function AppContent() {
   const setChatWidth = useChatStore((s) => s.setWidth);
 
   // Project state
+  const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const setProjects = useProjectStore((s) => s.setProjects);
   const addProject = useProjectStore((s) => s.addProject);
   const selectProject = useProjectStore((s) => s.selectProject);
+
+  // Fetch projects from backend
+  const { data: fetchedProjects, isLoading: isLoadingProjects } = useProjects();
 
   // Project creation wizard state
   const [isProjectWizardOpen, setIsProjectWizardOpen] = useState(false);
@@ -220,6 +227,9 @@ function AppContent() {
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
   const [isQuestionLoading, setIsQuestionLoading] = useState(false);
 
+  // Check if we should show the empty state (no projects)
+  const hasNoProjects = !isLoadingProjects && Object.keys(projects).length === 0;
+
   // Use active project ID or fallback for development
   const currentProjectId = activeProjectId ?? DEFAULT_PROJECT_ID;
 
@@ -233,6 +243,20 @@ function AppContent() {
   const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
   const orchestratorMessage = useOrchestratorMessage(activeSession?.id ?? "");
+
+  // Sync fetched projects to store and auto-select first project
+  useEffect(() => {
+    if (fetchedProjects && fetchedProjects.length > 0) {
+      setProjects(fetchedProjects);
+      // Auto-select first project if none is selected
+      if (!activeProjectId) {
+        const firstProject = fetchedProjects[0];
+        if (firstProject) {
+          selectProject(firstProject.id);
+        }
+      }
+    }
+  }, [fetchedProjects, setProjects, activeProjectId, selectProject]);
 
   // Load persisted chat width from localStorage on mount
   useEffect(() => {
@@ -425,19 +449,8 @@ function AppContent() {
     setIsCreatingProject(true);
     setProjectCreationError(null);
     try {
-      // TODO: Call Tauri backend to create project
-      // For now, create a mock project with generated ID
-      const newProject = {
-        id: `project-${Date.now()}`,
-        name: projectData.name,
-        workingDirectory: projectData.workingDirectory,
-        gitMode: projectData.gitMode,
-        worktreePath: projectData.worktreePath ?? null,
-        worktreeBranch: projectData.worktreeBranch ?? null,
-        baseBranch: projectData.baseBranch ?? null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      // Call Tauri backend to create project
+      const newProject = await api.projects.create(projectData);
       addProject(newProject);
       selectProject(newProject.id);
       setIsProjectWizardOpen(false);
@@ -451,8 +464,15 @@ function AppContent() {
 
   const handleBrowseFolder = useCallback(async (): Promise<string | null> => {
     try {
-      // TODO: Call Tauri file dialog
-      // For now, return null (no selection)
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Select Project Folder",
+      });
+      // selected is string | string[] | null for directories
+      if (typeof selected === "string") {
+        return selected;
+      }
       return null;
     } catch (error) {
       console.error("Failed to browse folder:", error);
@@ -460,11 +480,10 @@ function AppContent() {
     }
   }, []);
 
-  const handleFetchBranches = useCallback(async (_workingDirectory: string): Promise<string[]> => {
+  const handleFetchBranches = useCallback(async (workingDirectory: string): Promise<string[]> => {
     try {
-      // TODO: Call Tauri backend to fetch git branches
-      // For now, return mock branches
-      return ["main", "develop", "feature/example"];
+      const branches = await getGitBranches(workingDirectory);
+      return branches;
     } catch (error) {
       console.error("Failed to fetch branches:", error);
       return [];
@@ -645,82 +664,117 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Main content area with view-specific content and optional panels */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Main view area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            {currentView === "kanban" && (
-              <TaskBoard
-                projectId={currentProjectId}
-                workflowId={DEFAULT_WORKFLOW_ID}
-              />
-            )}
-            {currentView === "ideation" && (
-              <IdeationView
-                session={activeSession}
-                messages={transformMessages(sessionData?.messages ?? [])}
-                proposals={proposals}
-                onSendMessage={handleSendIdeationMessage}
-                onNewSession={handleNewSession}
-                onArchiveSession={handleArchiveSession}
-                onSelectProposal={handleSelectProposal}
-                onEditProposal={handleEditProposal}
-                onRemoveProposal={handleRemoveProposal}
-                onReorderProposals={handleReorderProposals}
-                onApply={handleApplyProposals}
-                isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending || orchestratorMessage.isPending}
-              />
-            )}
-            {currentView === "extensibility" && <ExtensibilityView />}
-            {currentView === "activity" && <ActivityView showHeader />}
-            {currentView === "settings" && <SettingsView />}
+      {/* Main content area - shows empty state wizard or normal content */}
+      {hasNoProjects ? (
+        /* Empty state: centered project creation wizard */
+        <div
+          className="flex-1 flex items-center justify-center"
+          data-testid="empty-state"
+        >
+          <div className="text-center">
+            <h2
+              className="text-xl font-semibold mb-2"
+              style={{ color: "var(--text-primary)" }}
+            >
+              Welcome to RalphX
+            </h2>
+            <p
+              className="text-sm mb-6"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Get started by creating your first project
+            </p>
+            <button
+              onClick={handleOpenProjectWizard}
+              className="px-6 py-3 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: "var(--accent-primary)",
+                color: "#fff",
+              }}
+              data-testid="create-first-project-button"
+            >
+              Create Project
+            </button>
           </div>
-          {/* ExecutionControlBar at bottom (only show in kanban view) */}
-          {currentView === "kanban" && (
-            <div className="p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-              <ExecutionControlBar
-                runningCount={executionStatus.runningCount}
-                maxConcurrent={executionStatus.maxConcurrent}
-                queuedCount={executionStatus.queuedCount}
-                isPaused={executionStatus.isPaused}
-                isLoading={isExecutionLoading}
-                onPauseToggle={handlePauseToggle}
-                onStop={handleStop}
-              />
+        </div>
+      ) : (
+        /* Normal content with view-specific content and optional panels */
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main view area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-hidden">
+              {currentView === "kanban" && (
+                <TaskBoard
+                  projectId={currentProjectId}
+                  workflowId={DEFAULT_WORKFLOW_ID}
+                />
+              )}
+              {currentView === "ideation" && (
+                <IdeationView
+                  session={activeSession}
+                  messages={transformMessages(sessionData?.messages ?? [])}
+                  proposals={proposals}
+                  onSendMessage={handleSendIdeationMessage}
+                  onNewSession={handleNewSession}
+                  onArchiveSession={handleArchiveSession}
+                  onSelectProposal={handleSelectProposal}
+                  onEditProposal={handleEditProposal}
+                  onRemoveProposal={handleRemoveProposal}
+                  onReorderProposals={handleReorderProposals}
+                  onApply={handleApplyProposals}
+                  isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending || orchestratorMessage.isPending}
+                />
+              )}
+              {currentView === "extensibility" && <ExtensibilityView />}
+              {currentView === "activity" && <ActivityView showHeader />}
+              {currentView === "settings" && <SettingsView />}
             </div>
+            {/* ExecutionControlBar at bottom (only show in kanban view) */}
+            {currentView === "kanban" && (
+              <div className="p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+                <ExecutionControlBar
+                  runningCount={executionStatus.runningCount}
+                  maxConcurrent={executionStatus.maxConcurrent}
+                  queuedCount={executionStatus.queuedCount}
+                  isPaused={executionStatus.isPaused}
+                  isLoading={isExecutionLoading}
+                  onPauseToggle={handlePauseToggle}
+                  onStop={handleStop}
+                />
+              </div>
           )}
         </div>
 
-        {/* ReviewsPanel slide-out */}
-        {reviewsPanelOpen && (
-          <div
-            className="w-96 border-l flex-shrink-0"
-            style={{ borderColor: "var(--border-subtle)" }}
-          >
-            <ReviewsPanel
-              projectId={currentProjectId}
-              taskTitles={taskTitles}
-              onClose={() => setReviewsPanelOpen(false)}
-              onApprove={(reviewId) => {
-                console.log("Approve review:", reviewId);
-                // TODO: Call approveReview mutation
-              }}
-              onRequestChanges={(reviewId) => {
-                console.log("Request changes for review:", reviewId);
-                // TODO: Open request changes modal
-              }}
-              onViewDiff={(reviewId) => {
-                console.log("View diff for review:", reviewId);
-                // TODO: Open diff viewer
-              }}
-            />
-          </div>
-        )}
+          {/* ReviewsPanel slide-out */}
+          {reviewsPanelOpen && (
+            <div
+              className="w-96 border-l flex-shrink-0"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              <ReviewsPanel
+                projectId={currentProjectId}
+                taskTitles={taskTitles}
+                onClose={() => setReviewsPanelOpen(false)}
+                onApprove={(reviewId) => {
+                  console.log("Approve review:", reviewId);
+                  // TODO: Call approveReview mutation
+                }}
+                onRequestChanges={(reviewId) => {
+                  console.log("Request changes for review:", reviewId);
+                  // TODO: Open request changes modal
+                }}
+                onViewDiff={(reviewId) => {
+                  console.log("View diff for review:", reviewId);
+                  // TODO: Open diff viewer
+                }}
+              />
+            </div>
+          )}
 
-        {/* ChatPanel - resizable side panel with Cmd+K toggle */}
-        <ChatPanel context={chatContext} />
-      </div>
+          {/* ChatPanel - resizable side panel with Cmd+K toggle */}
+          <ChatPanel context={chatContext} />
+        </div>
+      )}
 
       {/* AskUserQuestionModal - renders when activeQuestion is set */}
       <AskUserQuestionModal
@@ -769,6 +823,7 @@ function AppContent() {
         onFetchBranches={handleFetchBranches}
         isCreating={isCreatingProject}
         error={projectCreationError}
+        isFirstRun={hasNoProjects}
       />
     </main>
   );
