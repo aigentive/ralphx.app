@@ -104,7 +104,12 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
         >
           {column.name}
         </h3>
-        <Badge variant="secondary">{column.tasks.length}</Badge>
+        <Badge
+          variant="secondary"
+          className="bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+        >
+          {column.tasks.length}
+        </Badge>
         {isOver && isInvalid && <InvalidDropIcon />}
       </div>
 
@@ -112,7 +117,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
-        className="flex-1 p-2 space-y-2 rounded-lg transition-all"
+        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all"
         style={{
           minHeight: "100px",
           ...getDropZoneStyles(),
