@@ -296,7 +296,8 @@ function AppContent() {
         } else if (e.key === "4") {
           e.preventDefault();
           setCurrentView("activity");
-        } else if (e.key === "5" || e.key === ".") {
+        } else if (e.key === "5" || e.key === "." || e.key === ",") {
+          // Cmd+5, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
           e.preventDefault();
           setCurrentView("settings");
         }
