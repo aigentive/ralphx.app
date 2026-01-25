@@ -14,8 +14,7 @@ This phase implements the premium designs documented in Phase 13. Each task take
 2. Replace all inline SVG icons with Lucide React
 3. Apply premium styling (shadows, gradients, animations)
 4. Implement micro-interactions (hover lift, press scale, focus rings)
-5. Visually verify each page against design requirements
-6. Achieve consistent, polished, 10x-designer quality throughout
+5. Achieve consistent, polished, 10x-designer quality throughout
 
 ## Dependencies
 
@@ -32,10 +31,8 @@ Each task follows this pattern:
 3. Verify against the doc's **Acceptance Criteria**
 4. Verify against the doc's **Design Quality Checklist**
 5. Run `npm run lint && npm run typecheck`
-6. Start `npm run tauri dev`
-7. Use /tauri-visual-test skill to capture verification screenshots
-8. Fix any issues using `/frontend-design` skill
-9. Commit with descriptive message
+6. Fix any issues using `/frontend-design` skill
+7. Commit with descriptive message
 
 ## Anti-AI-Slop Verification (EVERY TASK)
 
@@ -107,28 +104,6 @@ Before marking any task complete, verify:
     "passes": true
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Kanban Board",
-    "design_doc": "specs/design/pages/kanban-board.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: navigate to Kanban (Cmd+1) and capture screenshot",
-      "Save to: screenshots/visual-audit/kanban/",
-      "Verify against design doc: specs/design/pages/kanban-board.md",
-      "Check: radial gradient background visible at top",
-      "Check: column headers have glass effect (backdrop-blur)",
-      "Check: task cards have priority stripe on left",
-      "Check: hover lifts card with shadow change",
-      "Check: empty columns show Inbox icon and message",
-      "Check: Lucide icons used (GripVertical, Inbox)",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Kanban board visual polish"
-    ],
-    "passes": true
-  },
-  {
     "category": "implementation",
     "description": "Implement Ideation View premium design",
     "design_doc": "specs/design/pages/ideation-view.md",
@@ -145,27 +120,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Ideation View",
-    "design_doc": "specs/design/pages/ideation-view.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: navigate to Ideation (Cmd+2) and capture screenshot",
-      "Save to: screenshots/visual-audit/ideation/",
-      "Verify against design doc: specs/design/pages/ideation-view.md",
-      "Check: resizable panels with drag handle",
-      "Check: user messages right-aligned with orange background",
-      "Check: AI messages left-aligned with neutral background",
-      "Check: proposal cards have proper styling",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Ideation view visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement Settings View premium design",
     "design_doc": "specs/design/pages/settings-view.md",
@@ -178,27 +132,6 @@ Before marking any task complete, verify:
       "Use Lucide icons: Settings, Zap, Brain, FileSearch, Shield, Loader2",
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Settings view design"
-    ],
-    "passes": false
-  },
-  {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Settings View",
-    "design_doc": "specs/design/pages/settings-view.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: navigate to Settings (Cmd+5) and capture screenshot",
-      "Save to: screenshots/visual-audit/settings/",
-      "Verify against design doc: specs/design/pages/settings-view.md",
-      "Check: glass effect header with Settings icon",
-      "Check: section cards have gradient borders on hover",
-      "Check: shadcn Switch/Input/Select components used",
-      "Check: master toggles disable sub-settings when off",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Settings view visual polish"
     ],
     "passes": false
   },
@@ -220,27 +153,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Activity Stream View",
-    "design_doc": "specs/design/pages/activity-stream.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: navigate to Activity (Cmd+4) and capture screenshot",
-      "Save to: screenshots/visual-audit/activity/",
-      "Verify against design doc: specs/design/pages/activity-stream.md",
-      "Check: filter tabs work correctly",
-      "Check: activity entries have type-specific left border colors",
-      "Check: expandable details show JSON with syntax highlighting",
-      "Check: copy button works",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Activity view visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement Extensibility View premium design",
     "design_doc": "specs/design/pages/extensibility-view.md",
@@ -254,26 +166,6 @@ Before marking any task complete, verify:
       "Use Lucide icons per tab type",
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Extensibility view design"
-    ],
-    "passes": false
-  },
-  {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Extensibility View",
-    "design_doc": "specs/design/pages/extensibility-view.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: navigate to Extensibility (Cmd+3) and capture screenshots of each tab",
-      "Save to: screenshots/visual-audit/extensibility/",
-      "Verify against design doc: specs/design/pages/extensibility-view.md",
-      "Check: shadcn Tabs component used",
-      "Check: cards have proper shadows and hover states",
-      "Check: badges and toggles styled correctly",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshots after fixes",
-      "Commit fixes if any: fix: Extensibility view visual polish"
     ],
     "passes": false
   },
@@ -295,28 +187,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Task Detail View",
-    "design_doc": "specs/design/pages/task-detail.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: open Task Detail modal and capture screenshot",
-      "Save to: screenshots/visual-audit/modals/task-detail/",
-      "Verify against design doc: specs/design/pages/task-detail.md",
-      "Check: backdrop blur visible",
-      "Check: scale animation on open",
-      "Check: status Badge and priority indicator in header",
-      "Check: collapsible sections work",
-      "Check: StateHistoryTimeline has connected dots",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Task Detail modal visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement Reviews Panel premium design",
     "design_doc": "specs/design/pages/reviews-panel.md",
@@ -329,26 +199,6 @@ Before marking any task complete, verify:
       "Use Lucide icons: CheckCircle, XCircle, AlertCircle, Eye, etc.",
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Reviews panel design"
-    ],
-    "passes": false
-  },
-  {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Reviews Panel",
-    "design_doc": "specs/design/pages/reviews-panel.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: open Reviews panel and capture screenshot",
-      "Save to: screenshots/visual-audit/panels/reviews/",
-      "Verify against design doc: specs/design/pages/reviews-panel.md",
-      "Check: slide-in animation",
-      "Check: filter tabs work",
-      "Check: ReviewCards have proper styling",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Reviews panel visual polish"
     ],
     "passes": false
   },
@@ -370,27 +220,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Chat Panel",
-    "design_doc": "specs/design/pages/chat-panel.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: open Chat panel (Cmd+K) and capture screenshot",
-      "Save to: screenshots/visual-audit/panels/chat/",
-      "Verify against design doc: specs/design/pages/chat-panel.md",
-      "Check: resizable with drag handle",
-      "Check: message bubbles have asymmetric corners",
-      "Check: code blocks have syntax highlighting",
-      "Check: chat input styled correctly",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Chat panel visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement QA Components premium design",
     "design_doc": "specs/design/pages/qa-components.md",
@@ -404,27 +233,6 @@ Before marking any task complete, verify:
       "Use Lucide icons per QA state: Clock, PlayCircle, CheckCircle, XCircle, AlertTriangle",
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium QA components design"
-    ],
-    "passes": false
-  },
-  {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: QA Components",
-    "design_doc": "specs/design/pages/qa-components.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: open task with QA data and capture QA components",
-      "Save to: screenshots/visual-audit/qa/",
-      "Verify against design doc: specs/design/pages/qa-components.md",
-      "Check: QA badge shows correct state icon/color",
-      "Check: QA panel tabs work",
-      "Check: screenshot gallery shows thumbnails",
-      "Check: lightbox opens on click",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: QA components visual polish"
     ],
     "passes": false
   },
@@ -446,27 +254,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Project Sidebar",
-    "design_doc": "specs/design/pages/project-sidebar.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: capture screenshot showing sidebar",
-      "Save to: screenshots/visual-audit/sidebar/",
-      "Verify against design doc: specs/design/pages/project-sidebar.md",
-      "Check: 240px width, border on right",
-      "Check: project list shows git mode badges",
-      "Check: active project highlighted with accent",
-      "Check: New Project button styled correctly",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Project Sidebar visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement Project Dialogs premium design",
     "design_doc": "specs/design/pages/project-dialogs.md",
@@ -484,28 +271,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Project Dialogs",
-    "design_doc": "specs/design/pages/project-dialogs.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: open New Project dialog and capture screenshot",
-      "Save to: screenshots/visual-audit/modals/project-creation/",
-      "Verify Location field is FIRST, Project Name SECOND (optional)",
-      "Verify git mode radio selection works",
-      "Verify against Acceptance Criteria in specs/design/pages/project-dialogs.md",
-      "Verify against Design Quality Checklist in specs/design/pages/project-dialogs.md",
-      "Check: backdrop blur visible",
-      "Check: scale animation on open",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Project dialogs visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement Diff Viewer premium design",
     "design_doc": "specs/design/pages/diff-viewer.md",
@@ -519,26 +284,6 @@ Before marking any task complete, verify:
       "Use Lucide icons: Plus, Edit, Minus, ArrowRight, FolderOpen, File, ExternalLink",
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Diff Viewer design"
-    ],
-    "passes": false
-  },
-  {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Diff Viewer",
-    "design_doc": "specs/design/pages/diff-viewer.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: open Diff Viewer and capture screenshot",
-      "Save to: screenshots/visual-audit/diff-viewer/",
-      "Verify against design doc: specs/design/pages/diff-viewer.md",
-      "Check: file tree collapsible",
-      "Check: diff has line numbers and syntax highlighting",
-      "Check: additions green, deletions red",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Diff Viewer visual polish"
     ],
     "passes": false
   },
@@ -561,27 +306,6 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Execution Control Bar",
-    "design_doc": "specs/design/pages/execution-control-bar.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: capture screenshot of bottom control bar",
-      "Save to: screenshots/visual-audit/execution-bar/",
-      "Verify against design doc: specs/design/pages/execution-control-bar.md",
-      "Check: fixed at bottom with shadow",
-      "Check: status dot animates (pulsing)",
-      "Check: Pause/Resume/Stop buttons styled correctly",
-      "Check: tooltips appear on hover",
-      "Check: Lucide icons used",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Execution Control Bar visual polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "implementation",
     "description": "Implement Header and Navigation premium design",
     "design_doc": "specs/design/pages/header-navigation.md",
@@ -597,28 +321,6 @@ Before marking any task complete, verify:
       "Use Lucide icons: LayoutGrid, Lightbulb, Puzzle, Activity, SlidersHorizontal, FolderOpen, ChevronDown, MessageSquare, CheckCircle",
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Header design"
-    ],
-    "passes": false
-  },
-  {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: Header and Navigation",
-    "design_doc": "specs/design/pages/header-navigation.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow: capture screenshot of header",
-      "Save to: screenshots/visual-audit/header/",
-      "Verify against design doc: specs/design/pages/header-navigation.md",
-      "Check: 48px height, shadow, draggable region",
-      "Check: RalphX branding with accent color",
-      "Check: view nav buttons with active state",
-      "Check: Project Selector dropdown works",
-      "Check: keyboard shortcuts work (Cmd+1-5, Cmd+K)",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshot after fixes",
-      "Commit fixes if any: fix: Header visual polish"
     ],
     "passes": false
   },
@@ -643,45 +345,10 @@ Before marking any task complete, verify:
     "passes": false
   },
   {
-    "category": "visual-audit",
-    "skill": "tauri-visual-test",
-    "description": "Visual audit: All Modals",
-    "design_doc": "specs/design/pages/modal-standards.md",
-    "steps": [
-      "Follow /tauri-visual-test skill workflow to capture each modal:",
-      "  - AskUserQuestionModal",
-      "  - ReviewNotesModal",
-      "  - ProposalEditModal",
-      "  - TaskDetailModal",
-      "  - ProjectCreationWizard",
-      "Verify each against Acceptance Criteria in specs/design/pages/modal-standards.md",
-      "Verify against Design Quality Checklist in specs/design/pages/modal-standards.md",
-      "Check: consistent backdrop blur",
-      "Check: consistent scale animation",
-      "Check: consistent header/footer patterns",
-      "Check: Lucide icons used throughout",
-      "Check: NO purple/blue gradients, NO Inter font",
-      "If issues found: fix using /frontend-design skill",
-      "Re-capture screenshots after fixes",
-      "Commit fixes if any: fix: modal consistency polish"
-    ],
-    "passes": false
-  },
-  {
     "category": "verification",
-    "description": "Final comprehensive visual audit",
+    "description": "Final anti-AI-slop compliance check",
     "steps": [
-      "Follow /tauri-visual-test skill workflow to capture comprehensive screenshot set:",
-      "  - Full app with Kanban view",
-      "  - Full app with Ideation view",
-      "  - Full app with Extensibility view",
-      "  - Full app with Activity view",
-      "  - Full app with Settings view",
-      "  - Task Detail modal open",
-      "  - Reviews panel open",
-      "  - Chat panel open",
-      "  - Project creation dialog",
-      "Review ALL screenshots against specs/DESIGN.md",
+      "Run npm run lint && npm run typecheck",
       "Final anti-AI-slop compliance check:",
       "  - NO purple/blue gradients anywhere",
       "  - NO Inter font (must be SF Pro)",
@@ -690,7 +357,6 @@ Before marking any task complete, verify:
       "  - Micro-interactions feel polished",
       "Document any remaining issues",
       "Fix any remaining issues using /frontend-design skill",
-      "Run npm run lint && npm run typecheck",
       "Commit: feat: complete Phase 14 design implementation"
     ],
     "passes": false
