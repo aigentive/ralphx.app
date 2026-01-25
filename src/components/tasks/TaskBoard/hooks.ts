@@ -42,7 +42,31 @@ export function useTaskBoard(projectId: string, workflowId: string): UseTaskBoar
   const moveMutation = useMutation({
     mutationFn: ({ taskId, toStatus }: { taskId: string; toStatus: string }) =>
       api.tasks.move(taskId, toStatus),
-    onSuccess: () => {
+    // Optimistic update - immediately move task in cache
+    onMutate: async ({ taskId, toStatus }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: taskKeys.list(projectId) });
+
+      // Snapshot previous value for rollback
+      const previousTasks = queryClient.getQueryData<Task[]>(taskKeys.list(projectId));
+
+      // Optimistically update cache
+      queryClient.setQueryData<Task[]>(taskKeys.list(projectId), (old) =>
+        old?.map((t) =>
+          t.id === taskId ? { ...t, internalStatus: toStatus as InternalStatus } : t
+        )
+      );
+
+      return { previousTasks };
+    },
+    // Rollback on error
+    onError: (_err, _variables, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(taskKeys.list(projectId), context.previousTasks);
+      }
+    },
+    // Sync with server after mutation settles
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
     },
   });

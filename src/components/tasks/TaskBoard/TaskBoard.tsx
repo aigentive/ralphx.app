@@ -8,7 +8,7 @@
  * - 24px (--space-6) gutters between columns
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
