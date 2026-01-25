@@ -65,24 +65,22 @@ Test data is seeded programmatically via Tauri commands. Before visual audits, e
 
 #### Seeding Test Data
 
-**Option 1: Via Tauri invoke (from browser console when app is running)**
-```javascript
-await window.__TAURI__.core.invoke('seed_test_data', { profile: 'kanban' });
-```
-
-**Option 2: Direct database check/seed script**
+**Before visual audits, ensure test data exists:**
 ```bash
 # Check if data exists
 sqlite3 src-tauri/ralphx.db "SELECT COUNT(*) FROM projects;"
 
-# If empty (0), the visual audit task should call the seed command
+# Seed if empty (run before starting app)
+./scripts/seed-test-data.sh kanban
+
+# Or clear and reseed
+./scripts/seed-test-data.sh kanban --clear
 ```
 
-**Option 3: From frontend code (in tests or hooks)**
+**From frontend code (in tests/hooks):**
 ```typescript
-await api.testData.seed("kanban");  // Specific profile
-await api.testData.seedVisualAudit(); // Alias for kanban
-await api.testData.clear();  // Remove all test data
+await api.testData.seed("kanban");
+await api.testData.clear();
 ```
 
 #### What Kanban Profile Creates
