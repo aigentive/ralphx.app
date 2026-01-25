@@ -643,7 +643,26 @@ export const api = {
 
   testData: {
     /**
-     * Seed demo data for visual audits
+     * Seed test data with specified profile
+     * @param profile - "minimal" | "kanban" | "ideation" | "full" (default: kanban)
+     * @returns Seed response with counts
+     */
+    seed: (profile?: "minimal" | "kanban" | "ideation" | "full") =>
+      typedInvoke(
+        "seed_test_data",
+        { profile },
+        z.object({
+          profile: z.string(),
+          projectId: z.string(),
+          projectName: z.string(),
+          tasksCreated: z.number(),
+          sessionsCreated: z.number(),
+          proposalsCreated: z.number(),
+        })
+      ),
+
+    /**
+     * Seed demo data for visual audits (alias for seed("kanban"))
      * Creates a test project with sample tasks in various states
      * @returns Seed response with project info and task count
      */
@@ -652,9 +671,12 @@ export const api = {
         "seed_visual_audit_data",
         {},
         z.object({
+          profile: z.string(),
           projectId: z.string(),
           projectName: z.string(),
           tasksCreated: z.number(),
+          sessionsCreated: z.number(),
+          proposalsCreated: z.number(),
         })
       ),
 

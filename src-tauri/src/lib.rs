@@ -154,6 +154,7 @@ pub fn run() {
             commands::methodology_commands::activate_methodology,
             commands::methodology_commands::deactivate_methodology,
             // Test data commands (for visual audits)
+            commands::test_data_commands::seed_test_data,
             commands::test_data_commands::seed_visual_audit_data,
             commands::test_data_commands::clear_test_data
         ])
