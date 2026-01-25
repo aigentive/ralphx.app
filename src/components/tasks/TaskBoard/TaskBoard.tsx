@@ -8,7 +8,7 @@
  * - 24px (--space-6) gutters between columns
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -38,7 +38,18 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   );
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
   const openModal = useUiStore((s) => s.openModal);
+
+  // Clear movingTaskId after React has re-rendered with new position
+  useEffect(() => {
+    if (movingTaskId) {
+      const id = requestAnimationFrame(() => {
+        setMovingTaskId(null);
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [movingTaskId]);
 
   // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(
@@ -90,9 +101,13 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    const taskId = String(event.active.id);
+    // Keep the moved task hidden until after re-render
+    setMovingTaskId(taskId);
+    // Trigger optimistic update FIRST (onMutate is synchronous)
+    onDragEnd(event);
     setActiveTask(null);
     setOverColumnId(null);
-    onDragEnd(event);
   };
 
   const handleDragCancel = () => {
@@ -134,10 +149,11 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
               overColumnId === column.id && lockedColumns.includes(column.id)
             }
             onTaskSelect={handleTaskSelect}
+            hiddenTaskId={movingTaskId}
           />
         ))}
       </div>
-      <DragOverlay>
+      <DragOverlay dropAnimation={null}>
         {activeTask && <TaskCard task={activeTask} isDragging />}
       </DragOverlay>
     </DndContext>
