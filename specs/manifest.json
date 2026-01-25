@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 13,
+  "currentPhase": 14,
   "phases": [
     {
       "phase": 0,
@@ -98,14 +98,14 @@
       "phase": 13,
       "name": "Design System",
       "prd": "specs/phases/prd_phase_13_design.md",
-      "status": "active",
+      "status": "complete",
       "description": "Setup Lucide + shadcn/ui, create DESIGN.md with page requirements"
     },
     {
       "phase": 14,
       "name": "Design Implementation",
       "prd": "specs/phases/prd_phase_14_implementation.md",
-      "status": "pending",
+      "status": "active",
       "description": "Implement premium designs from Phase 13 using shadcn/ui and Lucide"
     },
     {
