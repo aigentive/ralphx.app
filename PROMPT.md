@@ -258,47 +258,18 @@ git commit -m "feat: [description]"
 
 ## Visual Verification (UI Tasks)
 
-After ALL tests pass, verify UI changes visually:
+After ALL tests pass, verify UI changes visually.
 
-### 1. Start the development server
-```bash
-npm run tauri dev
-```
+**Use the `/tauri-visual-test` skill** - it contains complete instructions for:
+- Screenshot capture (clean window-only)
+- Keyboard navigation between views
+- MCP tools for app introspection
+- Screenshot naming conventions
+- Verification checklist
 
-### 2. Open in headless browser
-```bash
-agent-browser open http://localhost:1420
-```
+See: `.claude/skills/tauri-visual-test/SKILL.md`
 
-### 3. Analyze the page structure
-```bash
-agent-browser snapshot -i -c
-```
-
-### 4. Capture screenshot as proof
-```bash
-agent-browser screenshot screenshots/[task-name].png
-```
-
-### 5. Verify specific behaviors (examples)
-```bash
-# Check if element exists and is visible
-agent-browser is visible @e1
-
-# Test click interaction
-agent-browser click @e1
-agent-browser screenshot screenshots/[task-name]-after-click.png
-
-# Verify text content
-agent-browser get text @e1
-```
-
-### 6. Close browser
-```bash
-agent-browser close
-```
-
-### 7. Document in activity.md
+### Document in activity.md
 Include:
 - Screenshot filename
 - What was verified
