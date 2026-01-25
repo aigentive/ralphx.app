@@ -90,7 +90,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(domain): add ChatConversation and AgentRun entities with repositories"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
