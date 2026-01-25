@@ -127,7 +127,7 @@ Before marking any task complete, verify:
       "Re-capture screenshot after fixes",
       "Commit fixes if any: fix: Kanban board visual polish"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "implementation",
