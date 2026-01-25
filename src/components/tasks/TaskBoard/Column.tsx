@@ -73,7 +73,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
   return (
     <div
       data-testid={`column-${column.id}`}
-      className="flex-shrink-0 flex flex-col"
+      className="flex-shrink-0 flex flex-col h-full"
       style={{
         width: "300px",
         minWidth: "280px",

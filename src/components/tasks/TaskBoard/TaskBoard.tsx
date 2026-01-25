@@ -101,7 +101,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
       {/* TaskBoard container with radial gradient and scroll-snap */}
       <div
         data-testid="task-board"
-        className="task-board relative flex gap-6 px-4 py-6 overflow-x-auto h-full"
+        className="task-board relative flex items-stretch gap-6 px-4 py-6 overflow-x-auto h-full"
         style={{
           background:
             "radial-gradient(ellipse at top, rgba(255,107,53,0.03) 0%, var(--bg-base) 50%)",
