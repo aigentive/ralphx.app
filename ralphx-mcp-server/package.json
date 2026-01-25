@@ -1,0 +1,26 @@
+{
+  "name": "ralphx-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server proxy for RalphX - forwards tool calls to Tauri backend",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "ralphx",
+    "model-context-protocol"
+  ],
+  "author": "RalphX",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
