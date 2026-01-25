@@ -159,7 +159,25 @@ These files contain:
 
 **All UI work must follow `specs/DESIGN.md`** - the definitive design guide for RalphX.
 
-Key principles:
+### Required Skill for UI/UX Work
+
+**IMPORTANT:** When working on any UI/UX task (components, styling, layouts, theming, CSS), you MUST first invoke the `tailwind-v4-shadcn` skill:
+
+```
+/tailwind-v4-shadcn
+```
+
+This skill provides production-tested patterns for:
+- Tailwind CSS v4 configuration (different from v3)
+- shadcn/ui component setup and theming
+- CSS variable architecture with `@theme inline`
+- Dark mode implementation
+- Common gotchas and fixes
+
+**Why this matters:** Tailwind v4 has breaking changes from v3. Without this skill, you may use outdated patterns that won't work (e.g., `tailwind.config.js` is ignored in v4).
+
+### Key Principles
+
 - **Warm orange accent** (`#ff6b35`) - NOT purple/blue gradients
 - **SF Pro font** - NOT Inter
 - **Layered shadows** for depth - NOT flat surfaces
