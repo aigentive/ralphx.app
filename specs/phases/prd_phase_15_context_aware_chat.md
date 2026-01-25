@@ -170,7 +170,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Build and verify: npm run build",
       "Commit: feat(mcp): add permission_request tool for UI-based approval"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
