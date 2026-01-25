@@ -58,8 +58,9 @@ pub use review_commands::{
 pub use task_commands::{answer_user_question, create_task, delete_task, get_task, inject_task, list_tasks, update_task};
 pub use workflow_commands::{
     create_workflow, delete_workflow, get_active_workflow_columns, get_builtin_workflows,
-    get_workflow, get_workflows, set_default_workflow, update_workflow, CreateWorkflowInput,
-    UpdateWorkflowInput, WorkflowColumnInput, WorkflowColumnResponse, WorkflowResponse,
+    get_workflow, get_workflows, seed_builtin_workflows, set_default_workflow, update_workflow,
+    CreateWorkflowInput, UpdateWorkflowInput, WorkflowColumnInput, WorkflowColumnResponse,
+    WorkflowResponse,
 };
 pub use research_commands::{
     get_research_presets, get_research_process, get_research_processes, pause_research,
