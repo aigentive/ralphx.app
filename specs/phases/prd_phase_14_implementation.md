@@ -61,6 +61,34 @@ Before marking any task complete, verify:
 ```json
 [
   {
+    "category": "bugfix",
+    "description": "Fix project creation - implement folder selection and git branch fetching",
+    "steps": [
+      "Read src/App.tsx to understand current stubbed implementations (handleBrowseFolder, handleFetchBranches, handleCreateProject)",
+      "Install @tauri-apps/plugin-dialog if not present: npm install @tauri-apps/plugin-dialog",
+      "Add 'dialog' plugin to src-tauri/Cargo.toml and src-tauri/capabilities/default.json",
+      "Implement handleBrowseFolder in App.tsx using Tauri dialog.open({ directory: true })",
+      "Create get_git_branches command in src-tauri/src/commands/project_commands.rs that executes 'git branch -a' in the working directory",
+      "Register get_git_branches in src-tauri/src/lib.rs invoke_handler",
+      "Add getGitBranches wrapper in src/lib/tauri.ts",
+      "Implement handleFetchBranches in App.tsx to call getGitBranches",
+      "Update handleCreateProject in App.tsx to call api.projects.create() instead of creating mock data",
+      "Update ProjectCreationWizard form order: Location field FIRST, Project Name SECOND",
+      "Make Project Name optional - auto-infer from folder name when location is selected (e.g., /Users/dev/my-app → 'my-app')",
+      "Allow user to override inferred project name if desired",
+      "If no projects exist (empty project list), show ProjectCreationWizard centered on screen (both axes) as default view instead of empty Kanban",
+      "Test folder selection opens native macOS folder picker",
+      "Test project name auto-populates from selected folder name",
+      "Test branch dropdown shows real branches from selected folder",
+      "Test project creation persists to database and survives page refresh",
+      "Test first-launch shows centered project creation dialog",
+      "Run npm run lint && npm run typecheck",
+      "Run cargo test in src-tauri",
+      "Commit: fix: implement project creation with folder selection and git branches"
+    ],
+    "passes": false
+  },
+  {
     "category": "implementation",
     "description": "Implement Kanban Board premium design",
     "design_doc": "specs/design/pages/kanban-board.md",
