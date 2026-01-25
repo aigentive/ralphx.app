@@ -8,10 +8,13 @@
  * - 24px (--space-6) gutters between columns
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
@@ -36,6 +39,16 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const openModal = useUiStore((s) => s.openModal);
+
+  // Delay drag start to allow clicks
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 5,
+      },
+    })
+  );
 
   const handleTaskSelect = useCallback(
     (taskId: string) => {
@@ -93,6 +106,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
 
   return (
     <DndContext
+      sensors={sensors}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -101,7 +115,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
       {/* TaskBoard container with radial gradient and scroll-snap */}
       <div
         data-testid="task-board"
-        className="task-board relative flex items-stretch gap-6 py-6 overflow-x-auto h-full"
+        className="task-board relative flex items-stretch gap-3 py-6 overflow-x-auto h-full"
         style={{
           background:
             "radial-gradient(ellipse at top, rgba(255,107,53,0.03) 0%, var(--bg-base) 50%)",
