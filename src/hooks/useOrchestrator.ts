@@ -8,6 +8,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import type { OrchestratorMessageResponse } from "@/api/chat";
+import { ideationKeys } from "./useIdeation";
 
 /**
  * Hook for sending messages to the orchestrator
@@ -23,22 +24,17 @@ export function useOrchestratorMessage(sessionId: string) {
       return chatApi.sendOrchestratorMessage(sessionId, content);
     },
     onSuccess: (data) => {
-      // Invalidate session messages to show the new messages
+      // Invalidate session with data to refetch messages and proposals
       queryClient.invalidateQueries({
-        queryKey: ["session-messages", sessionId],
+        queryKey: ideationKeys.sessionWithData(sessionId),
       });
 
-      // If proposals were created, invalidate the proposals query
+      // If proposals were created, also invalidate the session detail
       if (data.proposalsCreated.length > 0) {
         queryClient.invalidateQueries({
-          queryKey: ["session-proposals", sessionId],
+          queryKey: ideationKeys.sessionDetail(sessionId),
         });
       }
-
-      // Also invalidate the session data query
-      queryClient.invalidateQueries({
-        queryKey: ["ideation-session", sessionId],
-      });
     },
     onError: (error) => {
       console.error("Failed to send orchestrator message:", error);
