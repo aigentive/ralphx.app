@@ -769,7 +769,7 @@ All design work MUST include:
       "Run npm run lint",
       "Commit: docs: finalize design documents and add Phase 14 checklist"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

@@ -424,8 +424,8 @@ Each page has its own detailed design specification. See the individual files fo
 | Kanban Board | [kanban-board.md](design/pages/kanban-board.md) | Complete |
 | Ideation View | [ideation-view.md](design/pages/ideation-view.md) | Complete |
 | Settings View | [settings-view.md](design/pages/settings-view.md) | Complete |
-| Activity Stream | [activity-stream.md](design/pages/activity-stream.md) | Task 6 |
-| Extensibility View | [extensibility-view.md](design/pages/extensibility-view.md) | Task 7 |
+| Activity Stream | [activity-stream.md](design/pages/activity-stream.md) | Complete |
+| Extensibility View | [extensibility-view.md](design/pages/extensibility-view.md) | Complete |
 | Task Detail | [task-detail.md](design/pages/task-detail.md) | Complete |
 | Reviews Panel | [reviews-panel.md](design/pages/reviews-panel.md) | Complete |
 | Chat Panel (Global) | [chat-panel.md](design/pages/chat-panel.md) | Complete |
@@ -491,6 +491,72 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 - Semantic HTML elements
 - ARIA labels where needed
 - Icon-only buttons have aria-label
+
+---
+
+---
+
+## 14. Phase 14 Implementation Checklist
+
+This checklist tracks the implementation of designs from Phase 13 using shadcn/ui and Lucide icons.
+
+### Foundation Components
+- [ ] Configure CSS custom properties in `globals.css` (color tokens, typography, spacing, shadows)
+- [ ] Set up Tailwind theme extensions for design tokens
+- [ ] Customize shadcn component variants to match design system
+- [ ] Create base layout components (PageContainer, Panel, SplitPane)
+
+### Core UI Components
+- [ ] **Header & Navigation** - Implement header with glass effect, navigation items, project switcher
+- [ ] **Project Sidebar** - Implement collapsible sidebar with project list, status indicators
+- [ ] **Execution Control Bar** - Implement control bar with agent status, progress, action buttons
+
+### Kanban Board
+- [ ] **TaskBoard** - Horizontal scroll container with fade edges, warm radial gradient
+- [ ] **Column** - Fixed-width columns with glass header, drop zone, empty state
+- [ ] **TaskCard** - Cards with priority stripe, hover lift, drag state, selection state
+- [ ] Drag-and-drop integration with visual feedback
+
+### Task Detail & Modals
+- [ ] **Task Detail Modal** - Full modal with tabs, metadata panel, glass effects
+- [ ] **Modal Standards** - Implement consistent modal patterns (sizes, animations, accessibility)
+- [ ] **Project Dialogs** - Create/edit project dialogs with form validation
+
+### Ideation View
+- [ ] **IdeationView** - Two-panel layout with resizable divider
+- [ ] **ConversationPanel** - Message bubbles, typing indicator, chat input
+- [ ] **ProposalsPanel** - Proposal cards, selection, drag reorder, apply dropdown
+
+### Reviews & QA
+- [ ] **Reviews Panel** - Review cards, status indicators, diff integration
+- [ ] **QA Components** - Test step lists, status badges, visual verification areas
+- [ ] **Diff Viewer** - Syntax-highlighted diffs with line numbers, expand/collapse
+
+### Settings & Activity
+- [ ] **Settings View** - Tabbed interface, form sections, toggle controls
+- [ ] **Activity Stream** - Timeline with event icons, filtering, search
+- [ ] **Extensibility View** - Plugin cards, methodology toggles, configuration panels
+
+### Chat Panel (Global)
+- [ ] **Chat Panel** - Slide-out panel, message list, input area
+- [ ] Integration with main layout (overlay mode vs embedded mode)
+
+### Polish & Accessibility
+- [ ] All focus states use `--shadow-glow` pattern
+- [ ] Keyboard navigation for all interactive elements
+- [ ] Proper ARIA labels and roles
+- [ ] Color contrast meets WCAG AA standards
+- [ ] Micro-interactions (hover lift, active press) implemented consistently
+- [ ] Loading states with skeleton components
+
+### Design Quality Verification
+- [ ] No purple or blue gradients anywhere
+- [ ] Warm orange accent (`#ff6b35`) used sparingly (5% rule)
+- [ ] SF Pro typography throughout (not Inter)
+- [ ] Layered shadows for depth (not flat surfaces)
+- [ ] Glass effects on headers/overlays (backdrop-blur)
+- [ ] All spacing on 4px/8px grid
+- [ ] Lucide icons used consistently (correct sizes, stroke widths)
 
 ---
 
