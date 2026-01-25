@@ -1,9 +1,22 @@
 /**
  * ReviewNotesModal - Modal for adding review notes with optional fix description
  * Used when approving/rejecting reviews or requesting changes
+ *
+ * Uses shadcn/ui Dialog, Textarea, Label, Button components.
  */
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { MessageSquare, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 interface ReviewNotesModalProps {
   isOpen: boolean;
@@ -14,6 +27,7 @@ interface ReviewNotesModalProps {
   notesLabel?: string;
   notesPlaceholder?: string;
   notesRequired?: boolean;
+  isProcessing?: boolean;
 }
 
 export function ReviewNotesModal({
@@ -25,13 +39,22 @@ export function ReviewNotesModal({
   notesLabel = "Notes",
   notesPlaceholder = "Enter your review notes...",
   notesRequired = false,
+  isProcessing = false,
 }: ReviewNotesModalProps) {
   const [notes, setNotes] = useState("");
   const [fixDescription, setFixDescription] = useState("");
 
-  if (!isOpen) return null;
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setNotes("");
+      setFixDescription("");
+    }
+  }, [isOpen]);
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
+    if (isProcessing) return;
+
     const data: { notes: string; fixDescription?: string } = { notes };
     if (showFixDescription) {
       data.fixDescription = fixDescription;
@@ -39,40 +62,103 @@ export function ReviewNotesModal({
     onSubmit(data);
     setNotes("");
     setFixDescription("");
-  };
+  }, [notes, fixDescription, showFixDescription, onSubmit, isProcessing]);
 
-  const handleCancel = () => {
-    setNotes("");
-    setFixDescription("");
-    onClose();
-  };
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && !isProcessing) {
+        setNotes("");
+        setFixDescription("");
+        onClose();
+      }
+    },
+    [onClose, isProcessing]
+  );
 
-  const isSubmitDisabled = notesRequired && notes.trim() === "";
-
-  const btnBase = "px-4 py-2 rounded text-sm font-medium transition-colors";
+  const isSubmitDisabled = (notesRequired && notes.trim() === "") || isProcessing;
 
   return (
-    <div data-testid="review-notes-modal" data-has-fix-description={showFixDescription ? "true" : "false"} className="fixed inset-0 z-50 flex items-center justify-center">
-      <div data-testid="review-notes-modal-overlay" className="absolute inset-0" style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }} onClick={handleCancel} />
-      <div data-testid="review-notes-modal-content" className="relative w-full max-w-md p-6 rounded-lg shadow-lg" style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}>
-        <h2 data-testid="modal-title" className="text-lg font-semibold mb-4" style={{ color: "var(--text-primary)" }}>{title}</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: "var(--text-secondary)" }}>{notesLabel}</label>
-            <textarea data-testid="notes-textarea" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={notesPlaceholder} rows={3} className="w-full px-3 py-2 rounded border text-sm resize-none" style={{ backgroundColor: "var(--bg-base)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }} />
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="review-notes-modal"
+        data-has-fix-description={showFixDescription ? "true" : "false"}
+        className="max-w-md"
+      >
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <MessageSquare className="w-5 h-5 text-[var(--accent-primary)]" />
+            <DialogTitle data-testid="modal-title">{title}</DialogTitle>
           </div>
+        </DialogHeader>
+
+        <div
+          data-testid="review-notes-modal-content"
+          className="px-6 py-4 space-y-4"
+          style={{ backgroundColor: "var(--bg-elevated)" }}
+        >
+          <div className="space-y-2">
+            <Label
+              htmlFor="review-notes"
+              className="text-sm font-medium text-[var(--text-secondary)]"
+            >
+              {notesLabel}
+              {notesRequired && <span className="text-[var(--status-error)] ml-1">*</span>}
+            </Label>
+            <Textarea
+              id="review-notes"
+              data-testid="notes-textarea"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={notesPlaceholder}
+              rows={3}
+              disabled={isProcessing}
+              className="resize-none bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]"
+            />
+          </div>
+
           {showFixDescription && (
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Fix Description</label>
-              <textarea data-testid="fix-description-textarea" value={fixDescription} onChange={(e) => setFixDescription(e.target.value)} placeholder="Describe what needs to be fixed..." rows={3} className="w-full px-3 py-2 rounded border text-sm resize-none" style={{ backgroundColor: "var(--bg-base)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }} />
+            <div className="space-y-2">
+              <Label
+                htmlFor="fix-description"
+                className="text-sm font-medium text-[var(--text-secondary)]"
+              >
+                Fix Description
+              </Label>
+              <Textarea
+                id="fix-description"
+                data-testid="fix-description-textarea"
+                value={fixDescription}
+                onChange={(e) => setFixDescription(e.target.value)}
+                placeholder="Describe what needs to be fixed..."
+                rows={3}
+                disabled={isProcessing}
+                className="resize-none bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]"
+              />
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={handleCancel} className={btnBase} style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}>Cancel</button>
-          <button onClick={handleSubmit} disabled={isSubmitDisabled} className={btnBase} style={{ backgroundColor: isSubmitDisabled ? "var(--bg-hover)" : "var(--status-success)", color: isSubmitDisabled ? "var(--text-secondary)" : "var(--bg-base)", cursor: isSubmitDisabled ? "not-allowed" : "pointer" }}>Submit</button>
-        </div>
-      </div>
-    </div>
+
+        <DialogFooter data-testid="cancel-button-container">
+          <Button
+            data-testid="cancel-button"
+            variant="ghost"
+            onClick={handleOpenChange.bind(null, false)}
+            disabled={isProcessing}
+            className="text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+          >
+            Cancel
+          </Button>
+          <Button
+            data-testid="confirm-button"
+            onClick={handleSubmit}
+            disabled={isSubmitDisabled}
+            className="bg-[var(--status-success)] hover:bg-[var(--status-success)]/90 text-white active:scale-[0.98] transition-all"
+          >
+            {isProcessing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {isProcessing ? "Submitting..." : "Submit"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

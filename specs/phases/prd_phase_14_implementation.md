@@ -342,7 +342,7 @@ Before marking any task complete, verify:
       "Run npm run lint && npm run typecheck",
       "Commit: feat: standardize all modals to premium pattern"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "verification",

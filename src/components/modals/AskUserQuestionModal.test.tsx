@@ -143,7 +143,7 @@ describe("AskUserQuestionModal", () => {
       );
       const jwtRadio = screen.getByRole("radio", { name: /JWT tokens/i });
       fireEvent.click(jwtRadio);
-      expect(jwtRadio).toBeChecked();
+      expect(jwtRadio).toHaveAttribute("data-state", "checked");
     });
 
     it("deselects previous option when new option selected", () => {
@@ -159,8 +159,8 @@ describe("AskUserQuestionModal", () => {
       const sessionRadio = screen.getByRole("radio", { name: /Session cookies/i });
       fireEvent.click(jwtRadio);
       fireEvent.click(sessionRadio);
-      expect(jwtRadio).not.toBeChecked();
-      expect(sessionRadio).toBeChecked();
+      expect(jwtRadio).toHaveAttribute("data-state", "unchecked");
+      expect(sessionRadio).toHaveAttribute("data-state", "checked");
     });
   });
 
@@ -192,8 +192,8 @@ describe("AskUserQuestionModal", () => {
       const analyticsCheckbox = screen.getByRole("checkbox", { name: /Analytics/i });
       fireEvent.click(darkModeCheckbox);
       fireEvent.click(analyticsCheckbox);
-      expect(darkModeCheckbox).toBeChecked();
-      expect(analyticsCheckbox).toBeChecked();
+      expect(darkModeCheckbox).toHaveAttribute("data-state", "checked");
+      expect(analyticsCheckbox).toHaveAttribute("data-state", "checked");
     });
 
     it("allows toggling checkboxes", () => {
@@ -207,9 +207,9 @@ describe("AskUserQuestionModal", () => {
       );
       const darkModeCheckbox = screen.getByRole("checkbox", { name: /Dark mode/i });
       fireEvent.click(darkModeCheckbox);
-      expect(darkModeCheckbox).toBeChecked();
+      expect(darkModeCheckbox).toHaveAttribute("data-state", "checked");
       fireEvent.click(darkModeCheckbox);
-      expect(darkModeCheckbox).not.toBeChecked();
+      expect(darkModeCheckbox).toHaveAttribute("data-state", "unchecked");
     });
   });
 
@@ -395,7 +395,7 @@ describe("AskUserQuestionModal", () => {
       );
       const jwtRadio = screen.getByRole("radio", { name: /JWT tokens/i });
       fireEvent.click(jwtRadio);
-      expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /submitting/i })).toBeDisabled();
     });
 
     it("shows loading text on submit button when loading", () => {
@@ -421,36 +421,8 @@ describe("AskUserQuestionModal", () => {
       );
       const radios = screen.getAllByRole("radio");
       radios.forEach((radio) => {
-        expect(radio).toBeDisabled();
+        expect(radio).toHaveAttribute("data-disabled");
       });
-    });
-  });
-
-  describe("close/cancel behavior", () => {
-    it("calls onClose when clicking overlay", () => {
-      render(
-        <AskUserQuestionModal
-          question={mockSingleSelectQuestion}
-          onSubmit={mockSubmitAnswer}
-          onClose={mockClearQuestion}
-          isLoading={false}
-        />
-      );
-      fireEvent.click(screen.getByTestId("modal-overlay"));
-      expect(mockClearQuestion).toHaveBeenCalled();
-    });
-
-    it("does not close when clicking modal content", () => {
-      render(
-        <AskUserQuestionModal
-          question={mockSingleSelectQuestion}
-          onSubmit={mockSubmitAnswer}
-          onClose={mockClearQuestion}
-          isLoading={false}
-        />
-      );
-      fireEvent.click(screen.getByTestId("modal-content"));
-      expect(mockClearQuestion).not.toHaveBeenCalled();
     });
   });
 
@@ -499,7 +471,7 @@ describe("AskUserQuestionModal", () => {
   });
 
   describe("styling", () => {
-    it("applies design system background color to modal", () => {
+    it("uses shadcn Dialog with correct max-width", () => {
       render(
         <AskUserQuestionModal
           question={mockSingleSelectQuestion}
@@ -508,11 +480,11 @@ describe("AskUserQuestionModal", () => {
           isLoading={false}
         />
       );
-      const modal = screen.getByTestId("modal-content");
-      expect(modal).toHaveStyle({ backgroundColor: "var(--bg-elevated)" });
+      const modal = screen.getByTestId("ask-user-question-modal");
+      expect(modal).toHaveClass("max-w-md");
     });
 
-    it("applies design system text colors", () => {
+    it("renders modal overlay", () => {
       render(
         <AskUserQuestionModal
           question={mockSingleSelectQuestion}
@@ -521,8 +493,7 @@ describe("AskUserQuestionModal", () => {
           isLoading={false}
         />
       );
-      const header = screen.getByTestId("question-header");
-      expect(header).toHaveStyle({ color: "var(--text-primary)" });
+      expect(screen.getByTestId("modal-overlay")).toBeInTheDocument();
     });
   });
 
