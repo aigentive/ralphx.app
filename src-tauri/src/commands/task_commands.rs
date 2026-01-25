@@ -230,6 +230,53 @@ pub async fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), S
         .map_err(|e| e.to_string())
 }
 
+/// Move a task to a new status (for Kanban drag-drop)
+///
+/// This is a simplified version of update_task that only changes the internal_status.
+/// Used by the Kanban board when dragging tasks between columns.
+///
+/// # Arguments
+/// * `task_id` - The task ID (camelCase for frontend compatibility)
+/// * `to_status` - The target status string (e.g., "ready", "executing", "approved")
+///
+/// # Returns
+/// * `TaskResponse` - The updated task
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn move_task(
+    taskId: String,
+    toStatus: String,
+    state: State<'_, AppState>,
+) -> Result<TaskResponse, String> {
+    let task_id = TaskId::from_string(taskId);
+
+    // Get existing task
+    let mut task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    // Parse the target status
+    let new_status: InternalStatus = toStatus
+        .parse()
+        .map_err(|_| format!("Invalid status: {}", toStatus))?;
+
+    // Update status
+    task.internal_status = new_status;
+    task.touch();
+
+    // Persist the update
+    state
+        .task_repo
+        .update(&task)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(TaskResponse::from(task))
+}
+
 /// Inject a task mid-loop
 ///
 /// Allows users to add tasks during execution. Tasks can be sent to:

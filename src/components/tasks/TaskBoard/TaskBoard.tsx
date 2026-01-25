@@ -40,12 +40,11 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const openModal = useUiStore((s) => s.openModal);
 
-  // Delay drag start to allow clicks
+  // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        delay: 150,
-        tolerance: 5,
+        distance: 8,
       },
     })
   );
