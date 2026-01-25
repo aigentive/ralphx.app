@@ -432,15 +432,17 @@ async fn request_permission(
     Json(input): Json<PermissionRequestInput>,
 ) -> Json<PermissionRequestResponse> {
     let request_id = Uuid::new_v4().to_string();
-    let (tx, _rx) = tokio::sync::watch::channel(None);
 
-    // Store pending request
-    state
+    // Store pending request with metadata
+    let _rx = state
         .permission_state
-        .pending
-        .lock()
-        .await
-        .insert(request_id.clone(), tx);
+        .register(
+            request_id.clone(),
+            input.tool_name.clone(),
+            input.tool_input.clone(),
+            input.context.clone(),
+        )
+        .await;
 
     // Emit Tauri event to frontend
     let _ = state.app_handle.emit(
@@ -467,7 +469,7 @@ async fn await_permission(
     // Get the receiver for this request
     let mut rx = {
         let pending = state.permission_state.pending.lock().await;
-        match pending.get(&request_id).map(|tx| tx.subscribe()) {
+        match pending.get(&request_id).map(|req| req.sender.subscribe()) {
             Some(rx) => rx,
             None => return Err(StatusCode::NOT_FOUND),
         }
@@ -487,23 +489,13 @@ async fn await_permission(
 
         if let Some(decision) = maybe_decision {
             // Clean up
-            state
-                .permission_state
-                .pending
-                .lock()
-                .await
-                .remove(&request_id);
+            state.permission_state.remove(&request_id).await;
             return Ok(Json(decision));
         }
 
         // Check timeout
         if start.elapsed() >= timeout {
-            state
-                .permission_state
-                .pending
-                .lock()
-                .await
-                .remove(&request_id);
+            state.permission_state.remove(&request_id).await;
             return Err(StatusCode::REQUEST_TIMEOUT);
         }
 
@@ -513,22 +505,12 @@ async fn await_permission(
             Ok(Ok(())) => continue, // Value changed, loop again to check
             Ok(Err(_)) => {
                 // Channel closed
-                state
-                    .permission_state
-                    .pending
-                    .lock()
-                    .await
-                    .remove(&request_id);
+                state.permission_state.remove(&request_id).await;
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
             Err(_) => {
                 // Timeout
-                state
-                    .permission_state
-                    .pending
-                    .lock()
-                    .await
-                    .remove(&request_id);
+                state.permission_state.remove(&request_id).await;
                 return Err(StatusCode::REQUEST_TIMEOUT);
             }
         }
@@ -542,12 +524,18 @@ async fn resolve_permission(
     State(state): State<Arc<AppState>>,
     Json(input): Json<ResolvePermissionInput>,
 ) -> StatusCode {
-    let pending = state.permission_state.pending.lock().await;
-    if let Some(tx) = pending.get(&input.request_id) {
-        let _ = tx.send(Some(PermissionDecision {
-            decision: input.decision,
-            message: input.message,
-        }));
+    let resolved = state
+        .permission_state
+        .resolve(
+            &input.request_id,
+            PermissionDecision {
+                decision: input.decision,
+                message: input.message,
+            },
+        )
+        .await;
+
+    if resolved {
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND

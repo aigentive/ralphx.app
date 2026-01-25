@@ -177,7 +177,10 @@ pub fn run() {
             // Test data commands (for visual audits)
             commands::test_data_commands::seed_test_data,
             commands::test_data_commands::seed_visual_audit_data,
-            commands::test_data_commands::clear_test_data
+            commands::test_data_commands::clear_test_data,
+            // Permission commands
+            commands::permission_commands::resolve_permission_request,
+            commands::permission_commands::get_pending_permissions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
