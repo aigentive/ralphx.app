@@ -131,10 +131,10 @@
     },
     {
       "phase": 17,
-      "name": "Auditor System",
-      "prd": "specs/phases/prd_phase_17_auditor.md",
+      "name": "Worker Artifact Context",
+      "prd": "specs/phases/prd_phase_17_worker_artifact_context.md",
       "status": "pending",
-      "description": "Automatic detection and correction of systemic issues in completed work"
+      "description": "MCP tools for workers to fetch artifact context during task execution"
     }
   ]
 }
