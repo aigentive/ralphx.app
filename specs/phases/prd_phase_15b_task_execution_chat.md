@@ -143,6 +143,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - In on_enter(Executing), use ExecutionChatService.spawn_with_persistence",
       "  - Pass task_id and context_type: 'task_execution'",
       "  - Store conversation_id in TaskContext if needed",
+      "Note: --permission-prompt-tool flag is already configured in ClaudeCodeClient (Phase 15A)",
+      "  - Permission requests during worker execution will trigger PermissionDialog",
       "Ensure backward compatibility (execution still works if service not available)",
       "Run cargo test",
       "Commit: feat(state-machine): use spawn_with_persistence for worker execution"
@@ -345,3 +347,9 @@ After completing all tasks:
 - [ ] Both Activity Stream and ChatPanel show same worker output
 - [ ] Execution history persists across app restarts
 - [ ] Queue messages sent when worker finishes response
+
+### Permission Handling (inherited from Phase 15A)
+- [ ] PermissionDialog appears when worker attempts non-approved tool use
+- [ ] Allow decision lets worker continue execution
+- [ ] Deny decision sends rejection and worker adapts
+- [ ] Permission requests work during task execution (not just chat context)
