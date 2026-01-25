@@ -6,7 +6,7 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use super::{IdeationSessionId, ProjectId, TaskId, TaskProposalId};
+use super::{ChatConversationId, IdeationSessionId, ProjectId, TaskId, TaskProposalId};
 
 /// Status of an ideation session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1237,6 +1237,8 @@ pub struct ChatMessage {
     pub project_id: Option<ProjectId>,
     /// Task this message is about (for task-specific context)
     pub task_id: Option<TaskId>,
+    /// Conversation this message belongs to (for context-aware chat)
+    pub conversation_id: Option<ChatConversationId>,
     /// Who sent the message
     pub role: MessageRole,
     /// The message content (supports Markdown)
@@ -1245,6 +1247,9 @@ pub struct ChatMessage {
     pub metadata: Option<String>,
     /// Parent message ID for threading (if applicable)
     pub parent_message_id: Option<ChatMessageId>,
+    /// Tool calls made during this message (JSON array)
+    /// Stores the tools that Claude called when generating this message
+    pub tool_calls: Option<String>,
     /// When the message was created
     pub created_at: DateTime<Utc>,
 }
@@ -1257,10 +1262,12 @@ impl ChatMessage {
             session_id: Some(session_id),
             project_id: None,
             task_id: None,
+            conversation_id: None,
             role: MessageRole::User,
             content: content.into(),
             metadata: None,
             parent_message_id: None,
+            tool_calls: None,
             created_at: Utc::now(),
         }
     }
@@ -1272,10 +1279,12 @@ impl ChatMessage {
             session_id: Some(session_id),
             project_id: None,
             task_id: None,
+            conversation_id: None,
             role: MessageRole::Orchestrator,
             content: content.into(),
             metadata: None,
             parent_message_id: None,
+            tool_calls: None,
             created_at: Utc::now(),
         }
     }
@@ -1287,10 +1296,12 @@ impl ChatMessage {
             session_id: Some(session_id),
             project_id: None,
             task_id: None,
+            conversation_id: None,
             role: MessageRole::System,
             content: content.into(),
             metadata: None,
             parent_message_id: None,
+            tool_calls: None,
             created_at: Utc::now(),
         }
     }
@@ -1302,10 +1313,12 @@ impl ChatMessage {
             session_id: None,
             project_id: Some(project_id),
             task_id: None,
+            conversation_id: None,
             role: MessageRole::User,
             content: content.into(),
             metadata: None,
             parent_message_id: None,
+            tool_calls: None,
             created_at: Utc::now(),
         }
     }
@@ -1317,10 +1330,12 @@ impl ChatMessage {
             session_id: None,
             project_id: None,
             task_id: Some(task_id),
+            conversation_id: None,
             role: MessageRole::User,
             content: content.into(),
             metadata: None,
             parent_message_id: None,
+            tool_calls: None,
             created_at: Utc::now(),
         }
     }
@@ -1358,10 +1373,12 @@ impl ChatMessage {
         let session_id: Option<String> = row.get("session_id")?;
         let project_id: Option<String> = row.get("project_id")?;
         let task_id: Option<String> = row.get("task_id")?;
+        let conversation_id: Option<String> = row.get("conversation_id").ok().flatten();
         let role: String = row.get("role")?;
         let content: String = row.get("content")?;
         let metadata: Option<String> = row.get("metadata")?;
         let parent_message_id: Option<String> = row.get("parent_message_id")?;
+        let tool_calls: Option<String> = row.get("tool_calls").ok().flatten();
         let created_at_str: String = row.get("created_at")?;
 
         Ok(Self {
@@ -1369,10 +1386,12 @@ impl ChatMessage {
             session_id: session_id.map(IdeationSessionId::from_string),
             project_id: project_id.map(ProjectId::from_string),
             task_id: task_id.map(TaskId::from_string),
+            conversation_id: conversation_id.map(ChatConversationId::from_string),
             role: MessageRole::from_str(&role).unwrap_or(MessageRole::User),
             content,
             metadata,
             parent_message_id: parent_message_id.map(ChatMessageId::from_string),
+            tool_calls,
             created_at: parse_datetime_helper(created_at_str),
         })
     }

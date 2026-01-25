@@ -74,7 +74,9 @@
     "defaultMode": "bypassPermissions"
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["tauri-mcp"],
+  "enabledMcpjsonServers": [
+    "tauri-mcp"
+  ],
   "sandbox": {
     "enabled": false,
     "autoAllowBashIfSandboxed": false,
@@ -82,5 +84,8 @@
     "network": {
       "allowLocalBinding": true
     }
+  },
+  "enabledPlugins": {
+    "tailwind-v4-shadcn@claude-skills": true
   }
 }

@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 00:38:49
+**Last Updated:** 2026-01-26 01:15:00
 **Phase:** Phase 15 (Context-Aware Chat)
 **Tasks Completed:** 1 / 26
-**Current Task:** Create ChatConversation and AgentRun entities and repositories
+**Current Task:** Create ChatConversation and AgentRun entities and repositories (in progress - entities and repositories created, AppState integration pending)
 
 ---
 
@@ -10531,3 +10531,29 @@ Phase 4 (Agentic Client) is now complete with all 23 tasks passing.
 ---
 
 <!-- Agent will append dated entries below -->
+
+### 2026-01-26 01:15:00 - ChatConversation and AgentRun entities with repositories
+
+**What was done:**
+- Created domain entities:
+  - `ChatConversation` entity (src-tauri/src/domain/entities/chat_conversation.rs)
+  - `AgentRun` entity (src-tauri/src/domain/entities/agent_run.rs)
+  - Updated `ChatMessage` entity with conversation_id and tool_calls fields
+- Created repository traits:
+  - `ChatConversationRepository` trait
+  - `AgentRunRepository` trait
+- Created SQLite implementations:
+  - `SqliteChatConversationRepository`
+  - `SqliteAgentRunRepository`
+- Updated mod.rs files:
+  - domain/entities/mod.rs - exported new entities
+  - domain/repositories/mod.rs - exported new repository traits
+  - infrastructure/sqlite/mod.rs - exported new SQLite implementations
+- Updated ChatMessage SQLite queries to include conversation_id and tool_calls columns
+
+**Remaining work:**
+- Add repositories to AppState
+- Write unit tests for repositories
+- Run cargo test
+- Commit changes
+
