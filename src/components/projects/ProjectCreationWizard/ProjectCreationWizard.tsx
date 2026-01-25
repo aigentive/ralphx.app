@@ -8,6 +8,31 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { GitMode, CreateProject } from "@/types/project";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  FolderOpen,
+  AlertTriangle,
+  GitBranch,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Props Interface
@@ -30,77 +55,6 @@ export interface ProjectCreationWizardProps {
   error?: string | null;
   /** Whether this is the first-run mode (no existing projects) - disables close/cancel */
   isFirstRun?: boolean;
-}
-
-// ============================================================================
-// Icons
-// ============================================================================
-
-function FolderIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M2 4a1 1 0 011-1h3.586a1 1 0 01.707.293L8 4h5a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1V4z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M12 4L4 12M4 4l8 8"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function WarningIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M7 1L13 12H1L7 1z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M7 5v3M7 10v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function GitBranchIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="3.5" cy="3.5" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="3.5" cy="10.5" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="10.5" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M3.5 5V9M9 6H5.5C5.5 6 5.5 3.5 3.5 3.5" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path
-        d="M3 4.5L6 7.5L9 4.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 // ============================================================================
@@ -167,7 +121,7 @@ function validateForm(form: FormState): FormErrors {
   // (not just empty)
 
   if (!form.workingDirectory.trim()) {
-    errors.workingDirectory = "Working directory is required";
+    errors.workingDirectory = "Location is required";
   }
 
   if (form.gitMode === "worktree") {
@@ -188,144 +142,6 @@ function validateForm(form: FormState): FormErrors {
 // ============================================================================
 // Sub-components
 // ============================================================================
-
-interface InputFieldProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  error?: string | undefined;
-  testId: string;
-  autoFocus?: boolean;
-  disabled?: boolean;
-  suffix?: React.ReactNode;
-}
-
-function InputField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  error,
-  testId,
-  autoFocus,
-  disabled,
-  suffix,
-}: InputFieldProps) {
-  return (
-    <div className="space-y-1.5">
-      <label
-        className="block text-sm font-medium"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        {label}
-      </label>
-      <div className="flex gap-2">
-        <input
-          data-testid={testId}
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          autoFocus={autoFocus}
-          disabled={disabled}
-          className="flex-1 px-3 py-2 rounded-lg text-sm border transition-colors"
-          style={{
-            backgroundColor: "var(--bg-base)",
-            borderColor: error ? "var(--status-error)" : "var(--border-subtle)",
-            color: "var(--text-primary)",
-            opacity: disabled ? 0.5 : 1,
-          }}
-        />
-        {suffix}
-      </div>
-      {error && (
-        <p
-          data-testid={`${testId}-error`}
-          className="text-xs"
-          style={{ color: "var(--status-error)" }}
-        >
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-interface SelectFieldProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  error?: string | undefined;
-  testId: string;
-  disabled?: boolean;
-  loading?: boolean;
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-  error,
-  testId,
-  disabled,
-  loading,
-}: SelectFieldProps) {
-  return (
-    <div className="space-y-1.5">
-      <label
-        className="block text-sm font-medium"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        {label}
-      </label>
-      <div className="relative">
-        <select
-          data-testid={testId}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled || loading}
-          className="w-full px-3 py-2 rounded-lg text-sm border transition-colors appearance-none pr-8"
-          style={{
-            backgroundColor: "var(--bg-base)",
-            borderColor: error ? "var(--status-error)" : "var(--border-subtle)",
-            color: "var(--text-primary)",
-            opacity: disabled || loading ? 0.5 : 1,
-          }}
-        >
-          {loading ? (
-            <option>Loading branches...</option>
-          ) : options.length === 0 ? (
-            <option>No branches available</option>
-          ) : (
-            options.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))
-          )}
-        </select>
-        <span
-          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <ChevronDownIcon />
-        </span>
-      </div>
-      {error && (
-        <p
-          data-testid={`${testId}-error`}
-          className="text-xs"
-          style={{ color: "var(--status-error)" }}
-        >
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
 
 interface RadioOptionProps {
   value: GitMode;
@@ -352,9 +168,13 @@ function RadioOption({
     <label
       data-testid={testId}
       data-selected={selected ? "true" : "false"}
-      className="flex gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+      className={cn(
+        "flex gap-3 p-3 rounded-lg cursor-pointer transition-colors",
+        selected
+          ? "bg-[var(--bg-elevated)] border-[var(--accent-primary)]"
+          : "bg-transparent border-[var(--border-subtle)] hover:bg-[var(--bg-hover)]"
+      )}
       style={{
-        backgroundColor: selected ? "var(--bg-elevated)" : "transparent",
         border: `1px solid ${selected ? "var(--accent-primary)" : "var(--border-subtle)"}`,
       }}
     >
@@ -380,18 +200,15 @@ function RadioOption({
         )}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+        <div className="text-sm font-medium text-[var(--text-primary)]">
           {label}
         </div>
-        <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+        <div className="text-xs mt-0.5 text-[var(--text-muted)]">
           {description}
         </div>
         {warning && (
-          <div
-            className="flex items-center gap-1.5 text-xs mt-1.5"
-            style={{ color: "var(--status-warning)" }}
-          >
-            <WarningIcon />
+          <div className="flex items-center gap-1.5 text-xs mt-1.5 text-[var(--status-warning)]">
+            <AlertTriangle className="h-3.5 w-3.5" />
             <span>{warning}</span>
           </div>
         )}
@@ -498,20 +315,6 @@ export function ProjectCreationWizard({
     }
   }, [isOpen]);
 
-  // Handle keyboard events (Escape key) - disabled in first-run mode
-  useEffect(() => {
-    if (!isOpen || isFirstRun || isCreating) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isFirstRun, isCreating, onClose]);
-
   // Handle folder browse - also auto-infer project name from folder
   const handleBrowse = useCallback(async () => {
     if (onBrowseFolder) {
@@ -543,13 +346,6 @@ export function ProjectCreationWizard({
       setIsNameManuallySet(true);
     }
   }, [lastInferredName]);
-
-  // Handle backdrop click - disabled in first-run mode
-  const handleBackdropClick = useCallback(() => {
-    if (!isFirstRun && !isCreating) {
-      onClose();
-    }
-  }, [isFirstRun, isCreating, onClose]);
 
   // Handle form submission
   const handleSubmit = useCallback(() => {
@@ -587,117 +383,131 @@ export function ProjectCreationWizard({
     onCreate(project);
   }, [form, onCreate, worktreePath]);
 
-  // Don't render if not open
-  if (!isOpen) return null;
+  // Handle dialog close - disabled in first-run mode
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open && !isFirstRun && !isCreating) {
+      onClose();
+    }
+  }, [isFirstRun, isCreating, onClose]);
 
   return (
-    <div
-      data-testid="project-creation-wizard"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      {/* Backdrop */}
-      <div
-        data-testid="wizard-overlay"
-        className="absolute inset-0 transition-opacity"
-        style={{
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          backdropFilter: isFirstRun ? "blur(8px)" : undefined,
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="project-creation-wizard"
+        hideCloseButton={isFirstRun}
+        className="max-w-lg p-0"
+        onPointerDownOutside={(e) => {
+          // Prevent closing on backdrop click in first-run mode
+          if (isFirstRun || isCreating) {
+            e.preventDefault();
+          }
         }}
-        onClick={handleBackdropClick}
-      />
-
-      {/* Modal */}
-      <div
-        data-testid="wizard-modal"
-        className="relative w-full max-w-lg mx-4 rounded-xl shadow-2xl"
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
+        onEscapeKeyDown={(e) => {
+          // Prevent closing on Escape in first-run mode
+          if (isFirstRun || isCreating) {
+            e.preventDefault();
+          }
         }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-6 py-4 border-b"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
+        <DialogHeader className="px-6 py-4 border-b border-[var(--border-subtle)]">
+          <DialogTitle className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">
             Create New Project
-          </h2>
-          {/* Close button hidden in first-run mode */}
-          {!isFirstRun && (
-            <button
-              data-testid="wizard-close"
-              onClick={onClose}
-              disabled={isCreating}
-              className="p-1 rounded transition-colors hover:bg-white/5"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <CloseIcon />
-            </button>
-          )}
-        </div>
+          </DialogTitle>
+        </DialogHeader>
 
         {/* Content */}
         <div className="px-6 py-5 space-y-5">
           {/* Location (Folder) - FIRST */}
-          <InputField
-            label="Location"
-            value={form.workingDirectory}
-            onChange={(value) =>
-              setForm((prev) => ({ ...prev, workingDirectory: value }))
-            }
-            placeholder="/Users/dev/my-app"
-            error={(touched.workingDirectory || submitted) ? errors.workingDirectory : undefined}
-            testId="folder-input"
-            autoFocus
-            disabled={isCreating}
-            suffix={
-              onBrowseFolder && (
-                <button
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="folder-input"
+              className="text-sm font-medium text-[var(--text-secondary)]"
+            >
+              Location <span className="text-[var(--status-error)]">*</span>
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="folder-input"
+                data-testid="folder-input"
+                type="text"
+                value={form.workingDirectory}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, workingDirectory: e.target.value }))
+                }
+                placeholder="Select a folder..."
+                readOnly
+                disabled={isCreating}
+                className={cn(
+                  "flex-1 h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                  (touched.workingDirectory || submitted) && errors.workingDirectory
+                    ? "border-[var(--status-error)]"
+                    : "border-[var(--border-subtle)]",
+                  isCreating && "opacity-50"
+                )}
+              />
+              {onBrowseFolder && (
+                <Button
                   data-testid="browse-button"
+                  type="button"
                   onClick={handleBrowse}
                   disabled={isCreating}
-                  className="px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                  style={{
-                    backgroundColor: "var(--bg-elevated)",
-                    color: "var(--text-primary)",
-                  }}
+                  variant="secondary"
+                  className="h-10 px-3 gap-2 bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0"
                 >
-                  <FolderIcon />
+                  <FolderOpen className="h-4 w-4" />
                   Browse
-                </button>
-              )
-            }
-          />
+                </Button>
+              )}
+            </div>
+            {(touched.workingDirectory || submitted) && errors.workingDirectory && (
+              <p
+                data-testid="folder-input-error"
+                className="text-xs text-[var(--status-error)]"
+              >
+                {errors.workingDirectory}
+              </p>
+            )}
+          </div>
 
           {/* Project Name - SECOND (optional, auto-inferred from folder) */}
-          <InputField
-            label="Project Name"
-            value={form.name}
-            onChange={handleNameChange}
-            placeholder={form.workingDirectory ? extractFolderName(form.workingDirectory) || "my-app" : "Auto-inferred from folder"}
-            error={(touched.name || submitted) ? errors.name : undefined}
-            testId="project-name-input"
-            disabled={isCreating}
-          />
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="project-name-input"
+              className="text-sm font-medium text-[var(--text-secondary)]"
+            >
+              Project Name{" "}
+              <span className="text-[var(--text-muted)]">(optional)</span>
+            </Label>
+            <Input
+              id="project-name-input"
+              data-testid="project-name-input"
+              type="text"
+              value={form.name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder={
+                form.workingDirectory
+                  ? extractFolderName(form.workingDirectory) || "my-app"
+                  : "Auto-inferred from folder"
+              }
+              disabled={isCreating}
+              className={cn(
+                "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                isCreating && "opacity-50"
+              )}
+            />
+            <p className="text-xs text-[var(--text-muted)]">
+              Inferred from folder name. Override if desired.
+            </p>
+          </div>
 
-          {/* Divider */}
-          <div
-            className="h-px"
-            style={{ backgroundColor: "var(--border-subtle)" }}
-          />
+          <Separator className="bg-[var(--border-subtle)]" />
 
           {/* Git Mode Selection */}
           <div className="space-y-3">
-            <label
-              className="block text-sm font-medium"
-              style={{ color: "var(--text-secondary)" }}
-            >
+            <Label className="text-sm font-medium text-[var(--text-secondary)]">
               Git Mode
-            </label>
+            </Label>
 
             {/* Local Mode */}
             <RadioOption
@@ -720,50 +530,107 @@ export function ProjectCreationWizard({
               testId="git-mode-worktree"
             >
               {/* Worktree-specific fields */}
-              <div className="space-y-3">
-                <InputField
-                  label="Branch name"
-                  value={form.worktreeBranch}
-                  onChange={(value) =>
-                    setForm((prev) => ({ ...prev, worktreeBranch: value }))
-                  }
-                  placeholder="ralphx/feature-name"
-                  error={(touched.worktreeBranch || submitted) ? errors.worktreeBranch : undefined}
-                  testId="worktree-branch-input"
-                  disabled={isCreating}
-                />
+              <div className="space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="worktree-branch-input"
+                    className="text-sm font-medium text-[var(--text-secondary)]"
+                  >
+                    Branch name
+                  </Label>
+                  <Input
+                    id="worktree-branch-input"
+                    data-testid="worktree-branch-input"
+                    type="text"
+                    value={form.worktreeBranch}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, worktreeBranch: e.target.value }))
+                    }
+                    placeholder="ralphx/feature-name"
+                    disabled={isCreating}
+                    className={cn(
+                      "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                      (touched.worktreeBranch || submitted) && errors.worktreeBranch
+                        ? "border-[var(--status-error)]"
+                        : "border-[var(--border-subtle)]",
+                      isCreating && "opacity-50"
+                    )}
+                  />
+                  {(touched.worktreeBranch || submitted) && errors.worktreeBranch && (
+                    <p
+                      data-testid="worktree-branch-input-error"
+                      className="text-xs text-[var(--status-error)]"
+                    >
+                      {errors.worktreeBranch}
+                    </p>
+                  )}
+                </div>
 
-                <SelectField
-                  label="Base branch"
-                  value={form.baseBranch}
-                  onChange={(value) =>
-                    setForm((prev) => ({ ...prev, baseBranch: value }))
-                  }
-                  options={branches}
-                  error={(touched.baseBranch || submitted) ? errors.baseBranch : undefined}
-                  testId="base-branch-select"
-                  disabled={isCreating}
-                  loading={loadingBranches}
-                />
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="base-branch-select"
+                    className="text-sm font-medium text-[var(--text-secondary)]"
+                  >
+                    Base branch
+                  </Label>
+                  <Select
+                    value={form.baseBranch}
+                    onValueChange={(value) =>
+                      setForm((prev) => ({ ...prev, baseBranch: value }))
+                    }
+                    disabled={isCreating || loadingBranches}
+                  >
+                    <SelectTrigger
+                      data-testid="base-branch-select"
+                      className={cn(
+                        "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                        (touched.baseBranch || submitted) && errors.baseBranch
+                          ? "border-[var(--status-error)]"
+                          : "border-[var(--border-subtle)]",
+                        (isCreating || loadingBranches) && "opacity-50"
+                      )}
+                    >
+                      <SelectValue
+                        placeholder={
+                          loadingBranches ? "Loading branches..." : "Select base branch"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-subtle)]">
+                      {branches.length === 0 ? (
+                        <SelectItem value="_none" disabled>
+                          No branches available
+                        </SelectItem>
+                      ) : (
+                        branches.map((branch) => (
+                          <SelectItem key={branch} value={branch}>
+                            {branch}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {(touched.baseBranch || submitted) && errors.baseBranch && (
+                    <p
+                      data-testid="base-branch-select-error"
+                      className="text-xs text-[var(--status-error)]"
+                    >
+                      {errors.baseBranch}
+                    </p>
+                  )}
+                </div>
 
                 {/* Worktree Path Display */}
                 <div
                   data-testid="worktree-path-display"
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                  style={{ backgroundColor: "var(--bg-base)" }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-base)]"
                 >
-                  <GitBranchIcon />
+                  <GitBranch className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                   <div className="flex-1 min-w-0">
-                    <div
-                      className="text-xs font-medium"
-                      style={{ color: "var(--text-muted)" }}
-                    >
+                    <div className="text-xs font-medium text-[var(--text-muted)]">
                       Worktree location
                     </div>
-                    <div
-                      className="text-sm truncate"
-                      style={{ color: "var(--text-primary)" }}
-                    >
+                    <div className="text-sm truncate text-[var(--text-primary)]">
                       {worktreePath}
                     </div>
                   </div>
@@ -776,56 +643,46 @@ export function ProjectCreationWizard({
           {error && (
             <div
               data-testid="wizard-error"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg"
-              style={{
-                backgroundColor: "rgba(239, 68, 68, 0.1)",
-                color: "var(--status-error)",
-              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(239,68,68,0.1)] text-[var(--status-error)]"
             >
-              <WarningIcon />
+              <AlertTriangle className="h-3.5 w-3.5" />
               <span className="text-sm">{error}</span>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div
-          className="flex items-center justify-end gap-3 px-6 py-4 border-t"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
+        <DialogFooter className="px-6 py-4 border-t border-[var(--border-subtle)] gap-3 sm:gap-3">
           {/* Cancel button hidden in first-run mode */}
           {!isFirstRun && (
-            <button
+            <Button
               data-testid="cancel-button"
+              type="button"
               onClick={onClose}
               disabled={isCreating}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: "var(--bg-elevated)",
-                color: "var(--text-primary)",
-              }}
+              variant="ghost"
+              className="bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
             >
               Cancel
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             data-testid="create-button"
+            type="button"
             onClick={handleSubmit}
-            disabled={isCreating}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor:
-                isCreating || (submitted && hasErrors)
-                  ? "var(--bg-hover)"
-                  : "var(--accent-primary)",
-              color: isCreating || (submitted && hasErrors) ? "var(--text-muted)" : "#fff",
-              cursor: isCreating ? "not-allowed" : "pointer",
-            }}
+            disabled={isCreating || (submitted && hasErrors)}
+            className={cn(
+              "gap-2",
+              isCreating || (submitted && hasErrors)
+                ? "bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-not-allowed"
+                : "bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary)]/90"
+            )}
           >
+            {isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
             {isCreating ? "Creating..." : "Create Project"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

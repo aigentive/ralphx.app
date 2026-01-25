@@ -12,6 +12,26 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { Project } from "@/types/project";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  CheckCircle,
+  AlertTriangle,
+  GitMerge,
+  GitPullRequest,
+  Trash2,
+  FileDiff,
+  GitCommit,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Types
@@ -71,127 +91,43 @@ export interface MergeWorkflowDialogProps {
 }
 
 // ============================================================================
-// Icons
+// Icons for custom options
 // ============================================================================
 
-function CloseIcon() {
+function RebaseIcon({ className }: { className?: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M12 4L4 12M4 4l8 8"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    >
+      <circle cx="4" cy="3" r="1.5" />
+      <circle cx="4" cy="8" r="1.5" />
+      <circle cx="4" cy="13" r="1.5" />
+      <path d="M4 4.5V6.5M4 9.5V11.5" />
+      <path d="M8 3h4M8 8h4M8 13h4" strokeLinecap="round" />
     </svg>
   );
 }
 
-function WarningIcon() {
+function WorktreeIcon({ className }: { className?: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M7 1L13 12H1L7 1z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M7 5v3M7 10v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CheckCircleIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M6.5 10.5l2 2 5-5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function MergeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="4" cy="4" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="4" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="12" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4 5.5V10.5M10.5 8H6C6 8 6 4 4 4" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function RebaseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="4" cy="3" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="4" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="4" cy="13" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4 4.5V6.5M4 9.5V11.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M8 3h4M8 8h4M8 13h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PullRequestIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="4" cy="4" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="4" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="12" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4 5.5V10.5M12 5V10.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M12 5L10 3M12 5L14 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function WorktreeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M7 4.5h2M11.5 7v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M2.5 4h11M5.5 4V3a1 1 0 011-1h3a1 1 0 011 1v1M12 4v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M6.5 7v4M9.5 7v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function DiffIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="2" y="2" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5 6h4M5 8h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M2 5h10" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function CommitIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M7 1v3.5M7 9.5V13" stroke="currentColor" strokeWidth="1.2" />
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    >
+      <rect x="2" y="2" width="5" height="5" rx="1" />
+      <rect x="9" y="9" width="5" height="5" rx="1" />
+      <path d="M7 4.5h2M11.5 7v2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -214,31 +150,31 @@ const MERGE_OPTIONS: MergeOptionConfig[] = [
     value: "merge",
     label: "Merge to main",
     description: "Creates a merge commit preserving branch history",
-    icon: <MergeIcon />,
+    icon: <GitMerge className="h-4 w-4" />,
   },
   {
     value: "rebase",
     label: "Rebase onto main",
     description: "Replays commits on top of main for linear history",
-    icon: <RebaseIcon />,
+    icon: <RebaseIcon className="h-4 w-4" />,
   },
   {
     value: "create_pr",
     label: "Create Pull Request",
     description: "Opens GitHub to create a PR for code review",
-    icon: <PullRequestIcon />,
+    icon: <GitPullRequest className="h-4 w-4" />,
   },
   {
     value: "keep_worktree",
     label: "Keep worktree",
     description: "Leave as-is and merge manually later",
-    icon: <WorktreeIcon />,
+    icon: <WorktreeIcon className="h-4 w-4" />,
   },
   {
     value: "discard",
     label: "Discard changes",
     description: "Delete the worktree and branch permanently",
-    icon: <TrashIcon />,
+    icon: <Trash2 className="h-4 w-4" />,
     destructive: true,
     warning: "This cannot be undone. All commits will be lost.",
   },
@@ -261,22 +197,24 @@ function RadioOption({
   onSelect,
   disabled,
 }: RadioOptionProps) {
+  const borderColor = selected
+    ? config.destructive
+      ? "var(--status-error)"
+      : "var(--accent-primary)"
+    : "var(--border-subtle)";
+
   return (
     <label
       data-testid={`merge-option-${config.value}`}
       data-selected={selected ? "true" : "false"}
-      className={`flex gap-3 p-3 rounded-lg transition-colors ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      }`}
+      className={cn(
+        "flex gap-3 p-3 rounded-lg transition-colors",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+        !selected && !disabled && "hover:bg-[var(--bg-hover)]"
+      )}
       style={{
         backgroundColor: selected ? "var(--bg-elevated)" : "transparent",
-        border: `1px solid ${
-          selected
-            ? config.destructive
-              ? "var(--status-error)"
-              : "var(--accent-primary)"
-            : "var(--border-subtle)"
-        }`,
+        border: `1px solid ${borderColor}`,
       }}
     >
       <input
@@ -331,15 +269,12 @@ function RadioOption({
             {config.label}
           </span>
         </div>
-        <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+        <div className="text-xs mt-0.5 text-[var(--text-muted)]">
           {config.description}
         </div>
         {selected && config.warning && (
-          <div
-            className="flex items-center gap-1.5 text-xs mt-2"
-            style={{ color: "var(--status-warning)" }}
-          >
-            <WarningIcon />
+          <div className="flex items-center gap-1.5 text-xs mt-2 text-[var(--status-warning)]">
+            <AlertTriangle className="h-3.5 w-3.5" />
             <span>{config.warning}</span>
           </div>
         )}
@@ -394,8 +329,15 @@ export function MergeWorkflowDialog({
     setShowDiscardConfirm(false);
   }, []);
 
-  // Don't render if not open
-  if (!isOpen) return null;
+  // Handle dialog close
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && !isProcessing) {
+        onClose();
+      }
+    },
+    [isProcessing, onClose]
+  );
 
   const isDiscardSelected = selectedOption === "discard";
   const buttonLabel = isProcessing
@@ -405,66 +347,34 @@ export function MergeWorkflowDialog({
       : "Continue";
 
   return (
-    <div
-      data-testid="merge-workflow-dialog"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      {/* Backdrop */}
-      <div
-        data-testid="dialog-overlay"
-        className="absolute inset-0 transition-opacity"
-        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div
-        data-testid="dialog-modal"
-        className="relative w-full max-w-lg mx-4 rounded-xl shadow-2xl"
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="merge-workflow-dialog"
+        className="max-w-lg p-0"
+        onEscapeKeyDown={(e) => {
+          if (isProcessing) {
+            e.preventDefault();
+          }
         }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-6 py-4 border-b"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
+        <DialogHeader className="px-6 py-4 border-b border-[var(--border-subtle)]">
           <div className="flex items-center gap-3">
-            <span style={{ color: "var(--status-success)" }}>
-              <CheckCircleIcon />
-            </span>
-            <h2
-              className="text-lg font-semibold"
-              style={{ color: "var(--text-primary)" }}
-            >
+            <CheckCircle className="h-5 w-5 text-[var(--status-success)]" />
+            <DialogTitle className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">
               Project Complete: {project.name}
-            </h2>
+            </DialogTitle>
           </div>
-          <button
-            data-testid="dialog-close"
-            onClick={onClose}
-            disabled={isProcessing}
-            className="p-1 rounded transition-colors hover:bg-white/5"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <CloseIcon />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Content */}
         <div className="px-6 py-5 space-y-5">
           {/* Summary */}
-          <div
-            className="text-sm"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <div className="text-sm text-[var(--text-secondary)]">
             RalphX made{" "}
             <span
               data-testid="commit-count"
-              className="font-medium"
-              style={{ color: "var(--text-primary)" }}
+              className="font-medium text-[var(--text-primary)]"
             >
               {completionData.commitCount} commit
               {completionData.commitCount !== 1 ? "s" : ""}
@@ -472,8 +382,7 @@ export function MergeWorkflowDialog({
             on branch:{" "}
             <span
               data-testid="branch-name"
-              className="font-mono font-medium"
-              style={{ color: "var(--accent-primary)" }}
+              className="font-mono font-medium text-[var(--accent-primary)]"
             >
               {completionData.branchName}
             </span>
@@ -482,48 +391,37 @@ export function MergeWorkflowDialog({
           {/* Action Buttons */}
           <div className="flex gap-2">
             {onViewDiff && (
-              <button
+              <Button
                 data-testid="view-diff-button"
+                type="button"
                 onClick={onViewDiff}
                 disabled={isProcessing}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{
-                  backgroundColor: "var(--bg-elevated)",
-                  color: "var(--text-primary)",
-                }}
+                variant="secondary"
+                className="gap-2 bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0"
               >
-                <DiffIcon />
+                <FileDiff className="h-3.5 w-3.5" />
                 View Diff
-              </button>
+              </Button>
             )}
             {onViewCommits && (
-              <button
+              <Button
                 data-testid="view-commits-button"
+                type="button"
                 onClick={onViewCommits}
                 disabled={isProcessing}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{
-                  backgroundColor: "var(--bg-elevated)",
-                  color: "var(--text-primary)",
-                }}
+                variant="secondary"
+                className="gap-2 bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0"
               >
-                <CommitIcon />
+                <GitCommit className="h-3.5 w-3.5" />
                 View Commits
-              </button>
+              </Button>
             )}
           </div>
 
-          {/* Divider */}
-          <div
-            className="h-px"
-            style={{ backgroundColor: "var(--border-subtle)" }}
-          />
+          <Separator className="bg-[var(--border-subtle)]" />
 
           {/* Question */}
-          <div
-            className="text-sm font-medium"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <div className="text-sm font-medium text-[var(--text-secondary)]">
             What would you like to do?
           </div>
 
@@ -544,13 +442,9 @@ export function MergeWorkflowDialog({
           {error && (
             <div
               data-testid="dialog-error"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg"
-              style={{
-                backgroundColor: "rgba(239, 68, 68, 0.1)",
-                color: "var(--status-error)",
-              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(239,68,68,0.1)] text-[var(--status-error)]"
             >
-              <WarningIcon />
+              <AlertTriangle className="h-3.5 w-3.5" />
               <span className="text-sm">{error}</span>
             </div>
           )}
@@ -559,13 +453,9 @@ export function MergeWorkflowDialog({
           {showDiscardConfirm && (
             <div
               data-testid="discard-confirmation"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg"
-              style={{
-                backgroundColor: "rgba(239, 68, 68, 0.1)",
-                color: "var(--status-error)",
-              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(239,68,68,0.1)] text-[var(--status-error)]"
             >
-              <WarningIcon />
+              <AlertTriangle className="h-3.5 w-3.5" />
               <span className="text-sm">
                 Are you sure? Click "Confirm Discard" to permanently delete the
                 worktree and branch.
@@ -575,42 +465,36 @@ export function MergeWorkflowDialog({
         </div>
 
         {/* Footer */}
-        <div
-          className="flex items-center justify-end gap-3 px-6 py-4 border-t"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
-          <button
+        <DialogFooter className="px-6 py-4 border-t border-[var(--border-subtle)] gap-3 sm:gap-3">
+          <Button
             data-testid="cancel-button"
+            type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--text-primary)",
-            }}
+            variant="ghost"
+            className="bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             data-testid="confirm-button"
+            type="button"
             onClick={handleConfirm}
             disabled={isProcessing}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor:
-                isProcessing
-                  ? "var(--bg-hover)"
-                  : isDiscardSelected
-                    ? "var(--status-error)"
-                    : "var(--accent-primary)",
-              color: isProcessing ? "var(--text-muted)" : "#fff",
-              cursor: isProcessing ? "not-allowed" : "pointer",
-            }}
+            className={cn(
+              "gap-2",
+              isProcessing
+                ? "bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-not-allowed"
+                : isDiscardSelected
+                  ? "bg-[var(--status-error)] text-white hover:bg-[var(--status-error)]/90"
+                  : "bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary)]/90"
+            )}
           >
+            {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
             {buttonLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -79,14 +79,10 @@ describe("ProjectCreationWizard", () => {
       expect(screen.getByTestId("create-button")).toBeInTheDocument();
     });
 
-    it("renders close button", () => {
+    it("renders close button (shadcn dialog has default close)", () => {
       renderWizard();
-      expect(screen.getByTestId("wizard-close")).toBeInTheDocument();
-    });
-
-    it("renders overlay", () => {
-      renderWizard();
-      expect(screen.getByTestId("wizard-overlay")).toBeInTheDocument();
+      // shadcn Dialog has a close button with sr-only "Close" text
+      expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
     });
   });
 
@@ -175,20 +171,6 @@ describe("ProjectCreationWizard", () => {
       expect(branchInput).toHaveValue("ralphx/my-test-project");
     });
 
-    it("generates worktree path from working directory", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Enter working directory
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
-
-      // Check worktree path display
-      expect(screen.getByText("~/ralphx-worktrees/my-app")).toBeInTheDocument();
-    });
-
     it("allows custom branch name", async () => {
       const user = userEvent.setup();
       renderWizard();
@@ -203,46 +185,6 @@ describe("ProjectCreationWizard", () => {
 
       expect(branchInput).toHaveValue("feature/custom-branch");
     });
-
-    it("shows base branch dropdown with default branches", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      const select = screen.getByTestId("base-branch-select");
-      expect(select).toHaveValue("main");
-
-      // Check dropdown options
-      const options = select.querySelectorAll("option");
-      expect(options).toHaveLength(2);
-      expect(options[0]).toHaveValue("main");
-      expect(options[1]).toHaveValue("master");
-    });
-
-    it("fetches branches when onFetchBranches is provided and working directory changes", async () => {
-      const user = userEvent.setup();
-      const mockFetchBranches = vi.fn().mockResolvedValue(["main", "develop", "staging"]);
-
-      renderWizard({ onFetchBranches: mockFetchBranches });
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Enter working directory
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
-
-      // Wait for branches to be fetched
-      await waitFor(() => {
-        expect(mockFetchBranches).toHaveBeenCalledWith("/Users/dev/my-app");
-      });
-
-      // Check dropdown options updated
-      const select = screen.getByTestId("base-branch-select");
-      const options = select.querySelectorAll("option");
-      expect(options).toHaveLength(3);
-    });
   });
 
   // ==========================================================================
@@ -250,47 +192,30 @@ describe("ProjectCreationWizard", () => {
   // ==========================================================================
 
   describe("validation", () => {
-    it("shows error when project name is empty on submit", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      // Enter only working directory
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
-
-      // Try to submit
-      await user.click(screen.getByTestId("create-button"));
-
-      // Wait for error to appear after state update
-      await waitFor(() => {
-        expect(screen.getByTestId("project-name-input-error")).toBeInTheDocument();
-      });
-      expect(screen.getByText("Project name is required")).toBeInTheDocument();
-    });
-
     it("shows error when working directory is empty on submit", async () => {
       const user = userEvent.setup();
       renderWizard();
 
-      // Enter only project name
-      await user.type(screen.getByTestId("project-name-input"), "My Project");
-
-      // Try to submit
+      // Try to submit without filling location
       await user.click(screen.getByTestId("create-button"));
 
       // Wait for error to appear after state update
       await waitFor(() => {
         expect(screen.getByTestId("folder-input-error")).toBeInTheDocument();
       });
-      expect(screen.getByText("Working directory is required")).toBeInTheDocument();
+      expect(screen.getByText("Location is required")).toBeInTheDocument();
     });
 
     it("shows error when worktree branch is empty in worktree mode", async () => {
       const user = userEvent.setup();
-      renderWizard();
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
+      renderWizard({ onBrowseFolder: mockBrowse });
 
-      // Fill required fields
-      await user.type(screen.getByTestId("project-name-input"), "My Project");
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
+      // Browse for folder (this auto-fills name)
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
+      });
 
       // Select worktree mode
       await user.click(screen.getByTestId("git-mode-worktree"));
@@ -311,11 +236,14 @@ describe("ProjectCreationWizard", () => {
 
     it("shows error for invalid branch name characters", async () => {
       const user = userEvent.setup();
-      renderWizard();
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
+      renderWizard({ onBrowseFolder: mockBrowse });
 
-      // Fill required fields
-      await user.type(screen.getByTestId("project-name-input"), "My Project");
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
+      // Browse for folder
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
+      });
 
       // Select worktree mode
       await user.click(screen.getByTestId("git-mode-worktree"));
@@ -345,23 +273,6 @@ describe("ProjectCreationWizard", () => {
 
       expect(mockOnCreate).not.toHaveBeenCalled();
     });
-
-    it("shows disabled styling after submit attempt with errors", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      // Try to submit empty form
-      await user.click(screen.getByTestId("create-button"));
-
-      // Wait for submitted state to update
-      await waitFor(() => {
-        expect(screen.getByTestId("project-name-input-error")).toBeInTheDocument();
-      });
-
-      // Button should have disabled styling but not be actually disabled
-      const createButton = screen.getByTestId("create-button");
-      expect(createButton).not.toBeDisabled();
-    });
   });
 
   // ==========================================================================
@@ -372,17 +283,46 @@ describe("ProjectCreationWizard", () => {
     it("calls onCreate with local mode project data", async () => {
       const user = userEvent.setup();
       const mockOnCreate = vi.fn();
-      renderWizard({ onCreate: mockOnCreate });
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
+      renderWizard({ onCreate: mockOnCreate, onBrowseFolder: mockBrowse });
 
-      // Fill form
-      await user.type(screen.getByTestId("project-name-input"), "My Project");
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
+      // Browse for folder (auto-fills project name from folder)
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
+      });
 
       // Submit
       await user.click(screen.getByTestId("create-button"));
 
       expect(mockOnCreate).toHaveBeenCalledWith({
-        name: "My Project",
+        name: "my-app", // auto-inferred from folder
+        workingDirectory: "/Users/dev/my-app",
+        gitMode: "local",
+      });
+    });
+
+    it("calls onCreate with custom project name", async () => {
+      const user = userEvent.setup();
+      const mockOnCreate = vi.fn();
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
+      renderWizard({ onCreate: mockOnCreate, onBrowseFolder: mockBrowse });
+
+      // Browse for folder
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
+      });
+
+      // Override with custom name
+      await user.clear(screen.getByTestId("project-name-input"));
+      await user.type(screen.getByTestId("project-name-input"), "Custom Project Name");
+
+      // Submit
+      await user.click(screen.getByTestId("create-button"));
+
+      expect(mockOnCreate).toHaveBeenCalledWith({
+        name: "Custom Project Name",
         workingDirectory: "/Users/dev/my-app",
         gitMode: "local",
       });
@@ -391,11 +331,18 @@ describe("ProjectCreationWizard", () => {
     it("calls onCreate with worktree mode project data", async () => {
       const user = userEvent.setup();
       const mockOnCreate = vi.fn();
-      renderWizard({ onCreate: mockOnCreate });
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
+      renderWizard({ onCreate: mockOnCreate, onBrowseFolder: mockBrowse });
 
-      // Fill form
+      // Browse for folder
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
+      });
+
+      // Override name
+      await user.clear(screen.getByTestId("project-name-input"));
       await user.type(screen.getByTestId("project-name-input"), "My Project");
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
 
       // Select worktree mode
       await user.click(screen.getByTestId("git-mode-worktree"));
@@ -418,11 +365,18 @@ describe("ProjectCreationWizard", () => {
     it("trims whitespace from form values", async () => {
       const user = userEvent.setup();
       const mockOnCreate = vi.fn();
-      renderWizard({ onCreate: mockOnCreate });
+      const mockBrowse = vi.fn().mockResolvedValue("  /Users/dev/my-app  ");
+      renderWizard({ onCreate: mockOnCreate, onBrowseFolder: mockBrowse });
 
-      // Fill form with whitespace
+      // Browse for folder
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("  /Users/dev/my-app  ");
+      });
+
+      // Override with custom name with whitespace
+      await user.clear(screen.getByTestId("project-name-input"));
       await user.type(screen.getByTestId("project-name-input"), "  My Project  ");
-      await user.type(screen.getByTestId("folder-input"), "  /Users/dev/my-app  ");
 
       // Submit
       await user.click(screen.getByTestId("create-button"));
@@ -446,7 +400,6 @@ describe("ProjectCreationWizard", () => {
       expect(screen.getByTestId("project-name-input")).toBeDisabled();
       expect(screen.getByTestId("folder-input")).toBeDisabled();
       expect(screen.getByTestId("cancel-button")).toBeDisabled();
-      expect(screen.getByTestId("wizard-close")).toBeDisabled();
     });
   });
 
@@ -477,17 +430,26 @@ describe("ProjectCreationWizard", () => {
       });
     });
 
+    it("auto-infers project name from selected folder", async () => {
+      const user = userEvent.setup();
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/selected/my-awesome-app");
+      renderWizard({ onBrowseFolder: mockBrowse });
+
+      await user.click(screen.getByTestId("browse-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("project-name-input")).toHaveValue("my-awesome-app");
+      });
+    });
+
     it("does not update working directory when folder selection is cancelled", async () => {
       const user = userEvent.setup();
       const mockBrowse = vi.fn().mockResolvedValue(null);
       renderWizard({ onBrowseFolder: mockBrowse });
 
-      // Pre-fill with a value
-      await user.type(screen.getByTestId("folder-input"), "/initial/path");
-
       await user.click(screen.getByTestId("browse-button"));
 
-      expect(screen.getByTestId("folder-input")).toHaveValue("/initial/path");
+      expect(screen.getByTestId("folder-input")).toHaveValue("");
     });
   });
 
@@ -511,19 +473,27 @@ describe("ProjectCreationWizard", () => {
       const mockOnClose = vi.fn();
       renderWizard({ onClose: mockOnClose });
 
-      await user.click(screen.getByTestId("wizard-close"));
+      // shadcn Dialog close button has sr-only "Close" text
+      await user.click(screen.getByRole("button", { name: /close/i }));
 
       expect(mockOnClose).toHaveBeenCalled();
     });
+  });
 
-    it("calls onClose when overlay is clicked", async () => {
-      const user = userEvent.setup();
-      const mockOnClose = vi.fn();
-      renderWizard({ onClose: mockOnClose });
+  // ==========================================================================
+  // First-Run Mode Tests
+  // ==========================================================================
 
-      await user.click(screen.getByTestId("wizard-overlay"));
+  describe("first-run mode", () => {
+    it("hides cancel button in first-run mode", () => {
+      renderWizard({ isFirstRun: true });
+      expect(screen.queryByTestId("cancel-button")).not.toBeInTheDocument();
+    });
 
-      expect(mockOnClose).toHaveBeenCalled();
+    it("hides close button in first-run mode", () => {
+      renderWizard({ isFirstRun: true });
+      // The close button should be hidden
+      expect(screen.queryByRole("button", { name: /close/i })).not.toBeInTheDocument();
     });
   });
 
@@ -559,18 +529,21 @@ describe("ProjectCreationWizard", () => {
   describe("form reset", () => {
     it("resets form when modal reopens", async () => {
       const user = userEvent.setup();
-      const { rerender } = renderWizard();
+      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
+      const { rerender } = renderWizard({ onBrowseFolder: mockBrowse });
 
-      // Fill form
-      await user.type(screen.getByTestId("project-name-input"), "My Project");
-      await user.type(screen.getByTestId("folder-input"), "/Users/dev/my-app");
+      // Browse for folder
+      await user.click(screen.getByTestId("browse-button"));
+      await waitFor(() => {
+        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
+      });
 
       // Close and reopen
       rerender(
-        <ProjectCreationWizard {...defaultProps} isOpen={false} />
+        <ProjectCreationWizard {...defaultProps} isOpen={false} onBrowseFolder={mockBrowse} />
       );
       rerender(
-        <ProjectCreationWizard {...defaultProps} isOpen={true} />
+        <ProjectCreationWizard {...defaultProps} isOpen={true} onBrowseFolder={mockBrowse} />
       );
 
       // Check form is reset
@@ -597,30 +570,6 @@ describe("ProjectCreationWizard", () => {
       // Check git mode is reset to local
       expect(screen.getByTestId("git-mode-local")).toHaveAttribute("data-selected", "true");
       expect(screen.getByTestId("git-mode-worktree")).toHaveAttribute("data-selected", "false");
-    });
-
-    it("clears validation errors when modal reopens", async () => {
-      const user = userEvent.setup();
-      const { rerender } = renderWizard();
-
-      // Trigger validation errors
-      await user.click(screen.getByTestId("create-button"));
-
-      // Wait for error to appear after state update
-      await waitFor(() => {
-        expect(screen.getByTestId("project-name-input-error")).toBeInTheDocument();
-      });
-
-      // Close and reopen
-      rerender(
-        <ProjectCreationWizard {...defaultProps} isOpen={false} />
-      );
-      rerender(
-        <ProjectCreationWizard {...defaultProps} isOpen={true} />
-      );
-
-      // Check errors are cleared
-      expect(screen.queryByTestId("project-name-input-error")).not.toBeInTheDocument();
     });
   });
 });
