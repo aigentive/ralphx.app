@@ -97,6 +97,13 @@ impl AgenticClient for ClaudeCodeClient {
             args.extend(["--max-tokens".to_string(), max_tokens.to_string()]);
         }
 
+        // Add permission prompt tool for UI-based approval of non-pre-approved tools
+        // The MCP tool name format: mcp__<server>__<tool>
+        args.extend([
+            "--permission-prompt-tool".to_string(),
+            "mcp__ralphx__permission_request".to_string(),
+        ]);
+
         // Build command
         let mut cmd = tokio::process::Command::new(&self.cli_path);
         cmd.args(&args)
