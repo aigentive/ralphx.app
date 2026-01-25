@@ -179,7 +179,7 @@ export function TaskCard({
 
         {/* Badge row */}
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
             {task.category}
           </Badge>
           {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}

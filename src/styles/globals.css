@@ -44,15 +44,6 @@
   --font-body: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
 
-  /* Font sizes (using rem for accessibility) */
-  --text-xs: 0.75rem;     /* 12px */
-  --text-sm: 0.875rem;    /* 14px */
-  --text-base: 1rem;      /* 16px */
-  --text-lg: 1.125rem;    /* 18px */
-  --text-xl: 1.25rem;     /* 20px */
-  --text-2xl: 1.5rem;     /* 24px */
-  --text-3xl: 1.875rem;   /* 30px */
-
   /* Spacing (8pt Grid System) */
   --space-0: 0;
   --space-1: 4px;
@@ -223,6 +214,15 @@
   --spacing-2_5: 10px;
   --spacing-3_5: 14px;
 
+  /* Font size tokens for Tailwind utilities (text-xs, text-sm, etc.) */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
   /* Background colors for Tailwind utilities (bg-*) */
   --color-bg-base: var(--bg-base);
   --color-bg-surface: var(--bg-surface);
@@ -300,6 +300,11 @@
 }
 
 /* Base body styles - RalphX specific */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
@@ -310,11 +315,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Root element full height */
+/* Root element full height - no scroll */
 #root {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* Selection styling */
