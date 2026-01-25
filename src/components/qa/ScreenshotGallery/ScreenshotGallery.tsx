@@ -1,7 +1,7 @@
 /**
  * ScreenshotGallery - Professional screenshot gallery with comparison mode
  *
- * Features:
+ * Premium design with Lucide icons:
  * - Thumbnail grid with hover effects
  * - Full-featured lightbox with navigation
  * - Expected vs Actual comparison view for failures
@@ -10,6 +10,20 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  X,
+  ZoomIn,
+  ZoomOut,
+  GitCompare,
+  Image,
+  AlertTriangle,
+  Check,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { QAStepResult } from "@/types/qa";
 
 // ============================================================================
@@ -51,153 +65,6 @@ export interface ScreenshotGalleryProps {
 type ViewMode = "single" | "comparison";
 
 // ============================================================================
-// Icons
-// ============================================================================
-
-function ChevronLeftIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M15 6L9 12L15 18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M9 6L15 12L9 18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M18 6L6 18M6 6L18 18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ZoomInIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M9 6V12M6 9H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ZoomOutIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M6 9H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CompareIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <rect x="2" y="3" width="7" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="11" y="3" width="7" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M10 6V14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
-    </svg>
-  );
-}
-
-function ImageIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-    >
-      <rect
-        x="3"
-        y="3"
-        width="18"
-        height="18"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <circle cx="8" cy="8" r="2" fill="currentColor" />
-      <path
-        d="M21 15L16 10L8 18H19C20.1046 18 21 17.1046 21 16V15Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function AlertIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M8 1L15 14H1L8 1Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M8 6V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="8" cy="11.5" r="0.75" fill="currentColor" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M13 4L6 11L3 8"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M12 4L4 12M4 4L12 12"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -237,7 +104,14 @@ function Thumbnail({ screenshot, index, onClick }: ThumbnailProps) {
     <button
       data-testid={`screenshot-thumbnail-${index}`}
       onClick={() => onClick(index)}
-      className="group relative aspect-video rounded-lg overflow-hidden bg-[--bg-elevated] transition-all duration-200 hover:ring-2 hover:ring-[--accent-primary] hover:ring-offset-2 hover:ring-offset-[--bg-base] focus:outline-none focus:ring-2 focus:ring-[--accent-primary] focus:ring-offset-2 focus:ring-offset-[--bg-base]"
+      className={cn(
+        "group relative aspect-video rounded-xl overflow-hidden",
+        "bg-[var(--bg-elevated)]",
+        "transition-all duration-200",
+        "hover:ring-2 hover:ring-[var(--accent-primary)] hover:ring-offset-2 hover:ring-offset-[var(--bg-base)]",
+        "focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)]",
+        "active:scale-[0.98]"
+      )}
     >
       {/* Image or Placeholder */}
       {!imageError ? (
@@ -248,8 +122,8 @@ function Thumbnail({ screenshot, index, onClick }: ThumbnailProps) {
           onError={() => setImageError(true)}
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center text-[--text-muted]">
-          <ImageIcon className="w-8 h-8" />
+        <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+          <Image className="w-8 h-8" />
         </div>
       )}
 
@@ -272,9 +146,9 @@ function Thumbnail({ screenshot, index, onClick }: ThumbnailProps) {
       {isFailed && (
         <div
           data-testid={`screenshot-failed-indicator-${index}`}
-          className="absolute top-2 right-2 p-1.5 rounded-full bg-[--status-error] text-white"
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-[var(--status-error)] text-white"
         >
-          <XIcon />
+          <X className="w-3.5 h-3.5" />
         </div>
       )}
 
@@ -282,9 +156,9 @@ function Thumbnail({ screenshot, index, onClick }: ThumbnailProps) {
       {screenshot.stepResult?.status === "passed" && (
         <div
           data-testid={`screenshot-passed-indicator-${index}`}
-          className="absolute top-2 right-2 p-1.5 rounded-full bg-[--status-success] text-white"
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-[var(--status-success)] text-white"
         >
-          <CheckIcon />
+          <Check className="w-3.5 h-3.5" />
         </div>
       )}
 
@@ -292,10 +166,10 @@ function Thumbnail({ screenshot, index, onClick }: ThumbnailProps) {
       {screenshot.expectedPath && (
         <div
           data-testid={`screenshot-comparison-indicator-${index}`}
-          className="absolute top-2 left-2 p-1 rounded bg-[--accent-primary] text-white"
+          className="absolute top-2 left-2 p-1.5 rounded bg-[var(--accent-primary)] text-white"
           title="Comparison available"
         >
-          <CompareIcon />
+          <GitCompare className="w-3.5 h-3.5" />
         </div>
       )}
     </button>
@@ -409,16 +283,22 @@ function Lightbox({
               {current.label}
             </h2>
             {isFailed && (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-[--status-error]/20 text-[--status-error]">
-                <AlertIcon />
+              <Badge
+                variant="outline"
+                className="border-0 bg-red-500/20 text-[var(--status-error)] gap-1.5"
+              >
+                <AlertTriangle className="w-3 h-3" />
                 Failed
-              </span>
+              </Badge>
             )}
             {current.stepResult?.status === "passed" && (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-[--status-success]/20 text-[--status-success]">
-                <CheckIcon />
+              <Badge
+                variant="outline"
+                className="border-0 bg-emerald-500/20 text-[var(--status-success)] gap-1.5"
+              >
+                <Check className="w-3 h-3" />
                 Passed
-              </span>
+              </Badge>
             )}
           </div>
 
@@ -435,66 +315,75 @@ function Lightbox({
         <div className="flex items-center gap-2">
           {/* View mode toggle */}
           {hasComparison && (
-            <button
+            <Button
               data-testid="lightbox-toggle-comparison"
               onClick={(e) => {
                 e.stopPropagation();
                 setViewMode((m) => (m === "single" ? "comparison" : "single"));
               }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              variant={viewMode === "comparison" ? "default" : "ghost"}
+              size="sm"
+              className={cn(
+                "gap-2",
                 viewMode === "comparison"
-                  ? "bg-[--accent-primary] text-white"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
+                  ? "bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)]"
+                  : "text-white hover:bg-white/10"
+              )}
             >
-              <CompareIcon />
+              <GitCompare className="w-4 h-4" />
               Compare
-            </button>
+            </Button>
           )}
 
           {/* Zoom controls */}
           <div className="flex items-center gap-1 ml-4">
-            <button
+            <Button
               data-testid="lightbox-zoom-out"
               onClick={(e) => {
                 e.stopPropagation();
                 setZoom((z) => Math.max(z - 0.25, 0.5));
               }}
               disabled={zoom <= 0.5}
-              className="p-2 text-white hover:bg-white/10 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/10 disabled:opacity-30"
               title="Zoom out (-)"
             >
-              <ZoomOutIcon />
-            </button>
+              <ZoomOut className="w-5 h-5" />
+            </Button>
             <span className="w-12 text-center text-sm text-white/80">
               {Math.round(zoom * 100)}%
             </span>
-            <button
+            <Button
               data-testid="lightbox-zoom-in"
               onClick={(e) => {
                 e.stopPropagation();
                 setZoom((z) => Math.min(z + 0.25, 4));
               }}
               disabled={zoom >= 4}
-              className="p-2 text-white hover:bg-white/10 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/10 disabled:opacity-30"
               title="Zoom in (+)"
             >
-              <ZoomInIcon />
-            </button>
+              <ZoomIn className="w-5 h-5" />
+            </Button>
           </div>
 
           {/* Close button */}
-          <button
+          <Button
             data-testid="lightbox-close"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
             }}
-            className="p-2 text-white hover:bg-white/10 rounded transition-colors ml-4"
+            variant="ghost"
+            size="icon"
+            className="text-white hover:bg-white/10 ml-4"
             title="Close (Esc)"
           >
-            <CloseIcon />
-          </button>
+            <X className="w-6 h-6" />
+          </Button>
         </div>
       </header>
 
@@ -533,9 +422,12 @@ function Lightbox({
             {/* Expected panel */}
             <div className="flex-1 flex flex-col">
               <div className="flex items-center gap-2 mb-3">
-                <span className="px-2 py-1 rounded text-xs font-semibold uppercase tracking-wider bg-[--status-success]/20 text-[--status-success]">
+                <Badge
+                  variant="outline"
+                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-emerald-500/20 text-[var(--status-success)]"
+                >
                   Expected
-                </span>
+                </Badge>
                 {current.stepResult?.expected && (
                   <span className="text-sm text-white/60 truncate max-w-[300px]">
                     {current.stepResult.expected}
@@ -547,13 +439,13 @@ function Lightbox({
                   data-testid="comparison-expected-image"
                   src={current.expectedPath}
                   alt="Expected"
-                  className="max-h-[65vh] object-contain rounded-lg border border-[--status-success]/30"
+                  className="max-h-[65vh] object-contain rounded-xl border border-emerald-500/30"
                   draggable={false}
                 />
               ) : (
-                <div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/5 min-h-[200px]">
+                <div className="flex-1 flex items-center justify-center rounded-xl border border-dashed border-white/20 bg-white/5 min-h-[200px]">
                   <div className="text-center text-white/40">
-                    <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <Image className="w-12 h-12 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No expected screenshot</p>
                     {current.stepResult?.expected && (
                       <p className="text-xs mt-2 max-w-[200px] mx-auto">
@@ -571,9 +463,12 @@ function Lightbox({
             {/* Actual panel */}
             <div className="flex-1 flex flex-col">
               <div className="flex items-center gap-2 mb-3">
-                <span className="px-2 py-1 rounded text-xs font-semibold uppercase tracking-wider bg-[--status-error]/20 text-[--status-error]">
+                <Badge
+                  variant="outline"
+                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-red-500/20 text-[var(--status-error)]"
+                >
                   Actual
-                </span>
+                </Badge>
                 {current.stepResult?.actual && (
                   <span className="text-sm text-white/60 truncate max-w-[300px]">
                     {current.stepResult.actual}
@@ -584,7 +479,7 @@ function Lightbox({
                 data-testid="comparison-actual-image"
                 src={current.path}
                 alt="Actual"
-                className="max-h-[65vh] object-contain rounded-lg border border-[--status-error]/30"
+                className="max-h-[65vh] object-contain rounded-xl border border-red-500/30"
                 draggable={false}
               />
             </div>
@@ -594,30 +489,34 @@ function Lightbox({
         {/* Navigation arrows */}
         {screenshots.length > 1 && viewMode === "single" && (
           <>
-            <button
+            <Button
               data-testid="lightbox-prev"
               onClick={(e) => {
                 e.stopPropagation();
                 if (hasPrev) onNavigate(currentIndex - 1);
               }}
               disabled={!hasPrev}
-              className="absolute left-4 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              variant="ghost"
+              size="icon"
+              className="absolute left-4 w-12 h-12 rounded-full bg-black/50 text-white hover:bg-black/70 disabled:opacity-30"
               title="Previous (←)"
             >
-              <ChevronLeftIcon />
-            </button>
-            <button
+              <ChevronLeft className="w-6 h-6" />
+            </Button>
+            <Button
               data-testid="lightbox-next"
               onClick={(e) => {
                 e.stopPropagation();
                 if (hasNext) onNavigate(currentIndex + 1);
               }}
               disabled={!hasNext}
-              className="absolute right-4 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              variant="ghost"
+              size="icon"
+              className="absolute right-4 w-12 h-12 rounded-full bg-black/50 text-white hover:bg-black/70 disabled:opacity-30"
               title="Next (→)"
             >
-              <ChevronRightIcon />
-            </button>
+              <ChevronRight className="w-6 h-6" />
+            </Button>
           </>
         )}
       </div>
@@ -666,11 +565,12 @@ function Lightbox({
               key={screenshot.id}
               data-testid={`lightbox-thumbnail-${index}`}
               onClick={() => onNavigate(index)}
-              className={`w-16 h-10 rounded overflow-hidden transition-all ${
+              className={cn(
+                "w-16 h-10 rounded-sm overflow-hidden transition-all",
                 index === currentIndex
-                  ? "ring-2 ring-[--accent-primary] ring-offset-2 ring-offset-black"
+                  ? "ring-2 ring-[var(--accent-primary)] ring-offset-2 ring-offset-black"
                   : "opacity-50 hover:opacity-80"
-              }`}
+              )}
             >
               <img
                 src={screenshot.path}
@@ -699,11 +599,11 @@ function EmptyState({ message = "No screenshots captured" }: EmptyStateProps) {
       data-testid="screenshot-gallery-empty"
       className="flex flex-col items-center justify-center py-12 text-center"
     >
-      <div className="w-16 h-16 rounded-full bg-[--bg-elevated] flex items-center justify-center mb-4">
-        <ImageIcon className="w-8 h-8 text-[--text-muted]" />
+      <div className="w-16 h-16 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center mb-4">
+        <Image className="w-8 h-8 text-[var(--text-muted)]" />
       </div>
-      <p className="text-[--text-muted] text-sm">{message}</p>
-      <p className="text-[--text-muted]/60 text-xs mt-1">
+      <p className="text-sm font-medium text-[var(--text-secondary)]">{message}</p>
+      <p className="text-xs text-[var(--text-muted)] opacity-60 mt-1">
         Screenshots will appear here when captured during QA testing
       </p>
     </div>
@@ -756,9 +656,9 @@ export function ScreenshotGallery({
   };
 
   return (
-    <div data-testid="screenshot-gallery" className={className}>
+    <div data-testid="screenshot-gallery" className={cn(className)}>
       {/* Thumbnail Grid */}
-      <div className={`grid ${gridCols[columns]} gap-3`}>
+      <div className={cn("grid gap-3", gridCols[columns])}>
         {screenshots.map((screenshot, index) => (
           <Thumbnail
             key={screenshot.id}

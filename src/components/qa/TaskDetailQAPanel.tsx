@@ -1,13 +1,12 @@
 /**
  * TaskDetailQAPanel - Tabbed panel showing QA data for a task
  *
- * Displays:
+ * Premium design with shadcn Tabs and Lucide icons:
  * - Acceptance Criteria tab with checkmarks
  * - Test Results tab with pass/fail icons
  * - Screenshots tab with thumbnail gallery and lightbox
  */
 
-import { useState, useCallback, useRef } from "react";
 import type {
   TaskQAResponse,
   QAResultsResponse,
@@ -15,6 +14,21 @@ import type {
   QATestStepResponse,
 } from "@/lib/tauri";
 import type { QAStepStatus, QAStepResult } from "@/types/qa";
+import {
+  CheckCircle,
+  XCircle,
+  Circle,
+  MinusCircle,
+  Image,
+  Loader2,
+  RotateCcw,
+  SkipForward,
+} from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
   ScreenshotGallery,
   pathsToScreenshots,
@@ -38,126 +52,22 @@ interface TaskDetailQAPanelProps {
 }
 
 // ============================================================================
-// Icons
-// ============================================================================
-
-function CheckIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-    >
-      <path
-        d="M13 4L6 11L3 8"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function XIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-    >
-      <path
-        d="M12 4L4 12M4 4L12 12"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CircleIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-    >
-      <circle cx="8" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function MinusIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-    >
-      <path
-        d="M4 8H12"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function ImageIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-    >
-      <rect
-        x="2"
-        y="2"
-        width="12"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <circle cx="5.5" cy="5.5" r="1.5" fill="currentColor" />
-      <path
-        d="M14 10L11 7L5 13H12C13.1046 13 14 12.1046 14 11V10Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 
 function getStatusIcon(status: QAStepStatus | "pending") {
   switch (status) {
     case "passed":
-      return <CheckIcon className="text-[--status-success]" />;
+      return <CheckCircle className="w-4 h-4 text-[var(--status-success)]" />;
     case "failed":
-      return <XIcon className="text-[--status-error]" />;
+      return <XCircle className="w-4 h-4 text-[var(--status-error)]" />;
     case "skipped":
-      return <MinusIcon className="text-[--text-muted]" />;
+      return <MinusCircle className="w-4 h-4 text-[var(--text-muted)]" />;
     case "running":
-      return <CircleIcon className="text-[--status-info] animate-pulse" />;
+      return <Circle className="w-4 h-4 text-[var(--status-info)] animate-pulse" />;
     case "pending":
     default:
-      return <CircleIcon className="text-[--text-muted]" />;
+      return <Circle className="w-4 h-4 text-[var(--text-muted)]" />;
   }
 }
 
@@ -194,69 +104,60 @@ function getCriterionStatus(
 
 function QAPanelSkeleton() {
   return (
-    <div data-testid="qa-panel-skeleton" className="animate-pulse">
-      <div className="flex gap-2 mb-4">
-        <div className="h-8 w-32 rounded bg-[--bg-hover]" />
-        <div className="h-8 w-28 rounded bg-[--bg-hover]" />
-        <div className="h-8 w-28 rounded bg-[--bg-hover]" />
+    <div data-testid="qa-panel-skeleton" className="space-y-4">
+      <div className="flex gap-2 border-b border-[var(--border-subtle)] pb-2">
+        <Skeleton className="h-9 w-36" />
+        <Skeleton className="h-9 w-28" />
+        <Skeleton className="h-9 w-28" />
       </div>
       <div className="space-y-3">
-        <div className="h-12 rounded bg-[--bg-hover]" />
-        <div className="h-12 rounded bg-[--bg-hover]" />
-        <div className="h-12 rounded bg-[--bg-hover]" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
       </div>
     </div>
   );
 }
 
 // ============================================================================
-// Tab Button Component
+// Tab Trigger with Count
 // ============================================================================
 
-interface TabButtonProps {
-  id: TabId;
+interface TabTriggerWithCountProps {
+  value: TabId;
   label: string;
   count?: number | undefined;
   countTestId?: string | undefined;
-  isSelected: boolean;
-  onClick: (id: TabId) => void;
-  onKeyDown: (e: React.KeyboardEvent, id: TabId) => void;
 }
 
-function TabButton({
-  id,
+function TabTriggerWithCount({
+  value,
   label,
   count,
   countTestId,
-  isSelected,
-  onClick,
-  onKeyDown,
-}: TabButtonProps) {
+}: TabTriggerWithCountProps) {
   return (
-    <button
-      role="tab"
-      id={`tab-${id}`}
-      aria-selected={isSelected}
-      aria-controls={`tabpanel-${id}`}
-      tabIndex={isSelected ? 0 : -1}
-      onClick={() => onClick(id)}
-      onKeyDown={(e) => onKeyDown(e, id)}
-      className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${
-        isSelected
-          ? "bg-[--bg-elevated] text-[--text-primary] border-b-2 border-[--accent-primary]"
-          : "text-[--text-secondary] hover:text-[--text-primary] hover:bg-[--bg-hover]"
-      }`}
+    <TabsTrigger
+      value={value}
+      className={cn(
+        "px-3 py-2 text-sm font-medium transition-all",
+        "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+        "data-[state=active]:text-[var(--text-primary)]",
+        "data-[state=active]:border-b-2 data-[state=active]:border-[var(--accent-primary)]",
+        "data-[state=active]:shadow-none data-[state=active]:bg-transparent",
+        "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2"
+      )}
     >
       {label}
       {count !== undefined && (
         <span
           data-testid={countTestId}
-          className="ml-1.5 px-1.5 py-0.5 text-xs rounded bg-[--bg-hover]"
+          className="ml-1.5 text-xs opacity-80"
         >
-          {count}
+          ({count})
         </span>
       )}
-    </button>
+    </TabsTrigger>
   );
 }
 
@@ -277,9 +178,9 @@ function AcceptanceCriteriaTab({
 }: AcceptanceCriteriaTabProps) {
   if (criteria.length === 0) {
     return (
-      <p className="text-[--text-muted] text-sm py-4">
+      <div className="py-8 text-center text-[var(--text-muted)] text-sm">
         No acceptance criteria defined
-      </p>
+      </div>
     );
   }
 
@@ -291,7 +192,7 @@ function AcceptanceCriteriaTab({
         return (
           <div
             key={criterion.id}
-            className="flex items-start gap-3 p-3 rounded bg-[--bg-elevated]"
+            className="flex items-start gap-3 p-3 rounded-lg bg-[var(--bg-elevated)]"
           >
             <span
               data-testid={`criterion-status-${criterion.id}`}
@@ -301,23 +202,30 @@ function AcceptanceCriteriaTab({
               {getStatusIcon(status)}
             </span>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-[--bg-hover] text-[--text-secondary]">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Badge
+                  variant="outline"
+                  className="px-1.5 py-0.5 text-xs font-medium bg-[var(--bg-hover)] text-[var(--text-secondary)] border-0"
+                >
                   {criterion.id}
-                </span>
-                <span className="px-1.5 py-0.5 text-xs rounded bg-[--bg-hover] text-[--text-muted]">
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="px-1.5 py-0.5 text-xs bg-[var(--bg-hover)] text-[var(--text-muted)] border-0"
+                >
                   {criterion.criteria_type}
-                </span>
+                </Badge>
                 {criterion.testable && (
-                  <span
+                  <Badge
                     data-testid={`criterion-testable-${criterion.id}`}
-                    className="px-1.5 py-0.5 text-xs rounded bg-[--status-info] text-[--bg-base]"
+                    variant="outline"
+                    className="px-1.5 py-0.5 text-xs bg-blue-500/15 text-[var(--status-info)] border-0"
                   >
-                    Testable
-                  </span>
+                    testable
+                  </Badge>
                 )}
               </div>
-              <p className="text-sm text-[--text-primary]">
+              <p className="text-sm text-[var(--text-primary)] leading-normal">
                 {criterion.description}
               </p>
             </div>
@@ -343,39 +251,40 @@ function TestResultsTab({
 }: TestResultsTabProps) {
   if (!results) {
     return (
-      <p className="text-[--text-muted] text-sm py-4">
+      <div className="py-8 text-center text-[var(--text-muted)] text-sm">
         No test results available yet
-      </p>
+      </div>
     );
   }
 
   // Create a map of step ID to step for quick lookup
   const stepMap = new Map(testSteps?.map((s) => [s.id, s]) ?? []);
 
+  const overallStatusClass = results.overall_status === "passed"
+    ? "bg-emerald-500/15 text-[var(--status-success)]"
+    : results.overall_status === "failed"
+      ? "bg-red-500/15 text-[var(--status-error)]"
+      : "bg-[var(--bg-hover)] text-[var(--text-muted)]";
+
   return (
     <div className="space-y-4">
-      {/* Overall Status */}
-      <div className="flex items-center justify-between p-3 rounded bg-[--bg-elevated]">
+      {/* Overall Status Banner */}
+      <div className="flex items-center justify-between p-4 rounded-lg bg-[var(--bg-elevated)]">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[--text-secondary]">
+          <span className="text-sm font-medium text-[var(--text-secondary)]">
             Overall:
           </span>
-          <span
+          <Badge
             data-testid="overall-status"
-            className={`px-2 py-0.5 text-xs font-medium rounded ${
-              results.overall_status === "passed"
-                ? "bg-[--status-success] text-[--bg-base]"
-                : results.overall_status === "failed"
-                  ? "bg-[--status-error] text-[--bg-base]"
-                  : "bg-[--text-muted] text-[--bg-base]"
-            }`}
+            variant="outline"
+            className={cn("capitalize border-0", overallStatusClass)}
           >
             {results.overall_status}
-          </span>
+          </Badge>
         </div>
         <span
           data-testid="results-summary"
-          className="text-sm text-[--text-muted]"
+          className="text-sm text-[var(--text-muted)]"
         >
           {results.passed_steps}/{results.total_steps}
         </span>
@@ -390,7 +299,7 @@ function TestResultsTab({
           return (
             <div
               key={stepResult.step_id}
-              className="p-3 rounded bg-[--bg-elevated]"
+              className="p-3 rounded-lg bg-[var(--bg-elevated)]"
             >
               <div className="flex items-start gap-3">
                 <span
@@ -402,35 +311,38 @@ function TestResultsTab({
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-[--bg-hover] text-[--text-secondary]">
+                    <Badge
+                      variant="outline"
+                      className="px-1.5 py-0.5 text-xs font-medium bg-[var(--bg-hover)] text-[var(--text-secondary)] border-0"
+                    >
                       {stepResult.step_id}
-                    </span>
+                    </Badge>
                     {stepResult.screenshot && (
                       <span
                         data-testid={`step-screenshot-indicator-${stepResult.step_id}`}
-                        className="flex items-center gap-1 text-xs text-[--text-muted]"
+                        className="flex items-center gap-1 text-xs text-[var(--text-muted)]"
                       >
-                        <ImageIcon className="w-3 h-3" />
+                        <Image className="w-3 h-3" />
                         Has screenshot
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-[--text-primary]">
+                  <p className="text-sm text-[var(--text-primary)]">
                     {step?.description ?? stepResult.step_id}
                   </p>
                 </div>
               </div>
 
-              {/* Failure Details */}
+              {/* Failure Details Box */}
               {isFailed && (stepResult.expected || stepResult.actual || stepResult.error) && (
                 <div
                   data-testid={`failure-details-${stepResult.step_id}`}
-                  className="mt-3 ml-7 p-2 rounded bg-[--bg-base] border border-[--status-error] border-opacity-30"
+                  className="mt-3 ml-7 p-2 rounded-lg bg-[var(--bg-base)] border border-red-500/30"
                 >
                   {stepResult.error && (
                     <p
                       data-testid={`error-message-${stepResult.step_id}`}
-                      className="text-xs text-[--status-error] mb-2"
+                      className="text-xs text-[var(--status-error)] mb-2"
                     >
                       {stepResult.error}
                     </p>
@@ -439,16 +351,16 @@ function TestResultsTab({
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       {stepResult.expected && (
                         <div>
-                          <span className="text-[--text-muted]">Expected:</span>
-                          <p className="text-[--text-primary] mt-0.5">
+                          <span className="text-[var(--text-muted)]">Expected:</span>
+                          <p className="text-[var(--text-primary)] mt-0.5">
                             {stepResult.expected}
                           </p>
                         </div>
                       )}
                       {stepResult.actual && (
                         <div>
-                          <span className="text-[--text-muted]">Actual:</span>
-                          <p className="text-[--text-primary] mt-0.5">
+                          <span className="text-[var(--text-muted)]">Actual:</span>
+                          <p className="text-[var(--text-primary)] mt-0.5">
                             {stepResult.actual}
                           </p>
                         </div>
@@ -496,40 +408,6 @@ export function TaskDetailQAPanel({
   isRetrying = false,
   isSkipping = false,
 }: TaskDetailQAPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("criteria");
-  const tablistRef = useRef<HTMLDivElement>(null);
-
-  // Handle keyboard navigation
-  const handleTabKeyDown = useCallback(
-    (e: React.KeyboardEvent, currentTabId: TabId) => {
-      const tabs: TabId[] = ["criteria", "results", "screenshots"];
-      const currentIndex = tabs.indexOf(currentTabId);
-
-      let nextIndex: number | null = null;
-
-      if (e.key === "ArrowRight") {
-        nextIndex = (currentIndex + 1) % tabs.length;
-      } else if (e.key === "ArrowLeft") {
-        nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-      }
-
-      if (nextIndex !== null) {
-        const nextTab = tabs[nextIndex];
-        if (nextTab) {
-          e.preventDefault();
-          setActiveTab(nextTab);
-
-          // Focus the next tab button
-          const nextTabButton = tablistRef.current?.querySelector(
-            `#tab-${nextTab}`
-          ) as HTMLElement | null;
-          nextTabButton?.focus();
-        }
-      }
-    },
-    []
-  );
-
   // Show loading skeleton
   if (isLoading) {
     return <QAPanelSkeleton />;
@@ -538,7 +416,7 @@ export function TaskDetailQAPanel({
   // Show empty state
   if (!taskQA) {
     return (
-      <div className="text-center py-8 text-[--text-muted]">
+      <div className="text-center py-8 text-[var(--text-muted)]">
         <p>No QA data available for this task</p>
       </div>
     );
@@ -564,85 +442,79 @@ export function TaskDetailQAPanel({
   );
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Tab List */}
-      <div
-        ref={tablistRef}
-        role="tablist"
-        aria-label="QA Information"
-        className="flex gap-1 border-b border-[--border-subtle] mb-4"
-      >
-        <TabButton
-          id="criteria"
-          label="Acceptance Criteria"
-          count={criteria.length > 0 ? criteria.length : undefined}
-          countTestId="criteria-count"
-          isSelected={activeTab === "criteria"}
-          onClick={setActiveTab}
-          onKeyDown={handleTabKeyDown}
-        />
-        <TabButton
-          id="results"
-          label="Test Results"
-          count={results?.total_steps}
-          countTestId="results-count"
-          isSelected={activeTab === "results"}
-          onClick={setActiveTab}
-          onKeyDown={handleTabKeyDown}
-        />
-        <TabButton
-          id="screenshots"
-          label="Screenshots"
-          count={screenshotPaths.length > 0 ? screenshotPaths.length : undefined}
-          countTestId="screenshots-count"
-          isSelected={activeTab === "screenshots"}
-          onClick={setActiveTab}
-          onKeyDown={handleTabKeyDown}
-        />
-      </div>
+    <div className="flex flex-col h-full min-h-[300px]">
+      <Tabs defaultValue="criteria" className="flex flex-col h-full">
+        {/* Tab List with underline indicator style */}
+        <TabsList className="h-auto bg-transparent p-0 gap-1 border-b border-[var(--border-subtle)] mb-4 rounded-none justify-start">
+          <TabTriggerWithCount
+            value="criteria"
+            label="Acceptance Criteria"
+            count={criteria.length > 0 ? criteria.length : undefined}
+            countTestId="criteria-count"
+          />
+          <TabTriggerWithCount
+            value="results"
+            label="Test Results"
+            count={results?.total_steps}
+            countTestId="results-count"
+          />
+          <TabTriggerWithCount
+            value="screenshots"
+            label="Screenshots"
+            count={screenshotPaths.length > 0 ? screenshotPaths.length : undefined}
+            countTestId="screenshots-count"
+          />
+        </TabsList>
 
-      {/* Tab Panels */}
-      <div
-        role="tabpanel"
-        id={`tabpanel-${activeTab}`}
-        aria-labelledby={`tab-${activeTab}`}
-        className="flex-1 overflow-auto"
-      >
-        {activeTab === "criteria" && (
+        {/* Tab Panels */}
+        <TabsContent value="criteria" className="flex-1 overflow-auto mt-0">
           <AcceptanceCriteriaTab
             criteria={criteria}
             testSteps={testSteps}
             results={results}
           />
-        )}
-        {activeTab === "results" && (
+        </TabsContent>
+        <TabsContent value="results" className="flex-1 overflow-auto mt-0">
           <TestResultsTab
             testSteps={testSteps}
             results={results}
           />
-        )}
-        {activeTab === "screenshots" && (
+        </TabsContent>
+        <TabsContent value="screenshots" className="flex-1 overflow-auto mt-0">
           <ScreenshotsTab screenshots={screenshots} />
-        )}
-      </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Action Buttons */}
       {isFailed && onRetry && onSkip && (
-        <div className="flex gap-2 mt-4 pt-4 border-t border-[--border-subtle]">
-          <button
+        <div className="flex gap-2 mt-4 pt-4 border-t border-[var(--border-subtle)]">
+          <Button
             onClick={onRetry}
             disabled={isRetrying || isSkipping}
-            className="px-4 py-2 text-sm font-medium rounded bg-[--accent-primary] text-[--bg-base] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            size="sm"
+            className="gap-1.5"
           >
+            {isRetrying ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
             {isRetrying ? "Retrying..." : "Retry QA"}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onSkip}
             disabled={isRetrying || isSkipping}
-            className="px-4 py-2 text-sm font-medium rounded bg-[--bg-hover] text-[--text-primary] hover:bg-[--bg-elevated] disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="secondary"
+            size="sm"
+            className="gap-1.5"
           >
+            {isSkipping ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <SkipForward className="w-4 h-4" />
+            )}
             {isSkipping ? "Skipping..." : "Skip QA"}
-          </button>
+          </Button>
         </div>
       )}
     </div>

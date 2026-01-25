@@ -274,10 +274,10 @@ describe("QASettingsPanel", () => {
 
       render(<QASettingsPanel />);
 
-      expect(screen.getByTestId("auto-qa-ui-toggle")).toHaveAttribute("aria-disabled", "true");
-      expect(screen.getByTestId("auto-qa-api-toggle")).toHaveAttribute("aria-disabled", "true");
-      expect(screen.getByTestId("qa-prep-toggle")).toHaveAttribute("aria-disabled", "true");
-      expect(screen.getByTestId("browser-testing-toggle")).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByTestId("auto-qa-ui-toggle")).toBeDisabled();
+      expect(screen.getByTestId("auto-qa-api-toggle")).toBeDisabled();
+      expect(screen.getByTestId("qa-prep-toggle")).toBeDisabled();
+      expect(screen.getByTestId("browser-testing-toggle")).toBeDisabled();
     });
 
     it("disables URL input when browser testing is disabled", () => {
@@ -339,7 +339,7 @@ describe("QASettingsPanel", () => {
 
       render(<QASettingsPanel />);
 
-      expect(screen.getByTestId("qa-enabled-toggle")).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByTestId("qa-enabled-toggle")).toBeDisabled();
     });
   });
 

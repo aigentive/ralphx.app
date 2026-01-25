@@ -131,40 +131,79 @@ describe("TaskQABadge", () => {
     expect(badge).toHaveClass("items-center");
     expect(badge).toHaveClass("px-2");
     expect(badge).toHaveClass("py-0.5");
-    expect(badge).toHaveClass("rounded");
     expect(badge).toHaveClass("text-xs");
     expect(badge).toHaveClass("font-medium");
+  });
+
+  it("renders icon for each status", () => {
+    render(<TaskQABadge needsQA={true} />);
+    const badge = screen.getByTestId("task-qa-badge");
+    // Badge contains an SVG icon
+    expect(badge.querySelector("svg")).toBeInTheDocument();
   });
 
   it("applies correct color class for passed status", () => {
     render(<TaskQABadge needsQA={true} testStatus="passed" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-[--status-success]");
-    expect(badge).toHaveClass("text-[--bg-base]");
+    expect(badge).toHaveClass("bg-emerald-500/15");
+    expect(badge).toHaveClass("text-[var(--status-success)]");
   });
 
   it("applies correct color class for failed status", () => {
     render(<TaskQABadge needsQA={true} testStatus="failed" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-[--status-error]");
-    expect(badge).toHaveClass("text-[--bg-base]");
+    expect(badge).toHaveClass("bg-red-500/15");
+    expect(badge).toHaveClass("text-[var(--status-error)]");
   });
 
   it("applies correct color class for preparing status", () => {
     render(<TaskQABadge needsQA={true} prepStatus="running" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-[--status-warning]");
+    expect(badge).toHaveClass("bg-amber-500/15");
+    expect(badge).toHaveClass("text-[var(--status-warning)]");
   });
 
   it("applies correct color class for testing status", () => {
     render(<TaskQABadge needsQA={true} testStatus="running" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-[--accent-secondary]");
+    expect(badge).toHaveClass("bg-[var(--accent-muted)]");
+    expect(badge).toHaveClass("text-[var(--accent-primary)]");
   });
 
   it("applies correct color class for ready status", () => {
     render(<TaskQABadge needsQA={true} prepStatus="completed" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-[--status-info]");
+    expect(badge).toHaveClass("bg-blue-500/15");
+    expect(badge).toHaveClass("text-[var(--status-info)]");
+  });
+
+  it("shows spinning icon for preparing status", () => {
+    render(<TaskQABadge needsQA={true} prepStatus="running" />);
+    const badge = screen.getByTestId("task-qa-badge");
+    const icon = badge.querySelector("svg");
+    expect(icon).toHaveClass("animate-spin");
+  });
+
+  it("shows spinning icon for testing status", () => {
+    render(<TaskQABadge needsQA={true} testStatus="running" />);
+    const badge = screen.getByTestId("task-qa-badge");
+    const icon = badge.querySelector("svg");
+    expect(icon).toHaveClass("animate-spin");
+  });
+
+  describe("compact mode", () => {
+    it("renders icon-only in compact mode", () => {
+      render(<TaskQABadge needsQA={true} compact />);
+      const badge = screen.getByTestId("task-qa-badge");
+      // Should have icon but not text
+      expect(badge.querySelector("svg")).toBeInTheDocument();
+      expect(badge).not.toHaveTextContent("QA Pending");
+    });
+
+    it("applies correct styling for compact mode", () => {
+      render(<TaskQABadge needsQA={true} compact />);
+      const badge = screen.getByTestId("task-qa-badge");
+      expect(badge).toHaveClass("p-1");
+    });
   });
 });
