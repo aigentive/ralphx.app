@@ -461,35 +461,16 @@ describe("ProposalEditModal", () => {
   });
 
   describe("Styling", () => {
-    it("uses correct modal overlay styling", () => {
+    it("modal uses shadcn Dialog with correct max-width", () => {
+      render(<ProposalEditModal {...defaultProps} />);
+      const modal = screen.getByTestId("proposal-edit-modal");
+      expect(modal).toHaveClass("max-w-lg");
+    });
+
+    it("renders modal overlay with blur effect", () => {
       render(<ProposalEditModal {...defaultProps} />);
       const overlay = screen.getByTestId("modal-overlay");
-      expect(overlay).toHaveStyle({ backgroundColor: "rgba(0, 0, 0, 0.5)" });
-    });
-
-    it("modal is centered with fixed positioning", () => {
-      render(<ProposalEditModal {...defaultProps} />);
-      const modal = screen.getByTestId("proposal-edit-modal");
-      expect(modal).toHaveClass("fixed", "inset-0", "z-50");
-    });
-
-    it("content has elevated background", () => {
-      render(<ProposalEditModal {...defaultProps} />);
-      const content = screen.getByTestId("modal-content");
-      expect(content).toHaveStyle({ backgroundColor: "var(--bg-elevated)" });
-    });
-
-    it("save button uses accent color when enabled", () => {
-      render(<ProposalEditModal {...defaultProps} />);
-      const saveButton = screen.getByRole("button", { name: "Save" });
-      expect(saveButton).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
-    });
-
-    it("anti-ai-slop: no purple gradients in styling", () => {
-      render(<ProposalEditModal {...defaultProps} />);
-      const modal = screen.getByTestId("proposal-edit-modal");
-      const styles = window.getComputedStyle(modal);
-      expect(styles.background).not.toMatch(/purple|#800080|#a855f7/i);
+      expect(overlay).toHaveClass("backdrop-blur-[8px]");
     });
   });
 

@@ -2,9 +2,24 @@
  * ProposalEditModal - Modal for editing task proposal details
  * Allows editing title, description, category, steps, acceptance criteria,
  * priority override, and complexity.
+ *
+ * Uses shadcn/ui Dialog, Input, Textarea, Select, Button, Label components.
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { Edit3, Plus, X, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { TaskProposal, UpdateProposalInput, Priority, Complexity } from "@/types/ideation";
 
 const CATEGORIES = [
@@ -75,27 +90,14 @@ export function ProposalEditModal({
     }
   }, [proposal]);
 
-  // Handle Escape key to close modal
-  useEffect(() => {
-    if (!proposal) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && !isSaving) {
         onCancel();
       }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [proposal, onCancel]);
-
-  const handleOverlayClick = useCallback(() => {
-    onCancel();
-  }, [onCancel]);
-
-  const handleContentClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-  }, []);
+    },
+    [onCancel, isSaving]
+  );
 
   const handleStepChange = useCallback((index: number, value: string) => {
     setSteps((prev) => prev.map((s, i) => (i === index ? value : s)));
@@ -151,325 +153,235 @@ export function ProposalEditModal({
 
   const canSave = title.trim().length > 0 && !isSaving;
 
-  const inputClasses =
-    "w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:border-transparent";
+  const inputClasses = "bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]";
+  const selectClasses = "w-full h-9 rounded-md border px-3 py-2 text-sm bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent";
 
   return (
-    <div
-      data-testid="proposal-edit-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      role="dialog"
-      aria-labelledby="modal-title"
-      aria-modal="true"
-    >
-      <div
-        data-testid="modal-overlay"
-        className="absolute inset-0"
-        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-        onClick={handleOverlayClick}
-      />
-      <div
-        data-testid="modal-content"
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 rounded-lg shadow-lg"
-        style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
-        onClick={handleContentClick}
+    <Dialog open={!!proposal} onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="proposal-edit-modal"
+        className="max-w-lg max-h-[90vh]"
+        aria-labelledby="modal-title"
       >
-        <h2
-          id="modal-title"
-          className="text-lg font-semibold mb-4"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Edit Proposal
-        </h2>
-
-        <div className="space-y-4">
-          {/* Title Input */}
-          <div>
-            <label
-              htmlFor="proposal-title"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Title
-            </label>
-            <input
-              ref={titleInputRef}
-              id="proposal-title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className={inputClasses}
-              style={{
-                backgroundColor: "var(--bg-base)",
-                borderColor: "var(--border-subtle)",
-                color: "var(--text-primary)",
-              }}
-            />
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <Edit3 className="w-5 h-5 text-[var(--accent-primary)]" />
+            <DialogTitle id="modal-title">Edit Proposal</DialogTitle>
           </div>
+        </DialogHeader>
 
-          {/* Description Textarea */}
-          <div>
-            <label
-              htmlFor="proposal-description"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Description
-            </label>
-            <textarea
-              id="proposal-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className={`${inputClasses} resize-none`}
-              style={{
-                backgroundColor: "var(--bg-base)",
-                borderColor: "var(--border-subtle)",
-                color: "var(--text-primary)",
-              }}
-            />
-          </div>
-
-          {/* Category Selector */}
-          <div>
-            <label
-              htmlFor="proposal-category"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Category
-            </label>
-            <select
-              id="proposal-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className={inputClasses}
-              style={{
-                backgroundColor: "var(--bg-base)",
-                borderColor: "var(--border-subtle)",
-                color: "var(--text-primary)",
-              }}
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Steps Editor */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span
-                className="text-sm font-medium"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Steps
-              </span>
-              <button
-                type="button"
-                onClick={handleAddStep}
-                aria-label="Add step"
-                className="p-1 rounded hover:bg-[--bg-hover] transition-colors"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="2" fill="none" />
-                </svg>
-              </button>
+        <ScrollArea className="max-h-[60vh]">
+          <div data-testid="modal-content" className="px-6 py-4 space-y-4">
+            {/* Title Input */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-title" className="text-[var(--text-primary)]">
+                Title
+              </Label>
+              <Input
+                ref={titleInputRef}
+                id="proposal-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className={inputClasses}
+                disabled={isSaving}
+              />
             </div>
-            {steps.length === 0 ? (
-              <p
-                className="text-sm italic"
-                style={{ color: "var(--text-muted)" }}
-              >
-                No steps added
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {steps.map((step, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      data-testid="step-input"
-                      type="text"
-                      value={step}
-                      onChange={(e) => handleStepChange(index, e.target.value)}
-                      aria-label={`Step ${index + 1}`}
-                      className={`${inputClasses} flex-1`}
-                      style={{
-                        backgroundColor: "var(--bg-base)",
-                        borderColor: "var(--border-subtle)",
-                        color: "var(--text-primary)",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveStep(index)}
-                      aria-label={`Remove step ${index + 1}`}
-                      className="p-1 rounded hover:bg-[--bg-hover] transition-colors"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="2" fill="none" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          {/* Acceptance Criteria Editor */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span
-                className="text-sm font-medium"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Acceptance Criteria
-              </span>
-              <button
-                type="button"
-                onClick={handleAddCriterion}
-                aria-label="Add criterion"
-                className="p-1 rounded hover:bg-[--bg-hover] transition-colors"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="2" fill="none" />
-                </svg>
-              </button>
+            {/* Description Textarea */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-description" className="text-[var(--text-primary)]">
+                Description
+              </Label>
+              <Textarea
+                id="proposal-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className={`${inputClasses} resize-none`}
+                disabled={isSaving}
+              />
             </div>
-            {acceptanceCriteria.length === 0 ? (
-              <p
-                className="text-sm italic"
-                style={{ color: "var(--text-muted)" }}
+
+            {/* Category Selector - using native select for better test compatibility */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-category" className="text-[var(--text-primary)]">
+                Category
+              </Label>
+              <select
+                id="proposal-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className={selectClasses}
+                disabled={isSaving}
               >
-                No acceptance criteria added
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {acceptanceCriteria.map((criterion, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      data-testid="criterion-input"
-                      type="text"
-                      value={criterion}
-                      onChange={(e) => handleCriterionChange(index, e.target.value)}
-                      aria-label={`Acceptance criterion ${index + 1}`}
-                      className={`${inputClasses} flex-1`}
-                      style={{
-                        backgroundColor: "var(--bg-base)",
-                        borderColor: "var(--border-subtle)",
-                        color: "var(--text-primary)",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCriterion(index)}
-                      aria-label={`Remove criterion ${index + 1}`}
-                      className="p-1 rounded hover:bg-[--bg-hover] transition-colors"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="2" fill="none" />
-                      </svg>
-                    </button>
-                  </div>
+                {CATEGORIES.map((cat) => (
+                  <option key={cat.value} value={cat.value}>
+                    {cat.label}
+                  </option>
                 ))}
+              </select>
+            </div>
+
+            {/* Steps Editor */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-[var(--text-primary)]">Steps</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleAddStep}
+                  aria-label="Add step"
+                  disabled={isSaving}
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
               </div>
-            )}
-          </div>
+              {steps.length === 0 ? (
+                <p className="text-sm italic text-[var(--text-muted)]">No steps added</p>
+              ) : (
+                <div className="space-y-2">
+                  {steps.map((step, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        data-testid="step-input"
+                        type="text"
+                        value={step}
+                        onChange={(e) => handleStepChange(index, e.target.value)}
+                        aria-label={`Step ${index + 1}`}
+                        className={`${inputClasses} flex-1`}
+                        disabled={isSaving}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleRemoveStep(index)}
+                        aria-label={`Remove step ${index + 1}`}
+                        disabled={isSaving}
+                        className="text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Priority Override Selector */}
-          <div>
-            <label
-              htmlFor="proposal-priority"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Priority Override
-            </label>
-            <select
-              id="proposal-priority"
-              value={userPriority}
-              onChange={(e) => setUserPriority(e.target.value as Priority | "")}
-              className={inputClasses}
-              style={{
-                backgroundColor: "var(--bg-base)",
-                borderColor: "var(--border-subtle)",
-                color: "var(--text-primary)",
-              }}
-            >
-              {PRIORITIES.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.value === ""
-                    ? `Auto (${proposal.suggestedPriority})`
-                    : p.label}
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* Acceptance Criteria Editor */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-[var(--text-primary)]">Acceptance Criteria</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleAddCriterion}
+                  aria-label="Add criterion"
+                  disabled={isSaving}
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              {acceptanceCriteria.length === 0 ? (
+                <p className="text-sm italic text-[var(--text-muted)]">No acceptance criteria added</p>
+              ) : (
+                <div className="space-y-2">
+                  {acceptanceCriteria.map((criterion, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        data-testid="criterion-input"
+                        type="text"
+                        value={criterion}
+                        onChange={(e) => handleCriterionChange(index, e.target.value)}
+                        aria-label={`Acceptance criterion ${index + 1}`}
+                        className={`${inputClasses} flex-1`}
+                        disabled={isSaving}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleRemoveCriterion(index)}
+                        aria-label={`Remove criterion ${index + 1}`}
+                        disabled={isSaving}
+                        className="text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Complexity Selector */}
-          <div>
-            <label
-              htmlFor="proposal-complexity"
-              className="block text-sm font-medium mb-1"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Complexity
-            </label>
-            <select
-              id="proposal-complexity"
-              value={complexity}
-              onChange={(e) => setComplexity(e.target.value as Complexity)}
-              className={inputClasses}
-              style={{
-                backgroundColor: "var(--bg-base)",
-                borderColor: "var(--border-subtle)",
-                color: "var(--text-primary)",
-              }}
-            >
-              {COMPLEXITIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+            {/* Priority Override Selector */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-priority" className="text-[var(--text-primary)]">
+                Priority Override
+              </Label>
+              <select
+                id="proposal-priority"
+                value={userPriority}
+                onChange={(e) => setUserPriority(e.target.value as Priority | "")}
+                className={selectClasses}
+                disabled={isSaving}
+              >
+                {PRIORITIES.map((p) => (
+                  <option key={p.value || "auto"} value={p.value}>
+                    {p.value === "" ? `Auto (${proposal.suggestedPriority})` : p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Footer with buttons */}
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            type="button"
+            {/* Complexity Selector */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-complexity" className="text-[var(--text-primary)]">
+                Complexity
+              </Label>
+              <select
+                id="proposal-complexity"
+                value={complexity}
+                onChange={(e) => setComplexity(e.target.value as Complexity)}
+                className={selectClasses}
+                disabled={isSaving}
+              >
+                {COMPLEXITIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter>
+          <Button
+            data-testid="cancel-button"
+            variant="ghost"
             onClick={onCancel}
-            className="px-4 py-2 rounded text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: "var(--bg-hover)",
-              color: "var(--text-primary)",
-            }}
+            disabled={isSaving}
+            className="text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            data-testid="confirm-button"
             onClick={handleSave}
             disabled={!canSave}
-            className="px-4 py-2 rounded text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: canSave ? "var(--accent-primary)" : "var(--bg-hover)",
-              color: canSave ? "var(--bg-base)" : "var(--text-secondary)",
-              cursor: canSave ? "pointer" : "not-allowed",
-              opacity: isSaving ? 0.7 : 1,
-            }}
+            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white active:scale-[0.98] transition-all"
           >
+            {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isSaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

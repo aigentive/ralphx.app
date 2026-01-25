@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 07:52:40
+**Last Updated:** 2026-01-25 08:05:00
 **Phase:** Phase 14 (Design Implementation)
-**Tasks Completed:** 16 / 17
-**Current Task:** Implement Toast Notifications premium design
+**Tasks Completed:** 17 / 18
+**Current Task:** Final anti-AI-slop compliance check
 
 ---
 
 ## Session Log
+
+### 2026-01-25 08:05:00 - Standardize all modals to premium pattern
+
+**What was done:**
+- Migrated all three modals to shadcn Dialog base component:
+  - `AskUserQuestionModal` - uses Dialog with RadioGroup/Checkbox for single/multi-select
+  - `ReviewNotesModal` - uses Dialog with Textarea for notes and fix description
+  - `ProposalEditModal` - uses Dialog with Input, Textarea, Select for full proposal editing
+- Updated Dialog component (`src/components/ui/dialog.tsx`) with RalphX design standards:
+  - Backdrop: `bg-black/60 backdrop-blur-[8px]` (was `bg-black/50 backdrop-blur-sm`)
+  - Content background: `--bg-elevated` (was `--bg-surface`)
+  - Added `data-testid="modal-overlay"` and `data-testid="modal-content"` for testing
+  - Updated DialogHeader with 24px padding and bottom border
+  - Updated DialogFooter with top border and right-aligned buttons
+- Installed shadcn RadioGroup component for single-select options
+- Replaced inline SVG icons with Lucide icons (X, Loader2, MessageSquare, Edit3, Plus)
+- All modals now follow consistent patterns:
+  - Header: icon + title + close button
+  - Footer: Cancel (ghost) + Primary action (accent color, scale on press)
+  - Animations: scale 0.95→1 on open (via shadcn's zoom-in-95)
+  - Escape key closes modal (handled by Radix Dialog)
+- Updated all modal tests to reflect shadcn Dialog behavior
+
+**Commands run:**
+- `npm run lint` - passed (1 pre-existing error in unrelated file)
+- `npm run typecheck` - passed
+- `npm run test -- --run src/components/modals/AskUserQuestionModal.test.tsx` - 33 tests passed
+- `npm run test -- --run src/components/reviews/ReviewNotesModal.test.tsx` - 26 tests passed
+- `npm run test -- --run src/components/Ideation/ProposalEditModal.test.tsx` - 61 tests passed
+
+---
 
 ### 2026-01-25 07:52:40 - Implement Header and Navigation premium design
 

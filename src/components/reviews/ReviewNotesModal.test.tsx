@@ -309,7 +309,7 @@ describe("ReviewNotesModal", () => {
   });
 
   describe("styling", () => {
-    it("applies design system background color to modal", () => {
+    it("uses shadcn Dialog with correct max-width", () => {
       render(
         <ReviewNotesModal
           isOpen={true}
@@ -318,11 +318,11 @@ describe("ReviewNotesModal", () => {
           title="Add Review Notes"
         />
       );
-      const modal = screen.getByTestId("review-notes-modal-content");
-      expect(modal).toHaveStyle({ backgroundColor: "var(--bg-elevated)" });
+      const modal = screen.getByTestId("review-notes-modal");
+      expect(modal).toHaveClass("max-w-md");
     });
 
-    it("applies design system background color to overlay", () => {
+    it("renders modal overlay with blur effect", () => {
       render(
         <ReviewNotesModal
           isOpen={true}
@@ -331,8 +331,8 @@ describe("ReviewNotesModal", () => {
           title="Add Review Notes"
         />
       );
-      const overlay = screen.getByTestId("review-notes-modal-overlay");
-      expect(overlay).toHaveStyle({ backgroundColor: "rgba(0, 0, 0, 0.5)" });
+      const overlay = screen.getByTestId("modal-overlay");
+      expect(overlay).toHaveClass("backdrop-blur-[8px]");
     });
   });
 
