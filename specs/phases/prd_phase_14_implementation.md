@@ -73,10 +73,13 @@ Before marking any task complete, verify:
       "Add getGitBranches wrapper in src/lib/tauri.ts",
       "Implement handleFetchBranches in App.tsx to call getGitBranches",
       "Update handleCreateProject in App.tsx to call api.projects.create() instead of creating mock data",
+      "Reference specs/design/pages/project-dialogs.md for updated design requirements",
       "Update ProjectCreationWizard form order: Location field FIRST, Project Name SECOND",
       "Make Project Name optional - auto-infer from folder name when location is selected (e.g., /Users/dev/my-app → 'my-app')",
+      "Track isNameManuallySet state - only auto-update name if user hasn't typed custom value",
       "Allow user to override inferred project name if desired",
-      "If no projects exist (empty project list), show ProjectCreationWizard centered on screen (both axes) as default view instead of empty Kanban",
+      "If no projects exist (empty project list), show ProjectCreationWizard centered on screen (both axes) as default view",
+      "In first-run mode: hide close button, cancel button, disable Escape and backdrop click",
       "Test folder selection opens native macOS folder picker",
       "Test project name auto-populates from selected folder name",
       "Test branch dropdown shows real branches from selected folder",
@@ -86,7 +89,7 @@ Before marking any task complete, verify:
       "Run cargo test in src-tauri",
       "Commit: fix: implement project creation with folder selection and git branches"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "implementation",

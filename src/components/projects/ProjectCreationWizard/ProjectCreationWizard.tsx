@@ -28,6 +28,8 @@ export interface ProjectCreationWizardProps {
   isCreating?: boolean;
   /** Error message to display */
   error?: string | null;
+  /** Whether this is the first-run mode (no existing projects) - disables close/cancel */
+  isFirstRun?: boolean;
 }
 
 // ============================================================================
@@ -146,14 +148,23 @@ function generateWorktreePath(workingDirectory: string): string {
 }
 
 /**
+ * Extract folder name from path for auto-inferring project name
+ */
+function extractFolderName(path: string): string {
+  const folderName = path.split("/").pop() || "";
+  return folderName;
+}
+
+/**
  * Validate the form and return errors
+ * Note: Project name is optional - will be inferred from folder if empty
  */
 function validateForm(form: FormState): FormErrors {
   const errors: FormErrors = {};
 
-  if (!form.name.trim()) {
-    errors.name = "Project name is required";
-  }
+  // Project name is now optional - will be inferred from folder
+  // Only validate if user explicitly set it to something invalid
+  // (not just empty)
 
   if (!form.workingDirectory.trim()) {
     errors.workingDirectory = "Working directory is required";
@@ -402,6 +413,7 @@ export function ProjectCreationWizard({
   onFetchBranches,
   isCreating = false,
   error = null,
+  isFirstRun = false,
 }: ProjectCreationWizardProps) {
   // Form state
   const [form, setForm] = useState<FormState>({
@@ -421,6 +433,11 @@ export function ProjectCreationWizard({
 
   // Track if form was submitted (to show all errors)
   const [submitted, setSubmitted] = useState(false);
+
+  // Track if user has manually typed a custom name (to preserve override)
+  const [isNameManuallySet, setIsNameManuallySet] = useState(false);
+  // Track previously inferred name to compare against
+  const [lastInferredName, setLastInferredName] = useState("");
 
   // Validate form
   const errors = useMemo(() => validateForm(form), [form]);
@@ -476,19 +493,63 @@ export function ProjectCreationWizard({
       setTouched({});
       setSubmitted(false);
       setBranches(["main", "master"]);
+      setIsNameManuallySet(false);
+      setLastInferredName("");
     }
   }, [isOpen]);
 
-  // Handle folder browse
+  // Handle keyboard events (Escape key) - disabled in first-run mode
+  useEffect(() => {
+    if (!isOpen || isFirstRun || isCreating) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isFirstRun, isCreating, onClose]);
+
+  // Handle folder browse - also auto-infer project name from folder
   const handleBrowse = useCallback(async () => {
     if (onBrowseFolder) {
       const path = await onBrowseFolder();
       if (path) {
-        setForm((prev) => ({ ...prev, workingDirectory: path }));
+        const inferredName = extractFolderName(path);
+        setForm((prev) => {
+          // Only auto-fill name if:
+          // 1. User hasn't manually typed a custom name, OR
+          // 2. Current name matches the last inferred name (not overridden)
+          const shouldAutoFill = !isNameManuallySet || prev.name === lastInferredName || prev.name === "";
+          return {
+            ...prev,
+            workingDirectory: path,
+            name: shouldAutoFill ? inferredName : prev.name,
+          };
+        });
+        setLastInferredName(inferredName);
         setTouched((prev) => ({ ...prev, workingDirectory: true }));
       }
     }
-  }, [onBrowseFolder]);
+  }, [onBrowseFolder, isNameManuallySet, lastInferredName]);
+
+  // Handle project name change - track if user manually set it
+  const handleNameChange = useCallback((value: string) => {
+    setForm((prev) => ({ ...prev, name: value }));
+    // Mark as manually set only if user typed something different from inferred
+    if (value !== lastInferredName) {
+      setIsNameManuallySet(true);
+    }
+  }, [lastInferredName]);
+
+  // Handle backdrop click - disabled in first-run mode
+  const handleBackdropClick = useCallback(() => {
+    if (!isFirstRun && !isCreating) {
+      onClose();
+    }
+  }, [isFirstRun, isCreating, onClose]);
 
   // Handle form submission
   const handleSubmit = useCallback(() => {
@@ -508,8 +569,11 @@ export function ProjectCreationWizard({
     const currentErrors = validateForm(form);
     if (Object.keys(currentErrors).length > 0) return;
 
+    // Use provided name or infer from folder path
+    const projectName = form.name.trim() || extractFolderName(form.workingDirectory);
+
     const project: CreateProject = {
-      name: form.name.trim(),
+      name: projectName,
       workingDirectory: form.workingDirectory.trim(),
       gitMode: form.gitMode,
     };
@@ -535,8 +599,11 @@ export function ProjectCreationWizard({
       <div
         data-testid="wizard-overlay"
         className="absolute inset-0 transition-opacity"
-        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-        onClick={onClose}
+        style={{
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          backdropFilter: isFirstRun ? "blur(8px)" : undefined,
+        }}
+        onClick={handleBackdropClick}
       />
 
       {/* Modal */}
@@ -559,34 +626,25 @@ export function ProjectCreationWizard({
           >
             Create New Project
           </h2>
-          <button
-            data-testid="wizard-close"
-            onClick={onClose}
-            disabled={isCreating}
-            className="p-1 rounded transition-colors hover:bg-white/5"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <CloseIcon />
-          </button>
+          {/* Close button hidden in first-run mode */}
+          {!isFirstRun && (
+            <button
+              data-testid="wizard-close"
+              onClick={onClose}
+              disabled={isCreating}
+              className="p-1 rounded transition-colors hover:bg-white/5"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <CloseIcon />
+            </button>
+          )}
         </div>
 
         {/* Content */}
         <div className="px-6 py-5 space-y-5">
-          {/* Project Name */}
+          {/* Location (Folder) - FIRST */}
           <InputField
-            label="Project Name"
-            value={form.name}
-            onChange={(value) => setForm((prev) => ({ ...prev, name: value }))}
-            placeholder="My Awesome Project"
-            error={(touched.name || submitted) ? errors.name : undefined}
-            testId="project-name-input"
-            autoFocus
-            disabled={isCreating}
-          />
-
-          {/* Working Directory */}
-          <InputField
-            label="Folder"
+            label="Location"
             value={form.workingDirectory}
             onChange={(value) =>
               setForm((prev) => ({ ...prev, workingDirectory: value }))
@@ -594,6 +652,7 @@ export function ProjectCreationWizard({
             placeholder="/Users/dev/my-app"
             error={(touched.workingDirectory || submitted) ? errors.workingDirectory : undefined}
             testId="folder-input"
+            autoFocus
             disabled={isCreating}
             suffix={
               onBrowseFolder && (
@@ -612,6 +671,17 @@ export function ProjectCreationWizard({
                 </button>
               )
             }
+          />
+
+          {/* Project Name - SECOND (optional, auto-inferred from folder) */}
+          <InputField
+            label="Project Name"
+            value={form.name}
+            onChange={handleNameChange}
+            placeholder={form.workingDirectory ? extractFolderName(form.workingDirectory) || "my-app" : "Auto-inferred from folder"}
+            error={(touched.name || submitted) ? errors.name : undefined}
+            testId="project-name-input"
+            disabled={isCreating}
           />
 
           {/* Divider */}
@@ -723,18 +793,21 @@ export function ProjectCreationWizard({
           className="flex items-center justify-end gap-3 px-6 py-4 border-t"
           style={{ borderColor: "var(--border-subtle)" }}
         >
-          <button
-            data-testid="cancel-button"
-            onClick={onClose}
-            disabled={isCreating}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--text-primary)",
-            }}
-          >
-            Cancel
-          </button>
+          {/* Cancel button hidden in first-run mode */}
+          {!isFirstRun && (
+            <button
+              data-testid="cancel-button"
+              onClick={onClose}
+              disabled={isCreating}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: "var(--bg-elevated)",
+                color: "var(--text-primary)",
+              }}
+            >
+              Cancel
+            </button>
+          )}
           <button
             data-testid="create-button"
             onClick={handleSubmit}
