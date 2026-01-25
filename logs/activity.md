@@ -1,14 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:35:00
+**Last Updated:** 2026-01-26 05:47:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 4 / 26
-**Current Task:** Implement MCP tool scoping based on agent type
+**Tasks Completed:** 5 / 26
+**Current Task:** Add permission_request tool to MCP server for UI-based permission handling
 
 ---
 
 ## Session Log
+
+### 2026-01-26 05:47:00 - MCP Tool Scoping Implementation
+
+**What was done:**
+- Verified that MCP tool scoping was already fully implemented in the codebase:
+  - TOOL_ALLOWLIST constant exists in `ralphx-mcp-server/src/tools.ts` with all required mappings
+  - getAllowedToolNames() helper function reads RALPHX_AGENT_TYPE from process.env
+  - getFilteredTools() filters ALL_TOOLS by allowlist
+  - isToolAllowed() validates tool authorization
+  - ListToolsRequestSchema handler returns only allowed tools for agent type
+  - CallToolRequestSchema handler rejects unauthorized calls with clear error messages
+- Created comprehensive test suite to verify tool scoping:
+  - Tested all 8 agent types (orchestrator-ideation, chat-task, chat-project, reviewer, worker, supervisor, qa-prep, qa-tester)
+  - Verified orchestrator-ideation sees 4 ideation tools only
+  - Verified chat-task sees 3 task tools only
+  - Verified chat-project sees 2 project tools only
+  - Verified reviewer sees 1 review tool only
+  - Verified worker/supervisor/qa-prep/qa-tester see NO MCP tools
+  - Verified unauthorized tool calls are correctly rejected
+- All tests passed successfully
+
+**Tool Scoping Summary:**
+| Agent Type | Allowed MCP Tools | Count |
+|------------|-------------------|-------|
+| orchestrator-ideation | create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency | 4 |
+| chat-task | update_task, add_task_note, get_task_details | 3 |
+| chat-project | suggest_task, list_tasks | 2 |
+| reviewer | complete_review | 1 |
+| worker, supervisor, qa-prep, qa-tester | (none - use filesystem tools) | 0 |
+
+**Commands run:**
+- `npm run build` (verified build succeeds)
+- `node test-scoping.js` (automated test suite - all passed)
+- `node test-manual.js` (manual verification - all passed)
+
+---
 
 ### 2026-01-26 02:35:00 - RalphX MCP Server (TypeScript proxy)
 
