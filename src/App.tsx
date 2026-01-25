@@ -3,8 +3,9 @@
  * Root component with QueryClientProvider and EventProvider
  */
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { getQueryClient } from "@/lib/queryClient";
 import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
@@ -307,6 +308,26 @@ function AppContent() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setCurrentView]);
+
+  // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
+  const setCurrentViewRef = useRef(setCurrentView);
+  setCurrentViewRef.current = setCurrentView;
+
+  useEffect(() => {
+    const shortcut = "CommandOrControl+,";
+
+    register(shortcut, () => {
+      setCurrentViewRef.current("settings");
+    }).catch((err) => {
+      console.warn("Failed to register global shortcut:", err);
+    });
+
+    return () => {
+      unregister(shortcut).catch(() => {
+        // Ignore unregister errors on cleanup
+      });
+    };
+  }, []);
 
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {

@@ -129,7 +129,7 @@ describe("SettingsView", () => {
     });
 
     it("changes model selection", async () => {
-      const user = userEvent.setup();
+      const _user = userEvent.setup();
       const onChange = vi.fn();
       render(<SettingsView onSettingsChange={onChange} />);
 

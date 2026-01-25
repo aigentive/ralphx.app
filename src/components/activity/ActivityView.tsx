@@ -1,17 +1,36 @@
 /**
  * ActivityView - Real-time agent execution monitoring
  *
- * Features:
- * - Agent thinking and actions display
- * - Expandable tool call details (inputs/outputs)
- * - Scrollable history with auto-scroll to new messages
- * - Search/filter by tool name or action type
- * - Similar to Claude Desktop execution panel
+ * Premium design with:
+ * - Glass effect header with Activity icon and alert badge
+ * - Search input with filter tabs
+ * - Type-specific styling (left border, background tint)
+ * - Expandable details with JSON syntax highlighting
+ * - Auto-scroll behavior with "Scroll to latest" banner
+ * - Lucide icons throughout
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useActivityStore } from "@/stores/activityStore";
 import type { AgentMessageEvent } from "@/types/events";
+import {
+  Activity,
+  Brain,
+  Terminal,
+  CheckCircle,
+  MessageSquare,
+  AlertCircle,
+  Search,
+  X,
+  Copy,
+  Check,
+  ChevronDown,
+  Trash2,
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Types
@@ -20,6 +39,10 @@ import type { AgentMessageEvent } from "@/types/events";
 type MessageTypeFilter = "all" | "thinking" | "tool_call" | "tool_result" | "text" | "error";
 
 interface ExpandedState {
+  [key: string]: boolean;
+}
+
+interface CopiedState {
   [key: string]: boolean;
 }
 
@@ -37,105 +60,21 @@ const MESSAGE_TYPES: { key: MessageTypeFilter; label: string }[] = [
 ];
 
 // ============================================================================
-// Icons
-// ============================================================================
-
-function SearchIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-// ChevronRightIcon available for future use if needed
-// function ChevronRightIcon() {
-//   return (
-//     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-//       <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-//     </svg>
-//   );
-// }
-
-function ThinkingIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
-      <circle cx="5" cy="7" r="1" fill="currentColor" />
-      <circle cx="9" cy="7" r="1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function ToolIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M8.5 5.5L12.5 1.5M12.5 1.5L11 1L12.5 1.5L13 3M12.5 1.5L11 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7 7L1.5 12.5L1.5 12.5C1.22 12.78 1.22 13.22 1.5 13.5C1.78 13.78 2.22 13.78 2.5 13.5L8 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="7.5" cy="6.5" r="2.5" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function ResultIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="1.5" y="2.5" width="11" height="9" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4 6h6M4 8.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TextIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M2 3h10M2 7h8M2 11h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ErrorIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M7 4v3M7 9v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ClearIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-// ============================================================================
 // Utility Functions
 // ============================================================================
 
 function getMessageIcon(type: AgentMessageEvent["type"]) {
   switch (type) {
     case "thinking":
-      return <ThinkingIcon />;
+      return <Brain className="w-4 h-4 thinking-icon" />;
     case "tool_call":
-      return <ToolIcon />;
+      return <Terminal className="w-4 h-4" />;
     case "tool_result":
-      return <ResultIcon />;
+      return <CheckCircle className="w-4 h-4" />;
     case "text":
-      return <TextIcon />;
+      return <MessageSquare className="w-4 h-4" />;
     case "error":
-      return <ErrorIcon />;
+      return <AlertCircle className="w-4 h-4" />;
   }
 }
 
@@ -157,23 +96,24 @@ function getMessageColor(type: AgentMessageEvent["type"]) {
 function getMessageBgColor(type: AgentMessageEvent["type"]) {
   switch (type) {
     case "thinking":
-      return "rgba(128, 128, 128, 0.1)";
+      return "rgba(128, 128, 128, 0.08)";
     case "tool_call":
-      return "rgba(255, 107, 53, 0.1)";
+      return "rgba(255, 107, 53, 0.08)";
     case "tool_result":
-      return "rgba(34, 197, 94, 0.1)";
+      return "rgba(34, 197, 94, 0.08)";
     case "text":
-      return "rgba(128, 128, 128, 0.05)";
+      return "rgba(128, 128, 128, 0.04)";
     case "error":
       return "rgba(239, 68, 68, 0.1)";
   }
 }
 
 function formatTimestamp(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], {
+  return new Date(timestamp).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
   });
 }
 
@@ -185,6 +125,81 @@ function getToolName(content: string): string | null {
 
 function generateMessageKey(msg: AgentMessageEvent, index: number): string {
   return `${msg.taskId}-${msg.timestamp}-${index}`;
+}
+
+/**
+ * Simple JSON syntax highlighter
+ * Colorizes keys, strings, numbers, booleans, and null values
+ */
+function highlightJSON(json: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  let key = 0;
+
+  // Match patterns: strings, numbers, booleans, null, keys, brackets/braces
+  const regex = /("(?:[^"\\]|\\.)*")\s*:|("(?:[^"\\]|\\.)*")|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)|(\btrue\b|\bfalse\b)|(\bnull\b)|([[\]{}:,])/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(json)) !== null) {
+    // Add any text before the match
+    if (match.index > lastIndex) {
+      parts.push(<span key={key++}>{json.slice(lastIndex, match.index)}</span>);
+    }
+
+    if (match[1]) {
+      // Key (with colon)
+      parts.push(
+        <span key={key++} style={{ color: "#f0f0f0" }}>
+          {match[1]}
+        </span>
+      );
+      parts.push(<span key={key++} style={{ color: "var(--text-muted)" }}>:</span>);
+    } else if (match[2]) {
+      // String value
+      parts.push(
+        <span key={key++} style={{ color: "#a5d6a7" }}>
+          {match[2]}
+        </span>
+      );
+    } else if (match[3]) {
+      // Number
+      parts.push(
+        <span key={key++} style={{ color: "#ffcc80" }}>
+          {match[3]}
+        </span>
+      );
+    } else if (match[4]) {
+      // Boolean
+      parts.push(
+        <span key={key++} style={{ color: "#81d4fa" }}>
+          {match[4]}
+        </span>
+      );
+    } else if (match[5]) {
+      // Null
+      parts.push(
+        <span key={key++} style={{ color: "#ce93d8" }}>
+          {match[5]}
+        </span>
+      );
+    } else if (match[6]) {
+      // Brackets, braces, colons, commas
+      parts.push(
+        <span key={key++} style={{ color: "var(--text-muted)" }}>
+          {match[6]}
+        </span>
+      );
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  // Add any remaining text
+  if (lastIndex < json.length) {
+    parts.push(<span key={key++}>{json.slice(lastIndex)}</span>);
+  }
+
+  return parts;
 }
 
 // ============================================================================
@@ -199,7 +214,7 @@ function FilterTabs({
   onChange: (filter: MessageTypeFilter) => void;
 }) {
   return (
-    <div className="flex gap-1 p-1 rounded-lg overflow-x-auto" style={{ backgroundColor: "var(--bg-base)" }}>
+    <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-base)] overflow-x-auto">
       {MESSAGE_TYPES.map(({ key, label }) => {
         const isActive = active === key;
         return (
@@ -208,12 +223,12 @@ function FilterTabs({
             role="tab"
             data-active={isActive ? "true" : "false"}
             onClick={() => onChange(key)}
-            className="px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap border"
-            style={{
-              backgroundColor: isActive ? "var(--bg-elevated)" : "transparent",
-              color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-              borderColor: isActive ? "var(--border-subtle)" : "transparent",
-            }}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+              isActive
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent"
+            )}
           >
             {label}
           </button>
@@ -233,34 +248,23 @@ function SearchBar({
   onClear: () => void;
 }) {
   return (
-    <div className="relative flex-1">
-      <span
-        className="absolute left-3 top-1/2 -translate-y-1/2"
-        style={{ color: "var(--text-muted)" }}
-      >
-        <SearchIcon />
-      </span>
-      <input
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+      <Input
         type="text"
         data-testid="activity-search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search activities..."
-        className="w-full pl-10 pr-8 py-2 text-sm rounded-lg outline-none"
-        style={{
-          backgroundColor: "var(--bg-elevated)",
-          color: "var(--text-primary)",
-          border: "1px solid var(--border-subtle)",
-        }}
+        className="pl-10 pr-8 h-9 bg-[var(--bg-elevated)] border-[var(--border-default)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)]/30"
       />
       {value && (
         <button
           onClick={onClear}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/5"
-          style={{ color: "var(--text-muted)" }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/5 text-[var(--text-muted)]"
           aria-label="Clear search"
         >
-          <ClearIcon />
+          <X className="w-4 h-4" />
         </button>
       )}
     </div>
@@ -273,33 +277,13 @@ function EmptyState({ hasFilter }: { hasFilter: boolean }) {
       data-testid="activity-empty"
       className="flex flex-col items-center justify-center h-full p-8 text-center"
     >
-      <svg
-        width="48"
-        height="48"
-        viewBox="0 0 48 48"
-        fill="none"
-        className="mb-4"
-        style={{ color: "var(--text-muted)" }}
-      >
-        <circle
-          cx="24"
-          cy="24"
-          r="20"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeDasharray="4 4"
-        />
-        <path
-          d="M14 24H34M14 18H30M14 30H26"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-      <p style={{ color: "var(--text-secondary)" }}>
+      <div className="mb-4 opacity-50">
+        <Activity className="w-12 h-12 text-[var(--text-muted)]" strokeDasharray="4 4" />
+      </div>
+      <p className="text-[var(--text-secondary)]">
         {hasFilter ? "No matching activities" : "No activity yet"}
       </p>
-      <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+      <p className="text-sm text-[var(--text-muted)] mt-1">
         {hasFilter
           ? "Try adjusting your search or filters"
           : "Agent activity will appear here when tasks are running"}
@@ -312,9 +296,17 @@ interface ActivityMessageProps {
   message: AgentMessageEvent;
   isExpanded: boolean;
   onToggle: () => void;
+  copied: boolean;
+  onCopy: () => void;
 }
 
-function ActivityMessage({ message, isExpanded, onToggle }: ActivityMessageProps) {
+function ActivityMessage({
+  message,
+  isExpanded,
+  onToggle,
+  copied,
+  onCopy,
+}: ActivityMessageProps) {
   const { type, content, timestamp, metadata } = message;
   const hasDetails = type === "tool_call" || type === "tool_result" || metadata;
   const toolName = getToolName(content);
@@ -323,6 +315,17 @@ function ActivityMessage({ message, isExpanded, onToggle }: ActivityMessageProps
   const displayContent = content.length > 200 && !isExpanded
     ? content.slice(0, 200) + "..."
     : content;
+
+  const handleCopy = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (metadata) {
+        navigator.clipboard.writeText(JSON.stringify(metadata, null, 2));
+        onCopy();
+      }
+    },
+    [metadata, onCopy]
+  );
 
   return (
     <div
@@ -336,25 +339,25 @@ function ActivityMessage({ message, isExpanded, onToggle }: ActivityMessageProps
     >
       {/* Header */}
       <div
-        className="flex items-start gap-3 px-3 py-2 cursor-pointer select-none"
+        className={cn(
+          "flex items-start gap-3 px-3 py-2.5 select-none",
+          hasDetails && "cursor-pointer hover:bg-white/[0.02]"
+        )}
         onClick={hasDetails ? onToggle : undefined}
       >
         {/* Expand/Collapse Icon */}
         {hasDetails && (
-          <span
-            className="mt-0.5 transition-transform"
-            style={{
-              color: "var(--text-muted)",
-              transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)",
-            }}
-          >
-            <ChevronDownIcon />
-          </span>
+          <ChevronDown
+            className={cn(
+              "w-3 h-3 mt-1 text-[var(--text-muted)] transition-transform shrink-0",
+              !isExpanded && "-rotate-90"
+            )}
+          />
         )}
-        {!hasDetails && <span className="w-3" />}
+        {!hasDetails && <span className="w-3 shrink-0" />}
 
         {/* Type Icon */}
-        <span className="mt-0.5" style={{ color: getMessageColor(type) }}>
+        <span className="mt-0.5 shrink-0" style={{ color: getMessageColor(type) }}>
           {getMessageIcon(type)}
         </span>
 
@@ -363,60 +366,48 @@ function ActivityMessage({ message, isExpanded, onToggle }: ActivityMessageProps
           <div className="flex items-center gap-2 mb-1">
             {toolName && (
               <span
-                className="text-xs font-mono px-1.5 py-0.5 rounded"
-                style={{
-                  backgroundColor: "var(--bg-base)",
-                  color: getMessageColor(type),
-                }}
+                className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--bg-base)]"
+                style={{ color: getMessageColor(type) }}
               >
                 {toolName}
               </span>
             )}
-            <span
-              className="text-xs capitalize"
-              style={{ color: "var(--text-muted)" }}
-            >
+            <span className="text-xs text-[var(--text-muted)] capitalize">
               {type.replace("_", " ")}
             </span>
           </div>
-          <p
-            className="text-sm whitespace-pre-wrap break-words"
-            style={{ color: "var(--text-primary)" }}
-          >
+          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
             {displayContent}
           </p>
         </div>
 
         {/* Timestamp */}
-        <span
-          className="text-xs shrink-0 ml-2"
-          style={{ color: "var(--text-muted)" }}
-        >
+        <span className="text-xs text-[var(--text-muted)] shrink-0 ml-2">
           {formatTimestamp(timestamp)}
         </span>
       </div>
 
       {/* Expanded Details */}
       {hasDetails && isExpanded && metadata && (
-        <div
-          className="px-3 pb-3 ml-9 mr-3"
-          style={{ borderTop: "1px solid var(--border-subtle)" }}
-        >
-          <div className="pt-2">
-            <p
-              className="text-xs font-medium mb-1"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Details
-            </p>
-            <pre
-              className="text-xs p-2 rounded overflow-x-auto"
-              style={{
-                backgroundColor: "var(--bg-base)",
-                color: "var(--text-secondary)",
-              }}
-            >
-              {JSON.stringify(metadata, null, 2)}
+        <div className="ml-9 mr-3 pb-3 border-t border-[var(--border-subtle)]">
+          <div className="pt-3 relative">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-[var(--text-muted)]">Details</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 hover:bg-[var(--bg-hover)]"
+                onClick={handleCopy}
+              >
+                {copied ? (
+                  <Check className="w-3.5 h-3.5 text-[var(--status-success)]" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                )}
+              </Button>
+            </div>
+            <pre className="text-xs font-mono p-3 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[300px] overflow-y-auto">
+              {highlightJSON(JSON.stringify(metadata, null, 2))}
             </pre>
           </div>
         </div>
@@ -444,6 +435,7 @@ export function ActivityView({ taskId, showHeader = true }: ActivityViewProps) {
   const [typeFilter, setTypeFilter] = useState<MessageTypeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expanded, setExpanded] = useState<ExpandedState>({});
+  const [copied, setCopied] = useState<CopiedState>({});
   const [autoScroll, setAutoScroll] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -500,6 +492,14 @@ export function ActivityView({ taskId, showHeader = true }: ActivityViewProps) {
     }));
   }, []);
 
+  // Handle copy with visual feedback
+  const handleCopy = useCallback((key: string) => {
+    setCopied((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setCopied((prev) => ({ ...prev, [key]: false }));
+    }, 2000);
+  }, []);
+
   // Clear search
   const handleClearSearch = useCallback(() => {
     setSearchQuery("");
@@ -514,50 +514,43 @@ export function ActivityView({ taskId, showHeader = true }: ActivityViewProps) {
     <div
       data-testid="activity-view"
       className="flex flex-col h-full"
-      style={{ backgroundColor: "var(--bg-surface)" }}
+      style={{
+        backgroundColor: "var(--bg-surface)",
+        background: "radial-gradient(ellipse at bottom left, rgba(255,107,53,0.015) 0%, var(--bg-surface) 50%)",
+      }}
     >
-      {/* Header */}
+      {/* Header - Glass Effect */}
       {showHeader && (
-        <div
-          className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
+        <div className="flex items-center justify-between px-4 py-3 backdrop-blur-md bg-[rgba(26,26,26,0.85)] border-b border-[var(--border-subtle)]">
           <div className="flex items-center gap-3">
-            <h2
-              className="text-lg font-semibold"
-              style={{ color: "var(--text-primary)" }}
-            >
+            <div className="p-1.5 rounded-lg bg-[var(--accent-muted)]">
+              <Activity className="w-5 h-5 text-[var(--accent-primary)]" />
+            </div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
               Activity
             </h2>
             {alertCount > 0 && (
-              <span
-                className="px-2 py-0.5 text-xs font-medium rounded-full"
-                style={{
-                  backgroundColor: "var(--status-error)",
-                  color: "white",
-                }}
-              >
+              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-[var(--status-error)] text-white">
                 {alertCount} alert{alertCount > 1 ? "s" : ""}
               </span>
             )}
           </div>
-          <button
+          <Button
             data-testid="activity-clear"
+            variant="ghost"
+            size="sm"
             onClick={clearMessages}
-            className="text-sm px-3 py-1.5 rounded-md transition-colors"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--text-secondary)",
-            }}
             disabled={messages.length === 0}
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-50"
           >
+            <Trash2 className="w-4 h-4 mr-1.5" />
             Clear
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Search and Filters */}
-      <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: "var(--border-subtle)" }}>
+      <div className="px-4 py-3 border-b border-[var(--border-subtle)] space-y-3">
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
@@ -567,51 +560,64 @@ export function ActivityView({ taskId, showHeader = true }: ActivityViewProps) {
       </div>
 
       {/* Messages List */}
-      <div
+      <ScrollArea
         ref={containerRef}
         data-testid="activity-messages"
-        className="flex-1 overflow-y-auto p-4 space-y-2"
+        className="flex-1"
         onScroll={handleScroll}
       >
-        {isEmpty ? (
-          <EmptyState hasFilter={hasFilter} />
-        ) : (
-          <>
-            {filteredMessages.map((msg, index) => {
-              const key = generateMessageKey(msg, index);
-              return (
-                <ActivityMessage
-                  key={key}
-                  message={msg}
-                  isExpanded={expanded[key] ?? false}
-                  onToggle={() => toggleExpanded(key)}
-                />
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
+        <div className="p-4 space-y-2">
+          {isEmpty ? (
+            <EmptyState hasFilter={hasFilter} />
+          ) : (
+            <>
+              {filteredMessages.map((msg, index) => {
+                const key = generateMessageKey(msg, index);
+                return (
+                  <ActivityMessage
+                    key={key}
+                    message={msg}
+                    isExpanded={expanded[key] ?? false}
+                    onToggle={() => toggleExpanded(key)}
+                    copied={copied[key] ?? false}
+                    onCopy={() => handleCopy(key)}
+                  />
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
+      </ScrollArea>
 
-      {/* Auto-scroll indicator */}
+      {/* Scroll to Bottom Banner */}
       {!autoScroll && filteredMessages.length > 0 && (
-        <div className="px-4 py-2 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-          <button
+        <div className="border-t border-[var(--border-subtle)] px-4 py-2">
+          <Button
             data-testid="activity-scroll-to-bottom"
+            variant="ghost"
+            className="w-full text-sm text-[var(--accent-primary)] hover:bg-[var(--bg-hover)]"
             onClick={() => {
               setAutoScroll(true);
               messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }}
-            className="w-full text-sm py-2 rounded-md transition-colors"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--accent-primary)",
-            }}
           >
+            <ChevronDown className="w-4 h-4 mr-1.5" />
             Scroll to latest
-          </button>
+          </Button>
         </div>
       )}
+
+      {/* Thinking Animation Styles */}
+      <style>{`
+        @keyframes thinking-pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 1; }
+        }
+        .thinking-icon {
+          animation: thinking-pulse 1.5s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }
