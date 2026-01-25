@@ -15,6 +15,7 @@ pub use application::AppState;
 pub use error::{AppError, AppResult};
 
 use std::sync::Arc;
+use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -24,16 +25,6 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Create application state with production SQLite repositories
-    let app_state = AppState::new_production().expect("Failed to initialize AppState");
-
-    // Start HTTP server for MCP proxy on port 3847
-    // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
-    let http_state = Arc::new(AppState::new_production().expect("Failed to initialize AppState for HTTP server"));
-    tauri::async_runtime::spawn(async move {
-        http_server::start_http_server(http_state).await;
-    });
-
     // Create execution state for global execution control
     let execution_state = Arc::new(commands::ExecutionState::new());
 
@@ -41,7 +32,27 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(app_state)
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+
+            // Create application state with production SQLite repositories
+            let app_state =
+                AppState::new_production(app_handle.clone()).expect("Failed to initialize AppState");
+
+            // Start HTTP server for MCP proxy on port 3847
+            // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
+            let http_state = Arc::new(
+                AppState::new_production(app_handle).expect("Failed to initialize AppState for HTTP server"),
+            );
+            tauri::async_runtime::spawn(async move {
+                http_server::start_http_server(http_state).await;
+            });
+
+            // Register app_state with Tauri's state management
+            app.manage(app_state);
+
+            Ok(())
+        })
         .manage(execution_state)
         .invoke_handler(tauri::generate_handler![
             greet,
