@@ -64,10 +64,10 @@ pub struct TaskProposal {
 }
 ```
 
-#### 2. Add Settings Field
+#### 2. Add Ideation Settings Module
 
 ```rust
-// src-tauri/src/domain/qa/config.rs (or new settings module)
+// src-tauri/src/domain/ideation/config.rs (NEW FILE - separate from QA)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IdeationPlanMode {
@@ -82,6 +82,27 @@ pub enum IdeationPlanMode {
 impl Default for IdeationPlanMode {
     fn default() -> Self {
         Self::Optional  // Default to optional
+    }
+}
+
+/// Ideation-specific settings (separate from QA settings)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IdeationSettings {
+    /// How implementation plans are created in ideation flow
+    pub plan_mode: IdeationPlanMode,
+    /// Whether to show plan suggestions for complex features (in Optional mode)
+    pub suggest_plans_for_complex: bool,
+    /// Auto-link proposals to session plan when created
+    pub auto_link_proposals: bool,
+}
+
+impl Default for IdeationSettings {
+    fn default() -> Self {
+        Self {
+            plan_mode: IdeationPlanMode::Optional,
+            suggest_plans_for_complex: true,
+            auto_link_proposals: true,
+        }
     }
 }
 ```
@@ -241,12 +262,16 @@ Orchestrator: Analyzes changes, suggests proposal updates
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### Settings Panel Addition
+#### Settings Panel - New Ideation Section
+
+SettingsView currently has 4 sections: Execution, Model, Review, Supervisor.
+Add a 5th section for **Ideation** (with Lightbulb icon):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Ideation                                                        │
+│  💡 Ideation                                                     │
 ├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
 │  Plan Workflow Mode                                              │
 │  Control when implementation plans are created                   │
 │                                                                  │
@@ -255,6 +280,17 @@ Orchestrator: Analyzes changes, suggests proposal updates
 │  │ ● Optional - Plan suggested for complex features (Default)  ││
 │  │ ○ Parallel - Plan and proposals created together            ││
 │  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ ☑ Suggest plans for complex features                        ││
+│  │   When in Optional mode, prompt user for complex features   ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ ☑ Auto-link proposals to session plan                       ││
+│  │   Automatically set plan reference when creating proposals  ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -265,10 +301,12 @@ Orchestrator: Analyzes changes, suggests proposal updates
 ### Phase 1: Data Model & Backend
 
 1. Add `plan_artifact_id` to `TaskProposal` entity
-2. Add database migration
-3. Update `IdeationService` with plan-related methods
-4. Add `IdeationPlanMode` to settings
-5. Implement settings persistence (SQLite)
+2. Create `src-tauri/src/domain/ideation/config.rs` with `IdeationSettings`, `IdeationPlanMode`
+3. Create `IdeationSettingsRepository` trait
+4. Implement `SqliteIdeationSettingsRepository`
+5. Add database migration for `plan_artifact_id` column and `ideation_settings` table
+6. Update `IdeationService` with plan-related methods
+7. Add ideation settings to `AppState`
 
 ### Phase 2: MCP Tools & HTTP API
 
@@ -293,9 +331,12 @@ Orchestrator: Analyzes changes, suggests proposal updates
 
 ### Phase 5: Frontend - Settings
 
-1. Add `IdeationPlanMode` selector to SettingsView
-2. Wire up to settings store and backend
-3. Add settings persistence hook
+1. Create `src/types/ideation-config.ts` with Zod schemas
+2. Create `src/components/settings/IdeationSettingsPanel.tsx`
+3. Add Ideation section (5th card with Lightbulb icon) to SettingsView
+4. Create `src/hooks/useIdeationSettings.ts` for TanStack Query integration
+5. Add ideation settings state to ideationStore
+6. Wire up settings API calls
 
 ### Phase 6: Proactive Sync (Artifact Flow)
 
@@ -320,12 +361,13 @@ Orchestrator: Analyzes changes, suggests proposal updates
 | File | Changes |
 |------|---------|
 | `src-tauri/src/domain/entities/ideation.rs` | Add `plan_artifact_id` to `TaskProposal` |
-| `src-tauri/src/domain/entities/settings.rs` | New file for `IdeationPlanMode` |
-| `src-tauri/src/infrastructure/sqlite/migrations.rs` | Add migration for `plan_artifact_id` |
+| `src-tauri/src/domain/ideation/config.rs` | **New file** for `IdeationSettings`, `IdeationPlanMode` |
+| `src-tauri/src/domain/ideation/mod.rs` | **New module** exporting ideation config |
+| `src-tauri/src/infrastructure/sqlite/migrations.rs` | Add migration for `plan_artifact_id` + `ideation_settings` table |
 | `src-tauri/src/application/ideation_service.rs` | Add plan-related methods |
-| `src-tauri/src/commands/ideation_commands.rs` | Add plan-related commands |
-| `src-tauri/src/commands/settings_commands.rs` | Add/update settings commands |
-| `src-tauri/src/infrastructure/sqlite/sqlite_settings_repo.rs` | New file for settings persistence |
+| `src-tauri/src/commands/ideation_commands.rs` | Add plan-related commands + settings commands |
+| `src-tauri/src/infrastructure/sqlite/sqlite_ideation_settings_repo.rs` | **New file** for ideation settings persistence |
+| `src-tauri/src/domain/repositories/ideation_settings_repository.rs` | **New file** for repository trait |
 
 ### MCP Server (TypeScript)
 
@@ -339,14 +381,16 @@ Orchestrator: Analyzes changes, suggests proposal updates
 
 | File | Changes |
 |------|---------|
-| `src/types/ideation.ts` | Add `planArtifactId` to `TaskProposal` |
-| `src/types/settings.ts` | Add `IdeationPlanMode` type |
+| `src/types/ideation.ts` | Add `planArtifactId` to `TaskProposal`, add `IdeationSettings` |
+| `src/types/ideation-config.ts` | **New file** for `IdeationPlanMode`, `IdeationSettings` schemas |
 | `src/components/Ideation/IdeationView.tsx` | Add plan display section |
-| `src/components/Ideation/PlanEditor.tsx` | New file for plan editing |
-| `src/components/Ideation/PlanDisplay.tsx` | New file for plan display |
-| `src/components/settings/SettingsView.tsx` | Add ideation plan mode setting |
-| `src/api/ideation.ts` | Add plan-related API calls |
-| `src/stores/ideationStore.ts` | Add plan artifact state |
+| `src/components/Ideation/PlanEditor.tsx` | **New file** for plan editing |
+| `src/components/Ideation/PlanDisplay.tsx` | **New file** for plan display |
+| `src/components/settings/SettingsView.tsx` | Add new Ideation section (5th card) |
+| `src/components/settings/IdeationSettingsPanel.tsx` | **New file** for ideation settings UI |
+| `src/api/ideation.ts` | Add plan-related + settings API calls |
+| `src/stores/ideationStore.ts` | Add plan artifact state + ideation settings |
+| `src/hooks/useIdeationSettings.ts` | **New file** for ideation settings hook |
 
 ### Plugin (Agent Definition)
 
@@ -454,19 +498,21 @@ Orchestrator: Analyzes changes, suggests proposal updates
 
 ---
 
-### 7. Settings Persistence Priority
+### 7. Settings Module Architecture
 
-**Question:** Should we implement full settings persistence now or defer?
+**Question:** Should ideation settings follow the existing QA settings pattern (in-memory) or implement proper persistence?
 
 **Options:**
-- A) Implement now - All settings to SQLite
-- B) Partial - Just `IdeationPlanMode` to SQLite
-- C) Defer - Store in localStorage via frontend (temporary)
+- A) In-memory only (like QA) - Fast to implement, resets on app restart
+- B) SQLite persistence - Proper separate `ideation_settings` table
+- C) Unified settings system - Create a general settings framework for all modules
 
 **Considerations:**
-- Option A is most complete but more work
-- Option B is focused on this feature
-- Option C is fastest but technical debt
+- Option A matches current QA pattern but has same limitation (no persistence)
+- Option B is proper solution for ideation specifically
+- Option C would be ideal long-term but scope creep for this feature
+
+**Recommendation:** Option B - Implement proper SQLite persistence for ideation settings as a separate module. This becomes the pattern for future settings modules and doesn't touch QA settings.
 
 ---
 
