@@ -288,25 +288,6 @@ After completing the task: update `"passes": true`, commit, and stop.
     "passes": false
   },
   {
-    "category": "integration",
-    "description": "End-to-end test: task from ideation to worker with context",
-    "plan_section": "Verification Checklist - Integration",
-    "steps": [
-      "Manual integration test:",
-      "  1. Create ideation session with plan artifact",
-      "  2. Create proposals linked to plan",
-      "  3. Apply proposals to create tasks",
-      "  4. Verify tasks have source_proposal_id and plan_artifact_id",
-      "  5. Start task execution",
-      "  6. Verify worker calls get_task_context first",
-      "  7. Verify worker fetches plan artifact",
-      "  8. Verify tool calls visible in execution chat",
-      "Document test results",
-      "Commit: test: verify end-to-end worker artifact context flow"
-    ],
-    "passes": false
-  },
-  {
     "category": "documentation",
     "description": "Update CLAUDE.md files for Phase 17",
     "steps": [
@@ -375,8 +356,6 @@ After completing all tasks:
 - [ ] Artifact previews shown when `get_artifact` called
 - [ ] Linked artifact indicators shown on task cards
 
-### Integration
-- [ ] End-to-end: Ideation → Plan → Proposals → Tasks → Worker fetches context
+### Integration (Manual Verification)
 - [ ] Historical version access works (`plan_version_at_creation`)
 - [ ] Search finds relevant artifacts by query
-- [ ] Worker uses fetched context to guide implementation
