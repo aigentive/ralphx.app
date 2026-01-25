@@ -1,14 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 09:45:00
+**Last Updated:** 2026-01-26 01:34:47
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 7 / 26
-**Current Task:** Add Tauri commands for permission resolution
+**Tasks Completed:** 8 / 26
+**Current Task:** Update ClaudeCodeClient to use --permission-prompt-tool flag
 
 ---
 
 ## Session Log
+
+### 2026-01-26 01:34:47 - Permission Bridge: Tauri Commands Implementation
+
+**What was done:**
+- Created `src-tauri/src/commands/permission_commands.rs`:
+  - `resolve_permission_request(request_id, decision, message)`: resolves pending permission requests with user decision
+  - `get_pending_permissions()`: returns Vec<PendingPermissionInfo> for frontend to retrieve pending requests
+  - Unit tests for serialization/deserialization
+- Updated `src-tauri/src/application/permission_state.rs`:
+  - Added `PendingPermissionInfo` struct for storing request metadata
+  - Added `PendingPermissionRequest` struct combining metadata with signaling channel
+  - Changed pending map from `HashMap<String, watch::Sender>` to `HashMap<String, PendingPermissionRequest>`
+  - Added helper methods: `register()`, `resolve()`, `remove()`, `get_pending_info()`
+  - Updated tests to use new helper methods
+- Updated `src-tauri/src/http_server.rs`:
+  - Refactored `request_permission` to use `permission_state.register()`
+  - Refactored `await_permission` to use `permission_state.remove()`
+  - Refactored `resolve_permission` to use `permission_state.resolve()`
+- Registered new commands in `lib.rs` invoke_handler
+- Updated `commands/mod.rs` to export new module and types
+
+**Implementation details:**
+- PermissionState now stores full request metadata (tool_name, tool_input, context) alongside the watch::Sender
+- Frontend can retrieve pending permissions via get_pending_permissions() for cases where events were missed
+- Library compiles successfully (pre-existing test compilation errors in other modules remain)
+
+**Commands run:**
+- `cargo check --lib` (successful)
+- `git commit` with all permission-related changes
+
+---
 
 ### 2026-01-26 09:45:00 - Permission Bridge: Tauri Backend Implementation
 
