@@ -1,8 +1,10 @@
 // Domain entities - pure Rust types with no external dependencies
 // These represent the core business objects of RalphX
 
+pub mod agent_run;
 pub mod artifact;
 pub mod artifact_flow;
+pub mod chat_conversation;
 pub mod ideation;
 pub mod methodology;
 pub mod research;
@@ -58,3 +60,5 @@ pub use methodology::{
     MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyStatus, MethodologyTemplate,
     ParseMethodologyStatusError,
 };
+pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
+pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus};
