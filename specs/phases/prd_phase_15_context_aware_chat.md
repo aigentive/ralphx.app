@@ -114,11 +114,12 @@ After completing the task: update `"passes": true`, commit, and stop.
     "description": "Create RalphX MCP Server (TypeScript proxy)",
     "plan_section": "1. Create RalphX MCP Server (Proxy to Tauri Backend)",
     "steps": [
+      "FIRST: Use the mcp-builder skill by running: /mcp-builder",
       "Read specs/plans/context_aware_chat_implementation.md section '1. Create RalphX MCP Server'",
       "Create ralphx-mcp-server/ directory",
       "Create package.json with @modelcontextprotocol/sdk dependency",
       "Create tsconfig.json",
-      "Create src/index.ts - MCP server entry point",
+      "Create src/index.ts - MCP server entry point (follow mcp-builder guidance)",
       "Create src/tauri-client.ts - HTTP client to call Tauri backend",
       "Create src/tools.ts - Tool definitions (create_task_proposal, update_task, add_task_note, complete_review, etc.)",
       "All tools forward to Tauri backend via HTTP (no business logic in MCP server)",
@@ -132,6 +133,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "description": "Implement MCP tool scoping based on agent type",
     "plan_section": "MCP Tool Scoping",
     "steps": [
+      "Reference the mcp-builder skill (/mcp-builder) for MCP best practices if needed",
       "Read specs/plans/context_aware_chat_implementation.md section 'MCP Tool Scoping'",
       "Add TOOL_ALLOWLIST constant to ralphx-mcp-server/src/tools.ts or index.ts:",
       "  - orchestrator-ideation: [create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency]",
@@ -154,6 +156,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "description": "Add permission_request tool to MCP server for UI-based permission handling",
     "plan_section": "Permission Bridge System - Permission Handler MCP Tool",
     "steps": [
+      "Reference the mcp-builder skill (/mcp-builder) for MCP tool best practices",
       "Read specs/plans/context_aware_chat_implementation/permission_bridge.md",
       "Create ralphx-mcp-server/src/permission-handler.ts:",
       "  - Export permissionRequestTool definition (name: 'permission_request')",
@@ -285,7 +288,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify orchestrator-ideation.md agent exists and documents its allowed MCP tools",
       "Note: MCP tools are scoped per agent via RALPHX_AGENT_TYPE - see MCP Tool Scoping section",
       "Test agent invocation: claude --agent chat-task --plugin-dir ./ralphx-plugin -p 'test'",
-      "Commit: feat(plugin): configure MCP server and create chat agents"
+      "Commit: feat(plugin): configure MCP server and create chat agents",
+      "STOP: Output <promise>COMPLETE</promise> - Next task (orchestrator refactor) is high-complexity, consider switching to Opus"
     ],
     "passes": false
   },
@@ -306,7 +310,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Emit Tauri events: chat:message_created, chat:chunk, chat:tool_call, chat:run_completed",
       "Write tests for session capture and resume logic",
       "Run cargo test",
-      "Commit: refactor(orchestrator): delegate tools to MCP, add --resume support, pass agent type for tool scoping"
+      "Commit: refactor(orchestrator): delegate tools to MCP, add --resume support, pass agent type for tool scoping",
+      "STOP: Output <promise>COMPLETE</promise> - High-complexity task complete, can switch back to Sonnet"
     ],
     "passes": false
   },

@@ -181,6 +181,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "description": "Add plan artifact tools to MCP server",
     "plan_section": "MCP Tools for Plan Management",
     "steps": [
+      "Reference the mcp-builder skill (/mcp-builder) for MCP tool best practices",
       "Read specs/plans/ideation_plan_artifacts.md section 'MCP Tools for Plan Management'",
       "Create ralphx-mcp-server/src/plan-tools.ts with tool definitions:",
       "  - create_plan_artifact (session_id, title, content)",
@@ -346,7 +347,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Add planArtifact state",
       "  - Add fetchPlanArtifact action",
       "Run npm run lint && npm run typecheck",
-      "Commit: feat(ideation): integrate plan display in IdeationView"
+      "Commit: feat(ideation): integrate plan display in IdeationView",
+      "STOP: Output <promise>COMPLETE</promise> - Next task (proactive sync ArtifactFlow) is high-complexity event-driven, consider switching to Opus"
     ],
     "passes": false
   },
@@ -363,7 +365,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Register flow in ArtifactFlow engine",
       "Write tests for flow trigger and execution",
       "Run cargo test",
-      "Commit: feat(artifact-flow): add plan_updated_sync for proactive proposal updates"
+      "Commit: feat(artifact-flow): add plan_updated_sync for proactive proposal updates",
+      "STOP: Output <promise>COMPLETE</promise> - High-complexity task complete, can switch back to Sonnet"
     ],
     "passes": false
   },

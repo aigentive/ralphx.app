@@ -155,6 +155,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "description": "Add worker context tools to MCP server",
     "plan_section": "Tool Specifications",
     "steps": [
+      "Reference the mcp-builder skill (/mcp-builder) for MCP tool best practices",
       "Read specs/plans/worker_artifact_context.md section 'Tool Specifications'",
       "Create ralphx-mcp-server/src/tools/worker-context-tools.ts:",
       "  - get_task_context tool (task_id -> TaskContext)",
@@ -174,6 +175,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "description": "Update TOOL_ALLOWLIST for worker agent",
     "plan_section": "MCP Tools for Workers",
     "steps": [
+      "Reference the mcp-builder skill (/mcp-builder) for MCP configuration best practices if needed",
       "Update ralphx-mcp-server/src/tool-allowlist.ts:",
       "  - Add to worker allowlist: get_task_context, get_artifact, get_artifact_version, get_related_artifacts, search_project_artifacts",
       "  - Worker now has 5 MCP tools (previously 0)",

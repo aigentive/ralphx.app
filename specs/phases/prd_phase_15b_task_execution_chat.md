@@ -86,7 +86,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update mod.rs to export new module",
       "Write unit tests for queue operations",
       "Run cargo test",
-      "Commit: feat(domain): add ExecutionMessageQueue for worker message queueing"
+      "Commit: feat(domain): add ExecutionMessageQueue for worker message queueing",
+      "STOP: Output <promise>COMPLETE</promise> - Next tasks (3-5) are high-complexity cross-cutting changes, consider switching to Opus"
     ],
     "passes": false
   },
@@ -147,7 +148,8 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Permission requests during worker execution will trigger PermissionDialog",
       "Ensure backward compatibility (execution still works if service not available)",
       "Run cargo test",
-      "Commit: feat(state-machine): use spawn_with_persistence for worker execution"
+      "Commit: feat(state-machine): use spawn_with_persistence for worker execution",
+      "STOP: Output <promise>COMPLETE</promise> - High-complexity tasks complete, can switch back to Sonnet"
     ],
     "passes": false
   },
