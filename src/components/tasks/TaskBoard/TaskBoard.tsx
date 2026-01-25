@@ -101,13 +101,17 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
       {/* TaskBoard container with radial gradient and scroll-snap */}
       <div
         data-testid="task-board"
-        className="task-board relative flex items-stretch gap-6 px-4 py-6 overflow-x-auto h-full"
+        className="task-board relative flex items-stretch gap-6 py-6 overflow-x-auto h-full"
         style={{
           background:
             "radial-gradient(ellipse at top, rgba(255,107,53,0.03) 0%, var(--bg-base) 50%)",
           scrollSnapType: "x proximity",
+          scrollPaddingLeft: "16px",
         }}
       >
+        {/* Left spacer for scroll padding */}
+        <div className="w-4 flex-shrink-0" aria-hidden="true" />
+
         {columns.map((column) => (
           <Column
             key={column.id}
