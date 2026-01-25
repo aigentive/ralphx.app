@@ -1,14 +1,55 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 07:35:00
+**Last Updated:** 2026-01-25 07:48:00
 **Phase:** Phase 14 (Design Implementation)
-**Tasks Completed:** 12 / 17
-**Current Task:** Implement Project Dialogs premium design
+**Tasks Completed:** 13 / 17
+**Current Task:** Implement Diff Viewer premium design
 
 ---
 
 ## Session Log
+
+### 2026-01-25 07:48:00 - Implement Project Dialogs premium design
+
+**What was done:**
+- Migrated all project dialogs to shadcn Dialog component:
+  - Updated `DialogContent` component to support `hideCloseButton` prop for first-run mode
+  - Added backdrop blur (8px) and scale animation (0.95 → 1.0) to Dialog overlay
+  - Applied premium styling with rounded corners, layered shadows
+- Rewrote `ProjectCreationWizard` component:
+  - Migrated from custom modal to shadcn Dialog
+  - Replaced inline SVG icons with Lucide icons (FolderOpen, AlertTriangle, GitBranch, Loader2)
+  - Implemented radio options for Git Mode selection (Local vs Worktree)
+  - Added form validation with proper error display
+  - Project name is now optional - auto-inferred from selected folder
+  - Implemented first-run mode (no close/cancel buttons)
+- Rewrote `MergeWorkflowDialog` component:
+  - Migrated from custom modal to shadcn Dialog
+  - Added 5 radio options: Merge, Rebase, Create PR, Keep worktree, Discard
+  - Implemented destructive option styling (red) for Discard
+  - Added warning states with AlertTriangle icon
+  - Implemented two-step confirmation for discard action
+  - Replaced SVGs with Lucide icons (CheckCircle, AlertTriangle, GitMerge, GitPullRequest, Trash2, FileDiff, GitCommit, Loader2)
+- Rewrote `TaskRerunDialog` component:
+  - Migrated from custom modal to shadcn Dialog
+  - Added 3 radio options: Keep changes, Revert commit, Create new task
+  - Implemented "Recommended" badge on keep_changes option
+  - Added warning for dependent commits when revert is selected
+  - Displays commit SHA with accent color and monospace font
+  - Replaced SVGs with Lucide icons (RefreshCw, AlertTriangle, Check, Undo, Plus, Loader2)
+- Updated all test files to work with shadcn Dialog structure:
+  - Changed test assertions from `toHaveStyle` to class-based assertions
+  - Updated close button tests to use `screen.getByRole("button", { name: /close/i })`
+  - Removed tests for custom overlay/modal testIds that no longer exist
+
+**Commands run:**
+- `npm run lint` - passed (only pre-existing warnings)
+- `npm run typecheck` - passed
+- Tests: ProjectCreationWizard (41 passed), MergeWorkflowDialog (51 passed), TaskRerunDialog (51 passed)
+- `git commit -m "feat: implement premium Project dialogs design"`
+
+---
 
 ### 2026-01-25 07:35:00 - Implement Project Sidebar premium design
 

@@ -10,6 +10,24 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { Task } from "@/types/task";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  RefreshCw,
+  AlertTriangle,
+  Check,
+  Undo,
+  Plus,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Types
@@ -62,110 +80,6 @@ export interface TaskRerunDialogProps {
 }
 
 // ============================================================================
-// Icons
-// ============================================================================
-
-function CloseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M12 4L4 12M4 4l8 8"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function WarningIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M7 1L13 12H1L7 1z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7 5v3M7 10v.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function RefreshIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M14.5 5.5A6.5 6.5 0 1017 10"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M14 2v4h4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M3 8l4 4 6-8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RevertIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M3 6l3-3M3 6l3 3"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3 6h8a3 3 0 010 6H8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M8 3v10M3 8h10"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-// ============================================================================
 // Option Configuration
 // ============================================================================
 
@@ -184,21 +98,21 @@ const RERUN_OPTIONS: RerunOptionConfig[] = [
     label: "Keep changes, run task again",
     description:
       "AI will see current code state and make additional changes if needed",
-    icon: <CheckIcon />,
+    icon: <Check className="h-4 w-4" />,
     recommended: true,
   },
   {
     value: "revert_commit",
     label: "Revert commit, then run task",
     description: "Undo the previous work before re-executing",
-    icon: <RevertIcon />,
+    icon: <Undo className="h-4 w-4" />,
     warning: true,
   },
   {
     value: "create_new",
     label: "Create new task instead",
     description: "Original task stays completed, new task created",
-    icon: <PlusIcon />,
+    icon: <Plus className="h-4 w-4" />,
   },
 ];
 
@@ -223,22 +137,24 @@ function RadioOption({
 }: RadioOptionProps) {
   const isWarningOption = config.warning && selected && showWarning;
 
+  const borderColor = selected
+    ? isWarningOption
+      ? "var(--status-warning)"
+      : "var(--accent-primary)"
+    : "var(--border-subtle)";
+
   return (
     <label
       data-testid={`rerun-option-${config.value}`}
       data-selected={selected ? "true" : "false"}
-      className={`flex gap-3 p-3 rounded-lg transition-colors ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      }`}
+      className={cn(
+        "flex gap-3 p-3 rounded-lg transition-colors",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+        !selected && !disabled && "hover:bg-[var(--bg-hover)]"
+      )}
       style={{
         backgroundColor: selected ? "var(--bg-elevated)" : "transparent",
-        border: `1px solid ${
-          selected
-            ? isWarningOption
-              ? "var(--status-warning)"
-              : "var(--accent-primary)"
-            : "var(--border-subtle)"
-        }`,
+        border: `1px solid ${borderColor}`,
       }}
     >
       <input
@@ -304,7 +220,7 @@ function RadioOption({
             </span>
           )}
         </div>
-        <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+        <div className="text-xs mt-0.5 text-[var(--text-muted)]">
           {config.description}
         </div>
       </div>
@@ -348,61 +264,42 @@ export function TaskRerunDialog({
     setSelectedOption(option);
   }, []);
 
-  // Don't render if not open
-  if (!isOpen) return null;
+  // Handle dialog close
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && !isProcessing) {
+        onClose();
+      }
+    },
+    [isProcessing, onClose]
+  );
 
   const isRevertSelected = selectedOption === "revert_commit";
   const showDependentWarning = isRevertSelected && commitInfo.hasDependentCommits;
 
   return (
-    <div
-      data-testid="task-rerun-dialog"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      {/* Backdrop */}
-      <div
-        data-testid="dialog-overlay"
-        className="absolute inset-0 transition-opacity"
-        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div
-        data-testid="dialog-modal"
-        className="relative w-full max-w-lg mx-4 rounded-xl shadow-2xl"
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="task-rerun-dialog"
+        className="max-w-lg p-0"
+        onEscapeKeyDown={(e) => {
+          if (isProcessing) {
+            e.preventDefault();
+          }
         }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-6 py-4 border-b"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
+        <DialogHeader className="px-6 py-4 border-b border-[var(--border-subtle)]">
           <div className="flex items-center gap-3">
-            <span style={{ color: "var(--accent-primary)" }}>
-              <RefreshIcon />
-            </span>
-            <h2
+            <RefreshCw className="h-5 w-5 text-[var(--accent-primary)]" />
+            <DialogTitle
               data-testid="dialog-title"
-              className="text-lg font-semibold"
-              style={{ color: "var(--text-primary)" }}
+              className="text-lg font-semibold text-[var(--text-primary)] tracking-tight"
             >
               Re-run Task
-            </h2>
+            </DialogTitle>
           </div>
-          <button
-            data-testid="dialog-close"
-            onClick={onClose}
-            disabled={isProcessing}
-            className="p-1 rounded transition-colors hover:bg-white/5"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <CloseIcon />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Content */}
         <div className="px-6 py-5 space-y-5">
@@ -410,43 +307,33 @@ export function TaskRerunDialog({
           <div>
             <div
               data-testid="task-title"
-              className="text-base font-medium"
-              style={{ color: "var(--text-primary)" }}
+              className="text-base font-medium text-[var(--text-primary)]"
             >
               "{task.title}"
             </div>
           </div>
 
           {/* Commit Info */}
-          <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
+          <div className="text-sm text-[var(--text-secondary)]">
             <span>This task was completed with commit: </span>
             <span
               data-testid="commit-sha"
-              className="font-mono font-medium"
-              style={{ color: "var(--accent-primary)" }}
+              className="font-mono font-medium text-[var(--accent-primary)]"
             >
               {commitInfo.sha}
             </span>
             <div
               data-testid="commit-message"
-              className="mt-1 italic"
-              style={{ color: "var(--text-muted)" }}
+              className="mt-1 italic text-[var(--text-muted)]"
             >
               "{commitInfo.message}"
             </div>
           </div>
 
-          {/* Divider */}
-          <div
-            className="h-px"
-            style={{ backgroundColor: "var(--border-subtle)" }}
-          />
+          <Separator className="bg-[var(--border-subtle)]" />
 
           {/* Question */}
-          <div
-            className="text-sm font-medium"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <div className="text-sm font-medium text-[var(--text-secondary)]">
             How should we handle the previous work?
           </div>
 
@@ -468,15 +355,9 @@ export function TaskRerunDialog({
           {showDependentWarning && (
             <div
               data-testid="dependent-commits-warning"
-              className="flex items-start gap-2 px-3 py-2.5 rounded-lg"
-              style={{
-                backgroundColor: "rgba(245, 158, 11, 0.1)",
-                color: "var(--status-warning)",
-              }}
+              className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-[rgba(245,158,11,0.1)] text-[var(--status-warning)]"
             >
-              <span className="mt-0.5 flex-shrink-0">
-                <WarningIcon />
-              </span>
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
               <span className="text-sm">
                 Warning: Other commits depend on this one. Reverting may cause
                 conflicts or break code that was built on top of these changes.
@@ -488,52 +369,43 @@ export function TaskRerunDialog({
           {error && (
             <div
               data-testid="dialog-error"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg"
-              style={{
-                backgroundColor: "rgba(239, 68, 68, 0.1)",
-                color: "var(--status-error)",
-              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(239,68,68,0.1)] text-[var(--status-error)]"
             >
-              <WarningIcon />
+              <AlertTriangle className="h-3.5 w-3.5" />
               <span className="text-sm">{error}</span>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div
-          className="flex items-center justify-end gap-3 px-6 py-4 border-t"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
-          <button
+        <DialogFooter className="px-6 py-4 border-t border-[var(--border-subtle)] gap-3 sm:gap-3">
+          <Button
             data-testid="cancel-button"
+            type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--text-primary)",
-            }}
+            variant="ghost"
+            className="bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             data-testid="confirm-button"
+            type="button"
             onClick={handleConfirm}
             disabled={isProcessing}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: isProcessing
-                ? "var(--bg-hover)"
-                : "var(--accent-primary)",
-              color: isProcessing ? "var(--text-muted)" : "#fff",
-              cursor: isProcessing ? "not-allowed" : "pointer",
-            }}
+            className={cn(
+              "gap-2",
+              isProcessing
+                ? "bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-not-allowed"
+                : "bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary)]/90"
+            )}
           >
+            {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
             {isProcessing ? "Processing..." : "Confirm Re-run"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
