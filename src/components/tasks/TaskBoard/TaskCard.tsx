@@ -91,10 +91,10 @@ export function TaskCard({
   // Card styles based on state
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
-      backgroundColor: "var(--bg-elevated)",
+      backgroundColor: "#242424", // --bg-elevated
       borderLeft: `3px solid ${getPriorityColor(task.priority)}`,
-      borderRadius: "var(--radius-md)",
-      boxShadow: "var(--shadow-xs)",
+      borderRadius: "8px",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.1)",
       cursor: isDragging ? "grabbing" : "grab",
       transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
     };
