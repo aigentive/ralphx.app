@@ -6,6 +6,7 @@ pub mod apply_service;
 pub mod dependency_service;
 pub mod ideation_service;
 pub mod orchestrator_service;
+pub mod permission_state;
 pub mod priority_service;
 pub mod qa_service;
 pub mod review_service;
@@ -28,3 +29,4 @@ pub use orchestrator_service::{
     ClaudeOrchestratorService, MockOrchestratorService, OrchestratorError, OrchestratorEvent,
     OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
 };
+pub use permission_state::{PermissionDecision, PermissionState};

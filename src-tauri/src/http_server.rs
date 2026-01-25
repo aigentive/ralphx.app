@@ -2,15 +2,17 @@
 // This allows the MCP server to call RalphX functionality via REST API
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::Emitter;
+use uuid::Uuid;
 
-use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions};
+use crate::application::{AppState, CreateProposalOptions, PermissionDecision, UpdateProposalOptions};
 use crate::domain::entities::{
     IdeationSessionId, Priority, TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
@@ -123,6 +125,26 @@ pub struct SuccessResponse {
     pub message: String,
 }
 
+// Permission request/response types
+#[derive(Debug, Deserialize)]
+pub struct PermissionRequestInput {
+    pub tool_name: String,
+    pub tool_input: serde_json::Value,
+    pub context: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PermissionRequestResponse {
+    pub request_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResolvePermissionInput {
+    pub request_id: String,
+    pub decision: String, // "allow" or "deny"
+    pub message: Option<String>,
+}
+
 // ============================================================================
 // HTTP Server
 // ============================================================================
@@ -140,6 +162,10 @@ pub async fn start_http_server(state: Arc<AppState>) {
         .route("/api/get_task_details", post(get_task_details))
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
+        // Permission bridge endpoints
+        .route("/api/permission/request", post(request_permission))
+        .route("/api/permission/await/:request_id", get(await_permission))
+        .route("/api/permission/resolve", post(resolve_permission))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3847")
@@ -391,6 +417,141 @@ async fn complete_review(
         success: true,
         message: "Review submitted successfully".to_string(),
     }))
+}
+
+// ============================================================================
+// Handlers - Permission Bridge
+// ============================================================================
+
+/// POST /api/permission/request
+///
+/// Called by MCP server when Claude CLI needs permission for a tool.
+/// Registers the request, emits Tauri event, returns request_id.
+async fn request_permission(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<PermissionRequestInput>,
+) -> Json<PermissionRequestResponse> {
+    let request_id = Uuid::new_v4().to_string();
+    let (tx, _rx) = tokio::sync::watch::channel(None);
+
+    // Store pending request
+    state
+        .permission_state
+        .pending
+        .lock()
+        .await
+        .insert(request_id.clone(), tx);
+
+    // Emit Tauri event to frontend
+    let _ = state.app_handle.emit(
+        "permission:request",
+        serde_json::json!({
+            "request_id": request_id,
+            "tool_name": input.tool_name,
+            "tool_input": input.tool_input,
+            "context": input.context,
+        }),
+    );
+
+    Json(PermissionRequestResponse { request_id })
+}
+
+/// GET /api/permission/await/:request_id
+///
+/// Long-poll endpoint. MCP server calls this and blocks until user decides.
+/// Returns 408 on timeout (5 minutes).
+async fn await_permission(
+    State(state): State<Arc<AppState>>,
+    Path(request_id): Path<String>,
+) -> Result<Json<PermissionDecision>, StatusCode> {
+    // Get the receiver for this request
+    let mut rx = {
+        let pending = state.permission_state.pending.lock().await;
+        match pending.get(&request_id).map(|tx| tx.subscribe()) {
+            Some(rx) => rx,
+            None => return Err(StatusCode::NOT_FOUND),
+        }
+    };
+
+    // Wait for decision with 5 minute timeout
+    let timeout = tokio::time::Duration::from_secs(300);
+    let start = tokio::time::Instant::now();
+
+    // Use loop to poll for changes
+    loop {
+        // Check if value is Some - extract and drop borrow immediately
+        let maybe_decision: Option<PermissionDecision> = {
+            let current = rx.borrow();
+            current.clone()
+        };
+
+        if let Some(decision) = maybe_decision {
+            // Clean up
+            state
+                .permission_state
+                .pending
+                .lock()
+                .await
+                .remove(&request_id);
+            return Ok(Json(decision));
+        }
+
+        // Check timeout
+        if start.elapsed() >= timeout {
+            state
+                .permission_state
+                .pending
+                .lock()
+                .await
+                .remove(&request_id);
+            return Err(StatusCode::REQUEST_TIMEOUT);
+        }
+
+        // Wait for change with remaining timeout
+        let remaining = timeout.saturating_sub(start.elapsed());
+        match tokio::time::timeout(remaining, rx.changed()).await {
+            Ok(Ok(())) => continue, // Value changed, loop again to check
+            Ok(Err(_)) => {
+                // Channel closed
+                state
+                    .permission_state
+                    .pending
+                    .lock()
+                    .await
+                    .remove(&request_id);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+            Err(_) => {
+                // Timeout
+                state
+                    .permission_state
+                    .pending
+                    .lock()
+                    .await
+                    .remove(&request_id);
+                return Err(StatusCode::REQUEST_TIMEOUT);
+            }
+        }
+    }
+}
+
+/// POST /api/permission/resolve
+///
+/// Called by frontend when user makes a decision.
+async fn resolve_permission(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<ResolvePermissionInput>,
+) -> StatusCode {
+    let pending = state.permission_state.pending.lock().await;
+    if let Some(tx) = pending.get(&input.request_id) {
+        let _ = tx.send(Some(PermissionDecision {
+            decision: input.decision,
+            message: input.message,
+        }));
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
 }
 
 // ============================================================================

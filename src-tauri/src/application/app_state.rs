@@ -3,8 +3,10 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::AppHandle;
 use tokio::sync::Mutex;
 
+use crate::application::PermissionState;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
@@ -72,12 +74,16 @@ pub struct AppState {
     pub process_repo: Arc<dyn ProcessRepository>,
     /// Methodology repository for methodology extensions
     pub methodology_repo: Arc<dyn MethodologyRepository>,
+    /// Permission state for UI-based permission approval
+    pub permission_state: Arc<PermissionState>,
+    /// Tauri app handle for emitting events to frontend
+    pub app_handle: AppHandle,
 }
 
 impl AppState {
     /// Create AppState for production use with SQLite repositories
     /// Opens the database at the default path and runs migrations
-    pub fn new_production() -> AppResult<Self> {
+    pub fn new_production(app_handle: AppHandle) -> AppResult<Self> {
         let path = get_default_db_path();
         let conn = open_connection(&path)?;
         run_migrations(&conn)?;
@@ -129,11 +135,13 @@ impl AppState {
                 &shared_conn,
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
+            permission_state: Arc::new(PermissionState::new()),
+            app_handle,
         })
     }
 
     /// Create AppState with a specific database path
-    pub fn with_db_path(db_path: &str) -> AppResult<Self> {
+    pub fn with_db_path(db_path: &str, app_handle: AppHandle) -> AppResult<Self> {
         let path = PathBuf::from(db_path);
         let conn = open_connection(&path)?;
         run_migrations(&conn)?;
@@ -184,11 +192,13 @@ impl AppState {
                 &shared_conn,
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
+            permission_state: Arc::new(PermissionState::new()),
+            app_handle,
         })
     }
 
     /// Create AppState for testing with in-memory repositories
-    pub fn new_test() -> Self {
+    pub fn new_test(app_handle: AppHandle) -> Self {
         Self {
             task_repo: Arc::new(MemoryTaskRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
@@ -209,6 +219,8 @@ impl AppState {
             artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
             process_repo: Arc::new(MemoryProcessRepository::new()),
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
+            permission_state: Arc::new(PermissionState::new()),
+            app_handle,
         }
     }
 
@@ -216,6 +228,7 @@ impl AppState {
     pub fn with_repos(
         task_repo: Arc<dyn TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        app_handle: AppHandle,
     ) -> Self {
         Self {
             task_repo,
@@ -237,6 +250,8 @@ impl AppState {
             artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
             process_repo: Arc::new(MemoryProcessRepository::new()),
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
+            permission_state: Arc::new(PermissionState::new()),
+            app_handle,
         }
     }
 
