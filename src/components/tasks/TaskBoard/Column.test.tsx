@@ -73,15 +73,18 @@ describe("Column", () => {
     it("should apply isOver styling when isOver is true", () => {
       const column = createMockColumn();
       render(<Column column={column} isOver />, { wrapper: DndWrapper });
-      const columnEl = screen.getByTestId(`column-${column.id}`);
-      expect(columnEl.style.borderColor).toBe("var(--accent-primary)");
+      const dropZone = screen.getByTestId(`drop-zone-${column.id}`);
+      // The drop zone gets dashed orange border when hovering
+      expect(dropZone.style.border).toContain("dashed");
+      expect(dropZone.style.border).toContain("var(--accent-primary)");
     });
 
     it("should not apply isOver styling when isOver is false", () => {
       const column = createMockColumn();
       render(<Column column={column} isOver={false} />, { wrapper: DndWrapper });
-      const columnEl = screen.getByTestId(`column-${column.id}`);
-      expect(columnEl.style.borderColor).not.toBe("var(--accent-primary)");
+      const dropZone = screen.getByTestId(`drop-zone-${column.id}`);
+      // Drop zone should have transparent dashed border when not over
+      expect(dropZone.style.border).toContain("transparent");
     });
   });
 
@@ -107,8 +110,10 @@ describe("Column", () => {
     it("should apply error border when isOver and isInvalid", () => {
       const column = createMockColumn();
       render(<Column column={column} isOver isInvalid />, { wrapper: DndWrapper });
-      const columnEl = screen.getByTestId(`column-${column.id}`);
-      expect(columnEl.style.borderColor).toBe("var(--status-error)");
+      const dropZone = screen.getByTestId(`drop-zone-${column.id}`);
+      // The drop zone gets dashed error border when invalid
+      expect(dropZone.style.border).toContain("dashed");
+      expect(dropZone.style.border).toContain("var(--status-error)");
     });
   });
 });

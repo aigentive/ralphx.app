@@ -1,11 +1,21 @@
 /**
  * TaskCard - Draggable task card for the kanban board
+ *
+ * Design spec: specs/design/pages/kanban-board.md
+ * - Priority stripe on left border (3px colored)
+ * - Layered shadows for depth
+ * - Hover lift (translateY -2px)
+ * - Drag state (scale, rotate, elevated shadow)
+ * - Selected state (orange border + tinted bg)
+ * - Drag handle appears on hover (Lucide GripVertical)
  */
 
 import { useDraggable } from "@dnd-kit/core";
+import { GripVertical } from "lucide-react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
+import { Badge } from "@/components/ui/badge";
 import type { QAPrepStatus } from "@/types/qa-config";
 import type { QAOverallStatus } from "@/types/qa";
 
@@ -13,6 +23,7 @@ interface TaskCardProps {
   task: Task;
   onSelect?: (taskId: string) => void;
   isDragging?: boolean;
+  isSelected?: boolean;
   reviewStatus?: ReviewStatus;
   /** Whether this task needs QA */
   needsQA?: boolean;
@@ -23,23 +34,37 @@ interface TaskCardProps {
   hasCheckpoint?: boolean;
 }
 
-function DragHandle() {
-  return (
-    <div data-testid="drag-handle" className="cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-muted)" }}>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <circle cx="5" cy="4" r="1.5" /><circle cx="11" cy="4" r="1.5" />
-        <circle cx="5" cy="8" r="1.5" /><circle cx="11" cy="8" r="1.5" />
-        <circle cx="5" cy="12" r="1.5" /><circle cx="11" cy="12" r="1.5" />
-      </svg>
-    </div>
-  );
+/**
+ * Get priority color for the left border stripe
+ */
+function getPriorityColor(priority: number): string {
+  switch (priority) {
+    case 1: // Critical
+      return "var(--status-error)"; // #ef4444
+    case 2: // High
+      return "var(--status-warning)"; // #f59e0b
+    case 3: // Medium
+      return "var(--accent-primary)"; // #ff6b35
+    case 4: // Low
+      return "var(--text-muted)"; // #666666
+    default: // None or unknown
+      return "transparent";
+  }
 }
 
 function CheckpointIndicator() {
   return (
-    <div data-testid="checkpoint-indicator" className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "var(--accent-secondary)", color: "var(--bg-base)" }}>
+    <Badge
+      data-testid="checkpoint-indicator"
+      className="text-xs"
+      style={{
+        backgroundColor: "var(--accent-secondary)",
+        color: "var(--bg-base)",
+        border: "none",
+      }}
+    >
       Checkpoint
-    </div>
+    </Badge>
   );
 }
 
@@ -47,6 +72,7 @@ export function TaskCard({
   task,
   onSelect,
   isDragging,
+  isSelected,
   reviewStatus,
   needsQA,
   prepStatus,
@@ -62,6 +88,40 @@ export function TaskCard({
     ...(testStatus !== undefined && { testStatus }),
   };
 
+  // Card styles based on state
+  const getCardStyles = (): React.CSSProperties => {
+    const baseStyles: React.CSSProperties = {
+      backgroundColor: "var(--bg-surface)",
+      borderLeft: `3px solid ${getPriorityColor(task.priority)}`,
+      borderRadius: "var(--radius-md)",
+      boxShadow: "var(--shadow-xs)",
+      cursor: isDragging ? "grabbing" : "grab",
+      transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+    };
+
+    if (isDragging) {
+      return {
+        ...baseStyles,
+        transform: "scale(1.02) rotate(2deg)",
+        boxShadow: "var(--shadow-md)",
+        opacity: 0.9,
+        zIndex: 50,
+      };
+    }
+
+    if (isSelected) {
+      return {
+        ...baseStyles,
+        border: "2px solid var(--accent-primary)",
+        borderLeft: `3px solid ${getPriorityColor(task.priority)}`,
+        background: "var(--accent-muted)",
+        boxShadow: "0 0 0 4px rgba(255, 107, 53, 0.15)",
+      };
+    }
+
+    return baseStyles;
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -69,26 +129,53 @@ export function TaskCard({
       {...listeners}
       data-testid={`task-card-${task.id}`}
       onClick={() => onSelect?.(task.id)}
-      className={`group p-3 rounded-md cursor-pointer transition-all ${isDragging ? "opacity-50" : ""}`}
-      style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
+      className="group relative p-3 hover:translate-y-[-2px] hover:shadow-[var(--shadow-sm)] focus-visible:outline-none focus-visible:shadow-[var(--shadow-glow)]"
+      style={getCardStyles()}
+      tabIndex={0}
     >
-      <div className="flex items-start gap-2">
-        <DragHandle />
-        <div className="flex-1 min-w-0">
-          <div data-testid="task-title" className="truncate font-medium" style={{ color: "var(--text-primary)" }}>
-            {task.title}
+      {/* Drag handle - appears on hover */}
+      <div
+        data-testid="drag-handle"
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+      >
+        <GripVertical
+          className="w-4 h-4 hover:text-[var(--text-secondary)]"
+          style={{ color: "var(--text-muted)" }}
+        />
+      </div>
+
+      {/* Card content */}
+      <div className="pr-6">
+        {/* Title */}
+        <div
+          data-testid="task-title"
+          className="text-sm font-medium truncate"
+          style={{
+            color: "var(--text-primary)",
+            letterSpacing: "var(--tracking-tight)",
+          }}
+        >
+          {task.title}
+        </div>
+
+        {/* Description - 2 line clamp */}
+        {task.description && (
+          <div
+            className="text-xs mt-1 line-clamp-2"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            {task.description}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <span className="px-1.5 py-0.5 rounded text-xs" style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}>
-              {task.category}
-            </span>
-            <span data-testid="priority-indicator" className="text-xs" style={{ color: "var(--text-muted)" }}>
-              P{task.priority}
-            </span>
-            {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}
-            <TaskQABadge {...qaBadgeProps} />
-            {hasCheckpoint && <CheckpointIndicator />}
-          </div>
+        )}
+
+        {/* Badge row */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <Badge variant="secondary" className="text-xs">
+            {task.category}
+          </Badge>
+          {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}
+          <TaskQABadge {...qaBadgeProps} />
+          {hasCheckpoint && <CheckpointIndicator />}
         </div>
       </div>
     </div>

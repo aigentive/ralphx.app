@@ -109,7 +109,7 @@ Before marking any task complete, verify:
       "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Kanban board design"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "implementation",
