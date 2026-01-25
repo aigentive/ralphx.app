@@ -293,6 +293,52 @@ Key tokens:
 - Status: `--status-success`, `--status-warning`, `--status-error`, `--status-info`
 - Borders: `--border-subtle`, `--border-default`, `--border-focus`
 
+### Tailwind CSS v4 Configuration
+
+RalphX uses **Tailwind CSS v4** which has a different configuration pattern than v3:
+
+**Critical Rules:**
+- ❌ NO `tailwind.config.js` file - v4 ignores it completely
+- ❌ NO `tailwindcss-animate` package - deprecated in v4
+- ✅ Use `@tailwindcss/vite` plugin in `vite.config.ts`
+- ✅ All theme config goes in `globals.css` via `@theme inline`
+
+**Configuration Files:**
+| File | Purpose |
+|------|---------|
+| `vite.config.ts` | Contains `@tailwindcss/vite` plugin |
+| `styles/globals.css` | Contains `@theme inline` with all design tokens |
+| `components.json` | shadcn config with `"config": ""` (empty for v4) |
+
+**CSS Structure in globals.css:**
+
+```css
+@import "tailwindcss";
+
+/* 1. Define CSS variables at root level (NOT in @layer base) */
+:root {
+  --bg-base: hsl(0 0% 6%);           /* hsl() wrapper required */
+  --accent-primary: hsl(14 100% 60%);
+}
+
+/* 2. Map variables to Tailwind utilities */
+@theme inline {
+  --color-bg-base: var(--bg-base);
+  --color-accent-primary: var(--accent-primary);
+}
+
+/* 3. Apply base styles */
+@layer base {
+  body {
+    background-color: var(--bg-base);  /* NO hsl() here - already wrapped */
+  }
+}
+```
+
+**Using Design Tokens:**
+- Tailwind classes: `bg-bg-base`, `text-accent-primary`, `bg-background`
+- Inline styles: `var(--bg-base)`, `var(--accent-primary)`
+
 ### Anti-AI-Slop Design
 
 Per the master plan:
@@ -418,5 +464,7 @@ The frontend runs on port 1420 (fixed for Tauri). Hot module replacement is enab
 | `stores/uiStore.ts` | UI state (modals, sidebar, views, execution status) |
 | `types/index.ts` | Central type exports |
 | `types/status.ts` | 14 internal task statuses |
-| `styles/globals.css` | Design tokens and base styles |
+| `styles/globals.css` | Design tokens, `@theme inline`, and base styles (Tailwind v4) |
 | `test/setup.ts` | Vitest setup with Tauri mocks |
+| `../vite.config.ts` | Vite config with `@tailwindcss/vite` plugin |
+| `../components.json` | shadcn/ui config (empty `config` field for v4) |
