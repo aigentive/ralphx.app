@@ -103,7 +103,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
-        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface"
+        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface/50"
         style={{
           minHeight: "100px",
           ...getDropZoneStyles(),
