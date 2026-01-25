@@ -6,6 +6,7 @@ pub mod application;
 pub mod commands;
 pub mod domain;
 pub mod error;
+pub mod http_server;
 pub mod infrastructure;
 pub mod testing;
 
@@ -25,6 +26,13 @@ fn greet(name: &str) -> String {
 pub fn run() {
     // Create application state with production SQLite repositories
     let app_state = AppState::new_production().expect("Failed to initialize AppState");
+
+    // Start HTTP server for MCP proxy on port 3847
+    // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
+    let http_state = Arc::new(AppState::new_production().expect("Failed to initialize AppState for HTTP server"));
+    tokio::spawn(async move {
+        http_server::start_http_server(http_state).await;
+    });
 
     // Create execution state for global execution control
     let execution_state = Arc::new(commands::ExecutionState::new());

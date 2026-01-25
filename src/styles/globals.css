@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /*
  * RalphX Design System Tokens
@@ -13,31 +11,31 @@
    * ============================================================================ */
 
   /* Backgrounds - dark grays, NOT pure black */
-  --bg-base: #0f0f0f;
-  --bg-surface: #1a1a1a;
-  --bg-elevated: #242424;
-  --bg-hover: #2d2d2d;
+  --bg-base: hsl(0 0% 6%);
+  --bg-surface: hsl(0 0% 10%);
+  --bg-elevated: hsl(0 0% 14%);
+  --bg-hover: hsl(0 0% 18%);
 
   /* Text - off-white, NOT pure white */
-  --text-primary: #f0f0f0;
-  --text-secondary: #a0a0a0;
-  --text-muted: #666666;
+  --text-primary: hsl(0 0% 94%);
+  --text-secondary: hsl(0 0% 63%);
+  --text-muted: hsl(0 0% 40%);
 
   /* Accent - warm, distinctive (NOT purple/blue) */
-  --accent-primary: #ff6b35;      /* Warm orange */
-  --accent-secondary: #ffa94d;    /* Soft amber */
-  --accent-hover: #ff8050;        /* Lighter orange for hover */
+  --accent-primary: hsl(14 100% 60%);      /* Warm orange #ff6b35 */
+  --accent-secondary: hsl(32 100% 65%);    /* Soft amber #ffa94d */
+  --accent-hover: hsl(19 100% 65%);        /* Lighter orange for hover #ff8050 */
 
   /* Status colors */
-  --status-success: #10b981;      /* Emerald */
-  --status-warning: #f59e0b;      /* Amber */
-  --status-error: #ef4444;        /* Red */
-  --status-info: #3b82f6;         /* Blue (sparingly) */
+  --status-success: hsl(142 76% 36%);      /* Emerald #10b981 */
+  --status-warning: hsl(38 92% 50%);       /* Amber #f59e0b */
+  --status-error: hsl(0 84% 60%);          /* Red #ef4444 */
+  --status-info: hsl(217 91% 60%);         /* Blue #3b82f6 */
 
   /* Borders & Dividers */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.1);
-  --border-focus: rgba(255, 107, 53, 0.5);
+  --border-subtle: hsla(0 0% 100% / 0.06);
+  --border-default: hsla(0 0% 100% / 0.1);
+  --border-focus: hsla(14 100% 60% / 0.5);
 
   /* Typography - system fonts, NOT Inter */
   --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -65,13 +63,13 @@
   --radius-full: 9999px;
 
   /* Accent muted - for subtle tinted backgrounds */
-  --accent-muted: rgba(255, 107, 53, 0.15);
+  --accent-muted: hsla(14 100% 60% / 0.15);
 
   /* Layered Shadows (multiple values for realistic depth) */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3), 0 20px 40px rgba(0, 0, 0, 0.25);
+  --shadow-xs: 0 1px 2px hsla(0 0% 0% / 0.2), 0 1px 3px hsla(0 0% 0% / 0.1);
+  --shadow-sm: 0 1px 2px hsla(0 0% 0% / 0.3), 0 2px 4px hsla(0 0% 0% / 0.2);
+  --shadow-md: 0 4px 6px hsla(0 0% 0% / 0.3), 0 8px 16px hsla(0 0% 0% / 0.2);
+  --shadow-lg: 0 10px 15px hsla(0 0% 0% / 0.3), 0 20px 40px hsla(0 0% 0% / 0.25);
   --shadow-glow: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent-primary);
 
   /* Letter spacing */
@@ -104,7 +102,7 @@
 
   /* Primary = our warm orange accent */
   --primary: var(--accent-primary);
-  --primary-foreground: #ffffff;
+  --primary-foreground: hsl(0 0% 100%);
 
   /* Secondary = elevated background for subtle actions */
   --secondary: var(--bg-surface);
@@ -120,7 +118,7 @@
 
   /* Destructive = error red */
   --destructive: var(--status-error);
-  --destructive-foreground: #ffffff;
+  --destructive-foreground: hsl(0 0% 100%);
 
   /* Border and input */
   --border: var(--border-default);
@@ -138,7 +136,7 @@
   --sidebar: var(--bg-surface);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: var(--bg-hover);
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-subtle);
@@ -157,7 +155,7 @@
   --popover-foreground: var(--text-primary);
 
   --primary: var(--accent-primary);
-  --primary-foreground: #ffffff;
+  --primary-foreground: hsl(0 0% 100%);
 
   --secondary: var(--bg-surface);
   --secondary-foreground: var(--text-primary);
@@ -169,7 +167,7 @@
   --accent-foreground: var(--text-primary);
 
   --destructive: var(--status-error);
-  --destructive-foreground: #ffffff;
+  --destructive-foreground: hsl(0 0% 100%);
 
   --border: var(--border-default);
   --input: var(--border-default);
@@ -184,7 +182,7 @@
   --sidebar: var(--bg-surface);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: var(--bg-hover);
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-subtle);
