@@ -12,6 +12,7 @@ pub mod qa_commands;
 pub mod research_commands;
 pub mod review_commands;
 pub mod task_commands;
+pub mod test_data_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
@@ -72,3 +73,4 @@ pub use methodology_commands::{
     MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,
     MethodologyTemplateResponse, WorkflowSchemaResponse,
 };
+pub use test_data_commands::{clear_test_data, seed_visual_audit_data};

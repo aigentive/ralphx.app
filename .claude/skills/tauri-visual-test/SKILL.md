@@ -41,23 +41,46 @@ osascript -e 'tell application "System Events"
 end tell'
 ```
 
-| Shortcut | View |
-|----------|------|
-| Cmd+1 | Kanban |
-| Cmd+2 | Ideation |
-| Cmd+3 | Extensibility |
-| Cmd+4 | Activity |
-| Cmd+5 | Settings |
+| Shortcut | Action |
+|----------|--------|
+| Cmd+1 | Kanban view |
+| Cmd+2 | Ideation view |
+| Cmd+3 | Extensibility view |
+| Cmd+4 | Activity view |
+| Cmd+5 | Settings view |
 | Cmd+K | Toggle Chat |
+| Cmd+Shift+D | **Load Demo Data** (creates test project + tasks) |
+
+### Test Data Setup
+
+For visual audits that need sample tasks, use **Cmd+Shift+D** to load demo data:
+
+```bash
+# Focus app and send Cmd+Shift+D
+osascript -e '
+tell application "System Events"
+  set frontmost of process "ralphx" to true
+  delay 0.3
+  keystroke "d" using {command down, shift down}
+end tell
+'
+sleep 2  # Wait for data to load
+```
+
+This creates:
+- 1 test project ("Visual Audit Test")
+- 5 sample tasks in various statuses (backlog, ready, executing, approved)
 
 ### MCP Tools (for introspection)
 
 ```
 get_window_info(process_id)    - Window dimensions, position, visibility
-execute_js(process_id, code)   - Run JS in webview
-call_ipc_command(process_id, command_name, args) - Call Tauri commands
+execute_js(process_id, code)   - Run JS in webview (requires debug port)
+call_ipc_command(process_id, command_name, args) - Call Tauri commands (limited)
 monitor_resources(process_id)  - CPU/memory usage
 ```
+
+**Note**: MCP `call_ipc_command` returns stub responses - use keyboard shortcuts for reliable interactions.
 
 ## Complete Workflow
 

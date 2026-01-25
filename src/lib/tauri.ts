@@ -640,4 +640,28 @@ export const api = {
     stop: () =>
       typedInvoke("stop_execution", {}, ExecutionCommandResponseSchema),
   },
+
+  testData: {
+    /**
+     * Seed demo data for visual audits
+     * Creates a test project with sample tasks in various states
+     * @returns Seed response with project info and task count
+     */
+    seedVisualAudit: () =>
+      typedInvoke(
+        "seed_visual_audit_data",
+        {},
+        z.object({
+          projectId: z.string(),
+          projectName: z.string(),
+          tasksCreated: z.number(),
+        })
+      ),
+
+    /**
+     * Clear all test data
+     * @returns Confirmation message
+     */
+    clear: () => typedInvoke("clear_test_data", {}, z.string()),
+  },
 } as const;

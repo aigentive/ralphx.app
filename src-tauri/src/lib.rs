@@ -152,7 +152,10 @@ pub fn run() {
             commands::methodology_commands::get_methodologies,
             commands::methodology_commands::get_active_methodology,
             commands::methodology_commands::activate_methodology,
-            commands::methodology_commands::deactivate_methodology
+            commands::methodology_commands::deactivate_methodology,
+            // Test data commands (for visual audits)
+            commands::test_data_commands::seed_visual_audit_data,
+            commands::test_data_commands::clear_test_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
