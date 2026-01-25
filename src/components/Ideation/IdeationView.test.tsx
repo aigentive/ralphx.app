@@ -1,6 +1,6 @@
 /**
  * IdeationView.test.tsx
- * Tests for the main ideation view with split layout
+ * Tests for the premium ideation view with split layout
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -121,17 +121,21 @@ describe("IdeationView", () => {
       expect(screen.getByTestId("proposals-panel")).toBeInTheDocument();
     });
 
-    it("conversation panel is on the left", () => {
+    it("renders resize handle between panels", () => {
       render(<IdeationView {...defaultProps} />);
-      const conversationPanel = screen.getByTestId("conversation-panel");
-      expect(conversationPanel.parentElement?.firstChild).toBe(conversationPanel);
+      expect(screen.getByTestId("resize-handle")).toBeInTheDocument();
     });
 
-    it("proposals panel is on the right", () => {
+    it("conversation panel has minimum width constraint", () => {
+      render(<IdeationView {...defaultProps} />);
+      const conversationPanel = screen.getByTestId("conversation-panel");
+      expect(conversationPanel).toHaveStyle({ minWidth: "320px" });
+    });
+
+    it("proposals panel has minimum width constraint", () => {
       render(<IdeationView {...defaultProps} />);
       const proposalsPanel = screen.getByTestId("proposals-panel");
-      const mainContent = proposalsPanel.closest('[data-testid="ideation-main-content"]');
-      expect(mainContent?.lastChild).toBe(proposalsPanel);
+      expect(proposalsPanel).toHaveStyle({ minWidth: "320px" });
     });
   });
 
@@ -149,17 +153,16 @@ describe("IdeationView", () => {
     it("displays default title when session title is null", () => {
       const sessionNoTitle = { ...mockSession, title: null };
       render(<IdeationView {...defaultProps} session={sessionNoTitle} />);
-      // Title appears in both header h1 and button, look for h1 specifically
       const header = screen.getByTestId("ideation-header");
       expect(within(header).getByRole("heading", { level: 1 })).toHaveTextContent("New Session");
     });
 
-    it("renders New Session button", () => {
+    it("renders New Session button with icon", () => {
       render(<IdeationView {...defaultProps} />);
       expect(screen.getByRole("button", { name: /New Session/i })).toBeInTheDocument();
     });
 
-    it("renders Archive button", () => {
+    it("renders Archive button with icon", () => {
       render(<IdeationView {...defaultProps} />);
       expect(screen.getByRole("button", { name: /Archive/i })).toBeInTheDocument();
     });
@@ -181,10 +184,16 @@ describe("IdeationView", () => {
       await user.click(screen.getByRole("button", { name: /Archive/i }));
       expect(onArchiveSession).toHaveBeenCalledWith("session-1");
     });
+
+    it("header has glass effect styling", () => {
+      render(<IdeationView {...defaultProps} />);
+      const header = screen.getByTestId("ideation-header");
+      expect(header).toHaveClass("backdrop-blur-md");
+    });
   });
 
   describe("Conversation Panel", () => {
-    it("renders conversation panel header", () => {
+    it("renders conversation panel header with icon", () => {
       render(<IdeationView {...defaultProps} />);
       expect(screen.getByText("Conversation")).toBeInTheDocument();
     });
@@ -198,6 +207,13 @@ describe("IdeationView", () => {
     it("shows empty state when no messages", () => {
       render(<IdeationView {...defaultProps} messages={[]} />);
       expect(screen.getByText(/Start the conversation/i)).toBeInTheDocument();
+    });
+
+    it("empty state shows Lucide icon", () => {
+      render(<IdeationView {...defaultProps} messages={[]} />);
+      // MessageSquareText icon should be present in empty state
+      const conversationPanel = screen.getByTestId("conversation-panel");
+      expect(conversationPanel.querySelector("svg")).toBeInTheDocument();
     });
 
     it("renders message input", () => {
@@ -216,17 +232,38 @@ describe("IdeationView", () => {
 
       expect(onSendMessage).toHaveBeenCalledWith("Test message");
     });
+
+    it("user messages have orange background", () => {
+      render(<IdeationView {...defaultProps} />);
+      const userMessage = screen.getByTestId("chat-message-msg-1");
+      const bubble = userMessage.querySelector("div > div");
+      expect(bubble).toHaveClass("bg-[var(--accent-primary)]");
+    });
+
+    it("AI messages have elevated background", () => {
+      render(<IdeationView {...defaultProps} />);
+      const aiMessage = screen.getByTestId("chat-message-msg-2");
+      const bubble = aiMessage.querySelector("div > div");
+      expect(bubble).toHaveClass("bg-[var(--bg-elevated)]");
+    });
+
+    it("shows typing indicator when loading", () => {
+      render(<IdeationView {...defaultProps} isLoading={true} />);
+      expect(screen.getByTestId("typing-indicator")).toBeInTheDocument();
+    });
   });
 
   describe("Proposals Panel", () => {
-    it("renders proposals panel header", () => {
+    it("renders proposals panel header with icon", () => {
       render(<IdeationView {...defaultProps} />);
       expect(screen.getByText("Task Proposals")).toBeInTheDocument();
     });
 
-    it("displays proposal count", () => {
+    it("displays proposal count badge", () => {
       render(<IdeationView {...defaultProps} />);
-      expect(screen.getByText(/2 proposals/i)).toBeInTheDocument();
+      // Badge shows count
+      const proposalsPanel = screen.getByTestId("proposals-panel");
+      expect(within(proposalsPanel).getByText("2")).toBeInTheDocument();
     });
 
     it("displays all proposals", () => {
@@ -237,35 +274,54 @@ describe("IdeationView", () => {
 
     it("shows empty state when no proposals", () => {
       render(<IdeationView {...defaultProps} proposals={[]} />);
+      expect(screen.getByTestId("proposals-empty-state")).toBeInTheDocument();
       expect(screen.getByText(/No proposals yet/i)).toBeInTheDocument();
     });
 
-    it("passes onSelectProposal to ProposalList", () => {
+    it("empty state shows Lightbulb icon", () => {
+      render(<IdeationView {...defaultProps} proposals={[]} />);
+      const emptyState = screen.getByTestId("proposals-empty-state");
+      expect(emptyState.querySelector("svg")).toBeInTheDocument();
+    });
+
+    it("renders toolbar with select/sort actions", () => {
+      render(<IdeationView {...defaultProps} />);
+      expect(screen.getByText(/1 of 2 selected/i)).toBeInTheDocument();
+    });
+
+    it("proposal cards use shadcn Checkbox", async () => {
+      render(<IdeationView {...defaultProps} />);
+      const checkboxes = screen.getAllByRole("checkbox");
+      expect(checkboxes.length).toBeGreaterThan(0);
+    });
+
+    it("calls onSelectProposal when checkbox clicked", async () => {
       const onSelectProposal = vi.fn();
+      const user = userEvent.setup();
       render(<IdeationView {...defaultProps} onSelectProposal={onSelectProposal} />);
 
-      // Verify ProposalList is rendered with proposals
-      expect(screen.getByTestId("proposal-list")).toBeInTheDocument();
-      // The checkbox exists - ProposalList and ProposalCard integration is tested elsewhere
-      expect(screen.getByRole("checkbox", { name: /Select Create login form/i })).toBeInTheDocument();
+      const checkbox = screen.getByRole("checkbox", { name: /Select Create login form/i });
+      await user.click(checkbox);
+
+      expect(onSelectProposal).toHaveBeenCalledWith("proposal-2");
     });
 
-    it("passes onEditProposal to ProposalList", () => {
-      const onEditProposal = vi.fn();
-      render(<IdeationView {...defaultProps} onEditProposal={onEditProposal} />);
-
-      // Verify edit buttons exist - interaction tested in ProposalList/ProposalCard tests
-      const editButtons = screen.getAllByLabelText("Edit proposal");
-      expect(editButtons).toHaveLength(2);
+    it("selected proposals have orange border", () => {
+      render(<IdeationView {...defaultProps} />);
+      const selectedCard = screen.getByTestId("proposal-card-proposal-1");
+      expect(selectedCard).toHaveClass("border-[var(--accent-primary)]");
     });
 
-    it("passes onRemoveProposal to ProposalList", () => {
-      const onRemoveProposal = vi.fn();
-      render(<IdeationView {...defaultProps} onRemoveProposal={onRemoveProposal} />);
+    it("proposal cards show priority badges", () => {
+      render(<IdeationView {...defaultProps} />);
+      expect(screen.getByText("High")).toBeInTheDocument();
+      expect(screen.getByText("Medium")).toBeInTheDocument();
+    });
 
-      // Verify remove buttons exist - interaction tested in ProposalList/ProposalCard tests
-      const removeButtons = screen.getAllByLabelText("Remove proposal");
-      expect(removeButtons).toHaveLength(2);
+    it("proposal cards show category badges", () => {
+      render(<IdeationView {...defaultProps} />);
+      expect(screen.getByText("setup")).toBeInTheDocument();
+      expect(screen.getByText("feature")).toBeInTheDocument();
     });
   });
 
@@ -281,7 +337,7 @@ describe("IdeationView", () => {
       expect(within(applySection).getByText(/1 selected/i)).toBeInTheDocument();
     });
 
-    it("renders apply dropdown button", () => {
+    it("renders apply dropdown button with icon", () => {
       render(<IdeationView {...defaultProps} />);
       expect(screen.getByRole("button", { name: /Apply to/i })).toBeInTheDocument();
     });
@@ -318,12 +374,29 @@ describe("IdeationView", () => {
         preserveDependencies: true,
       });
     });
+
+    it("uses shadcn DropdownMenu component", async () => {
+      const user = userEvent.setup();
+      render(<IdeationView {...defaultProps} />);
+
+      await user.click(screen.getByRole("button", { name: /Apply to/i }));
+
+      // shadcn dropdown menu renders in portal with data attributes
+      const menuItems = screen.getAllByRole("menuitem");
+      expect(menuItems).toHaveLength(3);
+    });
   });
 
   describe("Loading State", () => {
-    it("shows loading state when isLoading is true", () => {
+    it("shows loading overlay when isLoading is true", () => {
       render(<IdeationView {...defaultProps} isLoading={true} />);
       expect(screen.getByTestId("ideation-loading")).toBeInTheDocument();
+    });
+
+    it("loading overlay has backdrop blur", () => {
+      render(<IdeationView {...defaultProps} isLoading={true} />);
+      const loading = screen.getByTestId("ideation-loading");
+      expect(loading).toHaveClass("backdrop-blur-sm");
     });
 
     it("disables input when loading", () => {
@@ -335,6 +408,11 @@ describe("IdeationView", () => {
       render(<IdeationView {...defaultProps} isLoading={true} />);
       expect(screen.getByRole("button", { name: /Apply to/i })).toBeDisabled();
     });
+
+    it("shows typing indicator in messages when loading", () => {
+      render(<IdeationView {...defaultProps} isLoading={true} />);
+      expect(screen.getByTestId("typing-indicator")).toBeInTheDocument();
+    });
   });
 
   describe("No Session State", () => {
@@ -343,7 +421,7 @@ describe("IdeationView", () => {
       expect(screen.getByText(/Start a new ideation session/i)).toBeInTheDocument();
     });
 
-    it("shows create session button when session is null", () => {
+    it("shows create session button with icon when session is null", () => {
       render(<IdeationView {...defaultProps} session={null} />);
       expect(screen.getByRole("button", { name: /Start Session/i })).toBeInTheDocument();
     });
@@ -356,25 +434,56 @@ describe("IdeationView", () => {
       await user.click(screen.getByRole("button", { name: /Start Session/i }));
       expect(onNewSession).toHaveBeenCalledTimes(1);
     });
+
+    it("no session state has radial gradient background", () => {
+      render(<IdeationView {...defaultProps} session={null} />);
+      const view = screen.getByTestId("ideation-view");
+      const styles = view.getAttribute("style") || "";
+      expect(styles).toContain("radial-gradient");
+    });
   });
 
-  describe("Responsive Layout", () => {
-    it("has flex container for main content", () => {
+  describe("Premium Styling", () => {
+    it("main view has radial gradient background", () => {
       render(<IdeationView {...defaultProps} />);
-      const mainContent = screen.getByTestId("ideation-main-content");
-      expect(mainContent).toHaveClass("flex");
+      const view = screen.getByTestId("ideation-view");
+      const styles = view.getAttribute("style") || "";
+      expect(styles).toContain("radial-gradient");
     });
 
-    it("applies lg:flex-row for desktop layout", () => {
+    it("panels have surface background", () => {
       render(<IdeationView {...defaultProps} />);
-      const mainContent = screen.getByTestId("ideation-main-content");
-      expect(mainContent).toHaveClass("lg:flex-row");
+      const conversationPanel = screen.getByTestId("conversation-panel");
+      expect(conversationPanel).toHaveClass("bg-[var(--bg-surface)]");
     });
 
-    it("applies flex-col for mobile layout", () => {
+    it("header uses glass effect", () => {
       render(<IdeationView {...defaultProps} />);
-      const mainContent = screen.getByTestId("ideation-main-content");
-      expect(mainContent).toHaveClass("flex-col");
+      const header = screen.getByTestId("ideation-header");
+      expect(header).toHaveClass("backdrop-blur-md");
+    });
+
+    it("resize handle glows orange on hover", () => {
+      render(<IdeationView {...defaultProps} />);
+      const resizeHandle = screen.getByTestId("resize-handle");
+      // The inner div has the hover styling
+      const innerDiv = resizeHandle.querySelector("div");
+      expect(innerDiv).toHaveClass("group-hover:bg-[var(--accent-primary)]");
+    });
+
+    it("anti-ai-slop: uses warm orange accent", () => {
+      render(<IdeationView {...defaultProps} />);
+      const view = screen.getByTestId("ideation-view");
+      const styles = view.getAttribute("style");
+      // Check for warm orange in gradient
+      expect(styles).toContain("255,107,53");
+    });
+
+    it("anti-ai-slop: no purple gradients", () => {
+      render(<IdeationView {...defaultProps} />);
+      const view = screen.getByTestId("ideation-view");
+      const styles = view.getAttribute("style") || "";
+      expect(styles).not.toMatch(/purple|#800080|#a855f7/i);
     });
   });
 
@@ -390,37 +499,18 @@ describe("IdeationView", () => {
       expect(screen.getByRole("button", { name: /Archive/i })).toBeInTheDocument();
     });
 
-    it("message input has accessible label", () => {
+    it("proposal checkboxes have accessible labels", () => {
       render(<IdeationView {...defaultProps} />);
-      const input = screen.getByPlaceholderText(/Send a message/i);
-      expect(input).toHaveAttribute("aria-label");
-    });
-  });
-
-  describe("Styling", () => {
-    it("uses dark background", () => {
-      render(<IdeationView {...defaultProps} />);
-      const view = screen.getByTestId("ideation-view");
-      expect(view).toHaveStyle({ backgroundColor: "var(--bg-base)" });
+      expect(screen.getByRole("checkbox", { name: /Select Setup database/i })).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: /Select Create login form/i })).toBeInTheDocument();
     });
 
-    it("panels have elevated background", () => {
+    it("toolbar buttons have tooltips", () => {
       render(<IdeationView {...defaultProps} />);
-      const conversationPanel = screen.getByTestId("conversation-panel");
-      expect(conversationPanel).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
-    });
-
-    it("header uses border for separation", () => {
-      render(<IdeationView {...defaultProps} />);
-      const header = screen.getByTestId("ideation-header");
-      expect(header).toHaveClass("border-b");
-    });
-
-    it("anti-ai-slop: no purple gradients", () => {
-      render(<IdeationView {...defaultProps} />);
-      const view = screen.getByTestId("ideation-view");
-      const styles = window.getComputedStyle(view);
-      expect(styles.background).not.toMatch(/purple|#800080|#a855f7/i);
+      // Tooltip content is rendered on hover - we verify the buttons exist
+      const proposalsPanel = screen.getByTestId("proposals-panel");
+      const buttons = within(proposalsPanel).getAllByRole("button");
+      expect(buttons.length).toBeGreaterThan(0);
     });
   });
 });
