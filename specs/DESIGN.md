@@ -429,7 +429,7 @@ Each page has its own detailed design specification. See the individual files fo
 | Task Detail | [task-detail.md](design/pages/task-detail.md) | Complete |
 | Reviews Panel | [reviews-panel.md](design/pages/reviews-panel.md) | Complete |
 | Chat Panel (Global) | [chat-panel.md](design/pages/chat-panel.md) | Complete |
-| QA Components | [qa-components.md](design/pages/qa-components.md) | Task 11 |
+| QA Components | [qa-components.md](design/pages/qa-components.md) | Complete |
 | Project Sidebar | [project-sidebar.md](design/pages/project-sidebar.md) | Task 12 |
 | Project Dialogs | [project-dialogs.md](design/pages/project-dialogs.md) | Task 13 |
 | Diff Viewer | [diff-viewer.md](design/pages/diff-viewer.md) | Task 14 |
