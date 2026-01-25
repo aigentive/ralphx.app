@@ -1,15 +1,29 @@
 /**
- * ReviewsPanel - Lists pending reviews with filter tabs and integrated diff viewer
+ * ReviewsPanel - Premium slide-in panel for pending reviews
  *
  * Features:
- * - Filter tabs: All, AI Review, Human Review
- * - Shows empty state when no pending reviews
- * - Integrated DiffViewer for viewing task changes when "View Diff" is clicked
- * - Changes/History tabs in the diff view
- * - Loading states during diff computation
+ * - Slide-in animation from right edge (300ms ease-out)
+ * - Filter tabs: All, AI, Human with counts and icons
+ * - Empty state with dashed circle icon
+ * - Loading spinner with accent color
+ * - Integrated DiffViewer for viewing task changes
+ * - Keyboard navigation (Escape to close)
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import {
+  X,
+  ChevronLeft,
+  Bot,
+  User,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import { ReviewCard } from "./ReviewCard";
@@ -29,71 +43,227 @@ interface ReviewsPanelProps {
   onViewDiff?: (reviewId: string) => void;
   onOpenInIDE?: (filePath: string) => void;
   onClose?: () => void;
+  isClosing?: boolean;
 }
 
-const TABS: { key: FilterTab; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "ai", label: "AI Review" },
-  { key: "human", label: "Human Review" },
-];
-
-function CloseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
+// Panel slide animation styles
+const PANEL_STYLES = `
+@keyframes panel-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
-function BackIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+@keyframes panel-slide-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0.8;
+  }
 }
+`;
 
+/**
+ * Loading Spinner - accent colored with animation
+ */
 function LoadingSpinner() {
   return (
-    <div data-testid="reviews-panel-loading" className="flex items-center justify-center p-8">
-      <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: "var(--border-subtle)", borderTopColor: "var(--accent-primary)" }} />
+    <div
+      data-testid="reviews-panel-loading"
+      className="flex items-center justify-center p-12"
+    >
+      <Loader2
+        className="w-6 h-6 animate-spin"
+        style={{ color: "var(--accent-primary)" }}
+      />
     </div>
   );
 }
 
+/**
+ * Empty State - dashed circle with check and message
+ */
 function EmptyState() {
   return (
-    <div data-testid="reviews-panel-empty" className="flex flex-col items-center justify-center p-8 text-center">
-      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-4" style={{ color: "var(--text-tertiary)" }}>
-        <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
-        <path d="M16 24L21 29L32 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <p style={{ color: "var(--text-secondary)" }}>No pending reviews</p>
+    <div
+      data-testid="reviews-panel-empty"
+      className="flex flex-col items-center justify-center p-12 text-center"
+    >
+      <CheckCircle2
+        className="w-12 h-12 mb-3 opacity-50"
+        style={{ color: "var(--text-muted)" }}
+        strokeDasharray="4 4"
+      />
+      <p className="text-sm font-medium text-[var(--text-secondary)]">
+        No pending reviews
+      </p>
+      <p className="text-xs text-[var(--text-muted)] mt-1">
+        All reviews have been handled
+      </p>
     </div>
   );
 }
 
-function FilterTabs({ active, onChange }: { active: FilterTab; onChange: (tab: FilterTab) => void }) {
-  const tabStyles = (isActive: boolean) => ({
-    backgroundColor: isActive ? "var(--bg-elevated)" : "transparent",
-    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-    borderColor: isActive ? "var(--border-subtle)" : "transparent",
-  });
-
+/**
+ * Count Badge - pill-shaped badge showing count
+ */
+function CountBadge({ count }: { count: number }) {
   return (
-    <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: "var(--bg-base)" }}>
-      {TABS.map(({ key, label }) => (
-        <button
-          key={key}
-          role="tab"
-          data-active={active === key ? "true" : "false"}
-          onClick={() => onChange(key)}
-          className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors border"
-          style={tabStyles(active === key)}
+    <Badge
+      variant="outline"
+      className={cn(
+        "inline-flex items-center justify-center min-w-[24px] px-2 py-0.5",
+        "text-xs font-medium rounded-full border-0",
+        "bg-[var(--accent-muted)] text-[var(--accent-primary)]"
+      )}
+    >
+      {count}
+    </Badge>
+  );
+}
+
+/**
+ * Panel Header - title, count badge, close button
+ */
+interface PanelHeaderProps {
+  totalCount: number;
+  onClose?: (() => void) | undefined;
+}
+
+function PanelHeader({ totalCount, onClose }: PanelHeaderProps) {
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+      style={{
+        borderColor: "var(--border-subtle)",
+        height: "52px",
+      }}
+    >
+      <h2
+        data-testid="reviews-panel-title"
+        className="text-lg font-semibold text-[var(--text-primary)]"
+        style={{ letterSpacing: "var(--tracking-tight, -0.02em)" }}
+      >
+        Reviews
+      </h2>
+      <div className="flex items-center gap-3">
+        <CountBadge count={totalCount} />
+        {onClose && (
+          <Button
+            data-testid="reviews-panel-close"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close reviews panel"
+            className={cn(
+              "w-8 h-8 rounded-[var(--radius-md)]",
+              "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+              "hover:bg-[var(--bg-hover)]",
+              "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
+              "transition-colors duration-150"
+            )}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Filter Tabs - All, AI, Human with counts
+ */
+interface FilterTabsProps {
+  activeTab: FilterTab;
+  onTabChange: (tab: FilterTab) => void;
+  allCount: number;
+  aiCount: number;
+  humanCount: number;
+}
+
+function FilterTabs({
+  activeTab,
+  onTabChange,
+  allCount,
+  aiCount,
+  humanCount,
+}: FilterTabsProps) {
+  return (
+    <div
+      className="px-4 py-3 border-b"
+      style={{
+        borderColor: "var(--border-subtle)",
+        backgroundColor: "var(--bg-base)",
+      }}
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => onTabChange(v as FilterTab)}
+      >
+        <TabsList
+          className={cn(
+            "inline-flex h-auto p-1 gap-1",
+            "bg-transparent rounded-[var(--radius-md)]"
+          )}
         >
-          {label}
-        </button>
-      ))}
+          <TabsTrigger
+            value="all"
+            className={cn(
+              "px-3 py-1.5 text-sm font-medium rounded-[var(--radius-md)]",
+              "data-[state=inactive]:bg-transparent data-[state=inactive]:text-[var(--text-secondary)]",
+              "data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)]",
+              "data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
+              "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
+              "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
+              "transition-all duration-150 min-w-[64px]"
+            )}
+          >
+            All{" "}
+            <span className="ml-1 opacity-80 text-xs">({allCount})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="ai"
+            className={cn(
+              "px-3 py-1.5 text-sm font-medium rounded-[var(--radius-md)]",
+              "data-[state=inactive]:bg-transparent data-[state=inactive]:text-[var(--text-secondary)]",
+              "data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)]",
+              "data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
+              "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
+              "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
+              "transition-all duration-150 min-w-[64px]",
+              "inline-flex items-center gap-1"
+            )}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            AI <span className="opacity-80 text-xs">({aiCount})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="human"
+            className={cn(
+              "px-3 py-1.5 text-sm font-medium rounded-[var(--radius-md)]",
+              "data-[state=inactive]:bg-transparent data-[state=inactive]:text-[var(--text-secondary)]",
+              "data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)]",
+              "data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
+              "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
+              "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
+              "transition-all duration-150 min-w-[64px]",
+              "inline-flex items-center gap-1"
+            )}
+          >
+            <User className="w-3.5 h-3.5" />
+            Human <span className="opacity-80 text-xs">({humanCount})</span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
     </div>
   );
 }
@@ -117,7 +287,6 @@ function ReviewDetailHeader({
   onRequestChanges,
 }: ReviewDetailHeaderProps) {
   const isPending = review.status === "pending";
-  const btnBase = "px-3 py-1.5 rounded text-sm font-medium transition-colors";
 
   return (
     <div
@@ -125,27 +294,24 @@ function ReviewDetailHeader({
       style={{ borderColor: "var(--border-subtle)" }}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <button
+        <Button
           data-testid="review-detail-back"
+          variant="ghost"
+          size="icon"
           onClick={onBack}
-          className="p-1.5 rounded hover:bg-white/5 transition-colors"
-          style={{ color: "var(--text-secondary)" }}
+          className="w-8 h-8 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           title="Back to reviews"
         >
-          <BackIcon />
-        </button>
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
         <div className="min-w-0">
           <h2
             data-testid="review-detail-title"
-            className="font-semibold truncate"
-            style={{ color: "var(--text-primary)" }}
+            className="font-semibold truncate text-[var(--text-primary)]"
           >
             {taskTitle}
           </h2>
-          <p
-            className="text-xs truncate"
-            style={{ color: "var(--text-muted)" }}
-          >
+          <p className="text-xs truncate text-[var(--text-muted)]">
             {review.reviewer_type === "ai" ? "AI Review" : "Human Review"} •{" "}
             {review.status}
           </p>
@@ -154,30 +320,24 @@ function ReviewDetailHeader({
       {isPending && (
         <div className="flex gap-2 shrink-0">
           {onRequestChanges && (
-            <button
+            <Button
               data-testid="review-detail-request-changes"
+              size="sm"
               onClick={() => onRequestChanges(review.id)}
-              className={btnBase}
-              style={{
-                backgroundColor: "var(--status-warning)",
-                color: "var(--bg-base)",
-              }}
+              className="bg-[var(--status-warning)] text-[var(--bg-base)] hover:opacity-90"
             >
               Request Changes
-            </button>
+            </Button>
           )}
           {onApprove && (
-            <button
+            <Button
               data-testid="review-detail-approve"
+              size="sm"
               onClick={() => onApprove(review.id)}
-              className={btnBase}
-              style={{
-                backgroundColor: "var(--status-success)",
-                color: "var(--bg-base)",
-              }}
+              className="bg-[var(--status-success)] text-white hover:opacity-90"
             >
               Approve
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -205,27 +365,18 @@ function ReviewDetailView({
   onRequestChanges,
   onOpenInIDE,
 }: ReviewDetailViewProps) {
-  const {
-    changes,
-    commits,
-    isLoadingChanges,
-    isLoadingHistory,
-    fetchDiff,
-  } = useGitDiff({
-    taskId: review.task_id,
-    enabled: true,
-  });
+  const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =
+    useGitDiff({
+      taskId: review.task_id,
+      enabled: true,
+    });
 
   const handleCommitSelect = useCallback((_commit: Commit) => {
     // In a real implementation, this would fetch files changed in the commit
-    // For now, the DiffViewer handles this internally via onFetchDiff
   }, []);
 
   return (
-    <div
-      data-testid="review-detail-view"
-      className="flex flex-col h-full"
-    >
+    <div data-testid="review-detail-view" className="flex flex-col h-full">
       <ReviewDetailHeader
         review={review}
         taskTitle={taskTitle}
@@ -257,17 +408,37 @@ export function ReviewsPanel({
   onViewDiff,
   onOpenInIDE,
   onClose,
+  isClosing = false,
 }: ReviewsPanelProps) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [selectedReview, setSelectedReview] = useState<ReviewResponse | null>(null);
+  const [selectedReview, setSelectedReview] = useState<ReviewResponse | null>(
+    null
+  );
   const { data: reviews, isLoading } = usePendingReviews(projectId);
 
+  // Keyboard navigation - Escape to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  // Filter reviews by tab
   const filteredReviews = useMemo(() => {
     if (activeTab === "all") return reviews;
     const reviewerType: ReviewerType = activeTab;
     return reviews.filter((r) => r.reviewer_type === reviewerType);
   }, [reviews, activeTab]);
+
+  // Calculate counts for tabs
+  const allCount = reviews.length;
+  const aiCount = reviews.filter((r) => r.reviewer_type === "ai").length;
+  const humanCount = reviews.filter((r) => r.reviewer_type === "human").length;
 
   const isEmpty = filteredReviews.length === 0;
 
@@ -279,7 +450,6 @@ export function ReviewsPanel({
         setSelectedReview(review);
         setViewMode("detail");
       }
-      // Also call external handler if provided
       onViewDiff?.(reviewId);
     },
     [reviews, onViewDiff]
@@ -291,101 +461,98 @@ export function ReviewsPanel({
     setSelectedReview(null);
   }, []);
 
+  // Panel animation class
+  const animationClass = isClosing
+    ? "animate-[panel-slide-out_250ms_ease-in_forwards]"
+    : "animate-[panel-slide-in_300ms_ease-out]";
+
   // Render detail view when a review is selected
   if (viewMode === "detail" && selectedReview) {
     return (
-      <div
-        data-testid="reviews-panel"
-        className="flex flex-col h-full rounded-lg border"
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          borderColor: "var(--border-subtle)",
-        }}
-      >
-        <ReviewDetailView
-          review={selectedReview}
-          taskTitle={taskTitles[selectedReview.task_id] ?? "Unknown Task"}
-          onBack={handleBack}
-          {...(onApprove ? { onApprove } : {})}
-          {...(onRequestChanges ? { onRequestChanges } : {})}
-          {...(onOpenInIDE ? { onOpenInIDE } : {})}
-        />
-      </div>
+      <>
+        <style>{PANEL_STYLES}</style>
+        <div
+          data-testid="reviews-panel"
+          role="complementary"
+          aria-label="Reviews panel"
+          className={cn(
+            "flex flex-col h-full",
+            "bg-[var(--bg-surface)]",
+            "shadow-[var(--shadow-md)]",
+            animationClass
+          )}
+        >
+          <ReviewDetailView
+            review={selectedReview}
+            taskTitle={taskTitles[selectedReview.task_id] ?? "Unknown Task"}
+            onBack={handleBack}
+            {...(onApprove ? { onApprove } : {})}
+            {...(onRequestChanges ? { onRequestChanges } : {})}
+            {...(onOpenInIDE ? { onOpenInIDE } : {})}
+          />
+        </div>
+      </>
     );
   }
 
   // Render list view
   return (
-    <div
-      data-testid="reviews-panel"
-      className="flex flex-col h-full rounded-lg border"
-      style={{
-        backgroundColor: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
-      }}
-    >
-      {/* Header */}
+    <>
+      <style>{PANEL_STYLES}</style>
       <div
-        className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: "var(--border-subtle)" }}
-      >
-        <h2
-          data-testid="reviews-panel-title"
-          className="text-lg font-semibold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Reviews
-        </h2>
-        {onClose && (
-          <button
-            data-testid="reviews-panel-close"
-            onClick={onClose}
-            className="p-1 rounded hover:bg-black/10"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            <CloseIcon />
-          </button>
+        data-testid="reviews-panel"
+        role="complementary"
+        aria-label="Reviews panel"
+        className={cn(
+          "flex flex-col h-full",
+          "bg-[var(--bg-surface)]",
+          "shadow-[var(--shadow-md)]",
+          animationClass
         )}
-      </div>
-
-      {/* Filter Tabs */}
-      <div
-        className="px-4 py-3 border-b"
-        style={{ borderColor: "var(--border-subtle)" }}
       >
-        <FilterTabs active={activeTab} onChange={setActiveTab} />
-      </div>
+        {/* Header */}
+        <PanelHeader totalCount={allCount} onClose={onClose} />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <LoadingSpinner />
-        ) : isEmpty ? (
-          <EmptyState />
-        ) : (
-          <div className="p-4 space-y-3">
-            {filteredReviews.map((review) => (
-              <ReviewCard
-                key={review.id}
-                review={{
-                  id: review.id,
-                  projectId: review.project_id,
-                  taskId: review.task_id,
-                  reviewerType: review.reviewer_type,
-                  status: review.status,
-                  notes: review.notes ?? null,
-                  createdAt: review.created_at,
-                  completedAt: review.completed_at ?? null,
-                }}
-                taskTitle={taskTitles[review.task_id] ?? "Unknown Task"}
-                {...(onApprove && { onApprove })}
-                {...(onRequestChanges && { onRequestChanges })}
-                onViewDiff={handleViewDiff}
-              />
-            ))}
-          </div>
-        )}
+        {/* Filter Tabs */}
+        <FilterTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          allCount={allCount}
+          aiCount={aiCount}
+          humanCount={humanCount}
+        />
+
+        {/* Content */}
+        <ScrollArea className="flex-1">
+          {isLoading ? (
+            <LoadingSpinner />
+          ) : isEmpty ? (
+            <EmptyState />
+          ) : (
+            <div className="p-4 space-y-3">
+              {filteredReviews.map((review) => (
+                <ReviewCard
+                  key={review.id}
+                  review={{
+                    id: review.id,
+                    projectId: review.project_id,
+                    taskId: review.task_id,
+                    reviewerType: review.reviewer_type,
+                    status: review.status,
+                    notes: review.notes ?? null,
+                    createdAt: review.created_at,
+                    completedAt: review.completed_at ?? null,
+                  }}
+                  taskTitle={taskTitles[review.task_id] ?? "Unknown Task"}
+                  {...(onApprove && { onApprove })}
+                  {...(onRequestChanges && { onRequestChanges })}
+                  onViewDiff={handleViewDiff}
+                />
+              ))}
+            </div>
+          )}
+        </ScrollArea>
       </div>
-    </div>
+    </>
   );
 }

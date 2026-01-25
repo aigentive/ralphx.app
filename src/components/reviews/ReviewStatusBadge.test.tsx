@@ -52,51 +52,49 @@ describe("ReviewStatusBadge", () => {
       expect(screen.getByTestId("icon-clock")).toBeInTheDocument();
     });
 
-    it("should render check icon for approved status", () => {
+    it("should render checkcircle icon for approved status", () => {
       render(<ReviewStatusBadge status="approved" />);
-      expect(screen.getByTestId("icon-check")).toBeInTheDocument();
+      expect(screen.getByTestId("icon-approved")).toBeInTheDocument();
     });
 
-    it("should render warning icon for changes_requested status", () => {
+    it("should render alertcircle icon for changes_requested status", () => {
       render(<ReviewStatusBadge status="changes_requested" />);
-      expect(screen.getByTestId("icon-warning")).toBeInTheDocument();
+      expect(screen.getByTestId("icon-changes_requested")).toBeInTheDocument();
     });
 
-    it("should render x icon for rejected status", () => {
+    it("should render xcircle icon for rejected status", () => {
       render(<ReviewStatusBadge status="rejected" />);
-      expect(screen.getByTestId("icon-x")).toBeInTheDocument();
+      expect(screen.getByTestId("icon-rejected")).toBeInTheDocument();
     });
   });
 
-  describe("colors", () => {
-    it("should apply orange/warning color for pending status", () => {
+  describe("colors via classes", () => {
+    it("should apply muted background class for pending status", () => {
       render(<ReviewStatusBadge status="pending" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge.style.backgroundColor).toBe("var(--status-warning)");
+      expect(badge).toHaveClass("bg-[var(--bg-hover)]");
+      expect(badge).toHaveClass("text-[var(--text-secondary)]");
     });
 
-    it("should apply green/success color for approved status", () => {
+    it("should apply green/success background class for approved status", () => {
       render(<ReviewStatusBadge status="approved" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge.style.backgroundColor).toBe("var(--status-success)");
+      expect(badge).toHaveClass("bg-emerald-500/15");
+      expect(badge).toHaveClass("text-[var(--status-success)]");
     });
 
-    it("should apply orange/warning color for changes_requested status", () => {
+    it("should apply amber/warning background class for changes_requested status", () => {
       render(<ReviewStatusBadge status="changes_requested" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge.style.backgroundColor).toBe("var(--status-warning)");
+      expect(badge).toHaveClass("bg-amber-500/15");
+      expect(badge).toHaveClass("text-[var(--status-warning)]");
     });
 
-    it("should apply red/error color for rejected status", () => {
+    it("should apply red/error background class for rejected status", () => {
       render(<ReviewStatusBadge status="rejected" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge.style.backgroundColor).toBe("var(--status-error)");
-    });
-
-    it("should use dark text color for contrast", () => {
-      render(<ReviewStatusBadge status="approved" />);
-      const badge = screen.getByTestId("review-status-badge");
-      expect(badge.style.color).toBe("var(--bg-base)");
+      expect(badge).toHaveClass("bg-red-500/15");
+      expect(badge).toHaveClass("text-[var(--status-error)]");
     });
   });
 
