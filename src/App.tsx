@@ -280,7 +280,7 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+Shift+, for settings)
+  // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+. for settings)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
@@ -296,11 +296,7 @@ function AppContent() {
         } else if (e.key === "4") {
           e.preventDefault();
           setCurrentView("activity");
-        } else if (e.key === "5") {
-          e.preventDefault();
-          setCurrentView("settings");
-        } else if (e.key === "<" && e.shiftKey) {
-          // Cmd+Shift+, (which produces <) for settings
+        } else if (e.key === "5" || e.key === ".") {
           e.preventDefault();
           setCurrentView("settings");
         }
