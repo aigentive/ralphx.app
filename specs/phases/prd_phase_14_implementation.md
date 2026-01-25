@@ -2,11 +2,11 @@
 
 ## Overview
 
-This phase implements the premium designs documented in Phase 13's `specs/DESIGN.md`. Each task takes the design requirements for a specific page/component and applies them, migrating to shadcn/ui components, replacing icons with Lucide, and adding polish.
+This phase implements the premium designs documented in Phase 13. Each task takes the design requirements from a specific page design document and applies them, migrating to shadcn/ui components, replacing icons with Lucide, and adding polish.
 
 **Reference:**
-- `specs/DESIGN.md` - Master design document (created in Phase 13)
-- `specs/DESIGN_OVERHAUL_PLAN.md` - Design overhaul strategy
+- `specs/DESIGN.md` - Master design system (colors, typography, spacing, shadows, patterns)
+- `specs/design/pages/*.md` - Page-specific design requirements
 
 ## Goals
 
@@ -19,7 +19,7 @@ This phase implements the premium designs documented in Phase 13's `specs/DESIGN
 
 ## Dependencies
 
-- Phase 13 must be complete (DESIGN.md exists with all sections)
+- Phase 13 must be complete (DESIGN.md and page docs exist)
 - shadcn/ui components installed and configured
 - Lucide React installed
 
@@ -27,18 +27,15 @@ This phase implements the premium designs documented in Phase 13's `specs/DESIGN
 
 Each task follows this pattern:
 
-1. Read the design requirements from `specs/DESIGN.md` → relevant section
-2. Migrate existing components to use shadcn/ui primitives
-3. Replace inline SVG icons with Lucide equivalents
-4. Apply premium styling (shadows, gradients, borders)
-5. Add micro-interactions (transitions, hover states, animations)
-6. Run `npm run lint && npm run typecheck`
-7. Start `npm run tauri dev`
-8. Use agent-browser to capture verification screenshots
-9. Verify against `acceptance_criteria` from DESIGN.md
-10. Verify against `design_quality` from DESIGN.md
-11. Fix any issues using `/frontend-design` skill
-12. Commit with descriptive message
+1. Read the page-specific design doc from `specs/design/pages/`
+2. Implement according to the doc's **Component Hierarchy**, **Styling**, and **Structure**
+3. Verify against the doc's **Acceptance Criteria**
+4. Verify against the doc's **Design Quality Checklist**
+5. Run `npm run lint && npm run typecheck`
+6. Start `npm run tauri dev`
+7. Use agent-browser to capture verification screenshots
+8. Fix any issues using `/frontend-design` skill
+9. Commit with descriptive message
 
 ## Anti-AI-Slop Verification (EVERY TASK)
 
@@ -61,34 +58,24 @@ Before marking any task complete, verify:
 
 **IMPORTANT: Work on ONE task per iteration.** Find the first task with `"passes": false`, complete it, update `"passes": true`, commit, and stop.
 
-**NOTE:** Tasks below are boilerplate. Before starting Phase 14, verify each page's requirements exist in `specs/DESIGN.md` from Phase 13.
-
 ```json
 [
   {
     "category": "implementation",
     "description": "Implement Kanban Board premium design",
+    "design_doc": "specs/design/pages/kanban-board.md",
     "steps": [
-      "Read specs/DESIGN.md → Kanban section",
-      "Migrate TaskBoard to use subtle gradient background",
-      "Migrate Column to use glass effect header with shadcn Badge for count",
-      "Migrate TaskCard to use shadcn Card with layered shadows",
-      "Replace all status icons with Lucide equivalents",
-      "Add hover lift effect: translateY(-2px) + shadow elevation",
-      "Add priority left border stripe",
-      "Add drag state: scale(1.02), rotate(2deg)",
-      "Add drop zone orange glow effect",
-      "Create empty column state with Lucide icon",
+      "Read specs/design/pages/kanban-board.md for complete design spec",
+      "Implement TaskBoard with radial gradient background and horizontal scroll-snap",
+      "Implement Column with glass effect header, Badge for count, and empty state",
+      "Implement TaskCard with priority stripe, layered shadows, hover lift, drag state",
+      "Use Lucide icons: GripVertical, Inbox, CheckCircle, etc.",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
-      "Use agent-browser to capture screenshots:",
-      "  - screenshots/impl-kanban-overview.png",
-      "  - screenshots/impl-kanban-card-hover.png",
-      "  - screenshots/impl-kanban-card-drag.png",
-      "  - screenshots/impl-kanban-empty-column.png",
-      "Verify against acceptance_criteria from DESIGN.md",
-      "Verify against design_quality from DESIGN.md",
-      "Use /frontend-design skill to fix any issues",
+      "Use agent-browser to capture screenshots",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Kanban board design"
     ],
     "passes": false
@@ -96,21 +83,20 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Ideation View premium design",
+    "design_doc": "specs/design/pages/ideation-view.md",
     "steps": [
-      "Read specs/DESIGN.md → Ideation section",
-      "Implement balanced two-panel split with resize handle",
-      "Migrate ChatPanel messages to proper bubble styling",
-      "Migrate ChatInput to shadcn Input with Send button",
-      "Migrate ProposalCard to shadcn Card with Checkbox",
-      "Migrate PriorityBadge to shadcn Badge with color variants",
-      "Replace all icons with Lucide equivalents",
-      "Add selection state styling",
-      "Add typing indicator animation",
-      "Create empty states with Lucide icons",
+      "Read specs/design/pages/ideation-view.md for complete design spec",
+      "Implement two-panel resizable layout with drag handle (min 320px per panel)",
+      "Implement ConversationPanel with message bubbles, typing indicator, chat input",
+      "Implement ProposalsPanel with header, toolbar, ProposalCard list, apply section",
+      "Style user messages (right-aligned, orange bg) vs AI messages (left-aligned)",
+      "Use Lucide icons: MessageSquare, ListTodo, Send, Lightbulb, GripVertical, etc.",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Ideation view design"
     ],
     "passes": false
@@ -118,20 +104,20 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Settings View premium design",
+    "design_doc": "specs/design/pages/settings-view.md",
     "steps": [
-      "Read specs/DESIGN.md → Settings section",
-      "Organize sections in shadcn Cards",
-      "Migrate toggles to shadcn Switch",
-      "Migrate inputs to shadcn Input",
-      "Migrate dropdowns to shadcn Select",
-      "Add section headers with Lucide icons",
-      "Add proper label styling with shadcn Label",
-      "Ensure consistent spacing (32px between sections)",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/settings-view.md for complete design spec",
+      "Implement glass effect header with Settings icon and saving indicator",
+      "Implement section cards (Execution, Model, Review, Supervisor) with gradient borders",
+      "Use shadcn Switch, Input, Select for form controls",
+      "Implement master toggle → sub-settings disabled pattern",
+      "Use Lucide icons: Settings, Zap, Brain, FileSearch, Shield, Loader2",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Settings view design"
     ],
     "passes": false
@@ -139,20 +125,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Activity Stream View premium design",
+    "design_doc": "specs/design/pages/activity-stream.md",
     "steps": [
-      "Read specs/DESIGN.md → Activity section",
-      "Implement viewport-filling scrollable layout",
-      "Add search/filter bar at top",
-      "Style activity entries with timestamps and icons",
-      "Implement expandable tool call details",
-      "Add syntax highlighting for JSON outputs",
-      "Add copy button for outputs",
-      "Color-code different entry types",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/activity-stream.md for complete design spec",
+      "Implement header with Activity icon and alert badge",
+      "Implement search input and filter tabs (All, Thinking, Tool Calls, Results, Text, Errors)",
+      "Implement activity entries with type-specific styling (left border, background tint)",
+      "Implement expandable details with JSON syntax highlighting and copy button",
+      "Implement auto-scroll behavior and 'Scroll to latest' banner",
+      "Use Lucide icons: Activity, Brain, Terminal, CheckCircle, MessageSquare, AlertCircle, Search, Copy",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Activity view design"
     ],
     "passes": false
@@ -160,19 +147,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Extensibility View premium design",
+    "design_doc": "specs/design/pages/extensibility-view.md",
     "steps": [
-      "Read specs/DESIGN.md → Extensibility section",
-      "Migrate tab navigation to shadcn Tabs",
-      "Style Workflows tab with shadcn Card",
-      "Style Artifacts tab with grid layout and type badges",
-      "Style Research tab with progress indicators",
-      "Style Methodologies tab with activation toggles",
-      "Replace all icons with Lucide equivalents",
-      "Add proper active states and hover effects",
+      "Read specs/design/pages/extensibility-view.md for complete design spec",
+      "Migrate to shadcn Tabs component",
+      "Implement Workflows tab with workflow cards",
+      "Implement Artifacts tab with grid layout and type badges",
+      "Implement Research tab with progress indicators",
+      "Implement Methodologies tab with activation toggles",
+      "Use Lucide icons per tab type",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Extensibility view design"
     ],
     "passes": false
@@ -180,19 +169,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Task Detail View premium design",
+    "design_doc": "specs/design/pages/task-detail.md",
     "steps": [
-      "Read specs/DESIGN.md → Task Detail section",
-      "Migrate to shadcn Dialog with custom sizing",
-      "Add backdrop blur glass effect",
-      "Add scale animation on open",
-      "Style header with title, status badge, priority",
-      "Style content sections (description, steps, reviews, QA)",
-      "Style StateHistoryTimeline with connected dots",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/task-detail.md for complete design spec",
+      "Migrate to shadcn Dialog with XLarge sizing (max-w-xl)",
+      "Implement backdrop blur and scale animation",
+      "Implement header with title, status Badge, priority indicator",
+      "Implement content sections with shadcn Collapsible (Description, Steps, Reviews, QA)",
+      "Implement StateHistoryTimeline with connected dots",
+      "Use Lucide icons: X, CheckCircle, ChevronDown, etc.",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Task Detail design"
     ],
     "passes": false
@@ -200,19 +191,20 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Reviews Panel premium design",
+    "design_doc": "specs/design/pages/reviews-panel.md",
     "steps": [
-      "Read specs/DESIGN.md → Reviews section",
-      "Implement right slide-in panel with animation",
-      "Migrate filter tabs to shadcn Tabs (pills variant)",
-      "Migrate ReviewCard to shadcn Card",
-      "Style reviewer type indicators and status badges",
-      "Style action buttons (View Diff, Approve, Request Changes)",
-      "Add fix attempt counter styling",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/reviews-panel.md for complete design spec",
+      "Implement slide-in panel with animation",
+      "Implement filter tabs using shadcn Tabs (pills variant)",
+      "Implement ReviewCard with reviewer type indicator, status badge, action buttons",
+      "Style fix attempt counter",
+      "Use Lucide icons: CheckCircle, XCircle, AlertCircle, Eye, etc.",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Reviews panel design"
     ],
     "passes": false
@@ -220,20 +212,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Chat Panel premium design",
+    "design_doc": "specs/design/pages/chat-panel.md",
     "steps": [
-      "Read specs/DESIGN.md → Chat Panel section",
+      "Read specs/design/pages/chat-panel.md for complete design spec",
       "Implement resizable panel with drag handle",
-      "Style message bubbles (user vs assistant)",
-      "Add proper markdown rendering",
-      "Add code block syntax highlighting",
-      "Migrate input to shadcn Input",
-      "Style Send button with keyboard hint",
-      "Add context indicator in header",
-      "Replace all icons with Lucide equivalents",
+      "Implement message bubbles with asymmetric corners (user vs assistant)",
+      "Implement markdown rendering and code block syntax highlighting",
+      "Implement chat input with shadcn Input, attach button, Send button",
+      "Implement context indicator in header",
+      "Use Lucide icons: MessageSquare, Send, Paperclip, Loader2, Code",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Chat panel design"
     ],
     "passes": false
@@ -241,20 +234,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement QA Components premium design",
+    "design_doc": "specs/design/pages/qa-components.md",
     "steps": [
-      "Read specs/DESIGN.md → QA section",
-      "Migrate TaskQABadge to shadcn Badge with color variants",
-      "Add Lucide icons per QA state",
-      "Style TaskDetailQAPanel with tab interface",
-      "Migrate QASettingsPanel to use shadcn Switch and Input",
-      "Style ScreenshotGallery thumbnail grid",
-      "Implement lightbox with keyboard navigation",
-      "Add Expected vs Actual comparison view",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/qa-components.md for complete design spec",
+      "Implement TaskQABadge with shadcn Badge and state-specific icons/colors",
+      "Implement TaskDetailQAPanel with tabs interface",
+      "Implement QASettingsPanel with shadcn Switch and Input",
+      "Implement ScreenshotGallery with thumbnail grid and lightbox",
+      "Implement Expected vs Actual comparison view",
+      "Use Lucide icons per QA state: Clock, PlayCircle, CheckCircle, XCircle, AlertTriangle",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium QA components design"
     ],
     "passes": false
@@ -262,20 +256,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Project Sidebar premium design",
+    "design_doc": "specs/design/pages/project-sidebar.md",
     "steps": [
-      "Read specs/DESIGN.md → Project Sidebar section",
-      "Style fixed sidebar with proper width and border",
-      "Style project list with git mode indicators",
-      "Style WorktreeStatus with Lucide GitBranch icon",
-      "Style New Project button with shadcn Button",
-      "Style navigation items with Lucide icons",
-      "Add active state with accent indicator",
-      "Add hover effects",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/project-sidebar.md for complete design spec",
+      "Implement fixed sidebar with proper width (240px) and border",
+      "Implement project list with git mode indicators and dirty status dots",
+      "Implement WorktreeStatus with GitBranch icon",
+      "Implement New Project button with shadcn Button",
+      "Implement navigation items with active state accent indicator",
+      "Use Lucide icons: FolderOpen, GitBranch, Plus, ChevronRight",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Project Sidebar design"
     ],
     "passes": false
@@ -283,19 +278,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Project Dialogs premium design",
+    "design_doc": "specs/design/pages/project-dialogs.md",
     "steps": [
-      "Read specs/DESIGN.md → Project Dialogs section",
-      "Migrate all dialogs to shadcn Dialog",
-      "Add backdrop blur and scale animation",
-      "Style Project Creation Wizard with proper form layout",
-      "Style Merge Workflow Dialog with radio options",
-      "Style Task Re-run Dialog with warning states",
-      "Ensure consistent header and footer patterns",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/project-dialogs.md for complete design spec",
+      "Migrate all dialogs to shadcn Dialog with backdrop blur and scale animation",
+      "Implement ProjectCreationWizard with form validation, git mode radio selection",
+      "Implement MergeWorkflowDialog with radio options and warning states",
+      "Implement TaskRerunDialog with commit info and recommended badge",
+      "Ensure consistent header/footer patterns per Modal Standards",
+      "Use Lucide icons: FolderOpen, GitMerge, GitBranch, RefreshCw, AlertCircle",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Project dialogs design"
     ],
     "passes": false
@@ -303,20 +300,21 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Diff Viewer premium design",
+    "design_doc": "specs/design/pages/diff-viewer.md",
     "steps": [
-      "Read specs/DESIGN.md → Diff Viewer section",
-      "Migrate tabs to shadcn Tabs",
-      "Style file tree with collapsible directories",
-      "Add Lucide icons for file status (Plus, Edit, Minus, ArrowRight)",
-      "Style diff panel with proper line highlighting",
-      "Add syntax highlighting for code",
-      "Style commit list with short SHA and metadata",
-      "Add Open in IDE button with Lucide ExternalLink",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/diff-viewer.md for complete design spec",
+      "Migrate to shadcn Tabs component",
+      "Implement file tree with collapsible directories and file status icons",
+      "Implement diff panel with line numbers, proper line highlighting, syntax highlighting",
+      "Implement commit list with short SHA and metadata",
+      "Add Open in IDE button",
+      "Use Lucide icons: Plus, Edit, Minus, ArrowRight, FolderOpen, File, ExternalLink",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Diff Viewer design"
     ],
     "passes": false
@@ -324,19 +322,22 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Execution Control Bar premium design",
+    "design_doc": "specs/design/pages/execution-control-bar.md",
     "steps": [
-      "Read specs/DESIGN.md → Execution Control section",
-      "Style fixed bottom bar with subtle top border",
-      "Add animated status dot (pulsing when running)",
-      "Style running/queued counts display",
-      "Migrate control buttons to shadcn Button with Tooltip",
-      "Add Lucide icons (Pause, Play, Square)",
-      "Style disabled states appropriately",
-      "Add current task name display",
+      "Read specs/design/pages/execution-control-bar.md for complete design spec",
+      "Implement fixed bottom bar with shadow and border-top",
+      "Implement animated status dot (pulsing green when running, amber when paused)",
+      "Implement running/queued counts display",
+      "Implement Pause/Resume button with shadcn Button and Tooltip",
+      "Implement Stop button with destructive styling",
+      "Implement current task name display with Loader2 spinner",
+      "Use Lucide icons: Pause, Play, Square, Loader2",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Execution Control design"
     ],
     "passes": false
@@ -344,20 +345,23 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Implement Header and Navigation premium design",
+    "design_doc": "specs/design/pages/header-navigation.md",
     "steps": [
-      "Read specs/DESIGN.md → Header section",
-      "Style fixed header with proper height and border",
-      "Add Tauri drag region",
-      "Style view navigation with shadcn Button (ghost)",
-      "Add active state with accent indicator",
-      "Style Project Selector with shadcn DropdownMenu",
-      "Style Chat/Reviews toggle buttons with count badges",
-      "Add Lucide icons throughout",
-      "Add keyboard shortcut tooltips (Cmd+1/2/3/4/5/K)",
+      "Read specs/design/pages/header-navigation.md for complete design spec",
+      "Implement fixed 48px header with shadow and Tauri drag region",
+      "Implement RalphX branding with accent color",
+      "Implement view navigation with shadcn Button (ghost), active state styling",
+      "Implement Project Selector with shadcn DropdownMenu",
+      "Implement Chat toggle with ⌘K shortcut badge",
+      "Implement Reviews toggle with pending count badge",
+      "Register keyboard shortcuts (⌘1-5 for views, ⌘K for chat)",
+      "Use Lucide icons: LayoutGrid, Lightbulb, Puzzle, Activity, SlidersHorizontal, FolderOpen, ChevronDown, MessageSquare, CheckCircle",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: implement premium Header design"
     ],
     "passes": false
@@ -365,20 +369,24 @@ Before marking any task complete, verify:
   {
     "category": "implementation",
     "description": "Standardize all modals to common pattern",
+    "design_doc": "specs/design/pages/modal-standards.md",
     "steps": [
-      "Read specs/DESIGN.md → Modal Standards section",
-      "Audit all existing modals in the app",
-      "Migrate AskUserQuestionModal to shadcn Dialog",
-      "Migrate ReviewNotesModal to shadcn Dialog",
-      "Migrate ProposalEditModal to shadcn Dialog",
-      "Ensure consistent backdrop, animation, sizing",
-      "Ensure consistent header pattern (title, close button)",
-      "Ensure consistent footer pattern (cancel, primary action)",
-      "Replace all icons with Lucide equivalents",
+      "Read specs/design/pages/modal-standards.md for complete design spec",
+      "Audit all existing modals in the app for consistency",
+      "Migrate AskUserQuestionModal to shadcn Dialog (Medium size)",
+      "Migrate ReviewNotesModal to shadcn Dialog (Medium size)",
+      "Migrate ProposalEditModal to shadcn Dialog (Large size)",
+      "Ensure consistent backdrop (rgba(0,0,0,0.6) + blur(8px))",
+      "Ensure consistent animation (scale 0.95→1, 200ms)",
+      "Ensure consistent header pattern (icon, title, close button)",
+      "Ensure consistent footer pattern (cancel ghost, primary right-aligned)",
+      "Use Lucide icons: X, Loader2, CheckCircle, AlertCircle, etc.",
+      "Verify against Acceptance Criteria section in design doc",
+      "Verify against Design Quality Checklist section in design doc",
       "Run npm run lint && npm run typecheck",
       "Start npm run tauri dev",
       "Use agent-browser to capture screenshots of each modal",
-      "Verify against acceptance_criteria and design_quality",
+      "Fix any issues using /frontend-design skill",
       "Commit: feat: standardize all modals to premium pattern"
     ],
     "passes": false
@@ -394,10 +402,11 @@ Before marking any task complete, verify:
       "  - Each side panel (Reviews, Chat)",
       "  - Various states (hover, selected, loading, empty)",
       "Review all screenshots against specs/DESIGN.md",
+      "Cross-reference each page against its design doc in specs/design/pages/",
       "Verify anti-AI-slop compliance throughout:",
       "  - No purple gradients",
       "  - No Inter font",
-      "  - Warm orange accent used correctly",
+      "  - Warm orange accent used correctly (5% rule)",
       "  - Layered shadows everywhere",
       "  - Micro-interactions feel polished",
       "Fix any remaining issues using /frontend-design skill",
@@ -409,6 +418,39 @@ Before marking any task complete, verify:
   }
 ]
 ```
+
+---
+
+## Page Design Documents Reference
+
+Each page has a detailed design specification in `specs/design/pages/`:
+
+| Page/Component | Design Doc | Key Elements |
+|----------------|------------|--------------|
+| Kanban Board | [kanban-board.md](../design/pages/kanban-board.md) | TaskBoard, Column, TaskCard, drag/drop states |
+| Ideation View | [ideation-view.md](../design/pages/ideation-view.md) | Two-panel layout, chat bubbles, ProposalCard |
+| Settings View | [settings-view.md](../design/pages/settings-view.md) | Section cards, Switch/Input/Select controls |
+| Activity Stream | [activity-stream.md](../design/pages/activity-stream.md) | Search/filter, entry types, expandable details |
+| Extensibility View | [extensibility-view.md](../design/pages/extensibility-view.md) | Tabs, workflow/artifact/research/methodology cards |
+| Task Detail | [task-detail.md](../design/pages/task-detail.md) | Modal, collapsible sections, timeline |
+| Reviews Panel | [reviews-panel.md](../design/pages/reviews-panel.md) | Slide-in panel, ReviewCard, filter tabs |
+| Chat Panel | [chat-panel.md](../design/pages/chat-panel.md) | Resizable panel, message bubbles, input |
+| QA Components | [qa-components.md](../design/pages/qa-components.md) | QA badges, screenshot gallery, lightbox |
+| Project Sidebar | [project-sidebar.md](../design/pages/project-sidebar.md) | Project list, git status, navigation |
+| Project Dialogs | [project-dialogs.md](../design/pages/project-dialogs.md) | Creation wizard, merge dialog, re-run dialog |
+| Diff Viewer | [diff-viewer.md](../design/pages/diff-viewer.md) | File tree, diff panel, commit list |
+| Execution Control Bar | [execution-control-bar.md](../design/pages/execution-control-bar.md) | Status dot, counts, pause/stop buttons |
+| Header & Navigation | [header-navigation.md](../design/pages/header-navigation.md) | Nav items, project selector, toggle buttons |
+| Modal Standards | [modal-standards.md](../design/pages/modal-standards.md) | Base patterns, sizes, header/footer |
+
+Each design doc contains:
+- **Layout Structure** - Container properties, positioning
+- **Component Hierarchy** - Visual tree of components
+- **Styling Details** - CSS properties, Tailwind classes
+- **State Variations** - Default, hover, active, disabled
+- **Lucide Icons** - Specific icons to use with sizes
+- **Acceptance Criteria** - Functional requirements checklist
+- **Design Quality Checklist** - Visual quality requirements
 
 ---
 
