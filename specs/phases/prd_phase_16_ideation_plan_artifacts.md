@@ -197,20 +197,20 @@ After completing the task: update `"passes": true`, commit, and stop.
   },
   {
     "category": "backend",
-    "description": "Implement methodology-aware plan artifact config",
+    "description": "Implement generic methodology integration infrastructure for plan artifacts",
     "plan_section": "Methodology Integration",
     "steps": [
       "Read specs/plans/ideation_plan_artifacts.md section 'Methodology Integration'",
       "Update src-tauri/src/domain/entities/methodology.rs:",
-      "  - Add MethodologyPlanArtifactConfig struct",
-      "  - Add MethodologyPlanTemplate struct",
-      "  - Add plan_artifact_config and plan_templates fields to MethodologyExtension",
-      "Update IdeationService with get_plan_artifact_config() method:",
-      "  - If methodology active with config: use methodology's artifact type/bucket",
-      "  - If no methodology: default to Specification type, prd-library bucket",
-      "Update HTTP endpoints to use methodology-aware config",
+      "  - Add MethodologyPlanArtifactConfig struct (artifact_type, bucket_id)",
+      "  - Add MethodologyPlanTemplate struct (id, name, description, template_content)",
+      "  - Add plan_artifact_config: Option and plan_templates: Vec fields to MethodologyExtension",
+      "Create get_plan_artifact_config() helper in IdeationService:",
+      "  - Returns default config (Specification type, prd-library bucket)",
+      "  - Infrastructure ready for future methodology configs",
+      "Note: No specific methodology configs implemented yet - just the base infrastructure",
       "Run cargo test",
-      "Commit: feat(methodology): add methodology-aware plan artifact configuration"
+      "Commit: feat(methodology): add generic plan artifact config infrastructure"
     ],
     "passes": false
   },
@@ -386,18 +386,19 @@ After completing the task: update `"passes": true`, commit, and stop.
   },
   {
     "category": "frontend",
-    "description": "Add plan template selection (methodology support)",
+    "description": "Add plan template selection infrastructure",
     "plan_section": "Decisions - Plan Templates",
     "steps": [
       "Create src/components/Ideation/PlanTemplateSelector.tsx:",
-      "  - Fetch templates from active methodology (if any)",
-      "  - Show template picker dropdown when templates available",
+      "  - Fetch templates from active methodology via API (returns empty array if no methodology)",
+      "  - Show template picker dropdown only when templates array is non-empty",
       "  - On select: pre-populate plan content with template",
-      "  - Hide selector when no methodology active (start from blank)",
-      "Update PlanEditor to show template selector for new plans",
+      "  - Component hidden when no templates available (blank plan by default)",
+      "Update PlanEditor to conditionally show template selector for new plans",
+      "Note: Currently will always be hidden since no methodologies define templates yet",
       "Create PlanTemplateSelector.test.tsx",
       "Run npm run lint && npm run typecheck && npm run test",
-      "Commit: feat(ideation): add plan template selection for methodologies"
+      "Commit: feat(ideation): add plan template selection infrastructure"
     ],
     "passes": false
   },
@@ -427,6 +428,22 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Filename: {session_title}_plan.md or plan_{artifact_id}.md",
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ideation): add plan export functionality"
+    ],
+    "passes": false
+  },
+  {
+    "category": "integration",
+    "description": "Add plan import functionality",
+    "plan_section": "Implementation Phases - Phase 7: Export & Import",
+    "steps": [
+      "Add 'Import' button to IdeationView (visible when no plan exists)",
+      "On click: open file picker for .md files",
+      "Read file content and create plan artifact via create_plan_artifact",
+      "Link imported plan to current session",
+      "Handle versioning: imported plan starts at version 1",
+      "Show success notification with plan title",
+      "Run npm run lint && npm run typecheck",
+      "Commit: feat(ideation): add plan import functionality"
     ],
     "passes": false
   },
@@ -462,8 +479,8 @@ From the implementation plan:
 | **Plan mode configurable** | User preferences; default to Optional (plan suggested for complex features) |
 | **No explicit approval by default** | Plan existence is sufficient; conversation feedback is implicit approval |
 | **Hybrid versioning** | Track version at proposal creation for historical view, show current by default |
-| **Methodology-driven artifact types** | No methodology = Specification; active methodology defines custom type/bucket |
-| **No templates without methodology** | Start from scratch by default; methodologies provide templates |
+| **Methodology-driven artifact types (generic infra)** | Base infrastructure only; no methodology = Specification; future methodologies can define custom type/bucket |
+| **No templates without methodology** | Start from scratch by default; template infrastructure ready for future methodologies |
 | **SQLite persistence for settings** | Settings persist across restarts; single-row pattern |
 | **Task traceability fields** | `source_proposal_id` and `plan_artifact_id` enable worker context access |
 | **Auto-update with undo** | Proactive sync updates proposals automatically; undo reverts to pre-update state |
@@ -489,10 +506,11 @@ After completing all tasks:
 - [ ] Default values applied on first load
 - [ ] Settings changes persist across app restart
 
-### Backend - Methodology Integration
-- [ ] Active methodology's artifact config used when present
-- [ ] Falls back to `Specification` type and `prd-library` bucket when no methodology
-- [ ] Methodology plan templates accessible via API
+### Backend - Methodology Integration (Generic Infrastructure)
+- [ ] `MethodologyPlanArtifactConfig` and `MethodologyPlanTemplate` structs defined
+- [ ] `get_plan_artifact_config()` method returns default when no methodology active
+- [ ] Falls back to `Specification` type and `prd-library` bucket
+- [ ] Infrastructure ready for methodologies to define custom configs (not implemented yet)
 
 ### MCP Server
 - [ ] Plan tools in TOOL_ALLOWLIST for orchestrator-ideation
@@ -512,6 +530,8 @@ After completing all tasks:
 - [ ] "Approve Plan" button shows when `require_plan_approval` is true
 - [ ] Plan-proposal linkage visible in proposal cards
 - [ ] "View as of proposal creation" shows historical version
+- [ ] Export downloads plan as markdown file
+- [ ] Import creates plan artifact from uploaded markdown file
 
 ### Frontend - Templates
 - [ ] Template selector shows when methodology provides templates
