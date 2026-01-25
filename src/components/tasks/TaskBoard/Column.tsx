@@ -87,7 +87,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect }: ColumnProps)
       >
         {/* Orange accent dot */}
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-accent-primary" />
-        <h3 className="text-xs font-medium flex-1 text-text-primary tracking-tight">
+        <h3 className="text-xs font-medium flex-1 text-text-primary tracking-tight m-0">
           {column.name}
         </h3>
         <Badge
