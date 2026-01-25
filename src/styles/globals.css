@@ -497,6 +497,23 @@ body {
   }
 }
 
+/* Badge pop animation for review count changes */
+@keyframes badge-pop {
+  0% {
+    transform: scale(0.5);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-badge-pop {
+  animation: badge-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 .status-indicator-running {
   animation: status-pulse 2s ease-in-out infinite;
 }
