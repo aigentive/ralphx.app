@@ -9,6 +9,10 @@ export type { InternalStatus } from "./status";
  * Task schema matching Rust backend serialization
  * Note: field names use camelCase as that's what serde_json produces with rename_all
  */
+/**
+ * Task schema matching Rust backend serialization
+ * Note: field names use camelCase as that's what serde_json produces with rename_all
+ */
 export const TaskSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
@@ -19,10 +23,11 @@ export const TaskSchema = z.object({
   internalStatus: InternalStatusSchema,
   /** Whether this task needs a review point (human-in-loop checkpoint) */
   needsReviewPoint: z.boolean().default(false),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  startedAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
+  // Accept RFC3339 timestamps with offset (e.g., +00:00) and precision
+  createdAt: z.string().datetime({ offset: true, precision: 6 }),
+  updatedAt: z.string().datetime({ offset: true, precision: 6 }),
+  startedAt: z.string().datetime({ offset: true, precision: 6 }).nullable(),
+  completedAt: z.string().datetime({ offset: true, precision: 6 }).nullable(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;

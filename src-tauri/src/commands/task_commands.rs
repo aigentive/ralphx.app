@@ -84,6 +84,7 @@ pub struct InjectTaskResponse {
 
 /// Response wrapper for task operations
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskResponse {
     pub id: String,
     pub project_id: String,
