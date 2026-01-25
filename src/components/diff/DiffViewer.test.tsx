@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { DiffViewer, type FileChange, type Commit, type DiffData } from "./DiffViewer";
 
 // Mock the git-diff-view library
@@ -66,7 +67,7 @@ describe("DiffViewer", () => {
     it("applies design system background color", () => {
       render(<DiffViewer {...defaultProps} />);
       const viewer = screen.getByTestId("diff-viewer");
-      expect(viewer).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      expect(viewer).toHaveClass("bg-[var(--bg-base)]");
     });
 
     it("renders Changes and History tabs", () => {
@@ -78,13 +79,13 @@ describe("DiffViewer", () => {
     it("shows Changes tab as active by default", () => {
       render(<DiffViewer {...defaultProps} />);
       const changesTab = screen.getByTestId("tab-changes");
-      expect(changesTab).toHaveAttribute("aria-selected", "true");
+      expect(changesTab).toHaveAttribute("data-state", "active");
     });
 
     it("shows History tab as active when defaultTab is history", () => {
       render(<DiffViewer {...defaultProps} defaultTab="history" />);
       const historyTab = screen.getByTestId("tab-history");
-      expect(historyTab).toHaveAttribute("aria-selected", "true");
+      expect(historyTab).toHaveAttribute("data-state", "active");
     });
   });
 
@@ -108,21 +109,23 @@ describe("DiffViewer", () => {
       expect(screen.getByText("3")).toBeInTheDocument();
     });
 
-    it("switches to History tab when clicked", () => {
+    it("switches to History tab when clicked", async () => {
+      const user = userEvent.setup();
       render(<DiffViewer {...defaultProps} />);
 
       const historyTab = screen.getByTestId("tab-history");
-      fireEvent.click(historyTab);
+      await user.click(historyTab);
 
-      expect(historyTab).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByTestId("tab-changes")).toHaveAttribute("aria-selected", "false");
+      expect(historyTab).toHaveAttribute("data-state", "active");
+      expect(screen.getByTestId("tab-changes")).toHaveAttribute("data-state", "inactive");
     });
 
-    it("calls onTabChange callback when tab is changed", () => {
+    it("calls onTabChange callback when tab is changed", async () => {
+      const user = userEvent.setup();
       const onTabChange = vi.fn();
       render(<DiffViewer {...defaultProps} onTabChange={onTabChange} />);
 
-      fireEvent.click(screen.getByTestId("tab-history"));
+      await user.click(screen.getByTestId("tab-history"));
 
       expect(onTabChange).toHaveBeenCalledWith("history");
     });
@@ -132,12 +135,12 @@ describe("DiffViewer", () => {
     it("shows empty file tree when no changes", () => {
       render(<DiffViewer {...defaultProps} changes={[]} />);
       expect(screen.getByTestId("file-tree-empty")).toBeInTheDocument();
-      expect(screen.getByText(/no changes/i)).toBeInTheDocument();
+      expect(screen.getByText(/no uncommitted changes/i)).toBeInTheDocument();
     });
 
     it("shows helpful message in empty state", () => {
       render(<DiffViewer {...defaultProps} changes={[]} />);
-      expect(screen.getByText(/working tree is clean/i)).toBeInTheDocument();
+      expect(screen.getByText(/working directory is clean/i)).toBeInTheDocument();
     });
   });
 
@@ -161,13 +164,14 @@ describe("DiffViewer", () => {
       expect(screen.getByText("Button.tsx")).toBeInTheDocument();
     });
 
-    it("displays addition and deletion counts", () => {
+    it("displays status letter for modified files", () => {
       const changes = [
-        createFileChange({ path: "test.ts", additions: 15, deletions: 3 }),
+        createFileChange({ path: "test.ts", status: "modified" }),
       ];
       render(<DiffViewer {...defaultProps} changes={changes} />);
 
-      expect(screen.getByText("+15 -3")).toBeInTheDocument();
+      // New implementation shows status letter (M for modified)
+      expect(screen.getByText("M")).toBeInTheDocument();
     });
 
     it("shows directory structure for nested files", () => {
@@ -299,7 +303,7 @@ describe("DiffViewer", () => {
       });
     });
 
-    it("displays file name in diff panel header", async () => {
+    it("displays file path in diff panel header", async () => {
       const diffData = createDiffData({ filePath: "src/components/Button.tsx" });
       const onFetchDiff = vi.fn().mockResolvedValue(diffData);
       const changes = [createFileChange({ path: "src/components/Button.tsx" })];
@@ -307,7 +311,8 @@ describe("DiffViewer", () => {
       render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
 
       await waitFor(() => {
-        expect(screen.getByText("Button.tsx")).toBeInTheDocument();
+        // New implementation shows full file path
+        expect(screen.getByText("src/components/Button.tsx")).toBeInTheDocument();
       });
     });
   });
@@ -375,12 +380,12 @@ describe("DiffViewer", () => {
     it("shows empty commit list when no commits", () => {
       render(<DiffViewer {...defaultProps} defaultTab="history" commits={[]} />);
       expect(screen.getByTestId("commit-list-empty")).toBeInTheDocument();
-      expect(screen.getByText(/no commits/i)).toBeInTheDocument();
+      expect(screen.getByText(/no commit history/i)).toBeInTheDocument();
     });
 
     it("shows helpful message in empty state", () => {
       render(<DiffViewer {...defaultProps} defaultTab="history" commits={[]} />);
-      expect(screen.getByText(/commit history will appear here/i)).toBeInTheDocument();
+      expect(screen.getByText(/Make your first commit to see history here/i)).toBeInTheDocument();
     });
   });
 
@@ -411,7 +416,7 @@ describe("DiffViewer", () => {
     it("displays commit author", () => {
       const commits = [createCommit({ author: "John Doe" })];
       render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
-      expect(screen.getByText(/by John Doe/)).toBeInTheDocument();
+      expect(screen.getByText(/John Doe/)).toBeInTheDocument();
     });
 
     it("calls onCommitSelect when commit is clicked", () => {
@@ -440,26 +445,26 @@ describe("DiffViewer", () => {
       expect(screen.getByTestId("commit-diff-empty")).toBeInTheDocument();
     });
 
-    it("shows helpful message in empty state", () => {
+    it("shows helpful message when commit selected", () => {
       const commits = [createCommit()];
       render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
-      expect(screen.getByText(/select a commit to view changes/i)).toBeInTheDocument();
+      expect(screen.getByText(/Select a commit to view changes/i)).toBeInTheDocument();
     });
   });
 
   describe("loading states", () => {
-    it("shows loading spinner when isLoadingChanges is true", () => {
+    it("shows loading skeleton when isLoadingChanges is true", () => {
       render(<DiffViewer {...defaultProps} isLoadingChanges={true} />);
-      // Spinner should be visible in the file tree area
-      const fileTreeArea = screen.getByTestId("diff-viewer").querySelector(".animate-spin");
-      expect(fileTreeArea).toBeInTheDocument();
+      // Skeleton loading should be visible (uses animate-pulse)
+      const skeletons = screen.getByTestId("diff-viewer").querySelectorAll(".animate-pulse");
+      expect(skeletons.length).toBeGreaterThan(0);
     });
 
-    it("shows loading spinner when isLoadingHistory is true", () => {
+    it("shows loading skeleton when isLoadingHistory is true", () => {
       render(<DiffViewer {...defaultProps} defaultTab="history" isLoadingHistory={true} />);
-      // Spinner should be visible in the commit list area
-      const commitListArea = screen.getByTestId("diff-viewer").querySelector(".animate-spin");
-      expect(commitListArea).toBeInTheDocument();
+      // Skeleton loading should be visible (uses animate-pulse)
+      const skeletons = screen.getByTestId("diff-viewer").querySelectorAll(".animate-pulse");
+      expect(skeletons.length).toBeGreaterThan(0);
     });
   });
 
@@ -481,6 +486,7 @@ describe("DiffViewer", () => {
 
   describe("tab switching behavior", () => {
     it("resets selection when switching tabs", async () => {
+      const user = userEvent.setup();
       const onFetchDiff = vi.fn().mockResolvedValue(createDiffData());
       const changes = [createFileChange({ path: "test.ts" })];
       const commits = [createCommit()];
@@ -500,13 +506,13 @@ describe("DiffViewer", () => {
       });
 
       // Switch to history tab
-      fireEvent.click(screen.getByTestId("tab-history"));
+      await user.click(screen.getByTestId("tab-history"));
 
       // Should show empty commit diff state
       expect(screen.getByTestId("commit-diff-empty")).toBeInTheDocument();
 
       // Switch back to changes tab
-      fireEvent.click(screen.getByTestId("tab-changes"));
+      await user.click(screen.getByTestId("tab-changes"));
 
       // onFetchDiff should be called again for auto-selection
       await waitFor(() => {
@@ -588,10 +594,10 @@ describe("DiffViewer", () => {
       expect(screen.getByTestId("tab-history")).toHaveAttribute("role", "tab");
     });
 
-    it("active tab has aria-selected true", () => {
+    it("active tab has data-state active", () => {
       render(<DiffViewer {...defaultProps} />);
-      expect(screen.getByTestId("tab-changes")).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByTestId("tab-history")).toHaveAttribute("aria-selected", "false");
+      expect(screen.getByTestId("tab-changes")).toHaveAttribute("data-state", "active");
+      expect(screen.getByTestId("tab-history")).toHaveAttribute("data-state", "inactive");
     });
   });
 });

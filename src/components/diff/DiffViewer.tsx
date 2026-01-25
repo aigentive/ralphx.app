@@ -3,18 +3,41 @@
  *
  * Features:
  * - Two tabs: Changes (uncommitted) and History (commits)
- * - File tree on left showing changed files
+ * - File tree on left showing changed files with collapsible directories
  * - Unified diff view on right with syntax highlighting
  * - Collapse/expand hunks
  * - Open in IDE button using Tauri shell commands
  * - Web Worker support for off-main-thread diff computation
  *
  * Library: @git-diff-view/react for optimized diff rendering
+ * Icons: Lucide React
+ * Components: shadcn/ui (Tabs, Button, ScrollArea, Tooltip, Skeleton)
  */
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { DiffView, DiffModeEnum } from "@git-diff-view/react";
 import "@git-diff-view/react/styles/diff-view.css";
+import {
+  GitBranch,
+  History,
+  Folder,
+  FolderOpen,
+  File,
+  FileCode,
+  FileJson,
+  ChevronRight,
+  ExternalLink,
+  GitCommit,
+  CheckCircle2,
+  FileSearch,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ============================================================================
 // Types
@@ -83,104 +106,15 @@ export interface DiffViewerProps {
 }
 
 // ============================================================================
-// Icons
-// ============================================================================
-
-function FileAddedIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="2" y="1" width="10" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5 7h4M7 5v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function FileModifiedIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="2" y="1" width="10" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function FileDeletedIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="2" y="1" width="10" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5 7h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function FileRenamedIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="2" y="1" width="10" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5 7h4M8 5l2 2-2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-// ChevronRightIcon available for future directory expansion use
-// function ChevronRightIcon() { ... }
-
-function ExternalLinkIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M9 2h3v3M5 9l7-7M7 2H3a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CommitIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="3" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M7 1v3M7 10v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M1 4V3a1 1 0 011-1h3l1.5 2H12a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-// ============================================================================
 // Utility Functions
 // ============================================================================
-
-function getFileIcon(status: FileChange["status"]) {
-  switch (status) {
-    case "added":
-      return <FileAddedIcon />;
-    case "modified":
-      return <FileModifiedIcon />;
-    case "deleted":
-      return <FileDeletedIcon />;
-    case "renamed":
-      return <FileRenamedIcon />;
-  }
-}
 
 function getStatusColor(status: FileChange["status"]) {
   switch (status) {
     case "added":
       return "var(--status-success)";
     case "modified":
-      return "var(--accent-primary)";
+      return "var(--status-warning)";
     case "deleted":
       return "var(--status-error)";
     case "renamed":
@@ -188,16 +122,17 @@ function getStatusColor(status: FileChange["status"]) {
   }
 }
 
-function getFileName(path: string): string {
-  const parts = path.split("/");
-  return parts[parts.length - 1] ?? path;
-}
-
-function getDirectory(path: string): string {
-  const parts = path.split("/");
-  if (parts.length <= 1) return "";
-  parts.pop();
-  return parts.join("/");
+function getStatusLetter(status: FileChange["status"]) {
+  switch (status) {
+    case "added":
+      return "A";
+    case "modified":
+      return "M";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+  }
 }
 
 function formatRelativeDate(date: Date): string {
@@ -248,6 +183,20 @@ function getLanguageFromPath(path: string): string {
     zsh: "bash",
   };
   return langMap[ext] ?? "plaintext";
+}
+
+function getFileIcon(path: string) {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const codeExts = ["ts", "tsx", "js", "jsx", "rs", "py", "go", "java", "c", "cpp", "rb", "php", "swift", "kt"];
+  const configExts = ["json", "yaml", "yml", "toml"];
+
+  if (codeExts.includes(ext)) {
+    return <FileCode className="w-4 h-4" />;
+  }
+  if (configExts.includes(ext)) {
+    return <FileJson className="w-4 h-4" />;
+  }
+  return <File className="w-4 h-4" />;
 }
 
 // Group files by directory for tree view
@@ -336,73 +285,6 @@ function buildFileTree(files: FileChange[]): TreeNode[] {
 // Sub-components
 // ============================================================================
 
-interface TabBarProps {
-  activeTab: DiffViewTab;
-  onTabChange: (tab: DiffViewTab) => void;
-  changesCount: number;
-  commitsCount: number;
-}
-
-function TabBar({ activeTab, onTabChange, changesCount, commitsCount }: TabBarProps) {
-  return (
-    <div
-      className="flex border-b"
-      style={{ borderColor: "var(--border-subtle)" }}
-    >
-      <button
-        role="tab"
-        aria-selected={activeTab === "changes"}
-        data-testid="tab-changes"
-        onClick={() => onTabChange("changes")}
-        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
-        style={{
-          color: activeTab === "changes" ? "var(--text-primary)" : "var(--text-secondary)",
-          borderBottom: activeTab === "changes" ? "2px solid var(--accent-primary)" : "2px solid transparent",
-          marginBottom: "-1px",
-        }}
-      >
-        Changes
-        {changesCount > 0 && (
-          <span
-            className="px-1.5 py-0.5 text-xs rounded-full"
-            style={{
-              backgroundColor: activeTab === "changes" ? "var(--accent-primary)" : "var(--bg-elevated)",
-              color: activeTab === "changes" ? "white" : "var(--text-secondary)",
-            }}
-          >
-            {changesCount}
-          </span>
-        )}
-      </button>
-      <button
-        role="tab"
-        aria-selected={activeTab === "history"}
-        data-testid="tab-history"
-        onClick={() => onTabChange("history")}
-        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
-        style={{
-          color: activeTab === "history" ? "var(--text-primary)" : "var(--text-secondary)",
-          borderBottom: activeTab === "history" ? "2px solid var(--accent-primary)" : "2px solid transparent",
-          marginBottom: "-1px",
-        }}
-      >
-        History
-        {commitsCount > 0 && (
-          <span
-            className="px-1.5 py-0.5 text-xs rounded-full"
-            style={{
-              backgroundColor: activeTab === "history" ? "var(--accent-primary)" : "var(--bg-elevated)",
-              color: activeTab === "history" ? "white" : "var(--text-secondary)",
-            }}
-          >
-            {commitsCount}
-          </span>
-        )}
-      </button>
-    </div>
-  );
-}
-
 interface FileTreeItemProps {
   node: TreeNode;
   depth: number;
@@ -429,24 +311,29 @@ function FileTreeItem({
         <button
           data-testid={`dir-${node.path}`}
           onClick={() => onToggleExpand?.(node.path)}
-          className="w-full flex items-center gap-1.5 px-2 py-1 text-sm transition-colors hover:bg-white/5"
+          className={cn(
+            "w-full flex items-center gap-1 px-2 py-1 text-sm transition-colors",
+            "hover:bg-[var(--bg-hover)] cursor-pointer"
+          )}
           style={{
-            paddingLeft: `${depth * 12 + 8}px`,
-            color: "var(--text-secondary)",
+            paddingLeft: `${depth * 16 + 8}px`,
+            height: "28px",
           }}
         >
           <span
-            className="transition-transform"
+            className="transition-transform duration-150"
             style={{
-              transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)",
+              transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
             }}
           >
-            <ChevronDownIcon />
+            <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
           </span>
-          <span style={{ color: "var(--text-muted)" }}>
-            <FolderIcon />
-          </span>
-          <span className="truncate">{node.name}</span>
+          {isExpanded ? (
+            <FolderOpen className="w-4 h-4 text-[var(--text-muted)]" />
+          ) : (
+            <Folder className="w-4 h-4 text-[var(--text-muted)]" />
+          )}
+          <span className="truncate text-[var(--text-secondary)]">{node.name}</span>
         </button>
         {isExpanded && (
           <div>
@@ -468,27 +355,40 @@ function FileTreeItem({
   }
 
   const file = node.file;
+  const statusColor = getStatusColor(file.status);
+
   return (
     <button
       data-testid={`file-${file.path}`}
       onClick={() => onSelect(file.path)}
-      className="w-full flex items-center gap-1.5 px-2 py-1 text-sm transition-colors"
+      className={cn(
+        "w-full flex items-center gap-1 px-2 py-1 text-sm transition-colors",
+        "hover:bg-[var(--bg-hover)] cursor-pointer",
+        isSelected && "bg-[var(--bg-elevated)]"
+      )}
       style={{
-        paddingLeft: `${depth * 12 + 8}px`,
-        backgroundColor: isSelected ? "var(--bg-elevated)" : "transparent",
-        color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+        paddingLeft: `${depth * 16 + 8}px`,
+        height: "28px",
       }}
     >
-      <span className="w-3" />
-      <span style={{ color: getStatusColor(file.status) }}>
-        {getFileIcon(file.status)}
+      {/* Spacer for chevron alignment */}
+      <span className="w-4" />
+      <span className="text-[var(--text-muted)]">
+        {getFileIcon(file.path)}
       </span>
-      <span className="truncate flex-1 text-left">{node.name}</span>
       <span
-        className="text-xs shrink-0"
-        style={{ color: "var(--text-muted)" }}
+        className={cn(
+          "truncate flex-1 text-left",
+          isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+        )}
       >
-        +{file.additions} -{file.deletions}
+        {node.name}
+      </span>
+      <span
+        className="text-xs font-mono w-4 text-center"
+        style={{ color: statusColor }}
+      >
+        {getStatusLetter(file.status)}
       </span>
     </button>
   );
@@ -534,12 +434,13 @@ function FileTree({ files, selectedPath, onSelect }: FileTreeProps) {
   if (files.length === 0) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-4 text-center"
+        className="flex flex-col items-center justify-center h-full p-16 text-center"
         data-testid="file-tree-empty"
       >
-        <p style={{ color: "var(--text-secondary)" }}>No changes</p>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-          Working tree is clean
+        <CheckCircle2 className="w-12 h-12 text-[var(--text-muted)] opacity-50 mb-4" />
+        <p className="text-sm font-medium text-[var(--text-secondary)]">No uncommitted changes</p>
+        <p className="text-xs text-[var(--text-muted)] mt-1">
+          Your working directory is clean
         </p>
       </div>
     );
@@ -572,12 +473,13 @@ function CommitList({ commits, selectedSha, onSelect }: CommitListProps) {
   if (commits.length === 0) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-4 text-center"
+        className="flex flex-col items-center justify-center h-full p-16 text-center"
         data-testid="commit-list-empty"
       >
-        <p style={{ color: "var(--text-secondary)" }}>No commits</p>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-          Commit history will appear here
+        <GitCommit className="w-12 h-12 text-[var(--text-muted)] opacity-50 mb-4" />
+        <p className="text-sm font-medium text-[var(--text-secondary)]">No commit history</p>
+        <p className="text-xs text-[var(--text-muted)] mt-1">
+          Make your first commit to see history here
         </p>
       </div>
     );
@@ -592,33 +494,23 @@ function CommitList({ commits, selectedSha, onSelect }: CommitListProps) {
             key={commit.sha}
             data-testid={`commit-${commit.shortSha}`}
             onClick={() => onSelect(commit)}
-            className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors"
-            style={{
-              backgroundColor: isSelected ? "var(--bg-elevated)" : "transparent",
-            }}
+            className={cn(
+              "w-full flex items-center px-3 py-2 text-left transition-colors cursor-pointer",
+              "border-b border-[var(--border-subtle)]",
+              "hover:bg-[var(--bg-hover)]",
+              isSelected && "bg-[var(--bg-elevated)] border-l-2 border-l-[var(--accent-primary)]"
+            )}
+            style={{ height: "48px" }}
           >
-            <span
-              className="mt-0.5 shrink-0"
-              style={{ color: isSelected ? "var(--accent-primary)" : "var(--text-muted)" }}
-            >
-              <CommitIcon />
+            <span className="text-xs font-mono text-[var(--accent-primary)] mr-2 shrink-0">
+              {commit.shortSha}
             </span>
-            <div className="flex-1 min-w-0">
-              <p
-                className="text-sm font-medium truncate"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {commit.message}
-              </p>
-              <p
-                className="text-xs mt-0.5 flex items-center gap-2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                <span className="font-mono">{commit.shortSha}</span>
-                <span>by {commit.author}</span>
-                <span>{formatRelativeDate(commit.date)}</span>
-              </p>
-            </div>
+            <span className="text-sm text-[var(--text-primary)] truncate flex-1">
+              {commit.message}
+            </span>
+            <span className="text-xs text-[var(--text-muted)] ml-2 whitespace-nowrap shrink-0">
+              {commit.author} • {formatRelativeDate(commit.date)}
+            </span>
           </button>
         );
       })}
@@ -646,14 +538,8 @@ function DiffPanel({
         data-testid="diff-loading"
       >
         <div className="flex flex-col items-center gap-3">
-          <div
-            className="w-6 h-6 border-2 rounded-full animate-spin"
-            style={{
-              borderColor: "var(--border-subtle)",
-              borderTopColor: "var(--accent-primary)",
-            }}
-          />
-          <p style={{ color: "var(--text-secondary)" }}>Loading diff...</p>
+          <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-primary)]" />
+          <p className="text-sm text-[var(--text-secondary)]">Loading diff...</p>
         </div>
       </div>
     );
@@ -662,25 +548,15 @@ function DiffPanel({
   if (!filePath) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-8 text-center"
+        className="flex flex-col items-center justify-center h-full p-16 text-center"
         data-testid="diff-empty"
       >
-        <svg
-          width="48"
-          height="48"
-          viewBox="0 0 48 48"
-          fill="none"
-          className="mb-4"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <rect x="6" y="8" width="36" height="32" rx="2" stroke="currentColor" strokeWidth="2" />
-          <path d="M14 20h20M14 28h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-        <p style={{ color: "var(--text-secondary)" }}>
-          Select a file to view diff
+        <FileSearch className="w-12 h-12 text-[var(--text-muted)] opacity-50 mb-4" />
+        <p className="text-sm font-medium text-[var(--text-secondary)]">
+          Select a file to view changes
         </p>
-        <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Changes will be displayed here
+        <p className="text-xs text-[var(--text-muted)] mt-1">
+          Click on a file in the tree to see its diff
         </p>
       </div>
     );
@@ -689,10 +565,10 @@ function DiffPanel({
   if (!diffData) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-8 text-center"
+        className="flex flex-col items-center justify-center h-full p-16 text-center"
         data-testid="diff-error"
       >
-        <p style={{ color: "var(--text-secondary)" }}>
+        <p className="text-sm text-[var(--text-secondary)]">
           Unable to load diff for this file
         </p>
       </div>
@@ -703,36 +579,43 @@ function DiffPanel({
     <div className="flex flex-col h-full" data-testid="diff-content">
       {/* File header */}
       <div
-        className="flex items-center justify-between px-4 py-2 border-b shrink-0"
-        style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{
+          height: "40px",
+          borderBottom: "1px solid var(--border-subtle)",
+          backgroundColor: "var(--bg-surface)",
+        }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono text-sm truncate" style={{ color: "var(--text-primary)" }}>
-            {getFileName(filePath)}
-          </span>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {getDirectory(filePath)}
-          </span>
-        </div>
+        <span
+          className="font-mono text-sm truncate"
+          style={{ color: "var(--text-primary)" }}
+        >
+          {filePath}
+        </span>
         {onOpenInIDE && (
-          <button
-            data-testid="open-in-ide"
-            onClick={() => onOpenInIDE(filePath)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--text-secondary)",
-            }}
-            title="Open in IDE"
-          >
-            <ExternalLinkIcon />
-            <span>Open in IDE</span>
-          </button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  onClick={() => onOpenInIDE(filePath)}
+                  data-testid="open-in-ide"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Open in IDE</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
 
       {/* Diff view */}
-      <div className="flex-1 overflow-auto diff-viewer-container">
+      <div className="flex-1 overflow-auto diff-viewer-container bg-[var(--bg-base)]">
         <DiffView
           data={{
             oldFile: {
@@ -777,28 +660,17 @@ function CommitDiffPanel({
   isLoading,
   onOpenInIDE,
 }: CommitDiffPanelProps) {
-
   if (!commit) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-8 text-center"
+        className="flex flex-col items-center justify-center h-full p-16 text-center"
         data-testid="commit-diff-empty"
       >
-        <svg
-          width="48"
-          height="48"
-          viewBox="0 0 48 48"
-          fill="none"
-          className="mb-4"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <circle cx="24" cy="24" r="8" stroke="currentColor" strokeWidth="2" />
-          <path d="M24 8v8M24 32v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-        <p style={{ color: "var(--text-secondary)" }}>
+        <GitCommit className="w-12 h-12 text-[var(--text-muted)] opacity-50 mb-4" />
+        <p className="text-sm font-medium text-[var(--text-secondary)]">
           Select a commit to view changes
         </p>
-        <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
+        <p className="text-xs text-[var(--text-muted)] mt-1">
           Changed files will be displayed here
         </p>
       </div>
@@ -809,19 +681,24 @@ function CommitDiffPanel({
     <div className="flex h-full">
       {/* Files changed in this commit */}
       <div
-        className="w-64 border-r shrink-0 overflow-y-auto"
-        style={{ borderColor: "var(--border-subtle)" }}
+        className="w-64 shrink-0 overflow-hidden border-r border-[var(--border-subtle)]"
+        style={{ minWidth: "200px" }}
       >
-        <div className="px-3 py-2 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-          <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+        <div
+          className="px-3 py-2 border-b border-[var(--border-subtle)]"
+          style={{ backgroundColor: "var(--bg-surface)" }}
+        >
+          <p className="text-xs font-medium text-[var(--text-muted)]">
             {files.length} file{files.length !== 1 ? "s" : ""} changed
           </p>
         </div>
-        <FileTree
-          files={files}
-          selectedPath={selectedFilePath}
-          onSelect={onSelectFile}
-        />
+        <ScrollArea className="h-[calc(100%-33px)]">
+          <FileTree
+            files={files}
+            selectedPath={selectedFilePath}
+            onSelect={onSelectFile}
+          />
+        </ScrollArea>
       </div>
 
       {/* Diff */}
@@ -833,6 +710,19 @@ function CommitDiffPanel({
           {...(onOpenInIDE !== undefined && { onOpenInIDE })}
         />
       </div>
+    </div>
+  );
+}
+
+// Predefined widths to avoid Math.random() in render
+const SKELETON_WIDTHS = ["75%", "85%", "65%", "90%", "70%", "80%", "60%"];
+
+function FileTreeSkeleton() {
+  return (
+    <div className="py-2 px-2 space-y-1">
+      {SKELETON_WIDTHS.map((width, i) => (
+        <Skeleton key={i} className="h-7" style={{ width }} />
+      ))}
     </div>
   );
 }
@@ -861,7 +751,8 @@ export function DiffViewer({
   const [isDiffLoading, setIsDiffLoading] = useState(false);
 
   // Handle tab change
-  const handleTabChange = useCallback((tab: DiffViewTab) => {
+  const handleTabChange = useCallback((value: string) => {
+    const tab = value as DiffViewTab;
     setActiveTab(tab);
     onTabChange?.(tab);
     // Reset selections when switching tabs
@@ -922,37 +813,94 @@ export function DiffViewer({
 
   return (
     <div
-      className="flex flex-col h-full"
-      style={{ backgroundColor: "var(--bg-surface)" }}
+      className="flex flex-col h-full bg-[var(--bg-base)]"
       data-testid="diff-viewer"
     >
-      {/* Tab bar */}
-      <TabBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        changesCount={changes.length}
-        commitsCount={commits.length}
-      />
+      <Tabs
+        value={activeTab}
+        onValueChange={handleTabChange}
+        className="flex flex-col h-full"
+      >
+        {/* Tab navigation */}
+        <TabsList
+          className={cn(
+            "h-12 px-4 rounded-none justify-start gap-0",
+            "bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]"
+          )}
+        >
+          <TabsTrigger
+            value="changes"
+            data-testid="tab-changes"
+            className={cn(
+              "h-12 px-4 gap-2 rounded-none border-b-2 border-transparent",
+              "text-sm font-medium text-[var(--text-secondary)]",
+              "data-[state=active]:text-[var(--text-primary)]",
+              "data-[state=active]:border-b-[var(--accent-primary)]",
+              "data-[state=active]:shadow-none data-[state=active]:bg-transparent",
+              "hover:text-[var(--text-primary)]",
+              "transition-colors duration-150"
+            )}
+          >
+            <GitBranch className="w-4 h-4" />
+            Changes
+            {changes.length > 0 && (
+              <span
+                className={cn(
+                  "px-1.5 py-0.5 text-xs rounded-full ml-1",
+                  activeTab === "changes"
+                    ? "bg-[var(--accent-primary)] text-white"
+                    : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                )}
+              >
+                {changes.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger
+            value="history"
+            data-testid="tab-history"
+            className={cn(
+              "h-12 px-4 gap-2 rounded-none border-b-2 border-transparent",
+              "text-sm font-medium text-[var(--text-secondary)]",
+              "data-[state=active]:text-[var(--text-primary)]",
+              "data-[state=active]:border-b-[var(--accent-primary)]",
+              "data-[state=active]:shadow-none data-[state=active]:bg-transparent",
+              "hover:text-[var(--text-primary)]",
+              "transition-colors duration-150"
+            )}
+          >
+            <History className="w-4 h-4" />
+            History
+            {commits.length > 0 && (
+              <span
+                className={cn(
+                  "px-1.5 py-0.5 text-xs rounded-full ml-1",
+                  activeTab === "history"
+                    ? "bg-[var(--accent-primary)] text-white"
+                    : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                )}
+              >
+                {commits.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Content */}
-      <div className="flex-1 flex min-h-0">
-        {activeTab === "changes" ? (
-          <>
-            {/* File tree */}
-            <div
-              className="w-64 border-r shrink-0 overflow-y-auto"
-              style={{ borderColor: "var(--border-subtle)" }}
-            >
+        {/* Changes tab content */}
+        <TabsContent value="changes" className="flex-1 flex min-h-0 mt-0">
+          {/* File tree */}
+          <div
+            className="shrink-0 overflow-hidden border-r border-[var(--border-subtle)]"
+            style={{
+              width: "25%",
+              minWidth: "200px",
+              maxWidth: "40%",
+              backgroundColor: "var(--bg-surface)",
+            }}
+          >
+            <ScrollArea className="h-full">
               {isLoadingChanges ? (
-                <div className="flex items-center justify-center h-full">
-                  <div
-                    className="w-5 h-5 border-2 rounded-full animate-spin"
-                    style={{
-                      borderColor: "var(--border-subtle)",
-                      borderTopColor: "var(--accent-primary)",
-                    }}
-                  />
-                </div>
+                <FileTreeSkeleton />
               ) : (
                 <FileTree
                   files={changes}
@@ -960,35 +908,35 @@ export function DiffViewer({
                   onSelect={handleFileSelect}
                 />
               )}
-            </div>
+            </ScrollArea>
+          </div>
 
-            {/* Diff panel */}
-            <div className="flex-1 min-w-0">
-              <DiffPanel
-                diffData={diffData}
-                isLoading={isDiffLoading}
-                filePath={selectedFilePath}
-                {...(onOpenInIDE !== undefined && { onOpenInIDE })}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Commit list */}
-            <div
-              className="w-80 border-r shrink-0 overflow-y-auto"
-              style={{ borderColor: "var(--border-subtle)" }}
-            >
+          {/* Diff panel */}
+          <div className="flex-1 min-w-0">
+            <DiffPanel
+              diffData={diffData}
+              isLoading={isDiffLoading}
+              filePath={selectedFilePath}
+              {...(onOpenInIDE !== undefined && { onOpenInIDE })}
+            />
+          </div>
+        </TabsContent>
+
+        {/* History tab content */}
+        <TabsContent value="history" className="flex-1 flex min-h-0 mt-0">
+          {/* Commit list */}
+          <div
+            className="shrink-0 overflow-hidden border-r border-[var(--border-subtle)]"
+            style={{
+              width: "25%",
+              minWidth: "200px",
+              maxWidth: "40%",
+              backgroundColor: "var(--bg-surface)",
+            }}
+          >
+            <ScrollArea className="h-full">
               {isLoadingHistory ? (
-                <div className="flex items-center justify-center h-full">
-                  <div
-                    className="w-5 h-5 border-2 rounded-full animate-spin"
-                    style={{
-                      borderColor: "var(--border-subtle)",
-                      borderTopColor: "var(--accent-primary)",
-                    }}
-                  />
-                </div>
+                <FileTreeSkeleton />
               ) : (
                 <CommitList
                   commits={commits}
@@ -996,23 +944,23 @@ export function DiffViewer({
                   onSelect={handleCommitSelect}
                 />
               )}
-            </div>
+            </ScrollArea>
+          </div>
 
-            {/* Commit diff panel */}
-            <div className="flex-1 min-w-0">
-              <CommitDiffPanel
-                commit={selectedCommit}
-                files={commitFiles}
-                selectedFilePath={commitSelectedFile}
-                onSelectFile={handleCommitFileSelect}
-                diffData={diffData}
-                isLoading={isDiffLoading}
-                {...(onOpenInIDE !== undefined && { onOpenInIDE })}
-              />
-            </div>
-          </>
-        )}
-      </div>
+          {/* Commit diff panel */}
+          <div className="flex-1 min-w-0">
+            <CommitDiffPanel
+              commit={selectedCommit}
+              files={commitFiles}
+              selectedFilePath={commitSelectedFile}
+              onSelectFile={handleCommitFileSelect}
+              diffData={diffData}
+              isLoading={isDiffLoading}
+              {...(onOpenInIDE !== undefined && { onOpenInIDE })}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
