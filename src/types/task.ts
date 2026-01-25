@@ -23,11 +23,11 @@ export const TaskSchema = z.object({
   internalStatus: InternalStatusSchema,
   /** Whether this task needs a review point (human-in-loop checkpoint) */
   needsReviewPoint: z.boolean().default(false),
-  // Accept RFC3339 timestamps with offset (e.g., +00:00) and precision
-  createdAt: z.string().datetime({ offset: true, precision: 6 }),
-  updatedAt: z.string().datetime({ offset: true, precision: 6 }),
-  startedAt: z.string().datetime({ offset: true, precision: 6 }).nullable(),
-  completedAt: z.string().datetime({ offset: true, precision: 6 }).nullable(),
+  // Accept RFC3339 timestamps with offset (e.g., +00:00)
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
+  startedAt: z.string().datetime({ offset: true }).nullable(),
+  completedAt: z.string().datetime({ offset: true }).nullable(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;
