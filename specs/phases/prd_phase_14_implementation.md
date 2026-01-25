@@ -217,7 +217,7 @@ Before marking any task complete, verify:
       "Run npm run lint && npm run typecheck",
       "Commit: feat: implement premium Chat panel design"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "implementation",

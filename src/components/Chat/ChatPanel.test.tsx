@@ -144,7 +144,8 @@ describe("ChatPanel", () => {
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
       expect(screen.getByTestId("chat-panel-header")).toBeInTheDocument();
-      expect(screen.getByText(/ideation/i)).toBeInTheDocument();
+      // Ideation view shows "Chat" as the context label
+      expect(screen.getByText(/chat/i)).toBeInTheDocument();
     });
 
     it("renders close button", () => {
@@ -173,7 +174,7 @@ describe("ChatPanel", () => {
   });
 
   describe("context indicator", () => {
-    it("shows 'Kanban' context for kanban view", () => {
+    it("shows 'Project' context for kanban view", () => {
       const kanbanContext: ChatContext = {
         view: "kanban",
         projectId: "project-1",
@@ -181,7 +182,7 @@ describe("ChatPanel", () => {
 
       render(<ChatPanel context={kanbanContext} />, { wrapper: createWrapper() });
 
-      expect(screen.getByText(/kanban/i)).toBeInTheDocument();
+      expect(screen.getByText(/project/i)).toBeInTheDocument();
     });
 
     it("shows 'Task' context when task is selected", () => {
@@ -241,12 +242,18 @@ describe("ChatPanel", () => {
   });
 
   describe("close functionality", () => {
-    it("calls togglePanel when close button clicked", async () => {
+    it("calls togglePanel when close button clicked (after animation)", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
-      await userEvent.click(screen.getByTestId("chat-panel-close"));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(screen.getByTestId("chat-panel-close"));
+
+      // Close button triggers animation, then calls togglePanel after 200ms
+      await vi.advanceTimersByTimeAsync(200);
 
       expect(mockTogglePanel).toHaveBeenCalled();
+      vi.useRealTimers();
     });
   });
 
@@ -368,11 +375,12 @@ describe("ChatPanel", () => {
       expect(panel).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
     });
 
-    it("has border-left class for subtle border", () => {
+    it("has border-left style for subtle border", () => {
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
       const panel = screen.getByTestId("chat-panel");
-      expect(panel).toHaveClass("border-l");
+      // Check that borderLeft contains the expected CSS variable
+      expect(panel.style.borderLeft).toBe("1px solid var(--border-subtle)");
     });
   });
 
