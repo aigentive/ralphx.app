@@ -149,7 +149,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test manually: set RALPHX_AGENT_TYPE=orchestrator-ideation and verify only ideation tools returned",
       "Commit: feat(mcp): implement tool scoping based on agent type"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",

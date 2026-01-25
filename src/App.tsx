@@ -497,7 +497,9 @@ function AppContent() {
                         size="sm"
                         onClick={() => setCurrentView(view)}
                         className={cn(
-                          "gap-2 px-3 h-8 transition-all duration-150 active:scale-[0.98]",
+                          "group gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                          // Responsive padding: icon-only until xl (1280px), with text on larger screens
+                          isActive ? "px-3" : "px-2 xl:px-3",
                           isActive
                             ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
                             : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
@@ -505,8 +507,19 @@ function AppContent() {
                         data-testid={`nav-${view}`}
                         aria-current={isActive ? "page" : undefined}
                       >
-                        <Icon className="w-[18px] h-[18px]" />
-                        <span className="text-sm font-medium">{label}</span>
+                        <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                        <span
+                          className={cn(
+                            "text-sm font-medium whitespace-nowrap transition-all duration-150",
+                            // Active: always visible
+                            // Inactive: hidden until xl (1280px), visible on hover
+                            isActive
+                              ? "inline"
+                              : "hidden xl:inline group-hover:inline"
+                          )}
+                        >
+                          {label}
+                        </span>
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="text-xs">
@@ -539,17 +552,28 @@ function AppContent() {
                   size="sm"
                   onClick={toggleChatPanel}
                   className={cn(
-                    "gap-2 px-3 h-8 transition-all duration-150 active:scale-[0.98]",
+                    "group gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                    chatIsOpen ? "px-3" : "px-2 xl:px-3",
                     chatIsOpen
                       ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                   )}
                   data-testid="chat-toggle"
                 >
-                  <MessageSquare className="w-[18px] h-[18px]" />
-                  <span className="text-sm font-medium">Chat</span>
+                  <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span
+                    className={cn(
+                      "text-sm font-medium whitespace-nowrap transition-all duration-150",
+                      chatIsOpen ? "inline" : "hidden xl:inline group-hover:inline"
+                    )}
+                  >
+                    Chat
+                  </span>
                   <kbd
-                    className="ml-1 px-1.5 py-0.5 text-xs rounded"
+                    className={cn(
+                      "ml-1 px-1.5 py-0.5 text-xs rounded transition-all duration-150",
+                      chatIsOpen ? "inline" : "hidden xl:inline group-hover:inline"
+                    )}
                     style={{
                       backgroundColor: "var(--bg-elevated)",
                       color: "var(--text-muted)",
@@ -572,15 +596,23 @@ function AppContent() {
                   size="sm"
                   onClick={toggleReviewsPanel}
                   className={cn(
-                    "relative gap-2 px-3 h-8 transition-all duration-150 active:scale-[0.98]",
+                    "group relative gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                    reviewsPanelOpen ? "px-3" : "px-2 lg:px-3",
                     reviewsPanelOpen
                       ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                   )}
                   data-testid="reviews-toggle"
                 >
-                  <CheckCircle className="w-[18px] h-[18px]" />
-                  <span className="text-sm font-medium">Reviews</span>
+                  <CheckCircle className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span
+                    className={cn(
+                      "text-sm font-medium whitespace-nowrap transition-all duration-150",
+                      reviewsPanelOpen ? "inline" : "hidden lg:inline group-hover:inline"
+                    )}
+                  >
+                    Reviews
+                  </span>
                   {/* Badge with pending count */}
                   {pendingReviewCount > 0 && (
                     <span
