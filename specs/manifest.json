@@ -110,9 +110,23 @@
     },
     {
       "phase": 15,
-      "name": "Auditor System",
-      "prd": "specs/phases/prd_phase_15_auditor.md",
+      "name": "Context-Aware Chat",
+      "prd": "specs/phases/prd_phase_15_context_aware_chat.md",
       "status": "active",
+      "description": "MCP integration, Claude session management, conversation history, message queueing"
+    },
+    {
+      "phase": "15b",
+      "name": "Task Execution Chat",
+      "prd": "specs/phases/prd_phase_15b_task_execution_chat.md",
+      "status": "pending",
+      "description": "Persist worker execution output, view as chat, queue messages to worker"
+    },
+    {
+      "phase": 16,
+      "name": "Auditor System",
+      "prd": "specs/phases/prd_phase_16_auditor.md",
+      "status": "pending",
       "description": "Automatic detection and correction of systemic issues in completed work"
     }
   ]
