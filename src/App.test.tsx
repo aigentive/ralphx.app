@@ -168,7 +168,8 @@ describe("App", () => {
   it("should have main element with flex layout", () => {
     render(<App />);
     const mainElement = screen.getByRole("main");
-    expect(mainElement).toHaveClass("min-h-screen", "flex", "flex-col");
+    // h-screen for fixed header layout (header is fixed, needs explicit height)
+    expect(mainElement).toHaveClass("h-screen", "flex", "flex-col");
   });
 
   it("should render header with RalphX branding", () => {
@@ -200,13 +201,22 @@ describe("App", () => {
       expect(screen.getByTestId("nav-settings")).toBeInTheDocument();
     });
 
-    it("should have correct titles with keyboard shortcuts", () => {
+    it("should have navigation buttons rendered as accessible elements", () => {
       render(<App />);
-      expect(screen.getByTestId("nav-kanban")).toHaveAttribute("title", "Kanban (⌘1)");
-      expect(screen.getByTestId("nav-ideation")).toHaveAttribute("title", "Ideation (⌘2)");
-      expect(screen.getByTestId("nav-extensibility")).toHaveAttribute("title", "Extensibility (⌘3)");
-      expect(screen.getByTestId("nav-activity")).toHaveAttribute("title", "Activity (⌘4)");
-      expect(screen.getByTestId("nav-settings")).toHaveAttribute("title", "Settings (⌘5)");
+      // All nav buttons should exist and have proper accessible labels
+      // (Using shadcn Tooltip which provides keyboard shortcut info on hover)
+      const navButtons = [
+        { testId: "nav-kanban", label: /Kanban/i },
+        { testId: "nav-ideation", label: /Ideation/i },
+        { testId: "nav-extensibility", label: /Extensibility/i },
+        { testId: "nav-activity", label: /Activity/i },
+        { testId: "nav-settings", label: /Settings/i },
+      ];
+      for (const { testId, label } of navButtons) {
+        const btn = screen.getByTestId(testId);
+        expect(btn).toBeInTheDocument();
+        expect(btn).toHaveTextContent(label);
+      }
     });
 
     it("should start with Kanban view active", () => {

@@ -2,14 +2,30 @@
  * ProjectSelector - Compact header dropdown for project selection
  *
  * A refined dropdown selector showing current project with git mode indicator.
- * Provides quick access to all projects and new project creation.
+ * Uses shadcn DropdownMenu for proper keyboard accessibility and animations.
  *
  * Design: Follows RalphX design system with warm orange accent, SF Pro fonts,
  * 8pt grid, dark theme. Full keyboard accessibility with arrow navigation.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  FolderOpen,
+  ChevronDown,
+  Plus,
+  GitBranch,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { Project } from "@/types/project";
 
 // ============================================================================
@@ -21,85 +37,6 @@ export interface ProjectSelectorProps {
   onNewProject: () => void;
   /** Optional className for custom styling */
   className?: string;
-}
-
-// ============================================================================
-// Icons
-// ============================================================================
-
-function ChevronIcon({ isOpen }: { isOpen: boolean }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      style={{
-        transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-        transition: "transform var(--transition-fast)",
-      }}
-    >
-      <path
-        d="M3 4.5L6 7.5L9 4.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function GitBranchIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="3" cy="3" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="3" cy="9" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="9" cy="5" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M3 4.5V7.5M7.5 5H4.5C4.5 5 4.5 3 3 3" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M2 3.5a1 1 0 011-1h2.793a1 1 0 01.707.293L7 3.5h4a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1V3.5z"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M7 3v8M3 7h8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path
-        d="M2.5 6.5L4.5 8.5L9.5 3.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 // ============================================================================
@@ -121,8 +58,8 @@ function GitModeBadge({ mode, branch, compact = false }: GitModeBadgeProps) {
         className="inline-flex items-center gap-1 text-xs"
         style={{ color: "var(--text-muted)" }}
       >
-        {isWorktree ? <GitBranchIcon /> : null}
-        <span>{isWorktree ? branch || "worktree" : "local"}</span>
+        {isWorktree && <GitBranch className="w-3 h-3" />}
+        <span className="font-mono">{isWorktree ? branch || "worktree" : "local"}</span>
       </span>
     );
   }
@@ -139,130 +76,54 @@ function GitModeBadge({ mode, branch, compact = false }: GitModeBadgeProps) {
           : "var(--text-muted)",
       }}
     >
-      {isWorktree && <GitBranchIcon />}
+      {isWorktree && <GitBranch className="w-3 h-3" />}
       <span>{isWorktree ? "Worktree" : "Local"}</span>
     </span>
   );
 }
 
-interface DropdownItemProps {
+interface ProjectItemProps {
   project: Project;
-  isSelected: boolean;
-  isFocused: boolean;
-  onClick: () => void;
-  onMouseEnter: () => void;
+  isActive: boolean;
+  onSelect: () => void;
 }
 
-function DropdownItem({
-  project,
-  isSelected,
-  isFocused,
-  onClick,
-  onMouseEnter,
-}: DropdownItemProps) {
+function ProjectItem({ project, isActive, onSelect }: ProjectItemProps) {
   const isWorktree = project.gitMode === "worktree";
 
   return (
-    <button
+    <DropdownMenuItem
+      className={cn(
+        "flex items-center justify-between gap-2 px-3 py-2 cursor-pointer",
+        isActive && "border-l-2 border-[var(--accent-primary)] bg-[var(--accent-muted)]"
+      )}
+      onClick={onSelect}
       data-testid={`project-option-${project.id}`}
-      role="option"
-      aria-selected={isSelected}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
-      style={{
-        backgroundColor: isFocused ? "var(--bg-hover)" : "transparent",
-        color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
-      }}
     >
-      {/* Selection indicator */}
-      <span
-        className="w-4 flex-shrink-0 flex items-center justify-center"
-        style={{
-          color: isSelected ? "var(--accent-primary)" : "transparent",
-        }}
-      >
-        {isSelected && <CheckIcon />}
-      </span>
-
-      {/* Folder icon */}
-      <span
-        className="flex-shrink-0"
-        style={{
-          color: isSelected ? "var(--accent-primary)" : "var(--text-muted)",
-        }}
-      >
-        <FolderIcon />
-      </span>
-
-      {/* Project info */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{project.name}</div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <GitModeBadge mode={project.gitMode} />
-          {isWorktree && project.worktreeBranch && (
-            <span
-              className="text-xs truncate"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {project.worktreeBranch}
-            </span>
+      <div className="flex items-center gap-2 min-w-0">
+        {/* Active dot indicator */}
+        <span
+          className={cn(
+            "w-1.5 h-1.5 rounded-full flex-shrink-0",
+            isActive ? "bg-[var(--accent-primary)]" : "bg-transparent"
           )}
-        </div>
+        />
+        {/* Project name */}
+        <span className="text-sm font-medium truncate">{project.name}</span>
       </div>
-    </button>
-  );
-}
-
-interface NewProjectItemProps {
-  isFocused: boolean;
-  onClick: () => void;
-  onMouseEnter: () => void;
-}
-
-function NewProjectItem({ isFocused, onClick, onMouseEnter }: NewProjectItemProps) {
-  return (
-    <button
-      data-testid="new-project-option"
-      role="option"
-      aria-selected={false}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors border-t"
-      style={{
-        backgroundColor: isFocused ? "var(--bg-hover)" : "transparent",
-        borderColor: "var(--border-subtle)",
-        color: "var(--text-secondary)",
-      }}
-    >
-      {/* Spacer to align with other items */}
-      <span className="w-4 flex-shrink-0" />
-
-      {/* Plus icon */}
-      <span
-        className="flex-shrink-0"
-        style={{ color: "var(--accent-primary)" }}
-      >
-        <PlusIcon />
-      </span>
-
-      {/* Label */}
-      <span className="text-sm font-medium" style={{ color: "var(--accent-primary)" }}>
-        New Project
-      </span>
-    </button>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div
-      className="px-4 py-6 text-center"
-      style={{ color: "var(--text-muted)" }}
-    >
-      <FolderIcon />
-      <p className="text-sm mt-2">No projects yet</p>
-    </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Dirty indicator (if needed, project doesn't have this yet) */}
+        {/* Branch name */}
+        {isWorktree && project.worktreeBranch && (
+          <span className="text-xs font-mono text-[var(--text-muted)]">
+            {project.worktreeBranch}
+          </span>
+        )}
+        {!isWorktree && (
+          <span className="text-xs text-[var(--text-muted)]">local</span>
+        )}
+      </div>
+    </DropdownMenuItem>
   );
 }
 
@@ -271,245 +132,99 @@ function EmptyState() {
 // ============================================================================
 
 export function ProjectSelector({ onNewProject, className = "" }: ProjectSelectorProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
   // Store state
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const selectProject = useProjectStore((s) => s.selectProject);
   const activeProject = useProjectStore(selectActiveProject);
 
-  // Convert projects to sorted array
+  // Convert projects to sorted array (most recently updated first)
   const projectList = useMemo(() => {
     return Object.values(projects).sort((a, b) =>
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
   }, [projects]);
 
-  // Total items count (projects + new project option)
-  const totalItems = projectList.length + 1;
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-        setFocusedIndex(-1);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
-
   const handleSelectProject = useCallback(
     (projectId: string) => {
       selectProject(projectId);
-      setIsOpen(false);
-      setFocusedIndex(-1);
-      triggerRef.current?.focus();
     },
     [selectProject]
   );
 
-  const handleNewProject = useCallback(() => {
-    setIsOpen(false);
-    setFocusedIndex(-1);
-    onNewProject();
-  }, [onNewProject]);
-
-  // Keyboard navigation
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (!isOpen) {
-        if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
-          event.preventDefault();
-          setIsOpen(true);
-          setFocusedIndex(0);
-        }
-        return;
-      }
-
-      switch (event.key) {
-        case "Escape":
-          event.preventDefault();
-          setIsOpen(false);
-          setFocusedIndex(-1);
-          triggerRef.current?.focus();
-          break;
-
-        case "ArrowDown":
-          event.preventDefault();
-          setFocusedIndex((prev) => (prev + 1) % totalItems);
-          break;
-
-        case "ArrowUp":
-          event.preventDefault();
-          setFocusedIndex((prev) => (prev - 1 + totalItems) % totalItems);
-          break;
-
-        case "Enter":
-        case " ":
-          event.preventDefault();
-          if (focusedIndex >= 0 && focusedIndex < projectList.length) {
-            const focusedProject = projectList[focusedIndex];
-            if (focusedProject) {
-              handleSelectProject(focusedProject.id);
-            }
-          } else if (focusedIndex === projectList.length) {
-            handleNewProject();
-          }
-          break;
-
-        case "Home":
-          event.preventDefault();
-          setFocusedIndex(0);
-          break;
-
-        case "End":
-          event.preventDefault();
-          setFocusedIndex(totalItems - 1);
-          break;
-
-        case "Tab":
-          setIsOpen(false);
-          setFocusedIndex(-1);
-          break;
-      }
-    },
-    [isOpen, focusedIndex, projectList, totalItems, handleSelectProject, handleNewProject]
-  );
-
-  const handleToggle = useCallback(() => {
-    setIsOpen((prev) => !prev);
-    if (!isOpen) {
-      // Find the currently selected project index
-      const selectedIndex = projectList.findIndex((p) => p.id === activeProjectId);
-      setFocusedIndex(selectedIndex >= 0 ? selectedIndex : 0);
-    } else {
-      setFocusedIndex(-1);
-    }
-  }, [isOpen, projectList, activeProjectId]);
-
   const hasProjects = projectList.length > 0;
 
   return (
-    <div className={`relative ${className}`}>
-      {/* Trigger Button */}
-      <button
-        ref={triggerRef}
-        data-testid="project-selector-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-label={activeProject ? `Current project: ${activeProject.name}` : "Select a project"}
-        onClick={handleToggle}
-        onKeyDown={handleKeyDown}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all"
-        style={{
-          backgroundColor: isOpen ? "var(--bg-elevated)" : "transparent",
-          color: isOpen ? "var(--text-primary)" : "var(--text-secondary)",
-          border: "1px solid",
-          borderColor: isOpen ? "var(--border-default)" : "transparent",
-        }}
-      >
-        {activeProject ? (
-          <>
-            {/* Project name */}
-            <span className="text-sm font-medium max-w-[160px] truncate">
-              {activeProject.name}
-            </span>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            "gap-2 px-3 h-8 border border-[var(--border-default)] max-w-[200px]",
+            className
+          )}
+          data-testid="project-selector-trigger"
+        >
+          <FolderOpen className="w-4 h-4 text-[var(--text-secondary)] flex-shrink-0" />
+          {activeProject ? (
+            <>
+              <span className="text-sm font-medium truncate">{activeProject.name}</span>
+              <GitModeBadge
+                mode={activeProject.gitMode}
+                branch={activeProject.worktreeBranch}
+                compact
+              />
+            </>
+          ) : (
+            <span className="text-sm text-[var(--text-muted)]">Select Project</span>
+          )}
+          <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
+        </Button>
+      </DropdownMenuTrigger>
 
-            {/* Git mode indicator */}
-            <GitModeBadge
-              mode={activeProject.gitMode}
-              branch={activeProject.worktreeBranch}
-              compact
-            />
-          </>
+      <DropdownMenuContent
+        className="w-60 bg-[var(--bg-elevated)] border-[var(--border-default)]"
+        align="center"
+        sideOffset={8}
+        data-testid="project-selector-dropdown"
+      >
+        {/* Section label */}
+        <DropdownMenuLabel
+          className="text-xs uppercase tracking-wide text-[var(--text-muted)] px-3 py-2"
+        >
+          Recent Projects
+        </DropdownMenuLabel>
+
+        {/* Project list */}
+        {hasProjects ? (
+          <div className="max-h-[240px] overflow-y-auto">
+            {projectList.map((project) => (
+              <ProjectItem
+                key={project.id}
+                project={project}
+                isActive={project.id === activeProjectId}
+                onSelect={() => handleSelectProject(project.id)}
+              />
+            ))}
+          </div>
         ) : (
-          <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Select Project
-          </span>
+          <div className="px-3 py-4 text-center text-sm text-[var(--text-muted)]">
+            No projects yet
+          </div>
         )}
 
-        {/* Chevron */}
-        <span style={{ color: "var(--text-muted)" }}>
-          <ChevronIcon isOpen={isOpen} />
-        </span>
-      </button>
+        <DropdownMenuSeparator className="bg-[var(--border-subtle)]" />
 
-      {/* Dropdown */}
-      {isOpen && (
-        <div
-          ref={dropdownRef}
-          data-testid="project-selector-dropdown"
-          role="listbox"
-          aria-label="Projects"
-          className="absolute top-full left-0 mt-1 min-w-[280px] max-w-[340px] rounded-lg overflow-hidden z-50"
-          style={{
-            backgroundColor: "var(--bg-surface)",
-            border: "1px solid var(--border-default)",
-            boxShadow: "var(--shadow-lg)",
-            animation: "dropdown-enter 150ms ease-out",
-          }}
+        {/* New Project option */}
+        <DropdownMenuItem
+          className="flex items-center gap-2 px-3 py-2 cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:text-[var(--text-primary)]"
+          onClick={onNewProject}
+          data-testid="new-project-option"
         >
-          {/* Project list with max height and scroll */}
-          <div
-            className="max-h-[320px] overflow-y-auto"
-            style={{
-              scrollbarWidth: "thin",
-              scrollbarColor: "var(--border-default) var(--bg-surface)",
-            }}
-          >
-            {hasProjects ? (
-              projectList.map((project, index) => (
-                <DropdownItem
-                  key={project.id}
-                  project={project}
-                  isSelected={project.id === activeProjectId}
-                  isFocused={focusedIndex === index}
-                  onClick={() => handleSelectProject(project.id)}
-                  onMouseEnter={() => setFocusedIndex(index)}
-                />
-              ))
-            ) : (
-              <EmptyState />
-            )}
-          </div>
-
-          {/* New Project option (always visible) */}
-          <NewProjectItem
-            isFocused={focusedIndex === projectList.length}
-            onClick={handleNewProject}
-            onMouseEnter={() => setFocusedIndex(projectList.length)}
-          />
-        </div>
-      )}
-
-      {/* Animation keyframes injected as inline style */}
-      <style>{`
-        @keyframes dropdown-enter {
-          from {
-            opacity: 0;
-            transform: translateY(-4px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
-    </div>
+          <Plus className="w-4 h-4 text-[var(--accent-primary)]" />
+          <span className="text-sm font-medium">New Project...</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

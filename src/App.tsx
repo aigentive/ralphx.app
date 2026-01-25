@@ -26,7 +26,7 @@ import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
-import type { ChatContext } from "@/types/chat";
+import type { ChatContext, ViewType } from "@/types/chat";
 import type { ChatMessage as ChatMessageType, ApplyProposalsInput } from "@/types/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
@@ -43,6 +43,23 @@ import { useOrchestratorMessage } from "@/hooks/useOrchestrator";
 import { api, getGitBranches } from "@/lib/tauri";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  LayoutGrid,
+  Lightbulb,
+  Puzzle,
+  Activity,
+  SlidersHorizontal,
+  MessageSquare,
+  CheckCircle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Local storage key for persisting chat panel width
 const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
@@ -53,115 +70,19 @@ const queryClient = getQueryClient();
 const DEFAULT_PROJECT_ID = "demo-project";
 const DEFAULT_WORKFLOW_ID = "ralphx-default";
 
-function ReviewIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M10 18a8 8 0 100-16 8 8 0 000 16z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M7 10l2 2 4-4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChatIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H8l-4 3v-3H5a2 2 0 01-2-2V5z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7 7h6M7 10h4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function KanbanIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <rect x="3" y="3" width="4" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="8" y="3" width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="13" y="3" width="4" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function IdeationIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M10 2a6 6 0 016 6c0 2.22-1.21 4.16-3 5.19V15a2 2 0 01-2 2H9a2 2 0 01-2-2v-1.81C5.21 12.16 4 10.22 4 8a6 6 0 016-6z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M8 18h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M16.2 10a6.2 6.2 0 01-.1 1.2l2.1 1.6a.5.5 0 01.1.6l-2 3.5a.5.5 0 01-.6.2l-2.5-1a6.5 6.5 0 01-2.1 1.2l-.4 2.6a.5.5 0 01-.5.4h-4a.5.5 0 01-.5-.4l-.4-2.6a6.5 6.5 0 01-2.1-1.2l-2.5 1a.5.5 0 01-.6-.2l-2-3.5a.5.5 0 01.1-.6l2.1-1.6a6.2 6.2 0 010-2.4L.6 5.7a.5.5 0 01-.1-.6l2-3.5a.5.5 0 01.6-.2l2.5 1a6.5 6.5 0 012.1-1.2l.4-2.6a.5.5 0 01.5-.4h4a.5.5 0 01.5.4l.4 2.6a6.5 6.5 0 012.1 1.2l2.5-1a.5.5 0 01.6.2l2 3.5a.5.5 0 01-.1.6l-2.1 1.6c.1.4.1.8.1 1.2z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ActivityIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M2 10h3l2-6 3 12 2.5-6H18"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path
-        d="M8 3h4M8 10h8M8 17h4M4 3v0a1 1 0 100 2 1 1 0 000-2zM4 10v0a1 1 0 100 2 1 1 0 000-2zM16 17v0a1 1 0 100 2 1 1 0 000-2z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+// Navigation items configuration
+const NAV_ITEMS: {
+  view: ViewType;
+  label: string;
+  icon: React.ElementType;
+  shortcut: string;
+}[] = [
+  { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘1" },
+  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘2" },
+  { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘3" },
+  { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘4" },
+  { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘5" },
+];
 
 // Transform API messages to component-compatible format
 function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null }>): ChatMessageType[] {
@@ -281,33 +202,47 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+. for settings)
+  // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
-        if (e.key === "1") {
-          e.preventDefault();
-          setCurrentView("kanban");
-        } else if (e.key === "2") {
-          e.preventDefault();
-          setCurrentView("ideation");
-        } else if (e.key === "3") {
-          e.preventDefault();
-          setCurrentView("extensibility");
-        } else if (e.key === "4") {
-          e.preventDefault();
-          setCurrentView("activity");
-        } else if (e.key === "5" || e.key === "." || e.key === ",") {
-          // Cmd+5, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
-          e.preventDefault();
-          setCurrentView("settings");
+        switch (e.key) {
+          case "1":
+            e.preventDefault();
+            setCurrentView("kanban");
+            break;
+          case "2":
+            e.preventDefault();
+            setCurrentView("ideation");
+            break;
+          case "3":
+            e.preventDefault();
+            setCurrentView("extensibility");
+            break;
+          case "4":
+            e.preventDefault();
+            setCurrentView("activity");
+            break;
+          case "5":
+          case ".":
+          case ",":
+            // Cmd+5, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
+            e.preventDefault();
+            setCurrentView("settings");
+            break;
+          case "k":
+          case "K":
+            // Cmd+K to toggle chat panel
+            e.preventDefault();
+            toggleChatPanel();
+            break;
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView]);
+  }, [setCurrentView, toggleChatPanel]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
@@ -523,174 +458,154 @@ function AppContent() {
       className="h-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
     >
-      {/* Header */}
-      <header
-        className="flex items-center justify-between p-4 border-b"
-        style={{ borderColor: "var(--border-subtle)" }}
-      >
-        <div className="flex items-center gap-4">
-          <h1
-            className="text-xl font-bold"
-            style={{ color: "var(--accent-primary)" }}
+      {/* Header - Premium Design: Fixed 48px, shadow, Tauri drag region */}
+      <TooltipProvider delayDuration={300}>
+        <header
+          className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 border-b z-50"
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderColor: "var(--border-subtle)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
+            WebkitAppRegion: "drag",
+          } as React.CSSProperties}
+          data-testid="app-header"
+        >
+          {/* Left Section: Branding + Navigation */}
+          <div className="flex items-center gap-6">
+            {/* App Branding */}
+            <h1
+              className="text-xl font-bold tracking-tight select-none"
+              style={{ color: "var(--accent-primary)" }}
+            >
+              RalphX
+            </h1>
+
+            {/* View Navigation */}
+            <nav
+              className="flex items-center gap-1"
+              role="navigation"
+              aria-label="Main views"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              {NAV_ITEMS.map(({ view, label, icon: Icon, shortcut }) => {
+                const isActive = currentView === view;
+                return (
+                  <Tooltip key={view}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCurrentView(view)}
+                        className={cn(
+                          "gap-2 px-3 h-8 transition-all duration-150 active:scale-[0.98]",
+                          isActive
+                            ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                        )}
+                        data-testid={`nav-${view}`}
+                        aria-current={isActive ? "page" : undefined}
+                      >
+                        <Icon className="w-[18px] h-[18px]" />
+                        <span className="text-sm font-medium">{label}</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      {label} <kbd className="ml-1 text-[var(--text-muted)]">{shortcut}</kbd>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Center Section: Project Selector */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            RalphX
-          </h1>
-          {/* View Navigation */}
-          <nav className="flex items-center gap-1" role="navigation" aria-label="Main views">
-            <button
-              onClick={() => setCurrentView("kanban")}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                backgroundColor: currentView === "kanban"
-                  ? "var(--bg-elevated)"
-                  : "transparent",
-                color: currentView === "kanban"
-                  ? "var(--accent-primary)"
-                  : "var(--text-secondary)",
-              }}
-              data-testid="nav-kanban"
-              aria-current={currentView === "kanban" ? "page" : undefined}
-              title="Kanban (⌘1)"
-            >
-              <KanbanIcon />
-              <span className="text-sm font-medium">Kanban</span>
-            </button>
-            <button
-              onClick={() => setCurrentView("ideation")}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                backgroundColor: currentView === "ideation"
-                  ? "var(--bg-elevated)"
-                  : "transparent",
-                color: currentView === "ideation"
-                  ? "var(--accent-primary)"
-                  : "var(--text-secondary)",
-              }}
-              data-testid="nav-ideation"
-              aria-current={currentView === "ideation" ? "page" : undefined}
-              title="Ideation (⌘2)"
-            >
-              <IdeationIcon />
-              <span className="text-sm font-medium">Ideation</span>
-            </button>
-            <button
-              onClick={() => setCurrentView("extensibility")}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                backgroundColor: currentView === "extensibility"
-                  ? "var(--bg-elevated)"
-                  : "transparent",
-                color: currentView === "extensibility"
-                  ? "var(--accent-primary)"
-                  : "var(--text-secondary)",
-              }}
-              data-testid="nav-extensibility"
-              aria-current={currentView === "extensibility" ? "page" : undefined}
-              title="Extensibility (⌘3)"
-            >
-              <GearIcon />
-              <span className="text-sm font-medium">Extensibility</span>
-            </button>
-            <button
-              onClick={() => setCurrentView("activity")}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                backgroundColor: currentView === "activity"
-                  ? "var(--bg-elevated)"
-                  : "transparent",
-                color: currentView === "activity"
-                  ? "var(--accent-primary)"
-                  : "var(--text-secondary)",
-              }}
-              data-testid="nav-activity"
-              aria-current={currentView === "activity" ? "page" : undefined}
-              title="Activity (⌘4)"
-            >
-              <ActivityIcon />
-              <span className="text-sm font-medium">Activity</span>
-            </button>
-            <button
-              onClick={() => setCurrentView("settings")}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                backgroundColor: currentView === "settings"
-                  ? "var(--bg-elevated)"
-                  : "transparent",
-                color: currentView === "settings"
-                  ? "var(--accent-primary)"
-                  : "var(--text-secondary)",
-              }}
-              data-testid="nav-settings"
-              aria-current={currentView === "settings" ? "page" : undefined}
-              title="Settings (⌘5)"
-            >
-              <SettingsIcon />
-              <span className="text-sm font-medium">Settings</span>
-            </button>
-          </nav>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Project Selector */}
-          <ProjectSelector onNewProject={handleOpenProjectWizard} />
-          {/* Chat Panel Toggle */}
-          <button
-            onClick={toggleChatPanel}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-            style={{
-              backgroundColor: chatIsOpen
-                ? "var(--bg-elevated)"
-                : "transparent",
-              color: chatIsOpen
-                ? "var(--accent-primary)"
-                : "var(--text-secondary)",
-            }}
-            data-testid="chat-toggle"
-            title="Toggle Chat (⌘K)"
+            <ProjectSelector onNewProject={handleOpenProjectWizard} />
+          </div>
+
+          {/* Right Section: Panel Toggles */}
+          <div
+            className="flex items-center gap-2"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            <ChatIcon />
-            <span className="text-sm font-medium">Chat</span>
-            <kbd
-              className="ml-1 px-1 py-0.5 text-xs rounded"
-              style={{
-                backgroundColor: "var(--bg-elevated)",
-                color: "var(--text-muted)",
-              }}
-            >
-              ⌘K
-            </kbd>
-          </button>
-          {/* Reviews Panel Toggle */}
-          <button
-            onClick={toggleReviewsPanel}
-            className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-            style={{
-              backgroundColor: reviewsPanelOpen
-                ? "var(--bg-elevated)"
-                : "transparent",
-              color: reviewsPanelOpen
-                ? "var(--accent-primary)"
-                : "var(--text-secondary)",
-            }}
-            data-testid="reviews-toggle"
-          >
-            <ReviewIcon />
-            <span className="text-sm font-medium">Reviews</span>
-            {/* Badge with pending count */}
-            {pendingReviewCount > 0 && (
-              <span
-                className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full"
-                style={{
-                  backgroundColor: "var(--status-review)",
-                  color: "white",
-                }}
-                data-testid="reviews-badge"
-              >
-                {pendingReviewCount > 9 ? "9+" : pendingReviewCount}
-              </span>
-            )}
-          </button>
-        </div>
-      </header>
+            {/* Chat Panel Toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleChatPanel}
+                  className={cn(
+                    "gap-2 px-3 h-8 transition-all duration-150 active:scale-[0.98]",
+                    chatIsOpen
+                      ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  )}
+                  data-testid="chat-toggle"
+                >
+                  <MessageSquare className="w-[18px] h-[18px]" />
+                  <span className="text-sm font-medium">Chat</span>
+                  <kbd
+                    className="ml-1 px-1.5 py-0.5 text-xs rounded"
+                    style={{
+                      backgroundColor: "var(--bg-elevated)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    ⌘K
+                  </kbd>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                Toggle Chat <kbd className="ml-1 text-[var(--text-muted)]">⌘K</kbd>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Reviews Panel Toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleReviewsPanel}
+                  className={cn(
+                    "relative gap-2 px-3 h-8 transition-all duration-150 active:scale-[0.98]",
+                    reviewsPanelOpen
+                      ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  )}
+                  data-testid="reviews-toggle"
+                >
+                  <CheckCircle className="w-[18px] h-[18px]" />
+                  <span className="text-sm font-medium">Reviews</span>
+                  {/* Badge with pending count */}
+                  {pendingReviewCount > 0 && (
+                    <span
+                      className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-xs font-bold rounded-full animate-badge-pop"
+                      style={{
+                        backgroundColor: "var(--status-warning)",
+                        color: "white",
+                      }}
+                      data-testid="reviews-badge"
+                    >
+                      {pendingReviewCount > 9 ? "9+" : pendingReviewCount}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                Toggle Reviews Panel
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </header>
+      </TooltipProvider>
+
+      {/* Spacer for fixed header */}
+      <div className="h-12 flex-shrink-0" />
 
       {/* Main content area - shows empty state wizard or normal content */}
       {hasNoProjects ? (
