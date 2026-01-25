@@ -232,6 +232,44 @@ describe("ExecutionControlBar", () => {
       );
       expect(screen.getByTestId("execution-control-bar")).toHaveAttribute("data-loading", "true");
     });
+
+    it("sets data-status attribute", () => {
+      const { rerender } = render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("execution-control-bar")).toHaveAttribute("data-status", "running");
+
+      rerender(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={true}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("execution-control-bar")).toHaveAttribute("data-status", "paused");
+
+      rerender(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("execution-control-bar")).toHaveAttribute("data-status", "idle");
+    });
   });
 
   describe("styling", () => {
@@ -247,7 +285,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar).toHaveStyle({ backgroundColor: "var(--bg-elevated)" });
+      expect(bar).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
     });
 
     it("applies border styling from design system", () => {
@@ -263,6 +301,21 @@ describe("ExecutionControlBar", () => {
       );
       const bar = screen.getByTestId("execution-control-bar");
       expect(bar.style.borderColor).toBe("var(--border-subtle)");
+    });
+
+    it("applies box shadow for elevation", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const bar = screen.getByTestId("execution-control-bar");
+      expect(bar.style.boxShadow).toBe("0 -2px 8px rgba(0,0,0,0.15)");
     });
   });
 
@@ -311,10 +364,40 @@ describe("ExecutionControlBar", () => {
       const indicator = screen.getByTestId("status-indicator");
       expect(indicator).toHaveStyle({ backgroundColor: "var(--text-muted)" });
     });
+
+    it("has pulsing animation class when running", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const indicator = screen.getByTestId("status-indicator");
+      expect(indicator).toHaveClass("status-indicator-running");
+    });
+
+    it("does not have pulsing animation when paused", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={true}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const indicator = screen.getByTestId("status-indicator");
+      expect(indicator).not.toHaveClass("status-indicator-running");
+    });
   });
 
-  describe("pause/resume icon", () => {
-    it("shows pause icon when not paused", () => {
+  describe("pause/resume button icons", () => {
+    it("shows Pause icon when not paused", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
@@ -326,10 +409,12 @@ describe("ExecutionControlBar", () => {
         />
       );
       const btn = screen.getByTestId("pause-toggle-button");
-      expect(btn.textContent).toContain("⏸");
+      // Check for Lucide Pause icon (SVG)
+      const svg = btn.querySelector("svg");
+      expect(svg).toBeInTheDocument();
     });
 
-    it("shows resume icon when paused", () => {
+    it("shows Play icon when paused", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
@@ -341,12 +426,32 @@ describe("ExecutionControlBar", () => {
         />
       );
       const btn = screen.getByTestId("pause-toggle-button");
-      expect(btn.textContent).toContain("▶");
+      // Check for Lucide Play icon (SVG)
+      const svg = btn.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+    });
+
+    it("shows Loader2 spinner when loading", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          isLoading={true}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const btn = screen.getByTestId("pause-toggle-button");
+      const svg = btn.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+      expect(svg).toHaveClass("animate-spin");
     });
   });
 
   describe("stop button styling", () => {
-    it("uses error color for stop button", () => {
+    it("has error styling when can stop", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
@@ -358,10 +463,11 @@ describe("ExecutionControlBar", () => {
         />
       );
       const stopBtn = screen.getByTestId("stop-button");
-      expect(stopBtn).toHaveStyle({ backgroundColor: "var(--status-error)" });
+      // Check for error color class (using Tailwind classes now)
+      expect(stopBtn).toHaveClass("text-[var(--status-error)]");
     });
 
-    it("uses muted background when disabled", () => {
+    it("has muted styling when disabled", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
@@ -373,7 +479,232 @@ describe("ExecutionControlBar", () => {
         />
       );
       const stopBtn = screen.getByTestId("stop-button");
-      expect(stopBtn).toHaveStyle({ backgroundColor: "var(--bg-hover)" });
+      // Check for muted color class when disabled
+      expect(stopBtn).toHaveClass("text-[var(--text-muted)]");
+      expect(stopBtn).toHaveClass("opacity-50");
+    });
+
+    it("has Square icon", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const stopBtn = screen.getByTestId("stop-button");
+      const svg = stopBtn.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+      expect(svg).toHaveClass("fill-current");
+    });
+  });
+
+  describe("pause button styling", () => {
+    it("has accent styling when paused", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={3}
+          isPaused={true}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const pauseBtn = screen.getByTestId("pause-toggle-button");
+      expect(pauseBtn).toHaveClass("text-[var(--accent-primary)]");
+      expect(pauseBtn).toHaveClass("bg-[var(--accent-muted)]");
+    });
+
+    it("has default styling when not paused", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const pauseBtn = screen.getByTestId("pause-toggle-button");
+      expect(pauseBtn).toHaveClass("text-[var(--text-primary)]");
+    });
+  });
+
+  describe("current task display", () => {
+    it("shows current task name when running", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          currentTaskName="Implementing auth feature"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("current-task")).toBeInTheDocument();
+      expect(screen.getByTestId("current-task")).toHaveTextContent("Implementing auth feature");
+    });
+
+    it("does not show current task when paused", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={3}
+          isPaused={true}
+          currentTaskName="Implementing auth feature"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("current-task")).not.toBeInTheDocument();
+    });
+
+    it("does not show current task when no tasks running", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          currentTaskName="Implementing auth feature"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("current-task")).not.toBeInTheDocument();
+    });
+
+    it("does not show current task when no task name provided", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("current-task")).not.toBeInTheDocument();
+    });
+
+    it("has spinner icon with current task", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          currentTaskName="Building components"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const taskDisplay = screen.getByTestId("current-task");
+      const svg = taskDisplay.querySelector("svg");
+      expect(svg).toBeInTheDocument();
+      expect(svg).toHaveClass("animate-spin");
+    });
+
+    it("has slide-in animation class", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          currentTaskName="Building components"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const taskDisplay = screen.getByTestId("current-task");
+      expect(taskDisplay).toHaveClass("task-name-enter");
+    });
+  });
+
+  describe("accessibility", () => {
+    it("has role region", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const bar = screen.getByTestId("execution-control-bar");
+      expect(bar).toHaveAttribute("role", "region");
+    });
+
+    it("has aria-live for status updates", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const bar = screen.getByTestId("execution-control-bar");
+      expect(bar).toHaveAttribute("aria-live", "polite");
+    });
+
+    it("pause button has aria-label", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const pauseBtn = screen.getByTestId("pause-toggle-button");
+      expect(pauseBtn).toHaveAttribute("aria-label", "Pause execution");
+    });
+
+    it("pause button has aria-pressed when paused", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={true}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const pauseBtn = screen.getByTestId("pause-toggle-button");
+      expect(pauseBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("stop button has aria-label", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={2}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const stopBtn = screen.getByTestId("stop-button");
+      expect(stopBtn).toHaveAttribute("aria-label", "Stop all running tasks");
     });
   });
 });
