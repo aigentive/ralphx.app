@@ -37,6 +37,8 @@ export interface ProjectSelectorProps {
   onNewProject: () => void;
   /** Optional className for custom styling */
   className?: string;
+  /** Dropdown alignment - defaults to center */
+  align?: "start" | "center" | "end";
 }
 
 // ============================================================================
@@ -131,7 +133,7 @@ function ProjectItem({ project, isActive, onSelect }: ProjectItemProps) {
 // Main Component
 // ============================================================================
 
-export function ProjectSelector({ onNewProject, className = "" }: ProjectSelectorProps) {
+export function ProjectSelector({ onNewProject, className = "", align = "center" }: ProjectSelectorProps) {
   // Store state
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -184,7 +186,7 @@ export function ProjectSelector({ onNewProject, className = "" }: ProjectSelecto
 
       <DropdownMenuContent
         className="w-60 bg-[var(--bg-elevated)] border-[var(--border-default)]"
-        align="center"
+        align={align}
         sideOffset={8}
         data-testid="project-selector-dropdown"
       >
