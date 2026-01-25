@@ -150,6 +150,130 @@ After completing the task: update `"passes": true`, commit, and stop.
     "passes": false
   },
   {
+    "category": "mcp",
+    "description": "Add permission_request tool to MCP server for UI-based permission handling",
+    "plan_section": "Permission Bridge System - Permission Handler MCP Tool",
+    "steps": [
+      "Read specs/plans/context_aware_chat_implementation/permission_bridge.md",
+      "Create ralphx-mcp-server/src/permission-handler.ts:",
+      "  - Export permissionRequestTool definition (name: 'permission_request')",
+      "  - Export handlePermissionRequest function that:",
+      "    1. POSTs to Tauri /api/permission/request",
+      "    2. Long-polls /api/permission/await/:request_id (5 min timeout)",
+      "    3. Returns allow/deny decision to Claude CLI",
+      "Update ralphx-mcp-server/src/index.ts:",
+      "  - Import and register permission_request tool",
+      "  - Handle in CallToolRequestSchema (NOT scoped by agent type - always available)",
+      "Build and verify: npm run build",
+      "Commit: feat(mcp): add permission_request tool for UI-based approval"
+    ],
+    "passes": false
+  },
+  {
+    "category": "backend",
+    "description": "Add PermissionState and permission HTTP endpoints to Tauri backend",
+    "plan_section": "Permission Bridge System - Tauri Backend",
+    "steps": [
+      "Read specs/plans/context_aware_chat_implementation/permission_bridge.md",
+      "Create src-tauri/src/application/permission_state.rs:",
+      "  - PermissionState struct with pending: Mutex<HashMap<String, watch::Sender<...>>>",
+      "  - PermissionDecision struct",
+      "Update src-tauri/src/http_server.rs - add permission endpoints:",
+      "  - POST /api/permission/request: registers pending request, emits Tauri event, returns request_id",
+      "  - GET /api/permission/await/:request_id: long-polls until decision (5 min timeout -> 408)",
+      "  - POST /api/permission/resolve: signals waiting request with decision",
+      "Initialize PermissionState in AppState (lib.rs)",
+      "Write tests for permission state and endpoints",
+      "Run cargo test",
+      "Commit: feat(backend): add permission state and HTTP endpoints for permission bridge"
+    ],
+    "passes": false
+  },
+  {
+    "category": "backend",
+    "description": "Add Tauri commands for permission resolution",
+    "plan_section": "Permission Bridge System - Tauri Command for Frontend",
+    "steps": [
+      "Read specs/plans/context_aware_chat_implementation/permission_bridge.md",
+      "Create src-tauri/src/commands/permission_commands.rs:",
+      "  - resolve_permission_request(request_id, decision, message) command",
+      "  - get_pending_permissions() -> Vec<PendingPermissionInfo> command",
+      "Register commands in lib.rs invoke_handler",
+      "Write unit tests for commands",
+      "Run cargo test",
+      "Commit: feat(commands): add permission resolution commands"
+    ],
+    "passes": false
+  },
+  {
+    "category": "backend",
+    "description": "Update ClaudeCodeClient to use --permission-prompt-tool flag",
+    "plan_section": "Permission Bridge System - Update Claude CLI Spawn",
+    "steps": [
+      "Read specs/plans/context_aware_chat_implementation/permission_bridge.md",
+      "Update src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:",
+      "  - Add --permission-prompt-tool mcp__ralphx__permission_request to spawn args",
+      "  - This enables UI-based permission approval for non-pre-approved tools",
+      "Run cargo test",
+      "Commit: feat(agents): add --permission-prompt-tool flag for UI-based approval"
+    ],
+    "passes": false
+  },
+  {
+    "category": "frontend",
+    "description": "Create permission types",
+    "plan_section": "Permission Bridge System - Files Summary",
+    "steps": [
+      "Create src/types/permission.ts:",
+      "  - PermissionRequest interface (request_id, tool_name, tool_input, context)",
+      "  - PermissionDecision type ('allow' | 'deny')",
+      "  - Zod schemas for validation",
+      "Run npm run typecheck",
+      "Commit: feat(types): add permission request types"
+    ],
+    "passes": false
+  },
+  {
+    "category": "frontend",
+    "description": "Create PermissionDialog component",
+    "plan_section": "Permission Bridge System - Frontend: Permission Dialog Component",
+    "steps": [
+      "Read specs/plans/context_aware_chat_implementation/permission_bridge.md",
+      "Create src/components/PermissionDialog.tsx:",
+      "  - Listen to Tauri event 'permission:request'",
+      "  - Queue multiple requests (show first, count remaining)",
+      "  - Display tool name and formatted input preview:",
+      "    - Bash: show command",
+      "    - Write: show file path + content preview",
+      "    - Edit: show file path + old/new strings",
+      "    - Read: show file path",
+      "    - Default: JSON.stringify",
+      "  - Allow/Deny buttons",
+      "  - Call invoke('resolve_permission_request') on decision",
+      "  - Remove from queue after decision",
+      "  - Close dialog closes as deny",
+      "Use shadcn Dialog component, design system tokens",
+      "Create PermissionDialog.test.tsx with functional tests",
+      "Run npm run lint && npm run typecheck && npm run test",
+      "Commit: feat(ui): add PermissionDialog for tool approval"
+    ],
+    "passes": false
+  },
+  {
+    "category": "frontend",
+    "description": "Mount PermissionDialog globally in App",
+    "plan_section": "Permission Bridge System - Frontend Integration",
+    "steps": [
+      "Update src/App.tsx:",
+      "  - Import PermissionDialog from '@/components/PermissionDialog'",
+      "  - Mount <PermissionDialog /> at root level (always rendered)",
+      "Verify dialog appears when permission:request event fires (manual test)",
+      "Run npm run lint && npm run typecheck",
+      "Commit: feat(app): mount PermissionDialog globally"
+    ],
+    "passes": false
+  },
+  {
     "category": "plugin",
     "description": "Configure MCP server in plugin and create chat agents",
     "plan_section": "3. Configure MCP Server in Plugin and Agent Definitions",
@@ -400,6 +524,7 @@ From the implementation plan:
 | **Tauri events for real-time** | Standard Tauri pattern; frontend subscribes to backend events |
 | **MCP tool scoping via RALPHX_AGENT_TYPE** | Hard enforcement: each agent only sees tools appropriate for its role; prevents misuse (e.g., worker creating proposals) |
 | **Reviewer uses complete_review MCP tool** | Structured review submission (approved/needs_changes/escalate) via MCP instead of parsing agent output text |
+| **Permission Bridge via MCP tool** | Enables UI-based approval for non-pre-approved tools; MCP tool long-polls Tauri backend for user decision |
 
 ---
 
@@ -439,3 +564,12 @@ After completing all tasks:
 - [ ] Proposals created via MCP appear in UI
 - [ ] Leave and come back works
 - [ ] Auto-send queued messages on completion
+
+### Permission Bridge
+- [ ] permission_request MCP tool registered and callable
+- [ ] Permission HTTP endpoints working (/request, /await, /resolve)
+- [ ] PermissionDialog appears when permission:request event fires
+- [ ] Allow decision continues agent execution
+- [ ] Deny decision sends rejection message to agent
+- [ ] Timeout (5 min) treated as deny
+- [ ] Multiple queued permission requests handled correctly
