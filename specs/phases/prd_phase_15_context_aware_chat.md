@@ -107,7 +107,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(backend): add HTTP server for MCP proxy (port 3847)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",

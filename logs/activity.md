@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 01:15:00
+**Last Updated:** 2026-01-26 02:30:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 1 / 26
-**Current Task:** Create ChatConversation and AgentRun entities and repositories (in progress - entities and repositories created, AppState integration pending)
+**Tasks Completed:** 3 / 26
+**Current Task:** Create RalphX MCP Server (TypeScript proxy)
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:30:00 - HTTP server for MCP proxy
+
+**What was done:**
+- Added axum and tower-http dependencies to Cargo.toml
+- Created `src-tauri/src/http_server.rs` with HTTP server for MCP proxy:
+  - Exposes RalphX functionality via REST API on port 3847
+  - Implements POST endpoints for all MCP tools:
+    - `/api/create_task_proposal` - Create task proposals in ideation sessions
+    - `/api/update_task_proposal` - Update existing proposals
+    - `/api/delete_task_proposal` - Delete proposals
+    - `/api/add_proposal_dependency` - Link proposals as dependencies
+    - `/api/update_task` - Modify task properties
+    - `/api/add_task_note` - Add notes to tasks (appends to description)
+    - `/api/get_task_details` - Retrieve full task information
+    - `/api/complete_review` - Submit review decisions (stub for future implementation)
+  - Request/response types for all endpoints
+  - Reuses existing service logic (IdeationService patterns, TaskRepository)
+  - Proper error handling with HTTP status codes
+- Started HTTP server on app launch in lib.rs:
+  - Spawns HTTP server in background tokio task
+  - Creates separate AppState for HTTP server (repositories are Arc'd so this is efficient)
+- All tests pass (`cargo test`)
+- Server ready to accept MCP proxy requests
+
+**Commands run:**
+- `cargo build`
+- `cargo test`
+
+---
 
 ### 2026-01-26 00:38:49 - Database migration for chat conversations, agent runs, and tool calls
 
