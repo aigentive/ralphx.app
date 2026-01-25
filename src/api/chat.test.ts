@@ -363,13 +363,13 @@ describe("getSessionMessages", () => {
     mockInvoke.mockReset();
   });
 
-  it("should call get_session_messages with session_id", async () => {
+  it("should call get_session_messages with sessionId", async () => {
     mockInvoke.mockResolvedValue([createMockMessageRaw()]);
 
     await getSessionMessages("session-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("get_session_messages", {
-      session_id: "session-1",
+      sessionId: "session-1",
     });
   });
 
@@ -401,13 +401,13 @@ describe("getRecentSessionMessages", () => {
     mockInvoke.mockReset();
   });
 
-  it("should call get_recent_session_messages with session_id and limit", async () => {
+  it("should call get_recent_session_messages with sessionId and limit", async () => {
     mockInvoke.mockResolvedValue([createMockMessageRaw()]);
 
     await getRecentSessionMessages("session-1", 10);
 
     expect(mockInvoke).toHaveBeenCalledWith("get_recent_session_messages", {
-      session_id: "session-1",
+      sessionId: "session-1",
       limit: 10,
     });
   });
@@ -430,13 +430,13 @@ describe("getProjectMessages", () => {
     mockInvoke.mockReset();
   });
 
-  it("should call get_project_messages with project_id", async () => {
+  it("should call get_project_messages with projectId", async () => {
     mockInvoke.mockResolvedValue([]);
 
     await getProjectMessages("project-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("get_project_messages", {
-      project_id: "project-1",
+      projectId: "project-1",
     });
   });
 
@@ -462,13 +462,13 @@ describe("getTaskMessages", () => {
     mockInvoke.mockReset();
   });
 
-  it("should call get_task_messages with task_id", async () => {
+  it("should call get_task_messages with taskId", async () => {
     mockInvoke.mockResolvedValue([]);
 
     await getTaskMessages("task-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("get_task_messages", {
-      task_id: "task-1",
+      taskId: "task-1",
     });
   });
 
@@ -514,13 +514,13 @@ describe("deleteSessionMessages", () => {
     mockInvoke.mockReset();
   });
 
-  it("should call delete_session_messages with session_id", async () => {
+  it("should call delete_session_messages with sessionId", async () => {
     mockInvoke.mockResolvedValue(undefined);
 
     await deleteSessionMessages("session-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("delete_session_messages", {
-      session_id: "session-1",
+      sessionId: "session-1",
     });
   });
 });
@@ -530,13 +530,13 @@ describe("countSessionMessages", () => {
     mockInvoke.mockReset();
   });
 
-  it("should call count_session_messages with session_id", async () => {
+  it("should call count_session_messages with sessionId", async () => {
     mockInvoke.mockResolvedValue(5);
 
     const result = await countSessionMessages("session-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("count_session_messages", {
-      session_id: "session-1",
+      sessionId: "session-1",
     });
     expect(result).toBe(5);
   });
