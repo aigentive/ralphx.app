@@ -185,7 +185,7 @@ export async function getSessionMessages(
 ): Promise<ChatMessageResponse[]> {
   const raw = await typedInvoke(
     "get_session_messages",
-    { session_id: sessionId },
+    { sessionId },
     z.array(ChatMessageResponseSchema)
   );
   return raw.map(transformMessage);
@@ -203,7 +203,7 @@ export async function getRecentSessionMessages(
 ): Promise<ChatMessageResponse[]> {
   const raw = await typedInvoke(
     "get_recent_session_messages",
-    { session_id: sessionId, limit },
+    { sessionId, limit },
     z.array(ChatMessageResponseSchema)
   );
   return raw.map(transformMessage);
@@ -219,7 +219,7 @@ export async function getProjectMessages(
 ): Promise<ChatMessageResponse[]> {
   const raw = await typedInvoke(
     "get_project_messages",
-    { project_id: projectId },
+    { projectId },
     z.array(ChatMessageResponseSchema)
   );
   return raw.map(transformMessage);
@@ -235,7 +235,7 @@ export async function getTaskMessages(
 ): Promise<ChatMessageResponse[]> {
   const raw = await typedInvoke(
     "get_task_messages",
-    { task_id: taskId },
+    { taskId },
     z.array(ChatMessageResponseSchema)
   );
   return raw.map(transformMessage);
@@ -254,7 +254,7 @@ export async function deleteChatMessage(messageId: string): Promise<void> {
  * @param sessionId The session ID
  */
 export async function deleteSessionMessages(sessionId: string): Promise<void> {
-  await invoke("delete_session_messages", { session_id: sessionId });
+  await invoke("delete_session_messages", { sessionId });
 }
 
 /**
@@ -265,7 +265,7 @@ export async function deleteSessionMessages(sessionId: string): Promise<void> {
 export async function countSessionMessages(sessionId: string): Promise<number> {
   return typedInvoke(
     "count_session_messages",
-    { session_id: sessionId },
+    { sessionId },
     z.number()
   );
 }
