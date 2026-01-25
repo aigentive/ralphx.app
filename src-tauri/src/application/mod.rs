@@ -29,4 +29,4 @@ pub use orchestrator_service::{
     ClaudeOrchestratorService, MockOrchestratorService, OrchestratorError, OrchestratorEvent,
     OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
 };
-pub use permission_state::{PermissionDecision, PermissionState};
+pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};

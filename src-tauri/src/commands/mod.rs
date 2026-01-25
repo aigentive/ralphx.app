@@ -7,6 +7,7 @@ pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
 pub mod methodology_commands;
+pub mod permission_commands;
 pub mod project_commands;
 pub mod qa_commands;
 pub mod research_commands;
@@ -74,3 +75,7 @@ pub use methodology_commands::{
     MethodologyTemplateResponse, WorkflowSchemaResponse,
 };
 pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_data};
+pub use permission_commands::{
+    get_pending_permissions, resolve_permission_request, ResolvePermissionArgs,
+    ResolvePermissionResponse,
+};
