@@ -220,7 +220,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(agents): add --permission-prompt-tool flag for UI-based approval"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

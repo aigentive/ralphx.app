@@ -1,14 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 01:34:47
+**Last Updated:** 2026-01-26 01:40:08
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 8 / 26
-**Current Task:** Update ClaudeCodeClient to use --permission-prompt-tool flag
+**Tasks Completed:** 9 / 26
+**Current Task:** Create permission types
 
 ---
 
 ## Session Log
+
+### 2026-01-26 01:40:08 - Permission Bridge: Claude CLI Permission Prompt Tool Flag
+
+**What was done:**
+- Updated `src-tauri/src/infrastructure/agents/claude/claude_code_client.rs`:
+  - Added `--permission-prompt-tool mcp__ralphx__permission_request` flag to spawn_agent args
+  - This enables UI-based permission approval for non-pre-approved tools
+  - When Claude CLI encounters a tool that isn't in --allowedTools, it will call the permission_request MCP tool
+  - The MCP tool will long-poll our Tauri backend for user approval via the PermissionDialog component
+
+**Implementation details:**
+- Flag is added to all agent spawns, regardless of agent type
+- MCP tool name format: `mcp__<server>__<tool>` (server=ralphx, tool=permission_request)
+- Code compiles successfully (pre-existing test compilation errors in other modules remain)
+
+**Commands run:**
+- `cargo check` (successful)
+- `git commit -m "feat(agents): add --permission-prompt-tool flag for UI-based approval"`
+
+---
 
 ### 2026-01-26 01:34:47 - Permission Bridge: Tauri Commands Implementation
 
