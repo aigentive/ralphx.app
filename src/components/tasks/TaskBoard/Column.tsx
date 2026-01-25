@@ -88,7 +88,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
       >
         {/* Orange accent dot */}
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-accent-primary" />
-        <h3 className="text-xs font-medium flex-1 text-text-primary tracking-tight m-0">
+        <h3 className="text-base font-medium flex-1 text-text-primary tracking-tight m-0">
           {column.name}
         </h3>
         <Badge
@@ -100,15 +100,12 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
         {isOver && isInvalid && <InvalidDropIcon />}
       </div>
 
-      {/* Drop zone with task list */}
+      {/* Drop zone with task list - scrollable */}
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
-        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface/50"
-        style={{
-          minHeight: "100px",
-          ...getDropZoneStyles(),
-        }}
+        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface/50 overflow-y-auto"
+        style={getDropZoneStyles()}
       >
         {column.tasks.length === 0 ? (
           <EmptyState />

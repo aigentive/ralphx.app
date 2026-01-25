@@ -499,7 +499,7 @@ function AppContent() {
 
   return (
     <main
-      className="min-h-screen flex flex-col"
+      className="h-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
     >
       {/* Header */}
