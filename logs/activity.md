@@ -1,14 +1,101 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 07:00:00
+**Last Updated:** 2026-01-25 07:30:00
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 11 / 18
-**Current Task:** Design requirements for Project Sidebar
+**Tasks Completed:** 12 / 18
+**Current Task:** Design requirements for Project Dialogs
 
 ---
 
 ## Session Log
+
+### 2026-01-25 07:30:00 - Design requirements for Project Sidebar (Task 12)
+
+**What was done:**
+- Created comprehensive Project Sidebar design requirements in specs/design/pages/project-sidebar.md
+- Documented the sidebar as the primary navigation hub of RalphX
+
+**Sidebar Structure:**
+  - Fixed 256px width (16rem) anchored to left edge
+  - Full viewport height with flex layout
+  - Background uses `--bg-surface` (#1a1a1a)
+  - Right border 1px `--border-subtle` for separation
+  - Z-index 30 (below panels and modals)
+
+**Header Section:**
+  - "PROJECTS" title: `text-xs`, `font-semibold`, uppercase, `tracking-wide`
+  - Native macOS Finder-style section header pattern
+  - Close button (X icon) with hover states and `--shadow-glow` focus
+
+**Worktree Status Indicator:**
+  - Displayed when active project uses worktree mode
+  - Shows branch name with GitBranch icon (14px)
+  - "from {baseBranch}" subtitle in `--text-muted`
+  - Container: `--bg-base` background, `--radius-md` border radius
+
+**Project List:**
+  - Scrollable container with styled Mac-native scrollbar
+  - Projects sorted by updatedAt (newest first)
+  - ProjectItem components as interactive buttons
+
+**Project Items:**
+  - Folder icon (16px), color changes to `--accent-primary` when active
+  - Project name: `text-sm`, `font-medium`, truncated
+  - Git mode badge: "Local" or "Worktree" + branch name
+  - States: default (transparent), hover (`--bg-hover`), active (`--bg-elevated`)
+  - Active indicator: 3px `--accent-primary` bar on left edge
+  - Hover animation: subtle 2px rightward shift ("drawer peek" effect)
+
+**Empty State:**
+  - Centered layout with 48px circular icon container
+  - Folder icon (24px), muted and 50% opacity
+  - "No projects yet" title + "Create a project to get started" subtitle
+
+**New Project Button:**
+  - Full width, secondary variant with Plus icon
+  - 36px height, `--bg-elevated` background
+  - Container has top border (`--border-subtle`)
+
+**Navigation Section:**
+  - 4 nav items: Kanban, Ideation, Activity, Settings
+  - Icons: LayoutGrid, Lightbulb, Activity, Settings (18px)
+  - Active state: `--bg-elevated` + `--accent-primary` text/icon
+  - Active indicator: 3px left bar matching project items
+  - Keyboard shortcuts: Cmd+1/2/3/4
+
+**Keyboard Navigation:**
+  - Cmd+1/2/3/4 for view switching
+  - Cmd+N for new project
+  - Cmd+\ for sidebar toggle
+  - Arrow keys for project list navigation
+
+- Listed 11 Lucide icons used across the component
+- Created detailed component hierarchy diagram
+- Defined 25 acceptance criteria for functional requirements
+- Created comprehensive design quality checklist with 59 items covering:
+  - Colors & theming (no purple gradients, proper token usage)
+  - Typography (sizes, weights, tracking for each element)
+  - Spacing & layout (8pt grid alignment, padding values)
+  - Shadows & depth (no shadows, focus glows)
+  - Borders & radius (sm/md patterns, active indicator bar)
+  - Motion & interactions (150ms transitions, hover shift)
+  - Icons (sizes per context, stroke widths)
+  - Accessibility (contrast, focus states, ARIA, keyboard nav)
+
+**Design Highlights:**
+- Mac-native aesthetic inspired by Finder sidebar, Linear, and Raycast
+- Warm orange accent (#ff6b35) used sparingly for active indicators
+- Subtle depth through background color hierarchy (base → surface → elevated)
+- Hover "drawer peek" animation adds playfulness without distraction
+- Consistent left accent bar pattern for both projects and nav items
+
+**Files modified:**
+- `specs/design/pages/project-sidebar.md` (complete rewrite with full design requirements)
+- `specs/DESIGN.md` (updated Project Sidebar status to Complete)
+- `specs/phases/prd_phase_13_design.md` (marked task 12 as passes: true)
+
+---
 
 ### 2026-01-25 07:00:00 - Design requirements for QA Components (Task 11)
 
