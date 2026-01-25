@@ -1,14 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 01:40:08
+**Last Updated:** 2026-01-26 02:15:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 9 / 26
-**Current Task:** Create permission types
+**Tasks Completed:** 10 / 26
+**Current Task:** Create PermissionDialog component
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:15:00 - Permission Bridge: Frontend Types
+
+**What was done:**
+- Created `src/types/permission.ts` with TypeScript types for permission system:
+  - `PermissionRequest` interface (request_id, tool_name, tool_input, context)
+  - `PermissionDecision` type ('allow' | 'deny')
+  - `PermissionRequestSchema` Zod schema for validation
+  - `PermissionDecisionSchema` Zod schema for validation
+  - `isPermissionRequest` type guard function
+
+**Implementation details:**
+- Fixed Zod schema issues:
+  - `z.record()` requires both key and value types: `z.record(z.string(), z.unknown())`
+  - Used `z.union([z.literal("allow"), z.literal("deny")])` for decision validation
+- All types follow established patterns from other type files in the codebase
+
+**Commands run:**
+- `npm run typecheck` (successful)
+
+---
 
 ### 2026-01-26 01:40:08 - Permission Bridge: Claude CLI Permission Prompt Tool Flag
 
