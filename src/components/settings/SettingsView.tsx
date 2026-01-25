@@ -1,15 +1,41 @@
 /**
- * SettingsView - Configuration panel for project settings
+ * SettingsView - Premium configuration panel for project settings
  *
  * Features:
- * - Execution section: max_concurrent_tasks, auto_commit, pause_on_failure
- * - Model section: model selection, Opus upgrade option
- * - Review section: ai_review_enabled, auto_fix, require_human_review, max_fix_attempts
- * - Supervisor section: supervisor_enabled, loop_threshold, stuck_timeout
- * - Profile management: create/edit/delete custom profiles
+ * - Glass effect header with Settings icon and saving indicator
+ * - Section cards (Execution, Model, Review, Supervisor) with gradient borders
+ * - shadcn Switch, Input, Select for form controls
+ * - Master toggle → sub-settings disabled pattern
+ * - Lucide icons: Settings, Zap, Brain, FileSearch, Shield, Loader2, AlertCircle, X
  */
 
 import { useState, useCallback } from "react";
+import {
+  Settings,
+  Zap,
+  Brain,
+  FileSearch,
+  Shield,
+  Loader2,
+  AlertCircle,
+  X,
+} from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type {
   ProjectSettings,
   ExecutionSettings,
@@ -43,57 +69,15 @@ const MODEL_OPTIONS: { value: Model; label: string; description: string }[] = [
 ];
 
 // ============================================================================
-// Toggle Component
+// Saving Indicator Component
 // ============================================================================
 
-interface ToggleProps {
-  id: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: () => void;
-  ariaDescribedBy?: string;
-}
-
-function Toggle({
-  id,
-  checked,
-  disabled,
-  onChange,
-  ariaDescribedBy,
-}: ToggleProps) {
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        if (!disabled) onChange();
-      }
-    },
-    [disabled, onChange]
-  );
-
+function SavingIndicator() {
   return (
-    <button
-      type="button"
-      role="switch"
-      id={id}
-      data-testid={id}
-      aria-checked={checked}
-      aria-disabled={disabled}
-      aria-describedby={ariaDescribedBy}
-      tabIndex={disabled ? -1 : 0}
-      onClick={() => !disabled && onChange()}
-      onKeyDown={handleKeyDown}
-      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[--accent-primary] focus:ring-offset-2 focus:ring-offset-[--bg-base] ${
-        disabled ? "cursor-not-allowed opacity-50" : ""
-      } ${checked ? "bg-[--accent-primary]" : "bg-[--bg-hover]"}`}
-    >
-      <span
-        aria-hidden="true"
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-          checked ? "translate-x-5" : "translate-x-0"
-        }`}
-      />
-    </button>
+    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)] text-sm">
+      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      <span>Saving...</span>
+    </div>
   );
 }
 
@@ -106,23 +90,43 @@ interface SettingRowProps {
   label: string;
   description: string;
   children: React.ReactNode;
+  isSubSetting?: boolean;
+  isDisabled?: boolean;
 }
 
-function SettingRow({ id, label, description, children }: SettingRowProps) {
+function SettingRow({
+  id,
+  label,
+  description,
+  children,
+  isSubSetting = false,
+  isDisabled = false,
+}: SettingRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3">
-      <div className="flex-1 min-w-0">
-        <label
+    <div
+      className={cn(
+        "flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors",
+        !isDisabled && "hover:bg-[rgba(45,45,45,0.3)]",
+        isDisabled && "opacity-50"
+      )}
+    >
+      <div
+        className={cn(
+          "flex-1 min-w-0 pr-4",
+          isSubSetting && "pl-4 border-l-2 border-[var(--border-subtle)]"
+        )}
+      >
+        <Label
           htmlFor={id}
-          className="text-sm font-medium text-[--text-primary]"
+          className="text-sm font-medium text-[var(--text-primary)]"
         >
           {label}
-        </label>
-        <p id={`${id}-desc`} className="mt-0.5 text-xs text-[--text-muted]">
+        </Label>
+        <p id={`${id}-desc`} className="text-xs text-[var(--text-muted)] mt-0.5">
           {description}
         </p>
       </div>
-      {children}
+      <div className="shrink-0">{children}</div>
     </div>
   );
 }
@@ -138,6 +142,7 @@ interface ToggleSettingRowProps {
   checked: boolean;
   disabled: boolean;
   onChange: () => void;
+  isSubSetting?: boolean;
 }
 
 function ToggleSettingRow({
@@ -147,15 +152,24 @@ function ToggleSettingRow({
   checked,
   disabled,
   onChange,
+  isSubSetting = false,
 }: ToggleSettingRowProps) {
   return (
-    <SettingRow id={id} label={label} description={description}>
-      <Toggle
+    <SettingRow
+      id={id}
+      label={label}
+      description={description}
+      isSubSetting={isSubSetting}
+      isDisabled={disabled}
+    >
+      <Switch
         id={id}
+        data-testid={id}
         checked={checked}
+        onCheckedChange={onChange}
         disabled={disabled}
-        onChange={onChange}
-        ariaDescribedBy={`${id}-desc`}
+        aria-describedby={`${id}-desc`}
+        className="data-[state=checked]:bg-[var(--accent-primary)]"
       />
     </SettingRow>
   );
@@ -176,6 +190,7 @@ interface NumberSettingRowProps {
   unit: string;
   disabled: boolean;
   onChange: (value: number) => void;
+  isSubSetting?: boolean;
 }
 
 function NumberSettingRow({
@@ -189,11 +204,18 @@ function NumberSettingRow({
   unit,
   disabled,
   onChange,
+  isSubSetting = false,
 }: NumberSettingRowProps) {
   return (
-    <SettingRow id={id} label={label} description={description}>
+    <SettingRow
+      id={id}
+      label={label}
+      description={description}
+      isSubSetting={isSubSetting}
+      isDisabled={disabled}
+    >
       <div className="flex items-center gap-2">
-        <input
+        <Input
           type="number"
           id={id}
           data-testid={id}
@@ -209,11 +231,11 @@ function NumberSettingRow({
               onChange(val);
             }
           }}
-          className={`w-20 px-2 py-1.5 text-sm rounded-md bg-[--bg-elevated] border border-[--border-subtle] text-[--text-primary] text-right focus:outline-none focus:ring-2 focus:ring-[--accent-primary] focus:border-transparent ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
+          className="w-20 text-right bg-[var(--bg-surface)] border-[var(--border-default)] focus:border-[var(--accent-primary)] focus:ring-[var(--accent-primary)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
-        {unit && <span className="text-sm text-[--text-muted]">{unit}</span>}
+        {unit && (
+          <span className="text-xs text-[var(--text-muted)]">{unit}</span>
+        )}
       </div>
     </SettingRow>
   );
@@ -249,53 +271,76 @@ function SelectSettingRow<T extends string>({
   onChange,
 }: SelectSettingRowProps<T>) {
   return (
-    <SettingRow id={id} label={label} description={description}>
-      <select
-        id={id}
-        data-testid={id}
-        aria-describedby={`${id}-desc`}
+    <SettingRow id={id} label={label} description={description} isDisabled={disabled}>
+      <Select
         value={value}
+        onValueChange={onChange}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value as T)}
-        className={`w-48 px-3 py-1.5 text-sm rounded-md bg-[--bg-elevated] border border-[--border-subtle] text-[--text-primary] focus:outline-none focus:ring-2 focus:ring-[--accent-primary] focus:border-transparent ${
-          disabled ? "opacity-50 cursor-not-allowed" : ""
-        }`}
       >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger
+          id={id}
+          data-testid={id}
+          aria-describedby={`${id}-desc`}
+          className="w-[200px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
+        >
+          <SelectValue placeholder="Select model" />
+        </SelectTrigger>
+        <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+          {options.map((opt) => (
+            <SelectItem
+              key={opt.value}
+              value={opt.value}
+              className="focus:bg-[var(--accent-muted)]"
+            >
+              <div className="flex flex-col">
+                <span className="text-[var(--text-primary)]">{opt.label}</span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {opt.description}
+                </span>
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </SettingRow>
   );
 }
 
 // ============================================================================
-// Section Component
+// Section Card Component
 // ============================================================================
 
-interface SectionContainerProps {
+interface SectionCardProps {
+  icon: React.ReactNode;
   title: string;
   description: string;
   children: React.ReactNode;
 }
 
-function SectionContainer({ title, description, children }: SectionContainerProps) {
+function SectionCard({ icon, title, description, children }: SectionCardProps) {
   return (
-    <div
-      className="rounded-lg border p-4"
-      style={{
-        backgroundColor: "var(--bg-elevated)",
-        borderColor: "var(--border-subtle)",
-      }}
+    <Card
+      className={cn(
+        "bg-[var(--bg-elevated)] border-[var(--border-default)] shadow-[var(--shadow-xs)]",
+        // Gradient border technique
+        "border border-transparent",
+        "[background:linear-gradient(var(--bg-elevated),var(--bg-elevated))_padding-box,linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)_border-box]"
+      )}
     >
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-[--text-primary]">{title}</h3>
-        <p className="text-xs text-[--text-muted] mt-0.5">{description}</p>
+      <div className="flex items-start gap-3 p-5 pb-0">
+        <div className="p-2 rounded-lg bg-[var(--accent-muted)] shrink-0">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">
+            {title}
+          </h3>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">{description}</p>
+        </div>
       </div>
-      <div className="divide-y divide-[--border-subtle]">{children}</div>
-    </div>
+      <Separator className="my-4 bg-[var(--border-subtle)]" />
+      <div className="px-5 pb-5 space-y-1">{children}</div>
+    </Card>
   );
 }
 
@@ -305,19 +350,32 @@ function SectionContainer({ title, description, children }: SectionContainerProp
 
 function SettingsSkeleton() {
   return (
-    <div data-testid="settings-skeleton" className="animate-pulse space-y-6 p-4">
+    <div
+      data-testid="settings-skeleton"
+      className="p-6 space-y-6 max-w-[720px] mx-auto"
+    >
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="rounded-lg bg-[--bg-elevated] p-4 space-y-4">
-          <div className="h-5 w-32 rounded bg-[--bg-hover]" />
-          <div className="space-y-3">
+        <Card key={i} className="p-5 bg-[var(--bg-elevated)] border-[var(--border-default)]">
+          <div className="flex items-center gap-3 mb-4">
+            <Skeleton className="w-9 h-9 rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-40" />
+            </div>
+          </div>
+          <Separator className="my-4" />
+          <div className="space-y-4">
             {[1, 2, 3].map((j) => (
-              <div key={j} className="flex justify-between">
-                <div className="h-4 w-48 rounded bg-[--bg-hover]" />
-                <div className="h-6 w-11 rounded-full bg-[--bg-hover]" />
+              <div key={j} className="flex justify-between items-center">
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-6 w-11 rounded-full" />
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       ))}
     </div>
   );
@@ -333,9 +391,14 @@ interface ExecutionSectionProps {
   disabled: boolean;
 }
 
-function ExecutionSection({ settings, onChange, disabled }: ExecutionSectionProps) {
+function ExecutionSection({
+  settings,
+  onChange,
+  disabled,
+}: ExecutionSectionProps) {
   return (
-    <SectionContainer
+    <SectionCard
+      icon={<Zap className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
       title="Execution"
       description="Control task execution behavior and concurrency"
     >
@@ -373,9 +436,13 @@ function ExecutionSection({ settings, onChange, disabled }: ExecutionSectionProp
         description="Insert review point before tasks that delete files or modify configs"
         checked={settings.review_before_destructive}
         disabled={disabled}
-        onChange={() => onChange({ review_before_destructive: !settings.review_before_destructive })}
+        onChange={() =>
+          onChange({
+            review_before_destructive: !settings.review_before_destructive,
+          })
+        }
       />
-    </SectionContainer>
+    </SectionCard>
   );
 }
 
@@ -387,7 +454,11 @@ interface ModelSectionProps {
 
 function ModelSection({ settings, onChange, disabled }: ModelSectionProps) {
   return (
-    <SectionContainer title="Model" description="Configure AI model selection">
+    <SectionCard
+      icon={<Brain className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      title="Model"
+      description="Configure AI model selection"
+    >
       <SelectSettingRow
         id="model-selection"
         label="Default Model"
@@ -403,9 +474,11 @@ function ModelSection({ settings, onChange, disabled }: ModelSectionProps) {
         description="Automatically upgrade to Opus for complex tasks"
         checked={settings.allow_opus_upgrade}
         disabled={disabled}
-        onChange={() => onChange({ allow_opus_upgrade: !settings.allow_opus_upgrade })}
+        onChange={() =>
+          onChange({ allow_opus_upgrade: !settings.allow_opus_upgrade })
+        }
       />
-    </SectionContainer>
+    </SectionCard>
   );
 }
 
@@ -419,14 +492,22 @@ function ReviewSection({ settings, onChange, disabled }: ReviewSectionProps) {
   const isSubSettingsDisabled = disabled || !settings.ai_review_enabled;
 
   return (
-    <SectionContainer title="Review" description="Configure code review automation">
+    <SectionCard
+      icon={
+        <FileSearch className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+      }
+      title="Review"
+      description="Configure code review automation"
+    >
       <ToggleSettingRow
         id="ai-review-enabled"
         label="Enable AI Review"
         description="Automatically review completed tasks with AI"
         checked={settings.ai_review_enabled}
         disabled={disabled}
-        onChange={() => onChange({ ai_review_enabled: !settings.ai_review_enabled })}
+        onChange={() =>
+          onChange({ ai_review_enabled: !settings.ai_review_enabled })
+        }
       />
       <ToggleSettingRow
         id="ai-review-auto-fix"
@@ -434,7 +515,10 @@ function ReviewSection({ settings, onChange, disabled }: ReviewSectionProps) {
         description="Automatically create fix tasks when review fails"
         checked={settings.ai_review_auto_fix}
         disabled={isSubSettingsDisabled}
-        onChange={() => onChange({ ai_review_auto_fix: !settings.ai_review_auto_fix })}
+        onChange={() =>
+          onChange({ ai_review_auto_fix: !settings.ai_review_auto_fix })
+        }
+        isSubSetting
       />
       <ToggleSettingRow
         id="require-fix-approval"
@@ -442,7 +526,10 @@ function ReviewSection({ settings, onChange, disabled }: ReviewSectionProps) {
         description="Require human approval before executing AI-proposed fix tasks"
         checked={settings.require_fix_approval}
         disabled={isSubSettingsDisabled}
-        onChange={() => onChange({ require_fix_approval: !settings.require_fix_approval })}
+        onChange={() =>
+          onChange({ require_fix_approval: !settings.require_fix_approval })
+        }
+        isSubSetting
       />
       <ToggleSettingRow
         id="require-human-review"
@@ -450,7 +537,10 @@ function ReviewSection({ settings, onChange, disabled }: ReviewSectionProps) {
         description="Require human review even after AI approval"
         checked={settings.require_human_review}
         disabled={isSubSettingsDisabled}
-        onChange={() => onChange({ require_human_review: !settings.require_human_review })}
+        onChange={() =>
+          onChange({ require_human_review: !settings.require_human_review })
+        }
+        isSubSetting
       />
       <NumberSettingRow
         id="max-fix-attempts"
@@ -463,8 +553,9 @@ function ReviewSection({ settings, onChange, disabled }: ReviewSectionProps) {
         unit=""
         disabled={isSubSettingsDisabled}
         onChange={(value) => onChange({ max_fix_attempts: value })}
+        isSubSetting
       />
-    </SectionContainer>
+    </SectionCard>
   );
 }
 
@@ -474,11 +565,16 @@ interface SupervisorSectionProps {
   disabled: boolean;
 }
 
-function SupervisorSection({ settings, onChange, disabled }: SupervisorSectionProps) {
+function SupervisorSection({
+  settings,
+  onChange,
+  disabled,
+}: SupervisorSectionProps) {
   const isSubSettingsDisabled = disabled || !settings.supervisor_enabled;
 
   return (
-    <SectionContainer
+    <SectionCard
+      icon={<Shield className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
       title="Supervisor"
       description="Configure watchdog monitoring for stuck or looping agents"
     >
@@ -488,7 +584,9 @@ function SupervisorSection({ settings, onChange, disabled }: SupervisorSectionPr
         description="Enable watchdog monitoring for agent execution"
         checked={settings.supervisor_enabled}
         disabled={disabled}
-        onChange={() => onChange({ supervisor_enabled: !settings.supervisor_enabled })}
+        onChange={() =>
+          onChange({ supervisor_enabled: !settings.supervisor_enabled })
+        }
       />
       <NumberSettingRow
         id="loop-threshold"
@@ -501,6 +599,7 @@ function SupervisorSection({ settings, onChange, disabled }: SupervisorSectionPr
         unit=""
         disabled={isSubSettingsDisabled}
         onChange={(value) => onChange({ loop_threshold: value })}
+        isSubSetting
       />
       <NumberSettingRow
         id="stuck-timeout"
@@ -513,8 +612,35 @@ function SupervisorSection({ settings, onChange, disabled }: SupervisorSectionPr
         unit="seconds"
         disabled={isSubSettingsDisabled}
         onChange={(value) => onChange({ stuck_timeout: value })}
+        isSubSetting
       />
-    </SectionContainer>
+    </SectionCard>
+  );
+}
+
+// ============================================================================
+// Error Banner Component
+// ============================================================================
+
+interface ErrorBannerProps {
+  error: string;
+  onDismiss: () => void;
+}
+
+function ErrorBanner({ error, onDismiss }: ErrorBannerProps) {
+  return (
+    <div className="mx-6 mt-4 p-3 rounded-lg bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] flex items-center gap-3">
+      <AlertCircle className="w-4 h-4 text-[var(--status-error)] shrink-0" />
+      <p className="text-sm text-[var(--status-error)] flex-1">{error}</p>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onDismiss}
+        className="h-6 w-6 hover:bg-[rgba(239,68,68,0.2)]"
+      >
+        <X className="w-4 h-4 text-[var(--status-error)]" />
+      </Button>
+    </div>
   );
 }
 
@@ -545,6 +671,7 @@ export function SettingsView({
   const [settings, setSettings] = useState<ProjectSettings>(
     initialSettings ?? DEFAULT_PROJECT_SETTINGS
   );
+  const [dismissedError, setDismissedError] = useState(false);
 
   const handleExecutionChange = useCallback(
     (changes: Partial<ExecutionSettings>) => {
@@ -602,6 +729,13 @@ export function SettingsView({
     [onSettingsChange]
   );
 
+  const handleDismissError = useCallback(() => {
+    setDismissedError(true);
+  }, []);
+
+  // Reset dismissed state when error changes
+  const showError = error && !dismissedError;
+
   if (isLoading) {
     return <SettingsSkeleton />;
   }
@@ -610,73 +744,60 @@ export function SettingsView({
     <div
       data-testid="settings-view"
       className="flex flex-col h-full"
-      style={{ backgroundColor: "var(--bg-surface)" }}
+      style={{
+        backgroundColor: "var(--bg-surface)",
+        backgroundImage:
+          "radial-gradient(ellipse at top right, rgba(255,107,53,0.02) 0%, var(--bg-surface) 40%)",
+      }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: "var(--border-subtle)" }}
-      >
-        <div>
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Settings
-          </h2>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Configure project behavior
-          </p>
+      {/* Header with glass effect */}
+      <div className="flex items-center justify-between px-6 py-4 backdrop-blur-md bg-[rgba(26,26,26,0.85)] border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-[var(--accent-muted)]">
+            <Settings className="w-5 h-5 text-[var(--accent-primary)]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
+              Settings
+            </h2>
+            <p className="text-sm text-[var(--text-muted)]">
+              Configure project behavior
+            </p>
+          </div>
         </div>
-        {isSaving && (
-          <span
-            className="text-sm px-3 py-1 rounded-md"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              color: "var(--text-muted)",
-            }}
-          >
-            Saving...
-          </span>
-        )}
+        {isSaving && <SavingIndicator />}
       </div>
 
-      {/* Error Message */}
-      {error && (
-        <div
-          className="mx-4 mt-4 p-3 rounded-md"
-          style={{
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
-            color: "var(--status-error)",
-          }}
-        >
-          <p className="text-sm">{error}</p>
-        </div>
+      {/* Error Banner */}
+      {showError && (
+        <ErrorBanner error={error} onDismiss={handleDismissError} />
       )}
 
-      {/* Settings Sections */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <ExecutionSection
-          settings={settings.execution}
-          onChange={handleExecutionChange}
-          disabled={isSaving}
-        />
-        <ModelSection
-          settings={settings.model}
-          onChange={handleModelChange}
-          disabled={isSaving}
-        />
-        <ReviewSection
-          settings={settings.review}
-          onChange={handleReviewChange}
-          disabled={isSaving}
-        />
-        <SupervisorSection
-          settings={settings.supervisor}
-          onChange={handleSupervisorChange}
-          disabled={isSaving}
-        />
-      </div>
+      {/* Settings Sections with ScrollArea */}
+      <ScrollArea className="flex-1">
+        <div className="p-6 space-y-6 max-w-[720px] mx-auto">
+          <ExecutionSection
+            settings={settings.execution}
+            onChange={handleExecutionChange}
+            disabled={isSaving}
+          />
+          <ModelSection
+            settings={settings.model}
+            onChange={handleModelChange}
+            disabled={isSaving}
+          />
+          <ReviewSection
+            settings={settings.review}
+            onChange={handleReviewChange}
+            disabled={isSaving}
+          />
+          <SupervisorSection
+            settings={settings.supervisor}
+            onChange={handleSupervisorChange}
+            disabled={isSaving}
+          />
+        </div>
+      </ScrollArea>
     </div>
   );
 }
