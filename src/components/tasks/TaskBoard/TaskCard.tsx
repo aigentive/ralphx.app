@@ -79,7 +79,11 @@ export function TaskCard({
   testStatus,
   hasCheckpoint,
 }: TaskCardProps) {
-  const { attributes, listeners, setNodeRef } = useDraggable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id });
+
+  const dragStyle = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  } : undefined;
 
   // Build QA badge props conditionally to satisfy exactOptionalPropertyTypes
   const qaBadgeProps = {
@@ -127,7 +131,7 @@ export function TaskCard({
       data-testid={`task-card-${task.id}`}
       onClick={() => onSelect?.(task.id)}
       className="group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
-      style={getCardStyles()}
+      style={{ ...getCardStyles(), ...dragStyle }}
       tabIndex={0}
     >
       {/* Drag handle - appears on hover */}
