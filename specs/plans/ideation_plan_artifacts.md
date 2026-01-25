@@ -52,15 +52,27 @@ For this feature, we need to either:
 
 ### Data Model Changes
 
-#### 1. Add `plan_artifact_id` to TaskProposal
+#### 1. Add Plan Fields to Ideation Entities
 
 ```rust
 // src-tauri/src/domain/entities/ideation.rs
+
+/// Add to IdeationSession (single plan per session)
+pub struct IdeationSession {
+    // ... existing fields ...
+
+    /// The implementation plan artifact for this session
+    pub plan_artifact_id: Option<ArtifactId>,
+}
+
+/// Add to TaskProposal (tracks version at creation for hybrid versioning)
 pub struct TaskProposal {
     // ... existing fields ...
 
-    /// Optional reference to the implementation plan artifact
+    /// Reference to the implementation plan artifact
     pub plan_artifact_id: Option<ArtifactId>,
+    /// Plan version when this proposal was created (for historical view)
+    pub plan_version_at_creation: Option<u32>,
 }
 ```
 
@@ -90,6 +102,8 @@ impl Default for IdeationPlanMode {
 pub struct IdeationSettings {
     /// How implementation plans are created in ideation flow
     pub plan_mode: IdeationPlanMode,
+    /// In Required mode, whether explicit approval is needed before proposals
+    pub require_plan_approval: bool,
     /// Whether to show plan suggestions for complex features (in Optional mode)
     pub suggest_plans_for_complex: bool,
     /// Auto-link proposals to session plan when created
@@ -100,6 +114,7 @@ impl Default for IdeationSettings {
     fn default() -> Self {
         Self {
             plan_mode: IdeationPlanMode::Optional,
+            require_plan_approval: false,  // Plan existence is sufficient by default
             suggest_plans_for_complex: true,
             auto_link_proposals: true,
         }
@@ -110,15 +125,79 @@ impl Default for IdeationSettings {
 #### 3. Database Migration
 
 ```sql
--- Add plan_artifact_id to task_proposals
-ALTER TABLE task_proposals ADD COLUMN plan_artifact_id TEXT REFERENCES artifacts(id);
+-- Add plan_artifact_id to ideation_sessions (single plan per session)
+ALTER TABLE ideation_sessions ADD COLUMN plan_artifact_id TEXT REFERENCES artifacts(id);
 
--- Add settings table (if not exists)
-CREATE TABLE IF NOT EXISTS app_settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+-- Add plan fields to task_proposals (with version tracking)
+ALTER TABLE task_proposals ADD COLUMN plan_artifact_id TEXT REFERENCES artifacts(id);
+ALTER TABLE task_proposals ADD COLUMN plan_version_at_creation INTEGER;
+
+-- Create ideation_settings table with single-row pattern
+CREATE TABLE IF NOT EXISTS ideation_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- Ensures single row
+    plan_mode TEXT NOT NULL DEFAULT 'optional',
+    require_plan_approval INTEGER NOT NULL DEFAULT 0,
+    suggest_plans_for_complex INTEGER NOT NULL DEFAULT 1,
+    auto_link_proposals INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Seed default settings row
+INSERT OR IGNORE INTO ideation_settings (id, updated_at) VALUES (1, datetime('now'));
+```
+
+### Methodology Integration
+
+When a methodology is active, it can provide custom artifact types, buckets, and templates:
+
+```rust
+// src-tauri/src/domain/entities/methodology.rs (extend existing)
+pub struct MethodologyExtension {
+    // ... existing fields ...
+
+    /// Custom artifact configuration for ideation plans
+    pub plan_artifact_config: Option<MethodologyPlanArtifactConfig>,
+    /// Plan templates provided by this methodology
+    pub plan_templates: Vec<MethodologyPlanTemplate>,
+}
+
+pub struct MethodologyPlanArtifactConfig {
+    /// Artifact type to use for plans (existing or custom)
+    pub artifact_type: String,  // String to allow methodology-defined types
+    /// Bucket to store plans in
+    pub bucket_id: String,
+}
+
+pub struct MethodologyPlanTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// Markdown template with {{placeholders}}
+    pub template_content: String,
+}
+```
+
+**Resolution Logic:**
+
+```rust
+fn get_plan_artifact_config(active_methodology: Option<&MethodologyExtension>) -> PlanArtifactConfig {
+    match active_methodology.and_then(|m| m.plan_artifact_config.as_ref()) {
+        Some(config) => PlanArtifactConfig {
+            artifact_type: config.artifact_type.clone(),
+            bucket_id: config.bucket_id.clone(),
+        },
+        None => PlanArtifactConfig {
+            artifact_type: "specification".to_string(),
+            bucket_id: "prd-library".to_string(),
+        },
+    }
+}
+
+fn get_plan_templates(active_methodology: Option<&MethodologyExtension>) -> Vec<MethodologyPlanTemplate> {
+    active_methodology
+        .map(|m| m.plan_templates.clone())
+        .unwrap_or_default()  // Empty = no templates (start from scratch)
+}
 ```
 
 ### MCP Tools for Plan Management
@@ -282,6 +361,12 @@ Add a 5th section for **Ideation** (with Lightbulb icon):
 │  └─────────────────────────────────────────────────────────────┘│
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────────┐│
+│  │ ☐ Require explicit plan approval (in Required mode)         ││
+│  │   User must click "Approve Plan" before creating proposals  ││
+│  │   (disabled when not in Required mode)                      ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
 │  │ ☑ Suggest plans for complex features                        ││
 │  │   When in Optional mode, prompt user for complex features   ││
 │  └─────────────────────────────────────────────────────────────┘│
@@ -400,152 +485,224 @@ Add a 5th section for **Ideation** (with Lightbulb icon):
 
 ---
 
-## Open Questions
+## Decisions
 
 ### 1. Plan Approval Workflow
 
-**Question:** In "Required" mode, should the plan require explicit user approval before proposals can be created?
+**Decision:** Configurable with default to NO (plan existence is sufficient)
 
-**Options:**
-- A) Yes - User must click "Approve Plan" button
-- B) No - Plan existence is sufficient; user feedback in conversation is implicit approval
-- C) Configurable - Add separate `require_plan_approval` setting
+**Implementation:**
+- Add `require_plan_approval: bool` to `IdeationSettings` (default: `false`)
+- When `true` in Required mode: show "Approve Plan" button before proposals can be created
+- When `false`: plan existence is sufficient; user feedback in conversation is implicit approval
 
-**Considerations:**
-- Option A adds friction but ensures deliberate decisions
-- Option B is faster but user might miss reviewing the plan
-- Option C is flexible but adds settings complexity
+```rust
+pub struct IdeationSettings {
+    pub plan_mode: IdeationPlanMode,
+    pub require_plan_approval: bool,  // NEW - default false
+    // ...
+}
+```
 
 ---
 
 ### 2. Proactive Sync Behavior
 
-**Question:** When a plan is updated, should the system auto-update proposals or just notify?
+**Decision:** Auto-update with undo capability
 
-**Options:**
-- A) Notify only - "Plan updated. Review linked proposals?"
-- B) Suggest updates - Show diff of what would change, user confirms
-- C) Auto-update - Orchestrator automatically revises proposals (with undo)
-
-**Considerations:**
-- Option A is safest but requires manual work
-- Option B balances automation with user control
-- Option C is most automated but may surprise users
+**Implementation:**
+- When plan is updated, orchestrator automatically revises linked proposals
+- Show notification: "Plan updated. 3 proposals revised. [Undo] [View Changes]"
+- Undo reverts proposals to pre-update state
+- Store previous proposal state before auto-update for undo functionality
+- Use `ArtifactFlow` to trigger sync on `artifact_updated` event
 
 ---
 
-### 3. Artifact Type
+### 3. Artifact Type - Methodology-Driven
 
-**Question:** Should we use the existing `Specification` type or add a new `ImplementationPlan` type?
+**Decision:** Artifact type mapped based on active methodology
 
-**Options:**
-- A) Use `Specification` - Already exists, semantic fit
-- B) Add `ImplementationPlan` - Clearer distinction, better querying
-- C) Add `IdeationPlan` - Specific to ideation context
+**Implementation:**
+- **No methodology active:** Use existing `Specification` type in `prd-library` bucket
+- **Methodology active:** Methodology defines its own artifact type and bucket
+  - BMAD might use `BmadAnalysisDocument` in `bmad-artifacts` bucket
+  - GSD might use `GsdPlanDocument` in `gsd-artifacts` bucket
 
-**Considerations:**
-- Option A avoids schema changes
-- Option B/C allow filtering plans specifically
-- Existing `prd-library` bucket accepts `Specification`
+```rust
+// In methodology extension definition
+pub struct MethodologyArtifactConfig {
+    pub plan_artifact_type: ArtifactType,  // Custom or existing
+    pub plan_bucket_id: ArtifactBucketId,
+}
+
+// Default (no methodology)
+fn default_plan_artifact_config() -> MethodologyArtifactConfig {
+    MethodologyArtifactConfig {
+        plan_artifact_type: ArtifactType::Specification,
+        plan_bucket_id: ArtifactBucketId::from_string("prd-library"),
+    }
+}
+```
+
+**Note:** May require adding custom artifact types to the enum or a more dynamic type system for methodology-defined types.
 
 ---
 
 ### 4. Plan Versioning
 
-**Question:** How should plan versions be handled when proposals exist?
+**Decision:** Hybrid approach - show current version but track version at proposal creation
 
-**Options:**
-- A) Proposals link to latest version only - `plan_artifact_id` always points to current
-- B) Proposals link to specific version - Preserves historical context
-- C) Hybrid - Show current version but allow viewing version at proposal creation time
+**Implementation:**
+- `TaskProposal.plan_artifact_id` points to the artifact (not a specific version)
+- Add `TaskProposal.plan_version_at_creation: u32` to track which version existed when proposal was created
+- UI shows current plan content by default
+- "View as of proposal creation" option shows historical version
+- Artifact versioning already exists (`metadata.version` field)
 
-**Considerations:**
-- Option A is simpler but loses history
-- Option B is more accurate but complex
-- Option C provides best UX but most implementation work
+```rust
+pub struct TaskProposal {
+    pub plan_artifact_id: Option<ArtifactId>,
+    pub plan_version_at_creation: Option<u32>,  // NEW
+    // ...
+}
+```
 
 ---
 
 ### 5. Multiple Plans per Session
 
-**Question:** Can an ideation session have multiple plans (e.g., one per major feature)?
+**Decision:** Single plan per session
 
-**Options:**
-- A) Single plan per session - Simple, clear ownership
-- B) Multiple plans allowed - Each proposal links to one plan
-- C) Hierarchical - One main plan with sub-plans
+**Implementation:**
+- One `plan_artifact_id` per `IdeationSession`
+- Simple, clear ownership model
+- If user needs multiple plans, create multiple sessions
+- Session can be titled to reflect the plan focus
 
-**Considerations:**
-- Option A is simpler for MVP
-- Option B supports diverse sessions
-- Option C matches complex project structures
+```rust
+pub struct IdeationSession {
+    pub plan_artifact_id: Option<ArtifactId>,  // Single plan
+    // ...
+}
+```
+
+**Rationale:** Keeps MVP simple. Multiple plans can be added later if needed.
 
 ---
 
 ### 6. Plan Templates
 
-**Question:** Should we provide plan templates for common scenarios?
+**Decision:** No templates if no methodology; methodology-driven templates if active
 
-**Options:**
-- A) No templates - Start from scratch each time
-- B) Basic templates - "Feature Plan", "Refactor Plan", "Integration Plan"
-- C) Methodology-driven templates - BMAD/GSD provide their own templates
+**Implementation:**
+- **No methodology active:** Start from scratch (blank plan)
+- **Methodology active:** Methodology provides plan templates
+  - Templates defined in methodology extension
+  - User can select from available templates when creating plan
+  - Template pre-populates plan structure
 
-**Considerations:**
-- Option A is simplest
-- Option B speeds up common cases
-- Option C integrates with extensibility system
+```rust
+// In methodology extension
+pub struct MethodologyPlanTemplate {
+    pub name: String,
+    pub description: String,
+    pub template_content: String,  // Markdown template with placeholders
+}
+
+pub struct MethodologyExtension {
+    pub plan_templates: Vec<MethodologyPlanTemplate>,
+    // ...
+}
+```
+
+**Default (no methodology):** Empty array, no template selection UI shown.
 
 ---
 
-### 7. Settings Module Architecture
+### 7. Settings Persistence
 
-**Question:** Should ideation settings follow the existing QA settings pattern (in-memory) or implement proper persistence?
+**Decision:** SQLite persistence for ideation settings
 
-**Options:**
-- A) In-memory only (like QA) - Fast to implement, resets on app restart
-- B) SQLite persistence - Proper separate `ideation_settings` table
-- C) Unified settings system - Create a general settings framework for all modules
+**Implementation:**
+- Create `ideation_settings` table in SQLite
+- `IdeationSettingsRepository` trait with `SqliteIdeationSettingsRepository` implementation
+- Settings persist across app restarts
+- Becomes the pattern for future settings modules
 
-**Considerations:**
-- Option A matches current QA pattern but has same limitation (no persistence)
-- Option B is proper solution for ideation specifically
-- Option C would be ideal long-term but scope creep for this feature
+```sql
+CREATE TABLE ideation_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    plan_mode TEXT NOT NULL DEFAULT 'optional',
+    require_plan_approval INTEGER NOT NULL DEFAULT 0,
+    suggest_plans_for_complex INTEGER NOT NULL DEFAULT 1,
+    auto_link_proposals INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+);
 
-**Recommendation:** Option B - Implement proper SQLite persistence for ideation settings as a separate module. This becomes the pattern for future settings modules and doesn't touch QA settings.
+-- Ensure single row
+INSERT OR IGNORE INTO ideation_settings (id) VALUES (1);
+```
 
 ---
 
 ## Verification Checklist
 
-### Backend
+### Backend - Data Model
+- [ ] `plan_artifact_id` column exists in `ideation_sessions` table
 - [ ] `plan_artifact_id` column exists in `task_proposals` table
-- [ ] `IdeationPlanMode` setting persisted to database
-- [ ] Plan artifact tools create artifacts in `prd-library` bucket
-- [ ] `link_proposals_to_plan` updates multiple proposals atomically
+- [ ] `plan_version_at_creation` column exists in `task_proposals` table
+- [ ] `ideation_settings` table created with single-row pattern
+- [ ] All 4 settings fields persist correctly
+
+### Backend - Settings
+- [ ] `IdeationSettingsRepository` trait implemented
+- [ ] `SqliteIdeationSettingsRepository` works correctly
 - [ ] Settings changes emit Tauri event for frontend sync
+- [ ] Default values applied on first load
+
+### Backend - Methodology Integration
+- [ ] Active methodology's artifact config used when present
+- [ ] Falls back to `Specification` type and `prd-library` bucket when no methodology
+- [ ] Methodology plan templates accessible via API
 
 ### MCP Server
 - [ ] Plan tools in TOOL_ALLOWLIST for orchestrator-ideation
 - [ ] HTTP endpoints proxied correctly
 - [ ] Tool responses include artifact IDs
+- [ ] Artifact type resolution considers active methodology
 
-### Frontend
+### Frontend - Settings
+- [ ] Ideation section appears in SettingsView (5th card, Lightbulb icon)
+- [ ] Plan mode selector works (Required/Optional/Parallel)
+- [ ] "Require explicit approval" toggle disabled when not in Required mode
+- [ ] All settings persist across app restart
+
+### Frontend - Plan Display
 - [ ] Plan display shows in IdeationView when plan exists
 - [ ] Plan editor supports markdown with preview
-- [ ] Settings UI shows plan mode selector
+- [ ] "Approve Plan" button shows when `require_plan_approval` is true
 - [ ] Plan-proposal linkage visible in proposal cards
+- [ ] "View as of proposal creation" shows historical version
 
-### Agent
+### Frontend - Templates
+- [ ] Template selector shows when methodology provides templates
+- [ ] No template UI when no methodology active
+- [ ] Selected template pre-populates plan content
+
+### Agent Behavior
 - [ ] Orchestrator respects plan mode setting
 - [ ] Plan created before proposals in Required mode
-- [ ] User prompted for plan in Optional mode (complex features)
+- [ ] Waits for approval when `require_plan_approval` is true
+- [ ] User prompted for plan in Optional mode (complex features only)
 - [ ] Plan and proposals created together in Parallel mode
 
-### Proactive Sync
+### Proactive Sync (Auto-Update)
 - [ ] Artifact flow triggers on plan update
-- [ ] Notification shown for stale proposals
-- [ ] Review workflow allows accepting/rejecting suggested changes
+- [ ] Orchestrator auto-revises linked proposals
+- [ ] Notification shows: "Plan updated. N proposals revised. [Undo] [View Changes]"
+- [ ] Undo reverts proposals to pre-update state
+- [ ] Previous proposal state stored for undo functionality
 
 ---
 
