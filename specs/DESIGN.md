@@ -443,6 +443,49 @@ Each page has its own detailed design specification. See the individual files fo
 
 RalphX uses shadcn/ui as the component foundation. All shadcn components are customized to use RalphX design tokens.
 
+### Tailwind CSS v4 Configuration
+
+RalphX uses **Tailwind CSS v4** with the Vite plugin. This is a different configuration pattern than v3:
+
+**Critical v4 Rules:**
+- ❌ NO `tailwind.config.js` file - v4 ignores it
+- ❌ NO `tailwindcss-animate` package - deprecated in v4
+- ✅ Use `@tailwindcss/vite` plugin in `vite.config.ts`
+- ✅ Use `@theme inline` in CSS for theme configuration
+- ✅ Use `@import "tailwindcss"` at the top of `globals.css`
+
+**Four-Step Architecture (Required):**
+
+1. **Define CSS Variables at Root Level** (NOT inside `@layer base`):
+```css
+:root {
+  --bg-base: hsl(0 0% 6%);        /* hsl() wrapper required */
+  --accent-primary: hsl(14 100% 60%);
+}
+.dark {
+  /* Same structure for dark mode */
+}
+```
+
+2. **Map Variables to Tailwind Utilities** via `@theme inline`:
+```css
+@theme inline {
+  --color-bg-base: var(--bg-base);
+  --color-accent-primary: var(--accent-primary);
+}
+```
+
+3. **Apply Base Styles** in `@layer base`:
+```css
+@layer base {
+  body {
+    background-color: var(--bg-base);  /* NO hsl() here */
+  }
+}
+```
+
+4. **Use Utilities** - classes like `bg-bg-base`, `text-accent-primary` now work automatically.
+
 ### Installed Components
 - Button, Card, Dialog, Dropdown Menu
 - Input, Label, Tabs, Tooltip, Popover
@@ -563,6 +606,10 @@ This checklist tracks the implementation of designs from Phase 13 using shadcn/u
 ## References
 
 - **Design Overhaul Plan**: `specs/DESIGN_OVERHAUL_PLAN.md`
-- **Global CSS**: `src/styles/globals.css`
+- **Global CSS**: `src/styles/globals.css` (contains all design tokens and `@theme inline` config)
+- **Vite Config**: `vite.config.ts` (includes `@tailwindcss/vite` plugin)
+- **shadcn Config**: `components.json` (config field must be empty for v4)
 - **shadcn Components**: `src/components/ui/`
 - **Lucide Icons**: https://lucide.dev/icons/
+- **Tailwind v4 Docs**: https://tailwindcss.com/docs
+- **shadcn/ui v4 Guide**: https://ui.shadcn.com/docs/tailwind-v4

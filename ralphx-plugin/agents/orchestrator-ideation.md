@@ -54,9 +54,11 @@ Help users transform ideas into well-defined, actionable task proposals. You wor
 - Confirm the final list with the user
 - Explain what happens next (Apply to Kanban)
 
-## Tool Usage
+## MCP Tools Available
 
-You have access to these tools for creating proposals:
+This agent has access to the following MCP tools for ideation operations:
+
+**Note:** MCP tool access is enforced via the `RALPHX_AGENT_TYPE` environment variable. This agent's type is `orchestrator-ideation`, which grants access only to the ideation tools listed below.
 
 ### create_task_proposal
 Create a new task proposal in the session.

@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:30:00
+**Last Updated:** 2026-01-26 01:48:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 12 / 26
-**Current Task:** Configure MCP server in plugin and create chat agents
+**Tasks Completed:** 13 / 26
+**Current Task:** Refactor orchestrator service for --resume and MCP delegation
 
 ---
 
@@ -59,6 +59,55 @@
 **Commands run:**
 - `npm run typecheck` (successful)
 - `npm run lint` (successful - only pre-existing warnings)
+
+---
+
+### 2026-01-26 01:48:00 - Plugin: Configure MCP Server and Create Chat Agents
+
+**What was done:**
+- Updated `ralphx-plugin/.mcp.json` to configure ralphx MCP server:
+  - Added ralphx MCP server configuration
+  - Command: `node ${CLAUDE_PLUGIN_ROOT}/../ralphx-mcp-server/build/index.js`
+  - Environment: TAURI_API_URL set to http://127.0.0.1:3847
+  - MCP server will proxy all tool calls to Tauri HTTP backend
+
+- Created `ralphx-plugin/agents/chat-task.md` (task-focused chat agent):
+  - Agent type: chat-task
+  - Tools: Read, Grep, Glob
+  - Model: sonnet
+  - Documents available MCP tools: update_task, add_task_note, get_task_details
+  - Scoped via RALPHX_AGENT_TYPE environment variable
+  - Guidelines for task-focused assistance
+
+- Created `ralphx-plugin/agents/chat-project.md` (project-focused chat agent):
+  - Agent type: chat-project
+  - Tools: Read, Grep, Glob
+  - Model: sonnet
+  - Documents available MCP tools: suggest_task, list_tasks
+  - Scoped via RALPHX_AGENT_TYPE environment variable
+  - Guidelines for project-level assistance
+
+- Updated `ralphx-plugin/agents/orchestrator-ideation.md`:
+  - Added "MCP Tools Available" section header
+  - Documented that tools are scoped via RALPHX_AGENT_TYPE=orchestrator-ideation
+  - Lists ideation-specific tools: create/update/delete proposals, add dependencies
+
+**Verification:**
+- Built MCP server: `npm run build` (successful)
+- Tested agent invocation: `claude --agent chat-task --plugin-dir ./ralphx-plugin -p 'List your available tools'` (successful)
+- Tested agent invocation: `claude --agent chat-project --plugin-dir ./ralphx-plugin -p 'What MCP tools do you have?'` (successful)
+- Verified MCP server reads RALPHX_AGENT_TYPE environment variable correctly
+
+**Notes:**
+- MCP server tools won't appear in tool list until Tauri HTTP server (port 3847) is running
+- Tool scoping enforced at MCP server level based on RALPHX_AGENT_TYPE env var
+- Next task (orchestrator refactor) is high-complexity - consider switching to Opus
+
+**Commands run:**
+- `npm run build` (in ralphx-mcp-server)
+- `claude --agent chat-task --plugin-dir ./ralphx-plugin -p 'List your available tools'`
+- `claude --agent chat-project --plugin-dir ./ralphx-plugin -p 'What MCP tools do you have?'`
+- `timeout 2 node build/index.js` (MCP server startup test)
 
 ---
 

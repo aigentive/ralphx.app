@@ -291,7 +291,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: feat(plugin): configure MCP server and create chat agents",
       "STOP: Output <promise>COMPLETE</promise> - Next task (orchestrator refactor) is high-complexity, consider switching to Opus"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
