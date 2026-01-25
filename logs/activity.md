@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 08:20:00
-**Phase:** Phase 15 (Auditor System)
-**Tasks Completed:** 0 / 11
-**Current Task:** Define AuditConfig and AuditRule types
+**Last Updated:** 2026-01-26 00:38:49
+**Phase:** Phase 15 (Context-Aware Chat)
+**Tasks Completed:** 1 / 26
+**Current Task:** Create ChatConversation and AgentRun entities and repositories
 
 ---
 
 ## Session Log
+
+### 2026-01-26 00:38:49 - Database migration for chat conversations, agent runs, and tool calls
+
+**What was done:**
+- Created migration v20 in `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- Added `chat_conversations` table:
+  - Tracks conversations per context (ideation/task/project)
+  - Stores Claude session ID for --resume flag
+  - Auto-generated title, message count, timestamps
+  - Indexes on context_type/context_id and claude_session_id
+- Added `agent_runs` table:
+  - Tracks running/completed agent runs for streaming persistence
+  - Status: running/completed/failed/cancelled
+  - Foreign key to chat_conversations with CASCADE DELETE
+  - Indexes on conversation_id and status
+- Modified `chat_messages` table:
+  - Added conversation_id column (references chat_conversations)
+  - Added tool_calls column (JSON array of tool calls)
+  - Added index on conversation_id
+- Added trigger `update_conversation_message_count`:
+  - Automatically updates message_count and last_message_at
+  - Updates conversation.updated_at on new messages
+- Updated SCHEMA_VERSION from 19 to 20
+- Added comprehensive tests for all new tables, indexes, and trigger
+- All 147 migration tests pass
+
+**Commands run:**
+- `cargo test --lib migrations::tests`
+
+---
 
 ### 2026-01-25 08:20:00 - Phase 14 Complete
 

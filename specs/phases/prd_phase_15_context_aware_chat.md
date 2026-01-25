@@ -70,7 +70,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test to verify migration applies",
       "Commit: feat(db): add chat conversations, agent runs, and tool calls schema"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
