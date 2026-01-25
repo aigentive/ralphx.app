@@ -1,14 +1,62 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-25 08:30:00
+**Last Updated:** 2026-01-25 02:26:29
 **Phase:** Phase 13 (Design System)
-**Tasks Completed:** 14 / 18
-**Current Task:** Design requirements for Execution Control Bar
+**Tasks Completed:** 15 / 18
+**Current Task:** Design requirements for Header and Navigation
 
 ---
 
 ## Session Log
+
+### 2026-01-25 02:26:29 - Design requirements for Execution Control Bar (Task 15)
+
+**What was done:**
+- Created comprehensive Execution Control Bar design requirements in specs/design/pages/execution-control-bar.md
+- Documented fixed-position control panel at bottom of Kanban view
+
+**Layout Structure:**
+  - Fixed position at bottom of Kanban view, height 48px
+  - Three sections: Status (left), Progress (center), Controls (right)
+  - Background: `--bg-surface` with top border and shadow
+  - Z-index: 10 (above board content, below modals)
+
+**Status Section (Left):**
+  - Animated status indicator dot (8px)
+    - Running: green with pulsing glow animation (2s ease-in-out infinite)
+    - Paused: amber, static
+    - Idle: muted gray, static
+  - Running count: "Running: X/Y" (current/max concurrent)
+  - Queued count: "Queued: X"
+
+**Progress Section (Center):**
+  - Current task name with spinning Loader2 icon
+  - Truncated with ellipsis for long names
+  - Optional progress bar (2px height, accent color fill)
+  - Slide-in animation when task starts
+
+**Control Section (Right):**
+  - Pause/Resume button (shadcn Button ghost variant)
+    - Pause: Lucide Pause icon, default styling
+    - Resume: Lucide Play icon, accent styling with orange tint
+  - Stop button (custom destructive styling)
+    - Enabled: Lucide Square, red tint background, red border
+    - Disabled: muted styling, 50% opacity
+  - Both buttons have shadcn Tooltips with keyboard shortcuts
+
+**Micro-interactions:**
+  - Status dot color transition: 200ms ease
+  - Button hover: 150ms ease (background, border)
+  - Button press: scale(0.96)
+  - Task name reveal: slide-in-right 200ms ease-out
+
+**Updated files:**
+  - specs/design/pages/execution-control-bar.md (full rewrite)
+  - specs/DESIGN.md (status: Complete)
+  - specs/phases/prd_phase_13_design.md (passes: true)
+
+---
 
 ### 2026-01-25 08:30:00 - Design requirements for Diff Viewer (Task 14)
 

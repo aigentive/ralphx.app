@@ -433,7 +433,7 @@ Each page has its own detailed design specification. See the individual files fo
 | Project Sidebar | [project-sidebar.md](design/pages/project-sidebar.md) | Complete |
 | Project Dialogs | [project-dialogs.md](design/pages/project-dialogs.md) | Complete |
 | Diff Viewer | [diff-viewer.md](design/pages/diff-viewer.md) | Complete |
-| Execution Control Bar | [execution-control-bar.md](design/pages/execution-control-bar.md) | Task 15 |
+| Execution Control Bar | [execution-control-bar.md](design/pages/execution-control-bar.md) | Complete |
 | Header and Navigation | [header-navigation.md](design/pages/header-navigation.md) | Task 16 |
 | Modal Standards | [modal-standards.md](design/pages/modal-standards.md) | Task 17 |
 
