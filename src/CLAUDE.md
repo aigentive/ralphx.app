@@ -41,9 +41,14 @@ src/
 │   ├── PermissionDialog.tsx      # UI-based permission approval for agent tools
 │   ├── execution/          # Execution control (ExecutionControlBar)
 │   ├── Ideation/           # Ideation view (ProposalCard, ProposalList, etc.)
+│   │   ├── PlanDisplay     # Plan artifact viewer with collapse/expand (Phase 16)
+│   │   ├── PlanEditor      # Markdown editor for plan artifacts (Phase 16)
+│   │   └── PlanTemplateSelector # Template picker for new plans (Phase 16)
 │   ├── modals/             # Modal dialogs (AskUserQuestionModal)
 │   ├── qa/                 # QA components (TaskQABadge, QASettingsPanel)
 │   ├── reviews/            # Review system (ReviewsPanel, ReviewCard)
+│   ├── settings/           # Settings components
+│   │   └── IdeationSettingsPanel # Ideation plan mode configuration (Phase 16)
 │   ├── tasks/              # Task components (TaskBoard/, TaskDetailView)
 │   │   └── TaskBoard/      # Kanban board with dnd-kit integration
 │   └── ui/                 # Shared UI components (StatusBadge)
@@ -68,7 +73,7 @@ src/
 │   ├── taskStore.ts        # Task state
 │   ├── projectStore.ts     # Project state
 │   ├── uiStore.ts          # UI state (modals, sidebar, views)
-│   ├── ideationStore.ts    # Ideation session state
+│   ├── ideationStore.ts    # Ideation session state (includes planArtifact state - Phase 16)
 │   ├── proposalStore.ts    # Task proposal state
 │   ├── chatStore.ts        # Chat state (active conversation, queue, agent running, execution queue)
 │   ├── qaStore.ts          # QA state
@@ -84,11 +89,13 @@ src/
 │
 ├── types/                  # TypeScript types and Zod schemas
 │   ├── index.ts            # Re-exports all types
-│   ├── task.ts             # Task type and schemas
+│   ├── task.ts             # Task type and schemas (includes sourceProposalId, planArtifactId - Phase 16)
 │   ├── project.ts          # Project type and schemas
 │   ├── status.ts           # InternalStatus enum (14 statuses)
 │   ├── chat-conversation.ts # ChatConversation and AgentRun types (Phase 15A/15B, includes task_execution context type)
 │   ├── permission.ts       # Permission request types for UI-based approval
+│   ├── ideation.ts         # Ideation types (includes planArtifactId fields - Phase 16)
+│   ├── ideation-config.ts  # IdeationSettings and IdeationPlanMode types (Phase 16)
 │   └── *.ts                # Domain-specific types (qa, review, ideation, etc.)
 │
 ├── integration/            # Integration tests
@@ -291,6 +298,96 @@ export function useChat() {
 - **Task execution chat (Phase 15B)** - Worker execution output displayed as chat with task_execution context type
 - **Conversation switching** - ConversationSelector component lets you switch between conversations or start new ones
 - **Execution history** - View past execution attempts for a task, switch between them
+
+### 9. Ideation Plan Artifacts (Phase 16)
+
+The ideation system supports implementation plans as artifacts before task proposal creation:
+
+**IdeationSettings:**
+- **Plan Mode** - Required, Optional, or Parallel workflow
+  - `Required` - Plan must be created before proposals
+  - `Optional` - Plan suggested for complex features (default)
+  - `Parallel` - Plan and proposals created together
+- **Plan Approval** - Require explicit approval when `require_plan_approval` is true
+- **Auto-suggest plans** - Suggest plans for complex features in Optional mode
+- **Auto-link proposals** - Automatically link proposals to session plan
+
+**Plan Components:**
+
+```typescript
+// PlanDisplay component
+export function PlanDisplay({
+  planArtifact,
+  sessionId,
+  requireApproval
+}: PlanDisplayProps) {
+  // - Shows plan title and markdown content (with syntax highlighting)
+  // - Collapse/expand functionality
+  // - Edit and Export buttons in header
+  // - 'Approve Plan' button when require_plan_approval is true
+  // - Plan-proposal linkage indicator
+}
+
+// PlanEditor component
+export function PlanEditor({
+  artifactId,
+  initialContent,
+  onSave,
+  onCancel
+}: PlanEditorProps) {
+  // - Markdown editor with preview toggle
+  // - Save and Cancel buttons
+  // - Calls HTTP endpoint POST /api/update_plan_artifact
+}
+
+// PlanTemplateSelector component
+export function PlanTemplateSelector({
+  onSelectTemplate
+}: PlanTemplateSelectorProps) {
+  // - Fetches templates from active methodology
+  // - Shows dropdown only when templates available
+  // - Pre-populates plan content with selected template
+}
+
+// IdeationSettingsPanel component
+export function IdeationSettingsPanel() {
+  // - Plan Workflow Mode radio group (Required/Optional/Parallel)
+  // - 'Require explicit approval' checkbox
+  // - 'Suggest plans for complex features' checkbox
+  // - 'Auto-link proposals to session plan' checkbox
+  // - Uses shadcn RadioGroup and Checkbox components
+}
+```
+
+**State Management:**
+
+```typescript
+// ideationStore.ts includes plan artifact state
+interface IdeationState {
+  sessions: Record<string, IdeationSession>;
+  planArtifact: Artifact | null; // Current session's plan artifact
+  // ...
+}
+
+interface IdeationActions {
+  fetchPlanArtifact: (artifactId: string) => Promise<void>;
+  // ...
+}
+```
+
+**Plan Features:**
+- **Plan versioning** - Track `plan_version_at_creation` on proposals for historical view
+- **Historical view** - "View plan as of creation" link on proposals when plan has been updated
+- **Export/Import** - Download/upload plan as markdown file
+- **Proactive sync** - ArtifactFlow auto-updates proposals when plan changes (with undo)
+- **Task traceability** - Tasks track `source_proposal_id` and `plan_artifact_id` for worker context
+
+**MCP Tools (orchestrator-ideation):**
+- `create_plan_artifact(session_id, title, content)` - Create new plan
+- `update_plan_artifact(artifact_id, content)` - Update existing plan
+- `get_plan_artifact(artifact_id)` - Fetch plan content
+- `link_proposals_to_plan(proposal_ids, artifact_id)` - Link proposals to plan
+- `get_session_plan(session_id)` - Get current session's plan
 - **Message queueing** - Messages sent while agent running are queued and auto-sent on completion
 - **Tool call display** - ToolCallIndicator shows collapsible view of MCP tool calls
 - **Keyboard navigation** - Up arrow in empty input edits last queued message

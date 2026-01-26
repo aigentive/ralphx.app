@@ -44,6 +44,7 @@ src-tauri/
 │   │   ├── supervisor/     # Supervisor events and patterns
 │   │   ├── qa/             # QA settings and criteria
 │   │   ├── review/         # Review configuration
+│   │   ├── ideation/       # Ideation domain (IdeationSettings config - Phase 16)
 │   │   ├── services/       # Domain services (ExecutionMessageQueue, etc.)
 │   │   └── tools/          # Tool definitions for agents
 │   │
@@ -227,10 +228,11 @@ Key files:
 | `TaskQA` | `entities/task_qa.rs` | QA test criteria and results |
 | `Review` | `entities/review.rs` | Code review records |
 | `IdeationSession` | `entities/ideation.rs` | Chat-based ideation session |
-| `TaskProposal` | `entities/ideation.rs` | Proposed task from ideation |
+| `TaskProposal` | `entities/ideation.rs` | Proposed task from ideation (includes planArtifactId - Phase 16) |
 | `ChatMessage` | `entities/ideation.rs` | Chat messages (with tool_calls field) |
 | `ChatConversation` | `entities/chat_conversation.rs` | Chat conversation with Claude session tracking (Phase 15) |
 | `AgentRun` | `entities/agent_run.rs` | Agent execution status tracking (Phase 15) |
+| `IdeationSettings` | `domain/ideation/config.rs` | Ideation plan mode configuration (Phase 16) |
 | `WorkflowSchema` | `entities/workflow.rs` | Kanban column configuration |
 | `Artifact` | `entities/artifact.rs` | Generated artifacts (PRD, etc.) |
 | `ResearchProcess` | `entities/research.rs` | Research task tracking |
@@ -406,6 +408,7 @@ Key tables:
 - `chat_messages` - Chat history (with tool_calls JSON field)
 - `chat_conversations` - Chat conversations with Claude session IDs (Phase 15)
 - `agent_runs` - Agent execution tracking (Phase 15)
+- `ideation_settings` - Ideation plan mode configuration (single-row, Phase 16)
 - `task_dependencies` - Task blockers
 - `workflows` - Workflow schemas
 - `artifacts` / `artifact_buckets` - Artifact system
@@ -545,7 +548,7 @@ Backend (Rust)
 **Tool Scoping:**
 | Agent Type | Allowed MCP Tools |
 |------------|------------------|
-| `orchestrator-ideation` | create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency |
+| `orchestrator-ideation` | create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency, create_plan_artifact, update_plan_artifact, get_plan_artifact, link_proposals_to_plan, get_session_plan |
 | `chat-task` | update_task, add_task_note, get_task_details |
 | `chat-project` | suggest_task, list_tasks |
 | `reviewer` | complete_review (submit review decision) |
@@ -618,3 +621,193 @@ Enables UI-based approval for non-pre-approved tools:
 - `execution:tool_call` - Worker tool call (persisted to ChatPanel)
 - `execution:run_completed` - Worker finished (triggers queue processing)
 - `agent:message` - Worker output (sent to Activity Stream)
+
+**Plan artifacts (Phase 16):**
+- `plan:proposals_may_need_update` - Plan updated, proposals may need revision (proactive sync)
+
+---
+
+## Ideation Plan Artifacts (Phase 16)
+
+### Overview
+
+The ideation system supports implementation plans as artifacts before task proposal creation. Users can configure workflow modes (Required, Optional, Parallel), and the orchestrator creates `Specification` artifacts that serve as implementation plans linked to proposals.
+
+### IdeationSettings Entity
+
+**Location:** `domain/ideation/config.rs`
+
+```rust
+pub enum IdeationPlanMode {
+    Required,   // Plan must be created before proposals
+    Optional,   // Plan suggested for complex features (default)
+    Parallel,   // Plan and proposals created together
+}
+
+pub struct IdeationSettings {
+    pub plan_mode: IdeationPlanMode,
+    pub require_plan_approval: bool,      // Require explicit approval in Required mode
+    pub suggest_plans_for_complex: bool,  // Suggest plans in Optional mode
+    pub auto_link_to_session_plan: bool,  // Auto-link proposals to plan
+}
+```
+
+**Repository:**
+- Trait: `domain/repositories/ideation_settings_repository.rs`
+- Implementation: `infrastructure/sqlite/sqlite_ideation_settings_repo.rs`
+- Single-row pattern (only one settings record)
+- Default: Optional mode, no approval required, suggest plans enabled
+
+### Data Model Changes
+
+**IdeationSession entity (`entities/ideation.rs`):**
+```rust
+pub struct IdeationSession {
+    pub id: IdeationSessionId,
+    pub plan_artifact_id: Option<ArtifactId>, // Link to implementation plan
+    // ... other fields
+}
+```
+
+**TaskProposal entity (`entities/ideation.rs`):**
+```rust
+pub struct TaskProposal {
+    pub id: TaskProposalId,
+    pub plan_artifact_id: Option<ArtifactId>,       // Link to implementation plan
+    pub plan_version_at_creation: Option<u32>,      // Plan version when proposal created
+    // ... other fields
+}
+```
+
+**Task entity (`entities/task.rs`):**
+```rust
+pub struct Task {
+    pub id: TaskId,
+    pub source_proposal_id: Option<TaskProposalId>, // Traceability to proposal
+    pub plan_artifact_id: Option<ArtifactId>,       // Traceability to plan
+    // ... other fields
+}
+```
+
+### HTTP Endpoints for MCP Proxy
+
+**Location:** `application/http_server.rs`
+
+All plan artifact endpoints are exposed on port 3847 for the MCP server to proxy:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/create_plan_artifact` | POST | Create new plan artifact (Specification type, prd-library bucket) |
+| `/api/update_plan_artifact` | POST | Update plan content (creates new version with previous_version_id) |
+| `/api/get_plan_artifact/:id` | GET | Fetch plan artifact by ID |
+| `/api/link_proposals_to_plan` | POST | Link proposal IDs to plan artifact |
+| `/api/get_session_plan/:session_id` | GET | Get current session's plan artifact |
+| `/api/get_ideation_settings` | GET | Get ideation settings |
+| `/api/update_ideation_settings` | POST | Update ideation settings |
+
+### MCP Tools
+
+The MCP server (ralphx-mcp-server) exposes plan tools to `orchestrator-ideation` agent:
+
+- `create_plan_artifact(session_id, title, content)` - Creates Specification artifact in prd-library bucket
+- `update_plan_artifact(artifact_id, content)` - Updates plan, increments version
+- `get_plan_artifact(artifact_id)` - Retrieves plan content
+- `link_proposals_to_plan(proposal_ids, artifact_id)` - Links proposals to plan
+- `get_session_plan(session_id)` - Gets session's current plan
+
+### Proactive Sync ArtifactFlow
+
+**Flow name:** `plan_updated_sync`
+**Trigger:** `artifact_updated` event on `Specification` type
+
+**Steps:**
+1. `find_linked_proposals` - Query proposals with matching `plan_artifact_id`
+2. Emit `plan:proposals_may_need_update` event with:
+   - `artifact_id` - Updated plan ID
+   - `proposal_ids` - Array of affected proposal IDs
+
+**Frontend handling:**
+- Subscribe to `plan:proposals_may_need_update` event
+- Show notification: "Plan updated. N proposals may need revision. [Review]"
+- Highlight affected proposals
+- Provide [Undo] button to revert auto-updates
+
+### Methodology Integration
+
+**Infrastructure (no specific configs yet):**
+
+The system provides generic infrastructure for methodologies to define plan configurations:
+
+```rust
+// domain/entities/methodology.rs
+pub struct MethodologyPlanArtifactConfig {
+    pub artifact_type: String,  // e.g., "Specification", "TechnicalDesign"
+    pub bucket_id: String,       // e.g., "prd-library", "design-docs"
+}
+
+pub struct MethodologyPlanTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub template_content: String,
+}
+
+pub struct MethodologyExtension {
+    pub plan_artifact_config: Option<MethodologyPlanArtifactConfig>,
+    pub plan_templates: Vec<MethodologyPlanTemplate>,
+    // ... other fields
+}
+```
+
+**Default behavior:**
+- When no methodology active: use `Specification` type, `prd-library` bucket
+- When methodology active: use methodology's config if provided, else default
+- Template selector only shown when methodology provides templates
+
+### Task Traceability
+
+When a proposal is applied to create a task:
+
+```rust
+// application/apply_service.rs
+pub async fn apply_proposal(&self, proposal_id: &TaskProposalId) -> AppResult<Task> {
+    let proposal = self.proposal_repo.get_by_id(proposal_id).await?;
+
+    let task = Task {
+        source_proposal_id: Some(proposal.id.clone()),           // Trace to proposal
+        plan_artifact_id: proposal.plan_artifact_id.clone(),     // Trace to plan
+        // ... other fields
+    };
+
+    self.task_repo.create(task).await
+}
+```
+
+This enables workers to fetch plan context during task execution (future Phase 17).
+
+### Database Migration
+
+**Location:** `infrastructure/sqlite/migrations.rs`
+
+```sql
+-- Add plan fields to ideation entities
+ALTER TABLE ideation_sessions ADD COLUMN plan_artifact_id TEXT;
+ALTER TABLE task_proposals ADD COLUMN plan_artifact_id TEXT;
+ALTER TABLE task_proposals ADD COLUMN plan_version_at_creation INTEGER;
+
+-- Add traceability fields to tasks
+ALTER TABLE tasks ADD COLUMN source_proposal_id TEXT;
+ALTER TABLE tasks ADD COLUMN plan_artifact_id TEXT;
+
+-- Create ideation_settings table (single-row pattern)
+CREATE TABLE IF NOT EXISTS ideation_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    plan_mode TEXT NOT NULL DEFAULT 'optional',
+    require_plan_approval INTEGER NOT NULL DEFAULT 0,
+    suggest_plans_for_complex INTEGER NOT NULL DEFAULT 1,
+    auto_link_to_session_plan INTEGER NOT NULL DEFAULT 1
+);
+
+-- Insert default settings
+INSERT OR IGNORE INTO ideation_settings (id, plan_mode) VALUES (1, 'optional');
+```
