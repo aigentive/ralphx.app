@@ -1,15 +1,54 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 07:15:00
+**Last Updated:** 2026-01-26 08:00:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 13 / 14
-**Current Task:** Wire up execution chat with Activity Stream
+**Tasks Completed:** 14 / 14
+**Current Task:** All complete
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 08:00:00 - Wire up Execution Chat with Activity Stream
+
+**What was done:**
+- Added `agent:message` event emission to ExecutionChatService for Activity Stream
+- Updated stream processing in `process_stream()` method:
+  - Text chunks now emit BOTH `execution:chunk` (ChatPanel) AND `agent:message` (Activity Stream)
+  - Tool calls now emit BOTH `execution:tool_call` (ChatPanel) AND `agent:message` (Activity Stream)
+- Updated background stream processing in `process_stream_background()` function:
+  - Same dual event emission pattern for text and tool calls
+- Activity Stream now receives worker output via `agent:message` events with:
+  - `taskId`: Task being executed
+  - `type`: "text" or "tool_call"
+  - `content`: Text chunk or tool call description
+  - `timestamp`: UTC milliseconds
+  - `metadata`: Additional data for tool calls (tool_name, arguments)
+
+**Event paths verified:**
+- ✅ **ChatPanel path**: Receives `execution:chunk`, `execution:tool_call`, `execution:run_completed` events
+  - Persisted to database (chat_messages)
+  - Displayed in ChatPanel with task context
+- ✅ **Activity Stream path**: Receives `agent:message` events
+  - Stored in memory ring buffer (max 100 messages)
+  - Shows unified view of all running tasks
+
+**Architecture:**
+Both systems now receive the same worker output, scoped differently:
+- Activity Stream = Monitor everything at a glance (all tasks, memory only)
+- ChatPanel = Deep dive into one task (single task, database-persisted)
+
+**Commands run:**
+- `cargo test` - Passed ✓ (all tests pass)
+- `npm run typecheck` - Passed ✓
+
+**Files modified:**
+- `src-tauri/src/application/execution_chat_service.rs`
+- `logs/activity.md`
+
+**Status:** Task complete - execution chat now integrated with Activity Stream
 
 ### 2026-01-26 07:15:00 - Update Chat API for Execution Operations
 

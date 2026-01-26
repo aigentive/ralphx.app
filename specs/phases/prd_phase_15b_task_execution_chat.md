@@ -307,7 +307,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test && npm run typecheck",
       "Commit: feat: wire execution chat alongside Activity Stream"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "documentation",
