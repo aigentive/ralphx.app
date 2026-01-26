@@ -16,6 +16,7 @@ import {
 import { useTaskStore } from "@/stores/taskStore";
 import { useActivityStore } from "@/stores/activityStore";
 import { reviewKeys } from "@/hooks/useReviews";
+import { taskKeys } from "@/hooks/useTasks";
 import type { Task } from "@/types/task";
 
 /**
@@ -36,6 +37,7 @@ export function useTaskEvents() {
   const addTask = useTaskStore((s) => s.addTask);
   const updateTask = useTaskStore((s) => s.updateTask);
   const removeTask = useTaskStore((s) => s.removeTask);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const unlisten: Promise<UnlistenFn> = listen<unknown>("task:event", (event) => {
@@ -52,16 +54,24 @@ export function useTaskEvents() {
       switch (taskEvent.type) {
         case "created":
           addTask(taskEvent.task);
+          // Invalidate task list queries to refetch
+          queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           break;
         case "updated":
           // Cast to Partial<Task> for exactOptionalPropertyTypes compatibility
           updateTask(taskEvent.taskId, taskEvent.changes as Partial<Task>);
+          // Invalidate task list queries to refetch
+          queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           break;
         case "deleted":
           removeTask(taskEvent.taskId);
+          // Invalidate task list queries to refetch
+          queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           break;
         case "status_changed":
           updateTask(taskEvent.taskId, { internalStatus: taskEvent.to });
+          // Invalidate task list queries so Kanban board refetches
+          queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           break;
       }
     });
@@ -69,7 +79,7 @@ export function useTaskEvents() {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [addTask, updateTask, removeTask]);
+  }, [addTask, updateTask, removeTask, queryClient]);
 }
 
 /**

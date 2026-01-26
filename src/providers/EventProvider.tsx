@@ -12,6 +12,7 @@ import {
   useSupervisorAlerts,
   useReviewEvents,
   useFileChangeEvents,
+  useAgentEvents,
 } from "@/hooks/useEvents";
 
 interface EventProviderProps {
@@ -48,6 +49,7 @@ export function EventProvider({ children }: EventProviderProps) {
   useSupervisorAlerts();
   useReviewEvents();
   useFileChangeEvents();
+  useAgentEvents(); // Listen to agent:message events for Activity view
 
   return <>{children}</>;
 }
