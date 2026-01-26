@@ -403,7 +403,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck && npm run test",
       "Commit: feat(ideation): add plan template selection infrastructure"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

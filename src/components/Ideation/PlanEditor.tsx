@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import type { Artifact } from "@/types/artifact";
+import { PlanTemplateSelector } from "./PlanTemplateSelector";
 
 // ============================================================================
 // Types
@@ -26,6 +27,8 @@ export interface PlanEditorProps {
   onSave: (updatedPlan: Artifact) => void;
   /** Callback when cancel is clicked */
   onCancel: () => void;
+  /** Whether this is a new plan (shows template selector) */
+  isNewPlan?: boolean;
 }
 
 // ============================================================================
@@ -108,7 +111,7 @@ const markdownComponents = {
 // Component
 // ============================================================================
 
-export function PlanEditor({ plan, onSave, onCancel }: PlanEditorProps) {
+export function PlanEditor({ plan, onSave, onCancel, isNewPlan = false }: PlanEditorProps) {
   // Get initial content
   const initialContent = plan.content.type === "inline" ? plan.content.text : "";
 
@@ -119,6 +122,11 @@ export function PlanEditor({ plan, onSave, onCancel }: PlanEditorProps) {
 
   // Check if content has changed
   const hasChanges = content !== initialContent;
+
+  // Handle template selection - replace content with template
+  const handleTemplateSelect = useCallback((templateContent: string) => {
+    setContent(templateContent);
+  }, []);
 
   // Handle save - call HTTP endpoint
   const handleSave = useCallback(async () => {
@@ -253,7 +261,15 @@ export function PlanEditor({ plan, onSave, onCancel }: PlanEditorProps) {
       )}
 
       {/* Content area */}
-      <div className="p-4">
+      <div className="p-4 space-y-4">
+        {/* Template selector - only show for new plans and when not in preview mode */}
+        {isNewPlan && !isPreview && (
+          <PlanTemplateSelector
+            onTemplateSelect={handleTemplateSelect}
+            disabled={isSaving}
+          />
+        )}
+
         {isPreview ? (
           // Preview mode
           <div className="prose prose-sm max-w-none text-[var(--text-primary)] min-h-[400px]">
