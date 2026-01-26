@@ -372,4 +372,147 @@ describe("ChatInput", () => {
       });
     });
   });
+
+  // ============================================================================
+  // Queue Mode Tests
+  // ============================================================================
+
+  describe("queue mode", () => {
+    it("shows '(will be queued)' placeholder when agent is running", () => {
+      render(<ChatInput {...defaultProps} isAgentRunning={true} />);
+      expect(screen.getByPlaceholderText("Send a message... (will be queued)")).toBeInTheDocument();
+    });
+
+    it("shows normal placeholder when agent is not running", () => {
+      render(<ChatInput {...defaultProps} isAgentRunning={false} />);
+      expect(screen.getByPlaceholderText("Send a message...")).toBeInTheDocument();
+    });
+
+    it("calls onQueue instead of onSend when agent is running", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      const onQueue = vi.fn();
+      render(<ChatInput onSend={onSend} onQueue={onQueue} isAgentRunning={true} />);
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Hello");
+      await user.click(screen.getByTestId("chat-input-send"));
+
+      expect(onQueue).toHaveBeenCalledWith("Hello");
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("clears textarea after queueing message", async () => {
+      const user = userEvent.setup();
+      const onQueue = vi.fn();
+      render(<ChatInput {...defaultProps} onQueue={onQueue} isAgentRunning={true} />);
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Hello");
+      await user.click(screen.getByTestId("chat-input-send"));
+
+      await waitFor(() => {
+        expect(textarea).toHaveValue("");
+      });
+    });
+
+    it("calls onSend when agent is not running (normal flow)", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      const onQueue = vi.fn();
+      render(<ChatInput onSend={onSend} onQueue={onQueue} isAgentRunning={false} />);
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Hello");
+      await user.click(screen.getByTestId("chat-input-send"));
+
+      expect(onSend).toHaveBeenCalledWith("Hello");
+      expect(onQueue).not.toHaveBeenCalled();
+    });
+
+    it("queues message on Enter keypress when agent is running", async () => {
+      const user = userEvent.setup();
+      const onQueue = vi.fn();
+      render(<ChatInput {...defaultProps} onQueue={onQueue} isAgentRunning={true} />);
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Hello{Enter}");
+
+      expect(onQueue).toHaveBeenCalledWith("Hello");
+    });
+  });
+
+  // ============================================================================
+  // Keyboard Navigation Tests
+  // ============================================================================
+
+  describe("keyboard navigation", () => {
+    it("calls onEditLastQueued when Up arrow pressed in empty input with queued messages", async () => {
+      const user = userEvent.setup();
+      const onEditLastQueued = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          hasQueuedMessages={true}
+          onEditLastQueued={onEditLastQueued}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      textarea.focus();
+      await user.keyboard("{ArrowUp}");
+
+      expect(onEditLastQueued).toHaveBeenCalled();
+    });
+
+    it("does NOT call onEditLastQueued when Up arrow pressed with text in input", async () => {
+      const user = userEvent.setup();
+      const onEditLastQueued = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          hasQueuedMessages={true}
+          onEditLastQueued={onEditLastQueued}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Hello");
+      await user.keyboard("{ArrowUp}");
+
+      expect(onEditLastQueued).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call onEditLastQueued when no queued messages", async () => {
+      const user = userEvent.setup();
+      const onEditLastQueued = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          hasQueuedMessages={false}
+          onEditLastQueued={onEditLastQueued}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      textarea.focus();
+      await user.keyboard("{ArrowUp}");
+
+      expect(onEditLastQueued).not.toHaveBeenCalled();
+    });
+
+    it("shows hint about Up arrow when queued messages exist", () => {
+      render(<ChatInput {...defaultProps} hasQueuedMessages={true} />);
+      expect(
+        screen.getByText(/↑ to edit last queued message/i)
+      ).toBeInTheDocument();
+    });
+
+    it("shows default hint when no queued messages", () => {
+      render(<ChatInput {...defaultProps} hasQueuedMessages={false} />);
+      const helperText = screen.getByText(/Enter to send.*Shift\+Enter.*new line/i);
+      expect(helperText).toBeInTheDocument();
+      expect(helperText.textContent).not.toContain("↑");
+    });
+  });
 });
