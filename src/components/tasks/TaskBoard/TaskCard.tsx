@@ -12,7 +12,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { GripVertical, FileText, Lightbulb, Archive } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
@@ -125,6 +125,21 @@ export function TaskCard({
   // Check if task is archived
   const isArchived = task.archivedAt !== null;
 
+  // Determine if task is draggable based on internal status
+  const isDraggable = useMemo(() => {
+    const nonDraggableStatuses = [
+      'executing',
+      'execution_done',
+      'qa_refining',
+      'qa_testing',
+      'qa_passed',
+      'qa_failed',
+      'pending_review',
+      'revision_needed',
+    ];
+    return !nonDraggableStatuses.includes(task.internalStatus);
+  }, [task.internalStatus]);
+
   // Hide when being dragged OR when transitioning after drop
   const shouldHide = isBeingDragged || isHidden;
 
@@ -146,7 +161,7 @@ export function TaskCard({
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
       borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
-      cursor: isDragging ? "grabbing" : "grab",
+      cursor: isDragging ? "grabbing" : (isDraggable ? "grab" : "default"),
       transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
     };
 
@@ -216,12 +231,12 @@ export function TaskCard({
       >
         <div
           ref={setNodeRef}
-          {...attributes}
-          {...listeners}
+          {...(isDraggable ? { ...attributes, ...listeners } : {})}
           data-testid={`task-card-${task.id}`}
           onClick={() => onSelect?.(task.id)}
-          className={`group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${isArchived ? "opacity-60" : ""}`}
+          className={`group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${isArchived ? "opacity-60" : ""} ${!isDraggable ? "opacity-75" : ""}`}
           style={{ ...getCardStyles(), ...dragStyle }}
+          title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
       {/* Archive badge overlay - only shown for archived tasks */}

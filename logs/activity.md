@@ -1,15 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:24:16
+**Last Updated:** 2026-01-26 19:26:22
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 28 / 30
-**Current Task:** Add isDraggable logic to TaskCard
+**Tasks Completed:** 29 / 30
+**Current Task:** Listen for archive/restore events for real-time updates
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:26:22 - Add isDraggable logic to TaskCard (Task 27)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Imported useMemo from React for performance optimization
+  - Added isDraggable computed value using useMemo:
+    - Defines non-draggable statuses: executing, execution_done, qa_refining, qa_testing, qa_passed, qa_failed, pending_review, revision_needed
+    - Returns false if task.internalStatus is in non-draggable list
+    - Memoized based on task.internalStatus for performance
+  - Conditionally applied dnd-kit attributes/listeners based on isDraggable:
+    - {...(isDraggable ? { ...attributes, ...listeners } : {})}
+    - Non-draggable tasks don't receive drag handlers
+  - Updated cursor style in getCardStyles():
+    - Changed from always "grab" to conditional: isDraggable ? "grab" : "default"
+  - Applied visual styling for non-draggable tasks:
+    - Added opacity-75 class when !isDraggable
+    - Combined with existing isArchived opacity-60 styling
+  - Added title tooltip for non-draggable tasks:
+    - Shows "This task is being processed and cannot be moved manually"
+    - Only appears when !isDraggable
+
+**Commands:**
+- `npm run lint` - Passed (pre-existing warnings only)
+- `npm run typecheck` - Passed
+
+**Progress:**
+- Task 27/30 complete
+- System-controlled tasks (in execution/QA/review) now non-draggable
+- Visual feedback for non-draggable state (muted appearance, default cursor)
+- Tooltip explains why task cannot be moved
+- Prevents user from interrupting automated workflows
+
+### 2026-01-26 19:24:16 - Wrap TaskCard with context menu and add handlers (Task 29)
 
 ### 2026-01-26 19:24:16 - Wrap TaskCard with context menu and add handlers (Task 29)
 
