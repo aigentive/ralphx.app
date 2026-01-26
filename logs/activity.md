@@ -3,13 +3,54 @@
 ## Current Status
 **Last Updated:** 2026-01-26 18:42:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 14 / 30
-**Current Task:** Create useInfiniteTasksQuery hook
+**Tasks Completed:** 15 / 30
+**Current Task:** Create useTaskSearch hook
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:40:52 - Create useInfiniteTasksQuery hook (Task 16)
+
+**What was done:**
+- Created `src/hooks/useInfiniteTasksQuery.ts` hook for infinite scroll pagination
+  - Uses TanStack Query's `useInfiniteQuery` for cursor-based pagination
+  - Props: `{ projectId, status?, includeArchived? }`
+  - Query key: `['tasks', 'infinite', projectId, status, includeArchived]`
+  - Query function calls `api.tasks.list` with offset/limit parameters
+  - Page size: 20 tasks per page
+  - `getNextPageParam`: returns next offset if `hasMore`, undefined otherwise
+  - `initialPageParam`: 0
+  - Cache settings:
+    - `staleTime`: 10 minutes (longer for local-first app with event-driven updates)
+    - `gcTime`: 30 minutes cache retention
+- Created `flattenPages` helper function
+  - Extracts all tasks from all loaded pages into a flat array
+  - Returns empty array if data is undefined
+- Created comprehensive test suite `src/hooks/useInfiniteTasksQuery.test.tsx`
+  - Tests for first page fetch
+  - Tests for next page loading with `hasMore` flag
+  - Tests for `includeArchived` parameter
+  - Tests for empty results
+  - Tests for API errors
+  - Tests for `flattenPages` helper with multiple pages, undefined, and edge cases
+  - All 9 tests passing
+- Fixed TypeScript strict optional properties issue by conditionally spreading status parameter
+- Renamed test file from `.ts` to `.tsx` to match project conventions
+
+**Commands run:**
+- `npm run typecheck` - Passed with no errors
+- `npm run lint` - Passed (only pre-existing warnings in other files)
+- `npm run test -- src/hooks/useInfiniteTasksQuery.test.tsx` - All 9 tests passed
+
+**Verification:**
+- ✅ Hook properly implements TanStack Query infinite pagination
+- ✅ Type-safe with exact optional property types
+- ✅ Proper cache invalidation strategy with 10-minute stale time
+- ✅ Helper function flattens pages correctly
+- ✅ Comprehensive test coverage with all edge cases
+- ✅ Follows existing patterns from `useTasks` hook
 
 ### 2026-01-26 18:42:00 - Add archive buttons to TaskDetailModal (Task 14)
 
