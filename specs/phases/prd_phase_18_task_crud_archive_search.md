@@ -100,7 +100,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(task): add archived_at field for soft delete"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
