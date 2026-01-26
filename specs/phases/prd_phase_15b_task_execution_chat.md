@@ -276,7 +276,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(chat): add execution-specific UI elements"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

@@ -1,15 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 06:30:00
+**Last Updated:** 2026-01-26 07:00:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 11 / 14
-**Current Task:** Add execution-specific UI elements
+**Tasks Completed:** 12 / 14
+**Current Task:** Update chat API for execution operations
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 07:00:00 - Add Execution-Specific UI Elements
+
+**What was done:**
+- Added Activity icon import to ChatPanel.tsx
+- Added useUiStore import to access view switching functionality
+- Updated WorkerExecutingIndicator component to include "All Activity" button
+- Button allows users to switch to activity view for unified execution monitoring
+- Button is positioned in the indicator, uses Activity icon + "All Activity" text
+- Maintains existing pulsing animation and styling
+
+**Verification:**
+- ✅ WorkerExecutingIndicator already had pulsing animation
+- ✅ Header styling already changes in execution mode (badge shows "Worker running...")
+- ✅ Input placeholder already execution-specific ("Message worker... (will be sent when current response completes)")
+- ✅ Phase 15A queue components already reused (QueuedMessageList)
+- ✅ Added optional Activity Stream link
+- ✅ Ran npm run lint && npm run typecheck - all checks passed (only pre-existing warnings)
+
+**Status:** Task complete - all execution-specific UI elements implemented
 
 ### 2026-01-26 06:30:00 - Add Execution History Switching in ConversationSelector
 

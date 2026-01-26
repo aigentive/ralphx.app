@@ -19,6 +19,7 @@ import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
+import { useUiStore } from "@/stores/uiStore";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import {
   Copy,
   Check,
   Hammer,
+  Activity,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
@@ -171,6 +173,8 @@ function LoadingState() {
 }
 
 function WorkerExecutingIndicator() {
+  const setCurrentView = useUiStore((s) => s.setCurrentView);
+
   return (
     <div
       data-testid="worker-executing-indicator"
@@ -198,6 +202,16 @@ function WorkerExecutingIndicator() {
           />
         </div>
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setCurrentView("activity")}
+        className="shrink-0"
+        aria-label="View all activity"
+      >
+        <Activity className="w-4 h-4 mr-1.5" />
+        <span className="text-xs">All Activity</span>
+      </Button>
     </div>
   );
 }
@@ -582,9 +596,20 @@ interface ChatPanelProps {
   context: ChatContext;
 }
 
+// Wrapper component that checks isOpen before rendering the full panel
+// This prevents expensive hooks from running when the panel is closed
 export function ChatPanel({ context }: ChatPanelProps) {
+  const isOpen = useChatStore((s) => s.isOpen);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return <ChatPanelContent context={context} />;
+}
+
+function ChatPanelContent({ context }: ChatPanelProps) {
   const {
-    isOpen,
     width,
     togglePanel,
     setWidth,
@@ -683,17 +708,17 @@ export function ChatPanel({ context }: ChatPanelProps) {
     }, 200);
   }, [togglePanel]);
 
-  // Escape to close panel
+  // Escape to close panel (only runs when panel is open via wrapper)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen && !isCollapsed) {
+      if (e.key === "Escape" && !isCollapsed) {
         handleClose();
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isCollapsed, handleClose]);
+  }, [isCollapsed, handleClose]);
 
   // Resize handlers
   const handleResizeStart = useCallback(
@@ -863,10 +888,6 @@ export function ChatPanel({ context }: ChatPanelProps) {
       return { ...msg, isFirstInGroup, isLastInGroup };
     });
   }, [messagesData]);
-
-  if (!isOpen) {
-    return null;
-  }
 
   if (isCollapsed) {
     return (
