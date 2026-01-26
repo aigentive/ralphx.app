@@ -230,7 +230,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test agent invocation manually",
       "Commit: feat(plugin): update orchestrator-ideation for plan workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
