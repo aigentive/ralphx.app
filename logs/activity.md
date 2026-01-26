@@ -1,15 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-27 01:30:00
+**Last Updated:** 2026-01-27 08:15:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 5 / 13
-**Current Task:** Update TOOL_ALLOWLIST for worker agent
+**Tasks Completed:** 6 / 13
+**Current Task:** Update worker agent with context fetching instructions
 
 ---
 
 
 ## Session Log
+
+### 2026-01-27 08:15:00 - Verify TOOL_ALLOWLIST for worker agent (Task 6)
+
+**What was done:**
+- Verified that `ralphx-mcp-server/src/tools.ts` already has TOOL_ALLOWLIST updated for worker agent
+- Confirmed all 5 worker context tools are in the allowlist (lines 365-371):
+  - `get_task_context`
+  - `get_artifact`
+  - `get_artifact_version`
+  - `get_related_artifacts`
+  - `search_project_artifacts`
+- Built MCP server with `npm run build` - succeeds without errors
+- Tested manually with `RALPHX_AGENT_TYPE=worker node build/index.js`
+- Verified all 5 tools are returned in tools/list response
+- Task was already completed in commit a7ef28d (previous iteration)
+- No additional changes needed - marked as passing
+
+**Commands run:**
+```bash
+npm run build  # Build succeeds
+RALPHX_AGENT_TYPE=worker node build/index.js  # Manual test confirms 5 tools available
+```
 
 ### 2026-01-27 01:30:00 - Add worker context tools to MCP server (Task 5)
 

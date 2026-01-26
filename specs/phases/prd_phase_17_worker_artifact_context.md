@@ -183,7 +183,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Build: npm run build",
       "Commit: feat(mcp): add context tools to worker allowlist"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "plugin",
