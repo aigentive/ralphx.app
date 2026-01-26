@@ -1,15 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:22:30
+**Last Updated:** 2026-01-26 21:28:15
 **Phase:** Task Execution Experience
-**Tasks Completed:** 25 / 42
-**Current Task:** Add StepProgressBar to TaskCard
+**Tasks Completed:** 26 / 42
+**Current Task:** Add taskFullViewId to uiStore
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:28:15 - Add StepProgressBar to TaskCard
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Imported `Clock` icon from Lucide
+  - Imported `formatDuration` from `@/hooks/useTaskExecutionState`
+  - Imported `StepProgressBar` component from `@/components/tasks/StepProgressBar`
+  - Added step progress footer section at bottom of card content:
+    - Conditionally rendered when task status is `executing`, `qa_*`, or `pending_review`
+    - Shows `StepProgressBar` with `compact={true}` variant
+    - Shows duration badge with Clock icon when task is executing
+    - Duration formatted using `formatDuration(executionState.duration)` helper
+  - Footer includes visual progress dots and time elapsed (e.g., "●●●○○○○ 2m 15s")
+- Progress indicator provides real-time feedback on task execution progress
+- Duration badge updates every second via `useTaskExecutionState` hook
+- Ran linting and typechecking: all pass (only pre-existing warnings)
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
 
 ### 2026-01-26 21:22:30 - Add execution visuals to TaskCard
 

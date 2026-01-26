@@ -9,7 +9,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Eye, AlertCircle } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Eye, AlertCircle, Clock } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -36,7 +36,8 @@ import {
 import { TaskCardContextMenu } from "@/components/tasks/TaskCardContextMenu";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
-import { useTaskExecutionState } from "@/hooks/useTaskExecutionState";
+import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
+import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 
 interface TaskCardProps {
   task: Task;
@@ -409,6 +410,23 @@ export function TaskCard({
             </TooltipProvider>
           )}
         </div>
+
+        {/* Step progress indicator - shown when task is executing, in QA, or pending review */}
+        {(task.internalStatus === "executing" ||
+          task.internalStatus.startsWith("qa_") ||
+          task.internalStatus === "pending_review") && (
+          <div className="flex items-center gap-2 mt-2" data-testid="step-progress-footer">
+            <StepProgressBar taskId={task.id} compact={true} />
+
+            {/* Duration badge - shown when executing */}
+            {task.internalStatus === "executing" && executionState.duration !== null && (
+              <div className="flex items-center gap-1 text-xs text-white/50">
+                <Clock className="w-3 h-3" />
+                <span>{formatDuration(executionState.duration)}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
       </TaskCardContextMenu>

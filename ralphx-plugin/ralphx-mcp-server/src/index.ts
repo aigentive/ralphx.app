@@ -24,6 +24,8 @@ import {
   getFilteredTools,
   isToolAllowed,
   getAllowedToolNames,
+  logAllTools,
+  getToolsByAgent,
 } from "./tools.js";
 import {
   permissionRequestTool,
@@ -193,6 +195,18 @@ async function main() {
   console.error(`[RalphX MCP] Agent type: ${AGENT_TYPE}`);
   console.error(
     `[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`
+  );
+
+  // Log all tools if in debug mode or if RALPHX_DEBUG_TOOLS is set
+  if (AGENT_TYPE === "debug" || process.env.RALPHX_DEBUG_TOOLS === "1") {
+    logAllTools();
+  }
+
+  // Always log available tools for this agent
+  const toolsByAgent = getToolsByAgent();
+  const agentTools = toolsByAgent[AGENT_TYPE] || [];
+  console.error(
+    `[RalphX MCP] Tools for ${AGENT_TYPE}: ${agentTools.length > 0 ? agentTools.join(", ") : "(none - using filesystem tools)"}`
   );
 
   const transport = new StdioServerTransport();

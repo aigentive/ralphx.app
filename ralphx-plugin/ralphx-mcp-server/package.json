@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "list-tools": "RALPHX_DEBUG_TOOLS=1 node build/index.js 2>&1 | head -60 && echo '(Server started, press Ctrl+C to exit)'"
   },
   "keywords": [
     "mcp",
