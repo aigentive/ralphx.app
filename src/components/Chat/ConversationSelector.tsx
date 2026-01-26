@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ChatConversation, ContextType, AgentRunStatus } from "@/types/chat-conversation";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 
 // ============================================================================
@@ -148,25 +148,19 @@ export function ConversationSelector({
     });
   }, [conversations, isExecutionContext]);
 
-  // Fetch agent run status for all execution conversations
-  // We fetch all statuses upfront to avoid conditional hook calls
-  const conversationIds = useMemo(
-    () => sortedConversations.map((c) => c.id),
-    [sortedConversations]
-  );
-
-  const statusQueries = conversationIds.map((id) =>
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery({
-      queryKey: ["agent-run", id],
-      queryFn: () => chatApi.getAgentRunStatus(id),
+  // Fetch agent run status for all execution conversations using useQueries
+  // This is the correct way to fetch multiple queries dynamically
+  const statusQueries = useQueries({
+    queries: sortedConversations.map((conv) => ({
+      queryKey: ["agent-run", conv.id] as const,
+      queryFn: () => chatApi.getAgentRunStatus(conv.id),
       enabled: isExecutionContext,
-      refetchInterval: (query) => {
-        const agentRun = query.state.data;
-        return agentRun?.status === "running" ? 2000 : false;
-      },
-    })
-  );
+      // Poll every 2 seconds for running agents
+      refetchInterval: 2000,
+      // Only refetch if we're in execution context
+      refetchIntervalInBackground: false,
+    })),
+  });
 
   return (
     <DropdownMenu>

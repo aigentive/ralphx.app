@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
+import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 
 // ============================================================================
 // Constants
@@ -425,6 +426,7 @@ interface MessageItemProps {
   role: string;
   content: string;
   createdAt: string;
+  toolCalls?: string | null;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
 }
@@ -433,6 +435,7 @@ function MessageItem({
   role,
   content,
   createdAt,
+  toolCalls,
   isFirstInGroup = true,
   isLastInGroup = true,
 }: MessageItemProps) {
@@ -453,6 +456,26 @@ function MessageItem({
     });
   }, [createdAt]);
 
+  // Parse tool calls from JSON string
+  const parsedToolCalls = useMemo((): ToolCall[] => {
+    if (!toolCalls) return [];
+    try {
+      const parsed = JSON.parse(toolCalls);
+      if (Array.isArray(parsed)) {
+        return parsed.map((tc, idx) => ({
+          id: tc.id ?? `tool-${idx}`,
+          name: tc.name ?? "unknown",
+          arguments: tc.arguments ?? {},
+          result: tc.result,
+          error: tc.error,
+        }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }, [toolCalls]);
+
   return (
     <div
       className={cn(
@@ -468,6 +491,16 @@ function MessageItem({
       {!isUser && !isFirstInGroup && <div className="w-3.5 mr-2 shrink-0" />}
 
       <div className="flex flex-col max-w-[85%]">
+        {/* Tool calls (shown before text content for assistant messages) */}
+        {!isUser && parsedToolCalls.length > 0 && (
+          <div className="space-y-1.5 mb-2">
+            {parsedToolCalls.map((tc) => (
+              <ToolCallIndicator key={tc.id} toolCall={tc} />
+            ))}
+          </div>
+        )}
+
+        {/* Message content */}
         <div
           className={cn(
             "px-3 py-2 text-sm",
@@ -827,7 +860,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       // Listen for tool calls
       const toolCallUnlisten = await listen<{
         tool_name: string;
-        args: unknown;
+        arguments: unknown;
         result: unknown;
       }>("chat:tool_call", (event) => {
         console.log("Tool call received:", event.payload);
@@ -872,7 +905,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       const execToolCallUnlisten = await listen<{
         task_id: string;
         tool_name: string;
-        args: unknown;
+        arguments: unknown;
       }>("execution:tool_call", (event) => {
         console.log("Execution tool call received:", event.payload);
         // TODO: Display tool call in execution context
@@ -1025,6 +1058,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                     role={msg.role}
                     content={msg.content}
                     createdAt={msg.createdAt}
+                    toolCalls={msg.toolCalls}
                     isFirstInGroup={msg.isFirstInGroup}
                     isLastInGroup={msg.isLastInGroup}
                   />

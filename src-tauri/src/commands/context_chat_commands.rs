@@ -95,6 +95,24 @@ pub struct ChatMessageResponse {
     pub created_at: String,
 }
 
+/// Response for send_context_message
+#[derive(Debug, Serialize)]
+pub struct SendContextMessageResponse {
+    pub response_text: String,
+    pub tool_calls: Vec<ToolCallResponse>,
+    pub claude_session_id: Option<String>,
+    pub conversation_id: Option<String>,
+}
+
+/// Tool call information in response
+#[derive(Debug, Serialize)]
+pub struct ToolCallResponse {
+    pub id: Option<String>,
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub result: Option<serde_json::Value>,
+}
+
 impl From<ChatMessage> for ChatMessageResponse {
     fn from(message: ChatMessage) -> Self {
         Self {
@@ -122,60 +140,62 @@ pub struct ConversationWithMessagesResponse {
 
 /// Send a message in a context-aware conversation
 ///
-/// NOTE: This is a stub implementation. The full orchestration logic (agent runs,
-/// --resume support, streaming, tool calls) will be implemented when the orchestrator
-/// service is refactored in task 16.
+/// This command:
+/// 1. Gets or creates a conversation for the context
+/// 2. Creates an agent run
+/// 3. Saves the user message
+/// 4. Spawns Claude CLI with appropriate flags (--agent or --resume)
+/// 5. Streams response and emits Tauri events
+/// 6. Saves the assistant response with tool calls
+/// 7. Returns the orchestrator result
 #[tauri::command]
 pub async fn send_context_message(
     input: SendContextMessageInput,
     state: State<'_, AppState>,
-) -> Result<ChatConversationResponse, String> {
+    app: tauri::AppHandle,
+) -> Result<SendContextMessageResponse, String> {
+    use crate::application::{ClaudeOrchestratorService, OrchestratorService};
+
     // Parse context type
     let context_type: ChatContextType = input
         .context_type
         .parse()
         .map_err(|e: String| format!("Invalid context type: {}", e))?;
 
-    // Get or create conversation for this context
-    let conversation = match state
-        .chat_conversation_repo
-        .get_active_for_context(context_type, &input.context_id)
+    // Create orchestrator service with required repositories and app handle for events
+    let orchestrator: ClaudeOrchestratorService<tauri::Wry> = ClaudeOrchestratorService::new(
+        state.chat_message_repo.clone(),
+        state.chat_conversation_repo.clone(),
+        state.agent_run_repo.clone(),
+        state.project_repo.clone(),
+        state.task_repo.clone(),
+        state.ideation_session_repo.clone(),
+    )
+    .with_app_handle(app);
+
+    // Check if orchestrator is available
+    if !orchestrator.is_available().await {
+        return Err("Claude CLI is not available. Please ensure 'claude' is installed and in your PATH.".to_string());
+    }
+
+    // Send message and get response
+    let result = orchestrator
+        .send_context_message(context_type, &input.context_id, &input.content)
         .await
-        .map_err(|e| e.to_string())?
-    {
-        Some(conv) => conv,
-        None => {
-            // Create a new conversation
-            let new_conv = match context_type {
-                ChatContextType::Ideation => {
-                    ChatConversation::new_ideation(IdeationSessionId::from_string(&input.context_id))
-                }
-                ChatContextType::Task => {
-                    ChatConversation::new_task(TaskId::from_string(input.context_id.clone()))
-                }
-                ChatContextType::Project => {
-                    ChatConversation::new_project(ProjectId::from_string(input.context_id.clone()))
-                }
-                ChatContextType::TaskExecution => {
-                    ChatConversation::new_task_execution(TaskId::from_string(input.context_id.clone()))
-                }
-            };
-            state
-                .chat_conversation_repo
-                .create(new_conv)
-                .await
-                .map_err(|e| e.to_string())?
-        }
-    };
+        .map_err(|e| e.to_string())?;
 
-    // TODO (task 16): Implement orchestrator integration
-    // - Create agent run
-    // - Spawn Claude CLI with --resume if claude_session_id exists
-    // - Stream response
-    // - Save messages and tool calls
-    // - Emit Tauri events for UI updates
-
-    Ok(ChatConversationResponse::from(conversation))
+    // Build response
+    Ok(SendContextMessageResponse {
+        response_text: result.response_text,
+        tool_calls: result.tool_calls.into_iter().map(|tc| ToolCallResponse {
+            id: tc.id,
+            name: tc.name,
+            arguments: tc.arguments,
+            result: tc.result,
+        }).collect(),
+        claude_session_id: result.claude_session_id,
+        conversation_id: result.conversation_id.map(|id| id.as_str().to_string()),
+    })
 }
 
 /// List all conversations for a context
@@ -221,35 +241,12 @@ pub async fn get_conversation(
         None => return Ok(None),
     };
 
-    // Get messages for this conversation
-    // TODO (task 16): Implement get_by_conversation in ChatMessageRepository
-    // For now, return messages based on context type
-    let messages = match conversation.context_type {
-        ChatContextType::Ideation => {
-            let session_id = IdeationSessionId::from_string(&conversation.context_id);
-            state
-                .chat_message_repo
-                .get_by_session(&session_id)
-                .await
-                .map_err(|e| e.to_string())?
-        }
-        ChatContextType::Task | ChatContextType::TaskExecution => {
-            let task_id = TaskId::from_string(conversation.context_id.clone());
-            state
-                .chat_message_repo
-                .get_by_task(&task_id)
-                .await
-                .map_err(|e| e.to_string())?
-        }
-        ChatContextType::Project => {
-            let project_id = ProjectId::from_string(conversation.context_id.clone());
-            state
-                .chat_message_repo
-                .get_by_project(&project_id)
-                .await
-                .map_err(|e| e.to_string())?
-        }
-    };
+    // Get messages for this specific conversation
+    let messages = state
+        .chat_message_repo
+        .get_by_conversation(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(Some(ConversationWithMessagesResponse {
         conversation: ChatConversationResponse::from(conversation),

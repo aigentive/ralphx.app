@@ -482,7 +482,7 @@ pub struct SessionStats {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use crate::domain::entities::{ArtifactId, ChatMessageId, MessageRole, PriorityAssessment, TaskId};
+    use crate::domain::entities::{ArtifactId, ChatConversationId, ChatMessageId, MessageRole, PriorityAssessment, TaskId};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -821,6 +821,19 @@ mod tests {
                 .unwrap()
                 .values()
                 .filter(|m| m.task_id.as_ref() == Some(task_id))
+                .cloned()
+                .collect();
+            messages.sort_by_key(|m| m.created_at);
+            Ok(messages)
+        }
+
+        async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>> {
+            let mut messages: Vec<_> = self
+                .messages
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|m| m.conversation_id.as_ref() == Some(conversation_id))
                 .cloned()
                 .collect();
             messages.sort_by_key(|m| m.created_at);
