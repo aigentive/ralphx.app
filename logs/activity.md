@@ -1,15 +1,53 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:32:14
+**Last Updated:** 2026-01-26 18:42:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 13 / 30
-**Current Task:** Add archive buttons to TaskDetailModal
+**Tasks Completed:** 14 / 30
+**Current Task:** Create useInfiniteTasksQuery hook
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:42:00 - Add archive buttons to TaskDetailModal (Task 14)
+
+**What was done:**
+- Installed shadcn AlertDialog component for permanent delete confirmation
+- Added Archive button with Archive icon for non-archived tasks
+  - Shows loading spinner while archiving
+  - Closes modal on success
+- Added Restore button with RotateCcw icon for archived tasks
+  - Shows loading spinner while restoring
+  - Closes modal on success
+- Added Delete Permanently button with Trash icon (destructive style) for archived tasks
+  - Opens AlertDialog confirmation dialog
+  - Shows loading spinner during deletion
+  - Closes both dialog and modal on success
+- Added archive badge at top of modal for archived tasks
+  - Orange background with Archive icon
+  - "Archived" text label
+- Updated button visibility logic:
+  - StatusDropdown and Edit button: hidden for archived tasks
+  - Archive button: only visible for non-archived tasks
+  - Restore and Delete buttons: only visible for archived tasks
+- Used isArchiving, isRestoring, isPermanentlyDeleting loading states from useTaskMutation
+- All mutations close modal on success as specified
+
+**Commands run:**
+- `npx shadcn@latest add alert-dialog` - Installed AlertDialog component
+- `npm run lint` - Passed (only pre-existing warnings)
+- `npm run typecheck` - Passed with no errors
+
+**Verification:**
+- ✅ Archive button visible for non-archived tasks
+- ✅ Archive badge displayed at top for archived tasks
+- ✅ Edit button and StatusDropdown hidden for archived tasks
+- ✅ Restore and Delete buttons visible for archived tasks
+- ✅ AlertDialog confirmation for permanent delete
+- ✅ Loading states shown during all operations
+- ✅ Modal closes on successful operations
 
 ### 2026-01-26 18:28:15 - Create TaskEditForm component (Task 12)
 
