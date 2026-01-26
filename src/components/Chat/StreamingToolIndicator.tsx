@@ -5,12 +5,20 @@
  * built from incoming tool calls. Each tool call is shown as a summary line
  * with the tool name and key argument values extracted dynamically.
  *
+ * Features:
+ * - Max height with scrollable content
+ * - Auto-scrolls to show latest tool call
+ * - Filters out result tools (result:toolu*) which don't show useful info
+ *
  * This is used ONLY during streaming - final messages use ToolCallIndicator.
  */
 
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import { Wrench, Loader2 } from "lucide-react";
 import type { ToolCall } from "./ToolCallIndicator";
+
+// Maximum height for the tool list content area
+const MAX_CONTENT_HEIGHT = 200;
 
 // ============================================================================
 // Types
@@ -188,21 +196,32 @@ export function StreamingToolIndicator({
   toolCalls,
   isActive = true,
 }: StreamingToolIndicatorProps) {
-  // Process tool calls into summary lines
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Filter out result tools (result:toolu*) and process into summary lines
   const summaryLines = useMemo(() => {
-    return toolCalls.map((tc) => {
-      const { primary, details } = createToolSummary(tc);
-      const verb = getToolVerb(tc.name);
-      return {
-        id: tc.id,
-        name: tc.name,
-        verb,
-        primary,
-        details,
-        hasError: Boolean(tc.error),
-      };
-    });
+    return toolCalls
+      .filter((tc) => !tc.name.startsWith("result:toolu"))
+      .map((tc) => {
+        const { primary, details } = createToolSummary(tc);
+        const verb = getToolVerb(tc.name);
+        return {
+          id: tc.id,
+          name: tc.name,
+          verb,
+          primary,
+          details,
+          hasError: Boolean(tc.error),
+        };
+      });
   }, [toolCalls]);
+
+  // Auto-scroll to bottom when new tool calls arrive
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    }
+  }, [summaryLines.length]);
 
   if (summaryLines.length === 0) {
     return null;
@@ -243,8 +262,12 @@ export function StreamingToolIndicator({
         </span>
       </div>
 
-      {/* Chain of thought - tool call summaries */}
-      <div className="px-3 py-2 space-y-1.5">
+      {/* Chain of thought - tool call summaries (scrollable) */}
+      <div
+        ref={contentRef}
+        className="px-3 py-2 space-y-1.5 overflow-y-auto"
+        style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px` }}
+      >
         {summaryLines.map((line, index) => (
           <div
             key={line.id || index}
