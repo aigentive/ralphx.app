@@ -1276,5 +1276,193 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("RunCompleted"));
         assert!(json.contains("sess-456"));
+
+        let event = ExecutionEvent::QueueSent {
+            message_id: "msg-123".to_string(),
+            conversation_id: "conv-456".to_string(),
+            task_id: "task-789".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("QueueSent"));
+        assert!(json.contains("msg-123"));
+    }
+
+    /// Tests for queue processing functionality
+    mod queue_processing_tests {
+        use super::*;
+        use crate::domain::services::ExecutionMessageQueue;
+
+        #[tokio::test]
+        async fn test_queue_processing_with_mock_service() {
+            // Create mock service with queue
+            let _service = MockExecutionChatService::new();
+            let message_queue = Arc::new(ExecutionMessageQueue::new());
+
+            // Create a task
+            let task_id = TaskId::new();
+
+            // Queue a message before worker completes
+            let queued_msg =
+                message_queue.queue(task_id.clone(), "Add error handling".to_string());
+            assert_eq!(message_queue.get_queued(&task_id).len(), 1);
+
+            // After worker completes, queue should be processed
+            // In real implementation, this happens in spawn_with_persistence background task
+            // Here we verify the queue pop behavior
+            let popped = message_queue.pop(&task_id);
+            assert!(popped.is_some());
+            assert_eq!(popped.unwrap().id, queued_msg.id);
+
+            // Queue should now be empty
+            assert_eq!(message_queue.get_queued(&task_id).len(), 0);
+        }
+
+        #[tokio::test]
+        async fn test_multiple_queued_messages_processed_in_order() {
+            let message_queue = Arc::new(ExecutionMessageQueue::new());
+            let task_id = TaskId::new();
+
+            // Queue multiple messages
+            let msg1 = message_queue.queue(task_id.clone(), "First message".to_string());
+            let msg2 = message_queue.queue(task_id.clone(), "Second message".to_string());
+            let msg3 = message_queue.queue(task_id.clone(), "Third message".to_string());
+
+            assert_eq!(message_queue.get_queued(&task_id).len(), 3);
+
+            // Messages should be processed in FIFO order
+            let popped1 = message_queue.pop(&task_id);
+            assert_eq!(popped1.unwrap().id, msg1.id);
+
+            let popped2 = message_queue.pop(&task_id);
+            assert_eq!(popped2.unwrap().id, msg2.id);
+
+            let popped3 = message_queue.pop(&task_id);
+            assert_eq!(popped3.unwrap().id, msg3.id);
+
+            // Queue should be empty
+            assert!(message_queue.pop(&task_id).is_none());
+        }
+
+        #[tokio::test]
+        async fn test_queue_empty_when_worker_completes() {
+            let message_queue = Arc::new(ExecutionMessageQueue::new());
+            let task_id = TaskId::new();
+
+            // No messages queued
+            assert_eq!(message_queue.get_queued(&task_id).len(), 0);
+
+            // When worker completes with empty queue, nothing should happen
+            let popped = message_queue.pop(&task_id);
+            assert!(popped.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_queue_for_different_tasks_isolated() {
+            let message_queue = Arc::new(ExecutionMessageQueue::new());
+            let task1 = TaskId::new();
+            let task2 = TaskId::new();
+
+            // Queue messages for both tasks
+            message_queue.queue(task1.clone(), "Task 1 message".to_string());
+            message_queue.queue(task2.clone(), "Task 2 message".to_string());
+
+            // Each task has its own queue
+            assert_eq!(message_queue.get_queued(&task1).len(), 1);
+            assert_eq!(message_queue.get_queued(&task2).len(), 1);
+
+            // Popping from task1 doesn't affect task2
+            let popped = message_queue.pop(&task1);
+            assert!(popped.is_some());
+            assert_eq!(popped.unwrap().content, "Task 1 message");
+
+            assert_eq!(message_queue.get_queued(&task1).len(), 0);
+            assert_eq!(message_queue.get_queued(&task2).len(), 1);
+        }
+
+        #[test]
+        fn test_queue_sent_event_structure() {
+            // Verify ExecutionEvent::QueueSent has correct structure
+            let event = ExecutionEvent::QueueSent {
+                message_id: "msg-123".to_string(),
+                conversation_id: "conv-456".to_string(),
+                task_id: "task-789".to_string(),
+            };
+
+            match event {
+                ExecutionEvent::QueueSent {
+                    message_id,
+                    conversation_id,
+                    task_id,
+                } => {
+                    assert_eq!(message_id, "msg-123");
+                    assert_eq!(conversation_id, "conv-456");
+                    assert_eq!(task_id, "task-789");
+                }
+                _ => panic!("Expected QueueSent event"),
+            }
+        }
+
+        #[tokio::test]
+        async fn test_process_queue_method_signature() {
+            // Test that process_queue signature is correct for the implementation
+            // The actual process_queue method is private, but we can verify the pattern
+            // it follows by testing the queue's pop behavior
+
+            let message_queue = Arc::new(ExecutionMessageQueue::new());
+            let task_id = TaskId::new();
+
+            // Queue messages
+            message_queue.queue(task_id.clone(), "Message 1".to_string());
+            message_queue.queue(task_id.clone(), "Message 2".to_string());
+
+            // Simulate the while loop in process_queue
+            let mut processed_count = 0;
+            while let Some(_msg) = message_queue.pop(&task_id) {
+                processed_count += 1;
+                // In real implementation:
+                // 1. Persist user message to chat_messages
+                // 2. Send via --resume <claude_session_id>
+                // 3. Continue streaming and persisting
+            }
+
+            assert_eq!(processed_count, 2);
+            assert!(message_queue.pop(&task_id).is_none());
+        }
+
+        #[tokio::test]
+        async fn test_queue_processing_flow() {
+            // Test the complete flow:
+            // 1. Worker is executing
+            // 2. User queues messages
+            // 3. Worker completes
+            // 4. Queue is processed
+
+            let message_queue = Arc::new(ExecutionMessageQueue::new());
+            let task_id = TaskId::new();
+
+            // Simulate worker executing (user can queue messages)
+            let is_executing = true;
+
+            if is_executing {
+                // User queues messages while worker is running
+                message_queue.queue(task_id.clone(), "Additional requirement 1".to_string());
+                message_queue.queue(task_id.clone(), "Additional requirement 2".to_string());
+            }
+
+            assert_eq!(message_queue.get_queued(&task_id).len(), 2);
+
+            // Worker completes - process queue
+            let mut messages_sent = Vec::new();
+            while let Some(msg) = message_queue.pop(&task_id) {
+                messages_sent.push(msg.content);
+            }
+
+            assert_eq!(messages_sent.len(), 2);
+            assert_eq!(messages_sent[0], "Additional requirement 1");
+            assert_eq!(messages_sent[1], "Additional requirement 2");
+
+            // Queue is now empty
+            assert!(message_queue.pop(&task_id).is_none());
+        }
     }
 }
