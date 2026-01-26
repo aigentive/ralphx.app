@@ -1,15 +1,60 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:25:00
+**Last Updated:** 2026-01-26 18:24:21
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 10 / 30
-**Current Task:** Create StatusDropdown component
+**Tasks Completed:** 11 / 30
+**Current Task:** Create TaskEditForm component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:24:21 - Create StatusDropdown component (Task 11)
+
+**What was done:**
+- Created StatusDropdown component that queries backend for valid status transitions
+- Implemented dropdown using shadcn/ui DropdownMenu component
+- Added status color mapping utility (getStatusColor) for visual consistency:
+  - Terminal statuses: approved (success green), failed/cancelled (error red)
+  - Active statuses: executing/qa_testing (info blue), pending_review (warning amber)
+  - Idle statuses: backlog/ready (muted gray), blocked (warning amber)
+  - QA statuses: qa_passed (success), qa_failed (error), qa_refining (info)
+- Added status label mapping utility (getStatusLabel) for user-friendly display
+- Implemented three states:
+  - Loading: Shows spinner while fetching transitions
+  - Error: Shows disabled "Error" button when fetch fails
+  - Success: Shows dropdown with valid transitions or read-only badge if none available
+- Used TanStack Query with 1-minute stale time for efficient caching
+- Added disabled prop to prevent interaction during status changes
+- Created comprehensive test suite with 9 test cases covering:
+  - Loading state with spinner
+  - Error state handling
+  - Read-only badge when no transitions available
+  - Dropdown rendering with transitions
+  - Menu opening and displaying transition options
+  - onTransition callback on selection
+  - Disabled state behavior
+  - Status label and color rendering for different statuses
+  - Query key caching verification
+
+**Commands run:**
+- `npm run lint` - Passed with only pre-existing warnings (11 warnings, 0 errors)
+- `npm run typecheck` - Passed with no errors
+- `npm run test src/components/tasks/StatusDropdown.test.tsx` - All 9 tests passed
+
+**Verification:**
+- ✅ Component fetches valid transitions from api.tasks.getValidTransitions()
+- ✅ Shows loading spinner while fetching
+- ✅ Shows error state on fetch failure
+- ✅ Shows read-only badge when no transitions available
+- ✅ Renders dropdown with status colors and labels
+- ✅ Calls onTransition callback with correct status on selection
+- ✅ Respects disabled prop
+- ✅ All 9 tests pass
+- ✅ No TypeScript errors
+- ✅ No ESLint errors
 
 ### 2026-01-26 19:25:00 - Add showArchived and boardSearchQuery to uiStore (Task 10)
 
