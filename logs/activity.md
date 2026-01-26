@@ -1,15 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:55:32
+**Last Updated:** 2026-01-26 19:15:45
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 8 / 30
-**Current Task:** Add archive mutations with loading states and error handling
+**Tasks Completed:** 9 / 30
+**Current Task:** Add showArchived and boardSearchQuery to uiStore
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:15:45 - Add archive mutations with loading states and error handling (Task 9)
+
+**What was done:**
+- Installed sonner toast library via shadcn/ui CLI for toast notifications
+- Fixed TypeScript strict type errors in sonner.tsx (theme type safety)
+- Added Toaster component to App.tsx root for global toast rendering
+- Updated useTaskMutation hook with three new mutations:
+  - archiveMutation: Soft-deletes task by setting archived_at timestamp
+  - restoreMutation: Un-archives task by clearing archived_at
+  - permanentlyDeleteMutation: Hard-deletes archived task from database
+- Each mutation:
+  - Invalidates ['tasks'] and ['archived-count'] query cache on success
+  - Shows success toast with user-friendly message
+  - Shows error toast with error details on failure
+- Exported loading states: isArchiving, isRestoring, isPermanentlyDeleting
+  - These will be used by TaskDetailModal and TaskCard context menu for UI feedback
+
+**Commands run:**
+- `npx shadcn@latest add sonner` - Installed toast component
+- `npm run typecheck` - Type checking passed
+
+**Verification:**
+- ✅ Sonner toast library installed and configured
+- ✅ Toaster component added to App.tsx
+- ✅ archiveMutation added with success/error toast notifications
+- ✅ restoreMutation added with success/error toast notifications
+- ✅ permanentlyDeleteMutation added with success/error toast notifications
+- ✅ Query cache invalidation working for both ['tasks'] and ['archived-count']
+- ✅ Loading states exported: isArchiving, isRestoring, isPermanentlyDeleting
+- ✅ No TypeScript errors
 
 ### 2026-01-26 18:40:15 - Add TaskListResponse and archivedAt types (Task 7)
 
