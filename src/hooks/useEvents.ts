@@ -340,3 +340,6 @@ export function useProposalEvents() {
     };
   }, [addProposal, updateProposal, removeProposal]);
 }
+
+// Re-export useStepEvents from its own file
+export { useStepEvents } from "./useStepEvents";
