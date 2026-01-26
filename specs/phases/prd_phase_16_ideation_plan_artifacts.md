@@ -103,7 +103,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(domain): add IdeationSettings entity and repository"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
