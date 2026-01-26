@@ -473,15 +473,207 @@ function useInfiniteTasksQuery(projectId: string, status: InternalStatus) {
 
 ---
 
+## Part 6: Drag & Drop Restrictions
+
+### Source Restrictions (Which tasks can be dragged?)
+
+Tasks in **system-controlled states** cannot be dragged - they're being processed.
+
+| Status | Can Drag? | Reason |
+|--------|-----------|--------|
+| `backlog` | **YES** | Idle, user can schedule or cancel |
+| `ready` | **YES** | Idle, user can block or cancel |
+| `blocked` | **YES** | Idle, user can unblock or cancel |
+| `executing` | **NO** | Worker is running |
+| `execution_done` | **NO** | Routing to QA/review |
+| `qa_refining` | **NO** | QA flow in progress |
+| `qa_testing` | **NO** | QA flow in progress |
+| `qa_passed` | **NO** | QA flow in progress |
+| `qa_failed` | **NO** | QA flow in progress |
+| `pending_review` | **NO** | Awaiting review |
+| `revision_needed` | **NO** | Auto-transitions to Executing |
+| `approved` | **YES** | Terminal, user can re-open |
+| `failed` | **YES** | Terminal, user can retry |
+| `cancelled` | **YES** | Terminal, user can re-open |
+
+### Target Restrictions (Which columns can receive drops?)
+
+| Target Column | maps_to | Can Drop? | Valid Source Statuses |
+|---------------|---------|-----------|----------------------|
+| `draft` | Backlog | **YES** | Terminal states only (re-open) |
+| `backlog` | Backlog | **YES** | Terminal states only |
+| `todo` | Ready | **YES** | Backlog, Blocked, Terminal |
+| `planned` | Ready | **YES** | Backlog, Blocked, Terminal |
+| `in_progress` | Executing | **NO** | None (system-controlled) |
+| `in_review` | PendingReview | **NO** | None (system-controlled) |
+| `done` | Approved | **NO** | None (system-controlled) |
+
+### Visual Feedback
+
+1. **Non-draggable tasks**: No grab cursor, card appears slightly muted, tooltip on hover explains why
+2. **Invalid drop target**: Red dashed border + X icon (already implemented)
+3. **Valid drop target**: Orange glow (already implemented)
+
+### Implementation
+
+**TaskCard.tsx Changes**:
+```typescript
+const isDraggable = useMemo(() => {
+  const nonDraggableStatuses = [
+    'executing', 'execution_done',
+    'qa_refining', 'qa_testing', 'qa_passed', 'qa_failed',
+    'pending_review', 'revision_needed'
+  ];
+  return !nonDraggableStatuses.includes(task.internalStatus);
+}, [task.internalStatus]);
+```
+
+**Validation function** for drop targets:
+```typescript
+function canDropOnColumn(sourceStatus: InternalStatus, targetColumn: string): boolean {
+  const targetStatus = columnToStatusMap[targetColumn];
+  return sourceStatus.canTransitionTo(targetStatus);
+}
+```
+
+---
+
+## Part 7: Task Card Context Menu
+
+Right-click on a task card shows a context menu with quick actions.
+
+### Design
+
+```
+┌───────────────────────────┐
+│ [P2] Task title           │
+│      feature              │  Right-click →  ┌──────────────────┐
+└───────────────────────────┘                 │ 👁 View Details  │
+                                              │ ✏️ Edit          │
+                                              │ ─────────────────│
+                                              │ 🗄 Archive       │
+                                              │ ❌ Cancel        │
+                                              └──────────────────┘
+```
+
+### Menu Items by Status
+
+| Status | Available Actions |
+|--------|-------------------|
+| `backlog` | View, Edit, Archive, Cancel |
+| `ready` | View, Edit, Archive, Block, Cancel |
+| `blocked` | View, Edit, Archive, Unblock, Cancel |
+| System-controlled | View only |
+| `approved` | View, Archive, Re-open |
+| `failed` | View, Archive, Retry |
+| `cancelled` | View, Archive, Re-open |
+
+### Implementation
+
+**New Component**: `TaskCardContextMenu.tsx`
+
+Uses shadcn `ContextMenu` component:
+```tsx
+<ContextMenu>
+  <ContextMenuTrigger asChild>
+    <TaskCard task={task} />
+  </ContextMenuTrigger>
+  <ContextMenuContent>
+    <ContextMenuItem onClick={() => openModal('task-detail', { task })}>
+      <Eye className="w-4 h-4 mr-2" /> View Details
+    </ContextMenuItem>
+    {canEdit && (
+      <ContextMenuItem onClick={() => openModal('task-edit', { task })}>
+        <Edit className="w-4 h-4 mr-2" /> Edit
+      </ContextMenuItem>
+    )}
+    <ContextMenuSeparator />
+    <ContextMenuItem onClick={() => archiveMutation.mutate(task.id)}>
+      <Archive className="w-4 h-4 mr-2" /> Archive
+    </ContextMenuItem>
+    {canCancel && (
+      <ContextMenuItem onClick={() => cancelMutation.mutate(task.id)}>
+        <X className="w-4 h-4 mr-2" /> Cancel
+      </ContextMenuItem>
+    )}
+  </ContextMenuContent>
+</ContextMenu>
+```
+
+---
+
+## Part 8: Empty Search State (Creative)
+
+When search returns no results, show a helpful empty state.
+
+### Design Concept: "Lost in Space"
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ [🔍 authentication                        ] [×]   [☐ Archived]      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│                          🔭                                         │
+│                                                                     │
+│              No tasks found for "authentication"                    │
+│                                                                     │
+│     ┌─────────────────────────────────────────────────────┐        │
+│     │  Try:                                                │        │
+│     │  • Check your spelling                               │        │
+│     │  • Search for fewer words                            │        │
+│     │  • Enable "Show archived" to search old tasks        │        │
+│     └─────────────────────────────────────────────────────┘        │
+│                                                                     │
+│                    [Clear Search]  [+ Create Task]                  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key elements**:
+- Telescope icon (🔭 or Lucide `Telescope`) - "searching the void"
+- Quoted search term to confirm what was searched
+- Helpful suggestions in a muted card
+- If archived toggle is off, suggest enabling it
+- Quick action buttons: Clear search, Create task with search term as title
+
+**Animation**: Subtle floating animation on the telescope icon (CSS keyframes)
+
+### Alternative: "Message in a Bottle"
+
+If search term could be a task:
+```
+              📝
+
+    No tasks match "add user login"
+
+    Should this be a task?
+
+    [+ Create "add user login"]    [Clear Search]
+```
+
+This turns a "no results" moment into a task creation opportunity.
+
+---
+
 ## Implementation Order
 
+### Phase A: Core CRUD
 1. **Backend: Archive system** (migration, commands, repository)
-2. **Frontend: Archive UI** (buttons, toggle, archived appearance)
-3. **Frontend: Task Edit Mode** (TaskEditForm, status dropdown)
-4. **Frontend: Inline Quick-Add** (InlineTaskAdd component)
-5. **Backend: Pagination** (update list_tasks command)
-6. **Frontend: Infinite Scroll** (useInfiniteQuery, intersection observer)
-7. **Frontend: Search** (Cmd+F, search bar, column filtering)
+2. **Frontend: Task Edit Mode** (TaskEditForm, status dropdown in modal)
+3. **Frontend: Archive UI** (buttons in modal, toggle in header, archived appearance)
+
+### Phase B: Kanban Enhancements
+4. **Frontend: Drag-drop restrictions** (source/target validation)
+5. **Frontend: Context menu** (right-click on task cards)
+6. **Frontend: Inline Quick-Add** (ghost card on column hover)
+
+### Phase C: Data Management
+7. **Backend: Pagination** (update list_tasks command with offset/limit)
+8. **Frontend: Infinite Scroll** (useInfiniteQuery with caching)
+
+### Phase D: Search
+9. **Frontend: Search bar** (Cmd+F, column filtering)
+10. **Frontend: Empty search state** (creative "message in a bottle")
 
 ---
 

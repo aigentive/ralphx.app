@@ -287,7 +287,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task): show linked artifact indicators in task view"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "documentation",
