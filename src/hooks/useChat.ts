@@ -147,8 +147,6 @@ export function useChat(context: ChatContext) {
     activeConversationId,
     setActiveConversation,
     setAgentRunning,
-    queuedMessages,
-    processQueue,
   } = useChatStore();
 
   // Fetch conversations for this context
@@ -313,14 +311,15 @@ export function useChat(context: ChatContext) {
           });
         }
 
-        // Process queue: send first queued message if any
-        if (queuedMessages.length > 0) {
-          const firstMessage = queuedMessages[0];
+        // Process queue: get current state directly to avoid stale closure
+        const currentQueue = useChatStore.getState().queuedMessages;
+        if (currentQueue.length > 0) {
+          const firstMessage = currentQueue[0];
           if (firstMessage) {
-            // Process queue (removes first message)
-            await processQueue();
+            // Remove from queue first
+            useChatStore.getState().deleteQueuedMessage(firstMessage.id);
 
-            // Send the message
+            // Send the message (note: sendMessage ref may be stale, but mutateAsync should work)
             try {
               await sendMessage.mutateAsync(firstMessage.content);
             } catch (error) {
@@ -339,8 +338,6 @@ export function useChat(context: ChatContext) {
     activeConversationId,
     queryClient,
     setAgentRunning,
-    queuedMessages,
-    processQueue,
     sendMessage,
   ]);
 
