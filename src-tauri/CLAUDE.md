@@ -59,6 +59,15 @@ pub trait TaskRepository: Send + Sync {
     async fn create(&self, task: Task) -> AppResult<Task>;
     async fn get_by_id(&self, id: &TaskId) -> AppResult<Option<Task>>;
     async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<Task>>;
+    // Archive methods (Ph18)
+    async fn archive(&self, task_id: &TaskId) -> AppResult<Task>;
+    async fn restore(&self, task_id: &TaskId) -> AppResult<Task>;
+    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32>;
+    async fn get_by_project_filtered(&self, project_id: &ProjectId, include_archived: bool) -> AppResult<Vec<Task>>;
+    // Pagination & Search (Ph18)
+    async fn list_paginated(&self, project_id: &ProjectId, offset: u32, limit: u32, include_archived: bool) -> AppResult<Vec<Task>>;
+    async fn count_tasks(&self, project_id: &ProjectId, include_archived: bool) -> AppResult<u32>;
+    async fn search(&self, project_id: &ProjectId, query: &str, include_archived: bool) -> AppResult<Vec<Task>>;
 }
 // Impls: infrastructure/sqlite/sqlite_task_repo.rs | infrastructure/memory/memory_task_repo.rs
 ```
@@ -140,6 +149,22 @@ struct TaskServices {
 pub async fn list_tasks(project_id: String, state: State<'_, AppState>) -> Result<Vec<Task>, AppError> {
     state.task_repo.get_by_project(&ProjectId::from_string(project_id)).await
 }
+
+// Archive System (Ph18)
+archive_task(task_id) → Task (emits task:archived event)
+restore_task(task_id) → Task (emits task:restored event)
+permanently_delete_task(task_id) → () (emits task:deleted event, only if archived)
+get_archived_count(project_id) → u32
+
+// Search & Pagination (Ph18)
+search_tasks(project_id, query, include_archived?) → Vec<Task>  // Server-side search
+list_tasks(project_id, status?, offset?, limit?, include_archived?) → TaskListResponse
+get_valid_transitions(task_id) → Vec<StatusTransition>  // Query state machine
+
+// Tauri Events (Ph18)
+task:archived → { task_id, project_id }
+task:restored → { task_id, project_id }
+task:deleted → { task_id, project_id }
 ```
 
 ### ⚠️ Param Conventions
@@ -271,8 +296,8 @@ search_project_artifacts(project_id, query, types?) → ArtifactSummary[]
 Migrations: `infrastructure/sqlite/migrations.rs`, auto-run on startup, version in `schema_version`
 
 ### Key Tables
-tasks, projects, status_transitions, task_qa, reviews, ideation_sessions, task_proposals,
-proposal_dependencies, chat_messages, chat_conversations(Ph15), agent_runs(Ph15),
+tasks (Ph18: archived_at column), projects, status_transitions, task_qa, reviews, ideation_sessions,
+task_proposals, proposal_dependencies, chat_messages, chat_conversations(Ph15), agent_runs(Ph15),
 ideation_settings(Ph16, single-row), task_dependencies, workflows, artifacts, artifact_buckets,
 research_processes, methodologies
 

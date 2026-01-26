@@ -707,7 +707,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update logs/activity.md with Phase 18 completion summary",
       "Commit: docs: update documentation for Phase 18"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
