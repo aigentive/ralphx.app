@@ -8,7 +8,7 @@
  * - 24px (--space-6) gutters between columns
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -19,7 +19,7 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useTaskBoard } from "./hooks";
 import { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 import { Column } from "./Column";
@@ -28,7 +28,11 @@ import { useUiStore } from "@/stores/uiStore";
 import { Toggle } from "@/components/ui/toggle";
 import { Archive } from "lucide-react";
 import { api } from "@/lib/tauri";
-import type { Task } from "@/types/task";
+import { useTaskSearch } from "@/hooks/useTaskSearch";
+import { TaskSearchBar } from "../TaskSearchBar";
+import { EmptySearchState } from "../EmptySearchState";
+import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
+import type { Task, TaskListResponse } from "@/types/task";
 
 export interface TaskBoardProps {
   projectId: string;
@@ -36,6 +40,7 @@ export interface TaskBoardProps {
 }
 
 export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
+  const queryClient = useQueryClient();
   const { columns, onDragEnd, isLoading, error } = useTaskBoard(
     projectId,
     workflowId
@@ -43,15 +48,65 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const openModal = useUiStore((s) => s.openModal);
   const showArchived = useUiStore((s) => s.showArchived);
   const setShowArchived = useUiStore((s) => s.setShowArchived);
+  const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
+  const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({
     queryKey: ["archived-count", projectId],
     queryFn: () => api.tasks.getArchivedCount(projectId),
   });
+
+  // Search functionality
+  const {
+    data: searchResults = [],
+    isLoading: isSearchLoading,
+  } = useTaskSearch({
+    projectId,
+    query: boardSearchQuery,
+    includeArchived: showArchived,
+  });
+
+  // Check if search is active
+  const isSearchActive = searchOpen && boardSearchQuery && boardSearchQuery.length >= 2;
+
+  // When search is active, group search results by column
+  const searchTasksByColumn = useMemo(() => {
+    if (!isSearchActive) {
+      return new Map<string, Task[]>();
+    }
+
+    // Group search results by their internalStatus to distribute to columns
+    const tasksByStatus = new Map<string, Task[]>();
+    searchResults.forEach((task) => {
+      const existing = tasksByStatus.get(task.internalStatus) || [];
+      tasksByStatus.set(task.internalStatus, [...existing, task]);
+    });
+
+    // Map to column IDs
+    const tasksByColumn = new Map<string, Task[]>();
+    columns.forEach((column) => {
+      const tasks = tasksByStatus.get(column.mapsTo) || [];
+      if (tasks.length > 0) {
+        tasksByColumn.set(column.id, tasks);
+      }
+    });
+
+    return tasksByColumn;
+  }, [columns, isSearchActive, searchResults]);
+
+  // During search, filter columns to only show those with matches
+  const displayColumns = useMemo(() => {
+    if (!isSearchActive) {
+      return columns;
+    }
+    // Only show columns with search results
+    return columns.filter((col) => searchTasksByColumn.has(col.id));
+  }, [columns, isSearchActive, searchTasksByColumn]);
 
   // Clear movingTaskId after React has re-rendered with new position
   useEffect(() => {
@@ -61,6 +116,36 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
     });
     return () => cancelAnimationFrame(id);
   }, [movingTaskId]);
+
+  // Keyboard shortcuts: Cmd+F for search, Escape to close search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Guard: ignore if user is typing in an input/textarea
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement?.hasAttribute('contenteditable')
+      ) {
+        return;
+      }
+
+      // Cmd+F / Ctrl+F: Open search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+
+      // Escape: Close search
+      if (e.key === 'Escape' && searchOpen) {
+        setSearchOpen(false);
+        setBoardSearchQuery(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchOpen, setBoardSearchQuery]);
 
   // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(
@@ -73,12 +158,15 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
 
   const handleTaskSelect = useCallback(
     (taskId: string) => {
-      const task = columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
-      if (task) {
+      // Fetch the task from the API instead of trying to find it in columns
+      // (columns are workflow definitions without task data)
+      api.tasks.get(taskId).then((task) => {
         openModal("task-detail", { task });
-      }
+      }).catch((err) => {
+        console.error("Failed to fetch task:", err);
+      });
     },
-    [columns, openModal]
+    [openModal]
   );
 
   if (isLoading) {
@@ -101,10 +189,30 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   }
 
   const handleDragStart = (event: DragStartEvent) => {
-    const task = columns
-      .flatMap((c) => c.tasks)
-      .find((t) => t.id === event.active.id);
-    setActiveTask(task || null);
+    const taskId = String(event.active.id);
+
+    // Search for the task in the query cache (similar to onDragEnd in hooks.ts)
+    let foundTask: Task | null = null;
+    for (const col of columns) {
+      const key = infiniteTaskKeys.list({
+        projectId,
+        status: col.mapsTo,
+        includeArchived: showArchived,
+      });
+      const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
+      if (data?.pages) {
+        for (const page of data.pages) {
+          const task = page.tasks.find((t: Task) => t.id === taskId);
+          if (task) {
+            foundTask = task;
+            break;
+          }
+        }
+      }
+      if (foundTask) break;
+    }
+
+    setActiveTask(foundTask);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -129,6 +237,10 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
   // Locked columns that can't receive drops
   const lockedColumns = ["in_progress", "in_review", "done"];
 
+  // Check if we should show empty state
+  const hasSearchResults = searchResults.length > 0;
+  const showEmptyState = isSearchActive && !hasSearchResults && !isSearchLoading;
+
   return (
     <DndContext
       sensors={sensors}
@@ -139,9 +251,24 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
     >
       {/* Container for the entire board including header */}
       <div className="flex flex-col h-full">
-        {/* Header with Show Archived toggle (only visible when there are archived tasks) */}
-        {archivedCount > 0 && (
-          <div className="px-6 py-3 border-b border-border/40">
+        {/* Header with Show Archived toggle and Search Bar */}
+        <div className="px-6 py-3 border-b border-border/40 space-y-3">
+          {/* Search Bar (when search is open) */}
+          {searchOpen && (
+            <TaskSearchBar
+              value={boardSearchQuery || ''}
+              onChange={setBoardSearchQuery}
+              onClose={() => {
+                setSearchOpen(false);
+                setBoardSearchQuery(null);
+              }}
+              resultCount={searchResults.length}
+              isSearching={isSearchLoading}
+            />
+          )}
+
+          {/* Show Archived toggle (only visible when there are archived tasks) */}
+          {archivedCount > 0 && (
             <Toggle
               pressed={showArchived}
               onPressedChange={setShowArchived}
@@ -153,8 +280,8 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
                 Show archived ({archivedCount})
               </span>
             </Toggle>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* TaskBoard container with radial gradient and scroll-snap */}
         <div
@@ -167,22 +294,56 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
             scrollPaddingLeft: "16px",
           }}
         >
-          {/* Left spacer for scroll padding */}
-          <div className="w-4 flex-shrink-0" aria-hidden="true" />
+          {/* Show empty search state when search has no results */}
+          {showEmptyState ? (
+            <div className="flex-1 flex items-center justify-center">
+              <EmptySearchState
+                searchQuery={boardSearchQuery || ''}
+                onCreateTask={() => {
+                  openModal('task-create', {
+                    projectId,
+                    defaultTitle: boardSearchQuery || undefined,
+                  });
+                }}
+                onClearSearch={() => {
+                  setBoardSearchQuery(null);
+                }}
+                showArchived={showArchived}
+              />
+            </div>
+          ) : (
+            <>
+              {/* Left spacer for scroll padding */}
+              <div className="w-4 flex-shrink-0" aria-hidden="true" />
 
-          {columns.map((column) => (
-            <Column
-              key={column.id}
-              column={column}
-              projectId={projectId}
-              isOver={overColumnId === column.id}
-              isInvalid={
-                overColumnId === column.id && lockedColumns.includes(column.id)
-              }
-              onTaskSelect={handleTaskSelect}
-              hiddenTaskId={movingTaskId}
-            />
-          ))}
+              {displayColumns.map((column) => {
+                // In search mode, provide search results to column
+                const searchTasks = isSearchActive
+                  ? searchTasksByColumn.get(column.id)
+                  : undefined;
+                const matchCount = isSearchActive
+                  ? searchTasks?.length
+                  : undefined;
+
+                return (
+                  <Column
+                    key={column.id}
+                    column={column}
+                    projectId={projectId}
+                    showArchived={showArchived}
+                    isOver={overColumnId === column.id}
+                    isInvalid={
+                      overColumnId === column.id && lockedColumns.includes(column.id)
+                    }
+                    onTaskSelect={handleTaskSelect}
+                    hiddenTaskId={movingTaskId}
+                    searchTasks={searchTasks}
+                    matchCount={matchCount}
+                  />
+                );
+              })}
+            </>
+          )}
         </div>
         <DragOverlay dropAnimation={null}>
           {activeTask && <TaskCard task={activeTask} isDragging />}
