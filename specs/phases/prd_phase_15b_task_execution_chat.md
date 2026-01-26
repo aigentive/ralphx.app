@@ -151,7 +151,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: feat(state-machine): use spawn_with_persistence for worker execution",
       "STOP: Output <promise>COMPLETE</promise> - High-complexity tasks complete, can switch back to Sonnet"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
