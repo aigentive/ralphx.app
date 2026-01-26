@@ -39,6 +39,7 @@ pub fn run() {
             // Create the main window programmatically to set traffic light position
             {
                 use tauri::{WebviewUrl, WebviewWindowBuilder, TitleBarStyle, LogicalPosition, Position};
+                use tauri_plugin_window_state::{WindowExt, StateFlags};
 
                 let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                     .title("")
@@ -53,7 +54,10 @@ pub fn run() {
                         .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }));
                 }
 
-                builder.build()?;
+                let window = builder.build()?;
+
+                // Restore window state (size, position) from disk
+                let _ = window.restore_state(StateFlags::all());
             }
 
             // Create application state with production SQLite repositories

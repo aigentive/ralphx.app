@@ -10,7 +10,12 @@ import { z } from "zod";
 /**
  * Context type for chat conversations
  */
-export const CONTEXT_TYPE_VALUES = ["ideation", "task", "project"] as const;
+export const CONTEXT_TYPE_VALUES = [
+  "ideation",
+  "task",
+  "project",
+  "task_execution",
+] as const;
 
 export const ContextTypeSchema = z.enum(CONTEXT_TYPE_VALUES);
 export type ContextType = z.infer<typeof ContextTypeSchema>;
