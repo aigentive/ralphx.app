@@ -293,7 +293,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(apply): import steps from proposal when creating task"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

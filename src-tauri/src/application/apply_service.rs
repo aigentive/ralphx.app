@@ -10,11 +10,11 @@
 
 use crate::domain::entities::{
     IdeationSessionId, IdeationSessionStatus, InternalStatus, ProjectId, ProposalStatus, Task,
-    TaskId, TaskProposal, TaskProposalId,
+    TaskId, TaskProposal, TaskProposalId, TaskStep,
 };
 use crate::domain::repositories::{
     IdeationSessionRepository, ProposalDependencyRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository,
+    TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::error::{AppError, AppResult};
 use std::collections::{HashMap, HashSet};
@@ -84,21 +84,24 @@ pub struct ApplyService<
     PD: ProposalDependencyRepository,
     T: TaskRepository,
     TD: TaskDependencyRepository,
+    TS: TaskStepRepository,
 > {
     session_repo: Arc<S>,
     proposal_repo: Arc<P>,
     proposal_dep_repo: Arc<PD>,
     task_repo: Arc<T>,
     task_dep_repo: Arc<TD>,
+    task_step_repo: Arc<TS>,
 }
 
-impl<S, P, PD, T, TD> ApplyService<S, P, PD, T, TD>
+impl<S, P, PD, T, TD, TS> ApplyService<S, P, PD, T, TD, TS>
 where
     S: IdeationSessionRepository,
     P: TaskProposalRepository,
     PD: ProposalDependencyRepository,
     T: TaskRepository,
     TD: TaskDependencyRepository,
+    TS: TaskStepRepository,
 {
     /// Create a new apply service
     pub fn new(
@@ -107,6 +110,7 @@ where
         proposal_dep_repo: Arc<PD>,
         task_repo: Arc<T>,
         task_dep_repo: Arc<TD>,
+        task_step_repo: Arc<TS>,
     ) -> Self {
         Self {
             session_repo,
@@ -114,6 +118,7 @@ where
             proposal_dep_repo,
             task_repo,
             task_dep_repo,
+            task_step_repo,
         }
     }
 
@@ -286,6 +291,29 @@ where
         for proposal in proposals_map.values() {
             let task = self.create_task_from_proposal(proposal, &session.project_id, target_status);
             let created_task = self.task_repo.create(task).await?;
+
+            // Import steps from proposal if they exist
+            if let Some(steps_json) = &proposal.steps {
+                if let Ok(step_titles) = serde_json::from_str::<Vec<String>>(steps_json) {
+                    if !step_titles.is_empty() {
+                        let task_steps: Vec<TaskStep> = step_titles
+                            .into_iter()
+                            .enumerate()
+                            .map(|(idx, title)| {
+                                TaskStep::new(
+                                    created_task.id.clone(),
+                                    title,
+                                    idx as i32,
+                                    "proposal".to_string(),
+                                )
+                            })
+                            .collect();
+
+                        // Use bulk_create to insert all steps
+                        let _ = self.task_step_repo.bulk_create(task_steps).await?;
+                    }
+                }
+            }
 
             // Update proposal with created task ID and status
             let mut updated_proposal = proposal.clone();
@@ -996,6 +1024,119 @@ mod tests {
         }
     }
 
+    struct MockTaskStepRepository {
+        steps: Mutex<HashMap<String, TaskStep>>,
+    }
+
+    impl MockTaskStepRepository {
+        fn new() -> Self {
+            Self {
+                steps: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl TaskStepRepository for MockTaskStepRepository {
+        async fn create(&self, step: TaskStep) -> AppResult<TaskStep> {
+            self.steps
+                .lock()
+                .unwrap()
+                .insert(step.id.to_string(), step.clone());
+            Ok(step)
+        }
+
+        async fn get_by_id(&self, id: &crate::domain::entities::TaskStepId) -> AppResult<Option<TaskStep>> {
+            Ok(self.steps.lock().unwrap().get(&id.to_string()).cloned())
+        }
+
+        async fn get_by_task(&self, task_id: &TaskId) -> AppResult<Vec<TaskStep>> {
+            let mut steps: Vec<_> = self
+                .steps
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|s| &s.task_id == task_id)
+                .cloned()
+                .collect();
+            steps.sort_by_key(|s| s.sort_order);
+            Ok(steps)
+        }
+
+        async fn get_by_task_and_status(
+            &self,
+            task_id: &TaskId,
+            status: crate::domain::entities::TaskStepStatus,
+        ) -> AppResult<Vec<TaskStep>> {
+            let mut steps: Vec<_> = self
+                .steps
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|s| &s.task_id == task_id && s.status == status)
+                .cloned()
+                .collect();
+            steps.sort_by_key(|s| s.sort_order);
+            Ok(steps)
+        }
+
+        async fn update(&self, step: &TaskStep) -> AppResult<()> {
+            self.steps
+                .lock()
+                .unwrap()
+                .insert(step.id.to_string(), step.clone());
+            Ok(())
+        }
+
+        async fn delete(&self, id: &crate::domain::entities::TaskStepId) -> AppResult<()> {
+            self.steps.lock().unwrap().remove(&id.to_string());
+            Ok(())
+        }
+
+        async fn delete_by_task(&self, task_id: &TaskId) -> AppResult<()> {
+            self.steps
+                .lock()
+                .unwrap()
+                .retain(|_, s| &s.task_id != task_id);
+            Ok(())
+        }
+
+        async fn count_by_status(
+            &self,
+            task_id: &TaskId,
+        ) -> AppResult<HashMap<crate::domain::entities::TaskStepStatus, u32>> {
+            let steps = self.get_by_task(task_id).await?;
+            let mut counts = HashMap::new();
+            for step in steps {
+                *counts.entry(step.status).or_insert(0) += 1;
+            }
+            Ok(counts)
+        }
+
+        async fn bulk_create(&self, steps: Vec<TaskStep>) -> AppResult<Vec<TaskStep>> {
+            let mut created_steps = Vec::new();
+            for step in steps {
+                self.steps
+                    .lock()
+                    .unwrap()
+                    .insert(step.id.to_string(), step.clone());
+                created_steps.push(step);
+            }
+            Ok(created_steps)
+        }
+
+        async fn reorder(&self, task_id: &TaskId, step_ids: Vec<crate::domain::entities::TaskStepId>) -> AppResult<()> {
+            for (new_order, step_id) in step_ids.iter().enumerate() {
+                if let Some(step) = self.steps.lock().unwrap().get_mut(&step_id.to_string()) {
+                    if &step.task_id == task_id {
+                        step.sort_order = new_order as i32;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
     #[async_trait]
     impl TaskDependencyRepository for MockTaskDependencyRepository {
         async fn add_dependency(
@@ -1102,6 +1243,7 @@ mod tests {
         MockProposalDependencyRepository,
         MockTaskRepository,
         MockTaskDependencyRepository,
+        MockTaskStepRepository,
     > {
         ApplyService::new(
             Arc::new(MockSessionRepository::with_session(session)),
@@ -1109,6 +1251,7 @@ mod tests {
             Arc::new(MockProposalDependencyRepository::with_dependencies(deps)),
             Arc::new(MockTaskRepository::new()),
             Arc::new(MockTaskDependencyRepository::new()),
+            Arc::new(MockTaskStepRepository::new()),
         )
     }
 
@@ -1551,5 +1694,140 @@ mod tests {
             .unwrap();
 
         assert!(!result.session_converted);
+    }
+
+    // ========================================================================
+    // STEP IMPORT TESTS
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_apply_proposals_imports_steps_from_proposal() {
+        let project_id = ProjectId::new();
+        let session = IdeationSession::new(project_id.clone());
+        let session_id = session.id.clone();
+
+        let mut p1 = create_test_proposal(&session_id, "Task with steps");
+        p1.steps = Some(r#"["Step 1", "Step 2", "Step 3"]"#.to_string());
+
+        let service = create_service(session.clone(), vec![p1.clone()], vec![]);
+
+        let result = service
+            .apply_proposals(
+                &session_id,
+                ApplyProposalsOptions {
+                    proposal_ids: vec![p1.id.clone()],
+                    target_column: TargetColumn::Backlog,
+                    preserve_dependencies: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.created_tasks.len(), 1);
+        let task_id = &result.created_tasks[0].id;
+
+        // Verify steps were created
+        let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+        assert_eq!(steps.len(), 3);
+        assert_eq!(steps[0].title, "Step 1");
+        assert_eq!(steps[1].title, "Step 2");
+        assert_eq!(steps[2].title, "Step 3");
+        assert_eq!(steps[0].created_by, "proposal");
+        assert_eq!(steps[0].sort_order, 0);
+        assert_eq!(steps[1].sort_order, 1);
+        assert_eq!(steps[2].sort_order, 2);
+    }
+
+    #[tokio::test]
+    async fn test_apply_proposals_handles_empty_steps() {
+        let project_id = ProjectId::new();
+        let session = IdeationSession::new(project_id.clone());
+        let session_id = session.id.clone();
+
+        let mut p1 = create_test_proposal(&session_id, "Task with empty steps");
+        p1.steps = Some(r#"[]"#.to_string());
+
+        let service = create_service(session.clone(), vec![p1.clone()], vec![]);
+
+        let result = service
+            .apply_proposals(
+                &session_id,
+                ApplyProposalsOptions {
+                    proposal_ids: vec![p1.id.clone()],
+                    target_column: TargetColumn::Backlog,
+                    preserve_dependencies: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.created_tasks.len(), 1);
+        let task_id = &result.created_tasks[0].id;
+
+        // No steps should be created
+        let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+        assert_eq!(steps.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_apply_proposals_handles_no_steps() {
+        let project_id = ProjectId::new();
+        let session = IdeationSession::new(project_id.clone());
+        let session_id = session.id.clone();
+
+        let p1 = create_test_proposal(&session_id, "Task without steps");
+        // p1.steps is None by default
+
+        let service = create_service(session.clone(), vec![p1.clone()], vec![]);
+
+        let result = service
+            .apply_proposals(
+                &session_id,
+                ApplyProposalsOptions {
+                    proposal_ids: vec![p1.id.clone()],
+                    target_column: TargetColumn::Backlog,
+                    preserve_dependencies: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.created_tasks.len(), 1);
+        let task_id = &result.created_tasks[0].id;
+
+        // No steps should be created
+        let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+        assert_eq!(steps.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_apply_proposals_handles_invalid_json_steps() {
+        let project_id = ProjectId::new();
+        let session = IdeationSession::new(project_id.clone());
+        let session_id = session.id.clone();
+
+        let mut p1 = create_test_proposal(&session_id, "Task with invalid steps");
+        p1.steps = Some("not valid json".to_string());
+
+        let service = create_service(session.clone(), vec![p1.clone()], vec![]);
+
+        let result = service
+            .apply_proposals(
+                &session_id,
+                ApplyProposalsOptions {
+                    proposal_ids: vec![p1.id.clone()],
+                    target_column: TargetColumn::Backlog,
+                    preserve_dependencies: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.created_tasks.len(), 1);
+        let task_id = &result.created_tasks[0].id;
+
+        // No steps should be created due to JSON parse error
+        let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+        assert_eq!(steps.len(), 0);
     }
 }
