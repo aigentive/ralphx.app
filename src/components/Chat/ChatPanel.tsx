@@ -1,16 +1,13 @@
 /**
  * ChatPanel - Premium resizable side panel for context-aware chat
  *
- * Features:
- * - Toggle with Cmd+K keyboard shortcut
- * - Resizable width (min 280px, max 50% viewport)
- * - Slide-in/out animation
+ * Design spec: specs/design/pages/chat-panel.md
+ * - Refined Studio aesthetic with layered depth
+ * - Glass effect header with backdrop-blur
+ * - Asymmetric message bubbles (user: warm orange, agent: dark gradient)
+ * - Compact sizing for application UI
+ * - Slide-in/out animations
  * - Collapsible to thin bar with unread indicator
- * - Context indicator showing current view
- * - Message bubbles with asymmetric corners
- * - Auto-scroll with manual scroll override
- * - Typing indicator
- * - Markdown rendering with syntax highlighting
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -109,27 +106,18 @@ function TypingIndicator() {
       data-testid="chat-typing-indicator"
       className="flex items-start gap-2 mb-2"
     >
-      <Bot className="w-3.5 h-3.5 mt-2.5 shrink-0 text-[var(--text-muted)]" />
+      <Bot className="w-3.5 h-3.5 mt-2 shrink-0 text-white/40" />
       <div
-        className="px-3.5 py-2.5 rounded-[10px_10px_10px_4px]"
+        className="px-3 py-2 rounded-[10px_10px_10px_4px]"
         style={{
-          backgroundColor: "var(--bg-elevated)",
-          border: "1px solid var(--border-subtle)",
+          background: "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
+          border: "1px solid rgba(255,255,255,0.06)",
         }}
       >
         <div className="flex items-center gap-1">
-          <div
-            className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "var(--text-muted)" }}
-          />
-          <div
-            className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "var(--text-muted)" }}
-          />
-          <div
-            className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "var(--text-muted)" }}
-          />
+          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
+          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
+          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
         </div>
       </div>
     </div>
@@ -140,19 +128,21 @@ function EmptyState() {
   return (
     <div
       data-testid="chat-panel-empty"
-      className="flex flex-col items-center justify-center h-full p-8 text-center"
+      className="flex flex-col items-center justify-center h-full p-6 text-center"
     >
-      <MessageSquare
-        className="w-10 h-10 mb-3"
-        style={{ color: "var(--text-muted)" }}
-      />
-      <p
-        className="text-sm font-medium"
-        style={{ color: "var(--text-secondary)" }}
+      <div
+        className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+        style={{
+          background: "linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(255,107,53,0.05) 100%)",
+          border: "1px solid rgba(255,107,53,0.15)",
+        }}
       >
+        <MessageSquare className="w-5 h-5 text-[#ff6b35]" />
+      </div>
+      <p className="text-[13px] font-medium text-white/80">
         Start a conversation
       </p>
-      <p className="text-[13px] mt-1" style={{ color: "var(--text-muted)" }}>
+      <p className="text-xs mt-1 text-white/40">
         Ask questions or get help with your tasks
       </p>
     </div>
@@ -163,12 +153,9 @@ function LoadingState() {
   return (
     <div
       data-testid="chat-panel-loading"
-      className="flex items-center justify-center p-8"
+      className="flex items-center justify-center p-6"
     >
-      <Loader2
-        className="w-6 h-6 animate-spin"
-        style={{ color: "var(--accent-primary)" }}
-      />
+      <Loader2 className="w-5 h-5 animate-spin text-[#ff6b35]" />
     </div>
   );
 }
@@ -179,39 +166,30 @@ function WorkerExecutingIndicator() {
   return (
     <div
       data-testid="worker-executing-indicator"
-      className="flex items-center gap-2 px-3 py-2.5 mb-2 rounded-lg"
+      className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg"
       style={{
-        backgroundColor: "var(--bg-elevated)",
-        border: "1px solid var(--border-subtle)",
+        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.03) 100%)",
+        border: "1px solid rgba(255,107,53,0.15)",
       }}
     >
-      <Hammer className="w-4 h-4 text-[var(--accent-primary)]" />
+      <Hammer className="w-3.5 h-3.5 text-[#ff6b35]" />
       <div className="flex items-center gap-2 flex-1">
-        <span className="text-sm font-medium">Worker is executing...</span>
+        <span className="text-[13px] font-medium text-white/80">Worker is executing...</span>
         <div className="flex items-center gap-1">
-          <div
-            className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "var(--accent-primary)" }}
-          />
-          <div
-            className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "var(--accent-primary)" }}
-          />
-          <div
-            className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "var(--accent-primary)" }}
-          />
+          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
+          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
+          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
         </div>
       </div>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setCurrentView("activity")}
-        className="shrink-0"
+        className="shrink-0 h-7 px-2"
         aria-label="View all activity"
       >
-        <Activity className="w-4 h-4 mr-1.5" />
-        <span className="text-xs">All Activity</span>
+        <Activity className="w-3.5 h-3.5 mr-1" />
+        <span className="text-[11px]">Activity</span>
       </Button>
     </div>
   );
@@ -250,8 +228,8 @@ function ContextIndicator({ context, isExecutionMode = false }: ContextIndicator
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
-      <Icon className="w-4 h-4 shrink-0 text-[var(--text-secondary)]" />
-      <span className="text-sm font-medium truncate">{label}</span>
+      <Icon className="w-3.5 h-3.5 shrink-0 text-white/50" />
+      <span className="text-[13px] font-medium truncate text-white/80">{label}</span>
     </div>
   );
 }
@@ -486,7 +464,7 @@ function MessageItem({
     >
       {/* Agent indicator for first assistant message */}
       {!isUser && isFirstInGroup && (
-        <Bot className="w-3.5 h-3.5 mt-2.5 mr-2 shrink-0 text-[var(--text-muted)]" />
+        <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
       )}
       {!isUser && !isFirstInGroup && <div className="w-3.5 mr-2 shrink-0" />}
 
@@ -500,21 +478,23 @@ function MessageItem({
           </div>
         )}
 
-        {/* Message content */}
+        {/* Message content - Refined Studio gradient bubbles */}
         <div
           className={cn(
-            "px-3 py-2 text-sm",
+            "px-3 py-2 text-[13px] leading-relaxed",
             isUser
               ? "rounded-[10px_10px_4px_10px]"
               : "rounded-[10px_10px_10px_4px]"
           )}
           style={{
-            backgroundColor: isUser
-              ? "var(--accent-primary)"
-              : "var(--bg-elevated)",
+            background: isUser
+              ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
+              : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
             color: isUser ? "white" : "var(--text-primary)",
-            border: isUser ? "none" : "1px solid var(--border-subtle)",
-            boxShadow: isUser ? "var(--shadow-xs)" : "none",
+            border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
+            boxShadow: isUser
+              ? "0 2px 8px rgba(255,107,53,0.2)"
+              : "0 1px 4px rgba(0,0,0,0.15)",
           }}
         >
           {isUser ? (
@@ -530,10 +510,10 @@ function MessageItem({
         {isLastInGroup && (
           <span
             className={cn(
-              "text-[11px] mt-1 px-1",
+              "text-[10px] mt-1 px-1",
               isUser ? "text-right" : "text-left"
             )}
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "rgba(255,255,255,0.4)" }}
           >
             {timestamp}
           </span>
@@ -932,11 +912,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         {/* Resize Handle */}
         <ResizeHandle isDragging={isDragging} onMouseDown={handleResizeStart} />
 
-        {/* Header */}
+        {/* Header - Glass effect */}
         <div
           data-testid="chat-panel-header"
-          className="flex items-center justify-between h-12 px-3 border-b"
-          style={{ borderColor: "var(--border-subtle)" }}
+          className="flex items-center justify-between h-11 px-3 border-b backdrop-blur-sm"
+          style={{
+            borderColor: "rgba(255,255,255,0.06)",
+            background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
+          }}
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />
 

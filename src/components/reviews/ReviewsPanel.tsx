@@ -1,13 +1,10 @@
 /**
- * ReviewsPanel - Premium slide-in panel for pending reviews
+ * ReviewsPanel - Slide-in panel for pending reviews
  *
- * Features:
- * - Slide-in animation from right edge (300ms ease-out)
- * - Filter tabs: All, AI, Human with counts and icons
- * - Empty state with dashed circle icon
- * - Loading spinner with accent color
- * - Integrated DiffViewer for viewing task changes
- * - Keyboard navigation (Escape to close)
+ * Design: macOS Tahoe Liquid Glass
+ * - Frosted glass headers with backdrop-blur
+ * - Flat translucent surfaces
+ * - Subtle borders and single shadows
  */
 
 import { useState, useMemo, useCallback, useEffect } from "react";
@@ -143,14 +140,17 @@ function PanelHeader({ totalCount, onClose }: PanelHeaderProps) {
     <div
       className="flex items-center justify-between px-4 py-3 border-b shrink-0"
       style={{
-        borderColor: "var(--border-subtle)",
+        borderColor: "rgba(255,255,255,0.06)",
         height: "52px",
+        background: "rgba(18,18,18,0.85)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
       }}
     >
       <h2
         data-testid="reviews-panel-title"
         className="text-lg font-semibold text-[var(--text-primary)]"
-        style={{ letterSpacing: "var(--tracking-tight, -0.02em)" }}
+        style={{ letterSpacing: "-0.02em" }}
       >
         Reviews
       </h2>
@@ -201,8 +201,8 @@ function FilterTabs({
     <div
       className="px-4 py-3 border-b"
       style={{
-        borderColor: "var(--border-subtle)",
-        backgroundColor: "var(--bg-base)",
+        borderColor: "rgba(255,255,255,0.06)",
+        background: "rgba(255,255,255,0.02)",
       }}
     >
       <Tabs

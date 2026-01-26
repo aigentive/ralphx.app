@@ -1,7 +1,11 @@
 /**
  * TaskDetailModal - Premium modal dialog for task details
- * Uses shadcn Dialog with backdrop blur, scale animation, and premium styling
- * Displays task info, reviews, QA results, and state history
+ *
+ * Design spec: specs/design/refined-studio-patterns.md
+ * - Refined Studio aesthetic with layered depth
+ * - Glass effect header with backdrop-blur
+ * - Gradient backgrounds and premium shadows
+ * - Compact sizing for application UI
  */
 
 import {
@@ -131,7 +135,7 @@ function PriorityBadge({ priority }: { priority: number }) {
   return (
     <span
       data-testid="task-detail-priority"
-      className="inline-flex items-center px-2 py-1 rounded text-xs font-mono font-medium"
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium"
       style={{ backgroundColor: colors.bg, color: colors.text }}
     >
       P{priority}
@@ -145,7 +149,7 @@ function StatusBadge({ status }: { status: InternalStatus }) {
     <Badge
       data-testid="task-detail-status"
       data-status={status}
-      className="rounded-lg px-2 py-1 text-xs font-medium border-0"
+      className="rounded px-1.5 py-0.5 text-[10px] font-medium border-0"
       style={{ backgroundColor: config.bg, color: config.text }}
     >
       {config.label}
@@ -163,7 +167,7 @@ function ReviewCard({
   const Icon = reviewerType === "ai" ? Bot : User;
   const label = reviewerType === "ai" ? "AI Review" : "Human Review";
 
-  const defaultStatusColor = { bg: "var(--bg-hover)", text: "var(--text-muted)" };
+  const defaultStatusColor = { bg: "rgba(255,255,255,0.05)", text: "rgba(255,255,255,0.5)" };
   const statusColors: Record<string, { bg: string; text: string }> = {
     pending: defaultStatusColor,
     approved: {
@@ -182,23 +186,20 @@ function ReviewCard({
   return (
     <div
       data-testid={`review-item-${reviewerType}`}
-      className="flex items-center justify-between p-3 rounded-lg"
+      className="flex items-center justify-between p-2.5 rounded-lg"
       style={{
-        backgroundColor: "var(--bg-surface)",
-        border: "1px solid var(--border-subtle)",
+        background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
+        border: "1px solid rgba(255,255,255,0.06)",
       }}
     >
       <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4" style={{ color: "var(--text-secondary)" }} />
-        <span
-          className="text-sm font-medium"
-          style={{ color: "var(--text-primary)" }}
-        >
+        <Icon className="w-3.5 h-3.5 text-white/50" />
+        <span className="text-[13px] font-medium text-white/80">
           {label}
         </span>
       </div>
       <Badge
-        className="rounded-lg px-2 py-0.5 text-xs font-medium border-0 capitalize"
+        className="rounded px-1.5 py-0.5 text-[10px] font-medium border-0 capitalize"
         style={{ backgroundColor: statusColor.bg, color: statusColor.text }}
       >
         {status.replace("_", " ")}
@@ -223,10 +224,7 @@ function FixTaskIndicator({ count }: { count: number }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3
-      className="text-sm font-medium mb-3"
-      style={{ color: "var(--text-primary)" }}
-    >
+    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">
       {children}
     </h3>
   );
@@ -337,59 +335,61 @@ export function TaskDetailModal({
             backdropFilter: "blur(8px)",
           }}
         />
-        {/* Custom content with scale animation */}
+        {/* Custom content with scale animation - Refined Studio */}
         <div
           data-testid="task-detail-modal"
-          className="fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%] w-full max-w-[640px] max-h-[80vh] overflow-hidden flex flex-col rounded-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          className="fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%] w-full max-w-[580px] max-h-[80vh] overflow-hidden flex flex-col rounded-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
           style={{
-            backgroundColor: "var(--bg-elevated)",
-            border: "1px solid var(--border-subtle)",
+            background: "linear-gradient(180deg, rgba(24,24,24,0.98) 0%, rgba(18,18,18,0.99) 100%)",
+            border: "1px solid rgba(255,255,255,0.08)",
             boxShadow:
-              "0 10px 15px rgba(0,0,0,0.3), 0 20px 40px rgba(0,0,0,0.25)",
+              "0 8px 16px rgba(0,0,0,0.4), 0 16px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03)",
           }}
           data-state={isOpen ? "open" : "closed"}
         >
-          {/* Header */}
+          {/* Header - Glass effect */}
           <div
-            className="px-6 pt-6 pb-4"
-            style={{ borderBottom: "1px solid var(--border-subtle)" }}
+            className="px-5 pt-5 pb-4 backdrop-blur-sm"
+            style={{
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, transparent 100%)",
+            }}
           >
             {/* Archived Badge */}
             {isArchived && (
               <div
                 data-testid="archived-badge"
-                className="mb-4 px-3 py-2 rounded-lg flex items-center gap-2"
+                className="mb-3 px-2.5 py-1.5 rounded-lg flex items-center gap-2"
                 style={{
-                  backgroundColor: "rgba(255, 107, 53, 0.15)",
-                  color: "var(--accent-primary)",
+                  background: "linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(255,107,53,0.05) 100%)",
+                  border: "1px solid rgba(255,107,53,0.2)",
                 }}
               >
-                <Archive className="w-4 h-4" />
-                <span className="text-sm font-medium">Archived</span>
+                <Archive className="w-3.5 h-3.5 text-[#ff6b35]" />
+                <span className="text-[12px] font-medium text-[#ff6b35]">Archived</span>
               </div>
             )}
-            <div className="flex items-start gap-3 pr-32">
+            <div className="flex items-start gap-2.5 pr-28">
               <PriorityBadge priority={task.priority} />
               <div className="flex-1 min-w-0">
                 <h2
                   data-testid="task-detail-title"
-                  className="text-xl font-semibold truncate"
+                  className="text-base font-semibold truncate text-white/90"
                   style={{
-                    color: "var(--text-primary)",
                     letterSpacing: "-0.02em",
-                    lineHeight: "1.2",
+                    lineHeight: "1.3",
                   }}
                 >
                   {task.title}
                 </h2>
-                <div className="flex flex-wrap items-center gap-2 mt-2">
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                   <span
                     data-testid="task-detail-category"
-                    className="px-2.5 py-1 rounded text-xs font-medium"
+                    className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                     style={{
-                      backgroundColor: "var(--bg-base)",
-                      border: "1px solid var(--border-subtle)",
-                      color: "var(--text-secondary)",
+                      backgroundColor: "rgba(255,255,255,0.05)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.6)",
                     }}
                   >
                     {task.category}
@@ -590,10 +590,9 @@ export function TaskDetailModal({
                   <div>
                     <p
                       data-testid="task-detail-description"
-                      className="text-sm"
+                      className="text-[13px] text-white/60"
                       style={{
-                        color: "var(--text-secondary)",
-                        lineHeight: "1.65",
+                        lineHeight: "1.6",
                         wordBreak: "break-word",
                       }}
                     >
@@ -601,10 +600,7 @@ export function TaskDetailModal({
                     </p>
                   </div>
                 ) : (
-                  <p
-                    className="text-sm italic"
-                    style={{ color: "var(--text-muted)" }}
-                  >
+                  <p className="text-[13px] italic text-white/35">
                     No description provided
                   </p>
                 )}

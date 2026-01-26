@@ -1,15 +1,65 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:00:02
+**Last Updated:** 2026-01-26 21:03:30
 **Phase:** Task Execution Experience
-**Tasks Completed:** 20 / 42
-**Current Task:** Create StepItem component
+**Tasks Completed:** 21 / 42
+**Current Task:** Create StepList component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:03:30 - Create StepItem component
+
+**What was done:**
+- Created `src/components/tasks/StepItem.tsx`:
+  - Accepts `step`, `index`, optional `editable`, `onUpdate`, and `onDelete` props
+  - Renders a single task step with status-appropriate styling
+  - Status icon component (`StatusIcon`) renders different Lucide icons:
+    - Pending: Circle
+    - In Progress: Loader2 with spin animation
+    - Completed: CheckCircle2
+    - Skipped: MinusCircle
+    - Failed/Cancelled: XCircle
+  - Status color mapping:
+    - Pending/Skipped/Cancelled: muted gray
+    - In Progress: accent primary (orange)
+    - Completed: success green
+    - Failed: error red
+  - Container styling adapts to status:
+    - In Progress: border-2 accent-primary with bg-accent-muted
+    - Completed: opacity-75
+    - Skipped: opacity-50 with line-through text
+    - Failed: border-status-error with error background
+  - Displays step number, title, description (if exists), completion note (if exists)
+  - Editable mode: shows delete button for pending steps only
+  - Delete button rendered with Trash2 icon from Lucide
+- Created `src/components/tasks/StepItem.test.tsx` with comprehensive tests:
+  - Rendering: title, description, completion note, step number
+  - Status icons: all 5 status types render correct icon
+  - Visual styling: in_progress, completed, skipped, failed styles
+  - Editable mode: delete button only shown for pending steps when editable
+  - Delete callback: onDelete called with correct step ID
+  - Edge cases: all fields populated, cancelled status
+  - All 19 tests passing
+- Fixed ESLint rule violation:
+  - Initial implementation stored Icon component in variable (react-hooks/static-components error)
+  - Refactored to `StatusIcon` component that directly renders based on status
+  - Removed useMemo approach, now using inline component
+- Fixed TypeScript import:
+  - Used type-only import for `TaskStep` and `TaskStepStatus` (verbatimModuleSyntax)
+  - Consolidated Lucide imports to single line
+- Verified code quality:
+  - `npm run lint` - Passing (no errors)
+  - `npm run typecheck` - Passing (no errors)
+  - `npm run test` - All 19 tests passing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test -- StepItem.test.tsx`
 
 ### 2026-01-26 21:00:02 - Create StepProgressBar component
 

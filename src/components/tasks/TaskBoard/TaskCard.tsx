@@ -1,13 +1,11 @@
 /**
  * TaskCard - Draggable task card for the kanban board
  *
- * Design spec: specs/design/pages/kanban-board.md
- * - Priority stripe on left border (3px colored)
- * - Layered shadows for depth
- * - Hover lift (translateY -2px)
- * - Drag state (scale, rotate, elevated shadow)
- * - Selected state (orange border + tinted bg)
- * - Drag handle appears on hover (Lucide GripVertical)
+ * Design: macOS Tahoe Liquid Glass
+ * - Frosted glass background with backdrop-blur
+ * - Priority stripe on left border
+ * - Subtle shadows, no heavy gradients
+ * - Clean hover/drag states
  */
 
 import { useDraggable } from "@dnd-kit/core";
@@ -157,23 +155,25 @@ export function TaskCard({
     ...(testStatus !== undefined && { testStatus }),
   };
 
-  // Card styles based on state (Refined Studio aesthetic)
+  // Card styles based on state (macOS Tahoe - Liquid Glass)
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
       borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
       cursor: isDragging ? "grabbing" : (isDraggable ? "grab" : "default"),
-      transition: "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
-      background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
-      border: "1px solid rgba(255,255,255,0.06)",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.1)",
+      transition: "all 180ms ease-out",
+      background: "rgba(255,255,255,0.04)",
+      backdropFilter: "blur(20px)",
+      WebkitBackdropFilter: "blur(20px)",
+      border: "1px solid rgba(255,255,255,0.08)",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
     };
 
     if (isDragging) {
       return {
         ...baseStyles,
-        transform: "scale(1.02) rotate(1deg)",
-        boxShadow: "0 8px 24px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.2)",
-        opacity: 0.95,
+        transform: "scale(1.02)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+        background: "rgba(255,255,255,0.06)",
         zIndex: 50,
       };
     }
@@ -181,9 +181,9 @@ export function TaskCard({
     if (isSelected) {
       return {
         ...baseStyles,
-        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.04) 100%)",
-        borderColor: "rgba(255,107,53,0.3)",
-        boxShadow: "0 0 12px rgba(255,107,53,0.1), 0 2px 8px rgba(0,0,0,0.2)",
+        background: "rgba(255,107,53,0.08)",
+        borderColor: "rgba(255,107,53,0.25)",
+        boxShadow: "0 0 0 1px rgba(255,107,53,0.15), 0 2px 8px rgba(0,0,0,0.15)",
       };
     }
 
@@ -263,21 +263,21 @@ export function TaskCard({
         {/* Title */}
         <div
           data-testid="task-title"
-          className="text-xs font-medium truncate text-white/90 tracking-tight"
+          className="text-[13px] font-medium truncate text-white/90 tracking-tight leading-snug"
         >
           {task.title}
         </div>
 
         {/* Description - 2 line clamp */}
         {task.description && (
-          <div className="text-[11px] mt-1 line-clamp-2 text-white/50 leading-relaxed">
+          <div className="text-xs mt-1 line-clamp-2 text-white/50 leading-relaxed">
             {task.description}
           </div>
         )}
 
         {/* Badge row */}
         <div className="flex flex-wrap items-center gap-1 mt-1.5">
-          <Badge variant="secondary" className="text-[9px] px-1.5 py-px bg-white/5 text-white/60 border-white/10">
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 bg-white/5 text-white/60 border-white/10">
             {task.category}
           </Badge>
           {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}

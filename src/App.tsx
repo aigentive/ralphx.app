@@ -495,14 +495,16 @@ function AppContent() {
       className="h-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
     >
-      {/* Header - Premium Design: Fixed 48px, shadow, Tauri drag region */}
+      {/* Header - macOS Tahoe Liquid Glass */}
       <TooltipProvider delayDuration={300}>
         <header
           className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-24 border-b z-50 select-none"
           style={{
-            backgroundColor: "var(--bg-surface)",
-            borderColor: "var(--border-subtle)",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
+            background: "rgba(18,18,18,0.85)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            borderColor: "rgba(255,255,255,0.06)",
+            boxShadow: "0 1px 0 rgba(255,255,255,0.03)",
           }}
           data-tauri-drag-region
           data-testid="app-header"
@@ -512,7 +514,7 @@ function AppContent() {
             {/* App Branding */}
             <h1
               className="text-xl font-bold tracking-tight select-none"
-              style={{ color: "var(--accent-primary)" }}
+              style={{ color: "#ff6b35" }}
             >
               RalphX
             </h1>
@@ -535,12 +537,15 @@ function AppContent() {
                         onClick={() => setCurrentView(view)}
                         className={cn(
                           "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                          // Compact on small screens, expanded on xl+
-                          isActive ? "px-3" : "px-2 xl:px-3",
-                          isActive
-                            ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
-                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          isActive ? "px-3" : "px-2 xl:px-3"
                         )}
+                        style={{
+                          background: isActive
+                            ? "rgba(255,107,53,0.1)"
+                            : "transparent",
+                          border: isActive ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
+                          color: isActive ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                        }}
                         data-testid={`nav-${view}`}
                         aria-current={isActive ? "page" : undefined}
                       >
@@ -570,7 +575,7 @@ function AppContent() {
             className="flex items-center gap-2"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            {/* Project selector - always aligned end */}
+            {/* Project selector */}
             <div className="mr-2">
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
             </div>
@@ -583,11 +588,15 @@ function AppContent() {
                   onClick={toggleChatPanel}
                   className={cn(
                     "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                    chatIsOpen ? "px-3" : "px-2 xl:px-3",
-                    chatIsOpen
-                      ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    chatIsOpen ? "px-3" : "px-2 xl:px-3"
                   )}
+                  style={{
+                    background: chatIsOpen
+                      ? "rgba(255,107,53,0.1)"
+                      : "transparent",
+                    border: chatIsOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
+                    color: chatIsOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                  }}
                   data-testid="chat-toggle"
                 >
                   <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
@@ -603,8 +612,8 @@ function AppContent() {
                       chatIsOpen ? "inline" : "hidden xl:inline"
                     )}
                     style={{
-                      backgroundColor: "var(--bg-elevated)",
-                      color: "var(--text-muted)",
+                      backgroundColor: "rgba(255,255,255,0.05)",
+                      color: "rgba(255,255,255,0.4)",
                     }}
                   >
                     ⌘K
@@ -625,11 +634,15 @@ function AppContent() {
                   onClick={toggleReviewsPanel}
                   className={cn(
                     "relative gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                    reviewsPanelOpen ? "px-3" : "px-2 xl:px-3",
-                    reviewsPanelOpen
-                      ? "bg-[var(--bg-elevated)] text-[var(--accent-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    reviewsPanelOpen ? "px-3" : "px-2 xl:px-3"
                   )}
+                  style={{
+                    background: reviewsPanelOpen
+                      ? "rgba(255,107,53,0.1)"
+                      : "transparent",
+                    border: reviewsPanelOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
+                    color: reviewsPanelOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                  }}
                   data-testid="reviews-toggle"
                 >
                   <CheckCircle className="w-[18px] h-[18px] flex-shrink-0" />

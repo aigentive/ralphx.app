@@ -1,11 +1,10 @@
 /**
  * TaskBoard - Main kanban board component with drag-drop support
  *
- * Design spec: specs/design/pages/kanban-board.md
- * - Radial gradient background for warmth
+ * Design: macOS Tahoe Liquid Glass
+ * - Clean, flat background
  * - Horizontal scroll with CSS scroll-snap
- * - Fade edges at overflow boundaries
- * - 24px (--space-6) gutters between columns
+ * - Minimal visual noise
  */
 
 import { useState, useCallback, useEffect, useMemo } from "react";
@@ -352,13 +351,16 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
           )}
         </div>
 
-        {/* TaskBoard container with radial gradient and scroll-snap */}
+        {/* TaskBoard container - macOS Tahoe with warm ambient glow */}
         <div
           data-testid="task-board"
-          className="task-board relative flex items-stretch gap-3 py-6 overflow-x-auto flex-1"
+          className="task-board relative flex items-stretch gap-3 py-5 overflow-x-auto flex-1"
           style={{
-            background:
-              "radial-gradient(ellipse at top, rgba(255,107,53,0.03) 0%, var(--bg-base) 50%)",
+            background: `
+              radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
+              radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+              var(--bg-base)
+            `,
             scrollSnapType: "x proximity",
             scrollPaddingLeft: "16px",
           }}

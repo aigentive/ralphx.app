@@ -1,15 +1,11 @@
 /**
- * IdeationView - Premium Studio-Grade Ideation Interface
+ * IdeationView - Premium Ideation Interface
  *
- * Design: "Refined Studio" - Luxurious dark interface with sophisticated
- * depth layers, editorial typography, and warm orange jewel accents.
- *
- * Features:
- * - Persistent session browser sidebar with elegant cards
- * - Two-panel resizable layout with smooth drag handle
- * - Premium message bubbles with glass effects
- * - Sophisticated proposal cards with hover states
- * - Atmospheric backgrounds with subtle grain
+ * Design: macOS Tahoe Liquid Glass
+ * - Flat translucent surfaces with backdrop-blur
+ * - Subtle borders and single shadows
+ * - Warm ambient orange glow in backgrounds
+ * - Clean, minimal aesthetic
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
@@ -260,11 +256,24 @@ const markdownComponents = {
 function TypingIndicator() {
   return (
     <div data-testid="typing-indicator" className="flex items-start gap-2 mb-3">
-      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+      <div
+        className="w-6 h-6 rounded-full flex items-center justify-center"
+        style={{
+          background: "rgba(255,107,53,0.1)",
+          border: "1px solid rgba(255,107,53,0.2)",
+        }}
+      >
         <Bot className="w-3 h-3 text-[#ff6b35]" />
       </div>
       <div
-        className="px-3 py-2 rounded-xl rounded-tl-sm bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/[0.06] backdrop-blur-sm"
+        className="px-3 py-2"
+        style={{
+          borderRadius: "16px 16px 16px 4px",
+          background: "rgba(255,255,255,0.04)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
       >
         <div className="flex items-center gap-1">
           {[0, 1, 2].map((i) => (
@@ -344,7 +353,13 @@ function MessageItem({
     >
       {/* Agent avatar */}
       {!isUser && isFirstInGroup && (
-        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20 mr-2 flex-shrink-0">
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center mr-2 flex-shrink-0"
+          style={{
+            background: "rgba(255,107,53,0.1)",
+            border: "1px solid rgba(255,107,53,0.2)",
+          }}
+        >
           <Bot className="w-3 h-3 text-[#ff6b35]" />
         </div>
       )}
@@ -360,14 +375,25 @@ function MessageItem({
           </div>
         )}
 
-        {/* Message bubble */}
+        {/* Message bubble - Tahoe flat style */}
         <div
-          className={cn(
-            "px-3 py-2 text-[13px] leading-relaxed",
-            isUser
-              ? "rounded-xl rounded-tr-sm bg-gradient-to-br from-[#ff6b35] to-[#e55a2b] text-white shadow-md shadow-[#ff6b35]/15"
-              : "rounded-xl rounded-tl-sm bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/[0.06] backdrop-blur-sm"
-          )}
+          className="px-3 py-2 text-[13px] leading-relaxed"
+          style={isUser
+            ? {
+                borderRadius: "16px 16px 4px 16px",
+                background: "#ff6b35",
+                color: "white",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+              }
+            : {
+                borderRadius: "16px 16px 16px 4px",
+                background: "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+              }
+          }
         >
           {isUser ? (
             <p className="whitespace-pre-wrap break-words">{content}</p>
@@ -395,21 +421,30 @@ function MessageItem({
 function ConversationEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6">
-      <div className="relative">
-        {/* Glow effect */}
-        <div className="absolute inset-0 bg-[#ff6b35]/10 rounded-xl blur-2xl" />
-
-        <div className="relative px-8 py-6 rounded-xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] backdrop-blur-sm text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
-            <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
-          </div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
-            Start the conversation
-          </h3>
-          <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
-            Describe your ideas and I'll help create task proposals
-          </p>
+      <div
+        className="px-8 py-6 rounded-xl text-center"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <div
+          className="w-12 h-12 mx-auto mb-4 rounded-lg flex items-center justify-center"
+          style={{
+            background: "rgba(255,107,53,0.1)",
+            border: "1px solid rgba(255,107,53,0.2)",
+          }}
+        >
+          <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
         </div>
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
+          Start the conversation
+        </h3>
+        <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
+          Describe your ideas and I'll help create task proposals
+        </p>
       </div>
     </div>
   );
@@ -418,20 +453,30 @@ function ConversationEmptyState() {
 function ProposalsEmptyState() {
   return (
     <div data-testid="proposals-empty-state" className="flex flex-col items-center justify-center h-full p-6">
-      <div className="relative">
-        <div className="absolute inset-0 bg-amber-500/5 rounded-xl blur-2xl" />
-
-        <div className="relative px-8 py-6 rounded-xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] backdrop-blur-sm text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-gradient-to-br from-amber-500/15 to-amber-500/5 flex items-center justify-center border border-amber-500/20">
-            <Lightbulb className="w-6 h-6 text-amber-400" />
-          </div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
-            No proposals yet
-          </h3>
-          <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
-            Chat with the orchestrator to generate task proposals
-          </p>
+      <div
+        className="px-8 py-6 rounded-xl text-center"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <div
+          className="w-12 h-12 mx-auto mb-4 rounded-lg flex items-center justify-center"
+          style={{
+            background: "rgba(251,191,36,0.1)",
+            border: "1px solid rgba(251,191,36,0.2)",
+          }}
+        >
+          <Lightbulb className="w-6 h-6 text-amber-400" />
         </div>
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
+          No proposals yet
+        </h3>
+        <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
+          Chat with the orchestrator to generate task proposals
+        </p>
       </div>
     </div>
   );
@@ -473,14 +518,27 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
   return (
     <div
       data-testid="session-browser"
-      className="flex flex-col h-full bg-[#0a0a0a] border-r border-white/[0.06]"
-      style={{ width: "260px", minWidth: "260px", flexShrink: 0 }}
+      className="flex flex-col h-full border-r border-white/[0.06]"
+      style={{
+        width: "260px",
+        minWidth: "260px",
+        flexShrink: 0,
+        background: "rgba(10,10,10,0.95)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+      }}
     >
       {/* Header */}
       <div className="px-3 py-3 border-b border-white/[0.06]">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{
+                background: "rgba(255,107,53,0.1)",
+                border: "1px solid rgba(255,107,53,0.2)",
+              }}
+            >
               <Layers className="w-3.5 h-3.5 text-[#ff6b35]" />
             </div>
             <div>
@@ -490,11 +548,12 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
           </div>
         </div>
 
-        {/* New Session Button */}
+        {/* New Session Button - flat orange */}
         <Button
           onClick={onNewSession}
           size="sm"
-          className="w-full h-8 text-xs bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] text-white font-medium shadow-md shadow-[#ff6b35]/15 border-0 transition-all duration-200"
+          className="w-full h-8 text-xs bg-[#ff6b35] hover:bg-[#ff7a4d] text-white font-medium border-0 transition-all duration-180"
+          style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
         >
           <Plus className="w-3.5 h-3.5 mr-1.5" />
           New Session
@@ -520,21 +579,27 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
                 data-testid={`session-item-${session.id}`}
                 onClick={() => onSelectSession(session.id)}
                 className={cn(
-                  "session-card-enter w-full p-2.5 rounded-lg text-left transition-all duration-200",
+                  "session-card-enter w-full p-2.5 rounded-lg text-left transition-all duration-180",
                   "border border-transparent",
-                  "hover:bg-white/[0.03] hover:border-white/[0.06]",
-                  isSelected && "bg-gradient-to-br from-[#ff6b35]/10 to-[#ff6b35]/5 border-[#ff6b35]/30 active-session-glow"
+                  "hover:bg-white/[0.03] hover:border-white/[0.06]"
                 )}
-                style={{ animationDelay: `${index * 50}ms` }}
+                style={{
+                  animationDelay: `${index * 50}ms`,
+                  ...(isSelected && {
+                    background: "rgba(255,107,53,0.08)",
+                    borderColor: "rgba(255,107,53,0.25)",
+                  }),
+                }}
               >
                 <div className="flex items-start gap-2.5">
                   {/* Session indicator */}
-                  <div className={cn(
-                    "w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors",
-                    isSelected
-                      ? "bg-gradient-to-br from-[#ff6b35]/30 to-[#ff6b35]/10 border border-[#ff6b35]/30"
-                      : "bg-white/[0.03] border border-white/[0.06]"
-                  )}>
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
+                    style={{
+                      background: isSelected ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.03)",
+                      border: isSelected ? "1px solid rgba(255,107,53,0.25)" : "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
                     <MessageSquare className={cn("w-3.5 h-3.5", isSelected ? "text-[#ff6b35]" : "text-[var(--text-muted)]")} />
                   </div>
 
@@ -577,19 +642,26 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
 
 function StartSessionPanel({ onNewSession }: { onNewSession: () => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#ff6b35]/[0.02] via-transparent to-purple-500/[0.02]" />
-      <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-[#ff6b35]/5 rounded-full blur-[80px]" />
-      <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-amber-500/5 rounded-full blur-[80px]" />
-
+    <div
+      className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden"
+      style={{
+        background: `
+          radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
+          radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+          var(--bg-base)
+        `,
+      }}
+    >
       <div className="relative z-10 text-center max-w-md">
-        {/* Icon */}
-        <div className="relative mx-auto mb-6">
-          <div className="absolute inset-0 bg-[#ff6b35]/15 rounded-2xl blur-xl" />
-          <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20 mx-auto">
-            <Lightbulb className="w-8 h-8 text-[#ff6b35]" />
-          </div>
+        {/* Icon - flat glass style */}
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6"
+          style={{
+            background: "rgba(255,107,53,0.1)",
+            border: "1px solid rgba(255,107,53,0.2)",
+          }}
+        >
+          <Lightbulb className="w-8 h-8 text-[#ff6b35]" />
         </div>
 
         {/* Content */}
@@ -600,10 +672,11 @@ function StartSessionPanel({ onNewSession }: { onNewSession: () => void }) {
           Select a session from the sidebar or start a new brainstorming session.
         </p>
 
-        {/* Action button */}
+        {/* Action button - flat orange */}
         <Button
           onClick={onNewSession}
-          className="h-9 px-5 text-sm bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] text-white font-medium shadow-lg shadow-[#ff6b35]/20 border-0 transition-all duration-200"
+          className="h-9 px-5 text-sm bg-[#ff6b35] hover:bg-[#ff7a4d] text-white font-medium border-0 transition-all duration-180"
+          style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
         >
           <Zap className="w-4 h-4 mr-1.5" />
           Start New Session
@@ -1114,10 +1187,22 @@ export function IdeationView({
             {/* Header */}
             <header
               data-testid="ideation-header"
-              className="flex items-center justify-between h-11 px-4 border-b border-white/[0.06] bg-black/40 backdrop-blur-xl"
+              className="flex items-center justify-between h-11 px-4 border-b"
+              style={{
+                borderColor: "rgba(255,255,255,0.06)",
+                background: "rgba(18,18,18,0.85)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+              }}
             >
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+                <div
+                  className="w-6 h-6 rounded-md flex items-center justify-center"
+                  style={{
+                    background: "rgba(255,107,53,0.1)",
+                    border: "1px solid rgba(255,107,53,0.2)",
+                  }}
+                >
                   <Sparkles className="w-3 h-3 text-[#ff6b35]" />
                 </div>
                 <div>
@@ -1318,8 +1403,9 @@ export function IdeationView({
                         disabled={!canApply}
                         className={cn(
                           "gap-2",
-                          canApply && "bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] shadow-lg shadow-[#ff6b35]/20"
+                          canApply && "bg-[#ff6b35] hover:bg-[#ff7a4d]"
                         )}
+                        style={canApply ? { boxShadow: "0 1px 3px rgba(0,0,0,0.15)" } : undefined}
                       >
                         Apply to
                         <ChevronDown className="w-4 h-4" />
