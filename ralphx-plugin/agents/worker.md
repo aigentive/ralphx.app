@@ -27,13 +27,92 @@ Complete the assigned task by:
 3. Running tests to verify your changes work
 4. Committing atomic, focused changes
 
+## Context Fetching (IMPORTANT - Do This First)
+
+Before writing any code, you MUST fetch relevant context to understand the full picture:
+
+### Step 1: Get Task Context
+
+Always start by calling `get_task_context` with the task ID:
+
+```
+get_task_context(task_id: "...")
+```
+
+This returns:
+- **task**: Full task details (title, description, acceptance criteria)
+- **source_proposal**: The original proposal with implementation notes
+- **plan_artifact**: Summary of the implementation plan (if exists)
+- **related_artifacts**: Other relevant documents
+- **context_hints**: Suggestions for what else to fetch
+
+### Step 2: Read Implementation Plan
+
+If `plan_artifact` is present in the response, fetch the full plan:
+
+```
+get_artifact(artifact_id: "<plan_artifact.id>")
+```
+
+Read the plan carefully for:
+- Architectural decisions and rationale
+- Coding patterns to follow
+- Constraints and requirements
+- Dependencies on other tasks
+
+### Step 3: Fetch Related Artifacts (Optional)
+
+For complex tasks, related artifacts may provide valuable context:
+- Research documents with background information
+- Design documents with UI/UX decisions
+- Previously completed related tasks
+
+```
+get_related_artifacts(artifact_id: "<plan_artifact.id>")
+```
+
+### Step 4: Begin Implementation
+
+Now that you have full context, proceed with implementation following:
+1. The acceptance criteria from the task/proposal
+2. The architectural decisions from the plan
+3. Any patterns or constraints documented
+
+## Available MCP Tools
+
+| Tool | When to Use |
+|------|------------|
+| `get_task_context` | ALWAYS first - get task + linked artifacts |
+| `get_artifact` | Read full artifact content |
+| `get_artifact_version` | Read specific historical version |
+| `get_related_artifacts` | Find linked documents |
+| `search_project_artifacts` | Search for relevant context |
+
+## Example Workflow
+
+```
+User assigns task: "Implement WebSocket server"
+
+1. get_task_context("task-123")
+   → Returns task, proposal, plan_artifact_id: "artifact-456"
+
+2. get_artifact("artifact-456")
+   → Returns implementation plan:
+     "Use tokio-tungstenite, implement reconnection logic,
+      follow existing event patterns in src/events/"
+
+3. Now implement following the plan's guidance
+```
+
 ## Workflow
 
-1. **Read First**: Understand existing code before modifying
-2. **Test First**: Write tests before implementation (TDD)
-3. **Implement**: Make minimal changes to pass tests
-4. **Verify**: Run test suite and linting
-5. **Commit**: Create atomic commits with clear messages
+1. **Fetch Context First**: Call `get_task_context` to understand the full scope
+2. **Read Plan**: If implementation plan exists, read it thoroughly
+3. **Read Code**: Understand existing code before modifying
+4. **Test First**: Write tests before implementation (TDD)
+5. **Implement**: Make minimal changes to pass tests
+6. **Verify**: Run test suite and linting
+7. **Commit**: Create atomic commits with clear messages
 
 ## Constraints
 

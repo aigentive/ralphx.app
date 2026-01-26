@@ -1,15 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-27 08:15:00
+**Last Updated:** 2026-01-27 08:30:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 6 / 13
-**Current Task:** Update worker agent with context fetching instructions
+**Tasks Completed:** 7 / 13
+**Current Task:** Create task context types and API
 
 ---
 
 
 ## Session Log
+
+### 2026-01-27 08:30:00 - Update worker agent with context fetching instructions (Task 7)
+
+**What was done:**
+- Updated `ralphx-plugin/agents/worker.md` with comprehensive context fetching instructions
+- Added "Context Fetching (IMPORTANT - Do This First)" section with 4-step workflow:
+  - Step 1: Get Task Context (always call get_task_context first)
+  - Step 2: Read Implementation Plan (if plan_artifact exists)
+  - Step 3: Fetch Related Artifacts (optional for complex tasks)
+  - Step 4: Begin Implementation
+- Added "Available MCP Tools" table documenting all 5 worker context tools
+- Added example workflow showing WebSocket server implementation scenario
+- Updated main "Workflow" section to include context fetching as first step
+- Verified agent frontmatter is correct (name: ralphx-worker, tools properly listed)
+- Tested that Claude CLI can load the plugin directory
+
+**Files modified:**
+- `ralphx-plugin/agents/worker.md` - Added ~85 lines of context fetching documentation
+
+**Commands run:**
+```bash
+claude --plugin-dir ./ralphx-plugin --help  # Verified plugin loading works
+cat ralphx-plugin/agents/worker.md | head -20  # Verified frontmatter
+```
 
 ### 2026-01-27 08:15:00 - Verify TOOL_ALLOWLIST for worker agent (Task 6)
 
