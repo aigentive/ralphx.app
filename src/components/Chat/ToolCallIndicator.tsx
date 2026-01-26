@@ -136,13 +136,19 @@ function truncate(text: string, maxLength: number): string {
 }
 
 /**
- * Format JSON for display
+ * Format value for display
+ * - Strings are displayed directly (preserving newlines)
+ * - Objects/arrays are pretty-printed as JSON
  */
-function formatJSON(value: unknown): string {
+function formatValue(value: unknown): { text: string; isPlainText: boolean } {
+  if (typeof value === "string") {
+    // String values are displayed directly - newlines will be preserved
+    return { text: value, isPlainText: true };
+  }
   try {
-    return JSON.stringify(value, null, 2);
+    return { text: JSON.stringify(value, null, 2), isPlainText: false };
   } catch {
-    return String(value);
+    return { text: String(value), isPlainText: true };
   }
 }
 
@@ -512,7 +518,7 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
                 whiteSpace: "pre-wrap",
               }}
             >
-              {formatJSON(toolCall.arguments)}
+              {formatValue(toolCall.arguments).text}
             </pre>
           </div>
 
@@ -535,7 +541,7 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
                   whiteSpace: "pre-wrap",
                 }}
               >
-                {formatJSON(toolCall.result)}
+                {formatValue(toolCall.result).text}
               </pre>
             </div>
           )}
