@@ -37,7 +37,7 @@ src/
 │   │   ├── ConversationSelector  # History dropdown with new conversation
 │   │   ├── QueuedMessage   # Individual queued message (edit/delete)
 │   │   ├── QueuedMessageList     # Queue UI shown when agent running
-│   │   └── ToolCallIndicator     # Collapsible tool call display
+│   │   └── ToolCallIndicator     # Collapsible tool call display (with artifact context preview - Phase 17)
 │   ├── PermissionDialog.tsx      # UI-based permission approval for agent tools
 │   ├── execution/          # Execution control (ExecutionControlBar)
 │   ├── Ideation/           # Ideation view (ProposalCard, ProposalList, etc.)
@@ -49,8 +49,10 @@ src/
 │   ├── reviews/            # Review system (ReviewsPanel, ReviewCard)
 │   ├── settings/           # Settings components
 │   │   └── IdeationSettingsPanel # Ideation plan mode configuration (Phase 16)
-│   ├── tasks/              # Task components (TaskBoard/, TaskDetailView)
-│   │   └── TaskBoard/      # Kanban board with dnd-kit integration
+│   ├── Task/               # Task components (TaskBoard/, TaskDetailView, TaskContextPanel - Phase 17)
+│   │   ├── TaskBoard/      # Kanban board with dnd-kit integration
+│   │   ├── TaskContextPanel # View task context (proposal, plan, related artifacts)
+│   │   └── TaskDetailPanel # Task detail view with "View Context" button
 │   └── ui/                 # Shared UI components (StatusBadge)
 │
 ├── hooks/                  # Custom React hooks
@@ -60,7 +62,7 @@ src/
 │   └── use*Mutation.ts     # Mutation hooks for data updates
 │
 ├── lib/                    # Utility libraries
-│   ├── api/                # Additional Tauri API wrappers (workflows, artifacts, etc.)
+│   ├── api/                # Additional Tauri API wrappers (workflows, artifacts, task-context - Phase 17, etc.)
 │   ├── tauri.ts            # Main Tauri invoke wrapper with Zod validation
 │   ├── queryClient.ts      # TanStack Query client configuration
 │   ├── validation.ts       # Shared validation utilities
@@ -90,6 +92,7 @@ src/
 ├── types/                  # TypeScript types and Zod schemas
 │   ├── index.ts            # Re-exports all types
 │   ├── task.ts             # Task type and schemas (includes sourceProposalId, planArtifactId - Phase 16)
+│   ├── task-context.ts     # TaskContext, TaskProposalSummary, ArtifactSummary types (Phase 17)
 │   ├── project.ts          # Project type and schemas
 │   ├── status.ts           # InternalStatus enum (14 statuses)
 │   ├── chat-conversation.ts # ChatConversation and AgentRun types (Phase 15A/15B, includes task_execution context type)
@@ -418,6 +421,140 @@ MCP server (ralphx-mcp-server) provides scoped tools
     ↓
 Tool calls displayed in chat UI
 ```
+
+### 10. Worker Artifact Context (Phase 17)
+
+Workers can dynamically fetch and use artifacts linked to the task being executed. This provides workers with implementation plans, research documents, and related artifacts before beginning work.
+
+**Task Context API:**
+
+```typescript
+// Task context types
+export interface TaskContext {
+  task: Task;
+  sourceProposal: TaskProposalSummary | null;
+  planArtifact: ArtifactSummary | null;
+  relatedArtifacts: ArtifactSummary[];
+  contextHints: string[];
+}
+
+export interface TaskProposalSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  acceptanceCriteria: string[];
+  implementationNotes: string | null;
+  planVersionAtCreation: number | null;
+}
+
+export interface ArtifactSummary {
+  id: string;
+  title: string;
+  artifactType: string;
+  currentVersion: number;
+  contentPreview: string; // 500-char preview
+}
+
+// API functions (src/api/task-context.ts)
+export async function getTaskContext(taskId: string): Promise<TaskContext>;
+export async function getArtifactFull(artifactId: string): Promise<Artifact>;
+export async function getArtifactVersion(artifactId: string, version: number): Promise<Artifact>;
+export async function getRelatedArtifacts(artifactId: string): Promise<ArtifactRelation[]>;
+export async function searchArtifacts(projectId: string, query: string, artifactTypes?: string[]): Promise<ArtifactSummary[]>;
+```
+
+**TaskContextPanel Component:**
+
+```typescript
+// src/components/Task/TaskContextPanel.tsx
+export function TaskContextPanel({ taskId }: TaskContextPanelProps) {
+  // - Fetches task context via getTaskContext(taskId)
+  // - Shows linked proposal summary (title, description, acceptance criteria) if present
+  // - Shows plan artifact preview with "View Full" button
+  // - Lists related artifacts with type icons
+  // - Displays context hints for the worker
+  // - Loading and empty states
+  // - Uses shadcn Card and Collapsible components
+}
+```
+
+**TaskDetailPanel Integration:**
+
+The "View Context" button appears in TaskDetailPanel when the task has `sourceProposalId` or `planArtifactId`:
+
+```typescript
+// Conditional rendering in TaskDetailPanel
+{(task.sourceProposalId || task.planArtifactId) && (
+  <Button onClick={() => setShowContext(true)}>
+    View Context
+  </Button>
+)}
+
+{showContext && (
+  <TaskContextPanel taskId={task.id} />
+)}
+```
+
+**Artifact Indicators in Task Views:**
+
+Task cards and detail views show visual indicators for linked artifacts:
+
+```typescript
+// TaskCard.tsx and TaskDetailView.tsx
+{task.planArtifactId && (
+  <Tooltip content="Has implementation plan">
+    <FileText className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+  </Tooltip>
+)}
+
+{task.sourceProposalId && (
+  <Tooltip content="Created from proposal">
+    <Lightbulb className="w-3.5 h-3.5 text-[var(--accent-secondary)]" />
+  </Tooltip>
+)}
+```
+
+**Tool Call Display in Execution Chat:**
+
+The `ToolCallIndicator` component now detects and previews artifact context tools:
+
+```typescript
+// Enhanced tool call summaries
+- get_task_context: Shows task title and number of linked artifacts
+- get_artifact: Shows artifact title and content preview
+- get_artifact_version: Shows artifact title and version number
+- get_related_artifacts: Shows count of related artifacts
+- search_project_artifacts: Shows query and result count
+```
+
+**MCP Tools for Workers:**
+
+The worker agent has access to 5 artifact context MCP tools (scoped via `RALPHX_AGENT_TYPE=worker`):
+
+| Tool | Purpose |
+|------|---------|
+| `get_task_context` | Get task with proposal summary, plan preview, related artifacts |
+| `get_artifact` | Fetch full artifact content by ID |
+| `get_artifact_version` | Fetch specific version of an artifact |
+| `get_related_artifacts` | Get artifacts related to a given artifact |
+| `search_project_artifacts` | Search for artifacts by query and type |
+
+**Worker Instructions:**
+
+Workers are instructed to fetch context before implementing (see `ralphx-plugin/agents/worker.md`):
+
+1. **Step 1: Get Task Context** - Always call `get_task_context` first
+2. **Step 2: Read Implementation Plan** - If `planArtifact` present, fetch with `get_artifact`
+3. **Step 3: Fetch Related Artifacts** - Optional for complex tasks
+4. **Step 4: Begin Implementation** - Start work with full context
+
+**Key Features:**
+
+- **Manual context fetch** - Workers decide what context is relevant
+- **500-char preview** - Prevents context bloat; full content requires explicit fetch
+- **Historical version access** - Workers can fetch `plan_version_at_creation` from proposal
+- **Search capability** - Workers can search for related artifacts by query
+- **Visual indicators** - Users see which tasks have rich context before opening
 
 ---
 

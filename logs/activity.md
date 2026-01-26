@@ -1,15 +1,86 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:28:58
+**Last Updated:** 2026-01-26 08:35:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 12 / 13
-**Current Task:** Update CLAUDE.md files for Phase 17
+**Tasks Completed:** 13 / 13
+**Current Task:** All complete
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 08:35:00 - Update CLAUDE.md files for Phase 17 (Task 13) - PHASE 17 COMPLETE
+
+**What was done:**
+- Updated `src/CLAUDE.md`:
+  - Added TaskContextPanel component to Task/ directory
+  - Added task-context.ts types to types/ directory
+  - Added task context API to lib/api/ directory
+  - Added note about artifact context preview in ToolCallIndicator
+  - Added comprehensive "Worker Artifact Context (Phase 17)" section:
+    - TaskContext, TaskProposalSummary, ArtifactSummary type documentation
+    - Task context API functions (getTaskContext, getArtifactFull, etc.)
+    - TaskContextPanel component with features
+    - TaskDetailPanel integration with "View Context" button
+    - Artifact indicators (FileText for plan, Lightbulb for proposal)
+    - Tool call display enhancements for artifact context tools
+    - MCP tools for workers (5 tools scoped to worker agent)
+    - Worker instructions (4-step context fetch workflow)
+    - Key features (manual fetch, 500-char preview, historical version, search, visual indicators)
+- Updated `src-tauri/CLAUDE.md`:
+  - Added TaskContext entities to domain/entities/
+  - Added TaskContextService to application/
+  - Added task_context_commands.rs to commands/
+  - Added TaskContext, TaskProposalSummary, ArtifactSummary to Key Entities table
+  - Added "Task context commands" to Command categories
+  - Updated Tool Scoping table to show worker's 5 MCP tools
+  - Added comprehensive "Worker Artifact Context System (Phase 17)" section:
+    - TaskContext entities with Rust struct definitions
+    - TaskContextService with aggregation logic
+    - HTTP endpoints table for MCP proxy
+    - MCP tools table (5 tools with parameters and returns)
+    - Tauri commands with Rust signatures
+    - Worker agent integration instructions
+    - Key architecture decisions table
+- Updated `logs/activity.md`:
+  - Updated Current Status header (13/13 tasks complete)
+  - Added this completion entry with full Phase 17 summary
+
+**Phase 17 Summary:**
+
+Phase 17 (Worker Artifact Context) is now complete. All 13 tasks have been implemented:
+
+1. ✅ TaskContext and summary types created
+2. ✅ TaskContextService implemented with context aggregation
+3. ✅ HTTP endpoints added for MCP proxy (port 3847)
+4. ✅ Tauri commands registered for task context
+5. ✅ 5 MCP tools implemented in ralphx-mcp-server
+6. ✅ Worker allowlist updated with context tools
+7. ✅ Worker agent prompt updated with context fetch instructions
+8. ✅ Frontend types and API created (task-context.ts, task-context API)
+9. ✅ TaskContextPanel component created
+10. ✅ "View Context" button added to TaskDetailPanel
+11. ✅ Artifact previews shown in execution chat tool calls
+12. ✅ Linked artifact indicators added to task cards and detail view
+13. ✅ Documentation updated (CLAUDE.md files)
+
+**Key Features Delivered:**
+- Workers can fetch task context (proposal summary, plan preview, related artifacts) via MCP
+- 500-char content preview prevents context bloat; full fetch on demand
+- Historical version access via `plan_version_at_creation`
+- Search capability for finding related artifacts
+- Visual indicators (FileText/Lightbulb icons) on tasks with rich context
+- UI "View Context" panel for viewing linked proposal and plan
+- Tool call display in execution chat shows artifact fetches
+
+**Architecture:**
+- Manual context fetch (workers decide relevance)
+- 5 scoped MCP tools for worker agent type
+- HTTP proxy on port 3847 for MCP → Tauri backend
+- TaskContextService aggregates from multiple repositories
+- Frontend components follow Phase 14 premium design patterns
 
 ### 2026-01-26 08:28:58 - Show linked artifacts in task view (Task 12)
 
