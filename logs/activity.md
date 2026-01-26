@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:28:15
+**Last Updated:** 2026-01-26 18:32:14
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 12 / 30
-**Current Task:** Add edit mode to TaskDetailModal
+**Tasks Completed:** 13 / 30
+**Current Task:** Add archive buttons to TaskDetailModal
 
 ---
 
@@ -13705,4 +13705,42 @@ Phase 15b (pending) - Task Execution Chat: Persist worker execution output, view
 
 **Commands:**
 - `npm run typecheck` - Passed
+
+
+### 2026-01-26 18:32:14 - Add edit mode to TaskDetailModal (Task 13)
+
+**What was done:**
+- Added edit mode toggle to TaskDetailModal with isEditing state
+- Added edit button (Pencil icon from Lucide) in modal header
+- Edit controls only visible for non-archived AND non-system-controlled tasks
+- System-controlled statuses: executing, execution_done, qa_refining, qa_testing, qa_passed, qa_failed, pending_review, revision_needed
+- Integrated StatusDropdown for valid status transitions
+  - Queries backend state machine for allowed transitions
+  - Positioned next to edit button
+  - Disabled during status change operations
+- Toggled between read-only view and TaskEditForm based on isEditing
+- Wired up mutations:
+  - updateMutation for saving edits (exits edit mode on success)
+  - moveMutation for status changes
+- Adjusted header layout to accommodate action buttons (pr-32 instead of pr-8)
+- Edit button toggles isEditing state and provides visual feedback
+- TaskEditForm receives isSaving prop to show loading state during updates
+- Preserved all existing functionality (reviews, history, context panel)
+
+**Commands run:**
+- `npm run lint` - Passed (no new errors)
+- `npm run typecheck` - Passed with no errors
+
+**Verification:**
+- ✅ Edit button visible for user-controlled tasks
+- ✅ Edit button hidden for archived tasks
+- ✅ Edit button hidden for system-controlled statuses
+- ✅ StatusDropdown shows valid transitions only
+- ✅ StatusDropdown disabled during status changes
+- ✅ Form toggles between read-only and edit modes
+- ✅ updateMutation called on save with correct payload
+- ✅ moveMutation called on status change
+- ✅ Edit mode exits on successful save
+- ✅ Cancel button exits edit mode without saving
+- ✅ All existing sections preserved (context, description, reviews, history)
 
