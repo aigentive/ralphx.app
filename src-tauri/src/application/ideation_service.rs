@@ -8,8 +8,8 @@
 // - Retrieving session data with proposals and messages
 
 use crate::domain::entities::{
-    ChatMessage, ChatMessageId, IdeationSession, IdeationSessionId, IdeationSessionStatus,
-    MessageRole, Priority, ProjectId, ProposalStatus, TaskCategory, TaskProposal, TaskProposalId,
+    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
+    ProposalStatus, TaskCategory, TaskProposal, TaskProposalId,
 };
 use crate::domain::repositories::{
     ChatMessageRepository, IdeationSessionRepository, ProposalDependencyRepository,
@@ -451,7 +451,7 @@ pub struct SessionStats {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use crate::domain::entities::{PriorityAssessment, TaskId};
+    use crate::domain::entities::{ChatMessageId, MessageRole, PriorityAssessment, TaskId};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
