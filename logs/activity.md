@@ -1,15 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:26:22
+**Last Updated:** 2026-01-26 19:28:56
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 29 / 30
-**Current Task:** Listen for archive/restore events for real-time updates
+**Tasks Completed:** 30 / 30
+**Current Task:** Update CLAUDE.md files for Phase 18
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:28:56 - Listen for archive/restore events for real-time updates (Task 28)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskBoard.tsx`:
+  - Added import for `listen` from `@tauri-apps/api/event`
+  - Added useEffect hook to listen for archive/restore/delete events
+  - Implemented three event listeners:
+    - `task:archived` - Triggered when a task is archived
+    - `task:restored` - Triggered when a task is restored from archive
+    - `task:deleted` - Triggered when a task is permanently deleted
+  - Each listener checks if the event is for the current project
+  - On event, invalidates two query keys:
+    - `infiniteTaskKeys.all` - Invalidates all infinite task queries (all columns)
+    - `['archived-count', projectId]` - Invalidates the archived count query
+  - Cleanup function unlistens from all events on component unmount
+  - This ensures real-time updates when tasks are archived/restored from:
+    - TaskDetailModal (archive/restore/delete buttons)
+    - Context menu actions
+    - Agent operations
+    - Any other context that emits these events
+
+**Commands:**
+- `npm run lint` - Passed (pre-existing warnings only)
+- `npm run typecheck` - Passed
+
+**Progress:**
+- Task 28/30 complete
+- Real-time event listening implemented for archive system
+- Board automatically refetches tasks and archived count when events fire
+- Ensures UI consistency across all contexts (modal, menu, agents)
+- Completes the archive system with full event-driven updates
 
 ### 2026-01-26 19:26:22 - Add isDraggable logic to TaskCard (Task 27)
 

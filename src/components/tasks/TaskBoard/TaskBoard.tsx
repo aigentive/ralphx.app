@@ -20,6 +20,7 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { listen } from "@tauri-apps/api/event";
 import { useTaskBoard } from "./hooks";
 import { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 import { Column } from "./Column";
@@ -152,6 +153,68 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [searchOpen, setBoardSearchQuery, openModal, projectId]);
+
+  // Listen for archive/restore/delete events for real-time updates
+  useEffect(() => {
+    const unlisteners: Promise<() => void>[] = [];
+
+    // Listen for task:archived events
+    const archivedListener = listen<{ task_id: string; project_id: string }>(
+      'task:archived',
+      (event) => {
+        // Only invalidate if the event is for the current project
+        if (event.payload.project_id === projectId) {
+          // Invalidate infinite task queries for all columns
+          queryClient.invalidateQueries({
+            queryKey: infiniteTaskKeys.all,
+          });
+          // Invalidate archived count
+          queryClient.invalidateQueries({
+            queryKey: ['archived-count', projectId],
+          });
+        }
+      }
+    );
+    unlisteners.push(archivedListener);
+
+    // Listen for task:restored events
+    const restoredListener = listen<{ task_id: string; project_id: string }>(
+      'task:restored',
+      (event) => {
+        if (event.payload.project_id === projectId) {
+          queryClient.invalidateQueries({
+            queryKey: infiniteTaskKeys.all,
+          });
+          queryClient.invalidateQueries({
+            queryKey: ['archived-count', projectId],
+          });
+        }
+      }
+    );
+    unlisteners.push(restoredListener);
+
+    // Listen for task:deleted events (permanent delete)
+    const deletedListener = listen<{ task_id: string; project_id: string }>(
+      'task:deleted',
+      (event) => {
+        if (event.payload.project_id === projectId) {
+          queryClient.invalidateQueries({
+            queryKey: infiniteTaskKeys.all,
+          });
+          queryClient.invalidateQueries({
+            queryKey: ['archived-count', projectId],
+          });
+        }
+      }
+    );
+    unlisteners.push(deletedListener);
+
+    return () => {
+      unlisteners.forEach((unlisten) => {
+        unlisten.then((fn) => fn());
+      });
+    };
+  }, [projectId, queryClient]);
 
   // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(

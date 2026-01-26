@@ -686,7 +686,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(board): listen for archive/restore events for real-time updates"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "documentation",
