@@ -84,7 +84,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
     >
       {/* Glass effect header */}
       <div
-        className="flex items-center gap-2 px-2 py-1.5 rounded-md mb-2 bg-bg-surface/85 backdrop-blur-md"
+        className="flex items-center gap-2 px-2.5 py-1.5 rounded-md mb-2 bg-bg-surface/85 backdrop-blur-md"
       >
         {/* Orange accent dot */}
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-accent-primary" />
