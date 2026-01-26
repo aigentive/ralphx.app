@@ -1,15 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 17:30:00
+**Last Updated:** 2026-01-26 19:13:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 18 / 24
-**Current Task:** Add plan template selection infrastructure
+**Tasks Completed:** 19 / 24
+**Current Task:** Add 'View as of proposal creation' historical view
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:13:00 - Add plan template selection infrastructure (Phase 16, Task 19)
+
+**What was done:**
+- Created `PlanTemplateSelector` component:
+  - Fetches plan templates from active methodology via `getActiveMethodology` API
+  - Shows dropdown only when templates array is non-empty
+  - Converts backend snake_case format to frontend camelCase
+  - Provides template selection with name and description
+  - Hidden when no methodology active or no templates available
+- Updated `PlanEditor` component:
+  - Added `isNewPlan` prop to control template selector visibility
+  - Added `handleTemplateSelect` callback to populate content with template
+  - Integrated `PlanTemplateSelector` in edit mode for new plans only
+  - Template selector appears above markdown editor
+- Created comprehensive test suite:
+  - Tests for no methodology active (renders nothing)
+  - Tests for empty templates array (renders nothing)
+  - Tests for rendering with available templates
+  - Tests for disabled state
+  - Tests for API error handling
+- Passed all quality checks:
+  - `npm run lint` - No errors for new files
+  - `npm run typecheck` - All types valid
+  - `npm run test` - 6/6 tests passing
+
+**Implementation notes:**
+- Currently will always be hidden since no methodologies define plan templates yet
+- Infrastructure ready for future methodologies to define custom templates
+- Backend `plan_templates` field exists but BMAD and GSD have empty arrays
+- Uses `MethodologyPlanTemplate` structure (not `MethodologyTemplate` for general docs)
+
+**Commands run:**
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test -- src/components/Ideation/PlanTemplateSelector.test.tsx`
 
 ### 2026-01-26 17:30:00 - Handle proactive sync notification in UI (Phase 16, Task 18)
 
