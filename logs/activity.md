@@ -1,15 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:55:00
+**Last Updated:** 2026-01-26 19:01:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 19 / 30
-**Current Task:** Add archived task appearance to TaskCard
+**Tasks Completed:** 20 / 30
+**Current Task:** Create InlineTaskAdd component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:01:00 - Add archived task appearance to TaskCard (Task 21)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx` to show visual indication of archived tasks
+  - Added `Archive` icon import from Lucide
+  - Modified `getPriorityColor` function to accept `isArchived` parameter
+    - Returns `#a3a3a3` (neutral-400) for archived tasks instead of priority color
+  - Added `isArchived` constant based on `task.archivedAt !== null`
+  - Added `opacity-60` class to card when archived
+  - Added archive badge overlay for archived tasks:
+    - Position: absolute top-2 right-2
+    - Style: bg-neutral-200 rounded-full p-1
+    - Icon: Archive w-3 h-3 text-neutral-600
+    - Test ID: archive-badge
+  - Hide drag handle for archived tasks (archive badge takes its place)
+  - Archived tasks still open TaskDetailModal on click (no behavior change)
+
+**Commands:**
+- `npm run lint` - Passed (only pre-existing warnings)
+- `npm run typecheck` - Passed with no errors
+
+**Files modified:**
+- `src/components/tasks/TaskBoard/TaskCard.tsx` - Added archived appearance
+- `specs/phases/prd_phase_18_task_crud_archive_search.md` - Marked task 21 as passes: true
+- `logs/activity.md` - Updated progress
 
 ### 2026-01-26 18:55:00 - Add Show archived toggle to TaskBoard header (Task 20)
 
