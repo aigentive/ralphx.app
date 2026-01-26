@@ -1,15 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:22:51
+**Last Updated:** 2026-01-26 08:30:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 10 / 13
-**Current Task:** Show artifact previews in execution chat tool calls
+**Tasks Completed:** 11 / 13
+**Current Task:** Show linked artifacts in task view
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 08:30:00 - Show artifact previews in execution chat tool calls (Task 11)
+
+**What was done:**
+- Updated `src/components/Chat/ToolCallIndicator.tsx`:
+  - Added imports for `FileText`, `Package`, `Lightbulb` icons from Lucide
+  - Added import for `TaskContext` and `ArtifactSummary` types
+  - Enhanced `createSummary()` function:
+    - Added cases for `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`
+    - Extracts meaningful info from tool call results (task title, artifact title, query)
+  - Added `isArtifactContextTool()` helper to detect context-related tools
+  - Added `renderArtifactPreview()` function:
+    - For `get_task_context`: Shows task info, source proposal, plan artifact preview, related artifacts, context hints
+    - For `get_artifact`: Shows artifact title, type, and content preview (300 chars)
+    - For `get_related_artifacts`: Lists found artifacts with titles and types
+    - For `search_project_artifacts`: Lists search results with content previews
+    - All previews use design system tokens for consistent styling
+    - Truncates long content to prevent UI overflow
+  - Updated expanded details section:
+    - Shows artifact preview first (if applicable)
+    - Moved raw JSON data into collapsible `<details>` element labeled "Raw Data"
+    - Provides clean, human-readable context view by default
+    - Raw data still accessible but not cluttering the UI
+- Used Lucide icons to indicate different artifact types (proposal, plan, related artifacts)
+- Applied warm orange accent color (`var(--accent-primary)`) to icons
+- Limited list displays to first 3-5 items with "+N more" indicators
+
+**Commands run:**
+- `npm run lint` - Passed (existing warnings only, no new issues)
+- `npm run typecheck` - Passed
+
+**Result:**
+- Workers' artifact context fetches now show rich, readable previews in execution chat
+- Users can see at a glance what context the worker accessed
+- Raw JSON still available via "Raw Data" toggle for debugging
 
 ### 2026-01-26 08:22:51 - Add 'View Context' button to TaskDetailPanel (Task 10)
 

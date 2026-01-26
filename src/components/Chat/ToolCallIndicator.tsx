@@ -5,11 +5,13 @@
  * - Collapsible view (summary by default, expand for details)
  * - Shows tool name, icon, and brief summary
  * - Expands to show full arguments and result
+ * - Special handling for artifact context tools (get_task_context, get_artifact)
  * - Styled with design system tokens for consistency
  */
 
-import { useState } from "react";
-import { Wrench, ChevronDown, ChevronRight } from "lucide-react";
+import React, { useState } from "react";
+import { Wrench, ChevronDown, ChevronRight, FileText, Package, Lightbulb } from "lucide-react";
+import type { TaskContext, ArtifactSummary } from "../../types/task-context";
 
 // ============================================================================
 // Types
@@ -46,7 +48,7 @@ interface ToolCallIndicatorProps {
  * Create a brief summary of the tool call for collapsed view
  */
 function createSummary(toolCall: ToolCall): string {
-  const { name, input } = toolCall;
+  const { name, input, result } = toolCall;
 
   // Special formatting for common tools
   switch (name) {
@@ -68,6 +70,30 @@ function createSummary(toolCall: ToolCall): string {
       return `Updated task: ${(input as { task_id?: string })?.task_id || "unknown"}`;
     case "add_task_note":
       return `Added note to task: ${(input as { task_id?: string })?.task_id || "unknown"}`;
+    case "get_task_context": {
+      // Extract task context from result
+      const taskContext = result as TaskContext | undefined;
+      if (taskContext?.task) {
+        return `Fetched context for: ${(taskContext.task as { title?: string })?.title || "task"}`;
+      }
+      return `Fetched task context`;
+    }
+    case "get_artifact": {
+      // Extract artifact from result
+      const artifact = result as { title?: string } | undefined;
+      if (artifact?.title) {
+        return `Fetched artifact: ${artifact.title}`;
+      }
+      return `Fetched artifact`;
+    }
+    case "get_artifact_version":
+      return `Fetched artifact version: ${(input as { version?: number })?.version || "unknown"}`;
+    case "get_related_artifacts":
+      return `Fetched related artifacts`;
+    case "search_project_artifacts": {
+      const query = (input as { query?: string })?.query;
+      return query ? `Searched artifacts: "${query}"` : `Searched artifacts`;
+    }
     default:
       return `Called ${name}`;
   }
@@ -89,6 +115,223 @@ function formatJSON(value: unknown): string {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
+  }
+}
+
+/**
+ * Check if this tool call is for artifact context
+ */
+function isArtifactContextTool(name: string): boolean {
+  return ["get_task_context", "get_artifact", "get_artifact_version", "get_related_artifacts", "search_project_artifacts"].includes(name);
+}
+
+/**
+ * Render artifact context preview for supported tools
+ */
+function renderArtifactPreview(toolCall: ToolCall): React.ReactNode {
+  const { name, result } = toolCall;
+
+  if (!result) return null;
+
+  switch (name) {
+    case "get_task_context": {
+      const taskContext = result as TaskContext;
+      return (
+        <div className="space-y-3">
+          {/* Task info */}
+          {taskContext.task && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+                Task
+              </div>
+              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}>
+                {(taskContext.task as { title?: string })?.title || "Untitled"}
+              </div>
+            </div>
+          )}
+
+          {/* Source proposal */}
+          {taskContext.sourceProposal && (
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Lightbulb size={12} style={{ color: "var(--accent-primary)" }} />
+                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                  Source Proposal
+                </span>
+              </div>
+              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)" }}>
+                <div style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                  {taskContext.sourceProposal.title}
+                </div>
+                {taskContext.sourceProposal.description && (
+                  <div className="mt-1" style={{ color: "var(--text-secondary)" }}>
+                    {truncate(taskContext.sourceProposal.description, 100)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Plan artifact */}
+          {taskContext.planArtifact && (
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <FileText size={12} style={{ color: "var(--accent-primary)" }} />
+                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                  Implementation Plan
+                </span>
+              </div>
+              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)" }}>
+                <div style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                  {taskContext.planArtifact.title}
+                </div>
+                <div className="mt-1" style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)", fontSize: "0.7rem" }}>
+                  {truncate(taskContext.planArtifact.contentPreview, 150)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Related artifacts */}
+          {taskContext.relatedArtifacts && taskContext.relatedArtifacts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <Package size={12} style={{ color: "var(--text-muted)" }} />
+                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                  Related Artifacts ({taskContext.relatedArtifacts.length})
+                </span>
+              </div>
+              <div className="space-y-1">
+                {taskContext.relatedArtifacts.slice(0, 3).map((artifact: ArtifactSummary, idx: number) => (
+                  <div key={idx} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)" }}>
+                    {artifact.title}
+                  </div>
+                ))}
+                {taskContext.relatedArtifacts.length > 3 && (
+                  <div className="text-xs px-2 py-1" style={{ color: "var(--text-muted)" }}>
+                    +{taskContext.relatedArtifacts.length - 3} more
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Context hints */}
+          {taskContext.contextHints && taskContext.contextHints.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+                Hints
+              </div>
+              <ul className="text-xs space-y-0.5 pl-4" style={{ color: "var(--text-secondary)" }}>
+                {taskContext.contextHints.map((hint: string, idx: number) => (
+                  <li key={idx} className="list-disc">{hint}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    case "get_artifact": {
+      const artifact = result as { id?: string; title?: string; artifactType?: string; content?: string };
+      return (
+        <div className="space-y-2">
+          {artifact.title && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+                Title
+              </div>
+              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)", fontWeight: 500 }}>
+                {artifact.title}
+              </div>
+            </div>
+          )}
+          {artifact.artifactType && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+                Type
+              </div>
+              <div className="text-xs px-2 py-1 rounded inline-block" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)" }}>
+                {artifact.artifactType}
+              </div>
+            </div>
+          )}
+          {artifact.content && (
+            <div>
+              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+                Content Preview
+              </div>
+              <pre className="text-xs px-2 py-1.5 rounded overflow-x-auto" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                {truncate(artifact.content, 300)}
+              </pre>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    case "get_related_artifacts": {
+      const artifacts = result as ArtifactSummary[] | undefined;
+      if (!artifacts || artifacts.length === 0) {
+        return <div className="text-xs" style={{ color: "var(--text-muted)" }}>No related artifacts found</div>;
+      }
+      return (
+        <div>
+          <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
+            Found {artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''}
+          </div>
+          <div className="space-y-1">
+            {artifacts.slice(0, 5).map((artifact: ArtifactSummary, idx: number) => (
+              <div key={idx} className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)" }}>
+                <div style={{ color: "var(--text-primary)", fontWeight: 500 }}>{artifact.title}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>{artifact.artifactType}</div>
+              </div>
+            ))}
+            {artifacts.length > 5 && (
+              <div className="text-xs px-2 py-1" style={{ color: "var(--text-muted)" }}>
+                +{artifacts.length - 5} more
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    case "search_project_artifacts": {
+      const artifacts = result as ArtifactSummary[] | undefined;
+      if (!artifacts || artifacts.length === 0) {
+        return <div className="text-xs" style={{ color: "var(--text-muted)" }}>No artifacts found</div>;
+      }
+      return (
+        <div>
+          <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
+            Found {artifacts.length} result{artifacts.length !== 1 ? 's' : ''}
+          </div>
+          <div className="space-y-1">
+            {artifacts.slice(0, 5).map((artifact: ArtifactSummary, idx: number) => (
+              <div key={idx} className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)" }}>
+                <div style={{ color: "var(--text-primary)", fontWeight: 500 }}>{artifact.title}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>{artifact.artifactType}</div>
+                {artifact.contentPreview && (
+                  <div className="mt-1" style={{ color: "var(--text-secondary)", fontSize: "0.65rem" }}>
+                    {truncate(artifact.contentPreview, 80)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {artifacts.length > 5 && (
+              <div className="text-xs px-2 py-1" style={{ color: "var(--text-muted)" }}>
+                +{artifacts.length - 5} more
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    default:
+      return null;
   }
 }
 
@@ -169,70 +412,89 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
       {isExpanded && (
         <div
           data-testid="tool-call-details"
-          className="px-3 pb-3 space-y-2 border-t"
+          className="px-3 pb-3 space-y-3 border-t pt-3"
           style={{ borderColor: "var(--border-subtle)" }}
         >
-          {/* Tool name */}
-          <div>
-            <div
-              className="text-xs font-medium mb-1"
+          {/* Artifact preview for context tools */}
+          {isArtifactContextTool(toolCall.name) && toolCall.result && !hasError ? (
+            <div data-testid="artifact-preview">
+              {renderArtifactPreview(toolCall)}
+            </div>
+          ) : null}
+
+          {/* Collapsible raw data */}
+          <details className="group">
+            <summary
+              className="text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity list-none flex items-center gap-1"
               style={{ color: "var(--text-muted)" }}
             >
-              Tool
-            </div>
-            <code
-              className="text-xs px-2 py-1 rounded block"
-              style={{
-                backgroundColor: "var(--bg-base)",
-                color: "var(--text-primary)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              {toolCall.name}
-            </code>
-          </div>
-
-          {/* Arguments */}
-          <div>
-            <div
-              className="text-xs font-medium mb-1"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Arguments
-            </div>
-            <pre
-              className="text-xs px-2 py-1 rounded overflow-x-auto"
-              style={{
-                backgroundColor: "var(--bg-base)",
-                color: "var(--text-primary)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              {formatJSON(toolCall.input)}
-            </pre>
-          </div>
-
-          {/* Result (if present) */}
-          {toolCall.result !== undefined && !hasError && (
-            <div>
-              <div
-                className="text-xs font-medium mb-1"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Result
+              <ChevronRight size={12} className="group-open:rotate-90 transition-transform" />
+              Raw Data
+            </summary>
+            <div className="mt-2 space-y-2 pl-3">
+              {/* Tool name */}
+              <div>
+                <div
+                  className="text-xs font-medium mb-1"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Tool
+                </div>
+                <code
+                  className="text-xs px-2 py-1 rounded block"
+                  style={{
+                    backgroundColor: "var(--bg-base)",
+                    color: "var(--text-primary)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {toolCall.name}
+                </code>
               </div>
-              <pre
-                className="text-xs px-2 py-1 rounded overflow-x-auto"
-                style={{
-                  backgroundColor: "var(--bg-base)",
-                  color: "var(--text-primary)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {formatJSON(toolCall.result)}
-              </pre>
+
+              {/* Arguments */}
+              <div>
+                <div
+                  className="text-xs font-medium mb-1"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Arguments
+                </div>
+                <pre
+                  className="text-xs px-2 py-1 rounded overflow-x-auto"
+                  style={{
+                    backgroundColor: "var(--bg-base)",
+                    color: "var(--text-primary)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {formatJSON(toolCall.input)}
+                </pre>
+              </div>
+
+              {/* Result (if present) */}
+              {toolCall.result !== undefined && !hasError && (
+                <div>
+                  <div
+                    className="text-xs font-medium mb-1"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Result
+                  </div>
+                  <pre
+                    className="text-xs px-2 py-1 rounded overflow-x-auto"
+                    style={{
+                      backgroundColor: "var(--bg-base)",
+                      color: "var(--text-primary)",
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    {formatJSON(toolCall.result)}
+                  </pre>
+                </div>
+              )}
             </div>
-          )}
+          </details>
 
           {/* Error (if present) */}
           {hasError && (
