@@ -10,27 +10,29 @@ use crate::application::PermissionState;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
-    AgentProfileRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
-    ChatMessageRepository, IdeationSessionRepository, MethodologyRepository, ProcessRepository,
-    ProjectRepository, ProposalDependencyRepository, ReviewRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskQARepository, TaskRepository, WorkflowRepository,
+    AgentProfileRepository, AgentRunRepository, ArtifactBucketRepository, ArtifactFlowRepository,
+    ArtifactRepository, ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MethodologyRepository, ProcessRepository, ProjectRepository, ProposalDependencyRepository,
+    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
+    TaskRepository, WorkflowRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryAgentProfileRepository, MemoryArtifactBucketRepository, MemoryArtifactFlowRepository,
-    MemoryArtifactRepository, MemoryChatMessageRepository, MemoryIdeationSessionRepository,
-    MemoryMethodologyRepository, MemoryProcessRepository, MemoryProjectRepository,
-    MemoryProposalDependencyRepository, MemoryReviewRepository, MemoryTaskDependencyRepository,
-    MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
-    MemoryWorkflowRepository,
+    MemoryAgentProfileRepository, MemoryAgentRunRepository, MemoryArtifactBucketRepository,
+    MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatConversationRepository,
+    MemoryChatMessageRepository, MemoryIdeationSessionRepository, MemoryMethodologyRepository,
+    MemoryProcessRepository, MemoryProjectRepository, MemoryProposalDependencyRepository,
+    MemoryReviewRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
+    MemoryTaskQARepository, MemoryTaskRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
-    SqliteArtifactBucketRepository, SqliteArtifactFlowRepository, SqliteArtifactRepository,
-    SqliteChatMessageRepository, SqliteIdeationSessionRepository, SqliteMethodologyRepository,
-    SqliteProcessRepository, SqliteProjectRepository, SqliteProposalDependencyRepository,
-    SqliteReviewRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteWorkflowRepository,
+    SqliteAgentRunRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
+    SqliteArtifactRepository, SqliteChatConversationRepository, SqliteChatMessageRepository,
+    SqliteIdeationSessionRepository, SqliteMethodologyRepository, SqliteProcessRepository,
+    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteReviewRepository,
+    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
+    SqliteTaskRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -59,6 +61,10 @@ pub struct AppState {
     pub proposal_dependency_repo: Arc<dyn ProposalDependencyRepository>,
     /// Chat message repository
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
+    /// Chat conversation repository (for context-aware chat)
+    pub chat_conversation_repo: Arc<dyn ChatConversationRepository>,
+    /// Agent run repository (for tracking Claude agent executions)
+    pub agent_run_repo: Arc<dyn AgentRunRepository>,
     /// Task dependency repository
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     // Extensibility repositories
@@ -76,8 +82,8 @@ pub struct AppState {
     pub methodology_repo: Arc<dyn MethodologyRepository>,
     /// Permission state for UI-based permission approval
     pub permission_state: Arc<PermissionState>,
-    /// Tauri app handle for emitting events to frontend
-    pub app_handle: AppHandle,
+    /// Tauri app handle for emitting events to frontend (None in tests)
+    pub app_handle: Option<AppHandle>,
 }
 
 impl AppState {
@@ -115,6 +121,12 @@ impl AppState {
             chat_message_repo: Arc::new(SqliteChatMessageRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            chat_conversation_repo: Arc::new(SqliteChatConversationRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -136,7 +148,7 @@ impl AppState {
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
             permission_state: Arc::new(PermissionState::new()),
-            app_handle,
+            app_handle: Some(app_handle),
         })
     }
 
@@ -172,6 +184,12 @@ impl AppState {
             chat_message_repo: Arc::new(SqliteChatMessageRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            chat_conversation_repo: Arc::new(SqliteChatConversationRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -193,12 +211,13 @@ impl AppState {
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
             permission_state: Arc::new(PermissionState::new()),
-            app_handle,
+            app_handle: Some(app_handle),
         })
     }
 
     /// Create AppState for testing with in-memory repositories
-    pub fn new_test(app_handle: AppHandle) -> Self {
+    /// No AppHandle is provided - event emission is disabled in tests
+    pub fn new_test() -> Self {
         Self {
             task_repo: Arc::new(MemoryTaskRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
@@ -211,6 +230,8 @@ impl AppState {
             task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
+            chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
             // Extensibility repositories
             workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
@@ -220,15 +241,15 @@ impl AppState {
             process_repo: Arc::new(MemoryProcessRepository::new()),
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             permission_state: Arc::new(PermissionState::new()),
-            app_handle,
+            app_handle: None,
         }
     }
 
     /// Create AppState with custom repositories (for dependency injection)
+    /// No AppHandle is provided - event emission is disabled
     pub fn with_repos(
         task_repo: Arc<dyn TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
-        app_handle: AppHandle,
     ) -> Self {
         Self {
             task_repo,
@@ -242,6 +263,8 @@ impl AppState {
             task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
+            chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
             // Extensibility repositories
             workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
@@ -251,7 +274,7 @@ impl AppState {
             process_repo: Arc::new(MemoryProcessRepository::new()),
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             permission_state: Arc::new(PermissionState::new()),
-            app_handle,
+            app_handle: None,
         }
     }
 

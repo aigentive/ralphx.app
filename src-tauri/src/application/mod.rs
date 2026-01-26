@@ -26,7 +26,8 @@ pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use orchestrator_service::{
-    ClaudeOrchestratorService, MockOrchestratorService, OrchestratorError, OrchestratorEvent,
-    OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
+    ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
+    ClaudeOrchestratorService, MockOrchestratorService, MockResponse, OrchestratorError,
+    OrchestratorEvent, OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
 };
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
