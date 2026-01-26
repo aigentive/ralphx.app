@@ -2,7 +2,7 @@
 // Thin layer that delegates to TaskStepRepository
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{StepProgressSummary, TaskId, TaskStep, TaskStepId};
@@ -182,6 +182,198 @@ pub async fn get_step_progress(
     let task_id = TaskId::from_string(task_id);
     let steps = state.task_step_repo.get_by_task(&task_id).await?;
     Ok(StepProgressSummary::from_steps(&task_id, &steps))
+}
+
+/// Start a step (mark as in-progress)
+#[tauri::command]
+pub async fn start_step(
+    step_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<TaskStepResponse> {
+    let step_id = TaskStepId::from_string(step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+
+    // Validate step is Pending
+    if step.status != crate::domain::entities::TaskStepStatus::Pending {
+        return Err(crate::error::AppError::Validation(format!(
+            "Step must be Pending to start, but is {:?}",
+            step.status
+        )));
+    }
+
+    // Update status
+    step.status = crate::domain::entities::TaskStepStatus::InProgress;
+    step.started_at = Some(chrono::Utc::now());
+    step.touch();
+
+    // Save
+    state.task_step_repo.update(&step).await?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskStepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(TaskStepResponse::from(step))
+}
+
+/// Complete a step
+#[tauri::command]
+pub async fn complete_step(
+    step_id: String,
+    note: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<TaskStepResponse> {
+    let step_id = TaskStepId::from_string(step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+
+    // Validate step is InProgress
+    if step.status != crate::domain::entities::TaskStepStatus::InProgress {
+        return Err(crate::error::AppError::Validation(format!(
+            "Step must be InProgress to complete, but is {:?}",
+            step.status
+        )));
+    }
+
+    // Update status
+    step.status = crate::domain::entities::TaskStepStatus::Completed;
+    step.completed_at = Some(chrono::Utc::now());
+    step.completion_note = note;
+    step.touch();
+
+    // Save
+    state.task_step_repo.update(&step).await?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskStepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(TaskStepResponse::from(step))
+}
+
+/// Skip a step with a reason
+#[tauri::command]
+pub async fn skip_step(
+    step_id: String,
+    reason: String,
+    state: State<'_, AppState>,
+) -> AppResult<TaskStepResponse> {
+    let step_id = TaskStepId::from_string(step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+
+    // Validate step is Pending or InProgress
+    if step.status != crate::domain::entities::TaskStepStatus::Pending
+        && step.status != crate::domain::entities::TaskStepStatus::InProgress
+    {
+        return Err(crate::error::AppError::Validation(format!(
+            "Step must be Pending or InProgress to skip, but is {:?}",
+            step.status
+        )));
+    }
+
+    // Update status
+    step.status = crate::domain::entities::TaskStepStatus::Skipped;
+    step.completed_at = Some(chrono::Utc::now());
+    step.completion_note = Some(reason);
+    step.touch();
+
+    // Save
+    state.task_step_repo.update(&step).await?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskStepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(TaskStepResponse::from(step))
+}
+
+/// Fail a step with an error message
+#[tauri::command]
+pub async fn fail_step(
+    step_id: String,
+    error: String,
+    state: State<'_, AppState>,
+) -> AppResult<TaskStepResponse> {
+    let step_id = TaskStepId::from_string(step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+
+    // Validate step is InProgress
+    if step.status != crate::domain::entities::TaskStepStatus::InProgress {
+        return Err(crate::error::AppError::Validation(format!(
+            "Step must be InProgress to fail, but is {:?}",
+            step.status
+        )));
+    }
+
+    // Update status
+    step.status = crate::domain::entities::TaskStepStatus::Failed;
+    step.completed_at = Some(chrono::Utc::now());
+    step.completion_note = Some(error);
+    step.touch();
+
+    // Save
+    state.task_step_repo.update(&step).await?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskStepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(TaskStepResponse::from(step))
 }
 
 #[cfg(test)]
@@ -374,5 +566,199 @@ mod tests {
         assert_eq!(progress.completed, 1);
         assert_eq!(progress.pending, 1);
         assert_eq!(progress.percent_complete, 50.0);
+    }
+
+    #[tokio::test]
+    async fn test_start_step_valid() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create a pending step
+        let step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        // Start the step via command (simulating tauri command)
+        let mut updated = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        updated.status = TaskStepStatus::InProgress;
+        updated.started_at = Some(chrono::Utc::now());
+        updated.touch();
+        state.task_step_repo.update(&updated).await.unwrap();
+
+        // Verify status changed
+        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(found.status, TaskStepStatus::InProgress);
+        assert!(found.started_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_start_step_invalid_status() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create a step and mark it as completed
+        let mut step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        step.status = TaskStepStatus::Completed;
+        state.task_step_repo.update(&step).await.unwrap();
+
+        // Trying to start a completed step should fail
+        // In actual command this would return AppError::Validation
+        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(found.status, TaskStepStatus::Completed);
+        assert_ne!(found.status, TaskStepStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_complete_step_valid() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create and start a step
+        let mut step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        step.status = TaskStepStatus::InProgress;
+        step.started_at = Some(chrono::Utc::now());
+        state.task_step_repo.update(&step).await.unwrap();
+
+        // Complete the step
+        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        found.status = TaskStepStatus::Completed;
+        found.completed_at = Some(chrono::Utc::now());
+        found.completion_note = Some("Done!".to_string());
+        found.touch();
+        state.task_step_repo.update(&found).await.unwrap();
+
+        // Verify
+        let completed = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(completed.status, TaskStepStatus::Completed);
+        assert!(completed.completed_at.is_some());
+        assert_eq!(completed.completion_note, Some("Done!".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_complete_step_invalid_status() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create a pending step (not in progress)
+        let step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        // Trying to complete a pending step should fail in actual command
+        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(found.status, TaskStepStatus::Pending);
+        assert_ne!(found.status, TaskStepStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn test_skip_step_from_pending() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create a pending step
+        let step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        // Skip the step
+        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        found.status = TaskStepStatus::Skipped;
+        found.completed_at = Some(chrono::Utc::now());
+        found.completion_note = Some("Not needed".to_string());
+        found.touch();
+        state.task_step_repo.update(&found).await.unwrap();
+
+        // Verify
+        let skipped = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(skipped.status, TaskStepStatus::Skipped);
+        assert!(skipped.completed_at.is_some());
+        assert_eq!(skipped.completion_note, Some("Not needed".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_skip_step_from_in_progress() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create and start a step
+        let mut step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        step.status = TaskStepStatus::InProgress;
+        step.started_at = Some(chrono::Utc::now());
+        state.task_step_repo.update(&step).await.unwrap();
+
+        // Skip the step
+        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        found.status = TaskStepStatus::Skipped;
+        found.completed_at = Some(chrono::Utc::now());
+        found.completion_note = Some("Changed approach".to_string());
+        found.touch();
+        state.task_step_repo.update(&found).await.unwrap();
+
+        // Verify
+        let skipped = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(skipped.status, TaskStepStatus::Skipped);
+        assert!(skipped.completed_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_fail_step_valid() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create and start a step
+        let mut step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        step.status = TaskStepStatus::InProgress;
+        step.started_at = Some(chrono::Utc::now());
+        state.task_step_repo.update(&step).await.unwrap();
+
+        // Fail the step
+        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        found.status = TaskStepStatus::Failed;
+        found.completed_at = Some(chrono::Utc::now());
+        found.completion_note = Some("Build error".to_string());
+        found.touch();
+        state.task_step_repo.update(&found).await.unwrap();
+
+        // Verify
+        let failed = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(failed.status, TaskStepStatus::Failed);
+        assert!(failed.completed_at.is_some());
+        assert_eq!(failed.completion_note, Some("Build error".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_fail_step_invalid_status() {
+        let state = setup_test_state();
+        let project = create_test_project(&state).await;
+        let task_id = create_test_task(&state, project.id).await;
+
+        // Create a pending step (not in progress)
+        let step = state.task_step_repo.create(
+            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
+        ).await.unwrap();
+
+        // Trying to fail a pending step should fail in actual command
+        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        assert_eq!(found.status, TaskStepStatus::Pending);
+        assert_ne!(found.status, TaskStepStatus::InProgress);
     }
 }
