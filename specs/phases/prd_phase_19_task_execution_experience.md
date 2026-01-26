@@ -262,7 +262,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(http): add step endpoints for MCP"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

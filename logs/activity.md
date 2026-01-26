@@ -1,15 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:14:49
+**Last Updated:** 2026-01-26 21:45:12
 **Phase:** Task Execution Experience
-**Tasks Completed:** 9 / 42
-**Current Task:** Add step HTTP endpoints for MCP
+**Tasks Completed:** 10 / 42
+**Current Task:** Update worker agent tool scoping for steps
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:45:12 - Add step HTTP endpoints for MCP
+
+**What was done:**
+- Extended `src-tauri/src/http_server.rs`:
+  - Added imports for TaskStep, TaskStepId, TaskStepStatus, StepProgressSummary
+  - Created request/response types:
+    - `StartStepRequest`, `CompleteStepRequest`, `SkipStepRequest`, `FailStepRequest`, `AddStepRequest`
+    - `StepResponse` with id, task_id, title, description, status, sort_order, completion_note, timestamps
+    - Implemented `From<TaskStep>` for `StepResponse`
+  - Added 7 HTTP endpoint handlers:
+    - `GET /api/task_steps/:task_id` - Fetch all steps for a task
+    - `POST /api/start_step` - Mark step as in-progress (validates Pending status)
+    - `POST /api/complete_step` - Mark step as completed (validates InProgress status)
+    - `POST /api/skip_step` - Mark step as skipped (validates Pending or InProgress)
+    - `POST /api/fail_step` - Mark step as failed (validates InProgress status)
+    - `POST /api/add_step` - Add new step during execution (supports after_step_id positioning)
+    - `GET /api/step_progress/:task_id` - Get progress summary
+  - All handlers emit Tauri events (`step:updated`, `step:created`) to frontend
+  - All handlers validate status before transitions and return appropriate HTTP codes
+  - Registered routes in router configuration
+- Handler logic mirrors existing Tauri commands in task_step_commands.rs
+- MCP server can now call these endpoints for step tracking during task execution
+
+**Commands:**
+- `cargo test` - All 186 tests passed
+- `cargo clippy --lib` - No warnings in http_server module
 
 ### 2026-01-26 20:14:49 - Create step status transition commands
 

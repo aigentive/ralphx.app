@@ -419,53 +419,70 @@ function SessionBrowser({
     <div
       data-testid="session-browser"
       className="flex flex-col h-full border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-      style={{ width: "280px", minWidth: "280px" }}
+      style={{ width: "280px", minWidth: "280px", flexShrink: 0 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-[var(--text-secondary)]" />
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">Sessions</h2>
+          <Badge variant="secondary" className="text-xs">{sessions.length}</Badge>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onNewSession}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onNewSession} title="New Session">
           <Plus className="w-4 h-4" />
         </Button>
       </div>
 
       {/* Session List */}
       <div className="flex-1 overflow-y-auto">
-        {sortedSessions.map((session) => {
-          const isSelected = session.id === currentSessionId;
-          return (
-            <button
-              key={session.id}
-              data-testid={`session-item-${session.id}`}
-              onClick={() => onSelectSession(session.id)}
-              className={cn(
-                "w-full px-4 py-3 text-left transition-colors border-b border-[var(--border-subtle)]",
-                "hover:bg-[var(--bg-hover)]",
-                isSelected && "bg-[rgba(255,107,53,0.08)] border-l-2 border-l-[var(--accent-primary)]"
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-sm font-medium text-[var(--text-primary)] truncate">
-                  {session.title ?? "New Session"}
-                </span>
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
-                  style={{ backgroundColor: "var(--status-success)" }}
-                  title="Active"
-                />
+        {sortedSessions.length === 0 ? (
+          <div className="p-4 text-center text-sm text-[var(--text-muted)]">
+            No sessions yet
+          </div>
+        ) : (
+          sortedSessions.map((session) => {
+            const isSelected = session.id === currentSessionId;
+            return (
+              <div
+                key={session.id}
+                data-testid={`session-item-${session.id}`}
+                className={cn(
+                  "group px-4 py-3 border-b border-[var(--border-subtle)] transition-colors",
+                  "hover:bg-[var(--bg-hover)]",
+                  isSelected && "bg-[rgba(255,107,53,0.08)] border-l-2 border-l-[var(--accent-primary)]"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium text-[var(--text-primary)] truncate block">
+                      {session.title ?? "Untitled Session"}
+                    </span>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Clock className="w-3 h-3 text-[var(--text-muted)]" />
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {formatRelativeTime(session.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
+                    style={{ backgroundColor: "var(--status-success)" }}
+                    title="Active"
+                  />
+                </div>
+                {/* Continue button */}
+                <Button
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  className="w-full mt-2 h-7 text-xs"
+                  onClick={() => onSelectSession(session.id)}
+                >
+                  {isSelected ? "Current Session" : "Continue"}
+                </Button>
               </div>
-              <div className="flex items-center gap-1 mt-1">
-                <Clock className="w-3 h-3 text-[var(--text-muted)]" />
-                <span className="text-xs text-[var(--text-muted)]">
-                  {formatRelativeTime(session.updatedAt)}
-                </span>
-              </div>
-            </button>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -478,92 +495,23 @@ function SessionBrowser({
 function StartSessionPanel({ onNewSession }: { onNewSession: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-8">
-      <div className="p-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center shadow-[var(--shadow-sm)]">
+      <div className="p-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center shadow-[var(--shadow-sm)] max-w-md">
         <Lightbulb className="w-12 h-12 mx-auto mb-4 text-[var(--accent-primary)]" />
         <h2 className="text-xl font-semibold mb-2 text-[var(--text-primary)] tracking-tight">
-          Start a new ideation session
+          Ideation
         </h2>
         <p className="text-sm mb-6 text-[var(--text-secondary)]">
-          Brainstorm ideas and create task proposals
+          Select a session from the sidebar to continue, or start a new brainstorming session.
         </p>
         <Button onClick={onNewSession} className="px-6">
           <Plus className="w-4 h-4 mr-2" />
-          Start Session
+          New Session
         </Button>
       </div>
     </div>
   );
 }
 
-// ============================================================================
-// No Session State (with optional session browser)
-// ============================================================================
-
-interface NoSessionStateProps {
-  sessions: IdeationSession[];
-  onNewSession: () => void;
-  onSelectSession: (sessionId: string) => void;
-}
-
-function NoSessionState({ sessions, onNewSession, onSelectSession }: NoSessionStateProps) {
-  // Filter to active sessions only
-  const activeSessions = useMemo(
-    () => sessions.filter((s) => s.status === "active"),
-    [sessions]
-  );
-
-  // If no active sessions, show centered layout
-  if (activeSessions.length === 0) {
-    return (
-      <div
-        data-testid="ideation-view"
-        className="flex flex-col items-center justify-center h-full p-8"
-        style={{
-          backgroundColor: "var(--bg-base)",
-          background:
-            "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
-        }}
-        role="main"
-      >
-        <div className="p-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center shadow-[var(--shadow-sm)]">
-          <Lightbulb className="w-12 h-12 mx-auto mb-4 text-[var(--accent-primary)]" />
-          <h2 className="text-xl font-semibold mb-2 text-[var(--text-primary)] tracking-tight">
-            Start a new ideation session
-          </h2>
-          <p className="text-sm mb-6 text-[var(--text-secondary)]">
-            Brainstorm ideas and create task proposals
-          </p>
-          <Button onClick={onNewSession} className="px-6">
-            <Plus className="w-4 h-4 mr-2" />
-            Start Session
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // If there are active sessions, show split-screen with session browser
-  return (
-    <div
-      data-testid="ideation-view"
-      className="flex h-full"
-      style={{
-        backgroundColor: "var(--bg-base)",
-        background:
-          "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
-      }}
-      role="main"
-    >
-      <SessionBrowser
-        sessions={activeSessions}
-        currentSessionId={null}
-        onSelectSession={onSelectSession}
-        onNewSession={onNewSession}
-      />
-      <StartSessionPanel onNewSession={onNewSession} />
-    </div>
-  );
-}
 
 // ============================================================================
 // Proposal Card (Premium)
@@ -1168,16 +1116,11 @@ export function IdeationView({
     });
   }, [messages]);
 
-  // No session state - show session browser if there are active sessions
-  if (!session) {
-    return (
-      <NoSessionState
-        sessions={sessions}
-        onNewSession={onNewSession}
-        onSelectSession={onSelectSession}
-      />
-    );
-  }
+  // Filter to active sessions only for sidebar
+  const activeSessions = useMemo(
+    () => sessions.filter((s) => s.status === "active"),
+    [sessions]
+  );
 
   return (
     <>
@@ -1185,36 +1128,47 @@ export function IdeationView({
       <div
         ref={containerRef}
         data-testid="ideation-view"
-        className="flex flex-col h-full relative"
+        className="flex h-full relative"
         style={{
           background:
             "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
         }}
         role="main"
       >
-        {/* Header with glass effect */}
-      <header
-        data-testid="ideation-header"
-        className="flex items-center justify-between h-[52px] px-4 border-b border-[var(--border-subtle)]
-          backdrop-blur-md bg-[rgba(26,26,26,0.85)]"
-      >
-        <h1 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight truncate">
-          {session.title ?? "New Session"}
-        </h1>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={onNewSession} className="gap-2">
-            <Plus className="w-4 h-4" />
-            New Session
-          </Button>
-          <Button variant="ghost" onClick={handleArchive} className="gap-2">
-            <Archive className="w-4 h-4" />
-            Archive
-          </Button>
-        </div>
-      </header>
+        {/* Session Browser Sidebar - Always visible */}
+        <SessionBrowser
+          sessions={activeSessions}
+          currentSessionId={session?.id ?? null}
+          onSelectSession={onSelectSession}
+          onNewSession={onNewSession}
+        />
 
-      {/* Main content - split layout */}
-      <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
+        {/* Main Content Area */}
+        {!session ? (
+          /* No session selected - show start panel */
+          <StartSessionPanel onNewSession={onNewSession} />
+        ) : (
+          /* Active session - show conversation and proposals */
+          <div className="flex flex-col flex-1 overflow-hidden">
+            {/* Header with glass effect */}
+            <header
+              data-testid="ideation-header"
+              className="flex items-center justify-between h-[52px] px-4 border-b border-[var(--border-subtle)]
+                backdrop-blur-md bg-[rgba(26,26,26,0.85)]"
+            >
+              <h1 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight truncate">
+                {session.title ?? "New Session"}
+              </h1>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={handleArchive} className="gap-2">
+                  <Archive className="w-4 h-4" />
+                  Archive
+                </Button>
+              </div>
+            </header>
+
+            {/* Main content - split layout */}
+            <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
         {/* Conversation Panel (left) */}
         <div
           data-testid="conversation-panel"
@@ -1455,27 +1409,29 @@ export function IdeationView({
             </DropdownMenu>
           </div>
         </div>
-      </div>
+            </div>
+          </div>
+        )}
 
-      {/* Plan History Dialog */}
-      {planHistoryDialog && (
-        <PlanHistoryDialog
-          isOpen={planHistoryDialog.isOpen}
-          onClose={handleClosePlanHistoryDialog}
-          artifactId={planHistoryDialog.artifactId}
-          version={planHistoryDialog.version}
+        {/* Plan History Dialog */}
+        {planHistoryDialog && (
+          <PlanHistoryDialog
+            isOpen={planHistoryDialog.isOpen}
+            onClose={handleClosePlanHistoryDialog}
+            artifactId={planHistoryDialog.artifactId}
+            version={planHistoryDialog.version}
+          />
+        )}
+
+        {/* Hidden file input for plan import */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".md"
+          onChange={handleFileSelected}
+          className="hidden"
+          data-testid="plan-import-file-input"
         />
-      )}
-
-      {/* Hidden file input for plan import */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".md"
-        onChange={handleFileSelected}
-        className="hidden"
-        data-testid="plan-import-file-input"
-      />
       </div>
     </>
   );

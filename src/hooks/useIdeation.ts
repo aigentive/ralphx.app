@@ -69,15 +69,8 @@ export function useIdeationSession(sessionId: string) {
 export function useIdeationSessions(projectId: string) {
   return useQuery<IdeationSessionResponse[], Error>({
     queryKey: ideationKeys.sessionList(projectId),
-    queryFn: async () => {
-      console.log("[useIdeationSessions] queryFn called with projectId:", projectId);
-      const result = await ideationApi.sessions.list(projectId);
-      console.log("[useIdeationSessions] result:", result);
-      return result;
-    },
+    queryFn: () => ideationApi.sessions.list(projectId),
     enabled: Boolean(projectId),
-    staleTime: 0, // Always refetch
-    gcTime: 0, // Don't cache
   });
 }
 
