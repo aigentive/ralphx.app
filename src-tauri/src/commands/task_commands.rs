@@ -121,19 +121,78 @@ impl From<Task> for TaskResponse {
     }
 }
 
-/// List all tasks for a project
+/// Response for paginated task list
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskListResponse {
+    pub tasks: Vec<TaskResponse>,
+    pub total: u32,
+    pub has_more: bool,
+    pub offset: u32,
+}
+
+/// List tasks for a project with pagination support
+///
+/// # Arguments
+/// * `project_id` - The project ID
+/// * `status` - Optional status filter
+/// * `offset` - Pagination offset (default 0)
+/// * `limit` - Page size (default 20)
+/// * `include_archived` - Whether to include archived tasks (default false)
+///
+/// # Returns
+/// * `TaskListResponse` - Contains tasks, total count, has_more flag, and offset
 #[tauri::command]
 pub async fn list_tasks(
     project_id: String,
+    status: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    include_archived: Option<bool>,
     state: State<'_, AppState>,
-) -> Result<Vec<TaskResponse>, String> {
+) -> Result<TaskListResponse, String> {
     let project_id = ProjectId::from_string(project_id);
-    state
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(20);
+    let include_archived = include_archived.unwrap_or(false);
+
+    // Parse status if provided
+    let internal_status = if let Some(status_str) = status {
+        Some(
+            status_str
+                .parse::<InternalStatus>()
+                .map_err(|_| format!("Invalid status: {}", status_str))?,
+        )
+    } else {
+        None
+    };
+
+    // Get paginated tasks
+    let tasks = state
         .task_repo
-        .get_by_project(&project_id)
+        .list_paginated(&project_id, internal_status, offset, limit, include_archived)
         .await
-        .map(|tasks| tasks.into_iter().map(TaskResponse::from).collect())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Get total count
+    let total = state
+        .task_repo
+        .count_tasks(&project_id, include_archived)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Calculate has_more
+    let has_more = (offset + tasks.len() as u32) < total;
+
+    // Convert to response
+    let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
+
+    Ok(TaskListResponse {
+        tasks: task_responses,
+        total,
+        has_more,
+        offset,
+    })
 }
 
 /// Get a single task by ID
@@ -1203,5 +1262,242 @@ mod tests {
         // Verify it serializes correctly
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"archivedAt\":null"));
+    }
+
+    // ========================================
+    // Pagination Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_list_paginated_empty_results() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // No tasks exist
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 0, 20, false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 0);
+
+        // Count should also be 0
+        let count = state.task_repo.count_tasks(&project_id, false).await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_paginated_first_page() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create 5 tasks
+        for i in 1..=5 {
+            state
+                .task_repo
+                .create(Task::new(project_id.clone(), format!("Task {}", i)))
+                .await
+                .unwrap();
+        }
+
+        // Get first page (limit 3)
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 0, 3, false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 3);
+
+        // Total count should be 5
+        let count = state.task_repo.count_tasks(&project_id, false).await.unwrap();
+        assert_eq!(count, 5);
+    }
+
+    #[tokio::test]
+    async fn test_list_paginated_last_page() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create 5 tasks
+        for i in 1..=5 {
+            state
+                .task_repo
+                .create(Task::new(project_id.clone(), format!("Task {}", i)))
+                .await
+                .unwrap();
+        }
+
+        // Get last page (offset 3, limit 3 = should return 2 tasks)
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 3, 3, false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_paginated_offset_beyond_total() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create 3 tasks
+        for i in 1..=3 {
+            state
+                .task_repo
+                .create(Task::new(project_id.clone(), format!("Task {}", i)))
+                .await
+                .unwrap();
+        }
+
+        // Request offset 10 (beyond total of 3)
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 10, 20, false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_paginated_excludes_archived_by_default() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create 3 tasks
+        let task1 = state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Task 1".to_string()))
+            .await
+            .unwrap();
+        let task2 = state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Task 2".to_string()))
+            .await
+            .unwrap();
+        state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Task 3".to_string()))
+            .await
+            .unwrap();
+
+        // Archive task1 and task2
+        state.task_repo.archive(&task1.id).await.unwrap();
+        state.task_repo.archive(&task2.id).await.unwrap();
+
+        // List without archived (include_archived = false)
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 0, 20, false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Task 3");
+
+        // Count without archived
+        let count = state.task_repo.count_tasks(&project_id, false).await.unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_paginated_includes_archived_when_requested() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create 3 tasks
+        let task1 = state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Task 1".to_string()))
+            .await
+            .unwrap();
+        state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Task 2".to_string()))
+            .await
+            .unwrap();
+
+        // Archive task1
+        state.task_repo.archive(&task1.id).await.unwrap();
+
+        // List with archived (include_archived = true)
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 0, 20, true)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+
+        // Count with archived
+        let count = state.task_repo.count_tasks(&project_id, true).await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_paginated_ordered_by_created_at_desc() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create tasks with slight delay to ensure different created_at
+        let task1 = state
+            .task_repo
+            .create(Task::new(project_id.clone(), "First".to_string()))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let task2 = state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Second".to_string()))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let task3 = state
+            .task_repo
+            .create(Task::new(project_id.clone(), "Third".to_string()))
+            .await
+            .unwrap();
+
+        // Get paginated tasks
+        let result = state
+            .task_repo
+            .list_paginated(&project_id, None, 0, 20, false)
+            .await
+            .unwrap();
+
+        // Should be ordered newest first (DESC)
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].id, task3.id);
+        assert_eq!(result[1].id, task2.id);
+        assert_eq!(result[2].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_task_list_response_serialization() {
+        let project_id = ProjectId::from_string("proj-123".to_string());
+        let task = Task::new(project_id, "Test Task".to_string());
+
+        let response = TaskListResponse {
+            tasks: vec![TaskResponse::from(task)],
+            total: 10,
+            has_more: true,
+            offset: 0,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+
+        // Verify camelCase serialization
+        assert!(json.contains("\"tasks\":"));
+        assert!(json.contains("\"total\":10"));
+        assert!(json.contains("\"hasMore\":true"));
+        assert!(json.contains("\"offset\":0"));
     }
 }

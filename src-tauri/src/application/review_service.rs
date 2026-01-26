@@ -574,6 +574,21 @@ mod tests {
             }
         }
         async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> { Ok(0) }
+
+        async fn list_paginated(
+            &self,
+            _project_id: &ProjectId,
+            _status: Option<InternalStatus>,
+            _offset: u32,
+            _limit: u32,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            Ok(self.tasks.read().unwrap().values().cloned().collect())
+        }
+
+        async fn count_tasks(&self, _project_id: &ProjectId, _include_archived: bool) -> AppResult<u32> {
+            Ok(self.tasks.read().unwrap().len() as u32)
+        }
     }
 
     fn setup() -> (Arc<MockReviewRepo>, Arc<MockTaskRepo>, ProjectId, TaskId) {

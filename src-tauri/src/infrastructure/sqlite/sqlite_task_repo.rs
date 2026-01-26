@@ -427,6 +427,106 @@ impl TaskRepository for SqliteTaskRepository {
 
         Ok(count as u32)
     }
+
+    async fn list_paginated(
+        &self,
+        project_id: &ProjectId,
+        status: Option<InternalStatus>,
+        offset: u32,
+        limit: u32,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>> {
+        let conn = self.conn.lock().await;
+
+        // Build query based on parameters
+        let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (status, include_archived) {
+            (Some(s), true) => (
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+                 FROM tasks
+                 WHERE project_id = ?1 AND internal_status = ?2
+                 ORDER BY created_at DESC
+                 LIMIT ?3 OFFSET ?4".to_string(),
+                vec![
+                    Box::new(project_id.as_str().to_string()),
+                    Box::new(s.as_str().to_string()),
+                    Box::new(limit as i64),
+                    Box::new(offset as i64),
+                ],
+            ),
+            (Some(s), false) => (
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+                 FROM tasks
+                 WHERE project_id = ?1 AND internal_status = ?2 AND archived_at IS NULL
+                 ORDER BY created_at DESC
+                 LIMIT ?3 OFFSET ?4".to_string(),
+                vec![
+                    Box::new(project_id.as_str().to_string()),
+                    Box::new(s.as_str().to_string()),
+                    Box::new(limit as i64),
+                    Box::new(offset as i64),
+                ],
+            ),
+            (None, true) => (
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+                 FROM tasks
+                 WHERE project_id = ?1
+                 ORDER BY created_at DESC
+                 LIMIT ?2 OFFSET ?3".to_string(),
+                vec![
+                    Box::new(project_id.as_str().to_string()),
+                    Box::new(limit as i64),
+                    Box::new(offset as i64),
+                ],
+            ),
+            (None, false) => (
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+                 FROM tasks
+                 WHERE project_id = ?1 AND archived_at IS NULL
+                 ORDER BY created_at DESC
+                 LIMIT ?2 OFFSET ?3".to_string(),
+                vec![
+                    Box::new(project_id.as_str().to_string()),
+                    Box::new(limit as i64),
+                    Box::new(offset as i64),
+                ],
+            ),
+        };
+
+        let mut stmt = conn
+            .prepare(&query)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map(
+                rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+                Task::from_row,
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(tasks)
+    }
+
+    async fn count_tasks(
+        &self,
+        project_id: &ProjectId,
+        include_archived: bool,
+    ) -> AppResult<u32> {
+        let conn = self.conn.lock().await;
+
+        let query = if include_archived {
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1"
+        } else {
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NULL"
+        };
+
+        let count: i64 = conn
+            .query_row(query, [project_id.as_str()], |row| row.get(0))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(count as u32)
+    }
 }
 
 #[cfg(test)]

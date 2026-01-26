@@ -924,6 +924,39 @@ mod tests {
                 .filter(|t| &t.project_id == project_id && t.archived_at.is_some())
                 .count() as u32)
         }
+
+        async fn list_paginated(
+            &self,
+            project_id: &ProjectId,
+            _status: Option<InternalStatus>,
+            _offset: u32,
+            _limit: u32,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            // Simple mock implementation
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| &t.project_id == project_id)
+                .cloned()
+                .collect())
+        }
+
+        async fn count_tasks(
+            &self,
+            project_id: &ProjectId,
+            _include_archived: bool,
+        ) -> AppResult<u32> {
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| &t.project_id == project_id)
+                .count() as u32)
+        }
     }
 
     struct MockTaskDependencyRepository {

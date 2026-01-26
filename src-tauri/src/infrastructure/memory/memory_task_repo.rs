@@ -278,6 +278,69 @@ impl TaskRepository for MemoryTaskRepository {
             .count();
         Ok(count as u32)
     }
+
+    async fn list_paginated(
+        &self,
+        project_id: &ProjectId,
+        status: Option<InternalStatus>,
+        offset: u32,
+        limit: u32,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>> {
+        let tasks = self.tasks.read().await;
+
+        // Filter tasks based on criteria
+        let mut result: Vec<Task> = tasks
+            .values()
+            .filter(|t| {
+                // Match project
+                if t.project_id != *project_id {
+                    return false;
+                }
+
+                // Match archived status
+                if !include_archived && t.archived_at.is_some() {
+                    return false;
+                }
+
+                // Match status if provided
+                if let Some(s) = status {
+                    if t.internal_status != s {
+                        return false;
+                    }
+                }
+
+                true
+            })
+            .cloned()
+            .collect();
+
+        // Sort by created_at DESC (newest first)
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        // Apply pagination
+        let start = offset as usize;
+        let end = start + limit as usize;
+        let paginated = result.into_iter().skip(start).take(limit as usize).collect();
+
+        Ok(paginated)
+    }
+
+    async fn count_tasks(
+        &self,
+        project_id: &ProjectId,
+        include_archived: bool,
+    ) -> AppResult<u32> {
+        let tasks = self.tasks.read().await;
+        let count = tasks
+            .values()
+            .filter(|t| {
+                t.project_id == *project_id
+                    && (include_archived || t.archived_at.is_none())
+            })
+            .count();
+        Ok(count as u32)
+    }
 }
 
 #[cfg(test)]
