@@ -1,14 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 03:45:00
+**Last Updated:** 2026-01-26 02:23:27
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 14 / 26
-**Current Task:** Update frontend types and chat API
+**Tasks Completed:** 15 / 26
+**Current Task:** Update chat store with queue and conversation state
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:23:27 - Updated Frontend Types and Chat API
+
+**What was done:**
+- Created `src/types/chat-conversation.ts`:
+  - Added `ContextType` enum and schema (ideation, task, project)
+  - Added `AgentRunStatus` enum and schema (running, completed, failed, cancelled)
+  - Added `ChatConversation` type and Zod schema (id, contextType, contextId, claudeSessionId, title, messageCount, lastMessageAt, createdAt, updatedAt)
+  - Added `AgentRun` type and Zod schema (id, conversationId, status, startedAt, completedAt, errorMessage)
+  - Added `ToolCall` type and schema for parsing tool calls from JSON
+  - Added `QueuedMessage` type and schema (frontend state only)
+  - Added input types: `CreateConversationInput`, `SendContextMessageInput`
+  - Added list schemas for arrays
+
+- Updated `src/types/ideation.ts`:
+  - Added `conversationId: z.string().nullable()` to ChatMessageSchema
+  - Added `toolCalls: z.string().nullable()` to ChatMessageSchema (JSON string of tool calls)
+
+- Updated `src/api/chat.ts`:
+  - Added `conversation_id` and `tool_calls` fields to `ChatMessageResponseSchema`
+  - Added `conversationId` and `toolCalls` fields to `ChatMessageResponse` interface
+  - Updated `transformMessage()` to include new fields
+  - Added backend response schemas for conversations: `ChatConversationResponseSchema`, `AgentRunResponseSchema`
+  - Added transform functions: `transformConversation()`, `transformAgentRun()`
+  - Implemented new API functions:
+    - `sendContextMessage(contextType, contextId, content)` - sends message using conversation and --resume
+    - `listConversations(contextType, contextId)` - lists all conversations for a context
+    - `getConversation(conversationId)` - gets conversation with messages
+    - `createConversation(contextType, contextId)` - creates new conversation
+    - `getAgentRunStatus(conversationId)` - checks if agent is running
+  - Updated chatApi namespace export with new functions
+
+- Updated `src/App.tsx`:
+  - Fixed `transformMessages()` function to include `conversationId` and `toolCalls` fields
+
+**Commands run:**
+- `npm run typecheck` - verified all TypeScript types compile correctly
 
 ### 2026-01-26 03:45:00 - Added Context-Aware Chat Tauri Commands
 
