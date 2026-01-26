@@ -168,7 +168,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Build: npm run build",
       "Commit: feat(mcp): add worker context tools"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",

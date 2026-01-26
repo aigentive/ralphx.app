@@ -1,15 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-27 01:15:00
+**Last Updated:** 2026-01-27 01:30:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 4 / 13
-**Current Task:** Add worker context tools to MCP server
+**Tasks Completed:** 5 / 13
+**Current Task:** Update TOOL_ALLOWLIST for worker agent
 
 ---
 
 
 ## Session Log
+
+### 2026-01-27 01:30:00 - Add worker context tools to MCP server (Task 5)
+
+**What was done:**
+- Created `ralphx-mcp-server/src/worker-context-tools.ts` with 5 MCP tool definitions:
+  - `get_task_context` - Fetch rich task context (proposal, plan, related artifacts)
+  - `get_artifact` - Fetch full artifact content by ID
+  - `get_artifact_version` - Fetch specific historical version (for plan_version_at_creation)
+  - `get_related_artifacts` - Get linked artifacts (research, design docs, etc.)
+  - `search_project_artifacts` - Search for relevant artifacts by query and type
+- Updated `ralphx-mcp-server/src/tools.ts`:
+  - Imported WORKER_CONTEXT_TOOLS
+  - Added tools to ALL_TOOLS array
+  - Updated TOOL_ALLOWLIST for worker agent (was empty, now has 5 tools)
+- Updated `ralphx-mcp-server/src/tauri-client.ts`:
+  - Added `callTauriGet()` function for GET requests
+  - Existing `callTauri()` handles POST requests
+- Updated `ralphx-mcp-server/src/index.ts`:
+  - Added special handling for GET endpoints with path parameters
+  - Routes worker context tools to correct backend paths
+  - Also fixed get_plan_artifact and get_session_plan to use GET
+- Built successfully with `npm run build`
+
+**Key decisions:**
+- Worker tools use GET endpoints (read-only operations)
+- Path parameters extracted from args and passed to callTauriGet
+- search_project_artifacts uses POST (requires request body)
+
+**Commands run:**
+```bash
+npm run build  # TypeScript compilation successful
+```
 
 ### 2026-01-27 01:15:00 - Add Tauri commands for task context (Task 4)
 
