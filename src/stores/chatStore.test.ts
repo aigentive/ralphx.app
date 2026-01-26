@@ -6,6 +6,7 @@ import {
   selectQueuedMessages,
   selectIsAgentRunning,
   selectActiveConversationId,
+  selectExecutionQueuedMessages,
   getContextKey,
 } from "./chatStore";
 import type { ChatMessage } from "@/types/ideation";
@@ -43,6 +44,7 @@ describe("chatStore", () => {
       isLoading: false,
       activeConversationId: null,
       queuedMessages: [],
+      executionQueuedMessages: {},
       isAgentRunning: false,
     });
   });
@@ -81,6 +83,11 @@ describe("chatStore", () => {
     it("has empty queuedMessages", () => {
       const state = useChatStore.getState();
       expect(state.queuedMessages).toHaveLength(0);
+    });
+
+    it("has empty executionQueuedMessages", () => {
+      const state = useChatStore.getState();
+      expect(Object.keys(state.executionQueuedMessages)).toHaveLength(0);
     });
 
     it("has isAgentRunning false", () => {
@@ -579,6 +586,135 @@ describe("chatStore", () => {
       expect(state.queuedMessages).toHaveLength(0);
     });
   });
+
+  describe("queueExecutionMessage", () => {
+    it("adds message to execution queue for task", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Hello worker");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toHaveLength(1);
+      expect(state.executionQueuedMessages["task-123"]?.[0].content).toBe("Hello worker");
+    });
+
+    it("generates unique ID for queued execution message", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "First");
+      useChatStore.getState().queueExecutionMessage("task-123", "Second");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]?.[0].id).not.toBe(
+        state.executionQueuedMessages["task-123"]?.[1].id
+      );
+    });
+
+    it("sets createdAt timestamp", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Test");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]?.[0].createdAt).toBeDefined();
+      expect(
+        new Date(state.executionQueuedMessages["task-123"]?.[0].createdAt || "").getTime()
+      ).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("sets isEditing to false by default", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Test");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]?.[0].isEditing).toBe(false);
+    });
+
+    it("appends to existing queue for same task", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "First");
+      useChatStore.getState().queueExecutionMessage("task-123", "Second");
+      useChatStore.getState().queueExecutionMessage("task-123", "Third");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toHaveLength(3);
+      expect(state.executionQueuedMessages["task-123"]?.[0].content).toBe("First");
+      expect(state.executionQueuedMessages["task-123"]?.[1].content).toBe("Second");
+      expect(state.executionQueuedMessages["task-123"]?.[2].content).toBe("Third");
+    });
+
+    it("keeps queues separate by task ID", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Message for task 123");
+      useChatStore.getState().queueExecutionMessage("task-456", "Message for task 456");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toHaveLength(1);
+      expect(state.executionQueuedMessages["task-456"]).toHaveLength(1);
+      expect(state.executionQueuedMessages["task-123"]?.[0].content).toBe(
+        "Message for task 123"
+      );
+      expect(state.executionQueuedMessages["task-456"]?.[0].content).toBe(
+        "Message for task 456"
+      );
+    });
+  });
+
+  describe("deleteExecutionQueuedMessage", () => {
+    it("removes message from execution queue", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Test");
+      const messageId = useChatStore.getState().executionQueuedMessages["task-123"]?.[0].id || "";
+
+      useChatStore.getState().deleteExecutionQueuedMessage("task-123", messageId);
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toBeUndefined();
+    });
+
+    it("cleans up empty arrays", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Test");
+      const messageId = useChatStore.getState().executionQueuedMessages["task-123"]?.[0].id || "";
+
+      useChatStore.getState().deleteExecutionQueuedMessage("task-123", messageId);
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toBeUndefined();
+    });
+
+    it("does nothing if task queue not found", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Test");
+
+      useChatStore.getState().deleteExecutionQueuedMessage("task-456", "nonexistent-id");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toHaveLength(1);
+    });
+
+    it("does nothing if message not found", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "Test");
+
+      useChatStore.getState().deleteExecutionQueuedMessage("task-123", "nonexistent-id");
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toHaveLength(1);
+    });
+
+    it("only removes specified message", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "First");
+      useChatStore.getState().queueExecutionMessage("task-123", "Second");
+      useChatStore.getState().queueExecutionMessage("task-123", "Third");
+      const secondId = useChatStore.getState().executionQueuedMessages["task-123"]?.[1].id || "";
+
+      useChatStore.getState().deleteExecutionQueuedMessage("task-123", secondId);
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-123"]).toHaveLength(2);
+      expect(state.executionQueuedMessages["task-123"]?.[0].content).toBe("First");
+      expect(state.executionQueuedMessages["task-123"]?.[1].content).toBe("Third");
+    });
+
+    it("preserves other task queues", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "First");
+      useChatStore.getState().queueExecutionMessage("task-456", "Second");
+      const messageId = useChatStore.getState().executionQueuedMessages["task-123"]?.[0].id || "";
+
+      useChatStore.getState().deleteExecutionQueuedMessage("task-123", messageId);
+
+      const state = useChatStore.getState();
+      expect(state.executionQueuedMessages["task-456"]).toHaveLength(1);
+    });
+  });
 });
 
 describe("getContextKey", () => {
@@ -648,6 +784,7 @@ describe("selectors", () => {
       isLoading: false,
       activeConversationId: null,
       queuedMessages: [],
+      executionQueuedMessages: {},
       isAgentRunning: false,
     });
   });
@@ -744,6 +881,31 @@ describe("selectors", () => {
       const result = selectActiveConversationId(useChatStore.getState());
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe("selectExecutionQueuedMessages", () => {
+    it("returns queued execution messages for task", () => {
+      useChatStore.getState().queueExecutionMessage("task-123", "First");
+      useChatStore.getState().queueExecutionMessage("task-123", "Second");
+
+      const result = selectExecutionQueuedMessages("task-123")(useChatStore.getState());
+
+      expect(result).toHaveLength(2);
+      expect(result[0].content).toBe("First");
+      expect(result[1].content).toBe("Second");
+    });
+
+    it("returns empty array for unknown task", () => {
+      const result = selectExecutionQueuedMessages("task-unknown")(useChatStore.getState());
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("returns empty array when no execution queues exist", () => {
+      const result = selectExecutionQueuedMessages("task-123")(useChatStore.getState());
+
+      expect(result).toHaveLength(0);
     });
   });
 });
