@@ -1,15 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:20:00
+**Last Updated:** 2026-01-26 08:22:51
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 9 / 13
-**Current Task:** Add 'View Context' button to TaskDetailPanel
+**Tasks Completed:** 10 / 13
+**Current Task:** Show artifact previews in execution chat tool calls
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 08:22:51 - Add 'View Context' button to TaskDetailPanel (Task 10)
+
+**What was done:**
+- Updated `src/components/tasks/TaskDetailModal.tsx`:
+  - Added imports for `Button`, `TaskContextPanel`, `FileText` icon, and `useState`
+  - Added `showContext` state to toggle context panel visibility
+  - Added `hasContext` computed property that checks if task has `sourceProposalId` or `planArtifactId`
+  - Added "View Context" button section before description:
+    - Button only visible when `hasContext` is true
+    - Button text toggles between "View Context" and "Hide Context" based on `showContext` state
+    - FileText icon from Lucide
+    - Full-width button with centered content
+    - `data-testid="view-context-button"` for testing
+  - Added conditional `TaskContextPanel` section:
+    - Only renders when both `showContext` and `hasContext` are true
+    - Passes `taskId` to fetch context via `getTaskContext` API
+    - Wrapped in `data-testid="task-context-section"` for testing
+- Implementation follows collapsible pattern (button toggles state)
+- Context panel fetches and displays linked proposal, plan artifact, related artifacts, and context hints
+- Integrates seamlessly with existing modal layout and shadcn components
+
+**Files modified:**
+- `src/components/tasks/TaskDetailModal.tsx` - Added context viewing functionality
+
+**Commands run:**
+- `npm run lint` - Passed (0 errors, 11 warnings - all pre-existing)
+- `npm run typecheck` - Passed
 
 ### 2026-01-26 08:20:00 - Create TaskContextPanel component (Task 9)
 
