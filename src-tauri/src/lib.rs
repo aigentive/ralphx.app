@@ -225,7 +225,13 @@ pub fn run() {
             commands::execution_chat_commands::list_task_executions,
             commands::execution_chat_commands::queue_execution_message,
             commands::execution_chat_commands::get_queued_execution_messages,
-            commands::execution_chat_commands::delete_queued_execution_message
+            commands::execution_chat_commands::delete_queued_execution_message,
+            // Task context commands
+            commands::task_context_commands::get_task_context,
+            commands::task_context_commands::get_artifact_full,
+            commands::task_context_commands::get_artifact_version,
+            commands::task_context_commands::get_related_artifacts,
+            commands::task_context_commands::search_artifacts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

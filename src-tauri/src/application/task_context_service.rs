@@ -16,21 +16,20 @@ use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, Ta
 use crate::error::{AppError, AppResult};
 
 /// Service for aggregating task context for worker execution
-pub struct TaskContextService<
-    T: TaskRepository,
-    P: TaskProposalRepository,
-    A: ArtifactRepository,
-> {
-    task_repo: Arc<T>,
-    proposal_repo: Arc<P>,
-    artifact_repo: Arc<A>,
+pub struct TaskContextService {
+    task_repo: Arc<dyn TaskRepository>,
+    proposal_repo: Arc<dyn TaskProposalRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
 }
 
-impl<T: TaskRepository, P: TaskProposalRepository, A: ArtifactRepository>
-    TaskContextService<T, P, A>
+impl TaskContextService
 {
     /// Create a new TaskContextService with the given repositories
-    pub fn new(task_repo: Arc<T>, proposal_repo: Arc<P>, artifact_repo: Arc<A>) -> Self {
+    pub fn new(
+        task_repo: Arc<dyn TaskRepository>,
+        proposal_repo: Arc<dyn TaskProposalRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
+    ) -> Self {
         Self {
             task_repo,
             proposal_repo,
@@ -632,20 +631,12 @@ mod tests {
             short_content,
             "user",
         );
-        let preview = TaskContextService::<
-            MockTaskRepository,
-            MockTaskProposalRepository,
-            MockArtifactRepository,
-        >::create_content_preview(&artifact);
+        let preview = TaskContextService::create_content_preview(&artifact);
         assert_eq!(preview, short_content);
 
         let long_content = "x".repeat(600);
         let artifact = Artifact::new_inline("Test", ArtifactType::Specification, long_content, "user");
-        let preview = TaskContextService::<
-            MockTaskRepository,
-            MockTaskProposalRepository,
-            MockArtifactRepository,
-        >::create_content_preview(&artifact);
+        let preview = TaskContextService::create_content_preview(&artifact);
         assert_eq!(preview.len(), 503); // 500 + "..."
         assert!(preview.ends_with("..."));
     }

@@ -1,15 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:52:00
+**Last Updated:** 2026-01-27 01:15:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 3 / 13
-**Current Task:** Add Tauri commands for task context
+**Tasks Completed:** 4 / 13
+**Current Task:** Add worker context tools to MCP server
 
 ---
 
 
 ## Session Log
+
+### 2026-01-27 01:15:00 - Add Tauri commands for task context (Task 4)
+
+**What was done:**
+- Created `src-tauri/src/commands/task_context_commands.rs` with 5 Tauri commands:
+  - `get_task_context(task_id)` → TaskContext - aggregates task with proposal, plan, and related artifacts
+  - `get_artifact_full(artifact_id)` → Artifact - fetches complete artifact content
+  - `get_artifact_version(artifact_id, version)` → Artifact - fetches specific historical version
+  - `get_related_artifacts(artifact_id)` → Vec<Artifact> - fetches all related artifacts
+  - `search_artifacts(input)` → Vec<ArtifactSearchResult> - searches artifacts by query and type filter
+- Registered all commands in `src-tauri/src/lib.rs` invoke_handler
+- Exported commands in `src-tauri/src/commands/mod.rs`
+- Modified `TaskContextService` to use trait objects (`Arc<dyn Trait>`) instead of generic types for compatibility with AppState
+- Created inline service instantiation pattern in commands (avoids storing service in AppState)
+- Added unit tests for content preview helpers
+- All cargo tests pass
+
+**Key architectural decisions:**
+- TaskContextService instantiated inline in commands rather than stored in AppState
+- Service accepts Arc<dyn Repository> trait objects for flexibility
+- Search implementation filters by artifact type and query (MVP - full-text search TBD)
+
+**Commands registered:**
+```
+git add .
+cargo test --lib commands::task_context_commands  # all pass
+cargo test  # all 3090 tests pass
+```
 
 ### 2026-01-26 21:52:00 - Add HTTP endpoints for worker context tools (Task 3)
 

@@ -15,6 +15,7 @@ pub mod qa_commands;
 pub mod research_commands;
 pub mod review_commands;
 pub mod task_commands;
+pub mod task_context_commands;
 pub mod test_data_commands;
 pub mod workflow_commands;
 
@@ -89,4 +90,8 @@ pub use context_chat_commands::{
 pub use execution_chat_commands::{
     delete_queued_execution_message, get_execution_conversation, get_queued_execution_messages,
     list_task_executions, queue_execution_message, QueuedMessageResponse,
+};
+pub use task_context_commands::{
+    get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,
+    search_artifacts, ArtifactSearchResult, SearchArtifactsInput,
 };

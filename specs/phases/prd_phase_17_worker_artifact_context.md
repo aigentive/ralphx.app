@@ -148,7 +148,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(commands): add task context commands"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",
