@@ -1,14 +1,70 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:34:35
+**Last Updated:** 2026-01-26 02:38:30
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 18 / 26
-**Current Task:** Create ConversationSelector component
+**Tasks Completed:** 19 / 26
+**Current Task:** Create QueuedMessage components
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:38:30 - Created ConversationSelector Component
+
+**What was done:**
+- Created `src/components/Chat/ConversationSelector.tsx`:
+  - Dropdown menu component using shadcn/ui DropdownMenu
+  - History icon button trigger (Lucide `History` icon)
+  - Lists all conversations for the current context
+  - Displays conversation title (or fallback like "New conversation")
+  - Shows relative time using `date-fns` formatDistanceToNow ("2 hours ago")
+  - Shows message count with proper pluralization ("1 message" vs "12 messages")
+  - Active conversation indicator (filled Circle icon with accent color)
+  - Inactive conversations use transparent Circle icon
+  - "New Conversation" option at top with Plus icon
+  - Sorts conversations by last message date (most recent first)
+  - Loading state: "Loading conversations..."
+  - Empty state: "No conversations yet"
+  - Uses design system tokens for colors, spacing, typography
+  - Proper hover states and transitions
+
+- Created `src/components/Chat/ConversationSelector.test.tsx`:
+  - 17 comprehensive tests covering all functionality:
+    - Renders history icon button
+    - Opens dropdown on click
+    - Shows "New Conversation" option
+    - Calls onNewConversation callback
+    - Displays all conversations
+    - Shows conversation titles
+    - Generates fallback titles for conversations without title
+    - Shows message count with proper pluralization
+    - Shows relative time for last message
+    - Shows "No messages" for conversations without messages
+    - Indicates active conversation with filled dot
+    - Calls onSelectConversation when clicked
+    - Sorts conversations by last message date
+    - Shows loading state
+    - Shows empty state
+    - Does not show empty state when loading
+
+- Installed `date-fns` package for date formatting
+
+**Commands run:**
+- `npm install date-fns` (installed successfully)
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - no new errors or warnings)
+- `npm run test -- ConversationSelector` (17 tests passed)
+
+**Design notes:**
+- Uses History icon from Lucide for conversation history
+- Plus icon for new conversation (accent color)
+- Circle icon for active indicator (filled with accent, transparent for inactive)
+- Design system tokens for all colors: --text-primary, --text-secondary, --text-muted, --accent-primary, --accent-muted, --bg-elevated, --bg-hover, --border-default, --border-subtle
+- Uppercase label with tracking-wide for "CONVERSATION HISTORY"
+- 320px dropdown width for comfortable reading
+- Proper spacing and padding throughout
+- Smooth transitions on hover
 
 ### 2026-01-26 02:34:35 - Updated ChatMessage to Display Tool Calls
 
