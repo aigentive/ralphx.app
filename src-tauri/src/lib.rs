@@ -139,6 +139,7 @@ pub fn run() {
             commands::task_commands::restore_task,
             commands::task_commands::permanently_delete_task,
             commands::task_commands::get_archived_count,
+            commands::task_commands::search_tasks,
             commands::project_commands::list_projects,
             commands::project_commands::get_project,
             commands::project_commands::create_project,

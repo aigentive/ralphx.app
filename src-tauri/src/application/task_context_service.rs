@@ -346,6 +346,15 @@ mod tests {
         async fn count_tasks(&self, _project_id: &ProjectId, _include_archived: bool) -> AppResult<u32> {
             Ok(if self.task.is_some() { 1 } else { 0 })
         }
+
+        async fn search(
+            &self,
+            _project_id: &ProjectId,
+            _query: &str,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
     }
 
     struct MockTaskProposalRepository {

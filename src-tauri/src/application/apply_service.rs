@@ -957,6 +957,31 @@ mod tests {
                 .filter(|t| &t.project_id == project_id)
                 .count() as u32)
         }
+
+        async fn search(
+            &self,
+            project_id: &ProjectId,
+            query: &str,
+            include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            let query_lower = query.to_lowercase();
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| {
+                    &t.project_id == project_id
+                        && (include_archived || t.archived_at.is_none())
+                        && (t.title.to_lowercase().contains(&query_lower)
+                            || t.description
+                                .as_ref()
+                                .map(|d| d.to_lowercase().contains(&query_lower))
+                                .unwrap_or(false))
+                })
+                .cloned()
+                .collect())
+        }
     }
 
     struct MockTaskDependencyRepository {

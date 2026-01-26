@@ -665,6 +665,50 @@ pub async fn get_archived_count(
         .map_err(|e| e.to_string())
 }
 
+/// Search tasks by title and description (case-insensitive)
+///
+/// Searches in both title AND description fields for the query string.
+/// Uses server-side search for reliable results across all tasks.
+///
+/// # Arguments
+/// * `project_id` - The project ID to search within
+/// * `query` - The search query string
+/// * `include_archived` - Whether to include archived tasks in search results (default: false)
+///
+/// # Returns
+/// * `Vec<TaskResponse>` - All matching tasks (no pagination - results should be small)
+///
+/// # Examples
+/// ```
+/// // Search for "authentication" in title or description
+/// search_tasks("proj-123", "authentication", None)
+///
+/// // Search including archived tasks
+/// search_tasks("proj-123", "old feature", Some(true))
+/// ```
+#[tauri::command]
+pub async fn search_tasks(
+    project_id: String,
+    query: String,
+    include_archived: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskResponse>, String> {
+    let project_id_obj = ProjectId::from_string(project_id);
+    let include_archived = include_archived.unwrap_or(false);
+
+    // Call repository search method
+    let tasks = state
+        .task_repo
+        .search(&project_id_obj, &query, include_archived)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Convert to response
+    let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
+
+    Ok(task_responses)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

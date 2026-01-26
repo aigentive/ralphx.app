@@ -341,6 +341,49 @@ impl TaskRepository for MemoryTaskRepository {
             .count();
         Ok(count as u32)
     }
+
+    async fn search(
+        &self,
+        project_id: &ProjectId,
+        query: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>> {
+        let tasks = self.tasks.read().await;
+
+        // Convert query to lowercase for case-insensitive search
+        let query_lower = query.to_lowercase();
+
+        let mut result: Vec<Task> = tasks
+            .values()
+            .filter(|t| {
+                // Match project
+                if t.project_id != *project_id {
+                    return false;
+                }
+
+                // Match archived status
+                if !include_archived && t.archived_at.is_some() {
+                    return false;
+                }
+
+                // Search in title OR description (case-insensitive)
+                let title_matches = t.title.to_lowercase().contains(&query_lower);
+                let description_matches = t
+                    .description
+                    .as_ref()
+                    .map(|d| d.to_lowercase().contains(&query_lower))
+                    .unwrap_or(false);
+
+                title_matches || description_matches
+            })
+            .cloned()
+            .collect();
+
+        // Sort by created_at DESC (newest first)
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -827,5 +870,147 @@ mod tests {
 
         let result = repo.restore(&task_id).await;
         assert!(result.is_err());
+    }
+
+    // ===== Search Operations Tests =====
+
+    #[tokio::test]
+    async fn test_search_by_title() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task1 = create_test_task(project.clone(), "Implement authentication", 1);
+        let task2 = create_test_task(project.clone(), "Add user login", 2);
+        let task3 = create_test_task(project.clone(), "Fix database bug", 3);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.create(task3.clone()).await.unwrap();
+
+        // Search for "auth" - should match "authentication"
+        let results = repo.search(&project, "auth", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_by_description() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let mut task1 = create_test_task(project.clone(), "Task One", 1);
+        task1.description = Some("This task implements authentication".to_string());
+
+        let mut task2 = create_test_task(project.clone(), "Task Two", 2);
+        task2.description = Some("This task adds logging".to_string());
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+
+        // Search for "authentication" - should match description
+        let results = repo.search(&project, "authentication", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_case_insensitive() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task = create_test_task(project.clone(), "Add USER Authentication", 1);
+        repo.create(task.clone()).await.unwrap();
+
+        // Search with lowercase - should match
+        let results = repo.search(&project, "user", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Search with uppercase - should also match
+        let results = repo.search(&project, "USER", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Search with mixed case - should also match
+        let results = repo.search(&project, "UsEr", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_returns_empty_for_no_match() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task = create_test_task(project.clone(), "Add user login", 1);
+        repo.create(task.clone()).await.unwrap();
+
+        // Search for something that doesn't exist
+        let results = repo.search(&project, "nonexistent", false).await.unwrap();
+        assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_search_excludes_archived_by_default() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task1 = create_test_task(project.clone(), "Active authentication task", 1);
+        let task2 = create_test_task(project.clone(), "Archived authentication task", 2);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        // Search without including archived - should only find active task
+        let results = repo.search(&project, "authentication", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_includes_archived_when_requested() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task1 = create_test_task(project.clone(), "Active authentication task", 1);
+        let task2 = create_test_task(project.clone(), "Archived authentication task", 2);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        // Search with including archived - should find both tasks
+        let results = repo.search(&project, "authentication", true).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_search_matches_partial_strings() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task = create_test_task(project.clone(), "Implement user authentication system", 1);
+        repo.create(task.clone()).await.unwrap();
+
+        // Search for partial match
+        let results = repo.search(&project, "authen", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_matches_in_title_or_description() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let mut task1 = create_test_task(project.clone(), "Add logging feature", 1);
+        task1.description = Some("Implement authentication logging".to_string());
+
+        let task2 = create_test_task(project.clone(), "Authentication system", 2);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+
+        // Search for "authentication" - should match both (title and description)
+        let results = repo.search(&project, "authentication", false).await.unwrap();
+        assert_eq!(results.len(), 2);
     }
 }

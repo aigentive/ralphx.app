@@ -131,6 +131,26 @@ pub trait TaskRepository: Send + Sync {
         project_id: &ProjectId,
         include_archived: bool,
     ) -> AppResult<u32>;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Search Operations (Phase 18 - Task Search)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Search tasks by title and description (case-insensitive)
+    ///
+    /// # Arguments
+    /// * `project_id` - The project ID
+    /// * `query` - The search query string
+    /// * `include_archived` - Whether to include archived tasks in search results
+    ///
+    /// # Returns
+    /// * Tasks matching the query in title OR description (case-insensitive)
+    async fn search(
+        &self,
+        project_id: &ProjectId,
+        query: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>>;
 }
 
 #[cfg(test)]
@@ -248,6 +268,15 @@ mod tests {
             _include_archived: bool,
         ) -> AppResult<u32> {
             Ok(0)
+        }
+
+        async fn search(
+            &self,
+            _project_id: &ProjectId,
+            _query: &str,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
         }
     }
 

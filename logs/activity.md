@@ -1,15 +1,57 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:15:00
+**Last Updated:** 2026-01-26 18:03:46
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 4 / 30
-**Current Task:** Add server-side search_tasks command
+**Tasks Completed:** 5 / 30
+**Current Task:** Add get_valid_transitions command
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:03:46 - Add server-side search_tasks command (Task 5)
+
+**What was done:**
+- Extended TaskRepository trait with search method:
+  - `search(project_id, query, include_archived)` - Searches in title AND description (case-insensitive)
+- Implemented in SqliteTaskRepository:
+  - Uses parameterized SQL queries to prevent SQL injection
+  - Case-insensitive search via LOWER() function
+  - Searches both title and description fields with OR condition
+  - Respects include_archived parameter
+  - Returns results ordered by created_at DESC (newest first)
+- Implemented in MemoryTaskRepository:
+  - Case-insensitive in-memory filtering
+  - Searches title and description with OR condition
+  - Filters by project_id and archived status
+- Added search_tasks Tauri command:
+  - Signature: `search_tasks(project_id, query, include_archived?)` → `Vec<TaskResponse>`
+  - Delegates to repository search method
+  - No pagination (search results expected to be small)
+- Registered command in lib.rs invoke_handler
+- Added MockTaskRepository.search() implementations in test files:
+  - apply_service.rs, review_service.rs, task_context_service.rs
+- Wrote comprehensive unit tests (16 tests total):
+  - Search by title, search by description
+  - Case-insensitive matching
+  - Partial string matching
+  - Empty results for no matches
+  - Archived filtering (exclude by default, include when requested)
+  - Tests in both SqliteTaskRepository and MemoryTaskRepository
+
+**Commands run:**
+- `cargo test --lib` - All 3144 tests passed
+
+**Verification:**
+- ✅ Search method added to TaskRepository trait
+- ✅ SqliteTaskRepository uses parameterized queries (SQL injection safe)
+- ✅ MemoryTaskRepository implements search with filter
+- ✅ search_tasks command registered and callable
+- ✅ All unit tests pass
+- ✅ Case-insensitive search working
+- ✅ Archived task filtering working
 
 ### 2026-01-26 18:15:00 - Add pagination to list_tasks command (Task 4)
 

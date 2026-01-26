@@ -527,6 +527,50 @@ impl TaskRepository for SqliteTaskRepository {
 
         Ok(count as u32)
     }
+
+    async fn search(
+        &self,
+        project_id: &ProjectId,
+        query: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>> {
+        let conn = self.conn.lock().await;
+
+        // Use parameterized queries to prevent SQL injection
+        // Search both title and description (case-insensitive using LOWER)
+        let sql_query = if include_archived {
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+             FROM tasks
+             WHERE project_id = ?1
+               AND (LOWER(title) LIKE LOWER(?2) OR LOWER(description) LIKE LOWER(?2))
+             ORDER BY created_at DESC"
+        } else {
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+             FROM tasks
+             WHERE project_id = ?1
+               AND archived_at IS NULL
+               AND (LOWER(title) LIKE LOWER(?2) OR LOWER(description) LIKE LOWER(?2))
+             ORDER BY created_at DESC"
+        };
+
+        // Prepare the search pattern with wildcards
+        let search_pattern = format!("%{}%", query);
+
+        let mut stmt = conn
+            .prepare(sql_query)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map(
+                rusqlite::params![project_id.as_str(), &search_pattern],
+                Task::from_row,
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(tasks)
+    }
 }
 
 #[cfg(test)]
@@ -1193,5 +1237,136 @@ mod tests {
         repo.restore(&task.id).await.unwrap();
         let restored = repo.get_by_id(&task.id).await.unwrap().unwrap();
         assert!(restored.updated_at > archived.updated_at);
+    }
+
+    // ==================== SEARCH OPERATION TESTS ====================
+
+    #[tokio::test]
+    async fn test_search_by_title() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task1 = create_test_task("Implement authentication");
+        let task2 = create_test_task("Add user login");
+        let task3 = create_test_task("Fix database bug");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.create(task3.clone()).await.unwrap();
+
+        // Search for "auth" - should match "authentication"
+        let results = repo.search(&project_id, "auth", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_by_description() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let mut task1 = create_test_task("Task One");
+        task1.description = Some("This task implements authentication".to_string());
+
+        let mut task2 = create_test_task("Task Two");
+        task2.description = Some("This task adds logging".to_string());
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+
+        // Search for "authentication" - should match description
+        let results = repo.search(&project_id, "authentication", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_case_insensitive() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task = create_test_task("Add USER Authentication");
+        repo.create(task.clone()).await.unwrap();
+
+        // Search with lowercase - should match
+        let results = repo.search(&project_id, "user", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Search with uppercase - should also match
+        let results = repo.search(&project_id, "USER", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Search with mixed case - should also match
+        let results = repo.search(&project_id, "UsEr", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_returns_no_results_for_no_match() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task = create_test_task("Add user login");
+        repo.create(task.clone()).await.unwrap();
+
+        // Search for something that doesn't exist
+        let results = repo.search(&project_id, "nonexistent", false).await.unwrap();
+        assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_search_excludes_archived_by_default() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task1 = create_test_task("Active authentication task");
+        let task2 = create_test_task("Archived authentication task");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        // Search without including archived - should only find active task
+        let results = repo.search(&project_id, "authentication", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task1.id);
+    }
+
+    #[tokio::test]
+    async fn test_search_includes_archived_when_requested() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task1 = create_test_task("Active authentication task");
+        let task2 = create_test_task("Archived authentication task");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        // Search with including archived - should find both tasks
+        let results = repo.search(&project_id, "authentication", true).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_search_matches_partial_strings() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task = create_test_task("Implement user authentication system");
+        repo.create(task.clone()).await.unwrap();
+
+        // Search for partial match
+        let results = repo.search(&project_id, "authen", false).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, task.id);
     }
 }
