@@ -27,7 +27,7 @@ use crate::domain::repositories::{
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
-    build_streaming_command,
+    spawn_in_pty, build_streaming_command,
     StreamProcessor, StreamEvent as ProcessorStreamEvent,
 };
 
@@ -646,6 +646,140 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
 
         Ok((result.response_text, result.tool_calls, result.session_id))
     }
+
+    /// Spawn Claude CLI in a PTY and process streaming output
+    ///
+    /// This method uses a pseudo-terminal (PTY) to ensure real-time streaming output.
+    /// Standard pipe-based stdout is fully buffered, causing all output to arrive
+    /// at once when the process completes. PTY forces line buffering.
+    async fn spawn_and_process_with_pty(
+        &self,
+        conversation: &ChatConversation,
+        user_message: &str,
+        context_id: &str,
+        working_directory: &PathBuf,
+        conversation_id: &ChatConversationId,
+    ) -> Result<(String, Vec<ToolCall>, Option<String>), OrchestratorError> {
+        // Get agent info for MCP tool scoping
+        let agent_name = get_agent_name(&conversation.context_type);
+
+        // Determine prompt and session info
+        let (prompt, resume_session, agent) = if let Some(ref claude_session_id) = conversation.claude_session_id {
+            println!(
+                "[DEBUG] Spawning Claude CLI in PTY with --resume: session={}",
+                claude_session_id
+            );
+            (user_message.to_string(), Some(claude_session_id.clone()), None)
+        } else {
+            let initial_prompt = Self::build_context_initial_prompt(
+                conversation.context_type,
+                context_id,
+                user_message,
+            );
+            println!(
+                "[DEBUG] Spawning Claude CLI in PTY with --agent: agent={}",
+                agent_name
+            );
+            (initial_prompt, None, Some(agent_name.to_string()))
+        };
+
+        // Spawn in PTY for real-time streaming
+        let pty_result = spawn_in_pty(
+            &self.cli_path,
+            &self.plugin_dir,
+            working_directory,
+            &prompt,
+            agent.as_deref(),
+            resume_session.as_deref(),
+            &[("RALPHX_AGENT_TYPE", agent_name)],
+        )
+        .map_err(|e| OrchestratorError::SpawnFailed(e))?;
+
+        let mut lines_rx = pty_result.lines_rx;
+        let wait_handle = pty_result.wait_handle;
+
+        // Process lines from PTY
+        let mut processor = StreamProcessor::new();
+        let conversation_id_str = conversation_id.as_str();
+        let mut line_count = 0;
+
+        while let Some(line) = lines_rx.recv().await {
+            line_count += 1;
+            tracing::debug!("PTY line {}: {}", line_count, &line[..line.len().min(100)]);
+
+            if let Some(msg) = StreamProcessor::parse_line(&line) {
+                let events = processor.process_message(msg);
+
+                // Emit Tauri events based on processor events
+                for event in events {
+                    match event {
+                        ProcessorStreamEvent::TextChunk(text) => {
+                            self.emit_event(
+                                "chat:chunk",
+                                ChatChunkPayload {
+                                    text,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                        ProcessorStreamEvent::ToolCallStarted { name, id } => {
+                            self.emit_event(
+                                "chat:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: name,
+                                    tool_id: id,
+                                    arguments: serde_json::Value::Null,
+                                    result: None,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                        ProcessorStreamEvent::ToolCallCompleted(tool_call) => {
+                            self.emit_event(
+                                "chat:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: tool_call.name.clone(),
+                                    tool_id: tool_call.id.clone(),
+                                    arguments: tool_call.arguments.clone(),
+                                    result: None,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                        ProcessorStreamEvent::SessionId(_) => {
+                            // Session ID is captured in processor.finish()
+                        }
+                        ProcessorStreamEvent::ToolResultReceived {
+                            tool_use_id,
+                            result,
+                        } => {
+                            self.emit_event(
+                                "chat:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: format!("result:{}", tool_use_id),
+                                    tool_id: Some(tool_use_id),
+                                    arguments: serde_json::Value::Null,
+                                    result: Some(result),
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Wait for process to complete
+        let _ = wait_handle.await;
+
+        let result = processor.finish();
+        println!(
+            "[DEBUG] PTY stream complete: {} lines, response_len={}, tool_calls={}",
+            line_count, result.response_text.len(), result.tool_calls.len()
+        );
+
+        Ok((result.response_text, result.tool_calls, result.session_id))
+    }
 }
 
 #[async_trait]
@@ -702,14 +836,14 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
             .resolve_project_working_directory(ChatContextType::Ideation, session_id.as_str())
             .await;
 
-        // 5. Build and spawn Claude CLI command
-        let mut cmd = self.build_command(&conversation, user_message, session_id, &working_directory);
-        let child = cmd
-            .spawn()
-            .map_err(|e| OrchestratorError::SpawnFailed(e.to_string()))?;
-
-        // 6. Process streaming output
-        let result = self.process_stream(child, &conversation_id).await;
+        // 5. Spawn Claude CLI in PTY and process streaming output
+        let result = self.spawn_and_process_with_pty(
+            &conversation,
+            user_message,
+            session_id.as_str(),
+            &working_directory,
+            &conversation_id,
+        ).await;
 
         // Handle result (complete or fail the agent run)
         match result {

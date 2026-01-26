@@ -3,9 +3,11 @@
 
 mod claude_code_client;
 mod stream_processor;
+mod pty_spawner;
 
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
+pub use pty_spawner::{spawn_in_pty, PtySpawnResult};
 
 // Re-export stream processor types for use by services
 pub use stream_processor::{
