@@ -61,6 +61,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Toaster } from "@/components/ui/sonner";
 
 // Local storage key for persisting chat panel width
 const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
@@ -795,6 +796,9 @@ function AppContent() {
 
       {/* Permission Dialog - Global UI-based permission approval */}
       <PermissionDialog />
+
+      {/* Toast notifications */}
+      <Toaster />
     </main>
   );
 }

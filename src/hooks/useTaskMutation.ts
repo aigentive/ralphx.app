@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import type { CreateTask, UpdateTask } from "@/types/task";
 import { taskKeys } from "./useTasks";
@@ -66,10 +67,52 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.archive(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: ["archived-count"] });
+      toast.success("Task archived");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to archive task: ${error.message}`);
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.restore(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: ["archived-count"] });
+      toast.success("Task restored");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to restore task: ${error.message}`);
+    },
+  });
+
+  const permanentlyDeleteMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.permanentlyDelete(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: ["archived-count"] });
+      toast.success("Task permanently deleted");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete task: ${error.message}`);
+    },
+  });
+
   return {
     createMutation,
     updateMutation,
     deleteMutation,
     moveMutation,
+    archiveMutation,
+    restoreMutation,
+    permanentlyDeleteMutation,
+    isArchiving: archiveMutation.isPending,
+    isRestoring: restoreMutation.isPending,
+    isPermanentlyDeleting: permanentlyDeleteMutation.isPending,
   };
 }
