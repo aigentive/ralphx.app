@@ -43,13 +43,14 @@ pub fn run() {
                 let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                     .title("")
                     .inner_size(1200.0, 800.0)
+                    .decorations(true)
                     .hidden_title(true);
 
                 #[cfg(target_os = "macos")]
                 {
                     builder = builder
                         .title_bar_style(TitleBarStyle::Overlay)
-                        .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 22.0 }));
+                        .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }));
                 }
 
                 builder.build()?;
