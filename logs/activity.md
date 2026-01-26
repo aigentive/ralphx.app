@@ -1,14 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:31:26
+**Last Updated:** 2026-01-26 02:34:35
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 17 / 26
-**Current Task:** Update ChatMessage to display tool calls
+**Tasks Completed:** 18 / 26
+**Current Task:** Create ConversationSelector component
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:34:35 - Updated ChatMessage to Display Tool Calls
+
+**What was done:**
+- Updated `src/components/Chat/ChatMessage.tsx`:
+  - Imported `ToolCallIndicator` component and `ToolCall` type
+  - Added `useMemo` hook to parse `message.toolCalls` JSON string into array
+  - Handles invalid JSON gracefully (returns empty array)
+  - Handles non-array JSON gracefully (returns empty array)
+  - Renders tool calls section within message bubble when present
+  - Each tool call rendered as a `ToolCallIndicator` component
+  - Tool calls positioned below message content with proper spacing (`mt-3 space-y-2`)
+  - Added `data-testid="chat-message-tool-calls"` for testing
+
+- Updated `src/components/Chat/ChatMessage.test.tsx`:
+  - Added `conversationId` and `toolCalls` fields to existing test message fixtures
+  - Created `messageWithToolCalls` fixture with 2 successful tool calls (create_task_proposal, update_task)
+  - Created `messageWithFailedToolCall` fixture with 1 failed tool call (read with error)
+  - Added comprehensive "Tool Calls" test suite with 8 tests:
+    - No tool calls section when message has no tool calls
+    - No tool calls section when toolCalls is null
+    - Renders tool calls when present
+    - Renders multiple tool call indicators
+    - Tool calls positioned within message bubble
+    - Handles failed tool calls
+    - Handles invalid JSON gracefully
+    - Handles non-array JSON gracefully
+
+**Commands run:**
+- `npm run lint` (passed - no new errors or warnings)
+- `npm run typecheck` (passed)
+- `npm run test -- src/components/Chat/ChatMessage.test.tsx` (36 tests passed, including 8 new tool call tests)
+
+**Design notes:**
+- Tool calls appear below message content, maintaining visual hierarchy
+- Uses existing ToolCallIndicator component for consistent styling
+- Graceful error handling prevents crashes from malformed tool call data
+- Tool calls inherit message bubble's background and color scheme
 
 ### 2026-01-26 02:31:26 - Created ToolCallIndicator Component
 
