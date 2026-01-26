@@ -54,10 +54,14 @@ pub fn run() {
                         .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }));
                 }
 
-                let window = builder.build()?;
+                let webview_window = builder.build()?;
 
                 // Restore window state (size, position) from disk
-                let _ = window.restore_state(StateFlags::all());
+                // WindowExt is implemented for WebviewWindow in tauri-plugin-window-state
+                match webview_window.restore_state(StateFlags::all()) {
+                    Ok(_) => println!("Window state restored successfully"),
+                    Err(e) => println!("Failed to restore window state: {:?}", e),
+                }
             }
 
             // Create application state with production SQLite repositories

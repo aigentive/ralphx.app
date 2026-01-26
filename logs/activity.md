@@ -1,15 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 07:45:00
+**Last Updated:** 2026-01-26 08:15:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 1 / 14
-**Current Task:** Create ExecutionMessageQueue for in-memory queue management
+**Tasks Completed:** 2 / 14
+**Current Task:** Create ExecutionChatService for spawn with persistence
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 08:15:00 - Create ExecutionMessageQueue
+
+**What was done:**
+- Created `ExecutionMessageQueue` service for in-memory queue management
+- Implemented FIFO queue per task_id with thread-safe Arc<Mutex<HashMap>> storage
+- Added `QueuedMessage` struct with id, content, created_at, is_editing fields
+- Implemented methods:
+  - `queue()` - Add message to queue (returns created QueuedMessage)
+  - `pop()` - Remove and return next message (FIFO)
+  - `get_queued()` - View all queued messages without removing
+  - `clear()` - Clear all messages for a task
+  - `delete()` - Remove specific message by ID
+- Wrote comprehensive unit tests (7 tests, all passing):
+  - Queue and pop in FIFO order
+  - Get queued messages without removing
+  - Clear all messages
+  - Delete specific message by ID
+  - Multiple tasks with isolated queues
+  - QueuedMessage creation with valid timestamps
+  - Clone safety (shared Arc behavior)
+- Updated `src-tauri/src/domain/services/mod.rs` to export new module
+- Fixed unrelated JSON syntax error in `capabilities/default.json` (missing quotes)
+
+**Files Created:**
+- `src-tauri/src/domain/services/execution_message_queue.rs` (full implementation with tests)
+
+**Files Modified:**
+- `src-tauri/src/domain/services/mod.rs` (exported ExecutionMessageQueue and QueuedMessage)
+- `src-tauri/capabilities/default.json` (fixed JSON syntax)
+
+**Commands Run:**
+- `cargo test execution_message_queue --lib` (7 tests passed)
 
 ### 2026-01-26 07:45:00 - Add task_execution Context Type
 

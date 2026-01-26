@@ -5,12 +5,14 @@
 
 pub mod artifact_flow_service;
 pub mod artifact_service;
+pub mod execution_message_queue;
 pub mod methodology_service;
 pub mod research_service;
 pub mod workflow_service;
 
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
 pub use artifact_service::ArtifactService;
+pub use execution_message_queue::{ExecutionMessageQueue, QueuedMessage};
 pub use methodology_service::{MethodologyActivationResult, MethodologyService};
 pub use research_service::ResearchService;
 pub use workflow_service::{

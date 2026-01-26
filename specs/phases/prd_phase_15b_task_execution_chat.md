@@ -89,7 +89,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: feat(domain): add ExecutionMessageQueue for worker message queueing",
       "STOP: Output <promise>COMPLETE</promise> - Next tasks (3-5) are high-complexity cross-cutting changes, consider switching to Opus"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
