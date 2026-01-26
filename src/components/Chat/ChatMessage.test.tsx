@@ -208,14 +208,19 @@ describe("ChatMessage", () => {
     it("shows user message bubble with accent color", () => {
       render(<ChatMessage message={userMessage} />);
 
-      const bubble = screen.getByTestId("chat-message-bubble");
+      // User messages should have a bubble with orange gradient
+      const container = screen.getByTestId(`chat-message-${userMessage.id}`);
+      // The bubble uses inline styles with the warm orange gradient
+      const bubble = container.querySelector('[style*="linear-gradient"]');
       expect(bubble).toBeInTheDocument();
     });
 
     it("shows orchestrator message bubble with neutral color", () => {
       render(<ChatMessage message={orchestratorMessage} />);
 
-      const bubble = screen.getByTestId("chat-message-bubble");
+      // Orchestrator messages should have a bubble with dark gradient
+      const container = screen.getByTestId(`chat-message-${orchestratorMessage.id}`);
+      const bubble = container.querySelector('[style*="linear-gradient"]');
       expect(bubble).toBeInTheDocument();
     });
   });
@@ -332,7 +337,10 @@ describe("ChatMessage", () => {
       };
       render(<ChatMessage message={longMessage} />);
 
-      const bubble = screen.getByTestId("chat-message-bubble");
+      // The bubble should have break-words class to handle long content
+      const container = screen.getByTestId(`chat-message-msg-long`);
+      const bubble = container.querySelector('[style*="linear-gradient"]');
+      expect(bubble).toBeInTheDocument();
       expect(bubble).toHaveClass("break-words");
     });
   });
@@ -412,13 +420,14 @@ describe("ChatMessage", () => {
       expect(toolCallIndicators).toHaveLength(2);
     });
 
-    it("renders tool calls within message bubble", () => {
+    it("renders tool calls as part of message content", () => {
       render(<ChatMessage message={messageWithToolCalls} />);
 
-      const bubble = screen.getByTestId("chat-message-bubble");
+      const article = screen.getByTestId(`chat-message-${messageWithToolCalls.id}`);
       const toolCallsSection = screen.getByTestId("chat-message-tool-calls");
 
-      expect(bubble).toContainElement(toolCallsSection);
+      // Tool calls render within the message article
+      expect(article).toContainElement(toolCallsSection);
     });
 
     it("handles failed tool calls", () => {

@@ -278,10 +278,6 @@ export function ChatMessage({
   // Use content blocks if available, otherwise fall back to legacy rendering
   const hasContentBlocks = contentBlocks.length > 0;
 
-  // Split content blocks into text and tool_use for rendering
-  const textBlocks = contentBlocks.filter(b => b.type === "text" && b.text);
-  const toolBlocks = contentBlocks.filter(b => b.type === "tool_use" && b.name);
-
   return (
     <article
       data-testid={`chat-message-${message.id}`}
@@ -299,36 +295,35 @@ export function ChatMessage({
         </span>
       )}
 
-      {/* Render content blocks if available (preserves interleaved order) */}
+      {/* Render content blocks in order (preserves interleaved text/tool_use sequence) */}
       {hasContentBlocks ? (
         <div className="flex flex-col gap-1.5 max-w-full">
-          {/* Text blocks - each in its own bubble */}
-          {textBlocks.map((block, index) => (
-            <TextBubble
-              key={`text-${index}`}
-              content={block.text!}
-              isUser={isUser}
-              isFirst={index === 0}
-              isLast={index === textBlocks.length - 1}
-            />
-          ))}
-
-          {/* Tool calls - rendered after text */}
-          {toolBlocks.length > 0 && (
-            <div className="max-w-[85%] space-y-1.5">
-              {toolBlocks.map((block, index) => {
-                const toolCall: ToolCall = {
-                  id: block.id || `tool-${index}`,
-                  name: block.name!,
-                  arguments: block.arguments,
-                  result: block.result,
-                };
-                return (
-                  <ToolCallIndicator key={`tool-${index}`} toolCall={toolCall} />
-                );
-              })}
-            </div>
-          )}
+          {contentBlocks.map((block, index) => {
+            if (block.type === "text" && block.text) {
+              return (
+                <TextBubble
+                  key={`block-${index}`}
+                  content={block.text}
+                  isUser={isUser}
+                  isFirst={index === 0}
+                  isLast={index === contentBlocks.length - 1}
+                />
+              );
+            } else if (block.type === "tool_use" && block.name) {
+              const toolCall: ToolCall = {
+                id: block.id || `tool-${index}`,
+                name: block.name,
+                arguments: block.arguments,
+                result: block.result,
+              };
+              return (
+                <div key={`block-${index}`} className="max-w-[85%]">
+                  <ToolCallIndicator toolCall={toolCall} />
+                </div>
+              );
+            }
+            return null;
+          })}
         </div>
       ) : (
         <>

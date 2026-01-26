@@ -43,41 +43,16 @@ interface ToolCallIndicatorProps {
 // Helpers
 // ============================================================================
 
-
-/**
- * Extract first-level key-value pairs from arguments for summary
- */
-function extractKeyValues(args: unknown): Array<{ key: string; value: string }> {
-  if (!args || typeof args !== "object" || Array.isArray(args)) {
-    return [];
-  }
-
-  const result: Array<{ key: string; value: string }> = [];
-  const entries = Object.entries(args as Record<string, unknown>);
-
-  for (const [key, value] of entries) {
-    // Skip nested objects, arrays, and nullish values
-    if (value == null || (typeof value === "object")) {
-      continue;
-    }
-
-    result.push({
-      key: key.replace(/_/g, " "),
-      value: truncate(String(value), 50),
-    });
-  }
-
-  return result.slice(0, 4); // Max 4 key-value pairs
-}
-
 /**
  * Create a brief summary of the tool call for collapsed view
  */
 function createSummary(toolCall: ToolCall): { title: string; subtitle?: string | undefined } {
   const { name, arguments: args, result } = toolCall;
+  // Normalize tool name to lowercase for matching
+  const normalizedName = name.toLowerCase();
 
   // Special formatting for common tools
-  switch (name) {
+  switch (normalizedName) {
     case "bash": {
       const typedArgs = args as { command?: string; description?: string } | undefined;
       const desc = typedArgs?.description;
@@ -102,10 +77,19 @@ function createSummary(toolCall: ToolCall): { title: string; subtitle?: string |
     }
     case "grep": {
       const typedArgs = args as { pattern?: string; path?: string } | undefined;
-      return {
-        title: typedArgs?.pattern ? `"${truncate(typedArgs.pattern, 40)}"` : "Search content",
-        subtitle: typedArgs?.path,
-      };
+      const pattern = typedArgs?.pattern;
+      const path = typedArgs?.path;
+      if (pattern && path) {
+        return {
+          title: `"${truncate(pattern, 30)}"`,
+          subtitle: `in ${path}`,
+        };
+      } else if (pattern) {
+        return { title: `"${truncate(pattern, 40)}"` };
+      } else if (path) {
+        return { title: `Search in ${path}` };
+      }
+      return { title: "Search content" };
     }
     case "create_task_proposal":
       return { title: (args as { title?: string })?.title || "Created proposal" };
@@ -137,15 +121,7 @@ function createSummary(toolCall: ToolCall): { title: string; subtitle?: string |
       return { title: query ? `"${truncate(query, 40)}"` : "Searched artifacts" };
     }
     default: {
-      // Dynamic extraction for unknown tools
-      const keyValues = extractKeyValues(args);
-      if (keyValues.length > 0) {
-        const first = keyValues[0];
-        return {
-          title: first ? first.value : name.replace(/_/g, " "),
-          subtitle: keyValues.length > 1 ? `+${keyValues.length - 1} more` : undefined,
-        };
-      }
+      // For unknown tools, just show the tool name in readable form
       return { title: name.replace(/_/g, " ") };
     }
   }

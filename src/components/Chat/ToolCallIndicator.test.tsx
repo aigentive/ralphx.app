@@ -248,8 +248,8 @@ describe("ToolCallIndicator", () => {
 
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("custom_tool")).toBeInTheDocument();
-      // Shows extracted argument value
-      expect(screen.getByText(/bar/i)).toBeInTheDocument();
+      // Shows formatted tool name as summary (underscores replaced with spaces)
+      expect(screen.getByText("custom tool")).toBeInTheDocument();
     });
 
     it("truncates long command summaries", () => {
