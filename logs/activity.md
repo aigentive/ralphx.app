@@ -1,15 +1,57 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:30:00
+**Last Updated:** 2026-01-26 19:22:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 26 / 30
-**Current Task:** Create TaskCardContextMenu component
+**Tasks Completed:** 27 / 30
+**Current Task:** Wrap TaskCard with context menu and add handlers
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:22:00 - Create TaskCardContextMenu component (Task 28)
+
+**What was done:**
+- Added shadcn context-menu component via `npx shadcn@latest add context-menu`
+- Fixed TypeScript error in generated context-menu component (exactOptionalPropertyTypes issue with checked prop)
+- Created `src/components/tasks/TaskCardContextMenu.tsx`:
+  - Right-click context menu wrapper component for task cards
+  - Uses shadcn ContextMenu components (ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator)
+  - Always shows "View Details" option
+  - Shows "Edit" for non-archived, non-system-controlled tasks
+  - System-controlled statuses: executing, execution_done, qa_refining, qa_testing, qa_passed, qa_failed, pending_review, revision_needed
+  - Status-based actions:
+    - backlog: Cancel
+    - ready: Block, Cancel
+    - blocked: Unblock, Cancel
+    - approved: Re-open
+    - failed: Retry
+    - cancelled: Re-open
+  - For non-archived tasks: Archive option
+  - For archived tasks: Restore and Delete Permanently options
+  - Uses Lucide icons (Eye, Pencil, Archive, RotateCcw, Trash, X, Ban, Unlock)
+  - Accepts callbacks for all actions: onViewDetails, onEdit, onArchive, onRestore, onPermanentDelete, onStatusChange
+- Created comprehensive test suite `src/components/tasks/TaskCardContextMenu.test.tsx`:
+  - 19 tests covering all menu item visibility rules
+  - Tests for different task statuses (backlog, ready, blocked, approved, failed, cancelled)
+  - Tests for archived vs non-archived tasks
+  - Tests for system-controlled vs user-controlled tasks
+  - Tests for callback invocations
+  - Mock task factory for clean test setup
+
+**Commands:**
+- `npx shadcn@latest add context-menu` - Added context-menu component
+- `npm run typecheck` - Passed after fixing context-menu component
+- `npm run test -- src/components/tasks/TaskCardContextMenu.test.tsx` - 19/19 tests passed
+
+**Result:**
+- TaskCardContextMenu component provides comprehensive right-click actions
+- Dynamic menu items based on task status and archived state
+- Ready for integration with TaskCard component in next task
+
+---
 
 ### 2026-01-26 20:30:00 - Add keyboard shortcuts to TaskBoard (Task 27)
 

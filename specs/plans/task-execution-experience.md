@@ -4,12 +4,6 @@
 
 This unified plan combines **Task Steps** (deterministic progress tracking) with **Execution UX** (reactive cards + full-screen task view with integrated chat). Together, these features create a cohesive execution experience where users can see real progress on the Kanban board and dive deep into any task with a single click.
 
-**Supersedes:**
-- `specs/plans/task-steps-progress-tracking.md` (merged)
-- `specs/plans/task-execution-ux-redesign.md` (merged)
-
----
-
 ## Problem Statement
 
 The current execution experience is fragmented:
