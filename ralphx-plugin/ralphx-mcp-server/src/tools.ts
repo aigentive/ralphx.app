@@ -6,6 +6,7 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
+import { STEP_TOOLS } from "./step-tools.js";
 
 /**
  * All available MCP tools
@@ -341,6 +342,11 @@ export const ALL_TOOLS: Tool[] = [
   // WORKER CONTEXT TOOLS (worker agent)
   // ========================================================================
   ...WORKER_CONTEXT_TOOLS,
+
+  // ========================================================================
+  // STEP TOOLS (worker agent)
+  // ========================================================================
+  ...STEP_TOOLS,
 ];
 
 /**
@@ -368,6 +374,13 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_artifact_version",
     "get_related_artifacts",
     "search_project_artifacts",
+    "get_task_steps",
+    "start_step",
+    "complete_step",
+    "skip_step",
+    "fail_step",
+    "add_step",
+    "get_step_progress",
   ],
   // These agents have NO MCP tools - they use filesystem tools only
   supervisor: [],

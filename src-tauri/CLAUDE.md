@@ -219,7 +219,7 @@ Frontend → Tauri IPC → Backend
 | chat-task | update_task, add_task_note, get_task_details |
 | chat-project | suggest_task, list_tasks |
 | reviewer | complete_review |
-| worker | get_task_context, get_artifact*, search_project_artifacts (Ph17) |
+| worker | get_task_context, get_artifact*, search_project_artifacts (Ph17), get_task_steps, start_step, complete_step, skip_step, fail_step, add_step, get_step_progress (Ph19) |
 | supervisor/qa-* | None |
 
 ### Session Management

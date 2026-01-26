@@ -1,15 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:45:12
+**Last Updated:** 2026-01-26 21:47:35
 **Phase:** Task Execution Experience
-**Tasks Completed:** 10 / 42
-**Current Task:** Update worker agent tool scoping for steps
+**Tasks Completed:** 11 / 42
+**Current Task:** Import steps from proposal when creating task
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:47:35 - Update worker agent tool scoping for steps
+
+**What was done:**
+- Created `ralphx-plugin/ralphx-mcp-server/src/step-tools.ts`:
+  - Defined 7 MCP tool definitions: get_task_steps, start_step, complete_step, skip_step, fail_step, add_step, get_step_progress
+  - Each tool includes comprehensive description and inputSchema for MCP protocol
+  - Optimized for worker agent step-by-step progress tracking
+- Updated `ralphx-plugin/ralphx-mcp-server/src/tools.ts`:
+  - Imported STEP_TOOLS from step-tools.ts
+  - Added STEP_TOOLS to ALL_TOOLS array
+  - Updated worker allowlist in TOOL_ALLOWLIST to include all 7 step tools
+- Updated `ralphx-plugin/ralphx-mcp-server/src/index.ts`:
+  - Added GET endpoint routing for get_task_steps (GET /api/task_steps/:task_id)
+  - Added GET endpoint routing for get_step_progress (GET /api/step_progress/:task_id)
+  - POST endpoints (start_step, complete_step, skip_step, fail_step, add_step) use default routing
+- Updated `src-tauri/CLAUDE.md`:
+  - Updated Tool Scoping table to include step tools for worker agent (Phase 19)
+  - Documentation now shows: get_task_steps, start_step, complete_step, skip_step, fail_step, add_step, get_step_progress
+
+**Verification:**
+- Ran `cargo test` - all 3207 tests passed
+- MCP tool scoping now enforces worker agent has access to step progress tracking tools
+- Worker agents can now track deterministic progress during task execution
 
 ### 2026-01-26 21:45:12 - Add step HTTP endpoints for MCP
 

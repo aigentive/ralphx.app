@@ -134,6 +134,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Also handle get_session_plan as GET
       const { session_id } = args as { session_id: string };
       result = await callTauriGet(`get_session_plan/${session_id}`);
+    } else if (name === "get_task_steps") {
+      // GET /api/task_steps/:task_id
+      const { task_id } = args as { task_id: string };
+      result = await callTauriGet(`task_steps/${task_id}`);
+    } else if (name === "get_step_progress") {
+      // GET /api/step_progress/:task_id
+      const { task_id } = args as { task_id: string };
+      result = await callTauriGet(`step_progress/${task_id}`);
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});

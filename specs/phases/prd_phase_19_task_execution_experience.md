@@ -276,7 +276,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(mcp): add step tools to worker agent scope"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
