@@ -1,15 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 11:30:00
+**Last Updated:** 2026-01-26 12:00:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 5 / 14
-**Current Task:** Add Tauri commands for execution chat
+**Tasks Completed:** 6 / 14
+**Current Task:** Implement queue processing on worker completion
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 12:00:00 - Add Tauri Commands for Execution Chat
+
+**What was done:**
+- Created `src-tauri/src/commands/execution_chat_commands.rs` with 5 commands:
+  - `get_execution_conversation(task_id)` - Get active execution conversation for a task
+  - `list_task_executions(task_id)` - List all execution attempts (conversations) for a task
+  - `queue_execution_message(task_id, content)` - Queue a message to send when worker finishes
+  - `get_queued_execution_messages(task_id)` - Get all queued messages for a task
+  - `delete_queued_execution_message(task_id, message_id)` - Delete a queued message
+- Added `QueuedMessageResponse` serialization struct
+- Updated `src-tauri/src/commands/mod.rs` to export new module and commands
+- Registered all 5 commands in `src-tauri/src/lib.rs` invoke_handler
+- Added `execution_message_queue: ExecutionMessageQueue` field to AppState
+- Updated all AppState constructors (new_production, with_db_path, new_test, with_repos) to initialize queue
+- Removed unused imports (Deserialize, ChatConversation)
+- All tests pass (3025 tests)
+
+**Key Design Decisions:**
+- Commands reuse `ChatConversationResponse` from context_chat_commands for consistency
+- ExecutionMessageQueue is already in AppState (shared across all commands)
+- Queue operations are in-memory (messages not persisted, intentional per plan)
+- Commands use standard error handling pattern (Result<T, String>)
+
+**Files Created:**
+- `src-tauri/src/commands/execution_chat_commands.rs`
+
+**Files Modified:**
+- `src-tauri/src/commands/mod.rs` (added module and re-exports)
+- `src-tauri/src/lib.rs` (registered 5 commands in invoke_handler)
+- `src-tauri/src/application/app_state.rs` (added execution_message_queue field)
+
+**Commands Run:**
+- `cargo test --lib commands::execution_chat_commands::tests` (1 test passed)
+- `cargo test` (3025 tests passed)
 
 ### 2026-01-26 11:30:00 - Update TransitionHandler to use spawn_with_persistence
 

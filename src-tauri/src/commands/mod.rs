@@ -4,6 +4,7 @@
 pub mod agent_profile_commands;
 pub mod artifact_commands;
 pub mod context_chat_commands;
+pub mod execution_chat_commands;
 pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
@@ -84,4 +85,8 @@ pub use context_chat_commands::{
     create_conversation, get_agent_run_status, get_conversation, list_conversations,
     send_context_message, AgentRunResponse, ChatConversationResponse, ChatMessageResponse as ContextChatMessageResponse,
     ConversationWithMessagesResponse, CreateConversationInput, SendContextMessageInput,
+};
+pub use execution_chat_commands::{
+    delete_queued_execution_message, get_execution_conversation, get_queued_execution_messages,
+    list_task_executions, queue_execution_message, QueuedMessageResponse,
 };
