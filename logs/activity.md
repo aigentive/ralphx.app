@@ -1,15 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 06:15:00
+**Last Updated:** 2026-01-26 06:30:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 4 / 24
-**Current Task:** Add Tauri commands for ideation settings
+**Tasks Completed:** 5 / 24
+**Current Task:** Add plan artifact HTTP endpoints for MCP proxy
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 06:30:00 - Tauri Commands for Ideation Settings (Phase 16)
+
+**What was done:**
+- Added Tauri commands to `src-tauri/src/commands/ideation_commands.rs`:
+  - `get_ideation_settings()` - retrieves current ideation settings (returns default if none exist)
+  - `update_ideation_settings(settings)` - updates ideation settings and persists to SQLite
+- Both commands delegate to `IdeationSettingsRepository` in AppState
+- Added import for `IdeationSettings` type
+- Registered commands in `src-tauri/src/lib.rs` invoke_handler:
+  - `commands::ideation_commands::get_ideation_settings`
+  - `commands::ideation_commands::update_ideation_settings`
+- Added comprehensive unit tests:
+  - `test_get_ideation_settings_returns_default` - verifies default settings loaded
+  - `test_update_ideation_settings` - verifies settings update persistence
+  - `test_ideation_settings_persist_across_reads` - verifies settings persist across repository reads
+- All tests pass (3052 passed, 0 failed)
+
+**Commands run:**
+- `cargo test ideation_settings --lib` - verify ideation settings tests
+- `cargo test --lib` - verify all tests pass (3052 passed)
+
+**Test results:**
+```
+✓ test_get_ideation_settings_returns_default ... ok
+✓ test_update_ideation_settings ... ok
+✓ test_ideation_settings_persist_across_reads ... ok
+All 3052 library tests passed
+```
+
+**Files modified:**
+- `src-tauri/src/commands/ideation_commands.rs` (+35 lines)
+- `src-tauri/src/lib.rs` (+2 command registrations)
+
+---
 
 ### 2026-01-26 06:15:00 - Traceability Fields for Task Entity (Phase 16)
 

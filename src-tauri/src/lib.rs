@@ -165,6 +165,9 @@ pub fn run() {
             // Orchestrator commands
             commands::ideation_commands::send_orchestrator_message,
             commands::ideation_commands::is_orchestrator_available,
+            // Ideation settings commands
+            commands::ideation_commands::get_ideation_settings,
+            commands::ideation_commands::update_ideation_settings,
             // Workflow commands
             commands::workflow_commands::get_workflows,
             commands::workflow_commands::get_workflow,

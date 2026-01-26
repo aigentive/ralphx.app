@@ -11,6 +11,7 @@ use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority,
     ProjectId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
+use crate::domain::ideation::IdeationSettings;
 
 /// Input for creating a new ideation session
 #[derive(Debug, Deserialize)]
@@ -1474,6 +1475,35 @@ pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<boo
     Ok(orchestrator.is_available().await)
 }
 
+// ============================================================================
+// Ideation Settings Commands
+// ============================================================================
+
+/// Get ideation settings
+#[tauri::command]
+pub async fn get_ideation_settings(
+    state: State<'_, AppState>,
+) -> Result<IdeationSettings, String> {
+    state
+        .ideation_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Update ideation settings
+#[tauri::command]
+pub async fn update_ideation_settings(
+    settings: IdeationSettings,
+    state: State<'_, AppState>,
+) -> Result<IdeationSettings, String> {
+    state
+        .ideation_settings_repo
+        .update_settings(&settings)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2422,5 +2452,82 @@ mod tests {
         let response = ChatMessageResponse::from(created);
         assert_eq!(response.role, "system");
         assert_eq!(response.content, "Session started");
+    }
+
+    // ========================================================================
+    // Ideation Settings Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_ideation_settings_returns_default() {
+        let state = setup_test_state();
+
+        // Get settings (should return default)
+        let settings = state
+            .ideation_settings_repo
+            .get_settings()
+            .await
+            .unwrap();
+
+        assert_eq!(settings.plan_mode, crate::domain::ideation::IdeationPlanMode::Optional);
+        assert_eq!(settings.require_plan_approval, false);
+        assert_eq!(settings.suggest_plans_for_complex, true);
+        assert_eq!(settings.auto_link_proposals, true);
+    }
+
+    #[tokio::test]
+    async fn test_update_ideation_settings() {
+        let state = setup_test_state();
+
+        // Create custom settings
+        let custom_settings = IdeationSettings {
+            plan_mode: crate::domain::ideation::IdeationPlanMode::Required,
+            require_plan_approval: true,
+            suggest_plans_for_complex: false,
+            auto_link_proposals: false,
+        };
+
+        // Update settings
+        let updated = state
+            .ideation_settings_repo
+            .update_settings(&custom_settings)
+            .await
+            .unwrap();
+
+        assert_eq!(updated.plan_mode, crate::domain::ideation::IdeationPlanMode::Required);
+        assert_eq!(updated.require_plan_approval, true);
+        assert_eq!(updated.suggest_plans_for_complex, false);
+        assert_eq!(updated.auto_link_proposals, false);
+    }
+
+    #[tokio::test]
+    async fn test_ideation_settings_persist_across_reads() {
+        let state = setup_test_state();
+
+        // Update settings
+        let custom_settings = IdeationSettings {
+            plan_mode: crate::domain::ideation::IdeationPlanMode::Parallel,
+            require_plan_approval: false,
+            suggest_plans_for_complex: true,
+            auto_link_proposals: false,
+        };
+
+        state
+            .ideation_settings_repo
+            .update_settings(&custom_settings)
+            .await
+            .unwrap();
+
+        // Read settings again
+        let retrieved = state
+            .ideation_settings_repo
+            .get_settings()
+            .await
+            .unwrap();
+
+        assert_eq!(retrieved.plan_mode, crate::domain::ideation::IdeationPlanMode::Parallel);
+        assert_eq!(retrieved.require_plan_approval, false);
+        assert_eq!(retrieved.suggest_plans_for_complex, true);
+        assert_eq!(retrieved.auto_link_proposals, false);
     }
 }
