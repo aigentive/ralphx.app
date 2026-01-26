@@ -1,15 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:35:22
+**Last Updated:** 2026-01-26 18:40:15
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 6 / 30
-**Current Task:** Add TaskListResponse and archivedAt types
+**Tasks Completed:** 7 / 30
+**Current Task:** Add archive and search API bindings
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:40:15 - Add TaskListResponse and archivedAt types (Task 7)
+
+**What was done:**
+- Extended TaskSchema in src/types/task.ts:
+  - Added archivedAt field: z.string().datetime({ offset: true }).nullable()
+  - Supports RFC3339 timestamps with timezone offset (matches Rust backend)
+- Created TaskListResponseSchema for paginated task lists:
+  - Fields: tasks (Task[]), total (number), hasMore (boolean), offset (number)
+  - Supports infinite scroll pagination from backend
+- Created StatusTransitionSchema for status dropdown:
+  - Fields: status (string), label (string)
+  - Maps internal status to user-friendly label
+- Exported TaskListResponse and StatusTransition types
+
+**Commands run:**
+- `npm run typecheck` - Type checking passed
+
+**Verification:**
+- ✅ archivedAt field added to TaskSchema with nullable datetime type
+- ✅ TaskListResponseSchema matches backend TaskListResponse struct
+- ✅ StatusTransitionSchema matches backend StatusTransition struct
+- ✅ All types exported and available for frontend use
+- ✅ No TypeScript errors
 
 ### 2026-01-26 18:35:22 - Add get_valid_transitions command (Task 6)
 

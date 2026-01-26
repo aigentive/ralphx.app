@@ -221,7 +221,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(types): add TaskListResponse, StatusTransition, and archivedAt"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
