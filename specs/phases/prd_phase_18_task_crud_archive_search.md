@@ -313,7 +313,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck && npm run test",
       "Commit: feat(components): add TaskEditForm for editing tasks"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
