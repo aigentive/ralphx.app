@@ -337,6 +337,9 @@ export const selectActiveConversationId = (
   state: ChatState & ChatActions
 ): string | null => state.activeConversationId;
 
+// Stable empty array to avoid creating new references
+const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = [];
+
 /**
  * Select queued execution messages for a specific task
  * @param taskId - The task ID to get queued messages for
@@ -345,4 +348,4 @@ export const selectActiveConversationId = (
 export const selectExecutionQueuedMessages =
   (taskId: string) =>
   (state: ChatState): QueuedMessage[] =>
-    state.executionQueuedMessages[taskId] ?? [];
+    state.executionQueuedMessages[taskId] ?? EMPTY_QUEUED_MESSAGES;
