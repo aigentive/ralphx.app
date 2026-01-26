@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:40:15
+**Last Updated:** 2026-01-26 18:55:32
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 7 / 30
-**Current Task:** Add archive and search API bindings
+**Tasks Completed:** 8 / 30
+**Current Task:** Add archive mutations with loading states and error handling
 
 ---
 
@@ -13545,3 +13545,22 @@ Phase 15b (pending) - Task Execution Chat: Persist worker execution output, view
 - ✓ getIdeationSettings() API method implemented
 - ✓ updateIdeationSettings(settings) API method implemented
 - ✓ TypeScript type checking passes
+
+### 2026-01-26 18:55:32 - Add Archive and Search API Bindings
+
+**What:**
+- Added new API bindings to src/lib/tauri.ts:
+  - archive: Archive a task (soft delete)
+  - restore: Restore an archived task
+  - permanentlyDelete: Permanently delete an archived task
+  - getArchivedCount: Get count of archived tasks for a project
+  - getValidTransitions: Get valid status transitions for a task
+  - search: Server-side search tasks by query string
+  - Updated list signature to accept params object with pagination and filtering
+- Updated frontend to handle new TaskListResponse structure
+- Updated all test files to use new API signature
+- Imported TaskListResponseSchema and StatusTransitionSchema from task types
+
+**Commands:**
+- `npm run typecheck` - Passed
+

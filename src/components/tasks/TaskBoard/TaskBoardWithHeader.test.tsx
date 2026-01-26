@@ -79,7 +79,7 @@ describe("TaskBoardWithHeader", () => {
     vi.clearAllMocks();
     vi.mocked(workflowsApi.getWorkflows).mockResolvedValue(mockWorkflows);
     vi.mocked(api.workflows.get).mockResolvedValue(mockWorkflows[0]);
-    vi.mocked(api.tasks.list).mockResolvedValue([]);
+    vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
   });
 
   // ==========================================================================
@@ -198,9 +198,8 @@ describe("TaskBoardWithHeader", () => {
   describe("task data preservation", () => {
     it("does not refetch tasks when workflow switches", async () => {
       // Setup tasks
-      vi.mocked(api.tasks.list).mockResolvedValue([
-        createMockTask({ id: "t1", title: "Task One", internalStatus: "executing" }),
-      ]);
+      const tasks = [createMockTask({ id: "t1", title: "Task One", internalStatus: "executing" })];
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: 1, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 

@@ -31,7 +31,10 @@ export function useTaskBoard(projectId: string, workflowId: string): UseTaskBoar
 
   const { data: tasks = [], isLoading: tasksLoading, error: tasksError } = useQuery<Task[], Error>({
     queryKey: taskKeys.list(projectId),
-    queryFn: () => api.tasks.list(projectId),
+    queryFn: async () => {
+      const response = await api.tasks.list({ projectId });
+      return response.tasks;
+    },
   });
 
   const { data: workflow, isLoading: workflowLoading, error: workflowError } = useQuery<WorkflowSchema, Error>({

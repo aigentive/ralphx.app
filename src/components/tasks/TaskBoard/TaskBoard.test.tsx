@@ -46,7 +46,7 @@ describe("TaskBoard", () => {
     });
 
     it("should hide skeleton when data is loaded", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
@@ -59,7 +59,7 @@ describe("TaskBoard", () => {
 
   describe("rendering columns", () => {
     it("should render with data-testid", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
@@ -70,7 +70,7 @@ describe("TaskBoard", () => {
     });
 
     it("should render 7 columns from default workflow", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
@@ -91,7 +91,7 @@ describe("TaskBoard", () => {
         createMockTask({ id: "t1", title: "Backlog Task", internalStatus: "backlog" }),
         createMockTask({ id: "t2", title: "Ready Task", internalStatus: "ready" }),
       ];
-      vi.mocked(api.tasks.list).mockResolvedValue(tasks);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
@@ -107,7 +107,7 @@ describe("TaskBoard", () => {
 
   describe("horizontal scrolling", () => {
     it("should have horizontal scroll container", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
