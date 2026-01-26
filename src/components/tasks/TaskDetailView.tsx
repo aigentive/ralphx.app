@@ -8,6 +8,13 @@
 import { useReviewsByTaskId, useTaskStateHistory } from "@/hooks/useReviews";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
 import type { Task, InternalStatus } from "@/types/task";
+import { FileText, Lightbulb } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface TaskDetailViewProps {
   task: Task;
@@ -104,6 +111,45 @@ export function TaskDetailView({ task, fixTaskCount }: TaskDetailViewProps) {
               P{task.priority}
             </span>
             <StatusBadge status={task.internalStatus} />
+
+            {/* Artifact indicators */}
+            {task.planArtifactId && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      data-testid="plan-artifact-indicator"
+                      className="inline-flex items-center justify-center"
+                    >
+                      <FileText
+                        className="w-4 h-4"
+                        style={{ color: "var(--accent-primary)" }}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>Has implementation plan</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {task.sourceProposalId && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      data-testid="source-proposal-indicator"
+                      className="inline-flex items-center justify-center"
+                    >
+                      <Lightbulb
+                        className="w-4 h-4"
+                        style={{ color: "var(--accent-secondary)" }}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>Created from proposal</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
         </div>
       </div>

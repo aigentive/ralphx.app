@@ -11,13 +11,19 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical } from "lucide-react";
+import { GripVertical, FileText, Lightbulb } from "lucide-react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
 import { Badge } from "@/components/ui/badge";
 import type { QAPrepStatus } from "@/types/qa-config";
 import type { QAOverallStatus } from "@/types/qa";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface TaskCardProps {
   task: Task;
@@ -185,6 +191,45 @@ export function TaskCard({
           {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}
           <TaskQABadge {...qaBadgeProps} />
           {hasCheckpoint && <CheckpointIndicator />}
+
+          {/* Artifact indicators */}
+          {task.planArtifactId && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    data-testid="plan-artifact-indicator"
+                    className="inline-flex items-center justify-center"
+                  >
+                    <FileText
+                      className="w-3.5 h-3.5"
+                      style={{ color: "var(--accent-primary)" }}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Has implementation plan</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {task.sourceProposalId && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    data-testid="source-proposal-indicator"
+                    className="inline-flex items-center justify-center"
+                  >
+                    <Lightbulb
+                      className="w-3.5 h-3.5"
+                      style={{ color: "var(--accent-secondary)" }}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Created from proposal</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
     </div>

@@ -1,15 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:30:00
+**Last Updated:** 2026-01-26 08:28:58
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 11 / 13
-**Current Task:** Show linked artifacts in task view
+**Tasks Completed:** 12 / 13
+**Current Task:** Update CLAUDE.md files for Phase 17
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 08:28:58 - Show linked artifacts in task view (Task 12)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Added imports for `FileText` and `Lightbulb` icons from Lucide
+  - Added import for shadcn/ui `Tooltip` components
+  - Added artifact indicators in badge row:
+    - FileText icon (orange accent) when `task.planArtifactId` present → Tooltip: "Has implementation plan"
+    - Lightbulb icon (yellow accent) when `task.sourceProposalId` present → Tooltip: "Created from proposal"
+  - Icons sized at 3.5x3.5 to match badge row scale
+- Updated `src/components/tasks/TaskDetailView.tsx`:
+  - Added same Lucide imports and Tooltip components
+  - Added artifact indicators in header badge section (after status badge):
+    - Same icons and tooltips as TaskCard
+    - Icons sized at 4x4 to match detail view scale
+- Used design system colors (`var(--accent-primary)` for plan, `var(--accent-secondary)` for proposal)
+- Wrapped each icon in `TooltipProvider` + `Tooltip` for accessible hover tooltips
+
+**Commands run:**
+- `npm run typecheck` - Passed
+- `npm run lint` - Passed (existing warnings only, no new issues)
+
+**Result:**
+- Task cards now visually indicate when a task has an implementation plan or was created from a proposal
+- Tooltips provide clear context on hover
+- Users can quickly identify tasks with rich context before opening them
 
 ### 2026-01-26 08:30:00 - Show artifact previews in execution chat tool calls (Task 11)
 
