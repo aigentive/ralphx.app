@@ -250,17 +250,15 @@ describe("WorkflowSchemaZ", () => {
 });
 
 describe("defaultWorkflow", () => {
-  it("has 7 columns", () => {
-    expect(defaultWorkflow.columns).toHaveLength(7);
+  it("has 5 columns", () => {
+    expect(defaultWorkflow.columns).toHaveLength(5);
   });
 
   it("has correct column ids", () => {
     const columnIds = defaultWorkflow.columns.map((c) => c.id);
     expect(columnIds).toEqual([
       "draft",
-      "backlog",
-      "todo",
-      "planned",
+      "ready",
       "in_progress",
       "in_review",
       "done",
@@ -271,9 +269,7 @@ describe("defaultWorkflow", () => {
     const columnNames = defaultWorkflow.columns.map((c) => c.name);
     expect(columnNames).toEqual([
       "Draft",
-      "Backlog",
-      "To Do",
-      "Planned",
+      "Ready",
       "In Progress",
       "In Review",
       "Done",

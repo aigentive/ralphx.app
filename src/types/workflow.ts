@@ -160,7 +160,7 @@ export const WorkflowSchemaZ = z.object({
 export type WorkflowSchema = z.infer<typeof WorkflowSchemaZ>;
 
 /**
- * Default RalphX workflow with 7 columns
+ * Default RalphX workflow with 5 columns
  * Maps to the standard kanban board structure
  */
 export const defaultWorkflow: WorkflowSchema = {
@@ -169,9 +169,7 @@ export const defaultWorkflow: WorkflowSchema = {
   description: "Standard kanban workflow for AI-driven development",
   columns: [
     { id: "draft", name: "Draft", mapsTo: "backlog" },
-    { id: "backlog", name: "Backlog", mapsTo: "backlog" },
-    { id: "todo", name: "To Do", mapsTo: "ready" },
-    { id: "planned", name: "Planned", mapsTo: "ready" },
+    { id: "ready", name: "Ready", mapsTo: "ready" },
     { id: "in_progress", name: "In Progress", mapsTo: "executing" },
     { id: "in_review", name: "In Review", mapsTo: "pending_review" },
     { id: "done", name: "Done", mapsTo: "approved" },

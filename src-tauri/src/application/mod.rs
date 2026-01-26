@@ -29,9 +29,10 @@ pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use orchestrator_service::{
-    ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
-    ClaudeOrchestratorService, MockOrchestratorService, MockResponse, OrchestratorError,
-    OrchestratorEvent, OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
+    ChatChunkPayload, ChatErrorPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload,
+    ChatStderrPayload, ChatToolCallPayload, ClaudeOrchestratorService, MockOrchestratorService,
+    MockResponse, OrchestratorError, OrchestratorEvent, OrchestratorResult, OrchestratorService,
+    ToolCall, ToolCallResult,
 };
 pub use execution_chat_service::{
     ClaudeExecutionChatService, ExecutionChatError, ExecutionChatService, ExecutionEvent,

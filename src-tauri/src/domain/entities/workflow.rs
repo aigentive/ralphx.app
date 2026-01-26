@@ -98,9 +98,7 @@ impl WorkflowSchema {
             description: Some("Default RalphX workflow".to_string()),
             columns: vec![
                 WorkflowColumn::new("draft", "Draft", InternalStatus::Backlog),
-                WorkflowColumn::new("backlog", "Backlog", InternalStatus::Backlog),
-                WorkflowColumn::new("todo", "To Do", InternalStatus::Ready),
-                WorkflowColumn::new("planned", "Planned", InternalStatus::Ready),
+                WorkflowColumn::new("ready", "Ready", InternalStatus::Ready),
                 WorkflowColumn::new("in_progress", "In Progress", InternalStatus::Executing),
                 WorkflowColumn::new("in_review", "In Review", InternalStatus::PendingReview),
                 WorkflowColumn::new("done", "Done", InternalStatus::Approved),
@@ -455,11 +453,11 @@ mod tests {
     // ===== Default Workflows Tests =====
 
     #[test]
-    fn default_ralphx_workflow_has_7_columns() {
+    fn default_ralphx_workflow_has_5_columns() {
         let workflow = WorkflowSchema::default_ralphx();
         assert_eq!(workflow.id.as_str(), "ralphx-default");
         assert_eq!(workflow.name, "RalphX Default");
-        assert_eq!(workflow.columns.len(), 7);
+        assert_eq!(workflow.columns.len(), 5);
         assert!(workflow.is_default);
     }
 
@@ -473,7 +471,7 @@ mod tests {
             .collect();
 
         assert!(column_mappings.iter().any(|(id, status)| *id == "draft" && *status == InternalStatus::Backlog));
-        assert!(column_mappings.iter().any(|(id, status)| *id == "todo" && *status == InternalStatus::Ready));
+        assert!(column_mappings.iter().any(|(id, status)| *id == "ready" && *status == InternalStatus::Ready));
         assert!(column_mappings.iter().any(|(id, status)| *id == "in_progress" && *status == InternalStatus::Executing));
         assert!(column_mappings.iter().any(|(id, status)| *id == "done" && *status == InternalStatus::Approved));
     }

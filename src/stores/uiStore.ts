@@ -80,6 +80,12 @@ interface UiState {
   isSearching: boolean;
   /** ID of task to show in full-screen view, or null if none */
   taskFullViewId: string | null;
+  /** ID of selected task for split-screen overlay (kanban view only) */
+  selectedTaskId: string | null;
+  /** Whether the integrated chat panel is collapsed (thin bar) */
+  chatCollapsed: boolean;
+  /** Width of the integrated chat panel in pixels */
+  chatPanelWidth: number;
 }
 
 // ============================================================================
@@ -135,6 +141,14 @@ interface UiActions {
   openTaskFullView: (taskId: string) => void;
   /** Close task full-screen view */
   closeTaskFullView: () => void;
+  /** Set selected task ID for split-screen overlay */
+  setSelectedTaskId: (taskId: string | null) => void;
+  /** Set whether the integrated chat panel is collapsed */
+  setChatCollapsed: (collapsed: boolean) => void;
+  /** Toggle chat panel collapsed state */
+  toggleChatCollapsed: () => void;
+  /** Set the integrated chat panel width */
+  setChatPanelWidth: (width: number) => void;
 }
 
 // ============================================================================
@@ -164,6 +178,9 @@ export const useUiStore = create<UiState & UiActions>()(
     boardSearchQuery: null,
     isSearching: false,
     taskFullViewId: null,
+    selectedTaskId: null,
+    chatCollapsed: false,
+    chatPanelWidth: 600,
 
     // Actions
     toggleSidebar: () =>
@@ -286,6 +303,27 @@ export const useUiStore = create<UiState & UiActions>()(
     closeTaskFullView: () =>
       set((state) => {
         state.taskFullViewId = null;
+      }),
+
+    setSelectedTaskId: (taskId) =>
+      set((state) => {
+        state.selectedTaskId = taskId;
+      }),
+
+    setChatCollapsed: (collapsed) =>
+      set((state) => {
+        state.chatCollapsed = collapsed;
+      }),
+
+    toggleChatCollapsed: () =>
+      set((state) => {
+        state.chatCollapsed = !state.chatCollapsed;
+      }),
+
+    setChatPanelWidth: (width) =>
+      set((state) => {
+        // Clamp width between 360px min and 800px max
+        state.chatPanelWidth = Math.max(360, Math.min(800, width));
       }),
   }))
 );

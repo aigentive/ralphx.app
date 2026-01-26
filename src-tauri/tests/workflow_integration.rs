@@ -264,7 +264,7 @@ async fn test_multiple_workflows(state: &AppState) {
 
     // Verify each has correct column count
     let default_found = all.iter().find(|w| w.name == "RalphX Default").unwrap();
-    assert_eq!(default_found.columns.len(), 7);
+    assert_eq!(default_found.columns.len(), 5);
 
     let jira_found = all.iter().find(|w| w.name == "Jira Compatible").unwrap();
     assert_eq!(jira_found.columns.len(), 5);

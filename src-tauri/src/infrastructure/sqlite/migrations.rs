@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 23;
+pub const SCHEMA_VERSION: i32 = 24;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -130,6 +130,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 23 {
         migrate_v23(conn)?;
         set_schema_version(conn, 23)?;
+    }
+
+    if current_version < 24 {
+        migrate_v24(conn)?;
+        set_schema_version(conn, 24)?;
     }
 
     Ok(())
@@ -1173,6 +1178,21 @@ fn migrate_v21(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v24: Add content_blocks column to chat_messages
+///
+/// Content blocks preserve the order of text and tool calls in a message,
+/// enabling proper interleaved rendering instead of concatenated content.
+fn migrate_v24(conn: &Connection) -> AppResult<()> {
+    // Add content_blocks column for storing interleaved text and tool call blocks
+    conn.execute(
+        "ALTER TABLE chat_messages ADD COLUMN content_blocks TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1180,7 +1200,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 23);
+        assert_eq!(SCHEMA_VERSION, 24);
     }
 
     #[test]

@@ -28,7 +28,7 @@ use crate::domain::repositories::{
 };
 use crate::infrastructure::agents::claude::{
     build_base_cli_command, add_prompt_args, configure_spawn,
-    StreamProcessor, StreamEvent as ProcessorStreamEvent,
+    StreamProcessor, StreamEvent as ProcessorStreamEvent, ContentBlockItem,
 };
 
 // Re-export stream types for use by other modules
@@ -133,6 +133,23 @@ pub struct ChatMessageCreatedPayload {
     pub message_id: String,
     pub conversation_id: String,
     pub role: String,
+    pub content: String,
+}
+
+/// Payload for execution:error and chat:error events
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatErrorPayload {
+    pub conversation_id: Option<String>,
+    pub task_id: Option<String>,
+    pub error: String,
+    pub stderr: Option<String>,
+}
+
+/// Payload for execution:stderr events (real-time stderr streaming)
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatStderrPayload {
+    pub conversation_id: String,
+    pub task_id: Option<String>,
     pub content: String,
 }
 
@@ -502,12 +519,12 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
     }
 
     /// Process streaming output from Claude CLI
-    /// Returns accumulated text, tool calls, and claude_session_id
+    /// Returns accumulated text, tool calls, content blocks, and claude_session_id
     async fn process_stream(
         &self,
         mut child: tokio::process::Child,
         conversation_id: &ChatConversationId,
-    ) -> Result<(String, Vec<ToolCall>, Option<String>), OrchestratorError> {
+    ) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), OrchestratorError> {
         let stdout = child
             .stdout
             .take()
@@ -632,7 +649,7 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
             return Err(OrchestratorError::AgentRunFailed(error_msg));
         }
 
-        Ok((result.response_text, result.tool_calls, result.session_id))
+        Ok((result.response_text, result.tool_calls, result.content_blocks, result.session_id))
     }
 
 }
@@ -698,7 +715,7 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
 
         // Handle result (complete or fail the agent run)
         match result {
-            Ok((response_text, tool_calls, claude_session_id)) => {
+            Ok((response_text, tool_calls, content_blocks, claude_session_id)) => {
                 // 6. If this was a new session, store Claude's session_id
                 if conversation.claude_session_id.is_none() {
                     if let Some(ref sess_id) = claude_session_id {
@@ -709,7 +726,7 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                     }
                 }
 
-                // 7. Store assistant message with tool_calls (for UI display)
+                // 7. Store assistant message with tool_calls and content_blocks (for UI display)
                 if !response_text.is_empty() || !tool_calls.is_empty() {
                     let mut assistant_msg =
                         ChatMessage::orchestrator_in_session(session_id.clone(), &response_text);
@@ -719,6 +736,12 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                     if !tool_calls.is_empty() {
                         assistant_msg.tool_calls =
                             Some(serde_json::to_string(&tool_calls).unwrap_or_default());
+                    }
+
+                    // Serialize content_blocks to JSON (preserves interleaving order)
+                    if !content_blocks.is_empty() {
+                        assistant_msg.content_blocks =
+                            Some(serde_json::to_string(&content_blocks).unwrap_or_default());
                     }
 
                     let assistant_msg_id = assistant_msg.id.as_str().to_string();
@@ -867,7 +890,7 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
 
         // Handle result (complete or fail the agent run)
         match result {
-            Ok((response_text, tool_calls, claude_session_id)) => {
+            Ok((response_text, tool_calls, content_blocks, claude_session_id)) => {
                 // 6. If this was a new session, store Claude's session_id
                 if conversation.claude_session_id.is_none() {
                     if let Some(ref sess_id) = claude_session_id {
@@ -878,7 +901,7 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                     }
                 }
 
-                // 7. Store assistant message with tool_calls (for UI display)
+                // 7. Store assistant message with tool_calls and content_blocks (for UI display)
                 if !response_text.is_empty() || !tool_calls.is_empty() {
                     // Create assistant message based on context type
                     let mut assistant_msg = match context_type {
@@ -909,6 +932,12 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                     if !tool_calls.is_empty() {
                         assistant_msg.tool_calls =
                             Some(serde_json::to_string(&tool_calls).unwrap_or_default());
+                    }
+
+                    // Serialize content_blocks to JSON (preserves interleaving order)
+                    if !content_blocks.is_empty() {
+                        assistant_msg.content_blocks =
+                            Some(serde_json::to_string(&content_blocks).unwrap_or_default());
                     }
 
                     let assistant_msg_id = assistant_msg.id.as_str().to_string();
@@ -1196,6 +1225,10 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                 if !result.tool_calls.is_empty() {
                     assistant_msg.tool_calls =
                         Some(serde_json::to_string(&result.tool_calls).unwrap_or_default());
+                }
+                if !result.content_blocks.is_empty() {
+                    assistant_msg.content_blocks =
+                        Some(serde_json::to_string(&result.content_blocks).unwrap_or_default());
                 }
                 let _ = chat_repo.create(assistant_msg).await;
             }

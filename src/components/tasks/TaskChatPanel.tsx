@@ -703,8 +703,8 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {/* Show typing indicator while agent is working */}
-                {isSending && <TypingIndicator />}
+                {/* Show typing indicator while agent is working (not streaming text) */}
+                {(isSending || isAgentRunning) && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </>
             )}

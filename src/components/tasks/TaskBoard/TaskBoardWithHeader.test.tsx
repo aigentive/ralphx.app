@@ -3,9 +3,8 @@
  *
  * Tests for integrating WorkflowSelector with TaskBoard:
  * - Header renders with WorkflowSelector
- * - Workflow switching re-renders columns
- * - Task data preserved during workflow switch
- * - Loading states
+ * - WorkflowSelector shows available workflows
+ * - TaskBoard renders with default columns
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -14,18 +13,26 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TaskBoardWithHeader } from "./TaskBoardWithHeader";
 import { api } from "@/lib/tauri";
 import * as workflowsApi from "@/lib/api/workflows";
-import { createMockTask } from "@/test/mock-data";
-import type { WorkflowResponse } from "@/lib/api/workflows";
+import type { WorkflowResponse, WorkflowColumnResponse } from "@/lib/api/workflows";
+import type { TaskListResponse } from "@/types/task";
+import type { InfiniteData } from "@tanstack/react-query";
+
+// Mock IntersectionObserver
+class MockIntersectionObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  constructor() {}
+}
+window.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
 
 vi.mock("@/lib/tauri", () => ({
   api: {
     tasks: {
       list: vi.fn(),
       move: vi.fn(),
-    },
-    workflows: {
-      get: vi.fn(),
-      list: vi.fn(),
+      getArchivedCount: vi.fn(),
+      search: vi.fn(),
     },
   },
 }));
@@ -33,36 +40,63 @@ vi.mock("@/lib/tauri", () => ({
 vi.mock("@/lib/api/workflows", () => ({
   getWorkflows: vi.fn(),
   getWorkflow: vi.fn(),
+  getActiveWorkflowColumns: vi.fn(),
 }));
+
+// Mock useInfiniteTasksQuery
+vi.mock("@/hooks/useInfiniteTasksQuery", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    useInfiniteTasksQuery: vi.fn(),
+  };
+});
+
+// Mock Tauri events
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+  emit: vi.fn(),
+}));
+
+import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
 
 const mockWorkflows: WorkflowResponse[] = [
   {
     id: "default-workflow",
     name: "Default Workflow",
-    description: null,
+    description: "Default workflow",
     columns: [
-      { id: "backlog", name: "Backlog", maps_to: "backlog", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
-      { id: "in_progress", name: "In Progress", maps_to: "executing", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
-      { id: "done", name: "Done", maps_to: "approved", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
+      { id: "backlog", name: "Backlog", mapsTo: "backlog" },
+      { id: "in_progress", name: "In Progress", mapsTo: "executing" },
+      { id: "done", name: "Done", mapsTo: "approved" },
     ],
-    is_default: true,
-    worker_profile: null,
-    reviewer_profile: null,
+    isDefault: true,
+    workerProfile: undefined,
+    reviewerProfile: undefined,
   },
   {
     id: "custom-workflow",
     name: "Custom Workflow",
     description: "A custom workflow",
     columns: [
-      { id: "todo", name: "To Do", maps_to: "ready", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
-      { id: "doing", name: "Doing", maps_to: "executing", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
-      { id: "review", name: "Review", maps_to: "pending_review", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
-      { id: "complete", name: "Complete", maps_to: "approved", color: null, icon: null, skip_review: null, auto_advance: null, agent_profile: null },
+      { id: "todo", name: "To Do", mapsTo: "ready" },
+      { id: "doing", name: "Doing", mapsTo: "executing" },
+      { id: "review", name: "Review", mapsTo: "pending_review" },
+      { id: "complete", name: "Complete", mapsTo: "approved" },
     ],
-    is_default: false,
-    worker_profile: null,
-    reviewer_profile: null,
+    isDefault: false,
+    workerProfile: undefined,
+    reviewerProfile: undefined,
   },
+];
+
+// Default columns returned by getActiveWorkflowColumns
+const defaultColumns: WorkflowColumnResponse[] = [
+  { id: "draft", name: "Draft", mapsTo: "backlog" },
+  { id: "ready", name: "Ready", mapsTo: "ready" },
+  { id: "in_progress", name: "In Progress", mapsTo: "executing" },
+  { id: "in_review", name: "In Review", mapsTo: "pending_review" },
+  { id: "done", name: "Done", mapsTo: "approved" },
 ];
 
 function createWrapper() {
@@ -77,9 +111,22 @@ function createWrapper() {
 describe("TaskBoardWithHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock workflows API
     vi.mocked(workflowsApi.getWorkflows).mockResolvedValue(mockWorkflows);
-    vi.mocked(api.workflows.get).mockResolvedValue(mockWorkflows[0]);
-    vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
+    vi.mocked(workflowsApi.getActiveWorkflowColumns).mockResolvedValue(defaultColumns);
+    // Mock tasks API
+    vi.mocked(api.tasks.getArchivedCount).mockResolvedValue(0);
+    vi.mocked(api.tasks.search).mockResolvedValue([]);
+    // Mock infinite query
+    vi.mocked(useInfiniteTasksQuery).mockReturnValue({
+      data: { pages: [{ tasks: [], total: 0, hasMore: false, offset: 0 }], pageParams: [undefined] } as InfiniteData<TaskListResponse>,
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useInfiniteTasksQuery>);
   });
 
   // ==========================================================================
@@ -121,14 +168,13 @@ describe("TaskBoardWithHeader", () => {
   });
 
   // ==========================================================================
-  // Workflow Switching
+  // Workflow Dropdown
   // ==========================================================================
 
-  describe("workflow switching", () => {
+  describe("workflow dropdown", () => {
     it("lists available workflows in dropdown", async () => {
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
-      // Wait for component and data to load
       await waitFor(() => {
         expect(screen.getByTestId("current-workflow-name")).toHaveTextContent("Default Workflow");
       });
@@ -142,11 +188,7 @@ describe("TaskBoardWithHeader", () => {
       expect(items).toHaveLength(2);
     });
 
-    it("switches workflow when item selected", async () => {
-      vi.mocked(api.workflows.get).mockImplementation(async (id) => {
-        return mockWorkflows.find((w) => w.id === id) || null;
-      });
-
+    it("selects workflow from dropdown", async () => {
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
@@ -161,68 +203,20 @@ describe("TaskBoardWithHeader", () => {
         expect(screen.getByTestId("current-workflow-name")).toHaveTextContent("Custom Workflow");
       });
     });
-
-    it("re-renders columns when workflow changes", async () => {
-      vi.mocked(api.workflows.get).mockImplementation(async (id) => {
-        return mockWorkflows.find((w) => w.id === id) || null;
-      });
-
-      render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
-
-      // Initial workflow has 3 columns
-      await waitFor(() => {
-        expect(screen.getByTestId("column-backlog")).toBeInTheDocument();
-        expect(screen.getByTestId("column-in_progress")).toBeInTheDocument();
-        expect(screen.getByTestId("column-done")).toBeInTheDocument();
-      });
-
-      // Switch to custom workflow
-      fireEvent.click(screen.getByTestId("dropdown-trigger"));
-      const items = screen.getAllByTestId("workflow-item");
-      fireEvent.click(items[1]);
-
-      // Custom workflow has 4 different columns
-      await waitFor(() => {
-        expect(screen.getByTestId("column-todo")).toBeInTheDocument();
-        expect(screen.getByTestId("column-doing")).toBeInTheDocument();
-        expect(screen.getByTestId("column-review")).toBeInTheDocument();
-        expect(screen.getByTestId("column-complete")).toBeInTheDocument();
-      });
-    });
   });
 
   // ==========================================================================
-  // Task Data Preservation
+  // TaskBoard Integration
   // ==========================================================================
 
-  describe("task data preservation", () => {
-    it("does not refetch tasks when workflow switches", async () => {
-      // Setup tasks
-      const tasks = [createMockTask({ id: "t1", title: "Task One", internalStatus: "executing" })];
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: 1, hasMore: false, offset: 0 });
-
+  describe("TaskBoard integration", () => {
+    it("renders TaskBoard with columns", async () => {
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
-      // Wait for initial load
       await waitFor(() => {
-        expect(screen.getByTestId("current-workflow-name")).toHaveTextContent("Default Workflow");
+        // TaskBoard renders with columns from getActiveWorkflowColumns()
+        expect(screen.getByTestId("task-board")).toBeInTheDocument();
       });
-
-      // Record call count after initial load
-      const initialCallCount = vi.mocked(api.tasks.list).mock.calls.length;
-
-      // Switch workflow
-      fireEvent.click(screen.getByTestId("dropdown-trigger"));
-      const items = screen.getAllByTestId("workflow-item");
-      fireEvent.click(items[1]);
-
-      // Verify workflow switched
-      await waitFor(() => {
-        expect(screen.getByTestId("current-workflow-name")).toHaveTextContent("Custom Workflow");
-      });
-
-      // Task list should not have been re-fetched (same project, same query)
-      expect(vi.mocked(api.tasks.list).mock.calls.length).toBe(initialCallCount);
     });
   });
 

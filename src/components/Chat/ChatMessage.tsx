@@ -27,6 +27,20 @@ interface ChatMessageProps {
   compact?: boolean;
 }
 
+/**
+ * Content block item - represents either text or a tool use
+ */
+interface ContentBlockItem {
+  type: "text" | "tool_use";
+  // For text type
+  text?: string;
+  // For tool_use type
+  id?: string;
+  name?: string;
+  arguments?: unknown;
+  result?: unknown;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -194,7 +208,18 @@ export function ChatMessage({
     [message.role]
   );
 
-  // Parse tool calls if present
+  // Parse content blocks if present (interleaved text and tool calls)
+  const contentBlocks = useMemo<ContentBlockItem[]>(() => {
+    if (!message.contentBlocks) return [];
+    try {
+      const parsed = JSON.parse(message.contentBlocks);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [message.contentBlocks]);
+
+  // Parse tool calls if present (fallback for messages without contentBlocks)
   const toolCalls = useMemo<ToolCall[]>(() => {
     if (!message.toolCalls) return [];
     try {
@@ -204,6 +229,9 @@ export function ChatMessage({
       return [];
     }
   }, [message.toolCalls]);
+
+  // Use content blocks if available, otherwise fall back to legacy rendering
+  const hasContentBlocks = contentBlocks.length > 0;
 
   return (
     <article
@@ -231,19 +259,50 @@ export function ChatMessage({
           borderRadius: isUser ? "10px 10px 4px 10px" : "10px 10px 10px 4px",
         }}
       >
-        <div className="text-[13px] leading-relaxed">
-          <ReactMarkdown components={markdownComponents}>
-            {message.content}
-          </ReactMarkdown>
-        </div>
-
-        {/* Tool calls (if any) */}
-        {toolCalls.length > 0 && (
-          <div className="mt-2.5 space-y-1.5" data-testid="chat-message-tool-calls">
-            {toolCalls.map((toolCall) => (
-              <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
-            ))}
+        {/* Render content blocks if available (preserves interleaved order) */}
+        {hasContentBlocks ? (
+          <div className="text-[13px] leading-relaxed space-y-2">
+            {contentBlocks.map((block, index) => {
+              if (block.type === "text" && block.text) {
+                return (
+                  <div key={`text-${index}`}>
+                    <ReactMarkdown components={markdownComponents}>
+                      {block.text}
+                    </ReactMarkdown>
+                  </div>
+                );
+              } else if (block.type === "tool_use" && block.name) {
+                const toolCall: ToolCall = {
+                  id: block.id || `tool-${index}`,
+                  name: block.name,
+                  arguments: block.arguments,
+                  result: block.result,
+                };
+                return (
+                  <ToolCallIndicator key={`tool-${index}`} toolCall={toolCall} />
+                );
+              }
+              return null;
+            })}
           </div>
+        ) : (
+          <>
+            {/* Legacy rendering: concatenated content + tool calls at end */}
+            <div className="text-[13px] leading-relaxed">
+              <ReactMarkdown components={markdownComponents}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+
+            {/* Tool calls (if any) */}
+            {toolCalls.length > 0 && (
+              <div className="mt-2.5 space-y-1.5" data-testid="chat-message-tool-calls">
+                {toolCalls.map((toolCall) => (
+                  <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 

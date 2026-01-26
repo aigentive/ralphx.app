@@ -411,7 +411,7 @@ mod tests {
         repo.create(workflow.clone()).await.unwrap();
 
         let loaded = repo.get_by_id(&workflow.id).await.unwrap().unwrap();
-        assert_eq!(loaded.columns.len(), 7);
+        assert_eq!(loaded.columns.len(), 5);
 
         // Verify column mappings
         let draft = loaded.columns.iter().find(|c| c.id == "draft");

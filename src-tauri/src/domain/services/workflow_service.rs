@@ -403,9 +403,9 @@ mod tests {
         let applied = service.apply_workflow(Some(&id)).await.unwrap();
 
         // Check column mappings
-        let backlog = applied.columns.iter().find(|c| c.id == "backlog");
-        assert!(backlog.is_some());
-        assert_eq!(backlog.unwrap().maps_to, InternalStatus::Backlog);
+        let draft = applied.columns.iter().find(|c| c.id == "draft");
+        assert!(draft.is_some());
+        assert_eq!(draft.unwrap().maps_to, InternalStatus::Backlog);
 
         let done = applied.columns.iter().find(|c| c.id == "done");
         assert!(done.is_some());

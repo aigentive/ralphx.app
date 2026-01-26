@@ -36,16 +36,16 @@ function toWorkflowSchema(response: WorkflowResponse): WorkflowSchema {
     columns: response.columns.map((col) => ({
       id: col.id,
       name: col.name,
-      mapsTo: col.maps_to,
+      mapsTo: col.mapsTo,
       color: col.color ?? undefined,
       icon: col.icon ?? undefined,
       behavior: {
-        skipReview: col.skip_review ?? undefined,
-        autoAdvance: col.auto_advance ?? undefined,
-        agentProfile: col.agent_profile ?? undefined,
+        skipReview: col.skipReview ?? undefined,
+        autoAdvance: col.autoAdvance ?? undefined,
+        agentProfile: col.agentProfile ?? undefined,
       },
     })),
-    isDefault: response.is_default,
+    isDefault: response.isDefault,
   };
 }
 
@@ -94,9 +94,7 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
       </div>
 
       {/* Task Board */}
-      {currentWorkflowId && (
-        <TaskBoard projectId={projectId} workflowId={currentWorkflowId} />
-      )}
+      <TaskBoard projectId={projectId} />
     </div>
   );
 }

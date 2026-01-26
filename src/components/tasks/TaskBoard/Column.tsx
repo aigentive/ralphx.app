@@ -11,7 +11,7 @@
 import { useDroppable, useDndContext } from "@dnd-kit/core";
 import { Inbox, XCircle, Loader2 } from "lucide-react";
 import { useRef, useEffect, useState, useMemo } from "react";
-import type { WorkflowColumn } from "@/types/workflow";
+import type { WorkflowColumnResponse } from "@/lib/api/workflows";
 import { TaskCard } from "./TaskCard";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,7 +22,7 @@ import {
 } from "@/hooks/useInfiniteTasksQuery";
 
 interface ColumnProps {
-  column: WorkflowColumn;
+  column: WorkflowColumnResponse;
   projectId: string;
   showArchived: boolean;
   isOver?: boolean;
