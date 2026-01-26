@@ -285,12 +285,19 @@ function AppContent() {
         selectedTaskId: selectedTask.id,
       };
     }
-    if (currentView === "ideation" && activeSession) {
+    if (currentView === "ideation") {
+      if (activeSession) {
+        return {
+          view: "ideation",
+          projectId: currentProjectId,
+          ideationSessionId: activeSession.id,
+          selectedProposalIds: proposals.filter((p) => p.selected).map((p) => p.id),
+        };
+      }
+      // No session yet - fall back to project context for chat
       return {
-        view: "ideation",
+        view: "kanban",
         projectId: currentProjectId,
-        ideationSessionId: activeSession.id,
-        selectedProposalIds: proposals.filter((p) => p.selected).map((p) => p.id),
       };
     }
     return {

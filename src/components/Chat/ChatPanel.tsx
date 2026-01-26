@@ -16,8 +16,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useChat } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
+import { useTaskStore } from "@/stores/taskStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,6 +33,7 @@ import {
   Loader2,
   Copy,
   Check,
+  Hammer,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
@@ -166,12 +168,49 @@ function LoadingState() {
   );
 }
 
-interface ContextIndicatorProps {
-  context: ChatContext;
+function WorkerExecutingIndicator() {
+  return (
+    <div
+      data-testid="worker-executing-indicator"
+      className="flex items-center gap-2 px-3 py-2.5 mb-2 rounded-lg"
+      style={{
+        backgroundColor: "var(--bg-elevated)",
+        border: "1px solid var(--border-subtle)",
+      }}
+    >
+      <Hammer className="w-4 h-4 text-[var(--accent-primary)]" />
+      <div className="flex items-center gap-2 flex-1">
+        <span className="text-sm font-medium">Worker is executing...</span>
+        <div className="flex items-center gap-1">
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--accent-primary)" }}
+          />
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--accent-primary)" }}
+          />
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--accent-primary)" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function ContextIndicator({ context }: ContextIndicatorProps) {
+interface ContextIndicatorProps {
+  context: ChatContext;
+  isExecutionMode?: boolean;
+}
+
+function ContextIndicator({ context, isExecutionMode = false }: ContextIndicatorProps) {
   const getContextInfo = () => {
+    if (isExecutionMode) {
+      return { icon: Hammer, label: "Worker Execution" };
+    }
+
     switch (context.view) {
       case "ideation":
         return { icon: MessageSquare, label: "Chat" };
@@ -552,10 +591,21 @@ export function ChatPanel({ context }: ChatPanelProps) {
     deleteQueuedMessage,
     setAgentRunning,
     startEditingQueuedMessage,
+    queueExecutionMessage,
+    deleteExecutionQueuedMessage,
   } = useChatStore();
   const queuedMessages = useChatStore(selectQueuedMessages);
   const isAgentRunning = useChatStore(selectIsAgentRunning);
   const activeConversationId = useChatStore(selectActiveConversationId);
+
+  // Detect execution mode: if task is executing, switch to task_execution context
+  const selectedTask = useTaskStore((state) =>
+    context.selectedTaskId ? state.tasks[context.selectedTaskId] : undefined
+  );
+  const isExecutionMode = selectedTask?.internalStatus === "executing";
+  const executionQueuedMessages = useChatStore(
+    selectExecutionQueuedMessages(context.selectedTaskId ?? "")
+  );
 
   const {
     messages: activeConversation,
@@ -677,17 +727,23 @@ export function ChatPanel({ context }: ChatPanelProps) {
   const handleQueue = useCallback(
     (content: string) => {
       if (!content.trim()) return;
-      queueMessage(content);
+      // Use execution queue if in execution mode
+      if (isExecutionMode && context.selectedTaskId) {
+        queueExecutionMessage(context.selectedTaskId, content);
+      } else {
+        queueMessage(content);
+      }
     },
-    [queueMessage]
+    [isExecutionMode, context.selectedTaskId, queueMessage, queueExecutionMessage]
   );
 
   // Edit last queued message
   const handleEditLastQueued = useCallback(() => {
-    const lastMessage = queuedMessages[queuedMessages.length - 1];
+    const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
+    const lastMessage = messagesToUse[messagesToUse.length - 1];
     if (!lastMessage) return;
     startEditingQueuedMessage(lastMessage.id);
-  }, [queuedMessages, startEditingQueuedMessage]);
+  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage]);
 
   // Subscribe to Tauri events for real-time updates
   useEffect(() => {
@@ -735,6 +791,39 @@ export function ChatPanel({ context }: ChatPanelProps) {
         }
       );
       unlisteners.push(runCompletedUnlisten);
+
+      // Execution-specific events (Phase 15B)
+      // Listen for execution chunks
+      const execChunkUnlisten = await listen<{ text: string; task_id: string }>(
+        "execution:chunk",
+        (event) => {
+          console.log("Execution chunk received:", event.payload);
+          // TODO: Update execution message in real-time
+        }
+      );
+      unlisteners.push(execChunkUnlisten);
+
+      // Listen for execution tool calls
+      const execToolCallUnlisten = await listen<{
+        task_id: string;
+        tool_name: string;
+        args: unknown;
+      }>("execution:tool_call", (event) => {
+        console.log("Execution tool call received:", event.payload);
+        // TODO: Display tool call in execution context
+      });
+      unlisteners.push(execToolCallUnlisten);
+
+      // Listen for execution completion
+      const execCompletedUnlisten = await listen<{
+        task_id: string;
+        conversation_id: string;
+      }>("execution:completed", (event) => {
+        console.log("Worker execution completed:", event.payload);
+        // Execution completion is handled by task status changes
+        // Queue processing happens on backend
+      });
+      unlisteners.push(execCompletedUnlisten);
     })();
 
     return () => {
@@ -800,13 +889,13 @@ export function ChatPanel({ context }: ChatPanelProps) {
           className="flex items-center justify-between h-12 px-3 border-b"
           style={{ borderColor: "var(--border-subtle)" }}
         >
-          <ContextIndicator context={context} />
+          <ContextIndicator context={context} isExecutionMode={isExecutionMode} />
 
           {/* Active agent badge */}
-          {(isSending || isAgentRunning) && (
+          {(isSending || isAgentRunning || isExecutionMode) && (
             <Badge variant="secondary" className="shrink-0 mr-2">
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {isAgentRunning ? "Agent responding..." : "Working"}
+              {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
             </Badge>
           )}
 
@@ -852,6 +941,9 @@ export function ChatPanel({ context }: ChatPanelProps) {
           data-testid="chat-panel-messages"
         >
           <div className="p-3">
+            {/* Show worker executing indicator when in execution mode */}
+            {isExecutionMode && <WorkerExecutingIndicator />}
+
             {isLoading ? (
               <LoadingState />
             ) : isEmpty ? (
@@ -877,28 +969,39 @@ export function ChatPanel({ context }: ChatPanelProps) {
 
         {/* Input Area */}
         <div className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
-          {/* Queued Messages */}
-          {queuedMessages.length > 0 && (
-            <div className="p-3 pb-0">
-              <QueuedMessageList
-                messages={queuedMessages}
-                onEdit={editQueuedMessage}
-                onDelete={deleteQueuedMessage}
-              />
-            </div>
-          )}
+          {/* Queued Messages - use execution queue in execution mode */}
+          {(() => {
+            const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
+            const deleteHandler = isExecutionMode && context.selectedTaskId
+              ? (id: string) => deleteExecutionQueuedMessage(context.selectedTaskId!, id)
+              : deleteQueuedMessage;
+
+            return messagesToDisplay.length > 0 && (
+              <div className="p-3 pb-0">
+                <QueuedMessageList
+                  messages={messagesToDisplay}
+                  onEdit={editQueuedMessage}
+                  onDelete={deleteHandler}
+                />
+              </div>
+            );
+          })()}
 
           {/* Chat Input */}
           <div className="p-3">
             <ChatInput
               onSend={handleSend}
               onQueue={handleQueue}
-              isAgentRunning={isAgentRunning}
+              isAgentRunning={isExecutionMode || isAgentRunning}
               isSending={isSending}
-              hasQueuedMessages={queuedMessages.length > 0}
+              hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
               onEditLastQueued={handleEditLastQueued}
-              placeholder="Send a message..."
-              showHelperText={queuedMessages.length > 0}
+              placeholder={
+                isExecutionMode
+                  ? "Message worker... (will be sent when current response completes)"
+                  : "Send a message..."
+              }
+              showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
             />
           </div>
         </div>

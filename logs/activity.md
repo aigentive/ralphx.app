@@ -1,15 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:45:00
+**Last Updated:** 2026-01-26 06:00:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 9 / 14
-**Current Task:** Update ChatPanel for execution context detection
+**Tasks Completed:** 10 / 14
+**Current Task:** Add execution history switching via ConversationSelector
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 06:00:00 - Update ChatPanel for Execution Context Detection
+
+**What was done:**
+- Updated `src/components/Chat/ChatPanel.tsx` to detect and display task execution:
+  - Added imports: `selectExecutionQueuedMessages`, `useTaskStore`, `Hammer` icon
+  - Added `WorkerExecutingIndicator` component:
+    - Shows "Worker is executing..." with pulsing dots animation
+    - Displayed when task.internalStatus === "executing"
+  - Updated `ContextIndicator` to accept `isExecutionMode` prop:
+    - Shows Hammer icon + "Worker Execution" label when in execution mode
+  - Added execution mode detection logic:
+    - Checks if selected task has `internalStatus === "executing"`
+    - Automatically switches to execution context when task is executing
+  - Added execution-specific Tauri event subscriptions:
+    - `execution:chunk` - Worker output chunks
+    - `execution:tool_call` - Tool calls made during execution
+    - `execution:completed` - Execution completion
+  - Updated queue handling:
+    - Uses `executionQueuedMessages` when in execution mode
+    - Uses regular `queuedMessages` for ideation/task/project chat
+    - Calls `queueExecutionMessage(taskId, content)` for execution queue
+  - Updated UI elements:
+    - Header badge shows "Worker running..." in execution mode
+    - Input placeholder: "Message worker... (will be sent when current response completes)"
+    - Queued messages display uses execution queue in execution mode
+    - WorkerExecutingIndicator shown at top of messages area
+
+**Commands run:**
+- `npm run lint` - 11 warnings (pre-existing)
+- `npm run typecheck` - Passed ✓
+
+**Technical notes:**
+- Task store uses dictionary structure (`tasks[taskId]`), not array
+- Internal status values are lowercase ("executing" not "Executing")
+- Execution context automatically activated when task enters executing state
+- Queue separation ensures worker messages don't mix with chat messages
 
 ### 2026-01-26 05:45:00 - Update Chat Store for Task Execution Context
 
