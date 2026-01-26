@@ -1,15 +1,57 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:01:00
+**Last Updated:** 2026-01-26 19:00:44
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 20 / 30
-**Current Task:** Create InlineTaskAdd component
+**Tasks Completed:** 21 / 30
+**Current Task:** Add hover state and InlineTaskAdd to Column
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:00:44 - Create InlineTaskAdd component (Task 22)
+
+**What was done:**
+- Created `src/components/tasks/InlineTaskAdd.tsx` - Ghost card for quick task creation
+  - Two states: collapsed (ghost card) and expanded (inline form)
+  - Collapsed state: dashed border with hover effect, "+ Add task" text
+  - Expanded state: input field with auto-focus, Enter/Escape handlers
+  - Uses `createMutation` from `useTaskMutation` hook
+  - Creates tasks with `category: "feature"` and `priority: 3` (medium)
+  - "More options" button opens full TaskCreationForm modal with pre-filled data
+  - Cancel button collapses without creating
+  - Disables controls during task creation
+  - Collapses and clears input after successful creation
+- Created `src/components/tasks/InlineTaskAdd.test.tsx` with 15 test cases
+  - Tests for collapsed/expanded state transitions
+  - Tests for auto-focus behavior
+  - Tests for Enter/Escape key handling
+  - Tests for title trimming and empty string handling
+  - Tests for "More options" and Cancel buttons
+  - Tests for disabled state during mutation
+  - Tests for column integration
+
+**Commands:**
+- `npm run lint` - Passed (only pre-existing warnings)
+- `npm run typecheck` - Passed with no errors
+- `npm run test -- src/components/tasks/InlineTaskAdd.test.tsx --run` - All 15 tests passed
+
+**Files created:**
+- `src/components/tasks/InlineTaskAdd.tsx` - Inline task add component
+- `src/components/tasks/InlineTaskAdd.test.tsx` - Component tests
+
+**Files modified:**
+- `specs/phases/prd_phase_18_task_crud_archive_search.md` - Marked task 22 as passes: true
+- `logs/activity.md` - Updated progress
+
+**Design notes:**
+- Follows design system with CSS variables for colors
+- Uses Lucide icons (Plus icon)
+- Uses warm orange accent for hover border (`var(--accent-primary)`)
+- Muted text color for ghost state (`var(--text-muted)`)
+- Elevated background for expanded form (`var(--bg-elevated)`)
 
 ### 2026-01-26 19:01:00 - Add archived task appearance to TaskCard (Task 21)
 
