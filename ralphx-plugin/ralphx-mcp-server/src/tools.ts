@@ -386,6 +386,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   supervisor: [],
   "qa-prep": [],
   "qa-tester": [],
+  // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
+  debug: ALL_TOOLS.map((t) => t.name),
 };
 
 /**
@@ -414,4 +416,38 @@ export function getFilteredTools(): Tool[] {
 export function isToolAllowed(toolName: string): boolean {
   const allowedNames = getAllowedToolNames();
   return allowedNames.includes(toolName);
+}
+
+/**
+ * Get all tools regardless of agent type (for debugging)
+ * @returns All available tools
+ */
+export function getAllTools(): Tool[] {
+  return ALL_TOOLS;
+}
+
+/**
+ * Get all tool names grouped by agent type (for debugging)
+ * @returns Object mapping agent types to their allowed tools
+ */
+export function getToolsByAgent(): Record<string, string[]> {
+  return TOOL_ALLOWLIST;
+}
+
+/**
+ * Print all available tools to stderr (for debugging)
+ * Call this to see what tools the MCP server can provide
+ */
+export function logAllTools(): void {
+  console.error("\n=== RalphX MCP Server - All Available Tools ===\n");
+
+  for (const [agentType, tools] of Object.entries(TOOL_ALLOWLIST)) {
+    if (tools.length > 0) {
+      console.error(`[${agentType}]`);
+      tools.forEach((t) => console.error(`  - ${t}`));
+      console.error("");
+    }
+  }
+
+  console.error("=== End of Tools List ===\n");
 }
