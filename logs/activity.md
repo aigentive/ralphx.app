@@ -1,15 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:53:05
+**Last Updated:** 2026-01-26 20:56:07
 **Phase:** Task Execution Experience
-**Tasks Completed:** 18 / 42
-**Current Task:** Create useStepEvents hook for real-time updates
+**Tasks Completed:** 19 / 42
+**Current Task:** Create StepProgressBar component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:56:07 - Create useStepEvents hook for real-time updates
+
+**What was done:**
+- Created `src/hooks/useStepEvents.ts` with real-time event listeners:
+  - Listens to 'step:created', 'step:updated', 'step:deleted', 'steps:reordered' events
+  - Extracts task_id from event payload
+  - Invalidates stepKeys.byTask(task_id) and stepKeys.progress(task_id) queries
+  - Uses proper useEffect cleanup with unlisten functions
+  - Follows established event hook pattern from useEvents.ts
+- Updated `src/hooks/useEvents.ts` to re-export useStepEvents
+- Updated `src/providers/EventProvider.tsx`:
+  - Added useStepEvents import
+  - Called useStepEvents() in component to set up global listener
+  - Updated component documentation
+- Verified code quality:
+  - `npm run lint` - Passing (no new warnings)
+  - `npm run typecheck` - Passing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
 
 ### 2026-01-26 20:53:05 - Create useStepMutations hook
 

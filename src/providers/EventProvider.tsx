@@ -14,6 +14,7 @@ import {
   useFileChangeEvents,
   useAgentEvents,
   useProposalEvents,
+  useStepEvents,
 } from "@/hooks/useEvents";
 
 interface EventProviderProps {
@@ -26,6 +27,7 @@ interface EventProviderProps {
  * Sets up all global event listeners:
  * - Task events (created, updated, deleted, status_changed)
  * - Proposal events (created, updated, deleted)
+ * - Step events (created, updated, deleted, reordered)
  * - Supervisor alerts
  * - Review events (placeholder for Phase 9)
  * - File change events (placeholder)
@@ -49,6 +51,7 @@ export function EventProvider({ children }: EventProviderProps) {
   // Set up global event listeners
   useTaskEvents();
   useProposalEvents(); // Listen to proposal events for Ideation view
+  useStepEvents(); // Listen to step events for task execution progress
   useSupervisorAlerts();
   useReviewEvents();
   useFileChangeEvents();
