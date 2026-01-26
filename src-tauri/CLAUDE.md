@@ -44,7 +44,7 @@ src-tauri/
 │   │   ├── supervisor/     # Supervisor events and patterns
 │   │   ├── qa/             # QA settings and criteria
 │   │   ├── review/         # Review configuration
-│   │   ├── services/       # Domain services
+│   │   ├── services/       # Domain services (ExecutionMessageQueue, etc.)
 │   │   └── tools/          # Tool definitions for agents
 │   │
 │   ├── application/        # Application services and state
@@ -57,6 +57,7 @@ src-tauri/
 │   │   ├── priority_service.rs
 │   │   ├── apply_service.rs
 │   │   ├── orchestrator_service.rs  # Context-aware chat with --resume support
+│   │   ├── execution_chat_service.rs # Task execution chat with persistence (Phase 15B)
 │   │   ├── permission_state.rs      # Permission bridge for UI-based tool approval
 │   │   └── http_server.rs           # HTTP server (port 3847) for MCP proxy
 │   │
@@ -64,7 +65,8 @@ src-tauri/
 │   │   ├── task_commands.rs
 │   │   ├── project_commands.rs
 │   │   ├── ideation_commands.rs
-│   │   ├── context_chat_commands.rs  # Context-aware chat commands (Phase 15)
+│   │   ├── context_chat_commands.rs  # Context-aware chat commands (Phase 15A)
+│   │   ├── execution_chat_commands.rs # Execution chat commands (Phase 15B)
 │   │   ├── permission_commands.rs    # Permission resolution commands
 │   │   ├── workflow_commands.rs
 │   │   ├── artifact_commands.rs
@@ -256,8 +258,9 @@ Command categories:
 - **Task commands** - CRUD, status changes, blocking
 - **Project commands** - Project management
 - **Ideation commands** - Sessions, proposals, chat, orchestrator
-- **Context chat commands** - Context-aware chat with conversations, agent runs (Phase 15)
-- **Permission commands** - Permission resolution for UI-based tool approval (Phase 15)
+- **Context chat commands** - Context-aware chat with conversations, agent runs (Phase 15A)
+- **Execution chat commands** - Task execution chat with persistence, queue management (Phase 15B)
+- **Permission commands** - Permission resolution for UI-based tool approval (Phase 15A)
 - **Workflow commands** - Custom workflow schemas
 - **Artifact commands** - Artifact and bucket management
 - **Research commands** - Research process control
@@ -501,7 +504,7 @@ pub trait AgenticClient: Send + Sync {
 
 ---
 
-## Context-Aware Chat System (Phase 15)
+## Context-Aware Chat System (Phase 15A & 15B)
 
 ### Architecture Overview
 
@@ -523,9 +526,12 @@ Backend (Rust)
 
 **Backend:**
 - `http_server.rs` - Axum HTTP server (port 3847) exposing RalphX operations to MCP server
-- `orchestrator_service.rs` - Spawns Claude CLI with `--agent` and `--resume` flags, captures session IDs
+- `orchestrator_service.rs` - Spawns Claude CLI with `--agent` and `--resume` flags, captures session IDs (Phase 15A)
+- `execution_chat_service.rs` - Spawns worker with persistence, processes message queue (Phase 15B)
+- `execution_message_queue.rs` - In-memory per-task message queue (Phase 15B)
 - `permission_state.rs` - Long-polling permission bridge for UI-based tool approval
-- `context_chat_commands.rs` - Tauri commands for sending messages, managing conversations
+- `context_chat_commands.rs` - Tauri commands for sending messages, managing conversations (Phase 15A)
+- `execution_chat_commands.rs` - Tauri commands for execution conversations, queue management (Phase 15B)
 - `permission_commands.rs` - Tauri commands for resolving permission requests
 - `chat_conversation_repository.rs` - Manages conversations with Claude session ID tracking
 - `agent_run_repository.rs` - Tracks agent execution status (running/completed/failed)
@@ -556,6 +562,37 @@ Backend (Rust)
 2. Claude returns `session_id` in stream-json output → stored in `chat_conversations.claude_session_id`
 3. User sends follow-up → Claude CLI spawned with `--resume <session_id>` → Claude remembers full context
 
+### Task Execution Chat (Phase 15B)
+
+**Worker output persistence:**
+- Worker execution creates `task_execution` conversation automatically
+- All output (text chunks, tool calls) persisted to database
+- User can view execution as chat in ChatPanel
+- Past execution attempts accessible via ConversationSelector
+
+**Message queue:**
+- Messages sent during worker execution are queued (in-memory)
+- When worker completes, queue is processed via `--resume`
+- Queue is per-task, isolated from other tasks
+
+**Dual event emission:**
+Both Activity Stream and ChatPanel receive worker output:
+- **ChatPanel**: `execution:chunk`, `execution:tool_call`, `execution:run_completed` (persisted)
+- **Activity Stream**: `agent:message` (memory only)
+
+**ExecutionChatService:**
+Key service for worker execution with persistence:
+- `spawn_with_persistence(agent, task_id)` - Creates conversation, spawns worker, persists output
+- `persist_stream_event(conversation_id, event)` - Saves chunks/tool calls to database
+- `complete_execution(conversation_id, claude_session_id)` - Processes queued messages via --resume
+
+**ExecutionMessageQueue:**
+In-memory queue for per-task messages:
+- `queue(task_id, message)` - Add message to queue
+- `pop(task_id)` - Get next queued message
+- `get_queued(task_id)` - View all queued messages
+- `clear(task_id)` - Clear queue for task
+
 ### Permission Bridge
 
 Enables UI-based approval for non-pre-approved tools:
@@ -570,8 +607,14 @@ Enables UI-based approval for non-pre-approved tools:
 
 ### Events
 
-The orchestrator service emits real-time Tauri events:
+**Context-aware chat (Phase 15A):**
 - `chat:message_created` - New message saved
 - `chat:chunk` - Streaming response chunk
 - `chat:tool_call` - Tool call detected in stream
 - `chat:run_completed` - Agent finished (triggers queue processing)
+
+**Execution chat (Phase 15B):**
+- `execution:chunk` - Worker text output (persisted to ChatPanel)
+- `execution:tool_call` - Worker tool call (persisted to ChatPanel)
+- `execution:run_completed` - Worker finished (triggers queue processing)
+- `agent:message` - Worker output (sent to Activity Stream)
