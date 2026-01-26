@@ -1,6 +1,7 @@
 // Tauri commands - thin layer bridging frontend to backend
 // Commands should be minimal - delegate to domain/infrastructure
 
+pub mod chat_responses;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
 pub mod context_chat_commands;
@@ -35,6 +36,7 @@ pub use execution_commands::{
     get_execution_status, pause_execution, resume_execution, stop_execution, ExecutionState,
 };
 pub use health::health_check;
+pub use chat_responses::ChatMessageResponse;
 pub use ideation_commands::{
     add_proposal_dependency, analyze_dependencies, apply_proposals_to_kanban,
     archive_ideation_session, assess_all_priorities, assess_proposal_priority,
@@ -46,7 +48,7 @@ pub use ideation_commands::{
     get_task_proposal, is_orchestrator_available, list_ideation_sessions, list_session_proposals,
     remove_proposal_dependency, reorder_proposals, send_chat_message, send_orchestrator_message,
     set_proposal_selection, toggle_proposal_selection, update_task_proposal,
-    ApplyProposalsResultResponse, ChatMessageResponse, DependencyGraphResponse,
+    ApplyProposalsResultResponse, DependencyGraphResponse,
     IdeationSessionResponse, OrchestratorMessageResponse, PriorityAssessmentResponse,
     SessionWithDataResponse, TaskProposalResponse, ToolCallResultResponse,
 };
@@ -89,7 +91,7 @@ pub use permission_commands::{
 };
 pub use context_chat_commands::{
     create_conversation, get_agent_run_status, get_conversation, list_conversations,
-    send_context_message, AgentRunResponse, ChatConversationResponse, ChatMessageResponse as ContextChatMessageResponse,
+    send_context_message, AgentRunResponse, ChatConversationResponse,
     ConversationWithMessagesResponse, CreateConversationInput, SendContextMessageInput,
 };
 pub use execution_chat_commands::{
