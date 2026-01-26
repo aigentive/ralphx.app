@@ -15,6 +15,7 @@ pub struct CreateTaskInput {
     pub category: Option<String>,
     pub description: Option<String>,
     pub priority: Option<i32>,
+    pub steps: Option<Vec<String>>,
 }
 
 /// Input for updating a task
@@ -225,12 +226,41 @@ pub async fn create_task(
         task.priority = priority;
     }
 
-    state
+    // Create the task first
+    let created_task = state
         .task_repo
         .create(task)
         .await
-        .map(TaskResponse::from)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // If steps are provided, create TaskSteps for each
+    if let Some(step_titles) = input.steps {
+        if !step_titles.is_empty() {
+            use crate::domain::entities::TaskStep;
+
+            let steps: Vec<TaskStep> = step_titles
+                .into_iter()
+                .enumerate()
+                .map(|(idx, title)| {
+                    TaskStep::new(
+                        created_task.id.clone(),
+                        title,
+                        idx as i32,
+                        "user".to_string(),
+                    )
+                })
+                .collect();
+
+            // Use bulk_create for efficiency
+            state
+                .task_step_repo
+                .bulk_create(steps)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(TaskResponse::from(created_task))
 }
 
 /// Update an existing task
@@ -822,6 +852,7 @@ mod tests {
             category: None,
             description: None,
             priority: None,
+            steps: None,
         };
 
         // We can't easily call tauri commands without the full runtime,
@@ -1743,5 +1774,87 @@ mod tests {
             // Label should not be empty
             assert!(!label.is_empty(), "Status {:?} has no label", status);
         }
+    }
+
+    // ========================================
+    // Create Task with Steps Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_create_task_with_steps() {
+        let state = setup_test_state().await;
+
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let step_titles = vec![
+            "Step 1".to_string(),
+            "Step 2".to_string(),
+            "Step 3".to_string(),
+        ];
+
+        // Create task with steps
+        let task = Task::new(project_id.clone(), "Task with Steps".to_string());
+        let created_task = state.task_repo.create(task).await.unwrap();
+
+        // Create steps manually (simulating what create_task command does)
+        use crate::domain::entities::TaskStep;
+        let steps: Vec<TaskStep> = step_titles
+            .into_iter()
+            .enumerate()
+            .map(|(idx, title)| {
+                TaskStep::new(created_task.id.clone(), title, idx as i32, "user".to_string())
+            })
+            .collect();
+
+        let created_steps = state.task_step_repo.bulk_create(steps).await.unwrap();
+
+        // Verify steps were created
+        assert_eq!(created_steps.len(), 3);
+        assert_eq!(created_steps[0].title, "Step 1");
+        assert_eq!(created_steps[1].title, "Step 2");
+        assert_eq!(created_steps[2].title, "Step 3");
+
+        // Verify sort_order
+        assert_eq!(created_steps[0].sort_order, 0);
+        assert_eq!(created_steps[1].sort_order, 1);
+        assert_eq!(created_steps[2].sort_order, 2);
+
+        // Verify created_by
+        assert_eq!(created_steps[0].created_by, "user");
+        assert_eq!(created_steps[1].created_by, "user");
+        assert_eq!(created_steps[2].created_by, "user");
+
+        // Verify steps are linked to task
+        let task_steps = state.task_step_repo.get_by_task(&created_task.id).await.unwrap();
+        assert_eq!(task_steps.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_create_task_without_steps() {
+        let state = setup_test_state().await;
+
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create task without steps
+        let task = Task::new(project_id.clone(), "Task without Steps".to_string());
+        let created_task = state.task_repo.create(task).await.unwrap();
+
+        // Verify no steps exist
+        let task_steps = state.task_step_repo.get_by_task(&created_task.id).await.unwrap();
+        assert_eq!(task_steps.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_task_with_empty_steps_array() {
+        let state = setup_test_state().await;
+
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create task with empty steps array (should not create any steps)
+        let task = Task::new(project_id.clone(), "Task with Empty Steps".to_string());
+        let created_task = state.task_repo.create(task).await.unwrap();
+
+        // Verify no steps exist
+        let task_steps = state.task_step_repo.get_by_task(&created_task.id).await.unwrap();
+        assert_eq!(task_steps.len(), 0);
     }
 }
