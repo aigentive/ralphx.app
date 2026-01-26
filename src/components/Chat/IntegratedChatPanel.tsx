@@ -42,6 +42,7 @@ import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { StreamingToolIndicator } from "./StreamingToolIndicator";
 
 // ============================================================================
 // Constants
@@ -695,6 +696,8 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
   } = regularChatData;
 
   const [hasUnread, setHasUnread] = useState(false);
+  // Streaming tool calls - accumulated during agent execution
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
@@ -777,22 +780,41 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
-      // Listen for tool calls
+      // Listen for tool calls - accumulate for streaming display
       const toolCallUnlisten = await listen<{
         tool_name: string;
         arguments: unknown;
         result: unknown;
         conversation_id: string;
       }>("chat:tool_call", (event) => {
-        console.log("Tool call received:", event.payload);
+        const { tool_name, arguments: args, result, conversation_id } = event.payload;
+        // Only show for active conversation
+        if (conversation_id === activeConversationIdRef.current) {
+          setStreamingToolCalls((prev) => [
+            ...prev,
+            {
+              id: `streaming-${Date.now()}-${prev.length}`,
+              name: tool_name,
+              arguments: args,
+              result,
+            },
+          ]);
+        }
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for chat run completion
+      // Listen for chat run completion - clear streaming state
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("chat:run_completed", (event) => {
         console.log("Chat run completed:", event.payload);
+        // Clear streaming tool calls and scroll to bottom
+        setStreamingToolCalls([]);
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
       });
       unlisteners.push(runCompletedUnlisten);
 
@@ -802,14 +824,33 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
         tool_name: string;
         arguments: unknown;
       }>("execution:tool_call", (event) => {
-        console.log("Execution tool call received:", event.payload);
+        const { tool_name, arguments: args, conversation_id } = event.payload;
+        // Only show for active conversation
+        if (conversation_id === activeConversationIdRef.current) {
+          setStreamingToolCalls((prev) => [
+            ...prev,
+            {
+              id: `streaming-exec-${Date.now()}-${prev.length}`,
+              name: tool_name,
+              arguments: args,
+            },
+          ]);
+        }
       });
       unlisteners.push(execToolCallUnlisten);
 
+      // Listen for execution completion - clear streaming state
       const execCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("execution:run_completed", (event) => {
         console.log("Worker execution completed:", event.payload);
+        // Clear streaming tool calls and scroll to bottom
+        setStreamingToolCalls([]);
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
       });
       unlisteners.push(execCompletedUnlisten);
     })();
@@ -942,8 +983,14 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {/* Show typing indicator while agent is working (not streaming text) */}
-                {(isSending || isAgentRunning) && <TypingIndicator />}
+                {/* Show streaming tool calls or typing indicator while agent is working */}
+                {(isSending || isAgentRunning) && (
+                  streamingToolCalls.length > 0 ? (
+                    <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
+                  ) : (
+                    <TypingIndicator />
+                  )
+                )}
                 <div ref={messagesEndRef} />
               </>
             )}

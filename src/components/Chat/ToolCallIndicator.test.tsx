@@ -9,24 +9,25 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "ls -la" },
+        arguments: { command: "ls -la" },
         result: "file1.txt\nfile2.txt",
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
-      // Should show summary
-      expect(screen.getByText(/Ran command: ls -la/i)).toBeInTheDocument();
+      // Should show tool name badge and summary (command text)
+      expect(screen.getByText("bash")).toBeInTheDocument();
+      expect(screen.getByText(/ls -la/i)).toBeInTheDocument();
 
       // Should NOT show details initially
       expect(screen.queryByTestId("tool-call-details")).not.toBeInTheDocument();
     });
 
-    it("shows wrench icon and chevron", () => {
+    it("shows tool icon and chevron", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "read",
-        input: { file_path: "/path/to/file.txt" },
+        arguments: { file_path: "/path/to/file.txt" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -39,7 +40,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "echo hello" },
+        arguments: { command: "echo hello" },
       };
 
       const { container } = render(
@@ -57,7 +58,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "pwd" },
+        arguments: { command: "pwd" },
         result: "/home/user",
       };
 
@@ -69,13 +70,10 @@ describe("ToolCallIndicator", () => {
       // Details should now be visible
       expect(screen.getByTestId("tool-call-details")).toBeInTheDocument();
 
-      // Should show tool name
-      expect(screen.getByText("bash")).toBeInTheDocument();
-
-      // Should show arguments
+      // Should show arguments label
       expect(screen.getByText("Arguments")).toBeInTheDocument();
 
-      // Should show result
+      // Should show result label
       expect(screen.getByText("Result")).toBeInTheDocument();
     });
 
@@ -84,7 +82,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "read",
-        input: { file_path: "/test.txt" },
+        arguments: { file_path: "/test.txt" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -105,7 +103,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "ls" },
+        arguments: { command: "ls" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -122,114 +120,136 @@ describe("ToolCallIndicator", () => {
   });
 
   describe("Summary generation", () => {
-    it("formats bash command summary", () => {
+    it("shows bash command in summary", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "npm install" },
+        arguments: { command: "npm install" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Ran command: npm install/i)).toBeInTheDocument();
+      expect(screen.getByText("bash")).toBeInTheDocument();
+      expect(screen.getByText(/npm install/i)).toBeInTheDocument();
     });
 
-    it("formats read file summary", () => {
+    it("shows bash description when provided", () => {
+      const toolCall: ToolCall = {
+        id: "call-1",
+        name: "bash",
+        arguments: { command: "npm install", description: "Install dependencies" },
+      };
+
+      render(<ToolCallIndicator toolCall={toolCall} />);
+      expect(screen.getByText(/Install dependencies/i)).toBeInTheDocument();
+    });
+
+    it("shows file path for read tool", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "read",
-        input: { file_path: "/Users/test/file.ts" },
+        arguments: { file_path: "/Users/test/file.ts" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Read file: \/Users\/test\/file.ts/i)).toBeInTheDocument();
+      expect(screen.getByText("read")).toBeInTheDocument();
+      expect(screen.getByText(/\/Users\/test\/file.ts/i)).toBeInTheDocument();
     });
 
-    it("formats write file summary", () => {
+    it("shows file path for write tool", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "write",
-        input: { file_path: "/app/config.json" },
+        arguments: { file_path: "/app/config.json" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Wrote file: \/app\/config.json/i)).toBeInTheDocument();
+      expect(screen.getByText("write")).toBeInTheDocument();
+      expect(screen.getByText(/\/app\/config.json/i)).toBeInTheDocument();
     });
 
-    it("formats edit file summary", () => {
+    it("shows file path for edit tool", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "edit",
-        input: { file_path: "/src/main.rs" },
+        arguments: { file_path: "/src/main.rs" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Edited file: \/src\/main.rs/i)).toBeInTheDocument();
+      expect(screen.getByText("edit")).toBeInTheDocument();
+      expect(screen.getByText(/\/src\/main.rs/i)).toBeInTheDocument();
     });
 
-    it("formats create_task_proposal summary", () => {
+    it("shows title for create_task_proposal", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "create_task_proposal",
-        input: { title: "Add dark mode" },
+        arguments: { title: "Add dark mode" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Created proposal: Add dark mode/i)).toBeInTheDocument();
+      expect(screen.getByText("create_task_proposal")).toBeInTheDocument();
+      expect(screen.getByText(/Add dark mode/i)).toBeInTheDocument();
     });
 
-    it("formats update_task_proposal summary", () => {
+    it("shows title for update_task_proposal", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "update_task_proposal",
-        input: { proposal_id: "prop-123" },
+        arguments: { title: "Updated proposal title" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Updated proposal: prop-123/i)).toBeInTheDocument();
+      expect(screen.getByText("update_task_proposal")).toBeInTheDocument();
+      expect(screen.getByText(/Updated proposal title/i)).toBeInTheDocument();
     });
 
-    it("formats delete_task_proposal summary", () => {
+    it("shows delete_task_proposal summary", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "delete_task_proposal",
-        input: { proposal_id: "prop-456" },
+        arguments: { proposal_id: "prop-456" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Deleted proposal: prop-456/i)).toBeInTheDocument();
+      expect(screen.getByText("delete_task_proposal")).toBeInTheDocument();
+      expect(screen.getByText(/Deleted proposal/i)).toBeInTheDocument();
     });
 
-    it("formats update_task summary", () => {
+    it("shows update_task summary", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "update_task",
-        input: { task_id: "task-789" },
+        arguments: { task_id: "task-789" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Updated task: task-789/i)).toBeInTheDocument();
+      expect(screen.getByText("update_task")).toBeInTheDocument();
+      expect(screen.getByText(/Updated task/i)).toBeInTheDocument();
     });
 
-    it("formats add_task_note summary", () => {
+    it("shows add_task_note summary", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "add_task_note",
-        input: { task_id: "task-abc", note: "Fixed the bug" },
+        arguments: { task_id: "task-abc", note: "Fixed the bug" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Added note to task: task-abc/i)).toBeInTheDocument();
+      expect(screen.getByText("add_task_note")).toBeInTheDocument();
+      expect(screen.getByText(/Added note/i)).toBeInTheDocument();
     });
 
-    it("formats unknown tool summary", () => {
+    it("shows tool name for unknown tools", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "custom_tool",
-        input: { foo: "bar" },
+        arguments: { foo: "bar" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Called custom_tool/i)).toBeInTheDocument();
+      expect(screen.getByText("custom_tool")).toBeInTheDocument();
+      // Shows extracted argument value
+      expect(screen.getByText(/bar/i)).toBeInTheDocument();
     });
 
     it("truncates long command summaries", () => {
@@ -237,38 +257,36 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: longCommand },
+        arguments: { command: longCommand },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
-      const summary = screen.getByText(/Ran command:/i);
-      expect(summary.textContent).toContain("...");
+      // Should show truncated version with ellipsis
+      const indicator = screen.getByTestId("tool-call-indicator");
+      expect(indicator.textContent).toContain("...");
     });
   });
 
   describe("Expanded details", () => {
-    it("displays tool name in expanded view", async () => {
-      const user = userEvent.setup();
+    it("displays tool name badge in collapsed view", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "echo test" },
+        arguments: { command: "echo test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
-      await user.click(screen.getByTestId("tool-call-toggle"));
-
-      expect(screen.getByText("Tool")).toBeInTheDocument();
+      // Tool name badge should be visible in collapsed view
       expect(screen.getByText("bash")).toBeInTheDocument();
     });
 
-    it("displays formatted arguments", async () => {
+    it("displays formatted arguments when expanded", async () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
         name: "create_task_proposal",
-        input: {
+        arguments: {
           title: "Test Task",
           description: "A test description",
           priority: "high",
@@ -292,7 +310,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "echo hello" },
+        arguments: { command: "echo hello" },
         result: "hello\n",
       };
 
@@ -310,7 +328,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "ls" },
+        arguments: { command: "ls" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -326,7 +344,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "invalid-command" },
+        arguments: { command: "invalid-command" },
         error: "Command not found",
       };
 
@@ -340,7 +358,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "read",
-        input: { file_path: "/nonexistent.txt" },
+        arguments: { file_path: "/nonexistent.txt" },
         error: "File not found: /nonexistent.txt",
       };
 
@@ -358,7 +376,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "ls" },
+        arguments: { command: "ls" },
         result: "should not show",
         error: "Some error occurred",
       };
@@ -376,7 +394,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "fail" },
+        arguments: { command: "fail" },
         error: "Command failed",
       };
 
@@ -392,7 +410,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "bash",
-        input: { command: "ls" },
+        arguments: { command: "ls" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -408,7 +426,7 @@ describe("ToolCallIndicator", () => {
       const toolCall: ToolCall = {
         id: "call-1",
         name: "read",
-        input: { file_path: "/test.txt" },
+        arguments: { file_path: "/test.txt" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);

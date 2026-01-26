@@ -42,6 +42,7 @@ import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { StreamingToolIndicator } from "./StreamingToolIndicator";
 
 // ============================================================================
 // Constants
@@ -731,7 +732,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
-  // Streaming state - accumulates text chunks as they arrive
+  // Streaming tool calls - accumulated during agent execution
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -863,51 +865,79 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
-      // Listen for chat chunks (streaming text)
-      // Note: chat:chunk events arrive but contain complete messages (not streaming deltas)
-      // We just show a typing indicator instead of trying to render partial content
-
-      // Listen for tool calls
+      // Listen for tool calls - accumulate for streaming display
       const toolCallUnlisten = await listen<{
         tool_name: string;
         arguments: unknown;
         result: unknown;
         conversation_id: string;
       }>("chat:tool_call", (event) => {
-        console.log("Tool call received:", event.payload);
-        // Tool calls are shown in the final persisted message
+        const { tool_name, arguments: args, result, conversation_id } = event.payload;
+        // Only show for active conversation
+        if (conversation_id === activeConversationIdRef.current) {
+          setStreamingToolCalls((prev) => [
+            ...prev,
+            {
+              id: `streaming-${Date.now()}-${prev.length}`,
+              name: tool_name,
+              arguments: args,
+              result,
+            },
+          ]);
+        }
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for chat run completion
+      // Listen for chat run completion - clear streaming state
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("chat:run_completed", (event) => {
         console.log("Chat run completed:", event.payload);
-        // Query will auto-refetch
+        // Clear streaming tool calls and scroll to bottom
+        setStreamingToolCalls([]);
+        // Force scroll to bottom after completion
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
       });
       unlisteners.push(runCompletedUnlisten);
 
       // Execution-specific events (Phase 15B)
-      // Note: execution:chunk events contain complete messages, not streaming deltas
-
       // Listen for execution tool calls
       const execToolCallUnlisten = await listen<{
         conversation_id: string;
         tool_name: string;
         arguments: unknown;
       }>("execution:tool_call", (event) => {
-        console.log("Execution tool call received:", event.payload);
-        // Tool calls are shown in the final persisted message
+        const { tool_name, arguments: args, conversation_id } = event.payload;
+        // Only show for active conversation
+        if (conversation_id === activeConversationIdRef.current) {
+          setStreamingToolCalls((prev) => [
+            ...prev,
+            {
+              id: `streaming-exec-${Date.now()}-${prev.length}`,
+              name: tool_name,
+              arguments: args,
+            },
+          ]);
+        }
       });
       unlisteners.push(execToolCallUnlisten);
 
-      // Listen for execution completion
+      // Listen for execution completion - clear streaming state
       const execCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("execution:run_completed", (event) => {
         console.log("Worker execution completed:", event.payload);
-        // Query will auto-refetch due to the task:event invalidation
+        // Clear streaming tool calls and scroll to bottom
+        setStreamingToolCalls([]);
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
       });
       unlisteners.push(execCompletedUnlisten);
     })();
@@ -1062,8 +1092,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {/* Show typing indicator while agent is working (not streaming text) */}
-                {(isSending || isAgentRunning) && <TypingIndicator />}
+                {/* Show streaming tool calls or typing indicator while agent is working */}
+                {(isSending || isAgentRunning) && (
+                  streamingToolCalls.length > 0 ? (
+                    <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
+                  ) : (
+                    <TypingIndicator />
+                  )
+                )}
                 <div ref={messagesEndRef} />
               </>
             )}

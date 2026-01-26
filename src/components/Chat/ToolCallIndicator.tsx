@@ -1,16 +1,15 @@
 /**
- * ToolCallIndicator - Displays tool calls made by Claude during chat
+ * ToolCallIndicator - Displays tool calls made by Claude during chat (final render)
  *
  * Features:
- * - Collapsible view (summary by default, expand for details)
- * - Shows tool name, icon, and brief summary
- * - Expands to show full arguments and result
- * - Special handling for artifact context tools (get_task_context, get_artifact)
- * - Styled with design system tokens for consistency
+ * - Collapsible view (summary by default, expand for raw data)
+ * - Shows tool name and smart summary extracted from arguments
+ * - Expands to show formatted JSON (no nested collapse)
+ * - Compact, readable design
  */
 
-import React, { useState } from "react";
-import { Wrench, ChevronDown, ChevronRight, FileText, Package, Lightbulb } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Wrench, ChevronDown, ChevronRight, FileText, Package, Lightbulb, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
 import type { TaskContext, ArtifactSummary } from "../../types/task-context";
 
 // ============================================================================
@@ -44,58 +43,111 @@ interface ToolCallIndicatorProps {
 // Helpers
 // ============================================================================
 
+
+/**
+ * Extract first-level key-value pairs from arguments for summary
+ */
+function extractKeyValues(args: unknown): Array<{ key: string; value: string }> {
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return [];
+  }
+
+  const result: Array<{ key: string; value: string }> = [];
+  const entries = Object.entries(args as Record<string, unknown>);
+
+  for (const [key, value] of entries) {
+    // Skip nested objects, arrays, and nullish values
+    if (value == null || (typeof value === "object")) {
+      continue;
+    }
+
+    result.push({
+      key: key.replace(/_/g, " "),
+      value: truncate(String(value), 50),
+    });
+  }
+
+  return result.slice(0, 4); // Max 4 key-value pairs
+}
+
 /**
  * Create a brief summary of the tool call for collapsed view
  */
-function createSummary(toolCall: ToolCall): string {
+function createSummary(toolCall: ToolCall): { title: string; subtitle?: string | undefined } {
   const { name, arguments: args, result } = toolCall;
 
   // Special formatting for common tools
   switch (name) {
-    case "bash":
-      return `Ran command: ${truncate(String((args as { command?: string })?.command || ""), 60)}`;
+    case "bash": {
+      const typedArgs = args as { command?: string; description?: string } | undefined;
+      const desc = typedArgs?.description;
+      const cmd = typedArgs?.command;
+      if (desc) {
+        return { title: desc, subtitle: cmd ? truncate(cmd, 60) : undefined };
+      }
+      return { title: cmd ? truncate(cmd, 80) : "Ran command" };
+    }
     case "read":
-      return `Read file: ${(args as { file_path?: string })?.file_path || "unknown"}`;
+      return { title: (args as { file_path?: string })?.file_path || "Read file" };
     case "write":
-      return `Wrote file: ${(args as { file_path?: string })?.file_path || "unknown"}`;
+      return { title: (args as { file_path?: string })?.file_path || "Wrote file" };
     case "edit":
-      return `Edited file: ${(args as { file_path?: string })?.file_path || "unknown"}`;
+      return { title: (args as { file_path?: string })?.file_path || "Edited file" };
+    case "glob": {
+      const typedArgs = args as { pattern?: string; path?: string } | undefined;
+      return {
+        title: typedArgs?.pattern || "Search files",
+        subtitle: typedArgs?.path,
+      };
+    }
+    case "grep": {
+      const typedArgs = args as { pattern?: string; path?: string } | undefined;
+      return {
+        title: typedArgs?.pattern ? `"${truncate(typedArgs.pattern, 40)}"` : "Search content",
+        subtitle: typedArgs?.path,
+      };
+    }
     case "create_task_proposal":
-      return `Created proposal: ${(args as { title?: string })?.title || "untitled"}`;
+      return { title: (args as { title?: string })?.title || "Created proposal" };
     case "update_task_proposal":
-      return `Updated proposal: ${(args as { proposal_id?: string })?.proposal_id || "unknown"}`;
+      return { title: (args as { title?: string })?.title || "Updated proposal" };
     case "delete_task_proposal":
-      return `Deleted proposal: ${(args as { proposal_id?: string })?.proposal_id || "unknown"}`;
+      return { title: "Deleted proposal" };
     case "update_task":
-      return `Updated task: ${(args as { task_id?: string })?.task_id || "unknown"}`;
+      return { title: "Updated task" };
     case "add_task_note":
-      return `Added note to task: ${(args as { task_id?: string })?.task_id || "unknown"}`;
+      return { title: "Added note" };
     case "get_task_context": {
-      // Extract task context from result
       const taskContext = result as TaskContext | undefined;
       if (taskContext?.task) {
-        return `Fetched context for: ${(taskContext.task as { title?: string })?.title || "task"}`;
+        return { title: (taskContext.task as { title?: string })?.title || "Fetched context" };
       }
-      return `Fetched task context`;
+      return { title: "Fetched task context" };
     }
     case "get_artifact": {
-      // Extract artifact from result
       const artifact = result as { title?: string } | undefined;
-      if (artifact?.title) {
-        return `Fetched artifact: ${artifact.title}`;
-      }
-      return `Fetched artifact`;
+      return { title: artifact?.title || "Fetched artifact" };
     }
     case "get_artifact_version":
-      return `Fetched artifact version: ${(args as { version?: number })?.version || "unknown"}`;
+      return { title: `Version ${(args as { version?: number })?.version || "?"}` };
     case "get_related_artifacts":
-      return `Fetched related artifacts`;
+      return { title: "Fetched related artifacts" };
     case "search_project_artifacts": {
       const query = (args as { query?: string })?.query;
-      return query ? `Searched artifacts: "${query}"` : `Searched artifacts`;
+      return { title: query ? `"${truncate(query, 40)}"` : "Searched artifacts" };
     }
-    default:
-      return `Called ${name}`;
+    default: {
+      // Dynamic extraction for unknown tools
+      const keyValues = extractKeyValues(args);
+      if (keyValues.length > 0) {
+        const first = keyValues[0];
+        return {
+          title: first ? first.value : name.replace(/_/g, " "),
+          subtitle: keyValues.length > 1 ? `+${keyValues.length - 1} more` : undefined,
+        };
+      }
+      return { title: name.replace(/_/g, " ") };
+    }
   }
 }
 
@@ -339,9 +391,33 @@ function renderArtifactPreview(toolCall: ToolCall): React.ReactNode {
 // Component
 // ============================================================================
 
+/**
+ * Render tool icon based on tool name
+ */
+function ToolIcon({ name, hasError }: { name: string; hasError: boolean }) {
+  const style = { color: hasError ? "var(--text-primary)" : "var(--accent-primary)" };
+  const className = "flex-shrink-0";
+
+  switch (name) {
+    case "bash":
+      return <Terminal size={14} className={className} style={style} />;
+    case "read":
+    case "write":
+      return <FileText size={14} className={className} style={style} />;
+    case "edit":
+      return <FileEdit size={14} className={className} style={style} />;
+    case "glob":
+      return <FolderSearch size={14} className={className} style={style} />;
+    case "grep":
+      return <Search size={14} className={className} style={style} />;
+    default:
+      return <Wrench size={14} className={className} style={style} />;
+  }
+}
+
 export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicatorProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const summary = createSummary(toolCall);
+  const summary = useMemo(() => createSummary(toolCall), [toolCall]);
   const hasError = Boolean(toolCall.error);
 
   return (
@@ -380,137 +456,125 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
         )}
 
         {/* Tool icon */}
-        <Wrench
-          size={14}
-          className="flex-shrink-0"
-          style={{ color: hasError ? "var(--text-primary)" : "var(--accent-primary)" }}
-        />
+        <ToolIcon name={toolCall.name} hasError={hasError} />
 
-        {/* Summary text */}
+        {/* Tool name badge */}
         <span
-          className="text-xs flex-1 truncate min-w-0"
+          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
           style={{
-            color: hasError ? "var(--text-primary)" : "var(--text-secondary)",
-            fontFamily: "var(--font-body)",
+            backgroundColor: hasError ? "rgba(0,0,0,0.2)" : "var(--bg-base)",
+            color: hasError ? "var(--text-primary)" : "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
           }}
         >
-          {summary}
+          {toolCall.name}
         </span>
+
+        {/* Summary text */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <span
+            className="text-xs truncate font-mono"
+            style={{
+              color: hasError ? "var(--text-primary)" : "var(--text-secondary)",
+            }}
+          >
+            {summary.title}
+          </span>
+          {summary.subtitle && (
+            <span
+              className="text-[10px] truncate"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {summary.subtitle}
+            </span>
+          )}
+        </div>
 
         {/* Error indicator */}
         {hasError && (
           <span
-            className="text-xs font-medium"
-            style={{ color: "var(--text-primary)" }}
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+            style={{
+              backgroundColor: "rgba(0,0,0,0.2)",
+              color: "var(--text-primary)",
+            }}
           >
             Failed
           </span>
         )}
       </button>
 
-      {/* Expanded details */}
+      {/* Expanded details - NO nested collapse, show raw data directly */}
       {isExpanded && (
         <div
           data-testid="tool-call-details"
-          className="px-3 pb-3 space-y-3 border-t pt-3"
+          className="px-3 pb-3 space-y-2 border-t pt-3"
           style={{ borderColor: "var(--border-subtle)" }}
         >
           {/* Artifact preview for context tools */}
           {isArtifactContextTool(toolCall.name) && toolCall.result && !hasError ? (
-            <div data-testid="artifact-preview">
+            <div data-testid="artifact-preview" className="mb-3">
               {renderArtifactPreview(toolCall)}
             </div>
           ) : null}
 
-          {/* Collapsible raw data */}
-          <details className="group">
-            <summary
-              className="text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity list-none flex items-center gap-1"
+          {/* Arguments - shown directly */}
+          <div>
+            <div
+              className="text-[10px] font-medium mb-1 uppercase tracking-wide"
               style={{ color: "var(--text-muted)" }}
             >
-              <ChevronRight size={12} className="group-open:rotate-90 transition-transform" />
-              Raw Data
-            </summary>
-            <div className="mt-2 space-y-2 pl-3">
-              {/* Tool name */}
-              <div>
-                <div
-                  className="text-xs font-medium mb-1"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Tool
-                </div>
-                <code
-                  className="text-xs px-2 py-1 rounded block overflow-hidden text-ellipsis"
-                  style={{
-                    backgroundColor: "var(--bg-base)",
-                    color: "var(--text-primary)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  {toolCall.name}
-                </code>
-              </div>
-
-              {/* Arguments */}
-              <div>
-                <div
-                  className="text-xs font-medium mb-1"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Arguments
-                </div>
-                <pre
-                  className="text-xs px-2 py-1 rounded overflow-x-auto max-w-full"
-                  style={{
-                    backgroundColor: "var(--bg-base)",
-                    color: "var(--text-primary)",
-                    fontFamily: "var(--font-mono)",
-                    wordBreak: "break-word",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {formatJSON(toolCall.arguments)}
-                </pre>
-              </div>
-
-              {/* Result (if present and not null) */}
-              {toolCall.result != null && !hasError && (
-                <div>
-                  <div
-                    className="text-xs font-medium mb-1"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Result
-                  </div>
-                  <pre
-                    className="text-xs px-2 py-1 rounded overflow-x-auto max-w-full"
-                    style={{
-                      backgroundColor: "var(--bg-base)",
-                      color: "var(--text-primary)",
-                      fontFamily: "var(--font-mono)",
-                      wordBreak: "break-word",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {formatJSON(toolCall.result)}
-                  </pre>
-                </div>
-              )}
+              Arguments
             </div>
-          </details>
+            <pre
+              className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-w-full max-h-48"
+              style={{
+                backgroundColor: "var(--bg-base)",
+                color: "var(--text-primary)",
+                fontFamily: "var(--font-mono)",
+                wordBreak: "break-word",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {formatJSON(toolCall.arguments)}
+            </pre>
+          </div>
+
+          {/* Result - shown directly (if present and not null) */}
+          {toolCall.result != null && !hasError && (
+            <div>
+              <div
+                className="text-[10px] font-medium mb-1 uppercase tracking-wide"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Result
+              </div>
+              <pre
+                className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-w-full max-h-48"
+                style={{
+                  backgroundColor: "var(--bg-base)",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-mono)",
+                  wordBreak: "break-word",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {formatJSON(toolCall.result)}
+              </pre>
+            </div>
+          )}
 
           {/* Error (if present) */}
           {hasError && (
             <div>
               <div
-                className="text-xs font-medium mb-1"
+                className="text-[10px] font-medium mb-1 uppercase tracking-wide"
                 style={{ color: "var(--text-primary)" }}
               >
                 Error
               </div>
               <pre
-                className="text-xs px-2 py-1 rounded overflow-x-auto"
+                className="text-[11px] px-2 py-1.5 rounded overflow-x-auto"
                 style={{
                   backgroundColor: "rgba(0, 0, 0, 0.2)",
                   color: "var(--text-primary)",
