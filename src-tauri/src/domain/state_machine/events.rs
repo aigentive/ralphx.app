@@ -17,6 +17,10 @@ pub enum TaskEvent {
     /// User moves task from Backlog to Ready
     Schedule,
 
+    /// User explicitly starts execution (Ready → Executing)
+    /// Used when dragging task to "In Progress" column in Kanban
+    StartExecution,
+
     /// User cancels task from any non-terminal state
     Cancel,
 
@@ -83,6 +87,7 @@ impl TaskEvent {
         matches!(
             self,
             TaskEvent::Schedule
+                | TaskEvent::StartExecution
                 | TaskEvent::Cancel
                 | TaskEvent::ForceApprove
                 | TaskEvent::Retry
@@ -115,6 +120,7 @@ impl TaskEvent {
     pub fn name(&self) -> &'static str {
         match self {
             TaskEvent::Schedule => "Schedule",
+            TaskEvent::StartExecution => "StartExecution",
             TaskEvent::Cancel => "Cancel",
             TaskEvent::ForceApprove => "ForceApprove",
             TaskEvent::Retry => "Retry",

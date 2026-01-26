@@ -260,162 +260,63 @@ impl<R: Runtime> TaskTransitionService<R> {
 
     /// Execute entry actions for a given status.
     ///
-    /// This is where the magic happens - when entering certain states,
-    /// we trigger side effects like spawning agents.
+    /// This method delegates to TransitionHandler::on_enter() to ensure we use
+    /// the canonical entry action logic defined in the state machine module.
     async fn execute_entry_actions(
         &self,
         task_id: &TaskId,
         task: &Task,
         status: InternalStatus,
     ) {
-        let task_id_str = task_id.as_str();
-        let project_id_str = task.project_id.as_str();
+        use crate::domain::state_machine::{
+            context::{TaskContext, TaskServices},
+            machine::{State, TaskStateMachine},
+            transition_handler::TransitionHandler,
+        };
 
-        match status {
-            // ===== READY =====
-            // When task becomes ready, optionally spawn QA prep agent
-            InternalStatus::Ready => {
-                // Check if QA is enabled for this task
-                // For now, we don't auto-spawn QA prep - this can be added later
-                tracing::debug!(task_id = task_id_str, "Task is now Ready");
-            }
+        // Convert InternalStatus to State
+        let state = match status {
+            InternalStatus::Backlog => State::Backlog,
+            InternalStatus::Ready => State::Ready,
+            InternalStatus::Blocked => State::Blocked,
+            InternalStatus::Executing => State::Executing,
+            InternalStatus::ExecutionDone => State::ExecutionDone,
+            InternalStatus::QaRefining => State::QaRefining,
+            InternalStatus::QaTesting => State::QaTesting,
+            InternalStatus::QaPassed => State::QaPassed,
+            InternalStatus::QaFailed => State::QaFailed(Default::default()),
+            InternalStatus::PendingReview => State::PendingReview,
+            InternalStatus::RevisionNeeded => State::RevisionNeeded,
+            InternalStatus::Approved => State::Approved,
+            InternalStatus::Failed => State::Failed(Default::default()),
+            InternalStatus::Cancelled => State::Cancelled,
+        };
 
-            // ===== EXECUTING =====
-            // This is the key one - spawn the worker agent!
-            InternalStatus::Executing => {
-                println!(">>> execute_entry_actions: EXECUTING - about to spawn worker");
+        // Build TaskServices from our services
+        let services = TaskServices::new(
+            Arc::clone(&self.agent_spawner),
+            Arc::clone(&self.event_emitter),
+            Arc::clone(&self.notifier),
+            Arc::clone(&self.dependency_manager),
+            Arc::clone(&self.review_starter),
+            Arc::clone(&self.execution_chat_service),
+        );
 
-                // Build prompt for worker
-                let prompt = format!(
-                    "Execute the task. Task ID: {}. Use get_task_context to understand what needs to be done.",
-                    task_id_str
-                );
-                println!(">>> execute_entry_actions: prompt = {}", prompt);
+        // Create TaskContext
+        let context = TaskContext::new(
+            task_id.as_str(),
+            task.project_id.as_str(),
+            services,
+        );
 
-                // Spawn worker with persistence
-                println!(">>> execute_entry_actions: calling spawn_with_persistence...");
-                match self.execution_chat_service.spawn_with_persistence(task_id, &prompt).await {
-                    Ok(result) => {
-                        println!(
-                            ">>> execute_entry_actions: Worker spawned! conversation_id={}, agent_run_id={}",
-                            result.conversation_id.as_str(),
-                            result.agent_run_id
-                        );
-                    }
-                    Err(e) => {
-                        println!(">>> execute_entry_actions: FAILED to spawn worker: {}", e);
-                        // Emit error event
-                        self.event_emitter
-                            .emit_with_payload("task:spawn_error", task_id_str, &e.to_string())
-                            .await;
-                    }
-                }
-            }
+        // Create state machine and handler
+        let mut machine = TaskStateMachine::new(context);
+        let handler = TransitionHandler::new(&mut machine);
 
-            // ===== QA REFINING =====
-            // Spawn QA refiner agent
-            InternalStatus::QaRefining => {
-                tracing::info!(task_id = task_id_str, "Spawning QA refiner agent");
-                self.agent_spawner.spawn("qa-refiner", task_id_str).await;
-            }
-
-            // ===== QA TESTING =====
-            // Spawn QA tester agent
-            InternalStatus::QaTesting => {
-                tracing::info!(task_id = task_id_str, "Spawning QA tester agent");
-                self.agent_spawner.spawn("qa-tester", task_id_str).await;
-            }
-
-            // ===== QA PASSED =====
-            // Emit event, could auto-transition to PendingReview
-            InternalStatus::QaPassed => {
-                tracing::info!(task_id = task_id_str, "QA tests passed");
-                self.event_emitter.emit("task:qa_passed", task_id_str).await;
-            }
-
-            // ===== QA FAILED =====
-            // Emit event, notify user
-            InternalStatus::QaFailed => {
-                tracing::info!(task_id = task_id_str, "QA tests failed");
-                self.event_emitter.emit("task:qa_failed", task_id_str).await;
-                self.notifier
-                    .notify_with_message("qa_failed", task_id_str, "QA tests failed. Review needed.")
-                    .await;
-            }
-
-            // ===== PENDING REVIEW =====
-            // Start AI review
-            InternalStatus::PendingReview => {
-                tracing::info!(task_id = task_id_str, "Starting AI review");
-                let result = self.review_starter.start_ai_review(task_id_str, project_id_str).await;
-                match result {
-                    ReviewStartResult::Started { review_id } => {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            review_id = %review_id,
-                            "AI review started"
-                        );
-                    }
-                    ReviewStartResult::Disabled => {
-                        tracing::debug!(task_id = task_id_str, "AI review disabled");
-                    }
-                    ReviewStartResult::Error(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to start AI review"
-                        );
-                    }
-                }
-            }
-
-            // ===== REVISION NEEDED =====
-            // Could auto-transition back to Executing
-            InternalStatus::RevisionNeeded => {
-                tracing::info!(task_id = task_id_str, "Revision needed, task will re-execute");
-                self.event_emitter.emit("task:revision_needed", task_id_str).await;
-            }
-
-            // ===== APPROVED =====
-            // Task complete! Unblock dependents, emit event
-            InternalStatus::Approved => {
-                tracing::info!(task_id = task_id_str, "Task approved!");
-                self.event_emitter.emit("task:completed", task_id_str).await;
-                self.dependency_manager.unblock_dependents(task_id_str).await;
-                self.notifier
-                    .notify_with_message("task_completed", task_id_str, "Task completed and approved!")
-                    .await;
-            }
-
-            // ===== FAILED =====
-            // Permanent failure
-            InternalStatus::Failed => {
-                tracing::warn!(task_id = task_id_str, "Task failed permanently");
-                self.event_emitter.emit("task:failed", task_id_str).await;
-                self.notifier
-                    .notify_with_message("task_failed", task_id_str, "Task failed after max retries.")
-                    .await;
-            }
-
-            // ===== CANCELLED =====
-            InternalStatus::Cancelled => {
-                tracing::info!(task_id = task_id_str, "Task cancelled");
-                self.event_emitter.emit("task:cancelled", task_id_str).await;
-            }
-
-            // ===== Other states (no entry actions) =====
-            // Note: ExecutionDone is handled in the worker completion handler
-            // which auto-transitions to PendingReview (QA disabled by default)
-            InternalStatus::Backlog
-            | InternalStatus::Blocked
-            | InternalStatus::ExecutionDone => {
-                tracing::debug!(
-                    task_id = task_id_str,
-                    status = status.as_str(),
-                    "No entry action for this status"
-                );
-            }
-        }
+        // Execute entry action via TransitionHandler
+        println!(">>> execute_entry_actions: calling TransitionHandler::on_enter for {:?}", state);
+        handler.on_enter(&state).await;
+        println!(">>> execute_entry_actions: TransitionHandler::on_enter complete");
     }
 }
 
