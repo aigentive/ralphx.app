@@ -25,6 +25,10 @@ import {
   ReviewStatusSchema,
   ReviewOutcomeSchema,
 } from "@/types";
+import {
+  TaskStepSchema,
+  StepProgressSummarySchema,
+} from "@/types/task-step";
 
 /**
  * Generic invoke wrapper with runtime Zod validation
@@ -226,6 +230,7 @@ export type FixTaskAttemptsResponse = z.infer<typeof FixTaskAttemptsResponseSche
  */
 const ReviewListResponseSchema = z.array(ReviewResponseSchema);
 const ReviewNoteListResponseSchema = z.array(ReviewNoteResponseSchema);
+const TaskStepListSchema = z.array(TaskStepSchema);
 
 /**
  * Input types for review operations
@@ -709,6 +714,100 @@ export const api = {
      */
     stop: () =>
       typedInvoke("stop_execution", {}, ExecutionCommandResponseSchema),
+  },
+
+  steps: {
+    /**
+     * Get all steps for a task
+     * @param taskId The task ID
+     * @returns Array of task steps
+     */
+    getByTask: (taskId: string) =>
+      typedInvoke("get_task_steps", { taskId }, TaskStepListSchema),
+
+    /**
+     * Create a new task step
+     * @param taskId The task ID
+     * @param data Step creation data (title, description, sortOrder)
+     * @returns The created task step
+     */
+    create: (
+      taskId: string,
+      data: { title: string; description?: string; sortOrder?: number }
+    ) =>
+      typedInvoke("create_task_step", { taskId, ...data }, TaskStepSchema),
+
+    /**
+     * Update an existing task step
+     * @param stepId The step ID
+     * @param data Partial step data to update (title, description, sortOrder)
+     * @returns The updated task step
+     */
+    update: (
+      stepId: string,
+      data: { title?: string; description?: string; sortOrder?: number }
+    ) =>
+      typedInvoke("update_task_step", { stepId, ...data }, TaskStepSchema),
+
+    /**
+     * Delete a task step
+     * @param stepId The step ID
+     * @returns void on success
+     */
+    delete: (stepId: string) =>
+      typedInvoke("delete_task_step", { stepId }, z.void()),
+
+    /**
+     * Reorder task steps
+     * @param taskId The task ID
+     * @param stepIds Array of step IDs in desired order
+     * @returns Array of reordered task steps
+     */
+    reorder: (taskId: string, stepIds: string[]) =>
+      typedInvoke("reorder_task_steps", { taskId, stepIds }, TaskStepListSchema),
+
+    /**
+     * Get step progress summary for a task
+     * @param taskId The task ID
+     * @returns Step progress summary with counts and percentages
+     */
+    getProgress: (taskId: string) =>
+      typedInvoke("get_step_progress", { taskId }, StepProgressSummarySchema),
+
+    /**
+     * Start a task step (marks as in_progress)
+     * @param stepId The step ID
+     * @returns The updated task step
+     */
+    start: (stepId: string) =>
+      typedInvoke("start_step", { stepId }, TaskStepSchema),
+
+    /**
+     * Complete a task step (marks as completed)
+     * @param stepId The step ID
+     * @param note Optional completion note
+     * @returns The updated task step
+     */
+    complete: (stepId: string, note?: string) =>
+      typedInvoke("complete_step", { stepId, note }, TaskStepSchema),
+
+    /**
+     * Skip a task step (marks as skipped)
+     * @param stepId The step ID
+     * @param reason Reason for skipping
+     * @returns The updated task step
+     */
+    skip: (stepId: string, reason: string) =>
+      typedInvoke("skip_step", { stepId, reason }, TaskStepSchema),
+
+    /**
+     * Fail a task step (marks as failed)
+     * @param stepId The step ID
+     * @param error Error message
+     * @returns The updated task step
+     */
+    fail: (stepId: string, error: string) =>
+      typedInvoke("fail_step", { stepId, error }, TaskStepSchema),
   },
 
   testData: {
