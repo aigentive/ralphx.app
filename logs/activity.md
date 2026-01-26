@@ -1,15 +1,56 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:42:00
+**Last Updated:** 2026-01-26 18:44:15
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 15 / 30
-**Current Task:** Create useTaskSearch hook
+**Tasks Completed:** 16 / 30
+**Current Task:** Add infinite scroll orchestration to TaskBoard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:44:15 - Create useTaskSearch hook (Task 17)
+
+**What was done:**
+- Created `src/hooks/useTaskSearch.ts` hook for server-side task search
+  - Uses TanStack Query's `useQuery` for search functionality
+  - Props: `{ projectId, query: string | null, includeArchived? }`
+  - Query key: `['tasks', 'search', projectId, query, includeArchived]`
+  - Query function calls `api.tasks.search(projectId, query, includeArchived)`
+  - Search is **disabled** when query is null or has less than 2 characters
+  - Cache settings:
+    - `staleTime`: 30 seconds (shorter than infinite scroll since search results change more frequently)
+  - Returns: `{ data: Task[], isLoading, isError }`
+- Created comprehensive test suite `src/hooks/useTaskSearch.test.ts`
+  - Tests for query key factory
+  - Tests for successful search with results
+  - Tests for disabled state when query is null
+  - Tests for disabled state when query has < 2 chars
+  - Tests for minimum 2 character requirement
+  - Tests for `includeArchived` parameter
+  - Tests for empty search results
+  - Tests for error handling
+  - Tests for query updates and re-fetching
+  - Tests for disabled state transitions
+  - Tests for case-insensitive search behavior
+  - All 12 tests passing
+- Fixed initial test failures related to TanStack Query's behavior with disabled queries:
+  - Changed from checking `isPending` to checking `fetchStatus` for disabled state
+  - Updated expectations for query key changes (data becomes undefined)
+
+**Commands run:**
+- `npm run lint` - Passed (only pre-existing warnings in other files)
+- `npm run typecheck` - Passed with no errors
+- `npm run test -- src/hooks/useTaskSearch.test.ts` - All 12 tests passed
+
+**Verification:**
+- ✅ Hook properly implements server-side search with TanStack Query
+- ✅ Correctly disables search when query is null or < 2 chars
+- ✅ Proper cache strategy with 30-second stale time
+- ✅ Type-safe with Zod validation via API layer
+- ✅ Comprehensive test coverage including edge cases
 
 ### 2026-01-26 18:40:52 - Create useInfiniteTasksQuery hook (Task 16)
 
