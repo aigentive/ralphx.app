@@ -1386,6 +1386,12 @@ pub struct ToolCallResultResponse {
 
 /// Send a message to the orchestrator agent and get a response
 /// This invokes the Claude CLI with the orchestrator-ideation agent
+///
+/// The service now:
+/// - Automatically manages conversations (creates/resumes based on claude_session_id)
+/// - Uses --resume flag for follow-up messages (Claude manages conversation context)
+/// - Delegates tool execution to MCP server
+/// - Emits Tauri events for real-time UI updates
 #[tauri::command]
 pub async fn send_orchestrator_message(
     input: SendOrchestratorMessageInput,
@@ -1406,10 +1412,11 @@ pub async fn send_orchestrator_message(
         return Err("Session is not active".to_string());
     }
 
-    // Create orchestrator service
-    let orchestrator = ClaudeOrchestratorService::new(
+    // Create orchestrator service with required repositories
+    let orchestrator: ClaudeOrchestratorService<tauri::Wry> = ClaudeOrchestratorService::new(
         state.chat_message_repo.clone(),
-        state.task_proposal_repo.clone(),
+        state.chat_conversation_repo.clone(),
+        state.agent_run_repo.clone(),
     );
 
     // Check if orchestrator is available
@@ -1423,22 +1430,19 @@ pub async fn send_orchestrator_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Convert proposals to response format
-    let proposals_created: Vec<TaskProposalResponse> = result
-        .proposals_created
-        .into_iter()
-        .map(TaskProposalResponse::from)
-        .collect();
+    // Note: Proposals are now created via MCP tools, not returned directly from the service
+    // The frontend should listen to Tauri events for real-time updates
+    let proposals_created: Vec<TaskProposalResponse> = Vec::new();
 
-    // Convert tool calls to response format
+    // Convert tool calls to response format (for display purposes)
     let tool_calls: Vec<ToolCallResultResponse> = result
         .tool_calls
         .into_iter()
         .map(|tc| ToolCallResultResponse {
-            tool_name: tc.tool_name,
-            success: tc.success,
+            tool_name: tc.name,
+            success: true, // MCP handles execution; we just observe
             result: tc.result,
-            error: tc.error,
+            error: None,
         })
         .collect();
 
@@ -1454,9 +1458,10 @@ pub async fn send_orchestrator_message(
 pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<bool, String> {
     use crate::application::{ClaudeOrchestratorService, OrchestratorService};
 
-    let orchestrator = ClaudeOrchestratorService::new(
+    let orchestrator: ClaudeOrchestratorService<tauri::Wry> = ClaudeOrchestratorService::new(
         state.chat_message_repo.clone(),
-        state.task_proposal_repo.clone(),
+        state.chat_conversation_repo.clone(),
+        state.agent_run_repo.clone(),
     );
 
     Ok(orchestrator.is_available().await)

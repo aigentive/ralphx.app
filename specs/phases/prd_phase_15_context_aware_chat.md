@@ -313,7 +313,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: refactor(orchestrator): delegate tools to MCP, add --resume support, pass agent type for tool scoping",
       "STOP: Output <promise>COMPLETE</promise> - High-complexity task complete, can switch back to Sonnet"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

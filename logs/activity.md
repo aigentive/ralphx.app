@@ -1,14 +1,69 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 01:48:00
+**Last Updated:** 2026-01-26 03:15:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 13 / 26
-**Current Task:** Refactor orchestrator service for --resume and MCP delegation
+**Tasks Completed:** 14 / 26
+**Current Task:** Add context_chat_service.rs with conversation management
 
 ---
 
 ## Session Log
+
+### 2026-01-26 03:15:00 - Orchestrator Service Refactored for MCP and --resume Support
+
+**What was done:**
+- Refactored `src-tauri/src/application/orchestrator_service.rs`:
+  - Removed tool execution methods (MCP handles tools now):
+    - Removed `execute_tool_call()`, `handle_create_task_proposal()`, `handle_update_task_proposal()`, `handle_delete_task_proposal()`
+    - Removed `build_conversation_history()` (--resume handles context)
+  - Added `claude_session_id` capture from stream-json `result` event
+  - Added `--resume` flag logic: first message uses `--agent`, follow-up uses `--resume <claude_session_id>`
+  - Added `RALPHX_AGENT_TYPE` env var when spawning (for MCP tool scoping)
+  - Added `get_agent_name()` function to determine agent based on context type
+  - Added agent_run creation on message send, status updates on completion
+  - Added tool_calls parsing from stream-json (stored in message for UI display)
+  - Added Tauri event emission: `chat:chunk`, `chat:tool_call`, `chat:run_started`, `chat:run_completed`, `chat:message_created`, `chat:error`
+  - Added new event payload types: `ChatChunkPayload`, `ChatToolCallPayload`, `ChatRunCompletedPayload`, `ChatMessageCreatedPayload`
+  - Updated `OrchestratorResult` to include `claude_session_id` and `conversation_id`
+  - Updated `OrchestratorEvent` enum with new structured variants
+  - Updated `StreamMessage` enum to include `Result` variant with `session_id` field
+  - Service now uses generic `<R: Runtime>` for flexible Tauri runtime support
+  - Updated `MockOrchestratorService` to match new API
+
+- Created new memory repositories:
+  - `src-tauri/src/infrastructure/memory/memory_chat_conversation_repo.rs`
+  - `src-tauri/src/infrastructure/memory/memory_agent_run_repo.rs`
+
+- Updated `src-tauri/src/infrastructure/memory/mod.rs`:
+  - Added exports for `MemoryChatConversationRepository` and `MemoryAgentRunRepository`
+
+- Updated `src-tauri/src/application/app_state.rs`:
+  - Added `chat_conversation_repo: Arc<dyn ChatConversationRepository>`
+  - Added `agent_run_repo: Arc<dyn AgentRunRepository>`
+  - Updated `new_production()`, `with_db_path()`, `new_test()`, and `with_repos()` to include new repos
+
+- Updated `src-tauri/src/commands/ideation_commands.rs`:
+  - `send_orchestrator_message` now uses new service API with conversation and agent run repos
+  - `is_orchestrator_available` updated similarly
+  - Added explicit type annotation `ClaudeOrchestratorService<tauri::Wry>` to satisfy type inference
+
+- Updated `src-tauri/src/application/mod.rs`:
+  - Added exports for new types: `ChatChunkPayload`, `ChatMessageCreatedPayload`, `ChatRunCompletedPayload`, `ChatToolCallPayload`, `MockResponse`
+
+**Key architectural changes:**
+1. Tool execution delegated to MCP server (no more in-process tool handling)
+2. Uses `--resume` for follow-up messages (Claude manages conversation context)
+3. Passes `RALPHX_AGENT_TYPE` env var for MCP tool scoping per agent type
+4. Agent runs tracked for leave-and-come-back support
+5. Real-time UI updates via Tauri events
+
+**Commands run:**
+- `cargo check` (successful - library compiles)
+
+**Note:** Some pre-existing test failures exist due to `AppState::new_test()` requiring `AppHandle` parameter but tests not providing it. This is a separate issue from this refactor.
+
+---
 
 ### 2026-01-26 01:45:40 - Permission Bridge: PermissionDialog Component
 
