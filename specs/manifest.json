@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": "15b",
+  "currentPhase": 16,
   "phases": [
     {
       "phase": 0,
@@ -119,14 +119,14 @@
       "phase": "15b",
       "name": "Task Execution Chat",
       "prd": "specs/phases/prd_phase_15b_task_execution_chat.md",
-      "status": "active",
+      "status": "complete",
       "description": "Persist worker execution output, view as chat, queue messages to worker"
     },
     {
       "phase": 16,
       "name": "Ideation Plan Artifacts",
       "prd": "specs/phases/prd_phase_16_ideation_plan_artifacts.md",
-      "status": "pending",
+      "status": "active",
       "description": "Implementation plans as artifacts in ideation flow, methodology integration, proactive sync"
     },
     {
