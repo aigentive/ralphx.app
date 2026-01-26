@@ -32,20 +32,24 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::all())
+                .build()
+        )
         .setup(|app| {
             let app_handle = app.handle().clone();
 
             // Create the main window programmatically to set traffic light position
             {
                 use tauri::{WebviewUrl, WebviewWindowBuilder, TitleBarStyle, LogicalPosition, Position};
-                use tauri_plugin_window_state::{WindowExt, StateFlags};
 
                 let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                     .title("")
                     .inner_size(1200.0, 800.0)
                     .decorations(true)
-                    .hidden_title(true);
+                    .hidden_title(true)
+                    .visible(false); // Start hidden to avoid resize flash
 
                 #[cfg(target_os = "macos")]
                 {
@@ -56,12 +60,8 @@ pub fn run() {
 
                 let webview_window = builder.build()?;
 
-                // Restore window state (size, position) from disk
-                // WindowExt is implemented for WebviewWindow in tauri-plugin-window-state
-                match webview_window.restore_state(StateFlags::all()) {
-                    Ok(_) => println!("Window state restored successfully"),
-                    Err(e) => println!("Failed to restore window state: {:?}", e),
-                }
+                // Plugin with with_state_flags auto-restores, just show the window
+                let _ = webview_window.show();
             }
 
             // Create application state with production SQLite repositories
