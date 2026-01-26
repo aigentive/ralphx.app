@@ -648,7 +648,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(card): wrap TaskCard with context menu and handlers"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
