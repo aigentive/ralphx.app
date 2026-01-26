@@ -292,7 +292,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(api): add execution chat API functions"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "integration",
