@@ -1,15 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:20:00
+**Last Updated:** 2026-01-26 04:52:13
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 0 / 24
-**Current Task:** Create database migration for plan artifact fields and ideation settings
+**Tasks Completed:** 1 / 24
+**Current Task:** Create IdeationSettings entity and repository
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 04:52:13 - Database Migration for Plan Artifacts (Phase 16)
+
+**What was done:**
+- Created migration v21 for ideation plan artifacts and settings
+- Added `plan_artifact_id` column to `ideation_sessions` table
+- Added `plan_artifact_id` and `plan_version_at_creation` columns to `task_proposals` table
+- Created `ideation_settings` table with single-row pattern:
+  - `plan_mode` (default: 'optional')
+  - `require_plan_approval` (default: 0/false)
+  - `suggest_plans_for_complex` (default: 1/true)
+  - `auto_link_proposals` (default: 1/true)
+- Seeded default settings row
+- Updated SCHEMA_VERSION from 20 to 21
+- Added test coverage for new columns and table
+
+**Schema changes:**
+- Migration v21 adds plan artifact support to ideation system
+- Single-row pattern ensures only one settings record exists (id=1 with CHECK constraint)
+- Plan versioning tracked at proposal creation for historical context
+
+**Commands run:**
+- `cargo test --lib migrations` - All 147 tests passed ✓
+- `cargo test --lib test_ideation_plan_artifact_columns` - Passed ✓
+- `cargo test --lib test_ideation_settings_table` - Passed ✓
+
+**Files modified:**
+- `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- `specs/phases/prd_phase_16_ideation_plan_artifacts.md`
+- `logs/activity.md`
 
 ### 2026-01-26 08:00:00 - Wire up Execution Chat with Activity Stream
 

@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 20;
+pub const SCHEMA_VERSION: i32 = 21;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -115,6 +115,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 20 {
         migrate_v20(conn)?;
         set_schema_version(conn, 20)?;
+    }
+
+    if current_version < 21 {
+        migrate_v21(conn)?;
+        set_schema_version(conn, 21)?;
     }
 
     Ok(())
@@ -1095,6 +1100,56 @@ fn migrate_v20(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+fn migrate_v21(conn: &Connection) -> AppResult<()> {
+    // ============================================================================
+    // Phase 16: Ideation Plan Artifacts
+    // Add plan artifact fields to ideation entities and create ideation settings
+    // ============================================================================
+
+    // Add plan_artifact_id to ideation_sessions (single plan per session)
+    conn.execute(
+        "ALTER TABLE ideation_sessions ADD COLUMN plan_artifact_id TEXT REFERENCES artifacts(id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Add plan fields to task_proposals (with version tracking)
+    conn.execute(
+        "ALTER TABLE task_proposals ADD COLUMN plan_artifact_id TEXT REFERENCES artifacts(id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    conn.execute(
+        "ALTER TABLE task_proposals ADD COLUMN plan_version_at_creation INTEGER",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Create ideation_settings table with single-row pattern
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ideation_settings (
+            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            plan_mode TEXT NOT NULL DEFAULT 'optional',
+            require_plan_approval INTEGER NOT NULL DEFAULT 0,
+            suggest_plans_for_complex INTEGER NOT NULL DEFAULT 1,
+            auto_link_proposals INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Seed default settings row
+    conn.execute(
+        "INSERT OR IGNORE INTO ideation_settings (id, updated_at) VALUES (1, datetime('now'))",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1102,7 +1157,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 20);
+        assert_eq!(SCHEMA_VERSION, 21);
     }
 
     #[test]
@@ -1228,7 +1283,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
     }
 
     #[test]
@@ -1241,7 +1296,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
     }
 
     #[test]
@@ -5282,7 +5337,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
     }
 
     #[test]
@@ -5415,6 +5470,76 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
+    }
+
+    #[test]
+    fn test_ideation_plan_artifact_columns() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify ideation_sessions has plan_artifact_id column
+        let result: Result<Option<String>, _> = conn.query_row(
+            "SELECT plan_artifact_id FROM ideation_sessions LIMIT 1",
+            [],
+            |row| row.get(0),
+        );
+        assert!(result.is_ok() || !result.unwrap_err().to_string().contains("no such column"));
+
+        // Verify task_proposals has plan_artifact_id column
+        let result: Result<Option<String>, _> = conn.query_row(
+            "SELECT plan_artifact_id FROM task_proposals LIMIT 1",
+            [],
+            |row| row.get(0),
+        );
+        assert!(result.is_ok() || !result.unwrap_err().to_string().contains("no such column"));
+
+        // Verify task_proposals has plan_version_at_creation column
+        let result: Result<Option<i64>, _> = conn.query_row(
+            "SELECT plan_version_at_creation FROM task_proposals LIMIT 1",
+            [],
+            |row| row.get(0),
+        );
+        assert!(result.is_ok() || !result.unwrap_err().to_string().contains("no such column"));
+    }
+
+    #[test]
+    fn test_ideation_settings_table() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify table exists
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ideation_settings'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "ideation_settings table should exist");
+
+        // Verify default row exists
+        let row_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ideation_settings",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(row_count, 1, "Default settings row should exist");
+
+        // Verify default values
+        let (plan_mode, require_approval, suggest_complex, auto_link): (String, i32, i32, i32) = conn
+            .query_row(
+                "SELECT plan_mode, require_plan_approval, suggest_plans_for_complex, auto_link_proposals FROM ideation_settings",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+
+        assert_eq!(plan_mode, "optional");
+        assert_eq!(require_approval, 0);
+        assert_eq!(suggest_complex, 1);
+        assert_eq!(auto_link, 1);
     }
 }

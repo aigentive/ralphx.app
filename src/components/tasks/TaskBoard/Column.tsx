@@ -88,7 +88,7 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
       >
         {/* Orange accent dot */}
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-accent-primary" />
-        <h3 className="text-base font-medium flex-1 text-text-primary tracking-tight m-0">
+        <h3 className="text-[0.92rem] font-medium flex-1 text-text-primary tracking-tight m-0">
           {column.name}
         </h3>
         <Badge
