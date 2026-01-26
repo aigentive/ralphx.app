@@ -379,7 +379,7 @@ export const api = {
      * @param taskId The task ID
      * @returns The task
      */
-    get: (taskId: string) => typedInvoke("get_task", { taskId }, TaskSchema),
+    get: (taskId: string) => typedInvoke("get_task", { id: taskId }, TaskSchema),
 
     /**
      * Create a new task

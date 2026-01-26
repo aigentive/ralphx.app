@@ -33,6 +33,11 @@ pub struct TaskProposalId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChatMessageId(pub String);
 
+/// A unique identifier for a TaskStep
+/// Uses newtype pattern to prevent accidentally using other IDs where TaskStepId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaskStepId(pub String);
+
 impl TaskId {
     /// Creates a new TaskId with a random UUID v4
     pub fn new() -> Self {
@@ -208,6 +213,36 @@ impl Default for ChatMessageId {
 }
 
 impl std::fmt::Display for ChatMessageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TaskStepId {
+    /// Creates a new TaskStepId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates a TaskStepId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for TaskStepId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for TaskStepId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -672,6 +707,92 @@ mod tests {
     #[test]
     fn chat_message_id_default_creates_new() {
         let id = ChatMessageId::default();
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    // ===== TaskStepId Tests =====
+
+    #[test]
+    fn task_step_id_new_generates_valid_uuid() {
+        let id = TaskStepId::new();
+        assert_eq!(id.as_str().len(), 36);
+        assert!(id.as_str().chars().filter(|c| *c == '-').count() == 4);
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    #[test]
+    fn task_step_id_new_generates_unique_ids() {
+        let ids: HashSet<String> = (0..100).map(|_| TaskStepId::new().0).collect();
+        assert_eq!(ids.len(), 100, "All generated TaskStepIds should be unique");
+    }
+
+    #[test]
+    fn task_step_id_from_string_preserves_value() {
+        let id = TaskStepId::from_string("step-custom-id");
+        assert_eq!(id.as_str(), "step-custom-id");
+    }
+
+    #[test]
+    fn task_step_id_from_string_takes_owned() {
+        let id = TaskStepId::from_string("step-owned".to_string());
+        assert_eq!(id.as_str(), "step-owned");
+    }
+
+    #[test]
+    fn task_step_id_equality_works() {
+        let id1 = TaskStepId::from_string("step-abc");
+        let id2 = TaskStepId::from_string("step-abc");
+        let id3 = TaskStepId::from_string("step-xyz");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn task_step_id_clone_works() {
+        let id1 = TaskStepId::new();
+        let id2 = id1.clone();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn task_step_id_hash_works() {
+        let id = TaskStepId::from_string("step-hash-test");
+        let mut set = HashSet::new();
+        set.insert(id.clone());
+        assert!(set.contains(&id));
+    }
+
+    #[test]
+    fn task_step_id_display_works() {
+        let id = TaskStepId::from_string("step-display");
+        assert_eq!(format!("{}", id), "step-display");
+    }
+
+    #[test]
+    fn task_step_id_debug_works() {
+        let id = TaskStepId::from_string("step-debug");
+        let debug_str = format!("{:?}", id);
+        assert!(debug_str.contains("step-debug"));
+    }
+
+    #[test]
+    fn task_step_id_serializes_to_json() {
+        let id = TaskStepId::from_string("step-serialize");
+        let json = serde_json::to_string(&id).expect("Should serialize");
+        assert_eq!(json, "\"step-serialize\"");
+    }
+
+    #[test]
+    fn task_step_id_deserializes_from_json() {
+        let json = "\"step-deserialize\"";
+        let id: TaskStepId = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(id.as_str(), "step-deserialize");
+    }
+
+    #[test]
+    fn task_step_id_default_creates_new() {
+        let id = TaskStepId::default();
         assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
     }
 }

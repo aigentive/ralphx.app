@@ -1,15 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:15:00
+**Last Updated:** 2026-01-26 20:30:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 0 / TBD
-**Current Task:** Create TaskStep entity and TaskStepStatus enum
+**Tasks Completed:** 1 / 42
+**Current Task:** Create database migration for task_steps table
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:30:00 - Create TaskStep Entity and TaskStepStatus Enum
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/task_step.rs`:
+  - TaskStepStatus enum with 6 states: Pending, InProgress, Completed, Skipped, Failed, Cancelled
+  - TaskStep entity with fields: id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, timestamps
+  - TaskStep::new() constructor for creating steps with defaults
+  - can_start() and is_terminal() helper methods
+  - from_row() for SQLite deserialization
+  - StepProgressSummary struct for tracking overall progress
+  - StepProgressSummary::from_steps() to calculate progress from step list
+- Added TaskStepId newtype to `src-tauri/src/domain/entities/types.rs`
+- Implemented full ID pattern: new(), from_string(), as_str(), Display, Default
+- Updated `src-tauri/src/domain/entities/mod.rs` to export TaskStep, TaskStepId, TaskStepStatus, StepProgressSummary
+- Wrote comprehensive unit tests for:
+  - Entity creation and defaults
+  - Status transitions and helpers
+  - TaskStepId newtype pattern (12 tests)
+  - StepProgressSummary calculation logic
+
+**Test Results:**
+- All 8 task_step entity tests pass
+- All 12 TaskStepId tests pass
+- Full test suite passes (3172 tests total)
+
+**Commands:**
+- `cargo test --lib domain::entities::task_step`
+- `cargo test --lib domain::entities::types::tests::task_step_id`
+- `cargo test`
 
 ### 2026-01-26 20:15:00 - Phase 18 Complete, Activate Phase 19
 

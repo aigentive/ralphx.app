@@ -14,6 +14,7 @@ pub mod status;
 pub mod task;
 pub mod task_context;
 pub mod task_qa;
+pub mod task_step;
 pub mod types;
 pub mod workflow;
 
@@ -36,7 +37,7 @@ pub use review::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_qa::TaskQA;
-pub use types::{ChatMessageId, IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId};
+pub use types::{ChatMessageId, IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId, TaskStepId};
 pub use workflow::{
     ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,
     ParseSyncDirectionError, SyncDirection, SyncProvider, SyncSettings, WorkflowColumn,
@@ -64,3 +65,4 @@ pub use methodology::{
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus};
 pub use task_context::{ArtifactSummary, TaskContext, TaskProposalSummary};
+pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};

@@ -83,7 +83,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(entities): add TaskStep entity and TaskStepStatus enum"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
