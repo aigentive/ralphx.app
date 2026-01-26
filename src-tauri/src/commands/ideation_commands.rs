@@ -1093,6 +1093,33 @@ pub async fn apply_proposals_to_kanban(
             .await
             .map_err(|e| e.to_string())?;
 
+        // Import steps from proposal if they exist
+        if let Some(steps_json) = &proposal.steps {
+            if let Ok(step_titles) = serde_json::from_str::<Vec<String>>(steps_json) {
+                if !step_titles.is_empty() {
+                    let task_steps: Vec<crate::domain::entities::TaskStep> = step_titles
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, title)| {
+                            crate::domain::entities::TaskStep::new(
+                                created_task.id.clone(),
+                                title,
+                                idx as i32,
+                                "proposal".to_string(),
+                            )
+                        })
+                        .collect();
+
+                    // Use bulk_create to insert all steps
+                    let _ = state
+                        .task_step_repo
+                        .bulk_create(task_steps)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+
         proposal_to_task.insert(proposal.id.clone(), created_task.id.clone());
         created_tasks.push(created_task);
     }

@@ -1,15 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:47:35
+**Last Updated:** 2026-01-26 23:15:12
 **Phase:** Task Execution Experience
-**Tasks Completed:** 11 / 42
-**Current Task:** Import steps from proposal when creating task
+**Tasks Completed:** 12 / 42
+**Current Task:** Include steps in TaskContext for worker
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 23:15:12 - Import steps from proposal when creating task
+
+**What was done:**
+- Updated `src-tauri/src/application/apply_service.rs`:
+  - Added `TaskStep` to imports
+  - Added `TaskStepRepository` to imports
+  - Added `TS: TaskStepRepository` generic parameter to `ApplyService` struct
+  - Added `task_step_repo: Arc<TS>` field to service
+  - Updated `new()` constructor to accept `task_step_repo` parameter
+  - Modified `apply_proposals()` to import steps from proposals:
+    - After creating each task, checks if `proposal.steps` is Some
+    - Parses JSON array of step titles using `serde_json`
+    - Creates `TaskStep` entities with `created_by = "proposal"`
+    - Uses `bulk_create()` to insert all steps at once
+  - Added `MockTaskStepRepository` for testing with full trait implementation
+  - Updated `create_service()` test helper to include task_step_repo
+- Updated `src-tauri/src/commands/ideation_commands.rs`:
+  - Added step import logic to `apply_proposals_to_kanban()` command
+  - Mirrors the same pattern: parse JSON → create TaskSteps → bulk_create
+- Added comprehensive test coverage:
+  - `test_apply_proposals_imports_steps_from_proposal`: Verifies 3 steps are created with correct titles, sort_order, and created_by
+  - `test_apply_proposals_handles_empty_steps`: Ensures empty JSON arrays don't create steps
+  - `test_apply_proposals_handles_no_steps`: Handles None gracefully
+  - `test_apply_proposals_handles_invalid_json_steps`: Ignores malformed JSON without errors
+
+**Test results:**
+```
+cargo test --lib apply_service
+test result: ok. 22 passed; 0 failed
+```
+
+**Commits:**
+```
+feat(apply): import steps from proposal when creating task
+```
 
 ### 2026-01-26 21:47:35 - Update worker agent tool scoping for steps
 
