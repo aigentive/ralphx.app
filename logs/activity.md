@@ -1,15 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 12:00:00
+**Last Updated:** 2026-01-26 04:03:31
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 6 / 14
+**Tasks Completed:** 7 / 14
 **Current Task:** Implement queue processing on worker completion
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 04:03:31 - Remove ExecutionChatService Fallback
+
+**What was done:**
+- Updated `src-tauri/src/domain/state_machine/context.rs`:
+  - Changed `execution_chat_service` from `Option<Arc<dyn ExecutionChatService>>` to `Arc<dyn ExecutionChatService>` (now required)
+  - Removed `new_with_execution_chat()` method (merged into `new()`)
+  - Removed `with_execution_chat_service()` builder method
+  - Updated `new()` to require ExecutionChatService as a parameter
+  - Updated `new_mock()` to include MockExecutionChatService
+  - Updated Debug implementation (removed Option handling)
+- Updated `src-tauri/src/domain/state_machine/transition_handler.rs`:
+  - Removed `if let Some(...)` fallback branch in `on_enter(Executing)`
+  - Now directly calls `execution_chat_service.spawn_with_persistence(...)` without Option check
+  - Updated `create_test_services()` helper to include MockExecutionChatService as required
+  - Updated 3 tests that manually create TaskServices to include ExecutionChatService
+  - Removed `test_entering_executing_falls_back_to_agent_spawner_without_execution_chat_service` test (no longer applicable)
+  - Updated `test_pending_review_rejected_auto_transitions_to_executing` to not verify agent_spawner calls (now uses ExecutionChatService)
+  - Updated `test_entering_executing_spawns_worker` to not verify agent_spawner calls
+- All 3025 tests pass
+
+**Key Design Decisions:**
+- ExecutionChatService is now a required dependency for TaskServices (no fallback)
+- Removes unnecessary complexity and ensures consistent worker execution behavior
+- All worker spawning now goes through ExecutionChatService for persistence
+
+**Files Modified:**
+- `src-tauri/src/domain/state_machine/context.rs`
+- `src-tauri/src/domain/state_machine/transition_handler.rs`
+
+**Commands Run:**
+- `cargo test --lib domain::state_machine::transition_handler` (26 tests passed)
+- `cargo test` (3025 tests passed)
 
 ### 2026-01-26 12:00:00 - Add Tauri Commands for Execution Chat
 
