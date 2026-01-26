@@ -649,7 +649,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     queueMessage,
     editQueuedMessage,
     deleteQueuedMessage,
-    setAgentRunning,
     startEditingQueuedMessage,
     queueExecutionMessage,
     deleteExecutionQueuedMessage,
