@@ -1,15 +1,60 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 06:30:00
+**Last Updated:** 2026-01-26 06:45:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 5 / 24
-**Current Task:** Add plan artifact HTTP endpoints for MCP proxy
+**Tasks Completed:** 6 / 24
+**Current Task:** Add plan artifact tools to MCP server
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 06:45:00 - Plan Artifact HTTP Endpoints for MCP Proxy (Phase 16)
+
+**What was done:**
+- Added HTTP endpoints to `src-tauri/src/http_server.rs` for plan artifact management (5 endpoints):
+  - `POST /api/create_plan_artifact` - Creates a Specification artifact linked to an ideation session
+  - `POST /api/update_plan_artifact` - Updates an existing plan artifact by creating a new version
+  - `GET /api/get_plan_artifact/:artifact_id` - Retrieves a plan artifact by ID
+  - `POST /api/link_proposals_to_plan` - Links multiple proposals to a plan artifact
+  - `GET /api/get_session_plan/:session_id` - Retrieves the plan artifact for an ideation session
+- Added request/response types:
+  - `CreatePlanArtifactRequest` (session_id, title, content)
+  - `UpdatePlanArtifactRequest` (artifact_id, content)
+  - `LinkProposalsToPlanRequest` (proposal_ids[], artifact_id)
+  - `ArtifactResponse` (id, artifact_type, name, content, version, created_at, created_by)
+- Extended `IdeationSessionRepository` trait with `update_plan_artifact_id` method
+- Implemented `update_plan_artifact_id` in:
+  - `SqliteIdeationSessionRepository` (updates plan_artifact_id with SQL)
+  - `MemoryIdeationSessionRepository` (updates plan_artifact_id in memory)
+  - Mock repositories in test files (`apply_service.rs`, `ideation_service.rs`)
+- All endpoints use existing `ArtifactRepository` directly (no `ArtifactService` for trait object compatibility)
+- Artifact versioning implemented via derived_from relations
+- Plan-to-session linking via `update_plan_artifact_id` repository method
+- All tests pass (3052 passed, 0 failed)
+
+**Commands run:**
+- `cargo test --lib --no-run` - verify compilation
+- `cargo test --lib` - verify all tests pass (3052 passed)
+
+**Test results:**
+```
+✓ All 3052 library tests passed
+✓ HTTP server compiles successfully
+✓ All repository implementations include update_plan_artifact_id method
+```
+
+**Files modified:**
+- `src-tauri/src/http_server.rs` (+175 lines, 5 new endpoints)
+- `src-tauri/src/domain/repositories/ideation_session_repository.rs` (+9 lines)
+- `src-tauri/src/infrastructure/sqlite/sqlite_ideation_session_repo.rs` (+11 lines)
+- `src-tauri/src/infrastructure/memory/memory_ideation_session_repo.rs` (+7 lines)
+- `src-tauri/src/application/apply_service.rs` (+6 lines mock implementation)
+- `src-tauri/src/application/ideation_service.rs` (+7 lines mock implementation)
+
+---
 
 ### 2026-01-26 06:30:00 - Tauri Commands for Ideation Settings (Phase 16)
 

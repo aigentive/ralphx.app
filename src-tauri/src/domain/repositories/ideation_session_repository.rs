@@ -31,6 +31,9 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// Update session title
     async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()>;
 
+    /// Update session plan artifact ID
+    async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()>;
+
     /// Delete session (cascades to proposals and messages)
     async fn delete(&self, id: &IdeationSessionId) -> AppResult<()>;
 
@@ -111,6 +114,14 @@ mod tests {
             &self,
             _id: &IdeationSessionId,
             _title: Option<String>,
+        ) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn update_plan_artifact_id(
+            &self,
+            _id: &IdeationSessionId,
+            _plan_artifact_id: Option<String>,
         ) -> AppResult<()> {
             Ok(())
         }

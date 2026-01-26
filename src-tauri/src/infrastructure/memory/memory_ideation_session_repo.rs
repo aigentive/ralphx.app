@@ -84,6 +84,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
+    async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
+            session.plan_artifact_id = plan_artifact_id.map(|s| crate::domain::entities::ArtifactId::from_string(s));
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
     async fn delete(&self, id: &IdeationSessionId) -> AppResult<()> {
         self.sessions.write().unwrap().remove(&id.to_string());
         Ok(())

@@ -14,7 +14,8 @@ use uuid::Uuid;
 
 use crate::application::{AppState, CreateProposalOptions, PermissionDecision, UpdateProposalOptions};
 use crate::domain::entities::{
-    IdeationSessionId, Priority, TaskCategory, TaskId, TaskProposal, TaskProposalId,
+    Artifact, ArtifactContent, ArtifactId, ArtifactType, IdeationSessionId, Priority, TaskCategory,
+    TaskId, TaskProposal, TaskProposalId,
 };
 use crate::error::AppResult;
 
@@ -145,6 +146,56 @@ pub struct ResolvePermissionInput {
     pub message: Option<String>,
 }
 
+// Plan artifact request/response types
+#[derive(Debug, Deserialize)]
+pub struct CreatePlanArtifactRequest {
+    pub session_id: String,
+    pub title: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePlanArtifactRequest {
+    pub artifact_id: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LinkProposalsToPlanRequest {
+    pub proposal_ids: Vec<String>,
+    pub artifact_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ArtifactResponse {
+    pub id: String,
+    pub artifact_type: String,
+    pub name: String,
+    pub content: String,
+    pub version: u32,
+    pub created_at: String,
+    pub created_by: String,
+}
+
+impl From<Artifact> for ArtifactResponse {
+    fn from(artifact: Artifact) -> Self {
+        let content = match &artifact.content {
+            ArtifactContent::Inline { text } => text.clone(),
+            ArtifactContent::File { path } => format!("[File: {}]", path),
+        };
+
+        Self {
+            id: artifact.id.to_string(),
+            artifact_type: format!("{:?}", artifact.artifact_type),
+            name: artifact.name,
+            content,
+            version: artifact.metadata.version,
+            created_at: artifact.metadata.created_at.to_rfc3339(),
+            created_by: artifact.metadata.created_by.clone(),
+        }
+    }
+}
+
 // ============================================================================
 // HTTP Server
 // ============================================================================
@@ -156,6 +207,12 @@ pub async fn start_http_server(state: Arc<AppState>) {
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/delete_task_proposal", post(delete_task_proposal))
         .route("/api/add_proposal_dependency", post(add_proposal_dependency))
+        // Plan artifact tools (orchestrator-ideation agent)
+        .route("/api/create_plan_artifact", post(create_plan_artifact))
+        .route("/api/update_plan_artifact", post(update_plan_artifact))
+        .route("/api/get_plan_artifact/:artifact_id", get(get_plan_artifact))
+        .route("/api/link_proposals_to_plan", post(link_proposals_to_plan))
+        .route("/api/get_session_plan/:session_id", get(get_session_plan))
         // Task tools (chat-task agent)
         .route("/api/update_task", post(update_task))
         .route("/api/add_task_note", post(add_task_note))
@@ -303,6 +360,200 @@ async fn add_proposal_dependency(
         success: true,
         message: "Dependency added successfully".to_string(),
     }))
+}
+
+// ============================================================================
+// Handlers - Plan Artifact Tools
+// ============================================================================
+
+/// POST /api/create_plan_artifact
+///
+/// Creates a Specification artifact linked to an ideation session.
+/// Returns the artifact ID for future operations.
+async fn create_plan_artifact(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreatePlanArtifactRequest>,
+) -> Result<Json<ArtifactResponse>, StatusCode> {
+    use crate::domain::entities::{ArtifactBucketId, ArtifactMetadata};
+
+    let session_id = IdeationSessionId::from_string(req.session_id);
+
+    // Verify session exists
+    state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Create the specification artifact
+    let bucket_id = ArtifactBucketId::from_string("prd-library");
+    let artifact = Artifact {
+        id: ArtifactId::new(),
+        artifact_type: ArtifactType::Specification,
+        name: req.title.clone(),
+        content: ArtifactContent::inline(&req.content),
+        metadata: ArtifactMetadata::new("orchestrator").with_version(1),
+        derived_from: vec![],
+        bucket_id: Some(bucket_id),
+    };
+
+    let created = state
+        .artifact_repo
+        .create(artifact)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Link artifact to session
+    state
+        .ideation_session_repo
+        .update_plan_artifact_id(&session_id, Some(created.id.to_string()))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(ArtifactResponse::from(created)))
+}
+
+/// POST /api/update_plan_artifact
+///
+/// Updates an existing plan artifact by creating a new version.
+async fn update_plan_artifact(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<UpdatePlanArtifactRequest>,
+) -> Result<Json<ArtifactResponse>, StatusCode> {
+    use crate::domain::entities::{ArtifactMetadata, ArtifactRelation};
+
+    let artifact_id = ArtifactId::from_string(req.artifact_id);
+
+    // Get the current artifact
+    let current = state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Create a new version
+    let new_version = current.metadata.version + 1;
+    let new_artifact = Artifact {
+        id: ArtifactId::new(),
+        artifact_type: current.artifact_type,
+        name: current.name.clone(),
+        content: ArtifactContent::inline(&req.content),
+        metadata: ArtifactMetadata::new("orchestrator").with_version(new_version),
+        derived_from: vec![current.id.clone()],
+        bucket_id: current.bucket_id.clone(),
+    };
+
+    // Create the new version
+    let created = state
+        .artifact_repo
+        .create(new_artifact)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Add a derived_from relation
+    let relation = ArtifactRelation::derived_from(created.id.clone(), current.id.clone());
+    state
+        .artifact_repo
+        .add_relation(relation)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(ArtifactResponse::from(created)))
+}
+
+/// GET /api/get_plan_artifact/:artifact_id
+///
+/// Retrieves a plan artifact by ID.
+async fn get_plan_artifact(
+    State(state): State<Arc<AppState>>,
+    Path(artifact_id): Path<String>,
+) -> Result<Json<ArtifactResponse>, StatusCode> {
+    let artifact_id = ArtifactId::from_string(artifact_id);
+
+    let artifact = state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(Json(ArtifactResponse::from(artifact)))
+}
+
+/// POST /api/link_proposals_to_plan
+///
+/// Links multiple proposals to a plan artifact.
+async fn link_proposals_to_plan(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<LinkProposalsToPlanRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    let artifact_id = ArtifactId::from_string(req.artifact_id);
+
+    // Verify artifact exists
+    let artifact = state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Update each proposal
+    for proposal_id_str in req.proposal_ids {
+        let proposal_id = TaskProposalId::from_string(proposal_id_str);
+
+        let mut proposal = state
+            .task_proposal_repo
+            .get_by_id(&proposal_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
+
+        proposal.plan_artifact_id = Some(artifact_id.clone());
+        proposal.plan_version_at_creation = Some(artifact.metadata.version);
+
+        state
+            .task_proposal_repo
+            .update(&proposal)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Proposals linked to plan successfully".to_string(),
+    }))
+}
+
+/// GET /api/get_session_plan/:session_id
+///
+/// Retrieves the plan artifact for an ideation session.
+async fn get_session_plan(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> Result<Json<Option<ArtifactResponse>>, StatusCode> {
+    let session_id = IdeationSessionId::from_string(session_id);
+
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if let Some(artifact_id) = session.plan_artifact_id {
+        let artifact = state
+            .artifact_repo
+            .get_by_id(&artifact_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
+
+        Ok(Json(Some(ArtifactResponse::from(artifact))))
+    } else {
+        Ok(Json(None))
+    }
 }
 
 // ============================================================================
