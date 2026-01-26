@@ -10,7 +10,7 @@ pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnRes
 // Re-export stream processor types for use by services
 pub use stream_processor::{
     StreamProcessor, StreamMessage, StreamEvent, StreamResult,
-    ToolCall, ContentBlock, ContentDelta,
+    ToolCall, ContentBlock, ContentDelta, ContentBlockItem,
     AssistantMessage, AssistantContent,
 };
 

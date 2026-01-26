@@ -161,9 +161,30 @@ export function useChat(context: ChatContext) {
   // Update agent running state when status changes
   // Only update if we have a conversation and the status actually changed
   const isRunning = agentRunStatus.data?.status === "running";
+  const isFailed = agentRunStatus.data?.status === "failed";
+  const errorMessage = agentRunStatus.data?.errorMessage;
+
   useEffect(() => {
     setAgentRunning(isRunning);
   }, [isRunning, setAgentRunning]);
+
+  // Show error toast when a failed run is detected (e.g., when user comes back)
+  // Track which errors we've shown to avoid duplicate toasts
+  const shownErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isFailed && errorMessage && shownErrorRef.current !== agentRunStatus.data?.id) {
+      // Mark this error as shown
+      shownErrorRef.current = agentRunStatus.data?.id ?? null;
+
+      // Import toast dynamically to avoid circular deps
+      import("sonner").then(({ toast }) => {
+        toast.error("Previous agent run failed", {
+          description: errorMessage.slice(0, 200),
+          duration: 10000,
+        });
+      });
+    }
+  }, [isFailed, errorMessage, agentRunStatus.data?.id]);
 
   // Send message mutation
   const sendMessage = useMutation<SendContextMessageResult, Error, string>({
@@ -239,53 +260,53 @@ export function useChat(context: ChatContext) {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
-      // Listen for chat chunks (streaming text)
-      const chunkUnlisten = await listen<{
-        conversation_id: string;
-        message_id: string;
-        text: string;
-      }>("chat:chunk", (event) => {
-        const { conversation_id } = event.payload;
+      // NOTE: Streaming cache updates disabled per user request.
+      // Instead of trying to stream text/tool calls character-by-character,
+      // we show a typing indicator while the agent is running and only
+      // render the final message with proper content_blocks when the run completes.
+      //
+      // The chat:chunk and chat:tool_call events are still emitted by the backend
+      // but we don't use them to update the UI during streaming. This avoids
+      // issues with mismatched tool calls/results and partial content.
 
-        // If this is for the active conversation, invalidate to refetch
-        if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
-        }
-      });
-      unlisteners.push(chunkUnlisten);
-
-      // Listen for tool calls
-      const toolCallUnlisten = await listen<{
-        conversation_id: string;
-        tool_name: string;
-        arguments: unknown;
-        result: unknown;
-      }>("chat:tool_call", (event) => {
-        const { conversation_id } = event.payload;
-
-        // If this is for the active conversation, invalidate to refetch
-        if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
-        }
-      });
-      unlisteners.push(toolCallUnlisten);
-
-      // Listen for message created
+      // Listen for message created - optimistically add to cache
       const messageCreatedUnlisten = await listen<{
         conversation_id: string;
         message_id: string;
+        role: string;
+        content: string;
       }>("chat:message_created", (event) => {
-        const { conversation_id } = event.payload;
+        const { conversation_id, message_id, role, content } = event.payload;
 
-        // If this is for the active conversation, invalidate to refetch
+        // If this is for the active conversation, add message to cache
         if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
+          queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
+            chatKeys.conversation(activeConversationId),
+            (oldData) => {
+              if (!oldData) return oldData;
+
+              // Check if message already exists
+              if (oldData.messages.some(m => m.id === message_id)) {
+                return oldData;
+              }
+
+              const newMessage: ChatMessageResponse = {
+                id: message_id,
+                conversationId: conversation_id,
+                sessionId: null,
+                projectId: null,
+                taskId: null,
+                role: role as "user" | "assistant" | "system",
+                content: content || "",
+                metadata: null,
+                parentMessageId: null,
+                createdAt: new Date().toISOString(),
+                toolCalls: null,
+                contentBlocks: null,
+              };
+              return { ...oldData, messages: [...oldData.messages, newMessage] };
+            }
+          );
         }
       });
       unlisteners.push(messageCreatedUnlisten);

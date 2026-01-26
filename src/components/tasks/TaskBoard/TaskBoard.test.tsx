@@ -6,21 +6,66 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api } from "@/lib/tauri";
-import { defaultWorkflow } from "@/types/workflow";
 import { createMockTask } from "@/test/mock-data";
 import { TaskBoard } from "./TaskBoard";
+import type { TaskListResponse } from "@/types/task";
+import type { InfiniteData } from "@tanstack/react-query";
+import type { WorkflowColumnResponse } from "@/lib/api/workflows";
 
+// Mock IntersectionObserver
+class MockIntersectionObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  constructor() {}
+}
+window.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
+
+// Mock Tauri API
 vi.mock("@/lib/tauri", () => ({
   api: {
     tasks: {
       list: vi.fn(),
       move: vi.fn(),
-    },
-    workflows: {
-      get: vi.fn(),
+      getArchivedCount: vi.fn(),
+      search: vi.fn(),
     },
   },
 }));
+
+// Mock workflows API
+vi.mock("@/lib/api/workflows", () => ({
+  getActiveWorkflowColumns: vi.fn(),
+}));
+
+// Mock useInfiniteTasksQuery - keep flattenPages implementation, only mock the hook
+vi.mock("@/hooks/useInfiniteTasksQuery", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    useInfiniteTasksQuery: vi.fn(),
+  };
+});
+
+// Mock Tauri events
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+  emit: vi.fn(),
+}));
+
+import { getActiveWorkflowColumns } from "@/lib/api/workflows";
+import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
+
+// Helper to create mock columns
+function createMockColumns(): WorkflowColumnResponse[] {
+  return [
+    { id: "draft", name: "Draft", mapsTo: "backlog" },
+    { id: "ready", name: "Ready", mapsTo: "ready" },
+    { id: "in_progress", name: "In Progress", mapsTo: "executing" },
+    { id: "in_review", name: "In Review", mapsTo: "pending_review" },
+    { id: "done", name: "Done", mapsTo: "approved" },
+  ];
+}
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -34,22 +79,34 @@ function createWrapper() {
 describe("TaskBoard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for archived count
+    vi.mocked(api.tasks.getArchivedCount).mockResolvedValue(0);
+    // Default mock for search
+    vi.mocked(api.tasks.search).mockResolvedValue([]);
+    // Default mock for infinite query
+    vi.mocked(useInfiniteTasksQuery).mockReturnValue({
+      data: { pages: [{ tasks: [], total: 0, hasMore: false, offset: 0 }], pageParams: [undefined] } as InfiniteData<TaskListResponse>,
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useInfiniteTasksQuery>);
   });
 
   describe("loading state", () => {
     it("should show skeleton while loading", async () => {
-      vi.mocked(api.tasks.list).mockImplementation(() => new Promise(() => {}));
-      vi.mocked(api.workflows.get).mockImplementation(() => new Promise(() => {}));
+      vi.mocked(getActiveWorkflowColumns).mockImplementation(() => new Promise(() => {}));
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
       expect(screen.getByTestId("task-board-skeleton")).toBeInTheDocument();
     });
 
     it("should hide skeleton when data is loaded", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(screen.queryByTestId("task-board-skeleton")).not.toBeInTheDocument();
@@ -59,27 +116,23 @@ describe("TaskBoard", () => {
 
   describe("rendering columns", () => {
     it("should render with data-testid", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(screen.getByTestId("task-board")).toBeInTheDocument();
       });
     });
 
-    it("should render 7 columns from default workflow", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+    it("should render 5 columns from default workflow", async () => {
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(screen.getByTestId("column-draft")).toBeInTheDocument();
-        expect(screen.getByTestId("column-backlog")).toBeInTheDocument();
-        expect(screen.getByTestId("column-todo")).toBeInTheDocument();
-        expect(screen.getByTestId("column-planned")).toBeInTheDocument();
+        expect(screen.getByTestId("column-ready")).toBeInTheDocument();
         expect(screen.getByTestId("column-in_progress")).toBeInTheDocument();
         expect(screen.getByTestId("column-in_review")).toBeInTheDocument();
         expect(screen.getByTestId("column-done")).toBeInTheDocument();
@@ -88,29 +141,39 @@ describe("TaskBoard", () => {
 
     it("should render tasks in their columns", async () => {
       const tasks = [
-        createMockTask({ id: "t1", title: "Backlog Task", internalStatus: "backlog" }),
-        createMockTask({ id: "t2", title: "Ready Task", internalStatus: "ready" }),
+        createMockTask({ id: "t1", title: "Task One", internalStatus: "backlog" }),
+        createMockTask({ id: "t2", title: "Task Two", internalStatus: "ready" }),
       ];
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      // Mock the infinite query to return tasks based on status
+      vi.mocked(useInfiniteTasksQuery).mockImplementation((params) => {
+        const tasksForStatus = tasks.filter(t => t.internalStatus === params.status);
+        return {
+          data: { pages: [{ tasks: tasksForStatus, total: tasksForStatus.length, hasMore: false, offset: 0 }], pageParams: [undefined] } as InfiniteData<TaskListResponse>,
+          fetchNextPage: vi.fn(),
+          hasNextPage: false,
+          isFetchingNextPage: false,
+          isLoading: false,
+          isError: false,
+          error: null,
+        } as unknown as ReturnType<typeof useInfiniteTasksQuery>;
+      });
+
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
-        // Tasks appear in columns that match their status
-        // Note: backlog status maps to both draft and backlog columns
-        expect(screen.getAllByText("Backlog Task").length).toBeGreaterThan(0);
-        expect(screen.getAllByText("Ready Task").length).toBeGreaterThan(0);
+        expect(screen.getByText("Task One")).toBeInTheDocument();
+        expect(screen.getByText("Task Two")).toBeInTheDocument();
       });
     });
   });
 
   describe("horizontal scrolling", () => {
     it("should have horizontal scroll container", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
         const board = screen.getByTestId("task-board");
@@ -121,13 +184,12 @@ describe("TaskBoard", () => {
 
   describe("error handling", () => {
     it("should show error message when fetch fails", async () => {
-      vi.mocked(api.tasks.list).mockRejectedValue(new Error("Failed to fetch tasks"));
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockRejectedValue(new Error("Failed to fetch"));
 
-      render(<TaskBoard projectId="p1" workflowId="w1" />, { wrapper: createWrapper() });
+      render(<TaskBoard projectId="p1" />, { wrapper: createWrapper() });
 
       await waitFor(() => {
-        expect(screen.getByText(/Failed to fetch tasks/)).toBeInTheDocument();
+        expect(screen.getByTestId("task-board-error")).toBeInTheDocument();
       });
     });
   });

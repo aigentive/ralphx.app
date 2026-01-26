@@ -15,6 +15,7 @@ import {
   useAgentEvents,
   useProposalEvents,
   useStepEvents,
+  useExecutionErrorEvents,
 } from "@/hooks/useEvents";
 
 interface EventProviderProps {
@@ -56,6 +57,7 @@ export function EventProvider({ children }: EventProviderProps) {
   useReviewEvents();
   useFileChangeEvents();
   useAgentEvents(); // Listen to agent:message events for Activity view
+  useExecutionErrorEvents(); // Handle agent execution errors and unstick UI
 
   return <>{children}</>;
 }

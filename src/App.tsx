@@ -15,6 +15,7 @@ import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { TaskFullView } from "@/components/tasks/TaskFullView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
+import { KanbanSplitLayout } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
@@ -70,8 +71,6 @@ const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 
 const queryClient = getQueryClient();
 
-// Default workflow ID for task execution
-const DEFAULT_WORKFLOW_ID = "ralphx-default";
 
 // Navigation items configuration
 const NAV_ITEMS: {
@@ -88,12 +87,13 @@ const NAV_ITEMS: {
 ];
 
 // Transform API messages to component-compatible format
-function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null; conversationId?: string | null; toolCalls?: string | null }>): ChatMessageType[] {
+function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null; conversationId?: string | null; toolCalls?: string | null; contentBlocks?: string | null }>): ChatMessageType[] {
   return messages.map((msg) => ({
     ...msg,
     role: (["user", "orchestrator", "system"].includes(msg.role) ? msg.role : "system") as "user" | "orchestrator" | "system",
     conversationId: msg.conversationId ?? null,
     toolCalls: msg.toolCalls ?? null,
+    contentBlocks: msg.contentBlocks ?? null,
   }));
 }
 
@@ -112,9 +112,12 @@ function AppContent() {
   const setCurrentView = useUiStore((s) => s.setCurrentView);
   const taskFullViewId = useUiStore((s) => s.taskFullViewId);
   const closeTaskFullView = useUiStore((s) => s.closeTaskFullView);
+  // Split layout chat state (for kanban view)
+  const chatCollapsed = useUiStore((s) => s.chatCollapsed);
+  const toggleChatCollapsed = useUiStore((s) => s.toggleChatCollapsed);
 
 
-  // Chat panel state
+  // Chat panel state (for non-kanban views)
   const chatIsOpen = useChatStore((s) => s.isOpen);
   const chatWidth = useChatStore((s) => s.width);
   const toggleChatPanel = useChatStore((s) => s.togglePanel);
@@ -184,12 +187,6 @@ function AppContent() {
     }
   }, [sessionData?.proposals, setProposals]);
 
-  // Seed builtin workflows on app startup
-  useEffect(() => {
-    api.workflows.seedBuiltin().catch((err) => {
-      console.error("Failed to seed builtin workflows:", err);
-    });
-  }, []);
 
   // Sync fetched projects to store and auto-select first project
   useEffect(() => {
@@ -260,7 +257,12 @@ function AppContent() {
               return;
             }
             e.preventDefault();
-            toggleChatPanel();
+            // Use split layout toggle for kanban, floating panel toggle for other views
+            if (currentView === "kanban") {
+              toggleChatCollapsed();
+            } else {
+              toggleChatPanel();
+            }
             break;
           }
         }
@@ -269,7 +271,7 @@ function AppContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatPanel]);
+  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
@@ -592,50 +594,59 @@ function AppContent() {
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
             </div>
             {/* Chat Panel Toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleChatPanel}
-                  className={cn(
-                    "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                    chatIsOpen ? "px-3" : "px-2 xl:px-3"
-                  )}
-                  style={{
-                    background: chatIsOpen
-                      ? "rgba(255,107,53,0.1)"
-                      : "transparent",
-                    border: chatIsOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                    color: chatIsOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
-                  }}
-                  data-testid="chat-toggle"
-                >
-                  <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={cn(
-                    "text-sm font-medium whitespace-nowrap",
-                    chatIsOpen ? "inline" : "hidden xl:inline"
-                  )}>
-                    Chat
-                  </span>
-                  <kbd
-                    className={cn(
-                      "ml-1 px-1.5 py-0.5 text-xs rounded",
-                      chatIsOpen ? "inline" : "hidden xl:inline"
-                    )}
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.05)",
-                      color: "rgba(255,255,255,0.4)",
-                    }}
-                  >
-                    ⌘K
-                  </kbd>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">
-                Toggle Chat <kbd className="ml-1 opacity-70">⌘K</kbd>
-              </TooltipContent>
-            </Tooltip>
+            {(() => {
+              // For kanban view, chat is always visible but can be collapsed
+              // For other views, chat panel can be completely closed
+              const isExpanded = currentView === "kanban" ? !chatCollapsed : chatIsOpen;
+              const handleToggle = currentView === "kanban" ? toggleChatCollapsed : toggleChatPanel;
+
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleToggle}
+                      className={cn(
+                        "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+                        isExpanded ? "px-3" : "px-2 xl:px-3"
+                      )}
+                      style={{
+                        background: isExpanded
+                          ? "rgba(255,107,53,0.1)"
+                          : "transparent",
+                        border: isExpanded ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
+                        color: isExpanded ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                      }}
+                      data-testid="chat-toggle"
+                    >
+                      <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
+                      <span className={cn(
+                        "text-sm font-medium whitespace-nowrap",
+                        isExpanded ? "inline" : "hidden xl:inline"
+                      )}>
+                        Chat
+                      </span>
+                      <kbd
+                        className={cn(
+                          "ml-1 px-1.5 py-0.5 text-xs rounded",
+                          isExpanded ? "inline" : "hidden xl:inline"
+                        )}
+                        style={{
+                          backgroundColor: "rgba(255,255,255,0.05)",
+                          color: "rgba(255,255,255,0.4)",
+                        }}
+                      >
+                        ⌘K
+                      </kbd>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    Toggle Chat <kbd className="ml-1 opacity-70">⌘K</kbd>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })()}
 
             {/* Reviews Panel Toggle */}
             <Tooltip>
@@ -730,10 +741,22 @@ function AppContent() {
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-hidden h-full">
               {currentView === "kanban" && (
-                <TaskBoard
+                <KanbanSplitLayout
                   projectId={currentProjectId}
-                  workflowId={DEFAULT_WORKFLOW_ID}
-                />
+                  footer={
+                    <ExecutionControlBar
+                      runningCount={executionStatus.runningCount}
+                      maxConcurrent={executionStatus.maxConcurrent}
+                      queuedCount={executionStatus.queuedCount}
+                      isPaused={executionStatus.isPaused}
+                      isLoading={isExecutionLoading}
+                      onPauseToggle={handlePauseToggle}
+                      onStop={handleStop}
+                    />
+                  }
+                >
+                  <TaskBoard projectId={currentProjectId} />
+                </KanbanSplitLayout>
               )}
               {currentView === "ideation" && (
                 <IdeationView
@@ -757,20 +780,6 @@ function AppContent() {
               {currentView === "activity" && <ActivityView showHeader />}
               {currentView === "settings" && <SettingsView />}
             </div>
-            {/* ExecutionControlBar at bottom (only show in kanban view) */}
-            {currentView === "kanban" && (
-              <div className="flex-shrink-0 p-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                <ExecutionControlBar
-                  runningCount={executionStatus.runningCount}
-                  maxConcurrent={executionStatus.maxConcurrent}
-                  queuedCount={executionStatus.queuedCount}
-                  isPaused={executionStatus.isPaused}
-                  isLoading={isExecutionLoading}
-                  onPauseToggle={handlePauseToggle}
-                  onStop={handleStop}
-                />
-              </div>
-          )}
         </div>
 
           {/* ReviewsPanel slide-out */}
@@ -799,8 +808,8 @@ function AppContent() {
             </div>
           )}
 
-          {/* ChatPanel - resizable side panel with Cmd+K toggle */}
-          <ChatPanel context={chatContext} />
+          {/* ChatPanel - resizable side panel with Cmd+K toggle (non-kanban views only) */}
+          {currentView !== "kanban" && <ChatPanel context={chatContext} />}
         </div>
       )}
 

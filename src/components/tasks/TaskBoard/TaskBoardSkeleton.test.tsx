@@ -12,16 +12,16 @@ describe("TaskBoardSkeleton", () => {
     expect(screen.getByTestId("task-board-skeleton")).toBeInTheDocument();
   });
 
-  it("should render 7 column placeholders", () => {
+  it("should render 5 column placeholders", () => {
     render(<TaskBoardSkeleton />);
     const columns = screen.getAllByTestId(/skeleton-column-/);
-    expect(columns).toHaveLength(7);
+    expect(columns).toHaveLength(5);
   });
 
   it("should render column headers", () => {
     render(<TaskBoardSkeleton />);
     const headers = screen.getAllByTestId(/skeleton-header-/);
-    expect(headers).toHaveLength(7);
+    expect(headers).toHaveLength(5);
   });
 
   it("should render card placeholders in each column", () => {

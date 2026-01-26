@@ -139,6 +139,21 @@ pub struct ToolCall {
     pub result: Option<serde_json::Value>,
 }
 
+/// Content block item - preserves order of text and tool calls
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ContentBlockItem {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: Option<String>,
+        name: String,
+        arguments: serde_json::Value,
+        result: Option<serde_json::Value>,
+    },
+}
+
 // ============================================================================
 // Stream Events (what the processor emits)
 // ============================================================================
@@ -174,10 +189,12 @@ pub enum StreamEvent {
 /// tracking partial tool calls and accumulated text.
 #[derive(Debug, Default)]
 pub struct StreamProcessor {
-    /// Accumulated response text
+    /// Accumulated response text (legacy, for backward compat)
     pub response_text: String,
-    /// Completed tool calls
+    /// Completed tool calls (legacy, for backward compat)
     pub tool_calls: Vec<ToolCall>,
+    /// Content blocks in order (text and tool calls interleaved)
+    pub content_blocks: Vec<ContentBlockItem>,
     /// Claude session ID for --resume
     pub session_id: Option<String>,
 
@@ -185,6 +202,8 @@ pub struct StreamProcessor {
     current_tool_name: String,
     current_tool_id: Option<String>,
     current_tool_input: String,
+    // Track current text accumulation for content blocks
+    current_text_block: String,
 }
 
 impl StreamProcessor {
@@ -208,6 +227,14 @@ impl StreamProcessor {
         match msg {
             StreamMessage::ContentBlockStart { content_block, .. } => {
                 if content_block.block_type == "tool_use" {
+                    // Flush any accumulated text before starting tool call
+                    if !self.current_text_block.is_empty() {
+                        self.content_blocks.push(ContentBlockItem::Text {
+                            text: self.current_text_block.clone(),
+                        });
+                        self.current_text_block.clear();
+                    }
+
                     self.current_tool_name = content_block.name.unwrap_or_default();
                     self.current_tool_id = content_block.id;
                     self.current_tool_input.clear();
@@ -222,6 +249,7 @@ impl StreamProcessor {
                 if delta.delta_type == "text_delta" {
                     if let Some(text) = delta.text {
                         self.response_text.push_str(&text);
+                        self.current_text_block.push_str(&text);
                         events.push(StreamEvent::TextChunk(text));
                     }
                 } else if delta.delta_type == "input_json_delta" {
@@ -239,11 +267,20 @@ impl StreamProcessor {
                     let tool_call = ToolCall {
                         id: self.current_tool_id.clone(),
                         name: self.current_tool_name.clone(),
-                        arguments: args,
+                        arguments: args.clone(),
                         result: None,
                     };
 
                     self.tool_calls.push(tool_call.clone());
+
+                    // Add to content blocks in order
+                    self.content_blocks.push(ContentBlockItem::ToolUse {
+                        id: self.current_tool_id.clone(),
+                        name: self.current_tool_name.clone(),
+                        arguments: args,
+                        result: None,
+                    });
+
                     events.push(StreamEvent::ToolCallCompleted(tool_call));
 
                     // Reset tool state
@@ -264,17 +301,28 @@ impl StreamProcessor {
                     match content {
                         AssistantContent::Text { text } => {
                             self.response_text.push_str(&text);
+                            // Add as content block directly (verbose mode gives us complete blocks)
+                            self.content_blocks.push(ContentBlockItem::Text {
+                                text: text.clone(),
+                            });
                             events.push(StreamEvent::TextChunk(text));
                         }
                         AssistantContent::ToolUse { id, name, input } => {
                             let tool_call = ToolCall {
                                 id: Some(id.clone()),
                                 name: name.clone(),
-                                arguments: input,
+                                arguments: input.clone(),
                                 result: None,
                             };
 
                             self.tool_calls.push(tool_call.clone());
+                            // Add as content block
+                            self.content_blocks.push(ContentBlockItem::ToolUse {
+                                id: Some(id),
+                                name,
+                                arguments: input,
+                                result: None,
+                            });
                             events.push(StreamEvent::ToolCallCompleted(tool_call));
                         }
                         AssistantContent::Other => {}
@@ -309,12 +357,23 @@ impl StreamProcessor {
                             .find(|tc| tc.id.as_ref() == Some(&tool_use_id))
                         {
                             tool_call.result = Some(content.clone());
-                            // Emit event with updated tool call
-                            events.push(StreamEvent::ToolResultReceived {
-                                tool_use_id,
-                                result: content,
-                            });
                         }
+
+                        // Also update the content_blocks array
+                        for block in self.content_blocks.iter_mut() {
+                            if let ContentBlockItem::ToolUse { id, result, .. } = block {
+                                if id.as_ref() == Some(&tool_use_id) {
+                                    *result = Some(content.clone());
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Emit event with updated tool call
+                        events.push(StreamEvent::ToolResultReceived {
+                            tool_use_id,
+                            result: content,
+                        });
                     }
                 }
             }
@@ -325,10 +384,18 @@ impl StreamProcessor {
     }
 
     /// Get the final result after stream is complete
-    pub fn finish(self) -> StreamResult {
+    pub fn finish(mut self) -> StreamResult {
+        // Flush any remaining text as a content block
+        if !self.current_text_block.is_empty() {
+            self.content_blocks.push(ContentBlockItem::Text {
+                text: self.current_text_block,
+            });
+        }
+
         StreamResult {
             response_text: self.response_text,
             tool_calls: self.tool_calls,
+            content_blocks: self.content_blocks,
             session_id: self.session_id,
         }
     }
@@ -339,6 +406,8 @@ impl StreamProcessor {
 pub struct StreamResult {
     pub response_text: String,
     pub tool_calls: Vec<ToolCall>,
+    /// Content blocks in order (text and tool calls interleaved)
+    pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
 }
 

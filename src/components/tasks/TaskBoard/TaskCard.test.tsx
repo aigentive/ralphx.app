@@ -2,17 +2,33 @@
  * Tests for TaskCard component
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DndContext } from "@dnd-kit/core";
 import { createMockTask } from "@/test/mock-data";
 import { TaskCard } from "./TaskCard";
 import type { QAPrepStatus } from "@/types/qa-config";
 import type { QAOverallStatus } from "@/types/qa";
 
-// Wrapper component for dnd-kit context
+// Create a new QueryClient for each test
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
+// Wrapper component for dnd-kit and QueryClient context
 function DndWrapper({ children }: { children: React.ReactNode }) {
-  return <DndContext>{children}</DndContext>;
+  const queryClient = createTestQueryClient();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <DndContext>{children}</DndContext>
+    </QueryClientProvider>
+  );
 }
 
 describe("TaskCard", () => {
@@ -159,18 +175,7 @@ describe("TaskCard", () => {
   });
 
   describe("click handler", () => {
-    it("should call onSelect when card is clicked", () => {
-      const task = createMockTask({ id: "task-1" });
-      const onSelect = vi.fn();
-      render(<TaskCard task={task} onSelect={onSelect} />, {
-        wrapper: DndWrapper,
-      });
-
-      fireEvent.click(screen.getByTestId("task-card-task-1"));
-      expect(onSelect).toHaveBeenCalledWith("task-1");
-    });
-
-    it("should not crash when onSelect is not provided", () => {
+    it("should not crash when card is clicked", () => {
       const task = createMockTask();
       render(<TaskCard task={task} />, { wrapper: DndWrapper });
 
@@ -181,23 +186,24 @@ describe("TaskCard", () => {
   });
 
   describe("dragging state", () => {
-    it("should apply dragging styles when isDragging is true", () => {
+    it("should apply opacity 1 when isDragging is true (card is visible in overlay)", () => {
       const task = createMockTask();
       render(<TaskCard task={task} isDragging />, { wrapper: DndWrapper });
 
       const card = screen.getByTestId(`task-card-${task.id}`);
-      // Dragging state applies inline opacity style
-      expect(card.style.opacity).toBe("0.9");
+      // isDragging prop doesn't directly control opacity - that's handled by isBeingDragged from useDraggable
+      // When isDragging prop is true (used in DragOverlay), card should be visible with full opacity
+      expect(card.style.opacity).toBe("1");
     });
 
-    it("should not apply dragging styles when isDragging is false", () => {
+    it("should have opacity 1 when not dragging", () => {
       const task = createMockTask();
       render(<TaskCard task={task} isDragging={false} />, {
         wrapper: DndWrapper,
       });
 
       const card = screen.getByTestId(`task-card-${task.id}`);
-      expect(card.style.opacity).not.toBe("0.9");
+      expect(card.style.opacity).toBe("1");
     });
   });
 

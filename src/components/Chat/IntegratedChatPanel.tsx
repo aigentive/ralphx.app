@@ -819,11 +819,16 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
     };
   }, []);
 
-  // Process messages into groups
+  // Sort messages by createdAt and process into groups
   const groupedMessages = useMemo(() => {
-    return messagesData.map((msg, index) => {
-      const prevMsg = messagesData[index - 1];
-      const nextMsg = messagesData[index + 1];
+    // Sort by createdAt to ensure correct order
+    const sorted = [...messagesData].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    return sorted.map((msg, index) => {
+      const prevMsg = sorted[index - 1];
+      const nextMsg = sorted[index + 1];
       const isFirstInGroup = !prevMsg || prevMsg.role !== msg.role;
       const isLastInGroup = !nextMsg || nextMsg.role !== msg.role;
       return { ...msg, isFirstInGroup, isLastInGroup };
@@ -937,8 +942,8 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {/* Show typing indicator while agent is working */}
-                {isSending && <TypingIndicator />}
+                {/* Show typing indicator while agent is working (not streaming text) */}
+                {(isSending || isAgentRunning) && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </>
             )}

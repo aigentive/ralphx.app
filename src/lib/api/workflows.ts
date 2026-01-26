@@ -14,32 +14,33 @@ import { InternalStatusSchema } from "@/types/status";
 
 /**
  * Schema for workflow column response from Rust backend
- * Note: Uses snake_case to match Rust serde serialization
+ * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
  */
 export const WorkflowColumnResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
-  maps_to: InternalStatusSchema,
-  color: z.string().nullable(),
-  icon: z.string().nullable(),
-  skip_review: z.boolean().nullable(),
-  auto_advance: z.boolean().nullable(),
-  agent_profile: z.string().nullable(),
+  mapsTo: InternalStatusSchema,
+  color: z.string().optional(),
+  icon: z.string().optional(),
+  skipReview: z.boolean().optional(),
+  autoAdvance: z.boolean().optional(),
+  agentProfile: z.string().optional(),
 });
 
 export type WorkflowColumnResponse = z.infer<typeof WorkflowColumnResponseSchema>;
 
 /**
  * Schema for workflow response from Rust backend
+ * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
  */
 export const WorkflowResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
-  description: z.string().nullable(),
+  description: z.string().optional(),
   columns: z.array(WorkflowColumnResponseSchema).min(1),
-  is_default: z.boolean(),
-  worker_profile: z.string().nullable(),
-  reviewer_profile: z.string().nullable(),
+  isDefault: z.boolean(),
+  workerProfile: z.string().optional(),
+  reviewerProfile: z.string().optional(),
 });
 
 export type WorkflowResponse = z.infer<typeof WorkflowResponseSchema>;

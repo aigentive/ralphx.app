@@ -1277,6 +1277,9 @@ pub struct ChatMessage {
     /// Tool calls made during this message (JSON array)
     /// Stores the tools that Claude called when generating this message
     pub tool_calls: Option<String>,
+    /// Content blocks in order (text and tool calls interleaved, JSON array)
+    /// When present, this preserves the order of text and tool calls
+    pub content_blocks: Option<String>,
     /// When the message was created
     pub created_at: DateTime<Utc>,
 }
@@ -1295,6 +1298,7 @@ impl ChatMessage {
             metadata: None,
             parent_message_id: None,
             tool_calls: None,
+            content_blocks: None,
             created_at: Utc::now(),
         }
     }
@@ -1312,6 +1316,7 @@ impl ChatMessage {
             metadata: None,
             parent_message_id: None,
             tool_calls: None,
+            content_blocks: None,
             created_at: Utc::now(),
         }
     }
@@ -1329,6 +1334,7 @@ impl ChatMessage {
             metadata: None,
             parent_message_id: None,
             tool_calls: None,
+            content_blocks: None,
             created_at: Utc::now(),
         }
     }
@@ -1346,6 +1352,7 @@ impl ChatMessage {
             metadata: None,
             parent_message_id: None,
             tool_calls: None,
+            content_blocks: None,
             created_at: Utc::now(),
         }
     }
@@ -1363,6 +1370,7 @@ impl ChatMessage {
             metadata: None,
             parent_message_id: None,
             tool_calls: None,
+            content_blocks: None,
             created_at: Utc::now(),
         }
     }
@@ -1406,6 +1414,7 @@ impl ChatMessage {
         let metadata: Option<String> = row.get("metadata")?;
         let parent_message_id: Option<String> = row.get("parent_message_id")?;
         let tool_calls: Option<String> = row.get("tool_calls").ok().flatten();
+        let content_blocks: Option<String> = row.get("content_blocks").ok().flatten();
         let created_at_str: String = row.get("created_at")?;
 
         Ok(Self {
@@ -1419,6 +1428,7 @@ impl ChatMessage {
             metadata,
             parent_message_id: parent_message_id.map(ChatMessageId::from_string),
             tool_calls,
+            content_blocks,
             created_at: parse_datetime_helper(created_at_str),
         })
     }

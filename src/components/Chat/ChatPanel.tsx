@@ -195,6 +195,46 @@ function WorkerExecutingIndicator() {
   );
 }
 
+interface FailedRunBannerProps {
+  errorMessage: string;
+  onDismiss?: () => void;
+}
+
+function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProps) {
+  return (
+    <div
+      data-testid="failed-run-banner"
+      className="flex items-start gap-2 px-3 py-2 mb-2 rounded-lg"
+      style={{
+        background: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.05) 100%)",
+        border: "1px solid rgba(239,68,68,0.25)",
+      }}
+    >
+      <Activity className="w-3.5 h-3.5 mt-0.5 text-red-400 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <span className="text-[13px] font-medium text-red-300 block">
+          Agent run failed
+        </span>
+        <span className="text-[12px] text-red-300/70 block mt-0.5 break-words">
+          {errorMessage.slice(0, 200)}
+          {errorMessage.length > 200 && "..."}
+        </span>
+      </div>
+      {onDismiss && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onDismiss}
+          className="shrink-0 text-red-300/60 hover:text-red-300"
+          aria-label="Dismiss error"
+        >
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
 interface ContextIndicatorProps {
   context: ChatContext;
   isExecutionMode?: boolean;
@@ -667,6 +707,19 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     ? executionConversationsQuery
     : regularChatData.conversations;
 
+  // Fetch agent run status for the active conversation to detect failed runs
+  const agentRunQuery = useQuery({
+    queryKey: chatKeys.agentRun(activeConversationId ?? ""),
+    queryFn: () => activeConversationId ? chatApi.getAgentRunStatus(activeConversationId) : null,
+    enabled: !!activeConversationId,
+    staleTime: 5000,
+  });
+
+  // Track dismissed error banners by run ID
+  const [dismissedErrorId, setDismissedErrorId] = useState<string | null>(null);
+  const failedRun = agentRunQuery.data?.status === "failed" ? agentRunQuery.data : null;
+  const showFailedBanner = failedRun && failedRun.errorMessage && failedRun.id !== dismissedErrorId;
+
   const {
     messages: activeConversation,
     sendMessage,
@@ -981,6 +1034,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           data-testid="chat-panel-messages"
         >
           <div className="p-3">
+            {/* Show failed run banner if last run failed */}
+            {showFailedBanner && failedRun?.errorMessage && (
+              <FailedRunBanner
+                errorMessage={failedRun.errorMessage}
+                onDismiss={() => setDismissedErrorId(failedRun.id)}
+              />
+            )}
+
             {/* Show worker executing indicator when in execution mode */}
             {isExecutionMode && <WorkerExecutingIndicator />}
 
@@ -1001,8 +1062,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {/* Show typing indicator while agent is working */}
-                {isSending && <TypingIndicator />}
+                {/* Show typing indicator while agent is working (not streaming text) */}
+                {(isSending || isAgentRunning) && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </>
             )}

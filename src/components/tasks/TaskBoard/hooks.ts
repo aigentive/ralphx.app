@@ -2,7 +2,7 @@
  * useTaskBoard hook - Manages task board state and drag-drop operations
  */
 
-import { useMemo, useCallback } from "react";
+import { useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -13,11 +13,11 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
+import { getActiveWorkflowColumns, type WorkflowColumnResponse } from "@/lib/api/workflows";
 import type { Task, InternalStatus, TaskListResponse } from "@/types/task";
-import type { WorkflowColumn, WorkflowSchema } from "@/types/workflow";
 
 export interface UseTaskBoardResult {
-  columns: WorkflowColumn[];
+  columns: WorkflowColumnResponse[];
   onDragEnd: (event: DragEndEvent) => void;
   isLoading: boolean;
   error: Error | null;
@@ -26,22 +26,23 @@ export interface UseTaskBoardResult {
 export const workflowKeys = {
   all: ["workflows"] as const,
   detail: (id: string) => [...workflowKeys.all, id] as const,
+  activeColumns: () => [...workflowKeys.all, "active-columns"] as const,
 };
 
 export function useTaskBoard(
-  projectId: string,
-  workflowId: string
+  projectId: string
 ): UseTaskBoardResult {
   const queryClient = useQueryClient();
   const showArchived = useUiStore((s) => s.showArchived);
 
   const {
-    data: workflow,
-    isLoading: workflowLoading,
-    error: workflowError,
-  } = useQuery<WorkflowSchema, Error>({
-    queryKey: workflowKeys.detail(workflowId),
-    queryFn: () => api.workflows.get(workflowId),
+    data: columns = [],
+    isLoading: columnsLoading,
+    error: columnsError,
+  } = useQuery<WorkflowColumnResponse[], Error>({
+    queryKey: workflowKeys.activeColumns(),
+    queryFn: getActiveWorkflowColumns,
+    staleTime: 60 * 1000, // 1 minute
   });
 
   const moveMutation = useMutation({
@@ -49,11 +50,11 @@ export function useTaskBoard(
       api.tasks.move(taskId, toStatus),
     // Optimistic update - immediately move task across columns in infinite query caches
     onMutate: async ({ taskId, toStatus }) => {
-      if (!workflow) return;
+      if (!columns.length) return;
 
       // Cancel all outgoing infinite query refetches
       await Promise.all(
-        workflow.columns.map((col) =>
+        columns.map((col) =>
           queryClient.cancelQueries({
             queryKey: infiniteTaskKeys.list({
               projectId,
@@ -66,7 +67,7 @@ export function useTaskBoard(
 
       // Store snapshots for rollback
       const snapshots = new Map();
-      workflow.columns.forEach((col) => {
+      columns.forEach((col) => {
         const key = infiniteTaskKeys.list({
           projectId,
           status: col.mapsTo,
@@ -77,9 +78,9 @@ export function useTaskBoard(
 
       // Find the task and its current column by checking each column's cache
       let movedTask: Task | undefined;
-      let fromColumn: WorkflowColumn | undefined;
+      let fromColumn: WorkflowColumnResponse | undefined;
 
-      for (const col of workflow.columns) {
+      for (const col of columns) {
         const key = infiniteTaskKeys.list({
           projectId,
           status: col.mapsTo,
@@ -122,7 +123,7 @@ export function useTaskBoard(
       );
 
       // Add to target column's cache (first page)
-      const toColumn = workflow.columns.find((c) => c.mapsTo === toStatus);
+      const toColumn = columns.find((c) => c.mapsTo === toStatus);
       if (toColumn && movedTask) {
         const toKey = infiniteTaskKeys.list({
           projectId,
@@ -156,8 +157,8 @@ export function useTaskBoard(
     },
     // Rollback on error
     onError: (_err, _variables, context) => {
-      if (!context?.snapshots || !workflow) return;
-      workflow.columns.forEach((col) => {
+      if (!context?.snapshots || !columns.length) return;
+      columns.forEach((col) => {
         const snapshot = context.snapshots.get(col.id);
         if (snapshot) {
           const key = infiniteTaskKeys.list({
@@ -171,8 +172,8 @@ export function useTaskBoard(
     },
     // Sync with server after mutation settles
     onSettled: () => {
-      if (!workflow) return;
-      workflow.columns.forEach((col) => {
+      if (!columns.length) return;
+      columns.forEach((col) => {
         queryClient.invalidateQueries({
           queryKey: infiniteTaskKeys.list({
             projectId,
@@ -184,25 +185,20 @@ export function useTaskBoard(
     },
   });
 
-  const columns = useMemo<WorkflowColumn[]>(() => {
-    if (!workflow) return [];
-    return workflow.columns;
-  }, [workflow]);
-
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
-      if (!over || !workflow) return;
+      if (!over || !columns.length) return;
 
       const taskId = String(active.id);
-      const targetColumn = workflow.columns.find(
+      const targetColumn = columns.find(
         (c) => c.id === String(over.id)
       );
       if (!targetColumn) return;
 
       // Find the task's current status from the query cache
       let currentStatus: string | undefined;
-      for (const col of workflow.columns) {
+      for (const col of columns) {
         const key = infiniteTaskKeys.list({
           projectId,
           status: col.mapsTo,
@@ -228,13 +224,13 @@ export function useTaskBoard(
         toStatus: targetColumn.mapsTo as InternalStatus,
       });
     },
-    [workflow, projectId, showArchived, queryClient, moveMutation]
+    [columns, projectId, showArchived, queryClient, moveMutation]
   );
 
   return {
     columns,
     onDragEnd,
-    isLoading: workflowLoading,
-    error: workflowError ?? null,
+    isLoading: columnsLoading,
+    error: columnsError ?? null,
   };
 }

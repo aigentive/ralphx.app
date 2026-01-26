@@ -41,7 +41,6 @@ import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 
 interface TaskCardProps {
   task: Task;
-  onSelect?: (taskId: string) => void;
   isDragging?: boolean;
   isSelected?: boolean;
   isHidden?: boolean;
@@ -96,7 +95,6 @@ function CheckpointIndicator() {
 
 export function TaskCard({
   task,
-  onSelect,
   isDragging,
   isSelected,
   isHidden,
@@ -108,9 +106,8 @@ export function TaskCard({
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging: isBeingDragged } = useDraggable({ id: task.id });
 
-  // UI Store
-  const openModal = useUiStore((state) => state.openModal);
-  const openTaskFullView = useUiStore((state) => state.openTaskFullView);
+  // UI Store - use selectedTaskId for split layout (TaskDetailOverlay handles rendering)
+  const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
 
   // Execution state
   const executionState = useTaskExecutionState(task.id);
@@ -164,13 +161,14 @@ export function TaskCard({
   // Card styles based on state (macOS Tahoe - Liquid Glass)
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
-      borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
       cursor: isDragging ? "grabbing" : (isDraggable ? "grab" : "default"),
       transition: "all 180ms ease-out",
       background: "rgba(255,255,255,0.04)",
       backdropFilter: "blur(20px)",
       WebkitBackdropFilter: "blur(20px)",
       border: "1px solid rgba(255,255,255,0.08)",
+      // Priority stripe - must come AFTER border shorthand to override left border
+      borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
       boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
     };
 
@@ -228,31 +226,15 @@ export function TaskCard({
     return {};
   };
 
-  // Determine which view to open based on task status
-  const shouldOpenFullView = useMemo(() => {
-    const fullViewStatuses = [
-      "executing",
-      "qa_refining",
-      "qa_testing",
-      "qa_passed",
-      "qa_failed",
-      "pending_review",
-      "revision_needed",
-    ];
-    return fullViewStatuses.includes(task.internalStatus);
-  }, [task.internalStatus]);
-
-  // Context menu handlers
+  // Context menu handlers - use selectedTaskId for split layout overlay
   const handleViewDetails = () => {
-    if (shouldOpenFullView) {
-      openTaskFullView(task.id);
-    } else {
-      openModal("task-detail", { taskId: task.id });
-    }
+    // Set selectedTaskId to show TaskDetailOverlay in the split layout
+    setSelectedTaskId(task.id);
   };
 
   const handleEdit = () => {
-    openModal("task-detail", { taskId: task.id, startInEditMode: true });
+    // Open task detail (edit mode can be triggered from overlay)
+    setSelectedTaskId(task.id);
   };
 
   const handleArchive = () => {
@@ -292,7 +274,6 @@ export function TaskCard({
           {...(isDraggable ? { ...attributes, ...listeners } : {})}
           data-testid={`task-card-${task.id}`}
           onClick={() => {
-            onSelect?.(task.id);
             handleViewDetails();
           }}
           className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${getExecutionStateClass()}`}

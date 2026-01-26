@@ -69,6 +69,7 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
     updatedAt: new Date().toISOString(),
     startedAt: null,
     completedAt: null,
+    archivedAt: null,
     ...overrides,
   };
 }

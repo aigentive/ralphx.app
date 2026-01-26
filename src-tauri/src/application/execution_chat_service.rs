@@ -24,11 +24,12 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use crate::application::orchestrator_service::{
-    ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
+    ChatChunkPayload, ChatErrorPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload,
+    ChatStderrPayload, ChatToolCallPayload,
 };
 use crate::infrastructure::agents::claude::{
     build_base_cli_command, add_prompt_args, configure_spawn,
-    StreamProcessor, StreamEvent as ProcessorStreamEvent, ToolCall,
+    StreamProcessor, StreamEvent as ProcessorStreamEvent, ToolCall, ContentBlockItem,
 };
 use crate::domain::entities::{
     AgentRun, ChatConversation, ChatConversationId, ChatContextType, ChatMessage, ChatMessageId,
@@ -313,7 +314,7 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
         mut child: tokio::process::Child,
         conversation_id: &ChatConversationId,
         task_id: &TaskId,
-    ) -> Result<(String, Vec<ToolCall>, Option<String>), ExecutionChatError> {
+    ) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), ExecutionChatError> {
         let stdout = child.stdout.take().ok_or_else(|| {
             ExecutionChatError::SpawnFailed("Failed to capture stdout".to_string())
         })?;
@@ -434,7 +435,7 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
             ));
         }
 
-        Ok((result.response_text, result.tool_calls, result.session_id))
+        Ok((result.response_text, result.tool_calls, result.content_blocks, result.session_id))
     }
 
     /// Process queued messages after worker completes a response
@@ -487,7 +488,7 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
                 .map_err(|e| ExecutionChatError::SpawnFailed(e.to_string()))?;
 
             // Process streaming output
-            let (response_text, tool_calls, new_session_id) = self
+            let (response_text, tool_calls, content_blocks, new_session_id) = self
                 .process_stream(child, conversation_id, task_id)
                 .await?;
 
@@ -505,6 +506,11 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
                     parent_message_id: None,
                     tool_calls: if !tool_calls.is_empty() {
                         Some(serde_json::to_string(&tool_calls).unwrap_or_default())
+                    } else {
+                        None
+                    },
+                    content_blocks: if !content_blocks.is_empty() {
+                        Some(serde_json::to_string(&content_blocks).unwrap_or_default())
                     } else {
                         None
                     },
@@ -626,7 +632,7 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
             .await;
 
             match process_result {
-                Ok((response_text, tool_calls, claude_session_id)) => {
+                Ok((response_text, tool_calls, content_blocks, claude_session_id)) => {
                     // Update conversation with claude_session_id
                     if let Some(ref sess_id) = claude_session_id {
                         let _ = conversation_repo
@@ -648,6 +654,11 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                             parent_message_id: None,
                             tool_calls: if !tool_calls.is_empty() {
                                 Some(serde_json::to_string(&tool_calls).unwrap_or_default())
+                            } else {
+                                None
+                            },
+                            content_blocks: if !content_blocks.is_empty() {
+                                Some(serde_json::to_string(&content_blocks).unwrap_or_default())
                             } else {
                                 None
                             },
@@ -752,7 +763,7 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                             configure_spawn(&mut cmd, &working_directory);
 
                             if let Ok(child) = cmd.spawn() {
-                                if let Ok((response, tools, _)) = process_stream_background(
+                                if let Ok((response, tools, blocks, _)) = process_stream_background(
                                     child,
                                     &conversation_id,
                                     &task_id_clone,
@@ -780,6 +791,14 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                                             } else {
                                                 None
                                             },
+                                            content_blocks: if !blocks.is_empty() {
+                                                Some(
+                                                    serde_json::to_string(&blocks)
+                                                        .unwrap_or_default(),
+                                                )
+                                            } else {
+                                                None
+                                            },
                                             created_at: chrono::Utc::now(),
                                         };
                                         let _ = chat_message_repo.create(assistant_msg).await;
@@ -790,6 +809,8 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                     }
                 }
                 Err(e) => {
+                    println!(">>> spawn_with_persistence: ERROR - {}", e);
+
                     // Fail the agent run
                     let _ = agent_run_repo
                         .fail(
@@ -798,15 +819,16 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                         )
                         .await;
 
-                    // Emit error event
+                    // Emit error event with detailed info
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
                             "execution:error",
-                            serde_json::json!({
-                                "conversation_id": conversation_id.as_str(),
-                                "task_id": task_id_clone.as_str(),
-                                "error": e,
-                            }),
+                            ChatErrorPayload {
+                                conversation_id: Some(conversation_id.as_str().to_string()),
+                                task_id: Some(task_id_clone.as_str().to_string()),
+                                error: e.clone(),
+                                stderr: Some(e), // The error now contains stderr content
+                            },
                         );
                     }
                 }
@@ -871,13 +893,22 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
     }
 }
 
+/// Result from process stream with stderr captured
+struct ProcessStreamResult {
+    response_text: String,
+    tool_calls: Vec<ToolCall>,
+    session_id: Option<String>,
+    stderr_content: String,
+}
+
 /// Helper function to process stream in background task
+/// Now captures both stdout (stream-json) and stderr (error messages)
 async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
     conversation_id: &ChatConversationId,
     task_id: &TaskId,
     app_handle: Option<AppHandle<R>>,
-) -> Result<(String, Vec<ToolCall>, Option<String>), String> {
+) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), String> {
     println!(">>> process_stream_background: Starting to process stream");
     println!(">>>   conversation_id: {}", conversation_id.as_str());
     println!(">>>   task_id: {}", task_id.as_str());
@@ -891,14 +922,53 @@ async fn process_stream_background<R: Runtime>(
             "Failed to capture stdout".to_string()
         })?;
 
-    println!(">>> process_stream_background: Got stdout, starting to read lines");
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| {
+            println!(">>> process_stream_background: Failed to capture stderr!");
+            "Failed to capture stderr".to_string()
+        })?;
 
-    let reader = BufReader::new(stdout);
-    let mut lines = reader.lines();
+    println!(">>> process_stream_background: Got stdout and stderr, starting to read");
+
+    let conversation_id_str = conversation_id.as_str().to_string();
+    let task_id_str = task_id.as_str().to_string();
+
+    // Spawn a task to read stderr and emit events in real-time
+    let stderr_handle = app_handle.clone();
+    let stderr_conv_id = conversation_id_str.clone();
+    let stderr_task_id = task_id_str.clone();
+    let stderr_task = tokio::spawn(async move {
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        let mut stderr_content = String::new();
+
+        while let Ok(Some(line)) = lines.next_line().await {
+            println!(">>> STDERR: {}", line);
+            stderr_content.push_str(&line);
+            stderr_content.push('\n');
+
+            // Emit stderr events in real-time for debugging
+            if let Some(ref handle) = stderr_handle {
+                let _ = handle.emit(
+                    "execution:stderr",
+                    ChatStderrPayload {
+                        conversation_id: stderr_conv_id.clone(),
+                        task_id: Some(stderr_task_id.clone()),
+                        content: line,
+                    },
+                );
+            }
+        }
+
+        stderr_content
+    });
+
+    // Process stdout (stream-json events)
+    let stdout_reader = BufReader::new(stdout);
+    let mut lines = stdout_reader.lines();
     let mut processor = StreamProcessor::new();
-
-    let conversation_id_str = conversation_id.as_str();
-    let task_id_str = task_id.as_str();
 
     let mut line_count = 0;
     while let Ok(Some(line)) = lines.next_line().await {
@@ -919,7 +989,7 @@ async fn process_stream_background<R: Runtime>(
                                 "execution:chunk",
                                 ChatChunkPayload {
                                     text: text.clone(),
-                                    conversation_id: conversation_id_str.to_string(),
+                                    conversation_id: conversation_id_str.clone(),
                                 },
                             );
 
@@ -945,7 +1015,7 @@ async fn process_stream_background<R: Runtime>(
                                     tool_id: id,
                                     arguments: serde_json::Value::Null,
                                     result: None,
-                                    conversation_id: conversation_id_str.to_string(),
+                                    conversation_id: conversation_id_str.clone(),
                                 },
                             );
                         }
@@ -960,7 +1030,7 @@ async fn process_stream_background<R: Runtime>(
                                     tool_id: tool_call.id.clone(),
                                     arguments: tool_call.arguments.clone(),
                                     result: None,
-                                    conversation_id: conversation_id_str.to_string(),
+                                    conversation_id: conversation_id_str.clone(),
                                 },
                             );
 
@@ -996,7 +1066,7 @@ async fn process_stream_background<R: Runtime>(
                                     tool_id: Some(tool_use_id.clone()),
                                     arguments: serde_json::Value::Null,
                                     result: Some(result),
-                                    conversation_id: conversation_id_str.to_string(),
+                                    conversation_id: conversation_id_str.clone(),
                                 },
                             );
                         }
@@ -1006,9 +1076,16 @@ async fn process_stream_background<R: Runtime>(
         }
     }
 
-    println!(">>> process_stream_background: Finished reading lines, total: {}", line_count);
+    println!(">>> process_stream_background: Finished reading stdout lines, total: {}", line_count);
 
     let result = processor.finish();
+
+    // Wait for stderr task to complete
+    let stderr_content = stderr_task.await.unwrap_or_default();
+    println!(">>> process_stream_background: stderr content length: {}", stderr_content.len());
+    if !stderr_content.is_empty() {
+        println!(">>> process_stream_background: stderr:\n{}", stderr_content);
+    }
 
     println!(">>> process_stream_background: Waiting for child process to complete");
     // Wait for process to complete
@@ -1024,11 +1101,17 @@ async fn process_stream_background<R: Runtime>(
 
     if !status.success() && result.response_text.is_empty() {
         println!(">>> process_stream_background: FAILED - non-zero exit with empty response");
-        return Err("Agent exited with non-zero status".to_string());
+        // Include stderr content in the error message for debugging
+        let error_msg = if stderr_content.is_empty() {
+            "Agent exited with non-zero status".to_string()
+        } else {
+            format!("Agent failed: {}", stderr_content.trim())
+        };
+        return Err(error_msg);
     }
 
     println!(">>> process_stream_background: SUCCESS");
-    Ok((result.response_text, result.tool_calls, result.session_id))
+    Ok((result.response_text, result.tool_calls, result.content_blocks, result.session_id))
 }
 
 // ============================================================================

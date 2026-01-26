@@ -20,6 +20,7 @@ const ChatMessageResponseSchema = z.object({
   parent_message_id: z.string().nullable(),
   conversation_id: z.string().nullable(),
   tool_calls: z.string().nullable(),
+  content_blocks: z.string().nullish(), // Optional for backwards compatibility
   created_at: z.string(),
 });
 
@@ -38,6 +39,7 @@ export interface ChatMessageResponse {
   parentMessageId: string | null;
   conversationId: string | null;
   toolCalls: string | null;
+  contentBlocks: string | null;
   createdAt: string;
 }
 
@@ -81,6 +83,7 @@ function transformMessage(raw: RawMessage): ChatMessageResponse {
     parentMessageId: raw.parent_message_id,
     conversationId: raw.conversation_id,
     toolCalls: raw.tool_calls,
+    contentBlocks: raw.content_blocks ?? null,
     createdAt: raw.created_at,
   };
 }

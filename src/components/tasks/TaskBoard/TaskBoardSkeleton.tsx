@@ -2,7 +2,7 @@
  * TaskBoardSkeleton - Loading placeholder for the task board
  */
 
-const COLUMN_NAMES = ["Draft", "Backlog", "To Do", "Planned", "In Progress", "In Review", "Done"];
+const COLUMN_NAMES = ["Draft", "Ready", "In Progress", "In Review", "Done"];
 
 export function TaskBoardSkeleton() {
   return (

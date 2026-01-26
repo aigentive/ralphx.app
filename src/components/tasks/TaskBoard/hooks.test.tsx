@@ -6,10 +6,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api } from "@/lib/tauri";
-import { defaultWorkflow } from "@/types/workflow";
 import { createMockTask } from "@/test/mock-data";
 import { useTaskBoard } from "./hooks";
 import type { DragEndEvent } from "@dnd-kit/core";
+import type { InfiniteData } from "@tanstack/react-query";
+import type { TaskListResponse } from "@/types/task";
 
 // Mock Tauri API
 vi.mock("@/lib/tauri", () => ({
@@ -18,11 +19,27 @@ vi.mock("@/lib/tauri", () => ({
       list: vi.fn(),
       move: vi.fn(),
     },
-    workflows: {
-      get: vi.fn(),
-    },
   },
 }));
+
+// Mock workflows API
+vi.mock("@/lib/api/workflows", () => ({
+  getActiveWorkflowColumns: vi.fn(),
+}));
+
+import { getActiveWorkflowColumns } from "@/lib/api/workflows";
+import type { WorkflowColumnResponse } from "@/lib/api/workflows";
+
+// Helper to create mock columns matching WorkflowColumnResponse
+function createMockColumns(): WorkflowColumnResponse[] {
+  return [
+    { id: "draft", name: "Draft", mapsTo: "backlog" },
+    { id: "ready", name: "Ready", mapsTo: "ready" },
+    { id: "in_progress", name: "In Progress", mapsTo: "executing" },
+    { id: "in_review", name: "In Review", mapsTo: "pending_review" },
+    { id: "done", name: "Done", mapsTo: "approved" },
+  ];
+}
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -44,15 +61,12 @@ describe("useTaskBoard", () => {
 
   describe("loading state", () => {
     it("should return isLoading true initially", async () => {
-      vi.mocked(api.tasks.list).mockImplementation(
+      vi.mocked(getActiveWorkflowColumns).mockImplementation(
         () => new Promise(() => {}) // Never resolves
-      );
-      vi.mocked(api.workflows.get).mockImplementation(
-        () => new Promise(() => {})
       );
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
@@ -60,11 +74,10 @@ describe("useTaskBoard", () => {
     });
 
     it("should return isLoading false when data is loaded", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
@@ -74,89 +87,74 @@ describe("useTaskBoard", () => {
     });
   });
 
-  describe("columns computation", () => {
-    it("should return 7 columns from default workflow", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+  describe("columns", () => {
+    it("should return 5 columns from default workflow", async () => {
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
       await waitFor(() => {
-        expect(result.current.columns).toHaveLength(7);
+        expect(result.current.columns).toHaveLength(5);
       });
     });
 
-    it("should filter tasks into correct columns", async () => {
-      const tasks = [
-        createMockTask({ id: "t1", internalStatus: "backlog" }),
-        createMockTask({ id: "t2", internalStatus: "ready" }),
-        createMockTask({ id: "t3", internalStatus: "executing" }),
-      ];
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+    it("should return columns with correct structure", async () => {
+      const mockColumns = createMockColumns();
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(mockColumns);
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
       await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
+        expect(result.current.columns).toHaveLength(5);
       });
 
-      const { columns } = result.current;
-      // Draft and Backlog both map to "backlog"
-      const draftColumn = columns.find((c) => c.id === "draft");
-      const backlogColumn = columns.find((c) => c.id === "backlog");
-      const todoColumn = columns.find((c) => c.id === "todo");
-      const inProgressColumn = columns.find((c) => c.id === "in_progress");
-
-      // Task with backlog status goes to both draft and backlog columns
-      expect(draftColumn?.tasks).toHaveLength(1);
-      expect(backlogColumn?.tasks).toHaveLength(1);
-      // Tasks with ready status go to todo and planned
-      expect(todoColumn?.tasks).toHaveLength(1);
-      expect(inProgressColumn?.tasks).toHaveLength(1);
+      // Columns should have id, name, and mapsTo
+      const draftColumn = result.current.columns.find((c) => c.id === "draft");
+      expect(draftColumn).toBeDefined();
+      expect(draftColumn?.name).toBe("Draft");
+      expect(draftColumn?.mapsTo).toBe("backlog");
     });
 
-    it("should sort tasks by priority within columns", async () => {
-      const tasks = [
-        createMockTask({ id: "t1", internalStatus: "backlog", priority: 2 }),
-        createMockTask({ id: "t2", internalStatus: "backlog", priority: 0 }),
-        createMockTask({ id: "t3", internalStatus: "backlog", priority: 1 }),
+    it("should support custom workflows with different columns", async () => {
+      // Custom methodology workflow with different columns
+      const customColumns: WorkflowColumnResponse[] = [
+        { id: "backlog", name: "Backlog", mapsTo: "backlog" },
+        { id: "selected", name: "Selected for Dev", mapsTo: "ready" },
+        { id: "in_dev", name: "In Development", mapsTo: "executing" },
+        { id: "qa", name: "QA", mapsTo: "pending_review" },
+        { id: "done", name: "Done", mapsTo: "approved" },
       ];
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(customColumns);
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
       await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
+        expect(result.current.columns).toHaveLength(5);
       });
 
-      const backlogColumn = result.current.columns.find(
-        (c) => c.id === "backlog"
-      );
-      // Higher priority (lower number) should come first
-      expect(backlogColumn?.tasks[0]?.id).toBe("t2");
-      expect(backlogColumn?.tasks[1]?.id).toBe("t3");
-      expect(backlogColumn?.tasks[2]?.id).toBe("t1");
+      // Should have custom column names
+      const selectedColumn = result.current.columns.find((c) => c.id === "selected");
+      expect(selectedColumn).toBeDefined();
+      expect(selectedColumn?.name).toBe("Selected for Dev");
+      expect(selectedColumn?.mapsTo).toBe("ready");
     });
   });
 
   describe("onDragEnd", () => {
     it("should provide onDragEnd callback", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
@@ -168,15 +166,27 @@ describe("useTaskBoard", () => {
     });
 
     it("should not call move when dropped on same column", async () => {
-      const tasks = [createMockTask({ id: "t1", internalStatus: "backlog" })];
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
-      vi.mocked(api.tasks.move).mockResolvedValue(tasks[0]!);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
+      const task = createMockTask({ id: "t1", internalStatus: "backlog" });
+      vi.mocked(api.tasks.move).mockResolvedValue(task);
 
-      const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
-        { wrapper: createWrapper() }
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+
+      // Pre-populate the cache with the task in the draft column
+      // Key format: ["tasks", "infinite", projectId, status, includeArchived]
+      const cacheKey = ["tasks", "infinite", "project-1", "backlog", false];
+      queryClient.setQueryData(cacheKey, {
+        pages: [{ tasks: [task], total: 1, hasMore: false, offset: 0 }],
+        pageParams: [undefined],
+      } as InfiniteData<TaskListResponse>);
+
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       );
+
+      const { result } = renderHook(() => useTaskBoard("project-1"), { wrapper });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -184,7 +194,7 @@ describe("useTaskBoard", () => {
 
       const dragEvent: DragEndEvent = {
         active: { id: "t1", data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
-        over: { id: "backlog", data: { current: undefined }, rect: null as unknown as DOMRect, disabled: false },
+        over: { id: "draft", data: { current: undefined }, rect: null as unknown as DOMRect, disabled: false },
         activatorEvent: new Event("pointerdown"),
         collisions: null,
         delta: { x: 0, y: 0 },
@@ -192,23 +202,35 @@ describe("useTaskBoard", () => {
 
       result.current.onDragEnd(dragEvent);
 
-      // Should not call move because column didn't change
+      // Should not call move because column didn't change (draft maps to backlog)
       expect(api.tasks.move).not.toHaveBeenCalled();
     });
 
     it("should call move mutation when dropped on different column", async () => {
-      const tasks = [createMockTask({ id: "t1", internalStatus: "backlog" })];
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
+      const task = createMockTask({ id: "t1", internalStatus: "backlog" });
       vi.mocked(api.tasks.move).mockResolvedValue({
-        ...tasks[0]!,
+        ...task,
         internalStatus: "ready",
       });
 
-      const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
-        { wrapper: createWrapper() }
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+
+      // Pre-populate the cache with the task in the draft column
+      // Key format: ["tasks", "infinite", projectId, status, includeArchived]
+      const cacheKey = ["tasks", "infinite", "project-1", "backlog", false];
+      queryClient.setQueryData(cacheKey, {
+        pages: [{ tasks: [task], total: 1, hasMore: false, offset: 0 }],
+        pageParams: [undefined],
+      } as InfiniteData<TaskListResponse>);
+
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       );
+
+      const { result } = renderHook(() => useTaskBoard("project-1"), { wrapper });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -216,7 +238,7 @@ describe("useTaskBoard", () => {
 
       const dragEvent: DragEndEvent = {
         active: { id: "t1", data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
-        over: { id: "todo", data: { current: undefined }, rect: null as unknown as DOMRect, disabled: false },
+        over: { id: "ready", data: { current: undefined }, rect: null as unknown as DOMRect, disabled: false },
         activatorEvent: new Event("pointerdown"),
         collisions: null,
         delta: { x: 0, y: 0 },
@@ -230,11 +252,10 @@ describe("useTaskBoard", () => {
     });
 
     it("should not call move when over is null", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
+      vi.mocked(getActiveWorkflowColumns).mockResolvedValue(createMockColumns());
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 
@@ -257,28 +278,13 @@ describe("useTaskBoard", () => {
   });
 
   describe("error handling", () => {
-    it("should return error when tasks fetch fails", async () => {
-      vi.mocked(api.tasks.list).mockRejectedValue(new Error("Failed to fetch"));
-      vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
-
-      const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
-        { wrapper: createWrapper() }
-      );
-
-      await waitFor(() => {
-        expect(result.current.error).toBeDefined();
-      });
-    });
-
-    it("should return error when workflow fetch fails", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
-      vi.mocked(api.workflows.get).mockRejectedValue(
-        new Error("Workflow not found")
+    it("should return error when columns fetch fails", async () => {
+      vi.mocked(getActiveWorkflowColumns).mockRejectedValue(
+        new Error("Failed to fetch workflow")
       );
 
       const { result } = renderHook(
-        () => useTaskBoard("project-1", "ralphx-default"),
+        () => useTaskBoard("project-1"),
         { wrapper: createWrapper() }
       );
 

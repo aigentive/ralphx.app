@@ -7,7 +7,7 @@
  * - Minimal visual noise
  */
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -36,15 +36,11 @@ import type { Task, TaskListResponse } from "@/types/task";
 
 export interface TaskBoardProps {
   projectId: string;
-  workflowId: string;
 }
 
-export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
+export function TaskBoard({ projectId }: TaskBoardProps) {
   const queryClient = useQueryClient();
-  const { columns, onDragEnd, isLoading, error } = useTaskBoard(
-    projectId,
-    workflowId
-  );
+  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
@@ -224,18 +220,8 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
     })
   );
 
-  const handleTaskSelect = useCallback(
-    (taskId: string) => {
-      // Fetch the task from the API instead of trying to find it in columns
-      // (columns are workflow definitions without task data)
-      api.tasks.get(taskId).then((task) => {
-        openModal("task-detail", { task });
-      }).catch((err) => {
-        console.error("Failed to fetch task:", err);
-      });
-    },
-    [openModal]
-  );
+  // Task selection is now handled by TaskCard directly via setSelectedTaskId
+  // which shows the TaskDetailOverlay in the split layout
 
   if (isLoading) {
     return <TaskBoardSkeleton />;
@@ -406,7 +392,6 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
                     isInvalid={
                       overColumnId === column.id && lockedColumns.includes(column.id)
                     }
-                    onTaskSelect={handleTaskSelect}
                     hiddenTaskId={movingTaskId}
                     searchTasks={searchTasks}
                     matchCount={matchCount}
