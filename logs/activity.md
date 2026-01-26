@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:00:00
+**Last Updated:** 2026-01-26 08:15:00
 **Phase:** Phase 15b (Task Execution Chat)
 **Tasks Completed:** 14 / 14
-**Current Task:** All complete
+**Current Task:** Phase 15B complete, ready for phase transition
 
 ---
 
@@ -46,6 +46,72 @@ Both systems now receive the same worker output, scoped differently:
 
 **Files modified:**
 - `src-tauri/src/application/execution_chat_service.rs`
+- `logs/activity.md`
+
+---
+
+### 2026-01-26 08:15:00 - Phase 15B Documentation Complete
+
+**What was done:**
+- Updated `src/CLAUDE.md` with Phase 15B features:
+  - Added task_execution context type to Context-Aware Chat section
+  - Documented execution history and execution-specific features
+  - Added context types table (ideation, task, project, task_execution)
+  - Updated API and store descriptions to include execution chat
+- Updated `src-tauri/CLAUDE.md` with Phase 15B architecture:
+  - Added ExecutionChatService to application services
+  - Added execution_chat_commands.rs to commands list
+  - Documented ExecutionMessageQueue in domain services
+  - Expanded Context-Aware Chat System section with:
+    - Task Execution Chat subsection (worker output persistence, message queue)
+    - ExecutionChatService API documentation
+    - ExecutionMessageQueue API documentation
+    - Dual event emission (ChatPanel + Activity Stream)
+    - Execution chat events (execution:chunk, execution:tool_call, execution:run_completed, agent:message)
+- Updated `logs/activity.md` with Phase 15B completion summary
+
+**Phase 15B Summary:**
+Phase 15B extends the context-aware chat system (Phase 15A) to persist and display worker execution output:
+
+**Implemented Features:**
+1. **Database Integration**
+   - Added `task_execution` context type to chat system
+   - Worker output persisted to `chat_conversations` and `chat_messages` tables
+   - Execution history available for review
+
+2. **Message Queue System**
+   - ExecutionMessageQueue for in-memory per-task queues
+   - Messages sent during execution are queued
+   - Queue processed via `--resume` when worker completes response
+
+3. **ExecutionChatService**
+   - `spawn_with_persistence()` - Creates conversation, spawns worker, persists output
+   - Stream processing captures chunks and tool calls
+   - Automatic queue processing on completion
+
+4. **Frontend Integration**
+   - ChatPanel detects `executing` status and switches to execution mode
+   - ConversationSelector shows execution history
+   - Execution-specific UI (pulsing indicator, different styling)
+   - Queue UI for messages waiting to be sent
+
+5. **Dual Event System**
+   - ChatPanel receives `execution:*` events (persisted)
+   - Activity Stream receives `agent:message` events (memory only)
+   - Both systems show same worker output, scoped differently
+
+**Architecture Patterns:**
+- Reuses Phase 15A infrastructure (database schema, `--resume` pattern, stream parsing)
+- ExecutionChatService is required (not optional) in TaskServices
+- Permission bridge works during worker execution
+- Clean separation between chat contexts (ideation, task, project, task_execution)
+
+**Commands run:**
+- None (documentation-only task)
+
+**Files modified:**
+- `src/CLAUDE.md`
+- `src-tauri/CLAUDE.md`
 - `logs/activity.md`
 
 **Status:** Task complete - execution chat now integrated with Activity Stream

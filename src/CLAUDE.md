@@ -27,7 +27,7 @@ src/
 ├── api/                    # Tauri API wrappers (ideation, proposals, chat)
 │   ├── ideation.ts         # Session/proposal/dependency API with transforms
 │   ├── proposal.ts         # Proposal-specific API
-│   └── chat.ts             # Context-aware chat API (sendContextMessage, conversations, agent runs)
+│   └── chat.ts             # Context-aware chat API (sendContextMessage, conversations, agent runs, execution chat)
 │
 ├── components/             # React components
 │   ├── Chat/               # Context-aware chat (Phase 15)
@@ -70,7 +70,7 @@ src/
 │   ├── uiStore.ts          # UI state (modals, sidebar, views)
 │   ├── ideationStore.ts    # Ideation session state
 │   ├── proposalStore.ts    # Task proposal state
-│   ├── chatStore.ts        # Chat state (active conversation, queue, agent running)
+│   ├── chatStore.ts        # Chat state (active conversation, queue, agent running, execution queue)
 │   ├── qaStore.ts          # QA state
 │   ├── reviewStore.ts      # Review state
 │   └── ...Store.ts         # Additional domain stores
@@ -87,7 +87,7 @@ src/
 │   ├── task.ts             # Task type and schemas
 │   ├── project.ts          # Project type and schemas
 │   ├── status.ts           # InternalStatus enum (14 statuses)
-│   ├── chat-conversation.ts # ChatConversation and AgentRun types (Phase 15)
+│   ├── chat-conversation.ts # ChatConversation and AgentRun types (Phase 15A/15B, includes task_execution context type)
 │   ├── permission.ts       # Permission request types for UI-based approval
 │   └── *.ts                # Domain-specific types (qa, review, ideation, etc.)
 │
@@ -261,7 +261,7 @@ import { useTaskStore } from "@/stores/taskStore";
 import { api } from "@/lib/tauri";
 ```
 
-### 8. Context-Aware Chat (Phase 15)
+### 8. Context-Aware Chat (Phase 15A & 15B)
 
 The chat system supports multiple conversations per context with MCP tool integration:
 
@@ -288,12 +288,24 @@ export function useChat() {
 
 **Key features:**
 - **Multiple conversations per context** - Each ideation session, task, or project can have multiple chat conversations
+- **Task execution chat (Phase 15B)** - Worker execution output displayed as chat with task_execution context type
 - **Conversation switching** - ConversationSelector component lets you switch between conversations or start new ones
+- **Execution history** - View past execution attempts for a task, switch between them
 - **Message queueing** - Messages sent while agent running are queued and auto-sent on completion
 - **Tool call display** - ToolCallIndicator shows collapsible view of MCP tool calls
 - **Keyboard navigation** - Up arrow in empty input edits last queued message
-- **Real-time updates** - Subscribes to Tauri events: `chat:chunk`, `chat:tool_call`, `chat:run_completed`
+- **Real-time updates** - Subscribes to Tauri events:
+  - Context-aware chat: `chat:chunk`, `chat:tool_call`, `chat:run_completed`
+  - Task execution: `execution:chunk`, `execution:tool_call`, `execution:run_completed`
 - **Permission system** - PermissionDialog provides UI-based approval for non-pre-approved tools
+
+**Context Types:**
+| Context Type | Where It Appears | Purpose |
+|--------------|-----------------|---------|
+| `ideation` | Ideation view | Chat with orchestrator-ideation agent (can create task proposals) |
+| `task` | Task detail (chat mode) | Chat with chat-task agent (can update task, add notes) |
+| `project` | Project view | Chat with chat-project agent (can suggest tasks) |
+| `task_execution` | Task detail (executing status) | View worker execution output, queue messages to worker |
 
 **Architecture:**
 ```
@@ -301,7 +313,7 @@ ChatPanel (with ConversationSelector)
     ↓
 useChat hook
     ↓
-chatApi.sendContextMessage()
+chatApi.sendContextMessage() (or execution chat API for task_execution)
     ↓
 Tauri backend spawns Claude CLI with --agent flag
     ↓
