@@ -4,6 +4,7 @@
  */
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { PLAN_TOOLS } from "./plan-tools.js";
 
 /**
  * All available MCP tools
@@ -329,6 +330,11 @@ export const ALL_TOOLS: Tool[] = [
       required: ["task_id", "decision", "feedback"],
     },
   },
+
+  // ========================================================================
+  // PLAN ARTIFACT TOOLS (orchestrator-ideation agent)
+  // ========================================================================
+  ...PLAN_TOOLS,
 ];
 
 /**
@@ -341,6 +347,11 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "update_task_proposal",
     "delete_task_proposal",
     "add_proposal_dependency",
+    "create_plan_artifact",
+    "update_plan_artifact",
+    "get_plan_artifact",
+    "link_proposals_to_plan",
+    "get_session_plan",
   ],
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],

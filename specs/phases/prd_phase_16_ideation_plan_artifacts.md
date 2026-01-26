@@ -194,7 +194,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Build and verify: npm run build",
       "Commit: feat(mcp): add plan artifact tools for orchestrator-ideation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
