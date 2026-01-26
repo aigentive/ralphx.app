@@ -8,7 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useCallback, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { chatApi, type ChatMessageResponse } from "@/api/chat";
+import { chatApi, type ChatMessageResponse, type SendContextMessageResult } from "@/api/chat";
 import type { ChatContext } from "@/types/chat";
 import type { ChatConversation, AgentRun, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
@@ -168,7 +168,7 @@ export function useChat(context: ChatContext) {
   }, [isRunning, setAgentRunning]);
 
   // Send message mutation
-  const sendMessage = useMutation<ChatMessageResponse, Error, string>({
+  const sendMessage = useMutation<SendContextMessageResult, Error, string>({
     mutationFn: async (content: string) => {
       return chatApi.sendContextMessage(contextType, contextId, content);
     },
@@ -216,8 +216,13 @@ export function useChat(context: ChatContext) {
   const switchConversation = useCallback(
     (conversationId: string) => {
       setActiveConversation(conversationId);
+
+      // Invalidate the conversation query to ensure fresh data is fetched
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversation(conversationId),
+      });
     },
-    [setActiveConversation]
+    [setActiveConversation, queryClient]
   );
 
   // Create new conversation
@@ -251,7 +256,7 @@ export function useChat(context: ChatContext) {
       const toolCallUnlisten = await listen<{
         conversation_id: string;
         tool_name: string;
-        args: unknown;
+        arguments: unknown;
         result: unknown;
       }>("chat:tool_call", (event) => {
         const { conversation_id } = event.payload;

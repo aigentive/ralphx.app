@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use async_trait::async_trait;
 use rusqlite::Connection;
 
-use crate::domain::entities::{ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId};
+use crate::domain::entities::{ChatMessage, ChatMessageId, ChatConversationId, IdeationSessionId, ProjectId, TaskId};
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::{AppError, AppResult};
 
@@ -126,6 +126,25 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
 
         let messages = stmt
             .query_map([task_id.as_str()], |row| ChatMessage::from_row(row))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(messages)
+    }
+
+    async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, created_at
+                 FROM chat_messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let messages = stmt
+            .query_map([conversation_id.as_str()], |row| ChatMessage::from_row(row))
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

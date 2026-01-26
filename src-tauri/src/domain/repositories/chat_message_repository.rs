@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId};
+use crate::domain::entities::{ChatMessage, ChatMessageId, ChatConversationId, IdeationSessionId, ProjectId, TaskId};
 use crate::error::AppResult;
 
 /// Repository trait for ChatMessage persistence.
@@ -26,6 +26,9 @@ pub trait ChatMessageRepository: Send + Sync {
 
     /// Get all messages for a specific task, ordered by created_at ASC
     async fn get_by_task(&self, task_id: &TaskId) -> AppResult<Vec<ChatMessage>>;
+
+    /// Get all messages for a specific conversation, ordered by created_at ASC
+    async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>>;
 
     /// Delete all messages for a session
     async fn delete_by_session(&self, session_id: &IdeationSessionId) -> AppResult<()>;
@@ -124,6 +127,17 @@ mod tests {
                 .messages
                 .iter()
                 .filter(|m| m.task_id.as_ref() == Some(task_id))
+                .cloned()
+                .collect();
+            filtered.sort_by_key(|m| m.created_at);
+            Ok(filtered)
+        }
+
+        async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>> {
+            let mut filtered: Vec<_> = self
+                .messages
+                .iter()
+                .filter(|m| m.conversation_id.as_ref() == Some(conversation_id))
                 .cloned()
                 .collect();
             filtered.sort_by_key(|m| m.created_at);
