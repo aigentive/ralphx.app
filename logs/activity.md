@@ -1,15 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:30:00
+**Last Updated:** 2026-01-26 20:45:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 1 / 42
-**Current Task:** Create database migration for task_steps table
+**Tasks Completed:** 2 / 42
+**Current Task:** Create TaskStepRepository trait
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:45:00 - Create Database Migration for task_steps Table
+
+**What was done:**
+- Created `migrate_v23()` function in `src-tauri/src/infrastructure/sqlite/migrations.rs`:
+  - CREATE TABLE task_steps with all fields from plan
+  - Foreign key to tasks(id) with ON DELETE CASCADE
+  - CREATE INDEX idx_task_steps_task_id for task lookup
+  - CREATE INDEX idx_task_steps_task_order for ordered retrieval by (task_id, sort_order)
+- Updated SCHEMA_VERSION constant from 22 to 23
+- Added migration call in `run_migrations()` for version 23
+- Updated all test assertions from 22 to 23:
+  - test_schema_version_constant
+  - test_run_migrations_sets_schema_version
+  - test_run_migrations_is_idempotent
+  - test_extensibility_migrations_complete
+  - test_chat_conversations_migration_complete
+- All migration tests pass (149 passed)
+- Full test suite passes
+
+**Commands run:**
+- `cargo test --lib migrations::tests`
+- `cargo test`
 
 ### 2026-01-26 20:30:00 - Create TaskStep Entity and TaskStepStatus Enum
 
