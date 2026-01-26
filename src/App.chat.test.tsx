@@ -254,10 +254,10 @@ describe("ChatPanel Integration", () => {
       const { setWidth } = useChatStore.getState();
 
       act(() => {
-        setWidth(100); // Below MIN_WIDTH of 280
+        setWidth(100); // Below MIN_WIDTH of 320
       });
 
-      expect(useChatStore.getState().width).toBe(280);
+      expect(useChatStore.getState().width).toBe(320);
     });
 
     it("setWidth clamps to maximum", () => {
