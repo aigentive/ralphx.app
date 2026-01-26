@@ -442,7 +442,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck && npm run test",
       "Commit: feat(chat): add QueuedMessage and QueuedMessageList components"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
