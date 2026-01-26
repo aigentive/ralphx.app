@@ -24,31 +24,12 @@ This phase introduces deterministic progress tracking via **Task Steps** and enh
 | Dependency | Why Needed |
 |------------|------------|
 | TaskDetailModal with edit mode | TaskFullView builds on modal content |
-| TaskCard with context menu | Need to add progress indicators |
+| TaskCard with context menu | Add progress indicators to existing card |
 | uiStore patterns | Modal/view management |
-
-### Phase 17 (Worker Artifact Context) - Required
-
-| Dependency | Why Needed |
-|------------|------------|
 | Task entity with sourceProposalId | Steps imported from linked proposal |
-| TaskContext for worker | Steps included in worker context |
-| MCP tool infrastructure | New step tools follow same pattern |
-
-### Phase 15B (Execution Chat) - Required
-
-| Dependency | Why Needed |
-|------------|------------|
 | ExecutionChatService | Chat embedded in TaskFullView |
 | ChatPanel component | Refactored for embedding |
-| execution:* events | Real-time updates in chat |
-
-### Phase 6 (Kanban UI) - Required
-
-| Dependency | Why Needed |
-|------------|------------|
-| TaskCard component | Add execution state visuals |
-| TaskBoard component | Open TaskFullView on card click |
+| MCP tool infrastructure | New step tools follow same pattern |
 
 ## Implementation Pattern
 
