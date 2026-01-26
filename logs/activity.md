@@ -1,15 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 09:30:00
+**Last Updated:** 2026-01-26 10:15:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 3 / 14
-**Current Task:** Modify ClaudeCodeClient to support execution persistence
+**Tasks Completed:** 4 / 14
+**Current Task:** Update TransitionHandler to use spawn_with_persistence
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 10:15:00 - Add Streaming Support to ClaudeCodeClient
+
+**What was done:**
+- Added `StreamEvent` enum for stream processing events (TextChunk, ToolCallStart, ToolCallInput, ToolCallComplete, Completed, Error)
+- Added `StreamingSpawnResult` struct containing AgentHandle and Child process
+- Added `spawn_agent_streaming()` method that returns Child process for external stream handling
+- Added `build_cli_args()` helper for consistent CLI argument construction
+- Added `cli_available()` sync method for checking CLI availability
+- Supports `--resume` session ID for follow-up messages (used by ExecutionChatService)
+- Exported new types from infrastructure::agents module
+- Wrote 12 unit tests for new functionality (all passing)
+
+**Key Design Decisions:**
+- ClaudeCodeClient remains low-level; ExecutionChatService handles persistence logic
+- `spawn_agent_streaming()` does NOT store child in global PROCESSES map - caller manages lifecycle
+- Stream events are standardized for use by any persistence layer
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/agents/claude/claude_code_client.rs` (added StreamEvent, StreamingSpawnResult, spawn_agent_streaming, build_cli_args, cli_available + tests)
+- `src-tauri/src/infrastructure/agents/claude/mod.rs` (export new types)
+- `src-tauri/src/infrastructure/agents/mod.rs` (re-export StreamEvent, StreamingSpawnResult)
+
+**Commands Run:**
+- `cargo test claude_code_client --lib` (23 tests passed)
+- `cargo test --lib` (3022 tests passed)
 
 ### 2026-01-26 09:30:00 - Create ExecutionChatService
 

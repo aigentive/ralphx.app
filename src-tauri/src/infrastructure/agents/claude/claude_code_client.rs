@@ -1,9 +1,15 @@
 // Claude Code CLI client
 // Production implementation using the `claude` CLI
+//
+// This client supports two modes of operation:
+// 1. Simple spawn-and-wait: Use spawn_agent() + wait_for_completion()
+// 2. Streaming with persistence: Use spawn_agent_streaming() to get the Child process
+//    and handle stream processing externally (used by ExecutionChatService)
 
 use async_trait::async_trait;
 use futures::Stream;
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -15,6 +21,54 @@ use crate::domain::agents::{
     AgentConfig, AgentError, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgenticClient,
     ClientCapabilities, ClientType, ResponseChunk,
 };
+
+// ============================================================================
+// Streaming Event Types
+// ============================================================================
+
+/// Events emitted during agent stream processing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum StreamEvent {
+    /// Text chunk received from agent
+    TextChunk {
+        text: String,
+    },
+    /// Tool call started
+    ToolCallStart {
+        tool_name: String,
+        tool_id: Option<String>,
+    },
+    /// Tool call input (incremental JSON)
+    ToolCallInput {
+        tool_name: String,
+        tool_id: Option<String>,
+        partial_json: String,
+    },
+    /// Tool call completed
+    ToolCallComplete {
+        tool_name: String,
+        tool_id: Option<String>,
+        arguments: serde_json::Value,
+    },
+    /// Agent execution completed with session ID
+    Completed {
+        session_id: Option<String>,
+    },
+    /// Error occurred during execution
+    Error {
+        message: String,
+    },
+}
+
+/// Result from spawning an agent in streaming mode
+#[derive(Debug)]
+pub struct StreamingSpawnResult {
+    /// Handle to the spawned agent
+    pub handle: AgentHandle,
+    /// The spawned child process (stdout is piped for stream processing)
+    pub child: Child,
+}
 
 lazy_static! {
     /// Global tracker for spawned child processes
@@ -211,6 +265,120 @@ impl AgenticClient for ClaudeCodeClient {
     }
 }
 
+// ============================================================================
+// Streaming Spawn Support
+// ============================================================================
+
+impl ClaudeCodeClient {
+    /// Build CLI arguments from an AgentConfig
+    ///
+    /// This is used by both spawn_agent and spawn_agent_streaming to ensure
+    /// consistent argument construction.
+    fn build_cli_args(&self, config: &AgentConfig, resume_session_id: Option<&str>) -> Vec<String> {
+        let mut args = Vec::new();
+
+        // Prompt
+        args.extend(["-p".to_string(), config.prompt.clone()]);
+
+        // Output format for streaming
+        args.extend(["--output-format".to_string(), "stream-json".to_string()]);
+
+        // Plugin directory for agent/skill discovery
+        if let Some(plugin_dir) = &config.plugin_dir {
+            args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
+        }
+
+        // Resume session or use agent
+        if let Some(session_id) = resume_session_id {
+            args.extend(["--resume".to_string(), session_id.to_string()]);
+        } else if let Some(agent) = &config.agent {
+            args.extend(["--agent".to_string(), agent.clone()]);
+        }
+
+        // Model override
+        if let Some(model) = &config.model {
+            args.extend(["--model".to_string(), model.clone()]);
+        }
+
+        // Max tokens
+        if let Some(max_tokens) = config.max_tokens {
+            args.extend(["--max-tokens".to_string(), max_tokens.to_string()]);
+        }
+
+        // Permission prompt tool for UI-based approval
+        args.extend([
+            "--permission-prompt-tool".to_string(),
+            "mcp__ralphx__permission_request".to_string(),
+        ]);
+
+        args
+    }
+
+    /// Spawn an agent in streaming mode, returning the Child process for external processing
+    ///
+    /// Unlike `spawn_agent`, this method does NOT store the child process internally.
+    /// The caller is responsible for:
+    /// 1. Processing stdout for stream-json events
+    /// 2. Waiting for the process to complete
+    /// 3. Capturing the claude_session_id from the Result event
+    ///
+    /// This is used by ExecutionChatService to persist stream events to the database
+    /// while emitting Tauri events for real-time UI updates.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = client.spawn_agent_streaming(config, None).await?;
+    /// let stdout = result.child.stdout.take().unwrap();
+    /// let reader = BufReader::new(stdout);
+    /// // Process stream-json lines from reader...
+    /// ```
+    pub async fn spawn_agent_streaming(
+        &self,
+        config: AgentConfig,
+        resume_session_id: Option<&str>,
+    ) -> AgentResult<StreamingSpawnResult> {
+        // Check if CLI is available first
+        if !self.cli_path.exists() && which::which(&self.cli_path).is_err() {
+            return Err(AgentError::CliNotAvailable(format!(
+                "claude CLI not found at {:?}",
+                self.cli_path
+            )));
+        }
+
+        let args = self.build_cli_args(&config, resume_session_id);
+
+        // Build command
+        let mut cmd = tokio::process::Command::new(&self.cli_path);
+        cmd.args(&args)
+            .current_dir(&config.working_directory)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::null());
+
+        // Add environment variables from config
+        for (key, value) in &config.env {
+            cmd.env(key, value);
+        }
+
+        // Spawn the process
+        let child = cmd
+            .spawn()
+            .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
+
+        let handle = AgentHandle::new(ClientType::ClaudeCode, config.role);
+
+        Ok(StreamingSpawnResult { handle, child })
+    }
+
+    /// Check if the Claude CLI is available
+    ///
+    /// This is a simpler version of is_available() that doesn't require async.
+    pub fn cli_available(&self) -> bool {
+        self.cli_path.exists() || which::which(&self.cli_path).is_ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +467,159 @@ mod tests {
         let result = client.wait_for_completion(&handle).await;
         assert!(result.is_err());
         assert!(matches!(result, Err(AgentError::NotFound(_))));
+    }
+
+    // ==================== Streaming Spawn Tests ====================
+
+    #[test]
+    fn test_build_cli_args_basic() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test prompt");
+
+        let args = client.build_cli_args(&config, None);
+
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"Test prompt".to_string()));
+        assert!(args.contains(&"--output-format".to_string()));
+        assert!(args.contains(&"stream-json".to_string()));
+        assert!(args.contains(&"--permission-prompt-tool".to_string()));
+        assert!(args.contains(&"mcp__ralphx__permission_request".to_string()));
+    }
+
+    #[test]
+    fn test_build_cli_args_with_agent() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_agent("worker");
+
+        let args = client.build_cli_args(&config, None);
+
+        assert!(args.contains(&"--agent".to_string()));
+        assert!(args.contains(&"worker".to_string()));
+    }
+
+    #[test]
+    fn test_build_cli_args_with_resume() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_agent("worker");
+
+        let args = client.build_cli_args(&config, Some("session-123"));
+
+        // When resuming, --resume is used instead of --agent
+        assert!(args.contains(&"--resume".to_string()));
+        assert!(args.contains(&"session-123".to_string()));
+        // Agent should NOT be present when resuming
+        assert!(!args.contains(&"--agent".to_string()));
+    }
+
+    #[test]
+    fn test_build_cli_args_with_model() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_model("opus");
+
+        let args = client.build_cli_args(&config, None);
+
+        assert!(args.contains(&"--model".to_string()));
+        assert!(args.contains(&"opus".to_string()));
+    }
+
+    #[test]
+    fn test_build_cli_args_with_plugin_dir() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_plugin_dir("/custom/plugin");
+
+        let args = client.build_cli_args(&config, None);
+
+        assert!(args.contains(&"--plugin-dir".to_string()));
+        assert!(args.contains(&"/custom/plugin".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_agent_streaming_fails_with_nonexistent_cli() {
+        let client =
+            ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+        let config = AgentConfig::worker("test");
+
+        let result = client.spawn_agent_streaming(config, None).await;
+        assert!(result.is_err());
+        assert!(matches!(result, Err(AgentError::CliNotAvailable(_))));
+    }
+
+    #[test]
+    fn test_cli_available_with_nonexistent_path() {
+        let client =
+            ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+        assert!(!client.cli_available());
+    }
+
+    // ==================== StreamEvent Tests ====================
+
+    #[test]
+    fn test_stream_event_text_chunk_serialization() {
+        let event = StreamEvent::TextChunk {
+            text: "Hello world".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("TextChunk"));
+        assert!(json.contains("Hello world"));
+
+        // Deserialize back
+        let parsed: StreamEvent = serde_json::from_str(&json).unwrap();
+        if let StreamEvent::TextChunk { text } = parsed {
+            assert_eq!(text, "Hello world");
+        } else {
+            panic!("Expected TextChunk");
+        }
+    }
+
+    #[test]
+    fn test_stream_event_tool_call_start_serialization() {
+        let event = StreamEvent::ToolCallStart {
+            tool_name: "Read".to_string(),
+            tool_id: Some("tool-123".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("ToolCallStart"));
+        assert!(json.contains("Read"));
+        assert!(json.contains("tool-123"));
+    }
+
+    #[test]
+    fn test_stream_event_tool_call_complete_serialization() {
+        let event = StreamEvent::ToolCallComplete {
+            tool_name: "Write".to_string(),
+            tool_id: None,
+            arguments: serde_json::json!({"path": "test.txt"}),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("ToolCallComplete"));
+        assert!(json.contains("Write"));
+        assert!(json.contains("path"));
+    }
+
+    #[test]
+    fn test_stream_event_completed_serialization() {
+        let event = StreamEvent::Completed {
+            session_id: Some("sess-456".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("Completed"));
+        assert!(json.contains("sess-456"));
+    }
+
+    #[test]
+    fn test_stream_event_error_serialization() {
+        let event = StreamEvent::Error {
+            message: "Something went wrong".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("Error"));
+        assert!(json.contains("Something went wrong"));
+    }
+
+    #[test]
+    fn test_streaming_spawn_result_debug() {
+        // StreamingSpawnResult is Debug
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<StreamingSpawnResult>();
     }
 }
