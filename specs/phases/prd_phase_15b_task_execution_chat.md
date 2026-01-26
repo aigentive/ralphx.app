@@ -172,6 +172,27 @@ After completing the task: update `"passes": true`, commit, and stop.
     "passes": false
   },
   {
+    "category": "refactor",
+    "description": "Remove ExecutionChatService fallback - make it required",
+    "plan_section": "Cleanup",
+    "steps": [
+      "The fallback in TransitionHandler is unnecessary complexity - ExecutionChatService should always be present",
+      "Update src-tauri/src/domain/state_machine/context.rs (TaskServices):",
+      "  - Change execution_chat_service from Option<Arc<dyn ExecutionChatService>> to Arc<dyn ExecutionChatService>",
+      "  - Remove with_execution_chat_service() builder method",
+      "  - Require ExecutionChatService in TaskServices::new()",
+      "Update src-tauri/src/domain/state_machine/transition_handler.rs:",
+      "  - Remove the if let Some(...) fallback branch in on_enter(Executing)",
+      "  - Directly call self.machine.context.services.execution_chat_service.spawn_with_persistence(...)",
+      "Update test helper create_test_services():",
+      "  - Include MockExecutionChatService as a required parameter",
+      "Update all tests that create TaskServices to provide the mock",
+      "Run cargo test",
+      "Commit: refactor(state-machine): make ExecutionChatService required, remove fallback"
+    ],
+    "passes": false
+  },
+  {
     "category": "backend",
     "description": "Implement queue processing on worker completion",
     "plan_section": "User Queues Message to Worker",
