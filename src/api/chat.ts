@@ -555,6 +555,125 @@ export async function getAgentRunStatus(
 // Namespace Export for Alternative Usage Pattern
 // ============================================================================
 
+// ============================================================================
+// Task Execution Chat API Functions
+// ============================================================================
+
+/**
+ * Queued message for task execution
+ */
+export interface QueuedMessageResponse {
+  id: string;
+  content: string;
+  createdAt: string;
+  isEditing: boolean;
+}
+
+const QueuedMessageResponseSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  created_at: z.string(),
+  is_editing: z.boolean(),
+});
+
+type RawQueuedMessage = z.infer<typeof QueuedMessageResponseSchema>;
+
+function transformQueuedMessage(raw: RawQueuedMessage): QueuedMessageResponse {
+  return {
+    id: raw.id,
+    content: raw.content,
+    createdAt: raw.created_at,
+    isEditing: raw.is_editing,
+  };
+}
+
+/**
+ * Get the active execution conversation for a task
+ * @param taskId The task ID
+ * @returns The active execution conversation if one exists
+ */
+export async function getExecutionConversation(
+  taskId: string
+): Promise<ChatConversation | null> {
+  const raw = await typedInvoke(
+    "get_execution_conversation",
+    { task_id: taskId },
+    ChatConversationResponseSchema.nullable()
+  );
+  return raw ? transformConversation(raw) : null;
+}
+
+/**
+ * List all execution attempts for a task
+ * @param taskId The task ID
+ * @returns Array of execution conversations, ordered by created_at DESC
+ */
+export async function listTaskExecutions(
+  taskId: string
+): Promise<ChatConversation[]> {
+  const raw = await typedInvoke(
+    "list_task_executions",
+    { task_id: taskId },
+    z.array(ChatConversationResponseSchema)
+  );
+  return raw.map(transformConversation);
+}
+
+/**
+ * Queue a message to be sent to the worker when it finishes its current response
+ * @param taskId The task ID
+ * @param content The message content
+ * @returns The queued message
+ */
+export async function queueExecutionMessage(
+  taskId: string,
+  content: string
+): Promise<QueuedMessageResponse> {
+  const raw = await typedInvoke(
+    "queue_execution_message",
+    { task_id: taskId, content },
+    QueuedMessageResponseSchema
+  );
+  return transformQueuedMessage(raw);
+}
+
+/**
+ * Get all queued messages for a task
+ * @param taskId The task ID
+ * @returns Array of queued messages in FIFO order
+ */
+export async function getQueuedExecutionMessages(
+  taskId: string
+): Promise<QueuedMessageResponse[]> {
+  const raw = await typedInvoke(
+    "get_queued_execution_messages",
+    { task_id: taskId },
+    z.array(QueuedMessageResponseSchema)
+  );
+  return raw.map(transformQueuedMessage);
+}
+
+/**
+ * Delete a queued message before it's sent
+ * @param taskId The task ID
+ * @param messageId The message ID to delete
+ * @returns True if the message was found and deleted
+ */
+export async function deleteQueuedExecutionMessage(
+  taskId: string,
+  messageId: string
+): Promise<boolean> {
+  return typedInvoke(
+    "delete_queued_execution_message",
+    { task_id: taskId, message_id: messageId },
+    z.boolean()
+  );
+}
+
+// ============================================================================
+// Namespace Export for Alternative Usage Pattern
+// ============================================================================
+
 /**
  * Chat API as a namespace object (alternative to individual imports)
  */
@@ -576,4 +695,10 @@ export const chatApi = {
   getConversation,
   createConversation,
   getAgentRunStatus,
+  // Task execution chat functions
+  getExecutionConversation,
+  listTaskExecutions,
+  queueExecutionMessage,
+  getQueuedExecutionMessages,
+  deleteQueuedExecutionMessage,
 } as const;

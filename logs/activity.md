@@ -1,15 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 07:00:00
+**Last Updated:** 2026-01-26 07:15:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 12 / 14
-**Current Task:** Update chat API for execution operations
+**Tasks Completed:** 13 / 14
+**Current Task:** Wire up execution chat with Activity Stream
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 07:15:00 - Update Chat API for Execution Operations
+
+**What was done:**
+- Added execution chat API functions to `src/api/chat.ts`:
+  - `getExecutionConversation(taskId)` - get active execution conversation
+  - `listTaskExecutions(taskId)` - list all execution attempts for a task
+  - `queueExecutionMessage(taskId, content)` - queue message to worker
+  - `getQueuedExecutionMessages(taskId)` - get queued messages
+  - `deleteQueuedExecutionMessage(taskId, messageId)` - delete queued message
+- Added QueuedMessageResponse interface and schema
+- Added transform function for queued messages (snake_case → camelCase)
+- Updated chatApi namespace export with new functions
+
+**Verification:**
+- ✅ All functions follow existing patterns (typedInvoke, snake_case → camelCase)
+- ✅ Zod schemas match Rust backend serialization
+- ✅ Ran npm run typecheck - all checks passed
+
+**Status:** Task complete - execution chat API functions implemented
 
 ### 2026-01-26 07:00:00 - Add Execution-Specific UI Elements
 
