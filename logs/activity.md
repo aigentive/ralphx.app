@@ -1,15 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:10:07
+**Last Updated:** 2026-01-26 20:14:49
 **Phase:** Task Execution Experience
-**Tasks Completed:** 8 / 42
-**Current Task:** Create step status transition commands
+**Tasks Completed:** 9 / 42
+**Current Task:** Add step HTTP endpoints for MCP
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:14:49 - Create step status transition commands
+
+**What was done:**
+- Extended `src-tauri/src/commands/task_step_commands.rs`:
+  - Added 4 status transition commands:
+    - `start_step(step_id)` - Validates step is Pending, sets status to InProgress, records started_at
+    - `complete_step(step_id, note?)` - Validates step is InProgress, sets status to Completed, records completed_at
+    - `skip_step(step_id, reason)` - Validates step is Pending or InProgress, sets status to Skipped with reason
+    - `fail_step(step_id, error)` - Validates step is InProgress, sets status to Failed with error message
+  - Each command emits `step:updated` event to frontend with step data and task_id
+  - All commands validate current status before transition
+  - All commands update timestamps (started_at, completed_at) appropriately
+- Added Emitter trait import for event emission
+- Updated `src-tauri/src/lib.rs` to register 4 new commands
+- Created 8 unit tests:
+  - test_start_step_valid: Verifies Pending → InProgress transition
+  - test_start_step_invalid_status: Verifies transition validation
+  - test_complete_step_valid: Verifies InProgress → Completed with note
+  - test_complete_step_invalid_status: Verifies validation
+  - test_skip_step_from_pending: Verifies Pending → Skipped
+  - test_skip_step_from_in_progress: Verifies InProgress → Skipped
+  - test_fail_step_valid: Verifies InProgress → Failed with error
+  - test_fail_step_invalid_status: Verifies validation
+- All 14 tests pass (6 CRUD + 8 transition tests)
+
+**Commands:**
+- `cargo test task_step_commands --lib` - All 14 tests passed
+- `cargo clippy --lib -- -D warnings` - No warnings
 
 ### 2026-01-26 20:10:07 - Create task step CRUD commands
 
