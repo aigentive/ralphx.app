@@ -1,15 +1,93 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:15:00
+**Last Updated:** 2026-01-26 20:45:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 22 / 24
-**Current Task:** Update CLAUDE.md files for Phase 16
+**Tasks Completed:** 23 / 24
+**Current Task:** Phase 16 complete - pending documentation commit
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:45:00 - Phase 16 Documentation Update (Task 23)
+
+**What was done:**
+- Updated `src/CLAUDE.md` with Phase 16 frontend additions:
+  - Added PlanDisplay, PlanEditor, and PlanTemplateSelector components to Ideation/ section
+  - Added IdeationSettingsPanel to settings/ section
+  - Updated ideationStore.ts description to note planArtifact state
+  - Updated task.ts types to include sourceProposalId and planArtifactId traceability fields
+  - Added ideation.ts and ideation-config.ts type files
+  - Added comprehensive "Ideation Plan Artifacts (Phase 16)" section with:
+    - IdeationSettings explanation (plan modes, approval, auto-suggest, auto-link)
+    - Component documentation (PlanDisplay, PlanEditor, PlanTemplateSelector, IdeationSettingsPanel)
+    - State management (ideationStore planArtifact field)
+    - Plan features (versioning, historical view, export/import, proactive sync, task traceability)
+    - MCP tools available to orchestrator-ideation agent
+- Updated `src-tauri/CLAUDE.md` with Phase 16 backend additions:
+  - Added IdeationSettings entity to Key Entities table
+  - Added domain/ideation/ directory to directory structure
+  - Added ideation_settings table to database tables list
+  - Updated tool scoping table to include plan artifact tools for orchestrator-ideation
+  - Added plan:proposals_may_need_update event to events section
+  - Added comprehensive "Ideation Plan Artifacts (Phase 16)" section with:
+    - IdeationSettings entity and repository documentation
+    - Data model changes (IdeationSession, TaskProposal, Task traceability fields)
+    - HTTP endpoints for MCP proxy (all plan artifact endpoints)
+    - MCP tools documentation
+    - Proactive sync ArtifactFlow documentation
+    - Methodology integration infrastructure (generic config, no specific methodologies yet)
+    - Task traceability explanation (ApplyService copies fields)
+    - Database migration SQL
+- Updated `logs/activity.md` Current Status header:
+  - Tasks completed: 23/24
+  - Current task: Phase 16 complete - pending documentation commit
+
+**Phase 16 Implementation Summary:**
+
+Phase 16 (Ideation Plan Artifacts) adds implementation plans as artifacts to the ideation workflow:
+
+**Backend (Rust/Tauri):**
+- IdeationSettings entity with SQLite persistence (plan mode, approval settings)
+- Plan artifact fields on IdeationSession, TaskProposal, and Task entities
+- HTTP endpoints on port 3847 for MCP server to proxy plan operations
+- Proactive sync ArtifactFlow (plan_updated_sync) for auto-updating proposals
+- Generic methodology integration infrastructure (ready for future methodologies to define configs/templates)
+- Task traceability fields (source_proposal_id, plan_artifact_id) for worker context access
+
+**Frontend (React/TypeScript):**
+- IdeationSettingsPanel component for plan workflow configuration (5th card in SettingsView)
+- PlanDisplay component with collapse/expand, edit, export, approve functionality
+- PlanEditor component with markdown editing and preview toggle
+- PlanTemplateSelector component (hidden when no templates available)
+- Plan artifact state in ideationStore (fetchPlanArtifact action)
+- Historical plan version view ("View as of proposal creation" for proposals)
+- Export/import functionality (download/upload markdown files)
+- Proactive sync notification handling (with undo support)
+
+**MCP Integration:**
+- 5 new MCP tools for orchestrator-ideation agent:
+  - create_plan_artifact, update_plan_artifact, get_plan_artifact
+  - link_proposals_to_plan, get_session_plan
+- Tool scoping via RALPHX_AGENT_TYPE environment variable
+- HTTP proxy pattern (no business logic in MCP server)
+
+**Workflow Modes:**
+- Required: Plan must be created before proposals
+- Optional: Plan suggested for complex features (default)
+- Parallel: Plan and proposals created together
+
+**Key Features:**
+- Plan versioning with historical view
+- Proactive sync (auto-update proposals when plan changes, with undo)
+- Export/import plans as markdown
+- Task traceability to original proposal and plan
+- Generic infrastructure ready for methodology-specific plan types/templates
+
+**Commands run:**
+- Documentation updates only (no code changes in this task)
 
 ### 2026-01-26 20:15:00 - Plan import functionality (Phase 16, Task 22)
 
