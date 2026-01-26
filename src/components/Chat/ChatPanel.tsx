@@ -792,7 +792,24 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     startEditingQueuedMessage(lastMessage.id);
   }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage]);
 
-  // Subscribe to Tauri events for real-time updates
+  // Store refs for event handlers to avoid stale closures
+  const queuedMessagesRef = useRef(queuedMessages);
+  const deleteQueuedMessageRef = useRef(deleteQueuedMessage);
+  const setAgentRunningRef = useRef(setAgentRunning);
+
+  useEffect(() => {
+    queuedMessagesRef.current = queuedMessages;
+  }, [queuedMessages]);
+
+  useEffect(() => {
+    deleteQueuedMessageRef.current = deleteQueuedMessage;
+  }, [deleteQueuedMessage]);
+
+  useEffect(() => {
+    setAgentRunningRef.current = setAgentRunning;
+  }, [setAgentRunning]);
+
+  // Subscribe to Tauri events for real-time updates (only on mount)
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
 
@@ -823,14 +840,15 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         "chat:run_completed",
         async (event) => {
           console.log("Agent run completed:", event.payload);
-          setAgentRunning(false);
+          setAgentRunningRef.current(false);
 
           // Process queue: send first queued message if any
-          if (queuedMessages.length > 0) {
-            const firstMessage = queuedMessages[0];
+          const currentQueue = queuedMessagesRef.current;
+          if (currentQueue.length > 0) {
+            const firstMessage = currentQueue[0];
             if (firstMessage) {
               // Remove from queue first
-              deleteQueuedMessage(firstMessage.id);
+              deleteQueuedMessageRef.current(firstMessage.id);
               // Then send it using ref to avoid stale closure
               await handleSendRef.current?.(firstMessage.content);
             }
@@ -876,7 +894,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [setAgentRunning, queuedMessages, deleteQueuedMessage]);
+  }, []); // Empty deps - only run on mount/unmount
 
   // Process messages into groups
   const groupedMessages = useMemo(() => {
