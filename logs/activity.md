@@ -1,15 +1,57 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:45:00
+**Last Updated:** 2026-01-26 06:15:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 3 / 24
-**Current Task:** Add traceability fields to Task entity for worker context
+**Tasks Completed:** 4 / 24
+**Current Task:** Add Tauri commands for ideation settings
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 06:15:00 - Traceability Fields for Task Entity (Phase 16)
+
+**What was done:**
+- Added migration v21 for task traceability fields:
+  - `ALTER TABLE tasks ADD COLUMN source_proposal_id TEXT` (references task_proposals)
+  - `ALTER TABLE tasks ADD COLUMN plan_artifact_id TEXT` (references artifacts)
+- Updated `Task` entity in `domain/entities/task.rs`:
+  - Added `source_proposal_id: Option<TaskProposalId>` field
+  - Added `plan_artifact_id: Option<ArtifactId>` field
+  - Updated imports to include `ArtifactId` and `TaskProposalId`
+  - Updated constructors (`Task::new`, `Task::new_with_category`) to initialize fields as None
+  - Updated `from_row` method to deserialize traceability fields from SQLite
+- Updated `SqliteTaskRepository` with new fields in all queries:
+  - INSERT: Added source_proposal_id and plan_artifact_id to insert statement
+  - SELECT: Updated all queries (get_by_id, get_by_project, get_by_status, get_next_executable, get_blockers, get_dependents)
+  - UPDATE: Added source_proposal_id and plan_artifact_id to update statement
+- Updated `ApplyService::create_task_from_proposal`:
+  - Copy `source_proposal_id` from proposal ID
+  - Copy `plan_artifact_id` from proposal (inherited from session plan)
+- Updated test database schema in `task.rs` to include new columns
+- Added comprehensive tests for traceability fields:
+  - `task_new_defaults_traceability_fields_to_none`
+  - `task_serializes_with_traceability_fields`
+  - `task_deserializes_with_traceability_fields`
+  - `task_from_row_with_traceability_fields`
+  - `task_from_row_with_null_traceability_fields`
+
+**Tests:**
+- All 3044 tests passed
+- Task entity tests: 58 passed
+- Repository tests verify field persistence
+
+**Commands run:**
+- `cargo test --lib`
+
+**Why this matters:**
+These fields enable worker agents to access implementation context during task execution. When a worker starts a task, it can:
+1. Fetch the original proposal (via `source_proposal_id`) for acceptance criteria and detailed steps
+2. Fetch the implementation plan artifact (via `plan_artifact_id`) for architectural context
+
+This creates a traceable chain: Task → Proposal → Plan Artifact, ensuring workers have full context without manual lookup.
 
 ### 2026-01-26 05:45:00 - Plan Artifact Fields for Ideation Entities (Phase 16)
 

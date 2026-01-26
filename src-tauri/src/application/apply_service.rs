@@ -346,6 +346,10 @@ where
         task.priority = proposal.priority_score;
         task.internal_status = status;
 
+        // Copy traceability references for worker context access
+        task.source_proposal_id = Some(proposal.id.clone());
+        task.plan_artifact_id = proposal.plan_artifact_id.clone();
+
         task
     }
 

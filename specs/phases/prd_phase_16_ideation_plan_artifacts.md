@@ -140,7 +140,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(entities): add traceability fields to Task for worker context"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
