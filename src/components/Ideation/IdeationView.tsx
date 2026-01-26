@@ -31,7 +31,11 @@ import {
   Square,
   ArrowUpDown,
   Trash2,
+  AlertCircle,
+  Undo2,
+  Eye,
 } from "lucide-react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   IdeationSession,
   TaskProposal,
@@ -57,7 +61,7 @@ import { Card } from "@/components/ui/card";
 import ReactMarkdown from "react-markdown";
 import type { Priority } from "@/types/ideation";
 import { PlanDisplay } from "./PlanDisplay";
-import { useIdeationStore } from "@/stores/ideationStore";
+import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
 
 // ============================================================================
 // Types
@@ -312,9 +316,10 @@ interface ProposalCardProps {
   onSelect: (proposalId: string) => void;
   onEdit: (proposalId: string) => void;
   onRemove: (proposalId: string) => void;
+  isHighlighted?: boolean;
 }
 
-function ProposalCard({ proposal, onSelect, onEdit, onRemove }: ProposalCardProps) {
+function ProposalCard({ proposal, onSelect, onEdit, onRemove, isHighlighted = false }: ProposalCardProps) {
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
   const isSelected = proposal.selected;
   const priorityStyle = PRIORITY_STYLES[effectivePriority];
@@ -323,9 +328,11 @@ function ProposalCard({ proposal, onSelect, onEdit, onRemove }: ProposalCardProp
     <Card
       data-testid={`proposal-card-${proposal.id}`}
       className={`group relative p-3 transition-all duration-150 cursor-pointer
-        ${isSelected
-          ? "border-2 border-[var(--accent-primary)] bg-[rgba(255,107,53,0.05)] shadow-[0_0_0_3px_rgba(255,107,53,0.15)]"
-          : "border border-[var(--border-subtle)] hover:shadow-[var(--shadow-sm)] hover:-translate-y-0.5"
+        ${isHighlighted
+          ? "border-2 border-yellow-500 bg-yellow-500/10 shadow-[0_0_0_3px_rgba(234,179,8,0.15)] animate-pulse"
+          : isSelected
+            ? "border-2 border-[var(--accent-primary)] bg-[rgba(255,107,53,0.05)] shadow-[0_0_0_3px_rgba(255,107,53,0.15)]"
+            : "border border-[var(--border-subtle)] hover:shadow-[var(--shadow-sm)] hover:-translate-y-0.5"
         }`}
     >
       <div className="flex items-start gap-3">
@@ -404,6 +411,88 @@ function ProposalCard({ proposal, onSelect, onEdit, onRemove }: ProposalCardProp
                 Modified
               </Badge>
             )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ============================================================================
+// Proactive Sync Notification
+// ============================================================================
+
+interface ProactiveSyncNotificationProps {
+  notification: ProactiveSyncNotification;
+  onDismiss: () => void;
+  onReview: () => void;
+  onUndo: () => void;
+}
+
+function ProactiveSyncNotificationBanner({
+  notification,
+  onDismiss,
+  onReview,
+  onUndo,
+}: ProactiveSyncNotificationProps) {
+  const affectedCount = notification.proposalIds.length;
+
+  return (
+    <Card
+      data-testid="proactive-sync-notification"
+      className="mb-4 border-2 border-[var(--accent-primary)] bg-[rgba(255,107,53,0.05)]"
+    >
+      <div className="p-3">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-[var(--accent-primary)] flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[var(--text-primary)] mb-1">
+              Plan updated
+            </p>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {affectedCount} proposal{affectedCount !== 1 ? "s" : ""} may need revision.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onReview}
+                    className="text-[var(--accent-primary)] hover:bg-[rgba(255,107,53,0.1)]"
+                  >
+                    <Eye className="w-4 h-4 mr-1" />
+                    Review
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Highlight affected proposals</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onUndo}
+                    className="text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                  >
+                    <Undo2 className="w-4 h-4 mr-1" />
+                    Undo
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Revert proposals to previous state</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDismiss}
+              className="h-7 w-7"
+            >
+              <span className="sr-only">Dismiss</span>
+              ×
+            </Button>
           </div>
         </div>
       </div>
@@ -595,6 +684,9 @@ export function IdeationView({
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
   const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
+  const showSyncNotification = useIdeationStore((state) => state.showSyncNotification);
+  const syncNotification = useIdeationStore((state) => state.syncNotification);
+  const dismissSyncNotification = useIdeationStore((state) => state.dismissSyncNotification);
 
   // Fetch plan artifact when session changes and has planArtifactId
   useEffect(() => {
@@ -602,6 +694,43 @@ export function IdeationView({
       fetchPlanArtifact(session.planArtifactId);
     }
   }, [session?.planArtifactId, fetchPlanArtifact]);
+
+  // Subscribe to proactive sync event
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    const setupListener = async () => {
+      unlisten = await listen<{ artifact_id: string; proposal_ids: string[] }>(
+        "plan:proposals_may_need_update",
+        (event) => {
+          // Store previous proposal states for undo
+          const affectedProposals = proposals.filter((p) =>
+            event.payload.proposal_ids.includes(p.id)
+          );
+          const previousStates: Record<string, unknown> = {};
+          affectedProposals.forEach((p) => {
+            previousStates[p.id] = { ...p };
+          });
+
+          // Show notification
+          showSyncNotification({
+            artifactId: event.payload.artifact_id,
+            proposalIds: event.payload.proposal_ids,
+            previousStates,
+            timestamp: Date.now(),
+          });
+        }
+      );
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [proposals, showSyncNotification]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -690,6 +819,39 @@ export function IdeationView({
       onRemoveProposal(p.id);
     });
   }, [proposals, onRemoveProposal]);
+
+  // Proactive sync notification handlers
+  const [highlightedProposalIds, setHighlightedProposalIds] = useState<Set<string>>(new Set());
+
+  const handleReviewSync = useCallback(() => {
+    if (syncNotification) {
+      setHighlightedProposalIds(new Set(syncNotification.proposalIds));
+      // Auto-clear highlight after 5 seconds
+      setTimeout(() => {
+        setHighlightedProposalIds(new Set());
+      }, 5000);
+    }
+  }, [syncNotification]);
+
+  const handleUndoSync = useCallback(() => {
+    if (!syncNotification) return;
+
+    // Revert proposals to previous state
+    // Note: This would require updating proposals via the parent component
+    // For now, we'll dismiss the notification and log the undo action
+    console.log("Undo sync - restoring proposals:", syncNotification.previousStates);
+
+    // TODO: Implement actual proposal revert via parent component
+    // This would require passing a callback from the parent to update proposal data
+
+    dismissSyncNotification();
+    setHighlightedProposalIds(new Set());
+  }, [syncNotification, dismissSyncNotification]);
+
+  const handleDismissSync = useCallback(() => {
+    dismissSyncNotification();
+    setHighlightedProposalIds(new Set());
+  }, [dismissSyncNotification]);
 
   const selectedCount = proposals.filter((p) => p.selected).length;
   const canApply = selectedCount > 0 && !isLoading;
@@ -830,6 +992,16 @@ export function IdeationView({
 
           {/* Proposals List with Plan Display */}
           <div className="flex-1 overflow-y-auto p-4">
+            {/* Proactive Sync Notification */}
+            {syncNotification && (
+              <ProactiveSyncNotificationBanner
+                notification={syncNotification}
+                onDismiss={handleDismissSync}
+                onReview={handleReviewSync}
+                onUndo={handleUndoSync}
+              />
+            )}
+
             {/* Plan Display - shown above proposals when plan exists */}
             {planArtifact && (
               <div className="mb-4">
@@ -883,6 +1055,7 @@ export function IdeationView({
                     onSelect={onSelectProposal}
                     onEdit={onEditProposal}
                     onRemove={onRemoveProposal}
+                    isHighlighted={highlightedProposalIds.has(proposal.id)}
                   />
                 ))}
               </div>

@@ -15,6 +15,17 @@ import type { IdeationSettings } from "@/types/ideation-config";
 // State Interface
 // ============================================================================
 
+export interface ProactiveSyncNotification {
+  /** Artifact ID that was updated */
+  artifactId: string;
+  /** Proposal IDs that may need updating */
+  proposalIds: string[];
+  /** Previous proposal states for undo functionality */
+  previousStates: Record<string, unknown>;
+  /** Timestamp when notification was created */
+  timestamp: number;
+}
+
 interface IdeationState {
   /** Sessions indexed by ID for O(1) lookup */
   sessions: Record<string, IdeationSession>;
@@ -24,6 +35,8 @@ interface IdeationState {
   planArtifact: Artifact | null;
   /** Ideation settings */
   ideationSettings: IdeationSettings | null;
+  /** Proactive sync notification for stale proposals */
+  syncNotification: ProactiveSyncNotification | null;
   /** Loading state for async operations */
   isLoading: boolean;
   /** Error message, or null if no error */
@@ -51,6 +64,10 @@ interface IdeationActions {
   fetchPlanArtifact: (artifactId: string) => Promise<void>;
   /** Set ideation settings */
   setIdeationSettings: (settings: IdeationSettings) => void;
+  /** Show proactive sync notification */
+  showSyncNotification: (notification: ProactiveSyncNotification) => void;
+  /** Dismiss sync notification */
+  dismissSyncNotification: () => void;
   /** Set loading state */
   setLoading: (isLoading: boolean) => void;
   /** Set error message */
@@ -70,6 +87,7 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     activeSessionId: null,
     planArtifact: null,
     ideationSettings: null,
+    syncNotification: null,
     isLoading: false,
     error: null,
 
@@ -135,6 +153,16 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     setIdeationSettings: (settings) =>
       set((state) => {
         state.ideationSettings = settings;
+      }),
+
+    showSyncNotification: (notification) =>
+      set((state) => {
+        state.syncNotification = notification;
+      }),
+
+    dismissSyncNotification: () =>
+      set((state) => {
+        state.syncNotification = null;
       }),
 
     setLoading: (isLoading) =>

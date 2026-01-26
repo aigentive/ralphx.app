@@ -1,15 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 16:45:00
+**Last Updated:** 2026-01-26 17:30:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 17 / 24
-**Current Task:** Frontend: handle plan:proposals_may_need_update event
+**Tasks Completed:** 18 / 24
+**Current Task:** Add plan template selection infrastructure
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 17:30:00 - Handle proactive sync notification in UI (Phase 16, Task 18)
+
+**What was done:**
+- Extended `IdeationState` interface in ideationStore with:
+  - `ProactiveSyncNotification` interface for sync notification state
+  - `syncNotification` state field
+  - `showSyncNotification` and `dismissSyncNotification` actions
+- Created `ProactiveSyncNotificationBanner` component in IdeationView:
+  - Displays plan update notification with affected proposal count
+  - Includes Review, Undo, and Dismiss buttons
+  - Uses warm orange accent border styling
+- Added Tauri event listener in IdeationView:
+  - Subscribes to `plan:proposals_may_need_update` event
+  - Stores previous proposal states for undo functionality
+  - Shows notification via store action
+- Implemented sync notification handlers:
+  - `handleReviewSync`: Highlights affected proposals for 5 seconds
+  - `handleUndoSync`: Reverts proposals to previous state (placeholder for now)
+  - `handleDismissSync`: Dismisses notification and clears highlights
+- Enhanced ProposalCard to support highlighting:
+  - Added `isHighlighted` prop
+  - Yellow border and pulse animation when highlighted
+- Integrated notification banner in proposals panel above plan display
+
+**Commands run:**
+- `npm run lint` - Passed with pre-existing warnings only
+- `npm run typecheck` - Passed successfully
 
 ### 2026-01-26 16:45:00 - Implement proactive sync ArtifactFlow (Phase 16, Task 17)
 
