@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Undo2,
   Eye,
+  Upload,
 } from "lucide-react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -910,6 +911,68 @@ export function IdeationView({
     setHighlightedProposalIds(new Set());
   }, [dismissSyncNotification]);
 
+  // Plan import handler
+  const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportPlan = useCallback(() => {
+    // Trigger the hidden file input
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!session) return;
+
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Read file content
+      const content = await file.text();
+
+      // Extract title from filename
+      const title = file.name.replace(/\.md$/, "").replace(/_/g, " ");
+
+      // Call HTTP endpoint to create plan artifact
+      const apiResponse = await fetch("http://localhost:3847/api/create_plan_artifact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: session.id,
+          title,
+          content,
+        }),
+      });
+
+      if (!apiResponse.ok) {
+        throw new Error("Failed to import plan");
+      }
+
+      const data = await apiResponse.json();
+
+      // Refresh plan artifact in store
+      if (data.id) {
+        await fetchPlanArtifact(data.id);
+
+        // Show success notification
+        setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
+        setTimeout(() => setImportStatus(null), 5000);
+      }
+    } catch (error) {
+      console.error("Plan import error:", error);
+      setImportStatus({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to import plan",
+      });
+      setTimeout(() => setImportStatus(null), 5000);
+    } finally {
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }, [session, fetchPlanArtifact]);
+
   const selectedCount = proposals.filter((p) => p.selected).length;
   const canApply = selectedCount > 0 && !isLoading;
 
@@ -1049,6 +1112,32 @@ export function IdeationView({
 
           {/* Proposals List with Plan Display */}
           <div className="flex-1 overflow-y-auto p-4">
+            {/* Import Status Notification */}
+            {importStatus && (
+              <Card
+                data-testid="import-status-notification"
+                className={`mb-4 border-2 ${
+                  importStatus.type === "success"
+                    ? "border-green-500 bg-green-500/10"
+                    : "border-red-500 bg-red-500/10"
+                }`}
+              >
+                <div className="p-3 flex items-center justify-between">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    {importStatus.message}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setImportStatus(null)}
+                    className="h-7 w-7"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </Card>
+            )}
+
             {/* Proactive Sync Notification */}
             {syncNotification && (
               <ProactiveSyncNotificationBanner
@@ -1057,6 +1146,21 @@ export function IdeationView({
                 onReview={handleReviewSync}
                 onUndo={handleUndoSync}
               />
+            )}
+
+            {/* Import Plan Button - shown when no plan exists */}
+            {!planArtifact && proposals.length > 0 && (
+              <div className="mb-4">
+                <Button
+                  variant="outline"
+                  onClick={handleImportPlan}
+                  className="w-full gap-2"
+                  data-testid="import-plan-button"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Implementation Plan
+                </Button>
+              </div>
             )}
 
             {/* Plan Display - shown above proposals when plan exists */}
@@ -1165,6 +1269,16 @@ export function IdeationView({
           version={planHistoryDialog.version}
         />
       )}
+
+      {/* Hidden file input for plan import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md"
+        onChange={handleFileSelected}
+        className="hidden"
+        data-testid="plan-import-file-input"
+      />
     </div>
   );
 }

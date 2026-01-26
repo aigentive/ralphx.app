@@ -1,31 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:00:00
+**Last Updated:** 2026-01-26 20:15:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 21 / 24
-**Current Task:** Add plan import functionality
+**Tasks Completed:** 22 / 24
+**Current Task:** Update CLAUDE.md files for Phase 16
 
 ---
 
 
 ## Session Log
 
-### 2026-01-26 20:00:00 - Plan export functionality verification (Phase 16, Task 21)
+### 2026-01-26 20:15:00 - Plan import functionality (Phase 16, Task 22)
 
 **What was done:**
-- Verified plan export functionality already fully implemented in previous tasks:
-  - Export button exists in PlanDisplay component header (lines 225-233)
-  - handleExport function implemented (lines 141-157 in PlanDisplay.tsx)
-  - Downloads plan as markdown file when clicked
-  - Filename format: `{plan_name}.md` (sanitized, lowercased)
-  - Uses Blob API with URL.createObjectURL for download
-- Verified comprehensive test coverage:
-  - Test file exists at `src/components/Ideation/PlanDisplay.test.tsx`
-  - Export functionality tested (lines 185-208)
-  - Tests mock URL.createObjectURL and verify download flow
-  - All tests passing
-- No code changes needed - functionality complete from previous implementation
+- Implemented plan import functionality in IdeationView component:
+  - Added 'Import Implementation Plan' button visible when no plan exists and proposals are present
+  - Created handleImportPlan callback to trigger file picker
+  - Added handleFileSelected callback to process markdown file upload
+  - Implemented file reading using File API (file.text())
+  - Calls HTTP endpoint `POST /api/create_plan_artifact` with session_id, title, and content
+  - Refreshes plan artifact in store after successful import
+  - Added import status notifications (success/error) with auto-dismiss
+- Updated IdeationView UI:
+  - Added Upload icon import from lucide-react
+  - Added hidden file input with ref for file selection
+  - Added import status notification card with success/error styling
+  - Import button positioned above proposals when no plan exists
+- Extracted plan title from filename (removes .md extension, replaces underscores with spaces)
+- Plan versioning handled automatically (starts at version 1 per backend logic)
+- Success notification shows plan title and auto-dismisses after 5 seconds
+- Error handling with user-friendly error messages
 
 **Commands run:**
 - `npm run lint` - Passed (11 pre-existing warnings, 0 errors)
