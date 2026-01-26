@@ -1,15 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:12:45
+**Last Updated:** 2026-01-26 21:17:48
 **Phase:** Task Execution Experience
-**Tasks Completed:** 23 / 42
-**Current Task:** Create useTaskExecutionState hook
+**Tasks Completed:** 24 / 42
+**Current Task:** Add execution visuals to TaskCard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:17:48 - Create useTaskExecutionState hook
+
+**What was done:**
+- Created `src/hooks/useTaskExecutionState.ts`:
+  - Combines task data and step progress for execution state tracking
+  - Exports `useTaskExecutionState(taskId)` hook
+  - Returns `TaskExecutionState` interface:
+    - `isActive`: boolean indicating active execution
+    - `duration`: seconds since task started (null if not started)
+    - `phase`: ExecutionPhase enum ('idle', 'executing', 'qa', 'review', 'done')
+    - `stepProgress`: StepProgressSummary or null
+  - Uses `useQuery` to fetch task via `api.tasks.get(taskId)` with 5s staleTime
+  - Uses `useStepProgress(taskId)` for real-time step data
+  - Implements live duration updates via `setInterval` when task is active
+  - Pure function `getExecutionPhase()` maps internal status to phase
+  - Pure function `calculateDuration()` computes seconds since start
+  - Exports `formatDuration()` helper: formats seconds to "2m 15s" / "1h 23m"
+- Created `src/hooks/useTaskExecutionState.test.tsx`:
+  - 13 passing tests covering:
+    - `getExecutionPhase()` for all status types
+    - `calculateDuration()` with null and timestamp inputs
+    - `formatDuration()` with various durations (seconds, minutes, hours)
+  - Tests use pure function replicas to avoid complex hook testing
+- Ran linting and typechecking: all pass
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test -- src/hooks/useTaskExecutionState.test.tsx`
 
 ### 2026-01-26 21:12:45 - Add execution state animations to CSS
 
