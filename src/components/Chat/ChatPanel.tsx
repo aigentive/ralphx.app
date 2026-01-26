@@ -556,7 +556,7 @@ function CollapsedPanel({ onExpand, hasUnread }: CollapsedPanelProps) {
   return (
     <div
       data-testid="chat-panel-collapsed"
-      className="fixed top-12 right-0 bottom-0 flex flex-col items-center justify-center"
+      className="fixed top-14 right-0 bottom-0 flex flex-col items-center justify-center"
       style={{
         width: `${COLLAPSED_WIDTH}px`,
         backgroundColor: "var(--bg-surface)",
@@ -962,7 +962,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         role="complementary"
         aria-label="Chat panel"
         className={cn(
-          "fixed top-12 right-0 bottom-0 flex flex-col",
+          "fixed top-14 right-0 bottom-0 flex flex-col",
           isExiting ? "chat-panel-exit" : "chat-panel-enter"
         )}
         style={{
@@ -1105,6 +1105,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                   : "Send a message..."
               }
               showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+              autoFocus
             />
           </div>
         </div>

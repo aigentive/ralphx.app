@@ -135,6 +135,18 @@ export function ChatInput({
     }
   }, [autoFocus]);
 
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = "auto";
+    // Set height to scrollHeight, capped at maxHeight (120px)
+    const newHeight = Math.min(textarea.scrollHeight, 120);
+    textarea.style.height = `${newHeight}px`;
+  }, [value]);
+
   // Handle value changes
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -213,7 +225,7 @@ export function ChatInput({
           disabled
           title="Attach files (coming soon)"
           aria-label="Attach file"
-          className="p-2 rounded-lg transition-colors disabled:opacity-50"
+          className="p-2 rounded-lg transition-colors disabled:opacity-50 shrink-0 h-10 flex items-center justify-center"
           style={{
             backgroundColor: "var(--bg-elevated)",
             color: "var(--text-muted)",
@@ -233,12 +245,15 @@ export function ChatInput({
           placeholder={effectivePlaceholder}
           rows={1}
           aria-label="Message input"
-          className="flex-1 px-3 py-2 text-sm resize-none rounded-lg outline-none focus:ring-1 focus:ring-offset-0"
+          className="flex-1 px-3 py-2 text-sm resize-none rounded-lg outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
           style={{
             backgroundColor: "var(--bg-elevated)",
             color: "var(--text-primary)",
             minHeight: "40px",
             maxHeight: "120px",
+            overflowY: "auto",
+            boxShadow: "none",
+            outline: "none",
           }}
         />
 
@@ -250,7 +265,7 @@ export function ChatInput({
           disabled={!canSend}
           aria-label="Send message"
           aria-busy={isSending}
-          className="px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          className="px-3 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0 h-10 flex items-center justify-center"
           style={{
             backgroundColor: "var(--accent-primary)",
             color: "var(--text-primary)",
