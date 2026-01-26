@@ -601,7 +601,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(board): add keyboard shortcuts (Cmd+N, Cmd+F, Escape)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
