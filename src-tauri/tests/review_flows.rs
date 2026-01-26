@@ -218,7 +218,7 @@ async fn test_ai_review_stores_notes() {
 
     // Verify notes are stored in review_notes
     let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
-    assert!(notes[0].notes.as_ref().map_or(false, |n| n.contains("All acceptance criteria met")));
+    assert!(notes[0].notes.as_ref().is_some_and(|n| n.contains("All acceptance criteria met")));
 }
 
 /// Test: Review records completed_at timestamp

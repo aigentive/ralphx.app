@@ -47,8 +47,7 @@ fn setup_test() -> (TaskStateMachineRepository, TaskId) {
 
 /// Helper to set up a mock client with QA prep configured
 fn setup_mock_client_for_qa() -> MockAgenticClient {
-    let client = MockAgenticClient::new();
-    client
+    MockAgenticClient::new()
 }
 
 // ============================================================================
