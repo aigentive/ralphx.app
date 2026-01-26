@@ -15,7 +15,7 @@ use crate::domain::repositories::{
     ArtifactRepository, ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     IdeationSettingsRepository, MethodologyRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, TaskDependencyRepository, TaskProposalRepository,
-    TaskQARepository, TaskRepository, WorkflowRepository,
+    TaskQARepository, TaskRepository, TaskStepRepository, WorkflowRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
@@ -25,7 +25,7 @@ use crate::infrastructure::memory::{
     MemoryMethodologyRepository, MemoryProcessRepository, MemoryProjectRepository,
     MemoryProposalDependencyRepository, MemoryReviewRepository, MemoryTaskDependencyRepository,
     MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
-    MemoryWorkflowRepository,
+    MemoryTaskStepRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
@@ -34,7 +34,8 @@ use crate::infrastructure::sqlite::{
     SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository, SqliteMethodologyRepository,
     SqliteProcessRepository, SqliteProjectRepository, SqliteProposalDependencyRepository,
     SqliteReviewRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteWorkflowRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -43,6 +44,8 @@ use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 pub struct AppState {
     /// Task repository (SQLite in production, in-memory for tests)
     pub task_repo: Arc<dyn TaskRepository>,
+    /// Task step repository for tracking execution progress
+    pub task_step_repo: Arc<dyn TaskStepRepository>,
     /// Project repository (SQLite in production, in-memory for tests)
     pub project_repo: Arc<dyn ProjectRepository>,
     /// Agent profile repository (SQLite in production)
@@ -117,6 +120,9 @@ impl AppState {
 
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
+            task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -192,6 +198,9 @@ impl AppState {
 
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
+            task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -255,6 +264,7 @@ impl AppState {
 
         Self {
             task_repo: Arc::clone(&task_repo),
+            task_step_repo: Arc::new(MemoryTaskStepRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
@@ -294,6 +304,7 @@ impl AppState {
 
         Self {
             task_repo: Arc::clone(&task_repo),
+            task_step_repo: Arc::new(MemoryTaskStepRepository::new()),
             project_repo,
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),

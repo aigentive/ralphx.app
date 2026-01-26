@@ -10,6 +10,7 @@ ralphx/
 ├─ ralph.sh, PROMPT.md          # Loop script + template
 ├─ src/                         # Frontend (React/TS) → src/CLAUDE.md
 ├─ src-tauri/                   # Backend (Rust/Tauri) → src-tauri/CLAUDE.md
+│  └─ ralphx.db                 # SQLite database (dev mode)
 ├─ specs/
 │  ├─ manifest.json             # Phase tracker (SOURCE OF TRUTH)
 │  ├─ plan.md                   # Master spec
@@ -108,6 +109,11 @@ Entries: `### YYYY-MM-DD HH:MM:SS - Title\n**What:**\n- ...\n**Commands:**\n- \`
 ## Slash Commands
 - `/activate-prd <path>` — Switch active PRD (updates manifest, logs, commits)
 - `/create-prd` — Interactive PRD wizard
+
+## Database
+- **Location**: `src-tauri/ralphx.db` (SQLite, dev mode)
+- **Query**: `sqlite3 src-tauri/ralphx.db "SELECT * FROM table_name;"`
+- **Key tables**: projects, tasks, ideation_sessions, task_proposals, chat_messages, artifacts, task_steps
 
 ## Claude Code Docs
 `docs/claude-code/`: cli-reference.md, model-config.md, hooks.md, settings.md, sub-agents.md, plugins.md, skills.md

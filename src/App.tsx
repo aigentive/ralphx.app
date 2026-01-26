@@ -69,8 +69,7 @@ const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 
 const queryClient = getQueryClient();
 
-// Temporary hardcoded IDs until project selection is implemented
-const DEFAULT_PROJECT_ID = "demo-project";
+// Default workflow ID for task execution
 const DEFAULT_WORKFLOW_ID = "ralphx-default";
 
 // Navigation items configuration
@@ -158,15 +157,24 @@ function AppContent() {
   // Check if we should show the empty state (no projects)
   const hasNoProjects = !isLoadingProjects && Object.keys(projects).length === 0;
 
-  // Use active project ID or fallback for development
-  const currentProjectId = activeProjectId ?? DEFAULT_PROJECT_ID;
+  // Use active project ID (queries are disabled when null)
+  const currentProjectId = activeProjectId ?? "";
 
   const { count: pendingReviewCount } = usePendingReviews(currentProjectId);
   const { data: tasks = [] } = useTasks(currentProjectId);
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
-  const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
+  const { data: allSessions = [], isLoading: isLoadingSessions, error: sessionsError } = useIdeationSessions(currentProjectId);
+
+  // DEBUG: Log ideation sessions query state
+  console.log("[Ideation] Query state:", {
+    currentProjectId,
+    activeProjectId,
+    sessionsCount: allSessions.length,
+    isLoadingSessions,
+    sessionsError: sessionsError?.message
+  });
   const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
   const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
