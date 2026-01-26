@@ -56,6 +56,68 @@ pub fn configure_spawn(cmd: &mut Command, working_dir: &Path) {
     cmd.stderr(std::process::Stdio::piped());
 }
 
+/// Build a command wrapped with `script` on macOS for real-time streaming.
+///
+/// On macOS, subprocess stdout is fully buffered when connected to a pipe.
+/// Wrapping with `script -q /dev/null` creates a pseudo-terminal which
+/// forces line buffering, enabling real-time streaming output.
+///
+/// Returns the command ready for spawning with stdout/stderr piped.
+pub fn build_streaming_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    working_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    env_vars: &[(&str, &str)],
+) -> Command {
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = Command::new("script");
+        cmd.args(["-q", "/dev/null"]); // Quiet mode, no typescript file
+
+        // Add the claude command and its arguments
+        cmd.arg(cli_path.as_os_str());
+        cmd.args(["--plugin-dir", plugin_dir.to_str().unwrap_or("./ralphx-plugin")]);
+        cmd.args(["--output-format", "stream-json"]);
+        cmd.arg("--verbose");
+
+        if let Some(session_id) = resume_session {
+            cmd.args(["--resume", session_id]);
+        } else if let Some(agent_name) = agent {
+            cmd.args(["--agent", agent_name]);
+        }
+
+        cmd.args(["-p", prompt]);
+
+        // Set environment variables
+        for (key, value) in env_vars {
+            cmd.env(key, value);
+        }
+
+        cmd.current_dir(working_dir);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        cmd
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut cmd = build_base_cli_command(cli_path, plugin_dir);
+
+        for (key, value) in env_vars {
+            cmd.env(key, value);
+        }
+
+        add_prompt_args(&mut cmd, prompt, agent, resume_session);
+        configure_spawn(&mut cmd, working_dir);
+
+        cmd
+    }
+}
+
 /// Register the RalphX MCP server with Claude Code CLI
 /// This ensures the MCP server is available to Claude regardless of which project directory
 /// the user is working in. The server is registered with user scope.

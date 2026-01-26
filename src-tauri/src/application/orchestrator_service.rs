@@ -27,7 +27,7 @@ use crate::domain::repositories::{
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
-    build_base_cli_command, add_prompt_args, configure_spawn,
+    build_streaming_command,
     StreamProcessor, StreamEvent as ProcessorStreamEvent,
 };
 
@@ -470,6 +470,7 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
     }
 
     /// Create a Claude CLI command for any context type
+    /// Uses `script` wrapper on macOS for real-time streaming output
     fn build_command_for_context(
         &self,
         conversation: &ChatConversation,
@@ -477,12 +478,8 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
         context_id: &str,
         working_directory: &PathBuf,
     ) -> Command {
-        // Build base command with common args
-        let mut cmd = build_base_cli_command(&self.cli_path, &self.plugin_dir);
-
         // Pass agent type for MCP tool scoping
         let agent_name = get_agent_name(&conversation.context_type);
-        cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
         // First message vs follow-up
         let (prompt, resume_session, agent) = if let Some(ref claude_session_id) = conversation.claude_session_id {
@@ -505,10 +502,15 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
             (initial_prompt, None, Some(agent_name))
         };
 
-        add_prompt_args(&mut cmd, &prompt, agent, resume_session);
-        configure_spawn(&mut cmd, working_directory);
-
-        cmd
+        build_streaming_command(
+            &self.cli_path,
+            &self.plugin_dir,
+            working_directory,
+            &prompt,
+            agent,
+            resume_session,
+            &[("RALPHX_AGENT_TYPE", agent_name)],
+        )
     }
 
     /// Process streaming output from Claude CLI
@@ -1091,11 +1093,8 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                 })
                 .await;
 
-            // Build command using shared helpers
-            let mut cmd = build_base_cli_command(&cli_path, &plugin_dir);
-
+            // Build command using streaming helpers (for real-time output on macOS)
             let agent_name = get_agent_name(&conversation.context_type);
-            cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
             let (prompt, resume_session, agent) = if let Some(ref claude_session_id) = conversation.claude_session_id {
                 (user_message.clone(), Some(claude_session_id.as_str()), None)
@@ -1108,8 +1107,15 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                 (initial_prompt, None, Some(agent_name))
             };
 
-            add_prompt_args(&mut cmd, &prompt, agent, resume_session);
-            configure_spawn(&mut cmd, &working_directory);
+            let mut cmd = build_streaming_command(
+                &cli_path,
+                &plugin_dir,
+                &working_directory,
+                &prompt,
+                agent,
+                resume_session,
+                &[("RALPHX_AGENT_TYPE", agent_name)],
+            );
 
             let mut child = match cmd.spawn() {
                 Ok(c) => c,
