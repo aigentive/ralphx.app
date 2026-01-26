@@ -103,8 +103,20 @@ impl AppState {
         // Wrap connection in Arc<Mutex> for sharing between repos
         let shared_conn = Arc::new(Mutex::new(conn));
 
+        // Create repositories that are used by services
+        let task_repo: Arc<dyn TaskRepository> =
+            Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
+        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
+            Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
+                &shared_conn,
+            )));
+        let artifact_repo: Arc<dyn ArtifactRepository> =
+            Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+                &shared_conn,
+            )));
+
         Ok(Self {
-            task_repo: Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
+            task_repo: Arc::clone(&task_repo),
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -121,9 +133,7 @@ impl AppState {
             ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
-            task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
+            task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -143,9 +153,7 @@ impl AppState {
             workflow_repo: Arc::new(SqliteWorkflowRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            artifact_repo: Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
+            artifact_repo: Arc::clone(&artifact_repo),
             artifact_bucket_repo: Arc::new(SqliteArtifactBucketRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -170,8 +178,20 @@ impl AppState {
 
         let shared_conn = Arc::new(Mutex::new(conn));
 
+        // Create repositories that are used by services
+        let task_repo: Arc<dyn TaskRepository> =
+            Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
+        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
+            Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
+                &shared_conn,
+            )));
+        let artifact_repo: Arc<dyn ArtifactRepository> =
+            Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+                &shared_conn,
+            )));
+
         Ok(Self {
-            task_repo: Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
+            task_repo: Arc::clone(&task_repo),
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -188,9 +208,7 @@ impl AppState {
             ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
-            task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
+            task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -210,9 +228,7 @@ impl AppState {
             workflow_repo: Arc::new(SqliteWorkflowRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            artifact_repo: Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
+            artifact_repo: Arc::clone(&artifact_repo),
             artifact_bucket_repo: Arc::new(SqliteArtifactBucketRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -232,8 +248,13 @@ impl AppState {
     /// Create AppState for testing with in-memory repositories
     /// No AppHandle is provided - event emission is disabled in tests
     pub fn new_test() -> Self {
+        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
+            Arc::new(MemoryTaskProposalRepository::new());
+        let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(MemoryArtifactRepository::new());
+
         Self {
-            task_repo: Arc::new(MemoryTaskRepository::new()),
+            task_repo: Arc::clone(&task_repo),
             project_repo: Arc::new(MemoryProjectRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
@@ -242,7 +263,7 @@ impl AppState {
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
-            task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
+            task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
@@ -250,7 +271,7 @@ impl AppState {
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
             // Extensibility repositories
             workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
-            artifact_repo: Arc::new(MemoryArtifactRepository::new()),
+            artifact_repo: Arc::clone(&artifact_repo),
             artifact_bucket_repo: Arc::new(MemoryArtifactBucketRepository::new()),
             artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
             process_repo: Arc::new(MemoryProcessRepository::new()),
@@ -267,8 +288,12 @@ impl AppState {
         task_repo: Arc<dyn TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
     ) -> Self {
+        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
+            Arc::new(MemoryTaskProposalRepository::new());
+        let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(MemoryArtifactRepository::new());
+
         Self {
-            task_repo,
+            task_repo: Arc::clone(&task_repo),
             project_repo,
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
@@ -277,7 +302,7 @@ impl AppState {
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
-            task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
+            task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
@@ -285,7 +310,7 @@ impl AppState {
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
             // Extensibility repositories
             workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
-            artifact_repo: Arc::new(MemoryArtifactRepository::new()),
+            artifact_repo: Arc::clone(&artifact_repo),
             artifact_bucket_repo: Arc::new(MemoryArtifactBucketRepository::new()),
             artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
             process_repo: Arc::new(MemoryProcessRepository::new()),
