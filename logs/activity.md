@@ -1,15 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:38:04
+**Last Updated:** 2026-01-26 21:42:17
 **Phase:** Task Execution Experience
-**Tasks Completed:** 31 / 42
-**Current Task:** Wire up TaskFullView in App
+**Tasks Completed:** 32 / 42
+**Current Task:** Open TaskFullView from TaskCard click
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:42:17 - Wire up TaskFullView in App
+
+**What was done:**
+- Updated `src/App.tsx` to render TaskFullView when taskFullViewId is set:
+  - Imported TaskFullView component
+  - Extracted taskFullViewId and closeTaskFullView from uiStore (lines 112-113)
+  - Added conditional rendering of TaskFullView after PermissionDialog (lines 835-838)
+  - TaskFullView receives taskId={taskFullViewId} and onClose={closeTaskFullView}
+- Verified uiStore already has taskFullViewId, openTaskFullView, and closeTaskFullView implemented (from previous task)
+- Ran npm run typecheck - passing (0 errors)
+- Ran npm run lint - passing (0 errors, 13 pre-existing warnings unrelated to this change)
+- Task complete
+
+**Commands:**
+- `npm run typecheck`
+- `npm run lint`
 
 ### 2026-01-26 21:38:04 - Verify resizable panels in TaskFullView
 

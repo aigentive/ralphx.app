@@ -13,6 +13,7 @@ import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
 import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
+import { TaskFullView } from "@/components/tasks/TaskFullView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView } from "@/components/Ideation";
@@ -109,6 +110,8 @@ function AppContent() {
   const closeModal = useUiStore((s) => s.closeModal);
   const currentView = useUiStore((s) => s.currentView);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
+  const taskFullViewId = useUiStore((s) => s.taskFullViewId);
+  const closeTaskFullView = useUiStore((s) => s.closeTaskFullView);
 
 
   // Chat panel state
@@ -830,6 +833,11 @@ function AppContent() {
 
       {/* Permission Dialog - Global UI-based permission approval */}
       <PermissionDialog />
+
+      {/* TaskFullView - Full-screen task view (rendered when taskFullViewId is set) */}
+      {taskFullViewId && (
+        <TaskFullView taskId={taskFullViewId} onClose={closeTaskFullView} />
+      )}
 
       {/* Toast notifications */}
       <Toaster />
