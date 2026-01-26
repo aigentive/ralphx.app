@@ -35,6 +35,7 @@ import { useTasks } from "@/hooks/useTasks";
 import { useProjects } from "@/hooks/useProjects";
 import {
   useIdeationSession,
+  useIdeationSessions,
   useCreateIdeationSession,
   useArchiveIdeationSession,
 } from "@/hooks/useIdeation";
@@ -165,6 +166,7 @@ function AppContent() {
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
+  const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
   const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
   const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
@@ -378,6 +380,15 @@ function AppContent() {
       console.error("Failed to archive session:", error);
     }
   }, [archiveSession, setActiveSession]);
+
+  const handleSelectSession = useCallback((sessionId: string) => {
+    // Find the session in allSessions and add to store if not already there
+    const session = allSessions.find((s) => s.id === sessionId);
+    if (session) {
+      addSession(session);
+      setActiveSession(sessionId);
+    }
+  }, [allSessions, addSession, setActiveSession]);
 
   const handleSendIdeationMessage = useCallback(async (content: string) => {
     if (!activeSession) return;
@@ -703,10 +714,12 @@ function AppContent() {
               {currentView === "ideation" && (
                 <IdeationView
                   session={activeSession}
+                  sessions={allSessions}
                   messages={transformMessages(sessionData?.messages ?? [])}
                   proposals={proposals}
                   onSendMessage={handleSendIdeationMessage}
                   onNewSession={handleNewSession}
+                  onSelectSession={handleSelectSession}
                   onArchiveSession={handleArchiveSession}
                   onSelectProposal={handleSelectProposal}
                   onEditProposal={handleEditProposal}

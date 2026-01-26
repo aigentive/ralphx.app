@@ -34,6 +34,8 @@ import {
   Eye,
   Upload,
   Bot,
+  Clock,
+  History,
 } from "lucide-react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -73,10 +75,13 @@ import { cn } from "@/lib/utils";
 
 interface IdeationViewProps {
   session: IdeationSession | null;
+  /** All active sessions for the project (for session browser) */
+  sessions: IdeationSession[];
   messages: ChatMessageType[];
   proposals: TaskProposal[];
   onSendMessage: (content: string) => void;
   onNewSession: () => void;
+  onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
   onSelectProposal: (proposalId: string) => void;
   onEditProposal: (proposalId: string) => void;
@@ -370,21 +375,109 @@ function ProposalsEmptyState() {
 }
 
 // ============================================================================
-// No Session State
+// Session Browser (Left Sidebar)
 // ============================================================================
 
-function NoSessionState({ onNewSession }: { onNewSession: () => void }) {
+interface SessionBrowserProps {
+  sessions: IdeationSession[];
+  currentSessionId: string | null;
+  onSelectSession: (sessionId: string) => void;
+  onNewSession: () => void;
+}
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function SessionBrowser({
+  sessions,
+  currentSessionId,
+  onSelectSession,
+  onNewSession,
+}: SessionBrowserProps) {
+  // Sort sessions by updatedAt descending (most recent first)
+  const sortedSessions = useMemo(
+    () => [...sessions].sort((a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    ),
+    [sessions]
+  );
+
   return (
     <div
-      data-testid="ideation-view"
-      className="flex flex-col items-center justify-center h-full p-8"
-      style={{
-        backgroundColor: "var(--bg-base)",
-        background:
-          "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
-      }}
-      role="main"
+      data-testid="session-browser"
+      className="flex flex-col h-full border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+      style={{ width: "280px", minWidth: "280px" }}
     >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2">
+          <History className="w-4 h-4 text-[var(--text-secondary)]" />
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Sessions</h2>
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onNewSession}>
+          <Plus className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* Session List */}
+      <div className="flex-1 overflow-y-auto">
+        {sortedSessions.map((session) => {
+          const isSelected = session.id === currentSessionId;
+          return (
+            <button
+              key={session.id}
+              data-testid={`session-item-${session.id}`}
+              onClick={() => onSelectSession(session.id)}
+              className={cn(
+                "w-full px-4 py-3 text-left transition-colors border-b border-[var(--border-subtle)]",
+                "hover:bg-[var(--bg-hover)]",
+                isSelected && "bg-[rgba(255,107,53,0.08)] border-l-2 border-l-[var(--accent-primary)]"
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                  {session.title ?? "New Session"}
+                </span>
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
+                  style={{ backgroundColor: "var(--status-success)" }}
+                  title="Active"
+                />
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <Clock className="w-3 h-3 text-[var(--text-muted)]" />
+                <span className="text-xs text-[var(--text-muted)]">
+                  {formatRelativeTime(session.updatedAt)}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Start Session Panel (Right side when no session selected)
+// ============================================================================
+
+function StartSessionPanel({ onNewSession }: { onNewSession: () => void }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center p-8">
       <div className="p-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center shadow-[var(--shadow-sm)]">
         <Lightbulb className="w-12 h-12 mx-auto mb-4 text-[var(--accent-primary)]" />
         <h2 className="text-xl font-semibold mb-2 text-[var(--text-primary)] tracking-tight">
@@ -398,6 +491,76 @@ function NoSessionState({ onNewSession }: { onNewSession: () => void }) {
           Start Session
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// No Session State (with optional session browser)
+// ============================================================================
+
+interface NoSessionStateProps {
+  sessions: IdeationSession[];
+  onNewSession: () => void;
+  onSelectSession: (sessionId: string) => void;
+}
+
+function NoSessionState({ sessions, onNewSession, onSelectSession }: NoSessionStateProps) {
+  // Filter to active sessions only
+  const activeSessions = useMemo(
+    () => sessions.filter((s) => s.status === "active"),
+    [sessions]
+  );
+
+  // If no active sessions, show centered layout
+  if (activeSessions.length === 0) {
+    return (
+      <div
+        data-testid="ideation-view"
+        className="flex flex-col items-center justify-center h-full p-8"
+        style={{
+          backgroundColor: "var(--bg-base)",
+          background:
+            "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
+        }}
+        role="main"
+      >
+        <div className="p-8 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center shadow-[var(--shadow-sm)]">
+          <Lightbulb className="w-12 h-12 mx-auto mb-4 text-[var(--accent-primary)]" />
+          <h2 className="text-xl font-semibold mb-2 text-[var(--text-primary)] tracking-tight">
+            Start a new ideation session
+          </h2>
+          <p className="text-sm mb-6 text-[var(--text-secondary)]">
+            Brainstorm ideas and create task proposals
+          </p>
+          <Button onClick={onNewSession} className="px-6">
+            <Plus className="w-4 h-4 mr-2" />
+            Start Session
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // If there are active sessions, show split-screen with session browser
+  return (
+    <div
+      data-testid="ideation-view"
+      className="flex h-full"
+      style={{
+        backgroundColor: "var(--bg-base)",
+        background:
+          "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
+      }}
+      role="main"
+    >
+      <SessionBrowser
+        sessions={activeSessions}
+        currentSessionId={null}
+        onSelectSession={onSelectSession}
+        onNewSession={onNewSession}
+      />
+      <StartSessionPanel onNewSession={onNewSession} />
     </div>
   );
 }
@@ -716,10 +879,12 @@ function ProposalsToolbar({
 
 export function IdeationView({
   session,
+  sessions,
   messages,
   proposals,
   onSendMessage,
   onNewSession,
+  onSelectSession,
   onArchiveSession,
   onSelectProposal,
   onEditProposal,
@@ -1003,9 +1168,15 @@ export function IdeationView({
     });
   }, [messages]);
 
-  // No session state
+  // No session state - show session browser if there are active sessions
   if (!session) {
-    return <NoSessionState onNewSession={onNewSession} />;
+    return (
+      <NoSessionState
+        sessions={sessions}
+        onNewSession={onNewSession}
+        onSelectSession={onSelectSession}
+      />
+    );
   }
 
   return (

@@ -11,10 +11,12 @@
  */
 
 import { useDroppable } from "@dnd-kit/core";
-import { Inbox, XCircle } from "lucide-react";
+import { Inbox, XCircle, Loader2 } from "lucide-react";
+import { useRef, useEffect } from "react";
 import type { BoardColumn } from "./hooks";
 import { TaskCard } from "./TaskCard";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ColumnProps {
   column: BoardColumn;
@@ -48,8 +50,53 @@ function EmptyState() {
   );
 }
 
+function TaskSkeleton() {
+  return (
+    <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--bg-elevated)" }}>
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-3 w-1/2" />
+    </div>
+  );
+}
+
 export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Infinite scroll with IntersectionObserver
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const { hasNextPage, isFetchingNextPage, fetchNextPage } = column;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        // Trigger fetchNextPage when sentinel is visible AND there's more data AND not already fetching
+        if (
+          entry &&
+          entry.isIntersecting &&
+          hasNextPage &&
+          !isFetchingNextPage &&
+          fetchNextPage
+        ) {
+          fetchNextPage();
+        }
+      },
+      {
+        root: null, // viewport
+        rootMargin: "100px", // Load slightly before reaching the bottom
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [column]);
 
   // Drop zone styles
   const getDropZoneStyles = (): React.CSSProperties => {
@@ -107,17 +154,36 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
         className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface/50 overflow-y-auto"
         style={getDropZoneStyles()}
       >
-        {column.tasks.length === 0 ? (
+        {/* Show skeleton cards during initial load */}
+        {column.isLoading ? (
+          <>
+            <TaskSkeleton />
+            <TaskSkeleton />
+            <TaskSkeleton />
+          </>
+        ) : column.tasks.length === 0 ? (
           <EmptyState />
         ) : (
-          column.tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              isHidden={task.id === hiddenTaskId}
-              {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
-            />
-          ))
+          <>
+            {column.tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                isHidden={task.id === hiddenTaskId}
+                {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
+              />
+            ))}
+
+            {/* Sentinel element for infinite scroll */}
+            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+
+            {/* Loading spinner when fetching next page */}
+            {column.isFetchingNextPage && (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--accent-primary)" }} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
