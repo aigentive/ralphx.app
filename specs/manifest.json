@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 15,
+  "currentPhase": "15b",
   "phases": [
     {
       "phase": 0,
@@ -112,14 +112,14 @@
       "phase": 15,
       "name": "Context-Aware Chat",
       "prd": "specs/phases/prd_phase_15_context_aware_chat.md",
-      "status": "active",
+      "status": "complete",
       "description": "MCP integration, Claude session management, conversation history, message queueing"
     },
     {
       "phase": "15b",
       "name": "Task Execution Chat",
       "prd": "specs/phases/prd_phase_15b_task_execution_chat.md",
-      "status": "pending",
+      "status": "active",
       "description": "Persist worker execution output, view as chat, queue messages to worker"
     },
     {
