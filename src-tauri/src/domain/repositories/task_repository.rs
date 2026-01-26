@@ -73,6 +73,26 @@ pub trait TaskRepository: Send + Sync {
 
     /// Remove/resolve a blocker relationship
     async fn resolve_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()>;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Archive Operations (Phase 18 - Soft Delete)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Get tasks by project, optionally including archived
+    async fn get_by_project_filtered(
+        &self,
+        project_id: &ProjectId,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>>;
+
+    /// Archive a task (soft delete)
+    async fn archive(&self, task_id: &TaskId) -> AppResult<Task>;
+
+    /// Restore an archived task
+    async fn restore(&self, task_id: &TaskId) -> AppResult<Task>;
+
+    /// Count archived tasks for a project
+    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32>;
 }
 
 #[cfg(test)]
@@ -145,6 +165,32 @@ mod tests {
 
         async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
             Ok(())
+        }
+
+        async fn get_by_project_filtered(
+            &self,
+            _project_id: &ProjectId,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
+        async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
+            let project_id = ProjectId::new();
+            let mut task = Task::new(project_id, "Archived task".to_string());
+            task.id = task_id.clone();
+            Ok(task)
+        }
+
+        async fn restore(&self, task_id: &TaskId) -> AppResult<Task> {
+            let project_id = ProjectId::new();
+            let mut task = Task::new(project_id, "Restored task".to_string());
+            task.id = task_id.clone();
+            Ok(task)
+        }
+
+        async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> {
+            Ok(0)
         }
     }
 

@@ -335,6 +335,98 @@ impl TaskRepository for SqliteTaskRepository {
 
         Ok(())
     }
+
+    async fn get_by_project_filtered(
+        &self,
+        project_id: &ProjectId,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>> {
+        let conn = self.conn.lock().await;
+
+        let query = if include_archived {
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+             FROM tasks WHERE project_id = ?1
+             ORDER BY priority DESC, created_at ASC"
+        } else {
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+             FROM tasks WHERE project_id = ?1 AND archived_at IS NULL
+             ORDER BY priority DESC, created_at ASC"
+        };
+
+        let mut stmt = conn
+            .prepare(query)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([project_id.as_str()], Task::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(tasks)
+    }
+
+    async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now();
+
+        conn.execute(
+            "UPDATE tasks SET archived_at = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![task_id.as_str(), now.to_rfc3339(), now.to_rfc3339()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Fetch and return the updated task
+        let result = conn.query_row(
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+             FROM tasks WHERE id = ?1",
+            [task_id.as_str()],
+            |row| Task::from_row(row),
+        );
+
+        match result {
+            Ok(task) => Ok(task),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    async fn restore(&self, task_id: &TaskId) -> AppResult<Task> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now();
+
+        conn.execute(
+            "UPDATE tasks SET archived_at = NULL, updated_at = ?2 WHERE id = ?1",
+            rusqlite::params![task_id.as_str(), now.to_rfc3339()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Fetch and return the updated task
+        let result = conn.query_row(
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+             FROM tasks WHERE id = ?1",
+            [task_id.as_str()],
+            |row| Task::from_row(row),
+        );
+
+        match result {
+            Ok(task) => Ok(task),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32> {
+        let conn = self.conn.lock().await;
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL",
+                [project_id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(count as u32)
+    }
 }
 
 #[cfg(test)]
@@ -881,5 +973,125 @@ mod tests {
 
         let next = repo.get_next_executable(&project_id).await.unwrap();
         assert!(next.is_none());
+    }
+
+    // ==================== ARCHIVE OPERATION TESTS ====================
+
+    #[tokio::test]
+    async fn test_archive_sets_archived_at() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Task to Archive");
+
+        repo.create(task.clone()).await.unwrap();
+
+        let archived = repo.archive(&task.id).await.unwrap();
+        assert!(archived.archived_at.is_some());
+
+        let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert!(found.archived_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_restore_clears_archived_at() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Task to Archive and Restore");
+
+        repo.create(task.clone()).await.unwrap();
+        repo.archive(&task.id).await.unwrap();
+
+        let restored = repo.restore(&task.id).await.unwrap();
+        assert!(restored.archived_at.is_none());
+
+        let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert!(found.archived_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_archived_count_returns_correct_count() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task1 = create_test_task("Task 1");
+        let task2 = create_test_task("Task 2");
+        let task3 = create_test_task("Task 3");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.create(task3.clone()).await.unwrap();
+
+        // Archive two tasks
+        repo.archive(&task1.id).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        let count = repo.get_archived_count(&project_id).await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_by_project_filtered_excludes_archived_by_default() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task1 = create_test_task("Active Task");
+        let task2 = create_test_task("Archived Task");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        let active_tasks = repo
+            .get_by_project_filtered(&project_id, false)
+            .await
+            .unwrap();
+
+        assert_eq!(active_tasks.len(), 1);
+        assert_eq!(active_tasks[0].title, "Active Task");
+    }
+
+    #[tokio::test]
+    async fn test_get_by_project_filtered_includes_archived_when_requested() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        let task1 = create_test_task("Active Task");
+        let task2 = create_test_task("Archived Task");
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        let all_tasks = repo
+            .get_by_project_filtered(&project_id, true)
+            .await
+            .unwrap();
+
+        assert_eq!(all_tasks.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_archive_and_restore_updates_updated_at() {
+        let conn = setup_test_db();
+        let repo = SqliteTaskRepository::new(conn);
+        let task = create_test_task("Task");
+
+        repo.create(task.clone()).await.unwrap();
+        let original = repo.get_by_id(&task.id).await.unwrap().unwrap();
+
+        // Archive
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        repo.archive(&task.id).await.unwrap();
+        let archived = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert!(archived.updated_at > original.updated_at);
+
+        // Restore
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        repo.restore(&task.id).await.unwrap();
+        let restored = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert!(restored.updated_at > archived.updated_at);
     }
 }

@@ -552,6 +552,28 @@ mod tests {
         async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn add_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> { Ok(()) }
         async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> { Ok(()) }
+        async fn get_by_project_filtered(&self, _project_id: &ProjectId, _include_archived: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
+            if let Some(task) = self.tasks.read().unwrap().get(task_id.as_str()) {
+                let mut archived = task.clone();
+                archived.archived_at = Some(chrono::Utc::now());
+                self.tasks.write().unwrap().insert(task_id.as_str().to_string(), archived.clone());
+                Ok(archived)
+            } else {
+                Err(crate::error::AppError::NotFound(format!("Task {} not found", task_id.as_str())))
+            }
+        }
+        async fn restore(&self, task_id: &TaskId) -> AppResult<Task> {
+            if let Some(task) = self.tasks.read().unwrap().get(task_id.as_str()) {
+                let mut restored = task.clone();
+                restored.archived_at = None;
+                self.tasks.write().unwrap().insert(task_id.as_str().to_string(), restored.clone());
+                Ok(restored)
+            } else {
+                Err(crate::error::AppError::NotFound(format!("Task {} not found", task_id.as_str())))
+            }
+        }
+        async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> { Ok(0) }
     }
 
     fn setup() -> (Arc<MockReviewRepo>, Arc<MockTaskRepo>, ProjectId, TaskId) {

@@ -218,6 +218,66 @@ impl TaskRepository for MemoryTaskRepository {
         }
         Ok(())
     }
+
+    async fn get_by_project_filtered(
+        &self,
+        project_id: &ProjectId,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>> {
+        let tasks = self.tasks.read().await;
+        let mut result: Vec<Task> = tasks
+            .values()
+            .filter(|t| {
+                t.project_id == *project_id
+                    && (include_archived || t.archived_at.is_none())
+            })
+            .cloned()
+            .collect();
+        // Sort by priority (desc) then created_at (asc)
+        result.sort_by(|a, b| {
+            b.priority
+                .cmp(&a.priority)
+                .then_with(|| a.created_at.cmp(&b.created_at))
+        });
+        Ok(result)
+    }
+
+    async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
+        let mut tasks = self.tasks.write().await;
+        if let Some(task) = tasks.get_mut(task_id) {
+            task.archived_at = Some(Utc::now());
+            task.updated_at = Utc::now();
+            Ok(task.clone())
+        } else {
+            Err(crate::error::AppError::NotFound(format!(
+                "Task with id {} not found",
+                task_id.as_str()
+            )))
+        }
+    }
+
+    async fn restore(&self, task_id: &TaskId) -> AppResult<Task> {
+        let mut tasks = self.tasks.write().await;
+        if let Some(task) = tasks.get_mut(task_id) {
+            task.archived_at = None;
+            task.updated_at = Utc::now();
+            Ok(task.clone())
+        } else {
+            Err(crate::error::AppError::NotFound(format!(
+                "Task with id {} not found",
+                task_id.as_str()
+            )))
+        }
+    }
+
+    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32> {
+        let tasks = self.tasks.read().await;
+        let count = tasks
+            .values()
+            .filter(|t| t.project_id == *project_id && t.archived_at.is_some())
+            .count();
+        Ok(count as u32)
+    }
 }
 
 #[cfg(test)]
@@ -602,5 +662,107 @@ mod tests {
 
         let result = repo.get_by_project(&project).await.unwrap();
         assert_eq!(result.len(), 2);
+    }
+
+    // ===== Archive Operations Tests =====
+
+    #[tokio::test]
+    async fn test_archive_sets_archived_at() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+        let task = create_test_task(project, "Task to Archive", 1);
+        repo.create(task.clone()).await.unwrap();
+
+        let archived = repo.archive(&task.id).await.unwrap();
+        assert!(archived.archived_at.is_some());
+
+        let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert!(found.archived_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_restore_clears_archived_at() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+        let task = create_test_task(project, "Task to Restore", 1);
+        repo.create(task.clone()).await.unwrap();
+
+        repo.archive(&task.id).await.unwrap();
+        let restored = repo.restore(&task.id).await.unwrap();
+        assert!(restored.archived_at.is_none());
+
+        let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+        assert!(found.archived_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_archived_count_returns_correct_count() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task1 = create_test_task(project.clone(), "Task 1", 1);
+        let task2 = create_test_task(project.clone(), "Task 2", 2);
+        let task3 = create_test_task(project.clone(), "Task 3", 3);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.create(task3.clone()).await.unwrap();
+
+        repo.archive(&task1.id).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        let count = repo.get_archived_count(&project).await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_by_project_filtered_excludes_archived_by_default() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task1 = create_test_task(project.clone(), "Active", 1);
+        let task2 = create_test_task(project.clone(), "Archived", 2);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        let active = repo.get_by_project_filtered(&project, false).await.unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].title, "Active");
+    }
+
+    #[tokio::test]
+    async fn test_get_by_project_filtered_includes_archived_when_requested() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        let task1 = create_test_task(project.clone(), "Active", 1);
+        let task2 = create_test_task(project.clone(), "Archived", 2);
+
+        repo.create(task1.clone()).await.unwrap();
+        repo.create(task2.clone()).await.unwrap();
+        repo.archive(&task2.id).await.unwrap();
+
+        let all = repo.get_by_project_filtered(&project, true).await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_archive_nonexistent_task_returns_error() {
+        let repo = MemoryTaskRepository::new();
+        let task_id = TaskId::new();
+
+        let result = repo.archive(&task_id).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_restore_nonexistent_task_returns_error() {
+        let repo = MemoryTaskRepository::new();
+        let task_id = TaskId::new();
+
+        let result = repo.restore(&task_id).await;
+        assert!(result.is_err());
     }
 }

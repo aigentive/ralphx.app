@@ -119,7 +119,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(repository): add archive methods to TaskRepository"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

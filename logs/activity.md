@@ -1,15 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 10:45:00
+**Last Updated:** 2026-01-26 17:42:26
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 1 / 30
-**Current Task:** Add archive repository methods
+**Tasks Completed:** 2 / 30
+**Current Task:** Add archive Tauri commands with event emission
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 17:42:26 - Add archive repository methods (Task 2)
+
+**What was done:**
+- Added 4 new methods to TaskRepository trait:
+  - `get_by_project_filtered(project_id, include_archived)` - Query with optional archived filter
+  - `archive(task_id)` - Set archived_at timestamp (soft delete)
+  - `restore(task_id)` - Clear archived_at (unarchive)
+  - `get_archived_count(project_id)` - Count archived tasks
+- Implemented all methods in SqliteTaskRepository with SQL queries:
+  - `get_by_project_filtered` uses conditional WHERE clause based on include_archived
+  - `archive` sets archived_at = now() and returns updated task
+  - `restore` sets archived_at = NULL and returns updated task
+  - `get_archived_count` uses COUNT(*) WHERE archived_at IS NOT NULL
+- Implemented all methods in MemoryTaskRepository:
+  - Filter in-memory HashMap by archived_at field
+  - Mutate task in place for archive/restore operations
+  - Return NotFound error for missing tasks
+- Updated 3 mock implementations in test modules:
+  - MockTaskRepository in apply_service.rs
+  - MockTaskRepo in review_service.rs
+  - MockTaskRepository in task_context_service.rs
+- Added comprehensive unit tests:
+  - SqliteTaskRepository: 7 archive tests (archive, restore, count, filtering)
+  - MemoryTaskRepository: 8 archive tests (archive, restore, count, filtering, error cases)
+- All cargo tests passing (3114 tests)
+
+**Commands:**
+- `cargo test --lib` - All 3114 tests pass
+
+**PRD Task:**
+Phase 18, Task 2 - Add archive repository methods
 
 ### 2026-01-26 10:45:00 - Add archived_at field and database migration (Task 1)
 
