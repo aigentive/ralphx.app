@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 16,
+  "currentPhase": 17,
   "phases": [
     {
       "phase": 0,
@@ -126,14 +126,14 @@
       "phase": 16,
       "name": "Ideation Plan Artifacts",
       "prd": "specs/phases/prd_phase_16_ideation_plan_artifacts.md",
-      "status": "active",
+      "status": "complete",
       "description": "Implementation plans as artifacts in ideation flow, methodology integration, proactive sync"
     },
     {
       "phase": 17,
       "name": "Worker Artifact Context",
       "prd": "specs/phases/prd_phase_17_worker_artifact_context.md",
-      "status": "pending",
+      "status": "active",
       "description": "MCP tools for workers to fetch artifact context during task execution"
     }
   ]
