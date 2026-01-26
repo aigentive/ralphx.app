@@ -56,6 +56,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import ReactMarkdown from "react-markdown";
 import type { Priority } from "@/types/ideation";
+import { PlanDisplay } from "./PlanDisplay";
+import { useIdeationStore } from "@/stores/ideationStore";
 
 // ============================================================================
 // Types
@@ -589,6 +591,18 @@ export function IdeationView({
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Get plan artifact and settings from store
+  const planArtifact = useIdeationStore((state) => state.planArtifact);
+  const ideationSettings = useIdeationStore((state) => state.ideationSettings);
+  const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
+
+  // Fetch plan artifact when session changes and has planArtifactId
+  useEffect(() => {
+    if (session?.planArtifactId) {
+      fetchPlanArtifact(session.planArtifactId);
+    }
+  }, [session?.planArtifactId, fetchPlanArtifact]);
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (messagesEndRef.current && messagesEndRef.current.scrollIntoView) {
@@ -814,11 +828,53 @@ export function IdeationView({
             />
           )}
 
-          {/* Proposals List */}
+          {/* Proposals List with Plan Display */}
           <div className="flex-1 overflow-y-auto p-4">
-            {proposals.length === 0 ? (
-              <ProposalsEmptyState />
-            ) : (
+            {/* Plan Display - shown above proposals when plan exists */}
+            {planArtifact && (
+              <div className="mb-4">
+                <PlanDisplay
+                  plan={planArtifact}
+                  showApprove={ideationSettings?.requirePlanApproval ?? false}
+                  linkedProposalsCount={
+                    proposals.filter(
+                      (p) => p.planArtifactId === planArtifact.id
+                    ).length
+                  }
+                  onEdit={() => {
+                    // TODO: Implement plan editor modal/panel
+                    console.log("Edit plan:", planArtifact.id);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Waiting for plan message when no plan in Required mode */}
+            {!planArtifact &&
+              ideationSettings?.planMode === "required" &&
+              proposals.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full p-12 text-center">
+                  <div className="p-6 rounded-lg border-2 border-dashed border-[var(--border-subtle)]">
+                    <Loader2 className="w-12 h-12 mx-auto mb-4 text-[var(--text-muted)] animate-spin" />
+                    <p className="font-medium text-[var(--text-secondary)]">
+                      Waiting for implementation plan...
+                    </p>
+                    <p className="text-sm text-[var(--text-muted)] mt-1">
+                      The orchestrator will create a plan before proposing tasks
+                    </p>
+                  </div>
+                </div>
+              )}
+
+            {/* Proposals Empty State (when not waiting for plan) */}
+            {proposals.length === 0 &&
+              !(
+                !planArtifact &&
+                ideationSettings?.planMode === "required"
+              ) && <ProposalsEmptyState />}
+
+            {/* Proposals List */}
+            {proposals.length > 0 && (
               <div className="space-y-2">
                 {sortedProposals.map((proposal) => (
                   <ProposalCard

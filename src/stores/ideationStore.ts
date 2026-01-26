@@ -8,6 +8,8 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { IdeationSession, IdeationSessionStatus } from "@/types/ideation";
+import type { Artifact } from "@/types/artifact";
+import type { IdeationSettings } from "@/types/ideation-config";
 
 // ============================================================================
 // State Interface
@@ -18,6 +20,10 @@ interface IdeationState {
   sessions: Record<string, IdeationSession>;
   /** Currently active session ID, or null if none */
   activeSessionId: string | null;
+  /** Plan artifact for the active session, or null if none */
+  planArtifact: Artifact | null;
+  /** Ideation settings */
+  ideationSettings: IdeationSettings | null;
   /** Loading state for async operations */
   isLoading: boolean;
   /** Error message, or null if no error */
@@ -39,6 +45,12 @@ interface IdeationActions {
   updateSession: (sessionId: string, changes: Partial<IdeationSession>) => void;
   /** Remove a session from the store */
   removeSession: (sessionId: string) => void;
+  /** Set the plan artifact for the active session */
+  setPlanArtifact: (artifact: Artifact | null) => void;
+  /** Fetch the plan artifact for a given artifact ID */
+  fetchPlanArtifact: (artifactId: string) => Promise<void>;
+  /** Set ideation settings */
+  setIdeationSettings: (settings: IdeationSettings) => void;
   /** Set loading state */
   setLoading: (isLoading: boolean) => void;
   /** Set error message */
@@ -56,6 +68,8 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     // Initial state
     sessions: {},
     activeSessionId: null,
+    planArtifact: null,
+    ideationSettings: null,
     isLoading: false,
     error: null,
 
@@ -90,6 +104,37 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
         if (state.activeSessionId === sessionId) {
           state.activeSessionId = null;
         }
+      }),
+
+    setPlanArtifact: (artifact) =>
+      set((state) => {
+        state.planArtifact = artifact;
+      }),
+
+    fetchPlanArtifact: async (artifactId) => {
+      const { artifactApi } = await import("@/api/artifact");
+      try {
+        set((state) => {
+          state.isLoading = true;
+          state.error = null;
+        });
+        const artifact = await artifactApi.get(artifactId);
+        set((state) => {
+          state.planArtifact = artifact;
+          state.isLoading = false;
+        });
+      } catch (error) {
+        set((state) => {
+          state.error =
+            error instanceof Error ? error.message : "Failed to fetch plan artifact";
+          state.isLoading = false;
+        });
+      }
+    },
+
+    setIdeationSettings: (settings) =>
+      set((state) => {
+        state.ideationSettings = settings;
       }),
 
     setLoading: (isLoading) =>
