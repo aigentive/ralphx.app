@@ -59,6 +59,14 @@ let mockChatState = {
 // Mock the hooks
 vi.mock("@/hooks/useChat", () => ({
   useChat: vi.fn(() => mockChatState),
+  chatKeys: {
+    all: ["chat"],
+    messages: () => ["chat", "messages"],
+    conversations: () => ["chat", "conversations"],
+    conversation: (id: string) => ["chat", "conversations", id],
+    conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
+    agentRun: (id: string) => ["chat", "agent-run", id],
+  },
 }));
 
 vi.mock("@/stores/chatStore", () => ({
@@ -71,6 +79,7 @@ vi.mock("@/stores/chatStore", () => ({
   selectQueuedMessages: vi.fn((state: typeof mockStoreState) => state.queuedMessages || []),
   selectIsAgentRunning: vi.fn((state: typeof mockStoreState) => state.isAgentRunning || false),
   selectActiveConversationId: vi.fn((state: typeof mockStoreState) => state.activeConversationId || null),
+  selectExecutionQueuedMessages: vi.fn(() => () => []),
 }));
 
 import { useChat } from "@/hooks/useChat";
@@ -138,7 +147,12 @@ describe("ChatPanel", () => {
 
     mockChatState = {
       messages: {
-        data: mockMessages,
+        data: { messages: mockMessages },
+        isLoading: false,
+        error: null,
+      },
+      conversations: {
+        data: [],
         isLoading: false,
         error: null,
       },
@@ -146,6 +160,8 @@ describe("ChatPanel", () => {
         mutateAsync: mockSendMessageMutateAsync,
         isPending: false,
       },
+      switchConversation: vi.fn(),
+      createConversation: vi.fn(),
     };
 
     vi.mocked(useChatStore).mockImplementation(() => mockStoreState);

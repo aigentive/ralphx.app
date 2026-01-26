@@ -704,7 +704,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const lastMessageCountRef = useRef(0);
-  const handleSendRef = useRef<((content: string) => Promise<void>) | null>(null);
 
   // Extract messages array from active conversation
   const messagesData = activeConversation.data?.messages ?? [];
@@ -798,11 +797,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     [sendMessage]
   );
 
-  // Keep ref updated for use in event listeners
-  useEffect(() => {
-    handleSendRef.current = handleSend;
-  }, [handleSend]);
-
   // Queue message handler (when agent is running)
   const handleQueue = useCallback(
     (content: string) => {
@@ -824,23 +818,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     if (!lastMessage) return;
     startEditingQueuedMessage(lastMessage.id);
   }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage]);
-
-  // Store refs for event handlers to avoid stale closures
-  const queuedMessagesRef = useRef(queuedMessages);
-  const deleteQueuedMessageRef = useRef(deleteQueuedMessage);
-  const setAgentRunningRef = useRef(setAgentRunning);
-
-  useEffect(() => {
-    queuedMessagesRef.current = queuedMessages;
-  }, [queuedMessages]);
-
-  useEffect(() => {
-    deleteQueuedMessageRef.current = deleteQueuedMessage;
-  }, [deleteQueuedMessage]);
-
-  useEffect(() => {
-    setAgentRunningRef.current = setAgentRunning;
-  }, [setAgentRunning]);
 
   // Subscribe to Tauri events for real-time updates (only on mount)
   useEffect(() => {
@@ -868,27 +845,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for run completion
-      const runCompletedUnlisten = await listen<{ conversation_id: string }>(
-        "chat:run_completed",
-        async (event) => {
-          console.log("Agent run completed:", event.payload);
-          setAgentRunningRef.current(false);
-
-          // Process queue: send first queued message if any
-          const currentQueue = queuedMessagesRef.current;
-          if (currentQueue.length > 0) {
-            const firstMessage = currentQueue[0];
-            if (firstMessage) {
-              // Remove from queue first
-              deleteQueuedMessageRef.current(firstMessage.id);
-              // Then send it using ref to avoid stale closure
-              await handleSendRef.current?.(firstMessage.content);
-            }
-          }
-        }
-      );
-      unlisteners.push(runCompletedUnlisten);
+      // Note: chat:run_completed is handled by useChat hook for queue processing
 
       // Execution-specific events (Phase 15B)
       // Listen for execution chunks
