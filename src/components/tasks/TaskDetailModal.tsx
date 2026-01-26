@@ -15,8 +15,11 @@ import { Button } from "@/components/ui/button";
 import { useReviewsByTaskId, useTaskStateHistory } from "@/hooks/useReviews";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
 import { TaskContextPanel } from "./TaskContextPanel";
+import { TaskEditForm } from "./TaskEditForm";
+import { StatusDropdown } from "./StatusDropdown";
+import { useTaskMutation } from "@/hooks/useTaskMutation";
 import type { Task, InternalStatus } from "@/types/task";
-import { X, Bot, User, Wrench, Loader2, FileText } from "lucide-react";
+import { X, Bot, User, Wrench, Loader2, FileText, Pencil } from "lucide-react";
 import { useState } from "react";
 
 interface TaskDetailModalProps {
@@ -226,16 +229,54 @@ export function TaskDetailModal({
   fixTaskCount,
 }: TaskDetailModalProps) {
   const [showContext, setShowContext] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(
     task?.id ?? ""
   );
   useTaskStateHistory(task?.id ?? "");
+
+  // Get mutations - use task's projectId if available
+  const { updateMutation, moveMutation } = useTaskMutation(task?.projectId ?? "");
 
   if (!task) return null;
 
   const hasReviews = reviews.length > 0;
   const hasFixTasks = fixTaskCount !== undefined && fixTaskCount > 0;
   const hasContext = !!(task.sourceProposalId || task.planArtifactId);
+
+  // Determine if task is editable
+  // System-controlled statuses: executing, execution_done, qa_*, pending_review, revision_needed
+  const systemControlledStatuses: InternalStatus[] = [
+    "executing",
+    "execution_done",
+    "qa_refining",
+    "qa_testing",
+    "qa_passed",
+    "qa_failed",
+    "pending_review",
+    "revision_needed",
+  ];
+
+  const isArchived = !!task.archivedAt;
+  const isSystemControlled = systemControlledStatuses.includes(task.internalStatus);
+  const canEdit = !isArchived && !isSystemControlled;
+
+  // Handle edit save
+  const handleSave = (updateData: Parameters<typeof updateMutation.mutate>[0]['input']) => {
+    updateMutation.mutate(
+      { taskId: task.id, input: updateData },
+      {
+        onSuccess: () => {
+          setIsEditing(false);
+        },
+      }
+    );
+  };
+
+  // Handle status change
+  const handleStatusChange = (newStatus: string) => {
+    moveMutation.mutate({ taskId: task.id, toStatus: newStatus });
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -265,7 +306,7 @@ export function TaskDetailModal({
             className="px-6 pt-6 pb-4"
             style={{ borderBottom: "1px solid var(--border-subtle)" }}
           >
-            <div className="flex items-start gap-3 pr-8">
+            <div className="flex items-start gap-3 pr-32">
               <PriorityBadge priority={task.priority} />
               <div className="flex-1 min-w-0">
                 <h2
@@ -295,116 +336,164 @@ export function TaskDetailModal({
                 </div>
               </div>
             </div>
-            {/* Close button */}
-            <button
-              onClick={onClose}
-              data-testid="task-detail-close"
-              className="absolute top-4 right-4 p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2"
-              style={{
-                color: "var(--text-muted)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--bg-hover)";
-                e.currentTarget.style.color = "var(--text-primary)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "var(--text-muted)";
-              }}
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {/* Action buttons (status dropdown, edit, close) */}
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+              {/* StatusDropdown - only for user-controlled statuses */}
+              {canEdit && (
+                <StatusDropdown
+                  taskId={task.id}
+                  currentStatus={task.internalStatus}
+                  onTransition={handleStatusChange}
+                  disabled={moveMutation.isPending}
+                />
+              )}
+              {/* Edit button - only for non-archived, non-system-controlled tasks */}
+              {canEdit && (
+                <button
+                  onClick={() => setIsEditing(!isEditing)}
+                  data-testid="task-detail-edit-button"
+                  className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2"
+                  style={{
+                    color: "var(--text-muted)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--bg-hover)";
+                    e.currentTarget.style.color = "var(--text-primary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                  }}
+                  aria-label={isEditing ? "Cancel editing" : "Edit task"}
+                  title={isEditing ? "Cancel editing" : "Edit task"}
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+              {/* Close button */}
+              <button
+                onClick={onClose}
+                data-testid="task-detail-close"
+                className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2"
+                style={{
+                  color: "var(--text-muted)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Scrollable Content */}
           <ScrollArea className="flex-1">
-            <div
-              data-testid="task-detail-view"
-              data-task-id={task.id}
-              className="px-6 py-4 space-y-6"
-            >
-              {/* View Context Button */}
-              {hasContext && (
-                <div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowContext(!showContext)}
-                    data-testid="view-context-button"
-                    className="w-full justify-center"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    {showContext ? "Hide Context" : "View Context"}
-                  </Button>
-                </div>
-              )}
-
-              {/* Task Context Panel */}
-              {showContext && hasContext && (
-                <div data-testid="task-context-section">
-                  <TaskContextPanel taskId={task.id} />
-                </div>
-              )}
-
-              {/* Description Section */}
-              {task.description ? (
-                <div>
-                  <p
-                    data-testid="task-detail-description"
-                    className="text-sm"
-                    style={{
-                      color: "var(--text-secondary)",
-                      lineHeight: "1.65",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {task.description}
-                  </p>
-                </div>
-              ) : (
-                <p
-                  className="text-sm italic"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  No description provided
-                </p>
-              )}
-
-              {/* Reviews Section */}
-              {reviewsLoading && (
-                <div
-                  data-testid="reviews-loading"
-                  className="flex justify-center py-4"
-                >
-                  <Loader2
-                    className="w-6 h-6 animate-spin"
-                    style={{ color: "var(--text-muted)" }}
-                  />
-                </div>
-              )}
-              {!reviewsLoading && hasReviews && (
-                <div data-testid="task-detail-reviews-section">
-                  <SectionTitle>Reviews</SectionTitle>
-                  <div className="space-y-2">
-                    {reviews.map((review) => (
-                      <ReviewCard
-                        key={review.id}
-                        reviewerType={review.reviewer_type}
-                        status={review.status}
-                      />
-                    ))}
-                  </div>
-                  {hasFixTasks && <FixTaskIndicator count={fixTaskCount} />}
-                </div>
-              )}
-
-              {/* History Section */}
-              <div data-testid="task-detail-history-section">
-                <SectionTitle>History</SectionTitle>
-                <StateHistoryTimeline taskId={task.id} />
+            {isEditing ? (
+              /* Edit Mode */
+              <div className="px-6 py-4">
+                <TaskEditForm
+                  task={task}
+                  onSave={handleSave}
+                  onCancel={() => setIsEditing(false)}
+                  isSaving={updateMutation.isPending}
+                />
               </div>
-            </div>
+            ) : (
+              /* Read-only View */
+              <div
+                data-testid="task-detail-view"
+                data-task-id={task.id}
+                className="px-6 py-4 space-y-6"
+              >
+                {/* View Context Button */}
+                {hasContext && (
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowContext(!showContext)}
+                      data-testid="view-context-button"
+                      className="w-full justify-center"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      {showContext ? "Hide Context" : "View Context"}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Task Context Panel */}
+                {showContext && hasContext && (
+                  <div data-testid="task-context-section">
+                    <TaskContextPanel taskId={task.id} />
+                  </div>
+                )}
+
+                {/* Description Section */}
+                {task.description ? (
+                  <div>
+                    <p
+                      data-testid="task-detail-description"
+                      className="text-sm"
+                      style={{
+                        color: "var(--text-secondary)",
+                        lineHeight: "1.65",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {task.description}
+                    </p>
+                  </div>
+                ) : (
+                  <p
+                    className="text-sm italic"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    No description provided
+                  </p>
+                )}
+
+                {/* Reviews Section */}
+                {reviewsLoading && (
+                  <div
+                    data-testid="reviews-loading"
+                    className="flex justify-center py-4"
+                  >
+                    <Loader2
+                      className="w-6 h-6 animate-spin"
+                      style={{ color: "var(--text-muted)" }}
+                    />
+                  </div>
+                )}
+                {!reviewsLoading && hasReviews && (
+                  <div data-testid="task-detail-reviews-section">
+                    <SectionTitle>Reviews</SectionTitle>
+                    <div className="space-y-2">
+                      {reviews.map((review) => (
+                        <ReviewCard
+                          key={review.id}
+                          reviewerType={review.reviewer_type}
+                          status={review.status}
+                        />
+                      ))}
+                    </div>
+                    {hasFixTasks && <FixTaskIndicator count={fixTaskCount} />}
+                  </div>
+                )}
+
+                {/* History Section */}
+                <div data-testid="task-detail-history-section">
+                  <SectionTitle>History</SectionTitle>
+                  <StateHistoryTimeline taskId={task.id} />
+                </div>
+              </div>
+            )}
           </ScrollArea>
         </div>
       </DialogPortal>
