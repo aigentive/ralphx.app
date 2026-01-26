@@ -6,6 +6,8 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
 use super::{InternalStatus, ProjectId, TaskId};
+use super::super::entities::artifact::ArtifactId;
+use super::super::entities::types::TaskProposalId;
 
 /// A task managed by RalphX
 /// Tasks belong to a project and have an internal status that follows the state machine
@@ -29,6 +31,14 @@ pub struct Task {
     /// When true, execution will pause before this task for human approval
     #[serde(default)]
     pub needs_review_point: bool,
+    /// Source proposal this task was created from (for traceability)
+    /// Used by worker to fetch original proposal context (acceptance criteria, steps)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_proposal_id: Option<TaskProposalId>,
+    /// Plan artifact linked to this task (inherited from proposal)
+    /// Used by worker to fetch implementation context during execution
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_artifact_id: Option<ArtifactId>,
     /// When the task was created
     pub created_at: DateTime<Utc>,
     /// When the task was last updated
@@ -58,6 +68,8 @@ impl Task {
             priority: 0,
             internal_status: InternalStatus::Backlog,
             needs_review_point: false,
+            source_proposal_id: None,
+            plan_artifact_id: None,
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -117,7 +129,8 @@ impl Task {
 
     /// Deserialize a Task from a SQLite row.
     /// Expects columns: id, project_id, category, title, description, priority,
-    /// internal_status, needs_review_point, created_at, updated_at, started_at, completed_at
+    /// internal_status, needs_review_point, source_proposal_id, plan_artifact_id,
+    /// created_at, updated_at, started_at, completed_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: TaskId::from_string(row.get("id")?),
@@ -131,6 +144,12 @@ impl Task {
                 .parse()
                 .unwrap_or(InternalStatus::Backlog),
             needs_review_point: row.get::<_, Option<bool>>("needs_review_point")?.unwrap_or(false),
+            source_proposal_id: row
+                .get::<_, Option<String>>("source_proposal_id")?
+                .map(TaskProposalId::from_string),
+            plan_artifact_id: row
+                .get::<_, Option<String>>("plan_artifact_id")?
+                .map(ArtifactId::from_string),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
             started_at: row
@@ -568,6 +587,8 @@ mod tests {
                 priority INTEGER DEFAULT 0,
                 internal_status TEXT NOT NULL DEFAULT 'backlog',
                 needs_review_point INTEGER DEFAULT 0,
+                source_proposal_id TEXT,
+                plan_artifact_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 started_at TEXT,
@@ -874,5 +895,97 @@ mod tests {
             .unwrap();
 
         assert!(!task.needs_review_point);
+    }
+
+    // ===== Traceability Fields Tests =====
+
+    #[test]
+    fn task_new_defaults_traceability_fields_to_none() {
+        let task = Task::new(ProjectId::new(), "Test".to_string());
+        assert!(task.source_proposal_id.is_none());
+        assert!(task.plan_artifact_id.is_none());
+    }
+
+    #[test]
+    fn task_serializes_with_traceability_fields() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.source_proposal_id = Some(TaskProposalId::from_string("proposal-123"));
+        task.plan_artifact_id = Some(ArtifactId::from_string("artifact-456"));
+
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("\"source_proposal_id\":\"proposal-123\""));
+        assert!(json.contains("\"plan_artifact_id\":\"artifact-456\""));
+    }
+
+    #[test]
+    fn task_deserializes_with_traceability_fields() {
+        let json = r#"{
+            "id": "task-id",
+            "project_id": "proj-id",
+            "category": "feature",
+            "title": "Test",
+            "description": null,
+            "priority": 0,
+            "internal_status": "backlog",
+            "needs_review_point": false,
+            "source_proposal_id": "proposal-abc",
+            "plan_artifact_id": "artifact-xyz",
+            "created_at": "2025-01-24T12:00:00Z",
+            "updated_at": "2025-01-24T12:00:00Z",
+            "started_at": null,
+            "completed_at": null
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.source_proposal_id.unwrap().as_str(), "proposal-abc");
+        assert_eq!(task.plan_artifact_id.unwrap().as_str(), "artifact-xyz");
+    }
+
+    #[test]
+    fn task_from_row_with_traceability_fields() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, needs_review_point, source_proposal_id, plan_artifact_id,
+               created_at, updated_at, started_at, completed_at)
+               VALUES ('task-trace', 'proj-trace', 'feature', 'Traceable Task', NULL, 0,
+               'backlog', 0, 'proposal-123', 'artifact-456',
+               '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-trace'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(task.source_proposal_id.unwrap().as_str(), "proposal-123");
+        assert_eq!(task.plan_artifact_id.unwrap().as_str(), "artifact-456");
+    }
+
+    #[test]
+    fn task_from_row_with_null_traceability_fields() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, needs_review_point, source_proposal_id, plan_artifact_id,
+               created_at, updated_at, started_at, completed_at)
+               VALUES ('task-null', 'proj-null', 'feature', 'No Traceability', NULL, 0,
+               'backlog', 0, NULL, NULL,
+               '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-null'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert!(task.source_proposal_id.is_none());
+        assert!(task.plan_artifact_id.is_none());
     }
 }

@@ -1147,6 +1147,19 @@ fn migrate_v21(conn: &Connection) -> AppResult<()> {
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
 
+    // Add traceability fields to tasks (for worker context access)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN source_proposal_id TEXT REFERENCES task_proposals(id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN plan_artifact_id TEXT REFERENCES artifacts(id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
     Ok(())
 }
 
