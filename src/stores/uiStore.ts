@@ -72,6 +72,12 @@ interface UiState {
   activeQuestion: AskUserQuestionPayload | null;
   /** Current execution status (pause state, running/queued counts) */
   executionStatus: ExecutionStatusResponse;
+  /** Whether to show archived tasks on the board */
+  showArchived: boolean;
+  /** Current search query for the task board */
+  boardSearchQuery: string | null;
+  /** Whether a search request is in flight */
+  isSearching: boolean;
 }
 
 // ============================================================================
@@ -117,6 +123,12 @@ interface UiActions {
   setExecutionRunningCount: (count: number) => void;
   /** Set queued count */
   setExecutionQueuedCount: (count: number) => void;
+  /** Set whether to show archived tasks */
+  setShowArchived: (show: boolean) => void;
+  /** Set the board search query */
+  setBoardSearchQuery: (query: string | null) => void;
+  /** Set whether a search is in progress */
+  setIsSearching: (searching: boolean) => void;
 }
 
 // ============================================================================
@@ -142,6 +154,9 @@ export const useUiStore = create<UiState & UiActions>()(
       queuedCount: 0,
       canStartTask: true,
     },
+    showArchived: false,
+    boardSearchQuery: null,
+    isSearching: false,
 
     // Actions
     toggleSidebar: () =>
@@ -239,6 +254,21 @@ export const useUiStore = create<UiState & UiActions>()(
     setExecutionQueuedCount: (count) =>
       set((state) => {
         state.executionStatus.queuedCount = count;
+      }),
+
+    setShowArchived: (show) =>
+      set((state) => {
+        state.showArchived = show;
+      }),
+
+    setBoardSearchQuery: (query) =>
+      set((state) => {
+        state.boardSearchQuery = query;
+      }),
+
+    setIsSearching: (searching) =>
+      set((state) => {
+        state.isSearching = searching;
       }),
   }))
 );

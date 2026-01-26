@@ -1,15 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:15:45
+**Last Updated:** 2026-01-26 19:25:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 9 / 30
-**Current Task:** Add showArchived and boardSearchQuery to uiStore
+**Tasks Completed:** 10 / 30
+**Current Task:** Create StatusDropdown component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:25:00 - Add showArchived and boardSearchQuery to uiStore (Task 10)
+
+**What was done:**
+- Extended uiStore with three new state properties for archive and search functionality:
+  - showArchived: boolean (default false) - Controls visibility of archived tasks on the board
+  - boardSearchQuery: string | null (default null) - Stores current search query
+  - isSearching: boolean (default false) - Tracks if search request is in flight
+- Added corresponding setter methods:
+  - setShowArchived: (show: boolean) => void
+  - setBoardSearchQuery: (query: string | null) => void
+  - setIsSearching: (searching: boolean) => void
+- Updated UiState and UiActions interfaces with proper TypeScript types
+- All state additions follow existing uiStore patterns using Zustand with immer middleware
+
+**Commands run:**
+- `npm run typecheck` - Type checking passed
+
+**Verification:**
+- ✅ showArchived state added with default value false
+- ✅ boardSearchQuery state added with default value null
+- ✅ isSearching state added with default value false
+- ✅ All three setters implemented using immer set pattern
+- ✅ TypeScript interfaces updated (UiState and UiActions)
+- ✅ No TypeScript errors
 
 ### 2026-01-26 19:15:45 - Add archive mutations with loading states and error handling (Task 9)
 
