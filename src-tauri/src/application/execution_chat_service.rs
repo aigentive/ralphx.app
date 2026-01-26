@@ -1,0 +1,1280 @@
+// Execution Chat Service
+//
+// Manages persistent worker executions for tasks.
+// Extends the context-aware chat system (Phase 15A) to persist and display
+// worker execution output as chat conversations.
+//
+// Key features:
+// - Creates chat_conversation and agent_run when spawning worker
+// - Persists stream events to chat_messages
+// - Captures claude_session_id for --resume support
+// - Integrates with ExecutionMessageQueue for message queueing
+// - Emits Tauri events for real-time UI updates
+//
+// Unlike OrchestratorService which handles ideation chat, this service
+// is focused on task execution context (worker agent output).
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Runtime};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+use tokio::sync::Mutex;
+
+use crate::application::orchestrator_service::{
+    ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
+    StreamMessage, ToolCall,
+};
+use crate::domain::entities::{
+    AgentRun, ChatConversation, ChatConversationId, ChatContextType, ChatMessage, ChatMessageId,
+    MessageRole, TaskId,
+};
+use crate::domain::repositories::{
+    AgentRunRepository, ChatConversationRepository, ChatMessageRepository, TaskRepository,
+};
+use crate::domain::services::ExecutionMessageQueue;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/// Result from spawning a worker with persistence
+#[derive(Debug, Clone)]
+pub struct SpawnResult {
+    /// The conversation ID created for this execution
+    pub conversation_id: ChatConversationId,
+    /// The agent run ID tracking this execution
+    pub agent_run_id: String,
+}
+
+/// Result from a completed execution
+#[derive(Debug, Clone)]
+pub struct ExecutionResult {
+    pub response_text: String,
+    pub tool_calls: Vec<ToolCall>,
+    pub claude_session_id: Option<String>,
+    pub conversation_id: ChatConversationId,
+}
+
+/// Event emitted during execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecutionEvent {
+    /// Execution has started
+    RunStarted {
+        run_id: String,
+        conversation_id: String,
+        task_id: String,
+    },
+    /// Text chunk received from worker
+    TextChunk {
+        text: String,
+        conversation_id: String,
+    },
+    /// Tool call detected
+    ToolCallDetected {
+        tool_name: String,
+        tool_id: Option<String>,
+        arguments: serde_json::Value,
+        conversation_id: String,
+    },
+    /// Tool call completed
+    ToolCallCompleted {
+        tool_name: String,
+        tool_id: Option<String>,
+        result: Option<serde_json::Value>,
+        conversation_id: String,
+    },
+    /// Execution completed
+    RunCompleted {
+        conversation_id: String,
+        claude_session_id: Option<String>,
+        response_text: String,
+        task_id: String,
+    },
+    /// Queue message was sent to worker
+    QueueSent {
+        message_id: String,
+        conversation_id: String,
+        task_id: String,
+    },
+    /// Error occurred
+    Error {
+        conversation_id: Option<String>,
+        task_id: Option<String>,
+        error: String,
+    },
+}
+
+// ============================================================================
+// Error type
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub enum ExecutionChatError {
+    AgentNotAvailable(String),
+    SpawnFailed(String),
+    CommunicationFailed(String),
+    ParseError(String),
+    TaskNotFound(String),
+    ConversationNotFound(String),
+    RepositoryError(String),
+    AgentRunFailed(String),
+}
+
+impl std::fmt::Display for ExecutionChatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AgentNotAvailable(msg) => write!(f, "Agent not available: {}", msg),
+            Self::SpawnFailed(msg) => write!(f, "Failed to spawn agent: {}", msg),
+            Self::CommunicationFailed(msg) => write!(f, "Communication failed: {}", msg),
+            Self::ParseError(msg) => write!(f, "Parse error: {}", msg),
+            Self::TaskNotFound(msg) => write!(f, "Task not found: {}", msg),
+            Self::ConversationNotFound(msg) => write!(f, "Conversation not found: {}", msg),
+            Self::RepositoryError(msg) => write!(f, "Repository error: {}", msg),
+            Self::AgentRunFailed(msg) => write!(f, "Agent run failed: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ExecutionChatError {}
+
+// ============================================================================
+// ExecutionChatService trait
+// ============================================================================
+
+/// Service for managing persistent worker executions
+///
+/// This service handles:
+/// - Spawning worker agents with persistence to database
+/// - Persisting stream events as chat messages
+/// - Capturing claude_session_id for --resume support
+/// - Processing queued messages when worker completes
+#[async_trait]
+pub trait ExecutionChatService: Send + Sync {
+    /// Spawn a worker with persistence
+    ///
+    /// Creates a new chat_conversation (context_type: 'task_execution')
+    /// and agent_run, then spawns the Claude CLI with the worker agent.
+    ///
+    /// Returns the conversation_id and agent_run_id immediately.
+    /// Streaming output is persisted in the background.
+    async fn spawn_with_persistence(
+        &self,
+        task_id: &TaskId,
+        prompt: &str,
+    ) -> Result<SpawnResult, ExecutionChatError>;
+
+    /// Get the active conversation for a task execution
+    async fn get_execution_conversation(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Option<ChatConversation>, ExecutionChatError>;
+
+    /// List all execution attempts for a task
+    async fn list_task_executions(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Vec<ChatConversation>, ExecutionChatError>;
+
+    /// Complete an execution (update conversation with claude_session_id)
+    async fn complete_execution(
+        &self,
+        conversation_id: &ChatConversationId,
+        claude_session_id: Option<String>,
+    ) -> Result<(), ExecutionChatError>;
+
+    /// Check if the execution service is available
+    async fn is_available(&self) -> bool;
+
+    /// Get the active agent run for a conversation
+    async fn get_active_run(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> Result<Option<AgentRun>, ExecutionChatError>;
+}
+
+// ============================================================================
+// ClaudeExecutionChatService - Production implementation
+// ============================================================================
+
+/// Production implementation using Claude CLI with persistence
+pub struct ClaudeExecutionChatService<R: Runtime = tauri::Wry> {
+    cli_path: PathBuf,
+    plugin_dir: PathBuf,
+    working_directory: PathBuf,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    message_queue: Arc<ExecutionMessageQueue>,
+    app_handle: Option<AppHandle<R>>,
+    model: String,
+}
+
+impl<R: Runtime> ClaudeExecutionChatService<R> {
+    pub fn new(
+        chat_message_repo: Arc<dyn ChatMessageRepository>,
+        conversation_repo: Arc<dyn ChatConversationRepository>,
+        agent_run_repo: Arc<dyn AgentRunRepository>,
+        task_repo: Arc<dyn TaskRepository>,
+        message_queue: Arc<ExecutionMessageQueue>,
+    ) -> Self {
+        let cli_path = which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
+        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let plugin_dir = working_directory.join("ralphx-plugin");
+
+        Self {
+            cli_path,
+            plugin_dir,
+            working_directory,
+            chat_message_repo,
+            conversation_repo,
+            agent_run_repo,
+            task_repo,
+            message_queue,
+            app_handle: None,
+            model: "sonnet".to_string(),
+        }
+    }
+
+    pub fn with_cli_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.cli_path = path.into();
+        self
+    }
+
+    pub fn with_plugin_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.plugin_dir = path.into();
+        self
+    }
+
+    pub fn with_working_directory(mut self, path: impl Into<PathBuf>) -> Self {
+        self.working_directory = path.into();
+        self
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
+        self.app_handle = Some(app_handle);
+        self
+    }
+
+    /// Emit a Tauri event if app_handle is available
+    fn emit_event(&self, event: &str, payload: impl Serialize + Clone) {
+        if let Some(ref handle) = self.app_handle {
+            let _ = handle.emit(event, payload);
+        }
+    }
+
+    /// Build the initial prompt with task context
+    fn build_initial_prompt(task_id: &TaskId, prompt: &str) -> String {
+        format!(
+            "RalphX Task Execution ID: {}\n\n{}",
+            task_id.as_str(),
+            prompt
+        )
+    }
+
+    /// Create a Claude CLI command for worker execution
+    fn build_command(&self, prompt: &str, resume_session_id: Option<&str>) -> Command {
+        let mut cmd = Command::new(&self.cli_path);
+
+        // Common args
+        cmd.args([
+            "--plugin-dir",
+            self.plugin_dir.to_str().unwrap_or("./ralphx-plugin"),
+        ]);
+        cmd.args(["--output-format", "stream-json"]);
+
+        // Worker agent type for MCP tool scoping
+        cmd.env("RALPHX_AGENT_TYPE", "worker");
+
+        if let Some(session_id) = resume_session_id {
+            // FOLLOW-UP: Resume existing Claude session
+            cmd.args(["--resume", session_id]);
+            cmd.args(["-p", prompt]);
+        } else {
+            // FIRST MESSAGE: Start new session with worker agent
+            cmd.args(["--agent", "worker"]);
+            cmd.args(["-p", prompt]);
+        }
+
+        cmd.current_dir(&self.working_directory);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        cmd
+    }
+
+    /// Process streaming output from Claude CLI and persist to database
+    #[allow(dead_code)] // Used when processing queue (called from spawn_with_persistence background task)
+    async fn process_stream(
+        &self,
+        mut child: tokio::process::Child,
+        conversation_id: &ChatConversationId,
+        _task_id: &TaskId,
+    ) -> Result<(String, Vec<ToolCall>, Option<String>), ExecutionChatError> {
+        let stdout = child.stdout.take().ok_or_else(|| {
+            ExecutionChatError::SpawnFailed("Failed to capture stdout".to_string())
+        })?;
+
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+
+        let mut response_text = String::new();
+        let mut tool_calls: Vec<ToolCall> = Vec::new();
+        let mut claude_session_id: Option<String> = None;
+        let mut current_tool_name = String::new();
+        let mut current_tool_id: Option<String> = None;
+        let mut current_tool_input = String::new();
+
+        let conversation_id_str = conversation_id.as_str();
+
+        while let Some(line) = lines
+            .next_line()
+            .await
+            .map_err(|e| ExecutionChatError::CommunicationFailed(e.to_string()))?
+        {
+            if let Ok(msg) = serde_json::from_str::<StreamMessage>(&line) {
+                match msg {
+                    StreamMessage::ContentBlockStart { content_block, .. } => {
+                        if content_block.block_type == "tool_use" {
+                            current_tool_name = content_block.name.unwrap_or_default();
+                            current_tool_id = content_block.id;
+                            current_tool_input.clear();
+
+                            // Emit tool call detected event
+                            self.emit_event(
+                                "execution:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: current_tool_name.clone(),
+                                    tool_id: current_tool_id.clone(),
+                                    arguments: serde_json::Value::Null,
+                                    result: None,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                    }
+                    StreamMessage::ContentBlockDelta { delta, .. } => {
+                        if delta.delta_type == "text_delta" {
+                            if let Some(text) = delta.text {
+                                response_text.push_str(&text);
+
+                                // Emit text chunk event
+                                self.emit_event(
+                                    "execution:chunk",
+                                    ChatChunkPayload {
+                                        text,
+                                        conversation_id: conversation_id_str.to_string(),
+                                    },
+                                );
+                            }
+                        } else if delta.delta_type == "input_json_delta" {
+                            if let Some(json) = delta.partial_json {
+                                current_tool_input.push_str(&json);
+                            }
+                        }
+                    }
+                    StreamMessage::ContentBlockStop { .. } => {
+                        if !current_tool_name.is_empty() {
+                            // Parse tool arguments
+                            let args: serde_json::Value =
+                                serde_json::from_str(&current_tool_input).unwrap_or_default();
+
+                            // Store tool call
+                            let tool_call = ToolCall {
+                                id: current_tool_id.clone(),
+                                name: current_tool_name.clone(),
+                                arguments: args.clone(),
+                                result: None,
+                            };
+                            tool_calls.push(tool_call);
+
+                            // Emit tool call completed event
+                            self.emit_event(
+                                "execution:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: current_tool_name.clone(),
+                                    tool_id: current_tool_id.clone(),
+                                    arguments: args,
+                                    result: None,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+
+                            current_tool_name.clear();
+                            current_tool_id = None;
+                            current_tool_input.clear();
+                        }
+                    }
+                    StreamMessage::Result { session_id, .. } => {
+                        // Capture Claude's session_id for future --resume calls
+                        claude_session_id = session_id;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Wait for process to complete
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| ExecutionChatError::CommunicationFailed(e.to_string()))?;
+
+        if !status.success() && response_text.is_empty() {
+            return Err(ExecutionChatError::AgentRunFailed(
+                "Agent exited with non-zero status".to_string(),
+            ));
+        }
+
+        Ok((response_text, tool_calls, claude_session_id))
+    }
+
+    /// Process queued messages after worker completes a response
+    #[allow(dead_code)] // Will be used when queue processing is fully integrated
+    async fn process_queue(
+        &self,
+        task_id: &TaskId,
+        conversation_id: &ChatConversationId,
+        current_session_id: &str,
+    ) -> Result<(), ExecutionChatError> {
+        while let Some(queued_msg) = self.message_queue.pop(task_id) {
+            let conversation_id_str = conversation_id.as_str();
+            let task_id_str = task_id.as_str();
+
+            // Emit queue sent event
+            self.emit_event(
+                "execution:queue_sent",
+                serde_json::json!({
+                    "message_id": queued_msg.id,
+                    "conversation_id": conversation_id_str,
+                    "task_id": task_id_str,
+                }),
+            );
+
+            // Persist user message
+            let mut user_msg = ChatMessage::user_about_task(task_id.clone(), &queued_msg.content);
+            user_msg.conversation_id = Some(*conversation_id);
+            let user_msg_id = user_msg.id.as_str().to_string();
+
+            self.chat_message_repo
+                .create(user_msg)
+                .await
+                .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))?;
+
+            // Emit message created event
+            self.emit_event(
+                "execution:message_created",
+                ChatMessageCreatedPayload {
+                    message_id: user_msg_id,
+                    conversation_id: conversation_id_str.to_string(),
+                    role: "user".to_string(),
+                    content: queued_msg.content.clone(),
+                },
+            );
+
+            // Send via --resume
+            let mut cmd = self.build_command(&queued_msg.content, Some(current_session_id));
+            let child = cmd
+                .spawn()
+                .map_err(|e| ExecutionChatError::SpawnFailed(e.to_string()))?;
+
+            // Process streaming output
+            let (response_text, tool_calls, new_session_id) = self
+                .process_stream(child, conversation_id, task_id)
+                .await?;
+
+            // Persist assistant response
+            if !response_text.is_empty() || !tool_calls.is_empty() {
+                let assistant_msg = ChatMessage {
+                    id: ChatMessageId::new(),
+                    session_id: None,
+                    project_id: None,
+                    task_id: Some(task_id.clone()),
+                    conversation_id: Some(*conversation_id),
+                    role: MessageRole::Worker,
+                    content: response_text.clone(),
+                    metadata: None,
+                    parent_message_id: None,
+                    tool_calls: if !tool_calls.is_empty() {
+                        Some(serde_json::to_string(&tool_calls).unwrap_or_default())
+                    } else {
+                        None
+                    },
+                    created_at: chrono::Utc::now(),
+                };
+
+                let assistant_msg_id = assistant_msg.id.as_str().to_string();
+                self.chat_message_repo
+                    .create(assistant_msg)
+                    .await
+                    .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))?;
+
+                // Emit message created event for assistant message
+                self.emit_event(
+                    "execution:message_created",
+                    ChatMessageCreatedPayload {
+                        message_id: assistant_msg_id,
+                        conversation_id: conversation_id_str.to_string(),
+                        role: "worker".to_string(),
+                        content: response_text.clone(),
+                    },
+                );
+            }
+
+            // Update session_id if changed (shouldn't normally happen with --resume)
+            if let Some(ref _new_id) = new_session_id {
+                // Session ID should remain the same when using --resume
+                // but we track it just in case
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
+    async fn spawn_with_persistence(
+        &self,
+        task_id: &TaskId,
+        prompt: &str,
+    ) -> Result<SpawnResult, ExecutionChatError> {
+        // Verify task exists
+        self.task_repo
+            .get_by_id(task_id)
+            .await
+            .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))?
+            .ok_or_else(|| ExecutionChatError::TaskNotFound(task_id.as_str().to_string()))?;
+
+        // 1. Create new conversation for this execution attempt
+        let conversation = ChatConversation::new_task_execution(task_id.clone());
+        let conversation_id = conversation.id;
+        let conversation_id_str = conversation_id.as_str();
+
+        self.conversation_repo
+            .create(conversation.clone())
+            .await
+            .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))?;
+
+        // 2. Create agent run record (status: running)
+        let agent_run = AgentRun::new(conversation_id);
+        let agent_run_id = agent_run.id.as_str().to_string();
+        self.agent_run_repo
+            .create(agent_run)
+            .await
+            .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))?;
+
+        // Emit run started event
+        self.emit_event(
+            "execution:run_started",
+            serde_json::json!({
+                "run_id": &agent_run_id,
+                "conversation_id": conversation_id_str,
+                "task_id": task_id.as_str(),
+            }),
+        );
+
+        // 3. Build initial prompt with task context
+        let initial_prompt = Self::build_initial_prompt(task_id, prompt);
+
+        // 4. Spawn Claude CLI with worker agent
+        let mut cmd = self.build_command(&initial_prompt, None);
+        let child = cmd
+            .spawn()
+            .map_err(|e| ExecutionChatError::SpawnFailed(e.to_string()))?;
+
+        // Clone values needed for async block
+        let task_id_clone = task_id.clone();
+        let chat_message_repo = Arc::clone(&self.chat_message_repo);
+        let conversation_repo = Arc::clone(&self.conversation_repo);
+        let agent_run_repo = Arc::clone(&self.agent_run_repo);
+        let message_queue = Arc::clone(&self.message_queue);
+        let app_handle = self.app_handle.clone();
+        let agent_run_id_clone = agent_run_id.clone();
+        let cli_path = self.cli_path.clone();
+        let plugin_dir = self.plugin_dir.clone();
+        let working_directory = self.working_directory.clone();
+
+        // 5. Process streaming in background
+        tokio::spawn(async move {
+            // Create a helper service for processing (without app_handle to avoid complexity)
+            let process_result = process_stream_background(
+                child,
+                &conversation_id,
+                &task_id_clone,
+                app_handle.clone(),
+            )
+            .await;
+
+            match process_result {
+                Ok((response_text, tool_calls, claude_session_id)) => {
+                    // Update conversation with claude_session_id
+                    if let Some(ref sess_id) = claude_session_id {
+                        let _ = conversation_repo
+                            .update_claude_session_id(&conversation_id, sess_id)
+                            .await;
+                    }
+
+                    // Persist assistant message
+                    if !response_text.is_empty() || !tool_calls.is_empty() {
+                        let assistant_msg = ChatMessage {
+                            id: ChatMessageId::new(),
+                            session_id: None,
+                            project_id: None,
+                            task_id: Some(task_id_clone.clone()),
+                            conversation_id: Some(conversation_id),
+                            role: MessageRole::Worker,
+                            content: response_text.clone(),
+                            metadata: None,
+                            parent_message_id: None,
+                            tool_calls: if !tool_calls.is_empty() {
+                                Some(serde_json::to_string(&tool_calls).unwrap_or_default())
+                            } else {
+                                None
+                            },
+                            created_at: chrono::Utc::now(),
+                        };
+
+                        let assistant_msg_id = assistant_msg.id.as_str().to_string();
+                        let _ = chat_message_repo.create(assistant_msg).await;
+
+                        // Emit message created event
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                "execution:message_created",
+                                ChatMessageCreatedPayload {
+                                    message_id: assistant_msg_id,
+                                    conversation_id: conversation_id.as_str(),
+                                    role: "worker".to_string(),
+                                    content: response_text.clone(),
+                                },
+                            );
+                        }
+                    }
+
+                    // Complete agent run
+                    let _ = agent_run_repo
+                        .complete(&crate::domain::entities::AgentRunId::from_string(
+                            &agent_run_id_clone,
+                        ))
+                        .await;
+
+                    // Emit run completed event
+                    if let Some(ref handle) = app_handle {
+                        let _ = handle.emit(
+                            "execution:run_completed",
+                            ChatRunCompletedPayload {
+                                conversation_id: conversation_id.as_str(),
+                                claude_session_id: claude_session_id.clone(),
+                            },
+                        );
+                    }
+
+                    // Process queued messages
+                    if let Some(ref sess_id) = claude_session_id {
+                        // Process queue (simplified - would need full service context for real impl)
+                        while let Some(queued_msg) = message_queue.pop(&task_id_clone) {
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "execution:queue_sent",
+                                    serde_json::json!({
+                                        "message_id": queued_msg.id,
+                                        "conversation_id": conversation_id.as_str(),
+                                        "task_id": task_id_clone.as_str(),
+                                    }),
+                                );
+                            }
+
+                            // Persist user message
+                            let mut user_msg = ChatMessage::user_about_task(
+                                task_id_clone.clone(),
+                                &queued_msg.content,
+                            );
+                            user_msg.conversation_id = Some(conversation_id);
+                            let _ = chat_message_repo.create(user_msg).await;
+
+                            // Send via --resume and process
+                            let mut cmd = Command::new(&cli_path);
+                            cmd.args([
+                                "--plugin-dir",
+                                plugin_dir.to_str().unwrap_or("./ralphx-plugin"),
+                            ]);
+                            cmd.args(["--output-format", "stream-json"]);
+                            cmd.env("RALPHX_AGENT_TYPE", "worker");
+                            cmd.args(["--resume", sess_id]);
+                            cmd.args(["-p", &queued_msg.content]);
+                            cmd.current_dir(&working_directory);
+                            cmd.stdout(std::process::Stdio::piped());
+                            cmd.stderr(std::process::Stdio::piped());
+
+                            if let Ok(child) = cmd.spawn() {
+                                if let Ok((response, tools, _)) = process_stream_background(
+                                    child,
+                                    &conversation_id,
+                                    &task_id_clone,
+                                    app_handle.clone(),
+                                )
+                                .await
+                                {
+                                    // Persist assistant response
+                                    if !response.is_empty() || !tools.is_empty() {
+                                        let assistant_msg = ChatMessage {
+                                            id: ChatMessageId::new(),
+                                            session_id: None,
+                                            project_id: None,
+                                            task_id: Some(task_id_clone.clone()),
+                                            conversation_id: Some(conversation_id),
+                                            role: MessageRole::Worker,
+                                            content: response,
+                                            metadata: None,
+                                            parent_message_id: None,
+                                            tool_calls: if !tools.is_empty() {
+                                                Some(
+                                                    serde_json::to_string(&tools)
+                                                        .unwrap_or_default(),
+                                                )
+                                            } else {
+                                                None
+                                            },
+                                            created_at: chrono::Utc::now(),
+                                        };
+                                        let _ = chat_message_repo.create(assistant_msg).await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Fail the agent run
+                    let _ = agent_run_repo
+                        .fail(
+                            &crate::domain::entities::AgentRunId::from_string(&agent_run_id_clone),
+                            &e,
+                        )
+                        .await;
+
+                    // Emit error event
+                    if let Some(ref handle) = app_handle {
+                        let _ = handle.emit(
+                            "execution:error",
+                            serde_json::json!({
+                                "conversation_id": conversation_id.as_str(),
+                                "task_id": task_id_clone.as_str(),
+                                "error": e,
+                            }),
+                        );
+                    }
+                }
+            }
+        });
+
+        Ok(SpawnResult {
+            conversation_id,
+            agent_run_id,
+        })
+    }
+
+    async fn get_execution_conversation(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Option<ChatConversation>, ExecutionChatError> {
+        self.conversation_repo
+            .get_active_for_context(ChatContextType::TaskExecution, task_id.as_str())
+            .await
+            .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))
+    }
+
+    async fn list_task_executions(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Vec<ChatConversation>, ExecutionChatError> {
+        self.conversation_repo
+            .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+            .await
+            .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))
+    }
+
+    async fn complete_execution(
+        &self,
+        conversation_id: &ChatConversationId,
+        claude_session_id: Option<String>,
+    ) -> Result<(), ExecutionChatError> {
+        if let Some(session_id) = claude_session_id {
+            self.conversation_repo
+                .update_claude_session_id(conversation_id, &session_id)
+                .await
+                .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    async fn is_available(&self) -> bool {
+        if self.cli_path.exists() {
+            return true;
+        }
+        which::which(&self.cli_path).is_ok()
+    }
+
+    async fn get_active_run(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> Result<Option<AgentRun>, ExecutionChatError> {
+        self.agent_run_repo
+            .get_active_for_conversation(conversation_id)
+            .await
+            .map_err(|e| ExecutionChatError::RepositoryError(e.to_string()))
+    }
+}
+
+/// Helper function to process stream in background task
+async fn process_stream_background<R: Runtime>(
+    mut child: tokio::process::Child,
+    conversation_id: &ChatConversationId,
+    _task_id: &TaskId,
+    app_handle: Option<AppHandle<R>>,
+) -> Result<(String, Vec<ToolCall>, Option<String>), String> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture stdout".to_string())?;
+
+    let reader = BufReader::new(stdout);
+    let mut lines = reader.lines();
+
+    let mut response_text = String::new();
+    let mut tool_calls: Vec<ToolCall> = Vec::new();
+    let mut claude_session_id: Option<String> = None;
+    let mut current_tool_name = String::new();
+    let mut current_tool_id: Option<String> = None;
+    let mut current_tool_input = String::new();
+
+    let conversation_id_str = conversation_id.as_str();
+
+    while let Ok(Some(line)) = lines.next_line().await {
+        if let Ok(msg) = serde_json::from_str::<StreamMessage>(&line) {
+            match msg {
+                StreamMessage::ContentBlockStart { content_block, .. } => {
+                    if content_block.block_type == "tool_use" {
+                        current_tool_name = content_block.name.unwrap_or_default();
+                        current_tool_id = content_block.id;
+                        current_tool_input.clear();
+
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                "execution:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: current_tool_name.clone(),
+                                    tool_id: current_tool_id.clone(),
+                                    arguments: serde_json::Value::Null,
+                                    result: None,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                StreamMessage::ContentBlockDelta { delta, .. } => {
+                    if delta.delta_type == "text_delta" {
+                        if let Some(text) = delta.text {
+                            response_text.push_str(&text);
+
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "execution:chunk",
+                                    ChatChunkPayload {
+                                        text,
+                                        conversation_id: conversation_id_str.to_string(),
+                                    },
+                                );
+                            }
+                        }
+                    } else if delta.delta_type == "input_json_delta" {
+                        if let Some(json) = delta.partial_json {
+                            current_tool_input.push_str(&json);
+                        }
+                    }
+                }
+                StreamMessage::ContentBlockStop { .. } => {
+                    if !current_tool_name.is_empty() {
+                        let args: serde_json::Value =
+                            serde_json::from_str(&current_tool_input).unwrap_or_default();
+
+                        let tool_call = ToolCall {
+                            id: current_tool_id.clone(),
+                            name: current_tool_name.clone(),
+                            arguments: args.clone(),
+                            result: None,
+                        };
+                        tool_calls.push(tool_call);
+
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                "execution:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: current_tool_name.clone(),
+                                    tool_id: current_tool_id.clone(),
+                                    arguments: args,
+                                    result: None,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+
+                        current_tool_name.clear();
+                        current_tool_id = None;
+                        current_tool_input.clear();
+                    }
+                }
+                StreamMessage::Result { session_id, .. } => {
+                    claude_session_id = session_id;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Wait for process to complete
+    let status = child.wait().await.map_err(|e| e.to_string())?;
+
+    if !status.success() && response_text.is_empty() {
+        return Err("Agent exited with non-zero status".to_string());
+    }
+
+    Ok((response_text, tool_calls, claude_session_id))
+}
+
+// ============================================================================
+// MockExecutionChatService - For testing
+// ============================================================================
+
+/// Mock implementation for testing
+pub struct MockExecutionChatService {
+    responses: Mutex<Vec<MockExecutionResponse>>,
+    is_available: Mutex<bool>,
+    conversations: Mutex<Vec<ChatConversation>>,
+    active_run: Mutex<Option<AgentRun>>,
+}
+
+pub struct MockExecutionResponse {
+    pub text: String,
+    pub tool_calls: Vec<ToolCall>,
+    pub claude_session_id: Option<String>,
+}
+
+impl MockExecutionChatService {
+    pub fn new() -> Self {
+        Self {
+            responses: Mutex::new(Vec::new()),
+            is_available: Mutex::new(true),
+            conversations: Mutex::new(Vec::new()),
+            active_run: Mutex::new(None),
+        }
+    }
+
+    pub async fn set_available(&self, available: bool) {
+        *self.is_available.lock().await = available;
+    }
+
+    pub async fn queue_response(&self, response: MockExecutionResponse) {
+        self.responses.lock().await.push(response);
+    }
+
+    pub async fn queue_text_response(&self, text: impl Into<String>) {
+        self.queue_response(MockExecutionResponse {
+            text: text.into(),
+            tool_calls: Vec::new(),
+            claude_session_id: Some(uuid::Uuid::new_v4().to_string()),
+        })
+        .await;
+    }
+
+    pub async fn set_active_run(&self, run: Option<AgentRun>) {
+        *self.active_run.lock().await = run;
+    }
+
+    pub async fn add_conversation(&self, conversation: ChatConversation) {
+        self.conversations.lock().await.push(conversation);
+    }
+}
+
+impl Default for MockExecutionChatService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ExecutionChatService for MockExecutionChatService {
+    async fn spawn_with_persistence(
+        &self,
+        task_id: &TaskId,
+        _prompt: &str,
+    ) -> Result<SpawnResult, ExecutionChatError> {
+        if !*self.is_available.lock().await {
+            return Err(ExecutionChatError::AgentNotAvailable(
+                "Mock agent not available".to_string(),
+            ));
+        }
+
+        let conversation = ChatConversation::new_task_execution(task_id.clone());
+        let conversation_id = conversation.id;
+        let agent_run = AgentRun::new(conversation_id);
+        let agent_run_id = agent_run.id.as_str().to_string();
+
+        self.conversations.lock().await.push(conversation);
+        *self.active_run.lock().await = Some(agent_run);
+
+        Ok(SpawnResult {
+            conversation_id,
+            agent_run_id,
+        })
+    }
+
+    async fn get_execution_conversation(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Option<ChatConversation>, ExecutionChatError> {
+        let conversations = self.conversations.lock().await;
+        Ok(conversations
+            .iter()
+            .find(|c| {
+                c.context_type == ChatContextType::TaskExecution
+                    && c.context_id == task_id.as_str()
+            })
+            .cloned())
+    }
+
+    async fn list_task_executions(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Vec<ChatConversation>, ExecutionChatError> {
+        let conversations = self.conversations.lock().await;
+        Ok(conversations
+            .iter()
+            .filter(|c| {
+                c.context_type == ChatContextType::TaskExecution
+                    && c.context_id == task_id.as_str()
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn complete_execution(
+        &self,
+        conversation_id: &ChatConversationId,
+        claude_session_id: Option<String>,
+    ) -> Result<(), ExecutionChatError> {
+        let mut conversations = self.conversations.lock().await;
+        if let Some(conv) = conversations
+            .iter_mut()
+            .find(|c| c.id == *conversation_id)
+        {
+            conv.claude_session_id = claude_session_id;
+        }
+        Ok(())
+    }
+
+    async fn is_available(&self) -> bool {
+        *self.is_available.lock().await
+    }
+
+    async fn get_active_run(
+        &self,
+        _conversation_id: &ChatConversationId,
+    ) -> Result<Option<AgentRun>, ExecutionChatError> {
+        Ok(self.active_run.lock().await.clone())
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mock_service_spawn() {
+        let service = MockExecutionChatService::new();
+        let task_id = TaskId::new();
+
+        let result = service
+            .spawn_with_persistence(&task_id, "Execute the task")
+            .await
+            .unwrap();
+
+        assert!(!result.conversation_id.as_str().is_empty());
+        assert!(!result.agent_run_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_mock_service_not_available() {
+        let service = MockExecutionChatService::new();
+        service.set_available(false).await;
+
+        let task_id = TaskId::new();
+        let result = service
+            .spawn_with_persistence(&task_id, "Execute the task")
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ExecutionChatError::AgentNotAvailable(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_mock_service_get_execution_conversation() {
+        let service = MockExecutionChatService::new();
+        let task_id = TaskId::new();
+
+        // Initially no conversation
+        let conv = service.get_execution_conversation(&task_id).await.unwrap();
+        assert!(conv.is_none());
+
+        // After spawn, conversation exists
+        service
+            .spawn_with_persistence(&task_id, "Execute")
+            .await
+            .unwrap();
+
+        let conv = service.get_execution_conversation(&task_id).await.unwrap();
+        assert!(conv.is_some());
+        assert_eq!(conv.unwrap().context_type, ChatContextType::TaskExecution);
+    }
+
+    #[tokio::test]
+    async fn test_mock_service_list_executions() {
+        let service = MockExecutionChatService::new();
+        let task_id = TaskId::new();
+
+        // Spawn twice (simulating two execution attempts)
+        service
+            .spawn_with_persistence(&task_id, "First attempt")
+            .await
+            .unwrap();
+        service
+            .spawn_with_persistence(&task_id, "Second attempt")
+            .await
+            .unwrap();
+
+        let executions = service.list_task_executions(&task_id).await.unwrap();
+        assert_eq!(executions.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_mock_service_complete_execution() {
+        let service = MockExecutionChatService::new();
+        let task_id = TaskId::new();
+
+        let result = service
+            .spawn_with_persistence(&task_id, "Execute")
+            .await
+            .unwrap();
+
+        // Complete with session_id
+        let session_id = "550e8400-e29b-41d4-a716-446655440000".to_string();
+        service
+            .complete_execution(&result.conversation_id, Some(session_id.clone()))
+            .await
+            .unwrap();
+
+        let conv = service.get_execution_conversation(&task_id).await.unwrap();
+        assert_eq!(conv.unwrap().claude_session_id, Some(session_id));
+    }
+
+    #[tokio::test]
+    async fn test_mock_service_is_available() {
+        let service = MockExecutionChatService::new();
+
+        assert!(service.is_available().await);
+
+        service.set_available(false).await;
+        assert!(!service.is_available().await);
+    }
+
+    #[tokio::test]
+    async fn test_mock_service_get_active_run() {
+        let service = MockExecutionChatService::new();
+        let conversation_id = ChatConversationId::new();
+
+        // Initially no active run
+        let run = service.get_active_run(&conversation_id).await.unwrap();
+        assert!(run.is_none());
+
+        // Set an active run
+        let agent_run = AgentRun::new(conversation_id);
+        service.set_active_run(Some(agent_run.clone())).await;
+
+        let run = service.get_active_run(&conversation_id).await.unwrap();
+        assert!(run.is_some());
+        assert_eq!(run.unwrap().id, agent_run.id);
+    }
+
+    #[test]
+    fn test_execution_error_display() {
+        let err = ExecutionChatError::AgentNotAvailable("test".to_string());
+        assert!(err.to_string().contains("Agent not available"));
+
+        let err = ExecutionChatError::SpawnFailed("test".to_string());
+        assert!(err.to_string().contains("spawn"));
+
+        let err = ExecutionChatError::TaskNotFound("task-123".to_string());
+        assert!(err.to_string().contains("Task not found"));
+
+        let err = ExecutionChatError::AgentRunFailed("test".to_string());
+        assert!(err.to_string().contains("Agent run failed"));
+    }
+
+    #[test]
+    fn test_spawn_result() {
+        let conversation_id = ChatConversationId::new();
+        let result = SpawnResult {
+            conversation_id,
+            agent_run_id: "run-123".to_string(),
+        };
+
+        assert_eq!(result.conversation_id, conversation_id);
+        assert_eq!(result.agent_run_id, "run-123");
+    }
+
+    #[test]
+    fn test_execution_event_serialization() {
+        let event = ExecutionEvent::RunStarted {
+            run_id: "run-123".to_string(),
+            conversation_id: "conv-456".to_string(),
+            task_id: "task-789".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("RunStarted"));
+        assert!(json.contains("run-123"));
+
+        let event = ExecutionEvent::TextChunk {
+            text: "Hello".to_string(),
+            conversation_id: "conv-123".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("TextChunk"));
+        assert!(json.contains("Hello"));
+
+        let event = ExecutionEvent::RunCompleted {
+            conversation_id: "conv-123".to_string(),
+            claude_session_id: Some("sess-456".to_string()),
+            response_text: "Done".to_string(),
+            task_id: "task-789".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("RunCompleted"));
+        assert!(json.contains("sess-456"));
+    }
+}

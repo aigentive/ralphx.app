@@ -4,6 +4,7 @@
 pub mod app_state;
 pub mod apply_service;
 pub mod dependency_service;
+pub mod execution_chat_service;
 pub mod ideation_service;
 pub mod orchestrator_service;
 pub mod permission_state;
@@ -29,5 +30,9 @@ pub use orchestrator_service::{
     ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
     ClaudeOrchestratorService, MockOrchestratorService, MockResponse, OrchestratorError,
     OrchestratorEvent, OrchestratorResult, OrchestratorService, ToolCall, ToolCallResult,
+};
+pub use execution_chat_service::{
+    ClaudeExecutionChatService, ExecutionChatError, ExecutionChatService, ExecutionEvent,
+    ExecutionResult, MockExecutionChatService, MockExecutionResponse, SpawnResult,
 };
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};

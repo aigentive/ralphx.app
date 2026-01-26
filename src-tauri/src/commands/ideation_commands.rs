@@ -1223,6 +1223,13 @@ pub async fn send_chat_message(
             MessageRole::User => ChatMessage::user_in_session(session_id, &input.content),
             MessageRole::Orchestrator => ChatMessage::orchestrator_in_session(session_id, &input.content),
             MessageRole::System => ChatMessage::system_in_session(session_id, &input.content),
+            MessageRole::Worker => {
+                // Worker messages are typically not created through this endpoint
+                // but we handle them for completeness
+                let mut msg = ChatMessage::user_in_session(session_id, &input.content);
+                msg.role = MessageRole::Worker;
+                msg
+            }
         }
     } else if let Some(project_id_str) = input.project_id {
         let project_id = ProjectId::from_string(project_id_str);
