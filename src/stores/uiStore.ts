@@ -78,6 +78,8 @@ interface UiState {
   boardSearchQuery: string | null;
   /** Whether a search request is in flight */
   isSearching: boolean;
+  /** ID of task to show in full-screen view, or null if none */
+  taskFullViewId: string | null;
 }
 
 // ============================================================================
@@ -129,6 +131,10 @@ interface UiActions {
   setBoardSearchQuery: (query: string | null) => void;
   /** Set whether a search is in progress */
   setIsSearching: (searching: boolean) => void;
+  /** Open task in full-screen view */
+  openTaskFullView: (taskId: string) => void;
+  /** Close task full-screen view */
+  closeTaskFullView: () => void;
 }
 
 // ============================================================================
@@ -157,6 +163,7 @@ export const useUiStore = create<UiState & UiActions>()(
     showArchived: false,
     boardSearchQuery: null,
     isSearching: false,
+    taskFullViewId: null,
 
     // Actions
     toggleSidebar: () =>
@@ -269,6 +276,16 @@ export const useUiStore = create<UiState & UiActions>()(
     setIsSearching: (searching) =>
       set((state) => {
         state.isSearching = searching;
+      }),
+
+    openTaskFullView: (taskId) =>
+      set((state) => {
+        state.taskFullViewId = taskId;
+      }),
+
+    closeTaskFullView: () =>
+      set((state) => {
+        state.taskFullViewId = null;
       }),
   }))
 );
