@@ -1,15 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:42:17
+**Last Updated:** 2026-01-26 21:41:41
 **Phase:** Task Execution Experience
-**Tasks Completed:** 32 / 42
-**Current Task:** Open TaskFullView from TaskCard click
+**Tasks Completed:** 33 / 42
+**Current Task:** Add step editor to TaskCreationForm
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:41:41 - Open TaskFullView from TaskCard click
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Imported openTaskFullView from uiStore (line 113)
+  - Added shouldOpenFullView useMemo that determines which view to open based on task.internalStatus (lines 231-241)
+  - Updated handleViewDetails to conditionally open TaskFullView or modal based on shouldOpenFullView (lines 244-250)
+  - Updated card onClick handler to call both onSelect and handleViewDetails (lines 285-288)
+  - TaskFullView opens for: executing, qa_*, pending_review, revision_needed statuses
+  - Task modal opens for all other statuses
+- Context menu 'View Details' also uses same logic via handleViewDetails
+- Ran npm run typecheck - passing (0 errors)
+- Ran npm run lint - passing (0 errors, 13 pre-existing warnings)
+- Task complete
+
+**Commands:**
+- `npm run typecheck`
+- `npm run lint`
 
 ### 2026-01-26 21:42:17 - Wire up TaskFullView in App
 
