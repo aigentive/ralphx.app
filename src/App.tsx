@@ -164,8 +164,17 @@ function AppContent() {
   const { data: tasks = [] } = useTasks(currentProjectId);
 
   // Ideation hooks
-  const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
+  const { data: sessionData, isLoading: isSessionLoading, error: sessionError } = useIdeationSession(activeSession?.id ?? "");
   const { data: allSessions = [], isLoading: isLoadingSessions, error: sessionsError } = useIdeationSessions(currentProjectId);
+
+  // DEBUG: Log session data
+  console.log("[Ideation] Session data:", {
+    activeSessionId: activeSession?.id,
+    sessionData,
+    sessionError: sessionError?.message,
+    isSessionLoading,
+    messagesCount: sessionData?.messages?.length,
+  });
 
   // DEBUG: Log ideation sessions query state
   console.log("[Ideation] Query state:", {

@@ -1,15 +1,48 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:40:00
+**Last Updated:** 2026-01-26 20:10:07
 **Phase:** Task Execution Experience
-**Tasks Completed:** 7 / 42
-**Current Task:** Create task step CRUD commands
+**Tasks Completed:** 8 / 42
+**Current Task:** Create step status transition commands
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:10:07 - Create task step CRUD commands
+
+**What was done:**
+- Created `src-tauri/src/commands/task_step_commands.rs`:
+  - Implemented 6 Tauri commands:
+    - `create_task_step(task_id, input)` - Creates new step with title, description, sort_order
+    - `get_task_steps(task_id)` - Fetches all steps for a task
+    - `update_task_step(step_id, input)` - Updates title, description, sort_order
+    - `delete_task_step(step_id)` - Removes a step
+    - `reorder_task_steps(task_id, step_ids)` - Reorders steps by ID array
+    - `get_step_progress(task_id)` - Returns StepProgressSummary
+  - Added request/response DTOs:
+    - `CreateTaskStepInput`, `UpdateTaskStepInput`
+    - `TaskStepResponse` with snake_case serialization
+  - Implemented `From<TaskStep>` for `TaskStepResponse`
+  - Created 6 unit tests:
+    - test_create_task_step: Verifies step creation with defaults
+    - test_get_task_steps: Fetches multiple steps
+    - test_update_task_step: Updates title and description
+    - test_delete_task_step: Removes step from repository
+    - test_reorder_task_steps: Verifies reordering logic
+    - test_get_step_progress: Calculates progress summary
+- Updated `src-tauri/src/commands/mod.rs`:
+  - Added `task_step_commands` module
+  - Exported all 6 commands
+- Registered commands in `src-tauri/src/lib.rs` invoke_handler
+- All tests pass: 6 task_step_commands tests, 3199 total tests
+
+**Commands:**
+- `cargo test --lib task_step_commands` - All 6 tests passed
+- `cargo test --lib` - All 3199 tests passed
+- `git commit -m "feat(commands): add task step CRUD commands"`
 
 ### 2026-01-26 21:40:00 - Create StepProgressSummary struct
 
