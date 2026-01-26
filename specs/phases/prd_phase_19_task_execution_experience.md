@@ -156,7 +156,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(memory): implement MemoryTaskStepRepository for tests"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

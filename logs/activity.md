@@ -1,15 +1,60 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:15:00
+**Last Updated:** 2026-01-26 21:30:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 4 / 42
-**Current Task:** Implement MemoryTaskStepRepository for tests
+**Tasks Completed:** 5 / 42
+**Current Task:** Add TaskStepRepository to AppState
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:30:00 - Implement MemoryTaskStepRepository for tests
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/memory/memory_task_step_repo.rs`:
+  - Implemented MemoryTaskStepRepository with Arc<RwLock<HashMap>> pattern for thread-safe in-memory storage
+  - Implemented all TaskStepRepository trait methods:
+    - create: Insert into HashMap
+    - get_by_id: Simple HashMap lookup
+    - get_by_task: Filter by task_id and sort by sort_order ASC
+    - get_by_task_and_status: Filter by task_id and status, sorted
+    - update: Replace entry in HashMap
+    - delete: Remove from HashMap
+    - delete_by_task: Retain filter to remove all steps for a task
+    - count_by_status: Iterate and count by status using HashMap
+    - bulk_create: Insert multiple steps
+    - reorder: Update sort_order based on position in step_ids array
+- Updated `src-tauri/src/infrastructure/memory/mod.rs`:
+  - Added memory_task_step_repo module
+  - Re-exported MemoryTaskStepRepository
+- Added helper method `with_steps(Vec<TaskStep>)` for test initialization
+- Wrote comprehensive unit tests (9 tests):
+  - create_stores_step: Basic CRUD
+  - get_by_task_filters_and_sorts: Filtering and sort order
+  - get_by_task_and_status_filters_correctly: Status filtering
+  - update_modifies_step: Field updates
+  - delete_removes_step: Single deletion
+  - delete_by_task_removes_all_steps: Bulk deletion
+  - count_by_status_counts_correctly: Status counting
+  - bulk_create_creates_all_steps: Bulk creation
+  - reorder_updates_sort_order: Sort order updates
+- All tests pass (9/9)
+- Library code passes clippy checks
+
+**Commands run:**
+```bash
+cargo test --lib infrastructure::memory::memory_task_step_repo
+cargo clippy --lib -- -D warnings
+```
+
+**Test results:**
+- 9 tests passed
+- Library clippy: no warnings
+
+---
 
 ### 2026-01-26 21:15:00 - Implement SqliteTaskStepRepository
 

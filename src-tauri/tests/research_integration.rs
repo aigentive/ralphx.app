@@ -365,7 +365,7 @@ async fn test_fail_research(state: &AppState) {
 /// Test 10: Query processes by status
 async fn test_query_by_status(state: &AppState) {
     // Create processes in different states
-    let mut pending_process = create_quick_scan_research();
+    let pending_process = create_quick_scan_research();
     let mut running_process = create_standard_research();
     let mut completed_process = ResearchProcess::new(
         "Completed Research",
@@ -441,7 +441,6 @@ async fn test_delete_research(state: &AppState) {
 /// Test 13: Progress percentage calculation
 async fn test_progress_percentage(state: &AppState) {
     let mut process = create_quick_scan_research();
-    let process_id = process.id.clone();
 
     // Quick-scan has max_iterations = 10
     state.process_repo.create(process.clone()).await.unwrap();
