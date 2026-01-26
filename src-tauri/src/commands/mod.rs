@@ -16,6 +16,7 @@ pub mod research_commands;
 pub mod review_commands;
 pub mod task_commands;
 pub mod task_context_commands;
+pub mod task_step_commands;
 pub mod test_data_commands;
 pub mod workflow_commands;
 
@@ -61,6 +62,10 @@ pub use review_commands::{
     reject_review, request_changes,
 };
 pub use task_commands::{answer_user_question, create_task, delete_task, get_task, inject_task, list_tasks, update_task};
+pub use task_step_commands::{
+    create_task_step, delete_task_step, get_step_progress, get_task_steps, reorder_task_steps,
+    update_task_step,
+};
 pub use workflow_commands::{
     create_workflow, delete_workflow, get_active_workflow_columns, get_builtin_workflows,
     get_workflow, get_workflows, seed_builtin_workflows, set_default_workflow, update_workflow,

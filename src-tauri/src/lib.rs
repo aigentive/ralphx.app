@@ -141,6 +141,13 @@ pub fn run() {
             commands::task_commands::get_archived_count,
             commands::task_commands::search_tasks,
             commands::task_commands::get_valid_transitions,
+            // Task step commands
+            commands::task_step_commands::create_task_step,
+            commands::task_step_commands::get_task_steps,
+            commands::task_step_commands::update_task_step,
+            commands::task_step_commands::delete_task_step,
+            commands::task_step_commands::reorder_task_steps,
+            commands::task_step_commands::get_step_progress,
             commands::project_commands::list_projects,
             commands::project_commands::get_project,
             commands::project_commands::create_project,
