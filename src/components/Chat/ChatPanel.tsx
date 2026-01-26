@@ -699,8 +699,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [isExiting, setIsExiting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   // Streaming state - accumulates text chunks as they arrive
-  const [streamingText, setStreamingText] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -729,12 +727,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }
   }, [isCollapsed]);
 
-  // Auto-scroll to bottom when messages change or streaming text updates
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if (messagesEndRef.current && (messagesData.length || streamingText)) {
+    if (messagesEndRef.current && messagesData.length) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messagesData.length, streamingText]);
+  }, [messagesData.length]);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -830,17 +828,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
     (async () => {
       // Listen for chat chunks (streaming text)
-      const chunkUnlisten = await listen<{ text: string; conversation_id: string }>(
-        "chat:chunk",
-        (event) => {
-          // Only update if this chunk is for our active conversation
-          if (event.payload.conversation_id === activeConversationIdRef.current) {
-            setIsStreaming(true);
-            setStreamingText((prev) => prev + event.payload.text);
-          }
-        }
-      );
-      unlisteners.push(chunkUnlisten);
+      // Note: chat:chunk events arrive but contain complete messages (not streaming deltas)
+      // We just show a typing indicator instead of trying to render partial content
 
       // Listen for tool calls
       const toolCallUnlisten = await listen<{
@@ -854,29 +843,17 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for chat run completion - clear streaming state
+      // Listen for chat run completion
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("chat:run_completed", (event) => {
-        if (event.payload.conversation_id === activeConversationIdRef.current) {
-          setStreamingText("");
-          setIsStreaming(false);
-        }
+        console.log("Chat run completed:", event.payload);
+        // Query will auto-refetch
       });
       unlisteners.push(runCompletedUnlisten);
 
       // Execution-specific events (Phase 15B)
-      // Listen for execution chunks - accumulate streaming text
-      const execChunkUnlisten = await listen<{ text: string; conversation_id: string }>(
-        "execution:chunk",
-        (event) => {
-          // Update streaming text for execution chunks
-          // Note: execution mode uses task_execution context, so check if we're showing that conversation
-          setIsStreaming(true);
-          setStreamingText((prev) => prev + event.payload.text);
-        }
-      );
-      unlisteners.push(execChunkUnlisten);
+      // Note: execution:chunk events contain complete messages, not streaming deltas
 
       // Listen for execution tool calls
       const execToolCallUnlisten = await listen<{
@@ -889,14 +866,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       });
       unlisteners.push(execToolCallUnlisten);
 
-      // Listen for execution completion - clear streaming and refetch
+      // Listen for execution completion
       const execCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("execution:run_completed", (event) => {
         console.log("Worker execution completed:", event.payload);
-        setStreamingText("");
-        setIsStreaming(false);
-        // The query will auto-refetch due to the task:event invalidation
+        // Query will auto-refetch due to the task:event invalidation
       });
       unlisteners.push(execCompletedUnlisten);
     })();
@@ -1040,27 +1015,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {/* Show streaming text as it arrives */}
-                {isStreaming && streamingText && (
-                  <div className="flex items-start gap-2 mb-3">
-                    <Bot className="w-3.5 h-3.5 mt-2.5 shrink-0 text-[var(--text-muted)]" />
-                    <div
-                      className="px-3 py-2 text-sm rounded-[10px_10px_10px_4px] max-w-[85%]"
-                      style={{
-                        backgroundColor: "var(--bg-elevated)",
-                        border: "1px solid var(--border-subtle)",
-                      }}
-                    >
-                      <div className="prose prose-sm prose-invert max-w-none">
-                        <ReactMarkdown components={markdownComponents}>
-                          {streamingText}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {/* Show typing indicator when sending but not yet streaming */}
-                {isSending && !isStreaming && <TypingIndicator />}
+                {/* Show typing indicator while agent is working */}
+                {isSending && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </>
             )}

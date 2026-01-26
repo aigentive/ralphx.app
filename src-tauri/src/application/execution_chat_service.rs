@@ -27,7 +27,7 @@ use crate::application::orchestrator_service::{
     ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
 };
 use crate::infrastructure::agents::claude::{
-    build_streaming_command,
+    build_base_cli_command, add_prompt_args, configure_spawn,
     StreamProcessor, StreamEvent as ProcessorStreamEvent, ToolCall,
 };
 use crate::domain::entities::{
@@ -296,20 +296,14 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
     }
 
     /// Create a Claude CLI command for worker execution
-    /// Uses `script` wrapper on macOS to force pseudo-terminal mode,
-    /// which enables line buffering for real-time streaming output.
     fn build_command(&self, prompt: &str, resume_session_id: Option<&str>) -> Command {
         let agent = if resume_session_id.is_none() { Some("worker") } else { None };
 
-        build_streaming_command(
-            &self.cli_path,
-            &self.plugin_dir,
-            &self.working_directory,
-            prompt,
-            agent,
-            resume_session_id,
-            &[("RALPHX_AGENT_TYPE", "worker")],
-        )
+        let mut cmd = build_base_cli_command(&self.cli_path, &self.plugin_dir);
+        cmd.env("RALPHX_AGENT_TYPE", "worker");
+        add_prompt_args(&mut cmd, prompt, agent, resume_session_id);
+        configure_spawn(&mut cmd, &self.working_directory);
+        cmd
     }
 
     /// Process streaming output from Claude CLI and persist to database
@@ -752,15 +746,10 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                             let _ = chat_message_repo.create(user_msg).await;
 
                             // Send via --resume and process using shared helpers
-                            let mut cmd = build_streaming_command(
-                                &cli_path,
-                                &plugin_dir,
-                                &working_directory,
-                                &queued_msg.content,
-                                None, // No agent for resume
-                                Some(sess_id),
-                                &[("RALPHX_AGENT_TYPE", "worker")],
-                            );
+                            let mut cmd = build_base_cli_command(&cli_path, &plugin_dir);
+                            cmd.env("RALPHX_AGENT_TYPE", "worker");
+                            add_prompt_args(&mut cmd, &queued_msg.content, None, Some(sess_id));
+                            configure_spawn(&mut cmd, &working_directory);
 
                             if let Ok(child) = cmd.spawn() {
                                 if let Ok((response, tools, _)) = process_stream_background(
