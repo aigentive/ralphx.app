@@ -1,15 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:58:00
+**Last Updated:** 2026-01-26 14:00:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 15 / 24
-**Current Task:** Integrate plan display in IdeationView
+**Tasks Completed:** 16 / 24
+**Current Task:** Implement proactive sync ArtifactFlow
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 14:00:00 - Integrate Plan Display in IdeationView (Phase 16, Task 16)
+
+**What was done:**
+- Updated `src/stores/ideationStore.ts`:
+  - Added `planArtifact: Artifact | null` to state
+  - Added `ideationSettings: IdeationSettings | null` to state
+  - Added `setPlanArtifact` action to set plan artifact
+  - Added `fetchPlanArtifact` async action to fetch artifact by ID using artifactApi
+  - Added `setIdeationSettings` action to store settings
+- Updated `src/components/Ideation/IdeationView.tsx`:
+  - Imported PlanDisplay component and useIdeationStore
+  - Added hooks to get planArtifact, ideationSettings, and fetchPlanArtifact from store
+  - Added useEffect to fetch plan artifact when session.planArtifactId changes
+  - Integrated PlanDisplay above proposals section when plan exists
+  - Shows plan with linked proposals count
+  - Added "Waiting for plan..." message when no plan and mode is Required
+  - Conditional empty state logic based on plan mode
+  - Connected Edit button (console.log placeholder for now)
+
+**Commands run:**
+- `npm run lint && npm run typecheck` - passed with 0 errors, 11 pre-existing warnings
+
+**Tests:**
+- All type checks passed
+- No new linting errors introduced
+- Component integration tested via manual review
 
 ### 2026-01-26 05:58:00 - Create PlanEditor Component (Phase 16, Task 15)
 
