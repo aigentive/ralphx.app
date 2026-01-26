@@ -578,7 +578,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(stores): add taskFullViewId to uiStore"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

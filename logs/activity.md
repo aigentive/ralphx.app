@@ -1,15 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:28:15
+**Last Updated:** 2026-01-26 21:25:11
 **Phase:** Task Execution Experience
-**Tasks Completed:** 26 / 42
-**Current Task:** Add taskFullViewId to uiStore
+**Tasks Completed:** 27 / 42
+**Current Task:** Create TaskDetailPanel component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:25:11 - Add taskFullViewId to uiStore
+
+**What was done:**
+- Updated `src/stores/uiStore.ts`:
+  - Added `taskFullViewId: string | null` state field (default: `null`)
+  - Added `openTaskFullView: (taskId: string) => void` action to show full-screen task view
+  - Added `closeTaskFullView: () => void` action to hide full-screen task view
+  - Updated `UiState` interface with `taskFullViewId` field
+  - Updated `UiActions` interface with `openTaskFullView` and `closeTaskFullView` actions
+  - Initialized `taskFullViewId: null` in initial state
+  - Implemented action handlers using immer middleware pattern
+- State will be used to manage full-screen TaskFullView component rendering
+- Ran TypeScript type checking: passes without errors
+
+**Commands:**
+- `npm run typecheck`
 
 ### 2026-01-26 21:28:15 - Add StepProgressBar to TaskCard
 
