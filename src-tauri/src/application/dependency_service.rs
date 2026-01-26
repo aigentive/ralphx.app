@@ -530,7 +530,7 @@ pub struct DependencyAnalysis {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{Priority, TaskCategory};
+    use crate::domain::entities::{ArtifactId, Priority, TaskCategory};
     use async_trait::async_trait;
     use std::sync::Mutex;
 
@@ -658,6 +658,17 @@ mod tests {
                 .iter()
                 .filter(|p| &p.session_id == session_id && p.selected)
                 .count() as u32)
+        }
+
+        async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>> {
+            Ok(self
+                .proposals
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|p| p.plan_artifact_id.as_ref() == Some(artifact_id))
+                .cloned()
+                .collect())
         }
     }
 

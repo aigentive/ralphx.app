@@ -9,7 +9,7 @@ use chrono::Utc;
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
+    ArtifactId, IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::repositories::TaskProposalRepository;
 use crate::error::{AppError, AppResult};
@@ -323,6 +323,30 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(count as u32)
+    }
+
+    async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                        suggested_priority, priority_score, priority_reason, priority_factors,
+                        estimated_complexity, user_priority, user_modified, status, selected,
+                        created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
+                 FROM task_proposals
+                 WHERE plan_artifact_id = ?1
+                 ORDER BY sort_order ASC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let proposals = stmt
+            .query_map([artifact_id.as_str()], |row| TaskProposal::from_row(row))
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(proposals)
     }
 }
 

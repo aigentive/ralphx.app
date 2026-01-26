@@ -1,15 +1,56 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 14:00:00
+**Last Updated:** 2026-01-26 16:45:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 16 / 24
-**Current Task:** Implement proactive sync ArtifactFlow
+**Tasks Completed:** 17 / 24
+**Current Task:** Frontend: handle plan:proposals_may_need_update event
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 16:45:00 - Implement proactive sync ArtifactFlow (Phase 16, Task 17)
+
+**What was done:**
+- Extended ArtifactFlowEvent enum with `ArtifactUpdated` event type
+- Added `EmitEvent` and `FindLinkedProposals` step types to ArtifactFlowStep
+- Created `create_plan_updated_sync_flow()` factory function that:
+  - Triggers on Specification artifact updates in prd-library bucket
+  - Executes FindLinkedProposals to get linked proposal IDs
+  - Emits `plan:proposals_may_need_update` event
+- Added `on_artifact_updated()` convenience method to ArtifactFlowEngine
+- Added `process_artifact_updated()` method to ArtifactFlowService
+- Added `get_by_plan_artifact_id()` to TaskProposalRepository trait and all implementations
+- Updated `update_plan_artifact` HTTP endpoint to:
+  - Query linked proposals via new repository method
+  - Emit `plan:proposals_may_need_update` Tauri event with payload
+- Added `PlanProposalsSyncPayload` struct for the event data
+
+**Files modified:**
+- `src-tauri/src/domain/entities/artifact_flow.rs`
+- `src-tauri/src/domain/services/artifact_flow_service.rs`
+- `src-tauri/src/domain/repositories/task_proposal_repository.rs`
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo.rs`
+- `src-tauri/src/infrastructure/memory/memory_task_proposal_repo.rs`
+- `src-tauri/src/http_server.rs`
+- `src-tauri/src/application/apply_service.rs` (mock repo)
+- `src-tauri/src/application/dependency_service.rs` (mock repo)
+- `src-tauri/src/application/ideation_service.rs` (mock repo)
+- `src-tauri/src/application/priority_service.rs` (mock repo)
+
+**Tests:**
+- 70 tests for artifact_flow entities (all pass)
+- 52 tests for artifact_flow_service (all pass)
+- Full test suite: 3076+ tests all pass
+
+**Commands run:**
+- `cargo test --lib domain::entities::artifact_flow` - 70 tests pass
+- `cargo test --lib domain::services::artifact_flow_service` - 52 tests pass
+- `cargo test` - all tests pass
+
+---
 
 ### 2026-01-26 14:00:00 - Integrate Plan Display in IdeationView (Phase 16, Task 16)
 

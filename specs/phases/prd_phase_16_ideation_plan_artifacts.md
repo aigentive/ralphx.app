@@ -368,7 +368,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: feat(artifact-flow): add plan_updated_sync for proactive proposal updates",
       "STOP: Output <promise>COMPLETE</promise> - High-complexity task complete, can switch back to Sonnet"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

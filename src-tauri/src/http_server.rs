@@ -166,6 +166,20 @@ pub struct LinkProposalsToPlanRequest {
     pub artifact_id: String,
 }
 
+/// Payload for the plan:proposals_may_need_update event
+/// Emitted when a plan artifact is updated and has linked proposals
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanProposalsSyncPayload {
+    /// The new artifact ID (new version)
+    pub artifact_id: String,
+    /// The previous artifact ID (the one that was updated)
+    pub previous_artifact_id: String,
+    /// IDs of proposals linked to the original plan
+    pub proposal_ids: Vec<String>,
+    /// The new version number
+    pub new_version: u32,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ArtifactResponse {
     pub id: String,
@@ -417,6 +431,7 @@ async fn create_plan_artifact(
 /// POST /api/update_plan_artifact
 ///
 /// Updates an existing plan artifact by creating a new version.
+/// Also emits a proactive sync event if proposals are linked to this plan.
 async fn update_plan_artifact(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdatePlanArtifactRequest>,
@@ -459,6 +474,35 @@ async fn update_plan_artifact(
         .add_relation(relation)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Proactive sync: Find linked proposals and emit event
+    // This allows the UI to show a notification like:
+    // "Plan updated. N proposals may need revision. [Review]"
+    if let Ok(linked_proposals) = state
+        .task_proposal_repo
+        .get_by_plan_artifact_id(&artifact_id)
+        .await
+    {
+        if !linked_proposals.is_empty() {
+            let proposal_ids: Vec<String> = linked_proposals
+                .iter()
+                .map(|p| p.id.as_str().to_string())
+                .collect();
+
+            // Emit event to frontend
+            if let Some(app_handle) = &state.app_handle {
+                let _ = app_handle.emit(
+                    "plan:proposals_may_need_update",
+                    PlanProposalsSyncPayload {
+                        artifact_id: created.id.as_str().to_string(),
+                        previous_artifact_id: artifact_id.as_str().to_string(),
+                        proposal_ids,
+                        new_version,
+                    },
+                );
+            }
+        }
+    }
 
     Ok(Json(ArtifactResponse::from(created)))
 }
