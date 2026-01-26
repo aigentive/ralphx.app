@@ -363,16 +363,27 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
                     }
                     StreamMessage::ContentBlockDelta { delta, .. } => {
                         if delta.delta_type == "text_delta" {
-                            if let Some(text) = delta.text {
+                            if let Some(text) = delta.text.clone() {
                                 response_text.push_str(&text);
 
-                                // Emit text chunk event
+                                // Emit execution:chunk event for ChatPanel
                                 self.emit_event(
                                     "execution:chunk",
                                     ChatChunkPayload {
-                                        text,
+                                        text: text.clone(),
                                         conversation_id: conversation_id_str.to_string(),
                                     },
+                                );
+
+                                // ALSO emit agent:message event for Activity Stream
+                                self.emit_event(
+                                    "agent:message",
+                                    serde_json::json!({
+                                        "taskId": _task_id.as_str(),
+                                        "type": "text",
+                                        "content": text,
+                                        "timestamp": chrono::Utc::now().timestamp_millis(),
+                                    }),
                                 );
                             }
                         } else if delta.delta_type == "input_json_delta" {
@@ -396,16 +407,31 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
                             };
                             tool_calls.push(tool_call);
 
-                            // Emit tool call completed event
+                            // Emit execution:tool_call event for ChatPanel
                             self.emit_event(
                                 "execution:tool_call",
                                 ChatToolCallPayload {
                                     tool_name: current_tool_name.clone(),
                                     tool_id: current_tool_id.clone(),
-                                    arguments: args,
+                                    arguments: args.clone(),
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
+                            );
+
+                            // ALSO emit agent:message event for Activity Stream
+                            self.emit_event(
+                                "agent:message",
+                                serde_json::json!({
+                                    "taskId": _task_id.as_str(),
+                                    "type": "tool_call",
+                                    "content": format!("{} ({})", current_tool_name, serde_json::to_string(&args).unwrap_or_default()),
+                                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                                    "metadata": {
+                                        "tool_name": current_tool_name.clone(),
+                                        "arguments": args,
+                                    },
+                                }),
                             );
 
                             current_tool_name.clear();
@@ -888,12 +914,24 @@ async fn process_stream_background<R: Runtime>(
                             response_text.push_str(&text);
 
                             if let Some(ref handle) = app_handle {
+                                // Emit execution:chunk event for ChatPanel
                                 let _ = handle.emit(
                                     "execution:chunk",
                                     ChatChunkPayload {
-                                        text,
+                                        text: text.clone(),
                                         conversation_id: conversation_id_str.to_string(),
                                     },
+                                );
+
+                                // ALSO emit agent:message event for Activity Stream
+                                let _ = handle.emit(
+                                    "agent:message",
+                                    serde_json::json!({
+                                        "taskId": _task_id.as_str(),
+                                        "type": "text",
+                                        "content": text,
+                                        "timestamp": chrono::Utc::now().timestamp_millis(),
+                                    }),
                                 );
                             }
                         }
@@ -917,15 +955,31 @@ async fn process_stream_background<R: Runtime>(
                         tool_calls.push(tool_call);
 
                         if let Some(ref handle) = app_handle {
+                            // Emit execution:tool_call event for ChatPanel
                             let _ = handle.emit(
                                 "execution:tool_call",
                                 ChatToolCallPayload {
                                     tool_name: current_tool_name.clone(),
                                     tool_id: current_tool_id.clone(),
-                                    arguments: args,
+                                    arguments: args.clone(),
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
+                            );
+
+                            // ALSO emit agent:message event for Activity Stream
+                            let _ = handle.emit(
+                                "agent:message",
+                                serde_json::json!({
+                                    "taskId": _task_id.as_str(),
+                                    "type": "tool_call",
+                                    "content": format!("{} ({})", current_tool_name, serde_json::to_string(&args).unwrap_or_default()),
+                                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                                    "metadata": {
+                                        "tool_name": current_tool_name.clone(),
+                                        "arguments": args,
+                                    },
+                                }),
                             );
                         }
 
