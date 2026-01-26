@@ -1,15 +1,77 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:45:00
+**Last Updated:** 2026-01-26 21:15:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 2 / 42
-**Current Task:** Create TaskStepRepository trait
+**Tasks Completed:** 4 / 42
+**Current Task:** Implement MemoryTaskStepRepository for tests
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:15:00 - Implement SqliteTaskStepRepository
+
+**What was done:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_task_step_repo.rs`:
+  - Implemented SqliteTaskStepRepository with Arc<Mutex<Connection>> pattern
+  - Implemented all TaskStepRepository trait methods:
+    - create: INSERT with parameterized query
+    - get_by_id: SELECT with QueryReturnedNoRows handling
+    - get_by_task: SELECT with ORDER BY sort_order ASC
+    - get_by_task_and_status: SELECT with status filter
+    - update: UPDATE all fields except id
+    - delete: DELETE by id
+    - delete_by_task: DELETE all steps for a task
+    - count_by_status: GROUP BY status, returns HashMap
+    - bulk_create: Transaction-based INSERT for multiple steps with rollback on error
+    - reorder: Transaction-based UPDATE sort_order with rollback on error
+  - Used TaskStep::from_row() for deserialization
+  - Used TaskStepStatus::to_db_string() for serialization
+  - All operations use parameterized queries to prevent SQL injection
+- Updated `src-tauri/src/infrastructure/sqlite/mod.rs`:
+  - Added sqlite_task_step_repo module
+  - Re-exported SqliteTaskStepRepository
+- Added Hash trait to TaskStepStatus enum (required for HashMap keys)
+- Wrote comprehensive unit tests (12 tests):
+  - test_create_and_get_by_id: Basic CRUD
+  - test_get_by_id_not_found: None handling
+  - test_get_by_task_ordered: Sort order verification
+  - test_get_by_task_and_status: Status filtering
+  - test_update: Field updates
+  - test_delete: Single step deletion
+  - test_delete_by_task: Bulk deletion
+  - test_count_by_status: Status counting
+  - test_bulk_create: Transaction success
+  - test_bulk_create_rollback_on_error: Transaction rollback on duplicate ID
+  - test_reorder: Sort order updates
+  - test_reorder_rollback_on_error: Transaction behavior with invalid IDs
+- All tests pass (3184 passed, including 12 new tests)
+
+**Commands run:**
+- `cargo test sqlite_task_step_repo --lib`
+- `cargo test --lib`
+
+### 2026-01-26 21:00:00 - Create TaskStepRepository Trait
+
+**What was done:**
+- Created `src-tauri/src/domain/repositories/task_step_repository.rs`:
+  - Defined #[async_trait] TaskStepRepository trait
+  - Added CRUD operations: create, get_by_id, get_by_task, get_by_task_and_status, update, delete, delete_by_task
+  - Added query operations: count_by_status (returns HashMap<TaskStepStatus, u32>)
+  - Added bulk operations: bulk_create for transaction-based creation, reorder for updating sort_order
+  - All methods return AppResult for error handling
+  - get_by_task returns steps ordered by sort_order ASC
+- Updated `src-tauri/src/domain/repositories/mod.rs`:
+  - Added task_step_repository module
+  - Re-exported TaskStepRepository trait
+- All tests pass (3172 passed)
+- No clippy warnings
+
+**Commands run:**
+- `cargo test --lib`
+- `cargo clippy --lib -- -D warnings`
 
 ### 2026-01-26 20:45:00 - Create Database Migration for task_steps Table
 

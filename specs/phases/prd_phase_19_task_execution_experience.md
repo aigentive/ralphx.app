@@ -122,7 +122,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update src-tauri/src/domain/repositories/mod.rs to export trait",
       "Commit: feat(repository): add TaskStepRepository trait"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
@@ -140,7 +140,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(sqlite): implement SqliteTaskStepRepository"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

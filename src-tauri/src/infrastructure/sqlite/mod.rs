@@ -21,6 +21,7 @@ pub mod sqlite_task_proposal_repo;
 pub mod sqlite_review_repo;
 pub mod sqlite_task_qa_repo;
 pub mod sqlite_task_repo;
+pub mod sqlite_task_step_repo;
 pub mod sqlite_workflow_repo;
 pub mod state_machine_repository;
 
@@ -45,5 +46,6 @@ pub use sqlite_task_proposal_repo::SqliteTaskProposalRepository;
 pub use sqlite_review_repo::SqliteReviewRepository;
 pub use sqlite_task_qa_repo::SqliteTaskQARepository;
 pub use sqlite_task_repo::SqliteTaskRepository;
+pub use sqlite_task_step_repo::SqliteTaskStepRepository;
 pub use sqlite_workflow_repo::SqliteWorkflowRepository;
 pub use state_machine_repository::TaskStateMachineRepository;

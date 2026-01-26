@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{TaskId, TaskStepId};
 
 /// Status of a task step
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStepStatus {
     /// Waiting to be worked on
