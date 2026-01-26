@@ -305,37 +305,39 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     >
       {/* Container for the entire board including header */}
       <div className="flex flex-col h-full">
-        {/* Header with Show Archived toggle and Search Bar */}
-        <div className="px-6 py-3 border-b border-border/40 space-y-3">
-          {/* Search Bar (when search is open) */}
-          {searchOpen && (
-            <TaskSearchBar
-              value={boardSearchQuery || ''}
-              onChange={setBoardSearchQuery}
-              onClose={() => {
-                setSearchOpen(false);
-                setBoardSearchQuery(null);
-              }}
-              resultCount={searchResults.length}
-              isSearching={isSearchLoading}
-            />
-          )}
+        {/* Header with Show Archived toggle and Search Bar - only render when there's content */}
+        {(searchOpen || archivedCount > 0) && (
+          <div className="px-4 py-3 border-b border-border/40 space-y-3">
+            {/* Search Bar (when search is open) */}
+            {searchOpen && (
+              <TaskSearchBar
+                value={boardSearchQuery || ''}
+                onChange={setBoardSearchQuery}
+                onClose={() => {
+                  setSearchOpen(false);
+                  setBoardSearchQuery(null);
+                }}
+                resultCount={searchResults.length}
+                isSearching={isSearchLoading}
+              />
+            )}
 
-          {/* Show Archived toggle (only visible when there are archived tasks) */}
-          {archivedCount > 0 && (
-            <Toggle
-              pressed={showArchived}
-              onPressedChange={setShowArchived}
-              aria-label="Toggle show archived tasks"
-              className="gap-2 data-[state=on]:bg-accent/10 data-[state=on]:text-accent"
-            >
-              <Archive className="h-4 w-4" />
-              <span className="text-sm font-medium">
-                Show archived ({archivedCount})
-              </span>
-            </Toggle>
-          )}
-        </div>
+            {/* Show Archived toggle (only visible when there are archived tasks) */}
+            {archivedCount > 0 && (
+              <Toggle
+                pressed={showArchived}
+                onPressedChange={setShowArchived}
+                aria-label="Toggle show archived tasks"
+                className="gap-2 data-[state=on]:bg-accent/10 data-[state=on]:text-accent"
+              >
+                <Archive className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  Show archived ({archivedCount})
+                </span>
+              </Toggle>
+            )}
+          </div>
+        )}
 
         {/* TaskBoard container - macOS Tahoe with warm ambient glow */}
         <div
@@ -343,8 +345,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
           className="task-board relative flex items-stretch gap-3 py-5 overflow-x-auto flex-1"
           style={{
             background: `
-              radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
-              radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+              radial-gradient(ellipse 90% 60% at 50% 30%, rgba(255,107,53,0.05) 0%, transparent 60%),
               var(--bg-base)
             `,
             scrollSnapType: "x proximity",
