@@ -1,15 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:03:30
+**Last Updated:** 2026-01-26 21:08:29
 **Phase:** Task Execution Experience
-**Tasks Completed:** 21 / 42
-**Current Task:** Create StepList component
+**Tasks Completed:** 22 / 42
+**Current Task:** Add execution state animations to CSS
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:08:29 - Create StepList component
+
+**What was done:**
+- Created `src/components/tasks/StepList.tsx`:
+  - Accepts `taskId` and optional `editable` props
+  - Uses `useTaskSteps(taskId)` hook to fetch steps
+  - Uses `useStepMutations(taskId)` for delete operations
+  - Renders loading skeleton (3 skeleton items) while fetching
+  - Shows error state if fetch fails
+  - Shows empty state with ListChecks icon and contextual message when no steps
+  - Maps steps to StepItem components
+  - Passes delete handler only when editable=true using conditional spread
+  - Fixed TypeScript strict mode issue with optional props using spread operator
+- Created `src/components/tasks/StepList.test.tsx`:
+  - 7 test cases covering all states:
+    - Loading skeleton rendering
+    - Error state rendering
+    - Empty state with default message
+    - Empty state with editable message
+    - Steps list rendering
+    - Editable mode with delete buttons
+    - Non-editable mode without delete buttons
+  - All tests passing
+
+**Commands:**
+- `npm run lint` (no errors in new files)
+- `npm run typecheck` (no errors in new files)
+- `npm run test -- StepList.test.tsx` (7/7 tests passing)
 
 ### 2026-01-26 21:03:30 - Create StepItem component
 
