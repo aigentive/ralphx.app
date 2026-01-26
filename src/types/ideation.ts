@@ -137,6 +137,8 @@ export const ChatMessageSchema = z.object({
   content: z.string().min(1),
   metadata: z.string().nullable(),
   parentMessageId: z.string().nullable(),
+  conversationId: z.string().nullable(),
+  toolCalls: z.string().nullable(), // JSON string of tool calls
   createdAt: z.string().datetime(),
 });
 
