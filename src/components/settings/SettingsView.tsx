@@ -1,12 +1,10 @@
 /**
- * SettingsView - Premium configuration panel for project settings
+ * SettingsView - Configuration panel for project settings
  *
- * Features:
- * - Glass effect header with Settings icon and saving indicator
- * - Section cards (Execution, Model, Review, Supervisor, Ideation) with gradient borders
- * - shadcn Switch, Input, Select for form controls
- * - Master toggle → sub-settings disabled pattern
- * - Lucide icons: Settings, Zap, Brain, FileSearch, Shield, Lightbulb, Loader2, AlertCircle, X
+ * Design: macOS Tahoe Liquid Glass
+ * - Frosted glass header with backdrop-blur
+ * - Flat translucent section cards
+ * - Ambient orange glow background
  */
 
 import { useState, useCallback } from "react";
@@ -321,15 +319,23 @@ interface SectionCardProps {
 function SectionCard({ icon, title, description, children }: SectionCardProps) {
   return (
     <Card
-      className={cn(
-        "bg-[var(--bg-elevated)] border-[var(--border-default)] shadow-[var(--shadow-xs)]",
-        // Gradient border technique
-        "border border-transparent",
-        "[background:linear-gradient(var(--bg-elevated),var(--bg-elevated))_padding-box,linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)_border-box]"
-      )}
+      className="rounded-lg"
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+      }}
     >
       <div className="flex items-start gap-3 p-5 pb-0">
-        <div className="p-2 rounded-lg bg-[var(--accent-muted)] shrink-0">
+        <div
+          className="p-2 rounded-lg shrink-0"
+          style={{
+            background: "rgba(255,107,53,0.1)",
+            border: "1px solid rgba(255,107,53,0.2)",
+          }}
+        >
           {icon}
         </div>
         <div>
@@ -746,15 +752,31 @@ export function SettingsView({
       data-testid="settings-view"
       className="flex flex-col h-full"
       style={{
-        backgroundColor: "var(--bg-surface)",
-        backgroundImage:
-          "radial-gradient(ellipse at top right, rgba(255,107,53,0.02) 0%, var(--bg-surface) 40%)",
+        background: `
+          radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
+          radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+          var(--bg-base)
+        `,
       }}
     >
-      {/* Header with glass effect */}
-      <div className="flex items-center justify-between px-6 py-4 backdrop-blur-md bg-[rgba(26,26,26,0.85)] border-b border-[var(--border-subtle)]">
+      {/* Header - Frosted Glass */}
+      <div
+        className="flex items-center justify-between px-6 py-4 border-b"
+        style={{
+          background: "rgba(18,18,18,0.85)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderColor: "rgba(255,255,255,0.06)",
+        }}
+      >
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-[var(--accent-muted)]">
+          <div
+            className="p-2 rounded-lg"
+            style={{
+              background: "rgba(255,107,53,0.1)",
+              border: "1px solid rgba(255,107,53,0.2)",
+            }}
+          >
             <Settings className="w-5 h-5 text-[var(--accent-primary)]" />
           </div>
           <div>

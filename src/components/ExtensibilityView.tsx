@@ -1,13 +1,10 @@
 /**
- * ExtensibilityView - Premium tabbed interface for Workflows, Artifacts, Research, Methodologies
+ * ExtensibilityView - Tabbed interface for Workflows, Artifacts, Research, Methodologies
  *
- * Design:
- * - shadcn Tabs with underline indicator style
- * - Warm radial gradient background (bottom-right)
- * - 44px tabs with icons and slide animation
- * - Premium cards for each panel
- *
- * @see specs/design/pages/extensibility-view.md
+ * Design: macOS Tahoe Liquid Glass
+ * - Frosted glass panels
+ * - Ambient orange glow background
+ * - Flat translucent cards
  */
 
 import { useState, useCallback, useMemo } from "react";
@@ -244,10 +241,13 @@ function WorkflowsPanel() {
             <Card
               key={workflow.id}
               data-testid="workflow-card"
-              className="group transition-all duration-150 hover:-translate-y-0.5"
+              className="group transition-all duration-180 hover:-translate-y-px"
               style={{
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
+                background: "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
               }}
             >
               <CardContent className="p-4">
@@ -402,8 +402,10 @@ function ArtifactsPanel() {
       <div
         className="w-48 flex-shrink-0 p-3 rounded-lg"
         style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
+          background: "rgba(255,255,255,0.03)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.06)",
         }}
       >
         <h3
@@ -527,10 +529,13 @@ function ArtifactsPanel() {
                 <Card
                   key={artifact.id}
                   data-testid="artifact-card"
-                  className="group cursor-pointer transition-all duration-150 hover:border-[--accent-primary]/30"
+                  className="group cursor-pointer transition-all duration-180 hover:-translate-y-px"
                   style={{
-                    backgroundColor: "var(--bg-surface)",
-                    border: "1px solid var(--border-subtle)",
+                    background: "rgba(255,255,255,0.04)",
+                    backdropFilter: "blur(20px)",
+                    WebkitBackdropFilter: "blur(20px)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                   }}
                 >
                   <CardContent className="p-3 text-center">
@@ -643,8 +648,11 @@ function ResearchPanel() {
       <Card
         className="max-w-xl mx-auto"
         style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
+          background: "rgba(255,255,255,0.04)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
         }}
       >
         <CardContent className="p-6 space-y-5">
@@ -884,10 +892,13 @@ function ResearchPanel() {
             <Card
               key={session.id}
               data-testid="session-card"
-              className="cursor-pointer transition-all duration-150 hover:-translate-y-0.5"
+              className="cursor-pointer transition-all duration-180 hover:-translate-y-px"
               style={{
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
+                background: "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
               }}
             >
               <CardContent className="p-4">
@@ -1000,17 +1011,19 @@ function MethodologiesPanel({
               key={methodology.id}
               data-testid="methodology-card"
               data-active={methodology.isActive ? "true" : "false"}
-              className="cursor-pointer transition-all duration-150 hover:-translate-y-0.5"
+              className="cursor-pointer transition-all duration-180 hover:-translate-y-px"
               style={{
-                backgroundColor: methodology.isActive
-                  ? "linear-gradient(135deg, var(--bg-surface) 0%, rgba(255, 107, 53, 0.03) 100%)"
-                  : "var(--bg-surface)",
-                border: methodology.isActive
-                  ? "2px solid var(--accent-primary)"
-                  : "1px solid var(--border-subtle)",
                 background: methodology.isActive
-                  ? "linear-gradient(135deg, var(--bg-surface) 0%, rgba(255, 107, 53, 0.03) 100%)"
-                  : "var(--bg-surface)",
+                  ? "rgba(255,107,53,0.08)"
+                  : "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: methodology.isActive
+                  ? "1px solid rgba(255,107,53,0.25)"
+                  : "1px solid rgba(255,255,255,0.08)",
+                boxShadow: methodology.isActive
+                  ? "0 0 0 1px rgba(255,107,53,0.15), 0 2px 8px rgba(0,0,0,0.15)"
+                  : "0 1px 3px rgba(0,0,0,0.12)",
               }}
             >
               <CardContent className="p-5">
@@ -1147,11 +1160,8 @@ export function ExtensibilityView() {
         className="flex flex-col h-full"
         style={{
           background: `
-            radial-gradient(
-              ellipse 600px 400px at 100% 100%,
-              rgba(255, 107, 53, 0.03) 0%,
-              transparent 70%
-            ),
+            radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
+            radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
             var(--bg-base)
           `,
         }}

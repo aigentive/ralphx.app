@@ -1,10 +1,9 @@
 /**
  * TaskBoardWithHeader - TaskBoard with workflow selector header
  *
- * Features:
- * - Header with WorkflowSelector dropdown
- * - Workflow switching re-renders columns
- * - Task data preserved during workflow switch
+ * Design spec: specs/design/refined-studio-patterns.md
+ * - Refined Studio aesthetic with glass effect header
+ * - Compact sizing for application UI
  */
 
 import { useState, useCallback, useMemo } from "react";
@@ -78,8 +77,14 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
 
   return (
     <div data-testid="task-board-with-header" className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}>
+      {/* Header - Glass effect */}
+      <div
+        className="flex items-center justify-between px-3 py-1.5 border-b backdrop-blur-sm"
+        style={{
+          borderColor: "rgba(255,255,255,0.06)",
+          background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
+        }}
+      >
         <WorkflowSelector
           workflows={workflows}
           currentWorkflowId={currentWorkflowId}

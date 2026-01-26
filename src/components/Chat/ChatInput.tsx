@@ -1,12 +1,11 @@
 /**
  * ChatInput - Reusable chat input component
  *
- * Features:
- * - Textarea with auto-resize (min 40px, max 120px)
- * - Send button with loading state
- * - Enter to send, Shift+Enter for newline
- * - Disabled state while sending
- * - Attach button placeholder for future functionality
+ * Design spec: specs/design/pages/chat-panel.md
+ * - Refined Studio aesthetic with layered depth
+ * - Gradient background on textarea
+ * - Orange accent send button
+ * - Compact sizing for application UI
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -206,7 +205,7 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Textarea */}
+        {/* Textarea - Refined Studio styling */}
         <textarea
           ref={textareaRef}
           data-testid="chat-input-textarea"
@@ -217,19 +216,20 @@ export function ChatInput({
           placeholder={effectivePlaceholder}
           rows={1}
           aria-label="Message input"
-          className="flex-1 px-3 py-2 text-sm resize-none rounded-lg outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
+          className="flex-1 px-3 py-2 text-[13px] resize-none rounded-lg outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0 placeholder:text-white/30"
           style={{
-            backgroundColor: "var(--bg-elevated)",
-            color: "var(--text-primary)",
-            minHeight: "40px",
-            maxHeight: "120px",
+            background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
+            color: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            minHeight: "38px",
+            maxHeight: "100px",
             overflowY: "auto",
             boxShadow: "none",
             outline: "none",
           }}
         />
 
-        {/* Send Button */}
+        {/* Send Button - Refined Studio gradient */}
         <button
           data-testid="chat-input-send"
           type="button"
@@ -237,10 +237,13 @@ export function ChatInput({
           disabled={!canSend}
           aria-label="Send message"
           aria-busy={isSending}
-          className="px-3 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0 h-10 flex items-center justify-center"
+          className="px-3 py-2 rounded-lg transition-all disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
           style={{
-            backgroundColor: "var(--accent-primary)",
-            color: "var(--text-primary)",
+            background: canSend
+              ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
+              : "rgba(255,107,53,0.3)",
+            color: "white",
+            boxShadow: canSend ? "0 2px 8px rgba(255,107,53,0.3)" : "none",
           }}
         >
           {isSending ? <LoadingSpinner /> : <SendIcon />}
@@ -249,13 +252,10 @@ export function ChatInput({
 
       {/* Helper Text */}
       {showHelperText && (
-        <p
-          className="text-xs mt-1"
-          style={{ color: "var(--text-muted)" }}
-        >
+        <p className="text-[10px] mt-1.5 text-white/35">
           {hasQueuedMessages
-            ? "Press Enter to send, Shift+Enter for new line, ↑ to edit last queued message"
-            : "Press Enter to send, Shift+Enter for new line"}
+            ? "Enter to send · Shift+Enter for new line · ↑ to edit queued"
+            : "Enter to send · Shift+Enter for new line"}
         </p>
       )}
     </div>

@@ -1,12 +1,12 @@
 /**
  * ChatMessage - Individual chat message display component
  *
- * Features:
- * - Role indicator (user vs orchestrator vs system)
- * - Markdown rendering for content
- * - Timestamp display (compact or full)
- * - User messages aligned right, orchestrator/system left
- * - Warm colors for user, neutral for orchestrator
+ * Design spec: specs/design/pages/chat-panel.md
+ * - Refined Studio aesthetic with gradient bubbles
+ * - Asymmetric corners (10px/10px/10px/4px)
+ * - User: warm orange gradient, right-aligned
+ * - Agent: layered dark gradient with subtle border
+ * - Compact sizing for application UI
  */
 
 import { useMemo } from "react";
@@ -169,10 +169,17 @@ export function ChatMessage({
   const alignmentClass = isUser ? "items-end" : "items-start";
   const spacingClass = compact ? "mb-1" : "mb-3";
 
+  // Refined Studio bubble styles with gradients
   const bubbleStyle = useMemo(
-    () => ({
-      backgroundColor: isUser ? "var(--accent-primary)" : "var(--bg-elevated)",
-      color: "var(--text-primary)",
+    (): React.CSSProperties => ({
+      background: isUser
+        ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
+        : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
+      color: isUser ? "white" : "var(--text-primary)",
+      border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
+      boxShadow: isUser
+        ? "0 2px 8px rgba(255,107,53,0.2)"
+        : "0 1px 4px rgba(0,0,0,0.15)",
     }),
     [isUser]
   );
@@ -215,13 +222,16 @@ export function ChatMessage({
         </span>
       )}
 
-      {/* Message bubble */}
+      {/* Message bubble - Refined Studio asymmetric corners */}
       <div
         data-testid="chat-message-bubble"
-        className="max-w-[85%] px-3 py-2 rounded-lg break-words"
-        style={bubbleStyle}
+        className="max-w-[85%] px-3 py-2 break-words"
+        style={{
+          ...bubbleStyle,
+          borderRadius: isUser ? "10px 10px 4px 10px" : "10px 10px 10px 4px",
+        }}
       >
-        <div className="text-sm">
+        <div className="text-[13px] leading-relaxed">
           <ReactMarkdown components={markdownComponents}>
             {message.content}
           </ReactMarkdown>
@@ -229,7 +239,7 @@ export function ChatMessage({
 
         {/* Tool calls (if any) */}
         {toolCalls.length > 0 && (
-          <div className="mt-3 space-y-2" data-testid="chat-message-tool-calls">
+          <div className="mt-2.5 space-y-1.5" data-testid="chat-message-tool-calls">
             {toolCalls.map((toolCall) => (
               <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
             ))}
@@ -241,8 +251,8 @@ export function ChatMessage({
       <time
         data-testid="chat-message-timestamp"
         dateTime={message.createdAt}
-        className="text-xs mt-1 px-1"
-        style={{ color: "var(--text-muted)" }}
+        className="text-[10px] mt-1 px-1"
+        style={{ color: "rgba(255,255,255,0.4)" }}
         role="time"
       >
         {timestamp}

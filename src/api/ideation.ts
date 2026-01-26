@@ -507,7 +507,7 @@ export const ideationApi = {
     list: async (sessionId: string): Promise<TaskProposalResponse[]> => {
       const raw = await typedInvoke(
         "list_session_proposals",
-        { session_id: sessionId },
+        { sessionId },  // camelCase - Tauri auto-converts to snake_case for Rust
         z.array(TaskProposalResponseSchema)
       );
       return raw.map(transformProposal);
@@ -603,7 +603,7 @@ export const ideationApi = {
     assessAllPriorities: async (sessionId: string): Promise<PriorityAssessmentResponse[]> => {
       const raw = await typedInvoke(
         "assess_all_priorities",
-        { session_id: sessionId },
+        { sessionId },  // camelCase - Tauri auto-converts to snake_case for Rust
         z.array(PriorityAssessmentResponseSchema)
       );
       return raw.map(transformPriorityAssessment);
@@ -621,8 +621,8 @@ export const ideationApi = {
      */
     add: async (proposalId: string, dependsOnId: string): Promise<void> => {
       await invoke("add_proposal_dependency", {
-        proposal_id: proposalId,
-        depends_on_id: dependsOnId,
+        proposalId,
+        dependsOnId,
       });
     },
 
@@ -633,8 +633,8 @@ export const ideationApi = {
      */
     remove: async (proposalId: string, dependsOnId: string): Promise<void> => {
       await invoke("remove_proposal_dependency", {
-        proposal_id: proposalId,
-        depends_on_id: dependsOnId,
+        proposalId,
+        dependsOnId,
       });
     },
 
@@ -646,7 +646,7 @@ export const ideationApi = {
     getDependencies: async (proposalId: string): Promise<string[]> => {
       return typedInvoke(
         "get_proposal_dependencies",
-        { proposal_id: proposalId },
+        { proposalId },
         z.array(z.string())
       );
     },
@@ -659,7 +659,7 @@ export const ideationApi = {
     getDependents: async (proposalId: string): Promise<string[]> => {
       return typedInvoke(
         "get_proposal_dependents",
-        { proposal_id: proposalId },
+        { proposalId },
         z.array(z.string())
       );
     },
@@ -672,7 +672,7 @@ export const ideationApi = {
     analyze: async (sessionId: string): Promise<DependencyGraphResponse> => {
       const raw = await typedInvoke(
         "analyze_dependencies",
-        { session_id: sessionId },
+        { sessionId },
         DependencyGraphResponseSchema
       );
       return transformDependencyGraph(raw);
@@ -717,7 +717,7 @@ export const ideationApi = {
     getBlockers: async (taskId: string): Promise<string[]> => {
       return typedInvoke(
         "get_task_blockers",
-        { task_id: taskId },
+        { taskId },
         z.array(z.string())
       );
     },
@@ -730,7 +730,7 @@ export const ideationApi = {
     getBlocked: async (taskId: string): Promise<string[]> => {
       return typedInvoke(
         "get_blocked_tasks",
-        { task_id: taskId },
+        { taskId },
         z.array(z.string())
       );
     },

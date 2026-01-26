@@ -278,8 +278,8 @@ export async function reorderProposals(
   proposalIds: string[]
 ): Promise<void> {
   await invoke("reorder_proposals", {
-    session_id: sessionId,
-    proposal_ids: proposalIds,
+    sessionId,
+    proposalIds,
   });
 }
 
@@ -309,7 +309,7 @@ export async function assessAllPriorities(
 ): Promise<PriorityAssessmentResponse[]> {
   const raw = await typedInvoke(
     "assess_all_priorities",
-    { session_id: sessionId },
+    { sessionId },
     z.array(PriorityAssessmentResponseSchema)
   );
   return raw.map(transformPriorityAssessment);
@@ -325,8 +325,8 @@ export async function addProposalDependency(
   dependsOnId: string
 ): Promise<void> {
   await invoke("add_proposal_dependency", {
-    proposal_id: proposalId,
-    depends_on_id: dependsOnId,
+    proposalId,
+    dependsOnId,
   });
 }
 
@@ -340,8 +340,8 @@ export async function removeProposalDependency(
   dependsOnId: string
 ): Promise<void> {
   await invoke("remove_proposal_dependency", {
-    proposal_id: proposalId,
-    depends_on_id: dependsOnId,
+    proposalId,
+    dependsOnId,
   });
 }
 
@@ -355,7 +355,7 @@ export async function analyzeDependencies(
 ): Promise<DependencyGraphResponse> {
   const raw = await typedInvoke(
     "analyze_dependencies",
-    { session_id: sessionId },
+    { sessionId },
     DependencyGraphResponseSchema
   );
   return transformDependencyGraph(raw);

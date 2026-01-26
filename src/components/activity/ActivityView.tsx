@@ -1,13 +1,11 @@
 /**
  * ActivityView - Real-time agent execution monitoring
  *
- * Premium design with:
- * - Glass effect header with Activity icon and alert badge
- * - Search input with filter tabs
- * - Type-specific styling (left border, background tint)
- * - Expandable details with JSON syntax highlighting
- * - Auto-scroll behavior with "Scroll to latest" banner
- * - Lucide icons throughout
+ * Design: macOS Tahoe Liquid Glass
+ * - Frosted glass header with backdrop-blur
+ * - Flat translucent surfaces
+ * - Ambient orange glow background
+ * - Clean, minimal aesthetic
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -515,15 +513,32 @@ export function ActivityView({ taskId, showHeader = true }: ActivityViewProps) {
       data-testid="activity-view"
       className="flex flex-col h-full"
       style={{
-        backgroundColor: "var(--bg-surface)",
-        background: "radial-gradient(ellipse at bottom left, rgba(255,107,53,0.015) 0%, var(--bg-surface) 50%)",
+        background: `
+          radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
+          radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+          var(--bg-base)
+        `,
       }}
     >
-      {/* Header - Glass Effect */}
+      {/* Header - Frosted Glass */}
       {showHeader && (
-        <div className="flex items-center justify-between px-4 py-3 backdrop-blur-md bg-[rgba(26,26,26,0.85)] border-b border-[var(--border-subtle)]">
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b"
+          style={{
+            background: "rgba(18,18,18,0.85)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
           <div className="flex items-center gap-3">
-            <div className="p-1.5 rounded-lg bg-[var(--accent-muted)]">
+            <div
+              className="p-1.5 rounded-lg"
+              style={{
+                background: "rgba(255,107,53,0.1)",
+                border: "1px solid rgba(255,107,53,0.2)",
+              }}
+            >
               <Activity className="w-5 h-5 text-[var(--accent-primary)]" />
             </div>
             <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
@@ -550,7 +565,10 @@ export function ActivityView({ taskId, showHeader = true }: ActivityViewProps) {
       )}
 
       {/* Search and Filters */}
-      <div className="px-4 py-3 border-b border-[var(--border-subtle)] space-y-3">
+      <div
+        className="px-4 py-3 border-b space-y-3"
+        style={{ borderColor: "rgba(255,255,255,0.06)" }}
+      >
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}

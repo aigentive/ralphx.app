@@ -1,13 +1,11 @@
 /**
  * Column - Droppable column for the kanban board
  *
- * Design spec: specs/design/pages/kanban-board.md
- * - Fixed width: 300px (min 280px, max 320px)
- * - Glass effect header with backdrop-blur
- * - Orange accent dot before title
- * - shadcn Badge for count
- * - Empty state with Lucide Inbox icon
- * - Drop zone with orange glow on drag-over
+ * Design: macOS Tahoe Liquid Glass
+ * - Frosted glass header with backdrop-blur
+ * - Clean, flat surfaces
+ * - Subtle accent dot
+ * - Minimal drop zone styling
  */
 
 import { useDroppable, useDndContext } from "@dnd-kit/core";
@@ -49,11 +47,17 @@ function InvalidDropIcon() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border border-dashed border-white/10">
-      <div className="w-8 h-8 rounded-lg bg-white/[0.03] flex items-center justify-center border border-white/[0.06]">
-        <Inbox className="w-4 h-4 text-white/30" />
+    <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <Inbox className="w-5 h-5 text-white/25" />
       </div>
-      <p className="text-[11px] text-white/40">No tasks</p>
+      <p className="text-xs text-white/35">No tasks</p>
     </div>
   );
 }
@@ -130,23 +134,22 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
     };
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Drop zone styles (Refined Studio aesthetic)
+  // Drop zone styles (macOS Tahoe - clean, subtle)
   const getDropZoneStyles = (): React.CSSProperties => {
     if (isOver && isInvalid) {
       return {
-        border: "1px dashed rgba(239, 68, 68, 0.5)",
-        background: "rgba(239, 68, 68, 0.05)",
+        border: "1px dashed rgba(239, 68, 68, 0.4)",
+        background: "rgba(239, 68, 68, 0.03)",
       };
     }
     if (isOver) {
       return {
-        border: "1px dashed rgba(255, 107, 53, 0.5)",
-        background: "rgba(255, 107, 53, 0.05)",
-        boxShadow: "inset 0 0 16px rgba(255, 107, 53, 0.08)",
+        border: "1px dashed rgba(255, 107, 53, 0.4)",
+        background: "rgba(255, 107, 53, 0.03)",
       };
     }
     return {
-      border: "1px dashed transparent",
+      border: "1px solid transparent",
     };
   };
 
@@ -169,16 +172,24 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Glass effect header (Refined Studio) */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md mb-2 bg-gradient-to-r from-white/[0.04] to-transparent backdrop-blur-sm border border-white/[0.04]">
-        {/* Orange accent dot */}
-        <span className="w-1 h-1 rounded-full flex-shrink-0 bg-[#ff6b35]" />
-        <h3 className="text-xs font-medium flex-1 text-white/90 tracking-tight m-0">
+      {/* Liquid Glass header (macOS Tahoe) */}
+      <div
+        className="flex items-center gap-2.5 px-3 py-2 rounded-lg mb-2"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        {/* Accent dot */}
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#ff6b35]" />
+        <h3 className="text-[13px] font-medium flex-1 text-white/80 tracking-tight m-0">
           {column.name}
         </h3>
         <Badge
           variant="secondary"
-          className="text-[9px] px-1.5 py-px bg-white/5 text-white/50 border-white/10"
+          className="text-[10px] px-1.5 py-0.5 bg-white/[0.03] text-white/40 border-white/[0.06]"
         >
           {tasks.length}
           {matchCount !== undefined && ` (${matchCount})`}
