@@ -10,7 +10,10 @@
 
 import { useState, useCallback, useId, type FormEvent } from "react";
 import { TASK_CATEGORIES, UpdateTaskSchema, type Task, type UpdateTask } from "@/types/task";
-import { Loader2 } from "lucide-react";
+import { ACTIVE_STATUSES } from "@/types/status";
+import { Loader2, Plus } from "lucide-react";
+import { StepList } from "./StepList";
+import { useStepMutations } from "@/hooks/useStepMutations";
 
 // ============================================================================
 // Types
@@ -45,6 +48,14 @@ export function TaskEditForm({
   const [description, setDescription] = useState(task.description || "");
   const [priority, setPriority] = useState(task.priority);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Step editor state
+  const [newStepTitle, setNewStepTitle] = useState("");
+  const [isAddingStep, setIsAddingStep] = useState(false);
+  const { create: createStep } = useStepMutations(task.id);
+
+  // Check if task is executing (steps are editable only when not executing)
+  const isExecuting = ACTIVE_STATUSES.includes(task.internalStatus);
 
   const handleSubmit = useCallback(
     (e: FormEvent) => {
@@ -94,6 +105,20 @@ export function TaskEditForm({
     category !== task.category ||
     (description.trim() || null) !== task.description ||
     priority !== task.priority;
+
+  const handleAddStep = useCallback(async () => {
+    if (!newStepTitle.trim()) return;
+
+    setIsAddingStep(true);
+    try {
+      await createStep.mutateAsync({
+        title: newStepTitle.trim(),
+      });
+      setNewStepTitle("");
+    } finally {
+      setIsAddingStep(false);
+    }
+  }, [newStepTitle, createStep]);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -186,6 +211,63 @@ export function TaskEditForm({
           {validationError}
         </div>
       )}
+
+      {/* Steps Section */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <label className="block text-sm font-medium text-[--text-primary]">
+            Steps
+          </label>
+          {isExecuting && (
+            <span className="text-xs text-[--text-muted] italic">
+              Steps cannot be edited while task is executing
+            </span>
+          )}
+        </div>
+
+        {/* Step List */}
+        <div className="mb-3">
+          <StepList taskId={task.id} editable={!isExecuting && !isSaving} />
+        </div>
+
+        {/* Add Step Input */}
+        {!isExecuting && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newStepTitle}
+              onChange={(e) => setNewStepTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleAddStep();
+                }
+              }}
+              disabled={isSaving || isAddingStep}
+              placeholder="Add a new step..."
+              className="flex-1 rounded-md px-3 py-2 text-sm bg-[--bg-elevated] border border-[--border-subtle] text-[--text-primary] placeholder-[--text-muted] focus:outline-none focus:ring-2 focus:ring-[--accent-primary] focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <button
+              type="button"
+              onClick={handleAddStep}
+              disabled={isSaving || isAddingStep || !newStepTitle.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-[--accent-primary] rounded-md hover:bg-[--accent-hover] focus:outline-none focus:ring-2 focus:ring-[--accent-primary] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isAddingStep ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Add Step
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Form Actions */}
       <div className="flex justify-end gap-3 pt-2">
