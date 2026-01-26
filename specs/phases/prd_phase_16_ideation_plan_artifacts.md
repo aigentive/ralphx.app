@@ -350,7 +350,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: feat(ideation): integrate plan display in IdeationView",
       "STOP: Output <promise>COMPLETE</promise> - Next task (proactive sync ArtifactFlow) is high-complexity event-driven, consider switching to Opus"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
