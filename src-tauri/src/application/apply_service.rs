@@ -883,6 +883,47 @@ mod tests {
         async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
             Ok(())
         }
+
+        async fn get_by_project_filtered(&self, project_id: &ProjectId, include_archived: bool) -> AppResult<Vec<Task>> {
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| &t.project_id == project_id && (include_archived || t.archived_at.is_none()))
+                .cloned()
+                .collect())
+        }
+
+        async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(&task_id.to_string()) {
+                task.archived_at = Some(chrono::Utc::now());
+                Ok(task.clone())
+            } else {
+                Err(crate::error::AppError::NotFound(format!("Task {} not found", task_id.as_str())))
+            }
+        }
+
+        async fn restore(&self, task_id: &TaskId) -> AppResult<Task> {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(&task_id.to_string()) {
+                task.archived_at = None;
+                Ok(task.clone())
+            } else {
+                Err(crate::error::AppError::NotFound(format!("Task {} not found", task_id.as_str())))
+            }
+        }
+
+        async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32> {
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| &t.project_id == project_id && t.archived_at.is_some())
+                .count() as u32)
+        }
     }
 
     struct MockTaskDependencyRepository {

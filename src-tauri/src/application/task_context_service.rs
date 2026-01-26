@@ -289,6 +289,44 @@ mod tests {
         ) -> AppResult<()> {
             Ok(())
         }
+
+        async fn get_by_project_filtered(
+            &self,
+            _project_id: &ProjectId,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
+        async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
+            if let Some(task) = &self.task {
+                let mut archived = task.clone();
+                archived.archived_at = Some(chrono::Utc::now());
+                Ok(archived)
+            } else {
+                Err(crate::error::AppError::NotFound(format!(
+                    "Task {} not found",
+                    task_id.as_str()
+                )))
+            }
+        }
+
+        async fn restore(&self, task_id: &TaskId) -> AppResult<Task> {
+            if let Some(task) = &self.task {
+                let mut restored = task.clone();
+                restored.archived_at = None;
+                Ok(restored)
+            } else {
+                Err(crate::error::AppError::NotFound(format!(
+                    "Task {} not found",
+                    task_id.as_str()
+                )))
+            }
+        }
+
+        async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> {
+            Ok(0)
+        }
     }
 
     struct MockTaskProposalRepository {
