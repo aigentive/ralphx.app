@@ -263,7 +263,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(types): add plan artifact fields to ideation and task types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

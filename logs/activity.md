@@ -1,15 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 06:15:00
+**Last Updated:** 2026-01-26 06:30:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 10 / 24
-**Current Task:** Update ideation types for plan artifact fields
+**Tasks Completed:** 11 / 24
+**Current Task:** Create IdeationSettingsPanel component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 06:30:00 - Update Ideation Types for Plan Artifact Fields (Phase 16, Task 11)
+
+**What was done:**
+- Updated `src/types/ideation.ts` to add plan artifact fields:
+  - Added `planArtifactId: z.string().nullable()` to IdeationSessionSchema
+  - Added `planArtifactId: z.string().nullable()` to TaskProposalSchema
+  - Added `planVersionAtCreation: z.number().int().nullable()` to TaskProposalSchema
+- Updated `src/types/task.ts` to add traceability fields:
+  - Added `sourceProposalId: z.string().nullable()` to TaskSchema (with JSDoc comment)
+  - Added `planArtifactId: z.string().nullable()` to TaskSchema (with JSDoc comment)
+- Verified TypeScript type checking passes with no errors
+
+**Files modified:**
+- `src/types/ideation.ts` - Added plan artifact fields to IdeationSession and TaskProposal schemas
+- `src/types/task.ts` - Added traceability fields to Task schema
+- `specs/phases/prd_phase_16_ideation_plan_artifacts.md` - Marked task as passes: true
+
+**Commands run:**
+- `npm run typecheck` - Passed successfully
 
 ### 2026-01-26 05:41:16 - Update Orchestrator-Ideation Agent for Plan Workflow (Phase 16, Task 9)
 

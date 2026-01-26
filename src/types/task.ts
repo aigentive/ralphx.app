@@ -23,6 +23,10 @@ export const TaskSchema = z.object({
   internalStatus: InternalStatusSchema,
   /** Whether this task needs a review point (human-in-loop checkpoint) */
   needsReviewPoint: z.boolean().default(false),
+  /** Task proposal ID that created this task (for traceability to ideation) */
+  sourceProposalId: z.string().nullable(),
+  /** Plan artifact ID linked to this task (for worker context access) */
+  planArtifactId: z.string().nullable(),
   // Accept RFC3339 timestamps with offset (e.g., +00:00)
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
