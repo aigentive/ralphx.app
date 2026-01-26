@@ -180,7 +180,13 @@ pub fn run() {
             commands::test_data_commands::clear_test_data,
             // Permission commands
             commands::permission_commands::resolve_permission_request,
-            commands::permission_commands::get_pending_permissions
+            commands::permission_commands::get_pending_permissions,
+            // Context-aware chat commands
+            commands::context_chat_commands::send_context_message,
+            commands::context_chat_commands::list_conversations,
+            commands::context_chat_commands::get_conversation,
+            commands::context_chat_commands::create_conversation,
+            commands::context_chat_commands::get_agent_run_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,14 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 03:15:00
+**Last Updated:** 2026-01-26 03:45:00
 **Phase:** Phase 15 (Context-Aware Chat)
 **Tasks Completed:** 14 / 26
-**Current Task:** Add context_chat_service.rs with conversation management
+**Current Task:** Update frontend types and chat API
 
 ---
 
 ## Session Log
+
+### 2026-01-26 03:45:00 - Added Context-Aware Chat Tauri Commands
+
+**What was done:**
+- Created `src-tauri/src/commands/context_chat_commands.rs`:
+  - Implements Tauri commands for context-aware chat system
+  - Added `send_context_message()` command (stub implementation - full orchestration in task 16)
+  - Added `list_conversations(context_type, context_id)` command
+  - Added `get_conversation(conversation_id)` with messages
+  - Added `create_conversation(context_type, context_id)` command
+  - Added `get_agent_run_status(conversation_id)` command
+  - Created response types: `ChatConversationResponse`, `AgentRunResponse`, `ChatMessageResponse`, `ConversationWithMessagesResponse`
+  - Created input types: `SendContextMessageInput`, `CreateConversationInput`
+  - All commands delegate to existing repositories (conversation, agent_run, message repos)
+  - Added unit tests for response serialization
+
+- Updated `src-tauri/src/commands/mod.rs`:
+  - Added `pub mod context_chat_commands`
+  - Exported all command functions and types
+
+- Updated `src-tauri/src/lib.rs`:
+  - Registered all 5 new commands in `invoke_handler`:
+    - `send_context_message`
+    - `list_conversations`
+    - `get_conversation`
+    - `create_conversation`
+    - `get_agent_run_status`
+
+- Notes:
+  - `send_context_message` is a stub - full implementation (orchestrator integration, --resume, streaming) will be added in task 16
+  - `get_conversation` uses context-based message retrieval (session/task/project) until `get_by_conversation` is added to ChatMessageRepository
+
+**Commands run:**
+- `cargo test --lib commands::context_chat_commands` (2 tests passed)
+- `cargo test --no-run` (compiled successfully)
 
 ### 2026-01-26 03:15:00 - Orchestrator Service Refactored for MCP and --resume Support
 
