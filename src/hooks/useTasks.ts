@@ -44,5 +44,6 @@ export function useTasks(projectId: string) {
       const response = await api.tasks.list({ projectId });
       return response.tasks;
     },
+    enabled: Boolean(projectId),
   });
 }

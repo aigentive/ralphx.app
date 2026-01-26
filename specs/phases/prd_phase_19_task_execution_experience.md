@@ -170,7 +170,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test to verify DI works",
       "Commit: feat(app_state): add TaskStepRepository to AppState"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
