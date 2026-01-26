@@ -492,18 +492,18 @@ function useInfiniteTasksQuery(projectId: string, status: InternalStatus) {
 | Question | Answer |
 |----------|--------|
 | Should search filter by category/priority/status? | **No** - title and description only |
-| Cache loaded pages for infinite scroll? | **No** - refetch on scroll |
+| Cache loaded pages for infinite scroll? | **Yes** - cache loaded pages |
 | Use virtualization for large columns? | **No** - keep it simple for now |
 | Bulk archive support? | **No** |
 | Permanent delete confirmation? | **Yes** |
+| Search highlighting? | **No** |
+| Search persistence? | **Yes** - persist when navigating away and back |
+| Archive from Kanban? | **Yes** - via right-click context menu |
 
 ### Still Open
 
-1. **Search highlighting** - Should matching text be highlighted in task cards?
-2. **Empty state during search** - What to show when no results match?
-3. **Search persistence** - Should search query persist when navigating away and back?
-4. **Archived task editing** - Should archived tasks be editable, or restore-only?
-5. **Archive from Kanban** - Should there be a quick-archive action on task card hover?
+1. **Archived task editing** - Should archived tasks be editable, or restore-only? (Leaning toward restore-only)
+2. **Empty state during search** - Creative solution needed (see below)
 
 ---
 

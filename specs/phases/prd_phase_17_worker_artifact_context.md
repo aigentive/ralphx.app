@@ -271,7 +271,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(chat): show artifact previews in tool call indicators"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
