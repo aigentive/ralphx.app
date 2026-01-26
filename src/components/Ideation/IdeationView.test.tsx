@@ -14,6 +14,7 @@ const mockSession: IdeationSession = {
   projectId: "project-1",
   title: "Authentication Feature",
   status: "active",
+  planArtifactId: null,
   createdAt: "2026-01-24T00:00:00Z",
   updatedAt: "2026-01-24T01:00:00Z",
   archivedAt: null,
@@ -93,10 +94,12 @@ const mockProposals: TaskProposal[] = [
 describe("IdeationView", () => {
   const defaultProps = {
     session: mockSession,
+    sessions: [mockSession],
     messages: mockMessages,
     proposals: mockProposals,
     onSendMessage: vi.fn(),
     onNewSession: vi.fn(),
+    onSelectSession: vi.fn(),
     onArchiveSession: vi.fn(),
     onSelectProposal: vi.fn(),
     onEditProposal: vi.fn(),
@@ -416,30 +419,110 @@ describe("IdeationView", () => {
   });
 
   describe("No Session State", () => {
-    it("shows create session prompt when session is null", () => {
-      render(<IdeationView {...defaultProps} session={null} />);
-      expect(screen.getByText(/Start a new ideation session/i)).toBeInTheDocument();
+    describe("with no previous sessions (centered layout)", () => {
+      it("shows create session prompt when session is null and no previous sessions", () => {
+        render(<IdeationView {...defaultProps} session={null} sessions={[]} />);
+        expect(screen.getByText(/Start a new ideation session/i)).toBeInTheDocument();
+      });
+
+      it("shows create session button with icon when session is null", () => {
+        render(<IdeationView {...defaultProps} session={null} sessions={[]} />);
+        expect(screen.getByRole("button", { name: /Start Session/i })).toBeInTheDocument();
+      });
+
+      it("calls onNewSession when create session clicked", async () => {
+        const onNewSession = vi.fn();
+        const user = userEvent.setup();
+        render(<IdeationView {...defaultProps} session={null} sessions={[]} onNewSession={onNewSession} />);
+
+        await user.click(screen.getByRole("button", { name: /Start Session/i }));
+        expect(onNewSession).toHaveBeenCalledTimes(1);
+      });
+
+      it("no session state has radial gradient background", () => {
+        render(<IdeationView {...defaultProps} session={null} sessions={[]} />);
+        const view = screen.getByTestId("ideation-view");
+        const styles = view.getAttribute("style") || "";
+        expect(styles).toContain("radial-gradient");
+      });
     });
 
-    it("shows create session button with icon when session is null", () => {
-      render(<IdeationView {...defaultProps} session={null} />);
-      expect(screen.getByRole("button", { name: /Start Session/i })).toBeInTheDocument();
-    });
+    describe("with previous sessions (split layout with session browser)", () => {
+      const previousSessions: IdeationSession[] = [
+        {
+          id: "session-old-1",
+          projectId: "project-1",
+          title: "Previous Session 1",
+          status: "active",
+          planArtifactId: null,
+          createdAt: "2026-01-20T00:00:00Z",
+          updatedAt: "2026-01-21T00:00:00Z",
+          archivedAt: null,
+          convertedAt: null,
+        },
+        {
+          id: "session-old-2",
+          projectId: "project-1",
+          title: "Previous Session 2",
+          status: "active",
+          planArtifactId: null,
+          createdAt: "2026-01-22T00:00:00Z",
+          updatedAt: "2026-01-23T00:00:00Z",
+          archivedAt: null,
+          convertedAt: null,
+        },
+      ];
 
-    it("calls onNewSession when create session clicked", async () => {
-      const onNewSession = vi.fn();
-      const user = userEvent.setup();
-      render(<IdeationView {...defaultProps} session={null} onNewSession={onNewSession} />);
+      it("shows session browser when there are previous active sessions", () => {
+        render(<IdeationView {...defaultProps} session={null} sessions={previousSessions} />);
+        expect(screen.getByTestId("session-browser")).toBeInTheDocument();
+      });
 
-      await user.click(screen.getByRole("button", { name: /Start Session/i }));
-      expect(onNewSession).toHaveBeenCalledTimes(1);
-    });
+      it("shows session items in the browser", () => {
+        render(<IdeationView {...defaultProps} session={null} sessions={previousSessions} />);
+        expect(screen.getByText("Previous Session 1")).toBeInTheDocument();
+        expect(screen.getByText("Previous Session 2")).toBeInTheDocument();
+      });
 
-    it("no session state has radial gradient background", () => {
-      render(<IdeationView {...defaultProps} session={null} />);
-      const view = screen.getByTestId("ideation-view");
-      const styles = view.getAttribute("style") || "";
-      expect(styles).toContain("radial-gradient");
+      it("calls onSelectSession when a session is clicked", async () => {
+        const onSelectSession = vi.fn();
+        const user = userEvent.setup();
+        render(
+          <IdeationView
+            {...defaultProps}
+            session={null}
+            sessions={previousSessions}
+            onSelectSession={onSelectSession}
+          />
+        );
+
+        await user.click(screen.getByTestId("session-item-session-old-1"));
+        expect(onSelectSession).toHaveBeenCalledWith("session-old-1");
+      });
+
+      it("shows start session panel on the right", () => {
+        render(<IdeationView {...defaultProps} session={null} sessions={previousSessions} />);
+        expect(screen.getByText(/Start a new ideation session/i)).toBeInTheDocument();
+      });
+
+      it("filters out archived sessions from the browser", () => {
+        const sessionsWithArchived: IdeationSession[] = [
+          ...previousSessions,
+          {
+            id: "session-archived",
+            projectId: "project-1",
+            title: "Archived Session",
+            status: "archived",
+            planArtifactId: null,
+            createdAt: "2026-01-18T00:00:00Z",
+            updatedAt: "2026-01-19T00:00:00Z",
+            archivedAt: "2026-01-19T00:00:00Z",
+            convertedAt: null,
+          },
+        ];
+        render(<IdeationView {...defaultProps} session={null} sessions={sessionsWithArchived} />);
+        expect(screen.queryByText("Archived Session")).not.toBeInTheDocument();
+      });
     });
   });
 
