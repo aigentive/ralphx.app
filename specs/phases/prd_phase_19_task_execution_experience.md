@@ -689,7 +689,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(card): open TaskFullView for executing tasks"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

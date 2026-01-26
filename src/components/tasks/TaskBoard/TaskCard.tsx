@@ -110,6 +110,7 @@ export function TaskCard({
 
   // UI Store
   const openModal = useUiStore((state) => state.openModal);
+  const openTaskFullView = useUiStore((state) => state.openTaskFullView);
 
   // Execution state
   const executionState = useTaskExecutionState(task.id);
@@ -227,9 +228,27 @@ export function TaskCard({
     return {};
   };
 
+  // Determine which view to open based on task status
+  const shouldOpenFullView = useMemo(() => {
+    const fullViewStatuses = [
+      "executing",
+      "qa_refining",
+      "qa_testing",
+      "qa_passed",
+      "qa_failed",
+      "pending_review",
+      "revision_needed",
+    ];
+    return fullViewStatuses.includes(task.internalStatus);
+  }, [task.internalStatus]);
+
   // Context menu handlers
   const handleViewDetails = () => {
-    openModal("task-detail", { taskId: task.id });
+    if (shouldOpenFullView) {
+      openTaskFullView(task.id);
+    } else {
+      openModal("task-detail", { taskId: task.id });
+    }
   };
 
   const handleEdit = () => {
@@ -272,7 +291,10 @@ export function TaskCard({
           ref={setNodeRef}
           {...(isDraggable ? { ...attributes, ...listeners } : {})}
           data-testid={`task-card-${task.id}`}
-          onClick={() => onSelect?.(task.id)}
+          onClick={() => {
+            onSelect?.(task.id);
+            handleViewDetails();
+          }}
           className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${getExecutionStateClass()}`}
           style={{ ...getCardStyles(), ...getExecutionBorderStyles(), ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
