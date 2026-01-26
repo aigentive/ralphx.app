@@ -12,6 +12,7 @@ pub mod project;
 pub mod review;
 pub mod status;
 pub mod task;
+pub mod task_context;
 pub mod task_qa;
 pub mod types;
 pub mod workflow;
@@ -62,3 +63,4 @@ pub use methodology::{
 };
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus};
+pub use task_context::{ArtifactSummary, TaskContext, TaskProposalSummary};

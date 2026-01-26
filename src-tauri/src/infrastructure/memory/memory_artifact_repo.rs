@@ -57,6 +57,21 @@ impl ArtifactRepository for MemoryArtifactRepository {
         Ok(artifacts.get(id).cloned())
     }
 
+    async fn get_by_id_at_version(&self, id: &ArtifactId, version: u32) -> AppResult<Option<Artifact>> {
+        let artifacts = self.artifacts.read().await;
+        if let Some(artifact) = artifacts.get(id) {
+            // For memory implementation, just return the artifact if the version matches
+            // In a real implementation, this would traverse version history
+            if artifact.metadata.version == version {
+                Ok(Some(artifact.clone()))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn get_by_bucket(&self, bucket_id: &ArtifactBucketId) -> AppResult<Vec<Artifact>> {
         let artifacts = self.artifacts.read().await;
         Ok(artifacts
