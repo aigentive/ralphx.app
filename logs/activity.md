@@ -1,15 +1,46 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:17:48
+**Last Updated:** 2026-01-26 21:22:30
 **Phase:** Task Execution Experience
-**Tasks Completed:** 24 / 42
-**Current Task:** Add execution visuals to TaskCard
+**Tasks Completed:** 25 / 42
+**Current Task:** Add StepProgressBar to TaskCard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:22:30 - Add execution visuals to TaskCard
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Imported `useTaskExecutionState` hook and icons: `Eye`, `AlertCircle`
+  - Added `executionState` variable using `useTaskExecutionState(task.id)`
+  - Created `getExecutionStateClass()` helper:
+    - Returns `"task-card-executing"` for `executing` status (pulsing orange border)
+    - Returns `"task-card-attention"` for `revision_needed` status (attention pulse)
+  - Created `getExecutionBorderStyles()` helper:
+    - QA states (`qa_*`): 2px border with pulsing orange animation
+    - `pending_review`: 2px static amber border
+  - Applied execution state class and border styles to card div
+  - Added activity indicator overlay (top-right corner) when `executionState.isActive`:
+    - Three dots with staggered bounce animation using inline styles
+    - Phase-specific indicator:
+      - QA phase: small "QA" badge with orange background
+      - Review phase: `Eye` icon in amber
+      - Revision needed: `AlertCircle` icon in amber
+  - Updated drag handle visibility logic: hidden when executing (shows activity indicator instead)
+- Execution state visuals now render conditionally based on `task.internalStatus`:
+  - `executing`: pulsing orange border + activity dots
+  - `qa_*`: pulsing orange border + "QA" badge
+  - `pending_review`: static amber border + eye icon
+  - `revision_needed`: attention pulse + alert icon
+- Ran linting and typechecking: all pass (only pre-existing warnings)
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
 
 ### 2026-01-26 21:17:48 - Create useTaskExecutionState hook
 

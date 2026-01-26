@@ -9,7 +9,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Eye, AlertCircle } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -36,6 +36,7 @@ import {
 import { TaskCardContextMenu } from "@/components/tasks/TaskCardContextMenu";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
+import { useTaskExecutionState } from "@/hooks/useTaskExecutionState";
 
 interface TaskCardProps {
   task: Task;
@@ -108,6 +109,9 @@ export function TaskCard({
 
   // UI Store
   const openModal = useUiStore((state) => state.openModal);
+
+  // Execution state
+  const executionState = useTaskExecutionState(task.id);
 
   // Mutations
   const {
@@ -190,6 +194,38 @@ export function TaskCard({
     return baseStyles;
   };
 
+  // Execution state class names
+  const getExecutionStateClass = (): string => {
+    if (task.internalStatus === "executing") {
+      return "task-card-executing";
+    }
+    if (task.internalStatus === "revision_needed") {
+      return "task-card-attention";
+    }
+    // For QA and review states, we'll add custom borders
+    return "";
+  };
+
+  // Get execution state border styles
+  const getExecutionBorderStyles = (): React.CSSProperties => {
+    // QA states: pulsing orange border
+    if (task.internalStatus.startsWith("qa_")) {
+      return {
+        borderWidth: "2px",
+        borderColor: "var(--accent-primary)",
+        animation: "var(--animation-executing-pulse)",
+      };
+    }
+    // Pending review: static amber border
+    if (task.internalStatus === "pending_review") {
+      return {
+        borderWidth: "2px",
+        borderColor: "var(--status-warning)",
+      };
+    }
+    return {};
+  };
+
   // Context menu handlers
   const handleViewDetails = () => {
     openModal("task-detail", { taskId: task.id });
@@ -236,8 +272,8 @@ export function TaskCard({
           {...(isDraggable ? { ...attributes, ...listeners } : {})}
           data-testid={`task-card-${task.id}`}
           onClick={() => onSelect?.(task.id)}
-          className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""}`}
-          style={{ ...getCardStyles(), ...dragStyle }}
+          className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${getExecutionStateClass()}`}
+          style={{ ...getCardStyles(), ...getExecutionBorderStyles(), ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
@@ -248,8 +284,58 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Drag handle - appears on hover (hidden if archived to show archive badge) */}
-      {!isArchived && (
+      {/* Activity indicator - shown for executing tasks */}
+      {!isArchived && executionState.isActive && (
+        <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="activity-indicator">
+          {/* Three dots with staggered bounce animation */}
+          <div className="flex gap-0.5">
+            <span
+              className="w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: "var(--accent-primary)",
+                animation: "bounce 1.4s ease-in-out 0s infinite",
+              }}
+            />
+            <span
+              className="w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: "var(--accent-primary)",
+                animation: "bounce 1.4s ease-in-out 0.2s infinite",
+              }}
+            />
+            <span
+              className="w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: "var(--accent-primary)",
+                animation: "bounce 1.4s ease-in-out 0.4s infinite",
+              }}
+            />
+          </div>
+          {/* Phase-specific icon */}
+          {executionState.phase === "qa" && (
+            <Badge
+              variant="secondary"
+              className="text-[9px] px-1 py-0.5"
+              style={{
+                backgroundColor: "rgba(255, 107, 53, 0.15)",
+                color: "var(--accent-primary)",
+                border: "none",
+              }}
+            >
+              QA
+            </Badge>
+          )}
+          {executionState.phase === "review" && (
+            <Eye className="w-3 h-3" style={{ color: "var(--status-warning)" }} />
+          )}
+          {task.internalStatus === "revision_needed" && (
+            <AlertCircle className="w-3 h-3" style={{ color: "var(--status-warning)" }} />
+          )}
+        </div>
+      )}
+
+      {/* Drag handle - appears on hover (hidden if archived or executing to show indicator) */}
+      {!isArchived && !executionState.isActive && (
         <div
           data-testid="drag-handle"
           className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
