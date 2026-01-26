@@ -13,6 +13,7 @@ pub mod qa_service;
 pub mod review_service;
 pub mod supervisor_service;
 pub mod task_context_service;
+pub mod task_transition_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
@@ -38,3 +39,4 @@ pub use execution_chat_service::{
 };
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
 pub use task_context_service::TaskContextService;
+pub use task_transition_service::TaskTransitionService;

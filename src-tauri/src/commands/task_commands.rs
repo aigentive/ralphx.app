@@ -232,8 +232,8 @@ pub async fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), S
 
 /// Move a task to a new status (for Kanban drag-drop)
 ///
-/// This is a simplified version of update_task that only changes the internal_status.
-/// Used by the Kanban board when dragging tasks between columns.
+/// This command uses the TaskTransitionService to properly trigger state machine
+/// entry actions, such as spawning worker agents when moving to "executing" status.
 ///
 /// # Arguments
 /// * `task_id` - The task ID (camelCase for frontend compatibility)
@@ -247,30 +247,35 @@ pub async fn move_task(
     taskId: String,
     toStatus: String,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    let task_id = TaskId::from_string(taskId);
+    use crate::application::TaskTransitionService;
+    use std::sync::Arc;
 
-    // Get existing task
-    let mut task = state
-        .task_repo
-        .get_by_id(&task_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+    // Debug log to verify command is being called
+    println!(">>> move_task called: taskId={}, toStatus={}", taskId, toStatus);
+    tracing::info!(taskId = %taskId, toStatus = %toStatus, "move_task command invoked");
+
+    let task_id = TaskId::from_string(taskId);
 
     // Parse the target status
     let new_status: InternalStatus = toStatus
         .parse()
         .map_err(|_| format!("Invalid status: {}", toStatus))?;
 
-    // Update status
-    task.internal_status = new_status;
-    task.touch();
+    // Create the transition service with all required dependencies
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::new(state.execution_message_queue.clone()),
+        Some(app),
+    );
 
-    // Persist the update
-    state
-        .task_repo
-        .update(&task)
+    // Transition the task - this triggers entry actions like spawning workers!
+    let task = transition_service
+        .transition_task(&task_id, new_status)
         .await
         .map_err(|e| e.to_string())?;
 

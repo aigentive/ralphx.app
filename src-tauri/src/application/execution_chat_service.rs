@@ -232,8 +232,15 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
         let working_directory = cwd
             .parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or(cwd);
+            .unwrap_or(cwd.clone());
         let plugin_dir = working_directory.join("ralphx-plugin");
+
+        println!(">>> ClaudeExecutionChatService::new()");
+        println!(">>>   cli_path: {:?}", cli_path);
+        println!(">>>   cwd: {:?}", cwd);
+        println!(">>>   working_directory: {:?}", working_directory);
+        println!(">>>   plugin_dir: {:?}", plugin_dir);
+        println!(">>>   plugin_dir exists: {}", plugin_dir.exists());
 
         Self {
             cli_path,
@@ -587,15 +594,26 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
 
         // 4. Spawn Claude CLI with worker agent
         let mut cmd = self.build_command(&initial_prompt, None);
+        println!(">>> spawn_with_persistence: Spawning Claude CLI");
+        println!(">>>   cli_path: {:?}", self.cli_path);
+        println!(">>>   plugin_dir: {:?}", self.plugin_dir);
+        println!(">>>   working_directory: {:?}", self.working_directory);
+        println!(">>>   initial_prompt: {}", initial_prompt);
+
         let child = cmd
             .spawn()
-            .map_err(|e| ExecutionChatError::SpawnFailed(e.to_string()))?;
+            .map_err(|e| {
+                println!(">>> spawn_with_persistence: SPAWN FAILED: {}", e);
+                ExecutionChatError::SpawnFailed(e.to_string())
+            })?;
+        println!(">>> spawn_with_persistence: Claude CLI spawned successfully, pid={:?}", child.id());
 
         // Clone values needed for async block
         let task_id_clone = task_id.clone();
         let chat_message_repo = Arc::clone(&self.chat_message_repo);
         let conversation_repo = Arc::clone(&self.conversation_repo);
         let agent_run_repo = Arc::clone(&self.agent_run_repo);
+        let task_repo = Arc::clone(&self.task_repo);
         let message_queue = Arc::clone(&self.message_queue);
         let app_handle = self.app_handle.clone();
         let agent_run_id_clone = agent_run_id.clone();
@@ -666,6 +684,39 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                             &agent_run_id_clone,
                         ))
                         .await;
+
+                    // Transition task: Executing → ExecutionDone → PendingReview
+                    // (QA is disabled by default, so we skip QaRefining and go directly to review)
+                    println!(">>> Worker completed, transitioning task {} to PendingReview", task_id_clone.as_str());
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id_clone).await {
+                        // Only transition if still in Executing state
+                        if task.internal_status == crate::domain::entities::InternalStatus::Executing {
+                            // Skip ExecutionDone and go directly to PendingReview
+                            // (ExecutionDone is a transient state when QA is disabled)
+                            task.internal_status = crate::domain::entities::InternalStatus::PendingReview;
+                            task.touch();
+                            let _ = task_repo.update(&task).await;
+                            println!(">>> Task {} transitioned to PendingReview", task_id_clone.as_str());
+
+                            // Emit event for UI update (use task:event channel with correct schema)
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "task:event",
+                                    serde_json::json!({
+                                        "type": "status_changed",
+                                        "taskId": task_id_clone.as_str(),
+                                        "from": "executing",
+                                        "to": "pending_review",
+                                        "changedBy": "agent",
+                                    }),
+                                );
+                            }
+
+                            // TODO: Spawn reviewer agent here
+                            // For now, the task just waits in PendingReview for manual approval
+                            println!(">>> Task {} awaiting review (AI reviewer not yet implemented)", task_id_clone.as_str());
+                        }
+                    }
 
                     // Emit run completed event
                     if let Some(ref handle) = app_handle {
@@ -834,10 +885,20 @@ async fn process_stream_background<R: Runtime>(
     task_id: &TaskId,
     app_handle: Option<AppHandle<R>>,
 ) -> Result<(String, Vec<ToolCall>, Option<String>), String> {
+    println!(">>> process_stream_background: Starting to process stream");
+    println!(">>>   conversation_id: {}", conversation_id.as_str());
+    println!(">>>   task_id: {}", task_id.as_str());
+    println!(">>>   app_handle is_some: {}", app_handle.is_some());
+
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "Failed to capture stdout".to_string())?;
+        .ok_or_else(|| {
+            println!(">>> process_stream_background: Failed to capture stdout!");
+            "Failed to capture stdout".to_string()
+        })?;
+
+    println!(">>> process_stream_background: Got stdout, starting to read lines");
 
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
@@ -846,7 +907,12 @@ async fn process_stream_background<R: Runtime>(
     let conversation_id_str = conversation_id.as_str();
     let task_id_str = task_id.as_str();
 
+    let mut line_count = 0;
     while let Ok(Some(line)) = lines.next_line().await {
+        line_count += 1;
+        if line_count <= 5 || line_count % 100 == 0 {
+            println!(">>> process_stream_background: line {}: {}", line_count, &line[..line.len().min(100)]);
+        }
         if let Some(msg) = StreamProcessor::parse_line(&line) {
             let events = processor.process_message(msg);
 
@@ -854,6 +920,7 @@ async fn process_stream_background<R: Runtime>(
                 match event {
                     ProcessorStreamEvent::TextChunk(text) => {
                         if let Some(ref handle) = app_handle {
+                            println!(">>> EMITTING execution:chunk: {}", &text[..text.len().min(50)]);
                             // Emit execution:chunk event for ChatPanel
                             let _ = handle.emit(
                                 "execution:chunk",
@@ -863,6 +930,7 @@ async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
+                            println!(">>> EMITTING agent:message for task {}", task_id_str);
                             // ALSO emit agent:message event for Activity Stream
                             let _ = handle.emit(
                                 "agent:message",
@@ -945,15 +1013,28 @@ async fn process_stream_background<R: Runtime>(
         }
     }
 
+    println!(">>> process_stream_background: Finished reading lines, total: {}", line_count);
+
     let result = processor.finish();
 
+    println!(">>> process_stream_background: Waiting for child process to complete");
     // Wait for process to complete
-    let status = child.wait().await.map_err(|e| e.to_string())?;
+    let status = child.wait().await.map_err(|e| {
+        println!(">>> process_stream_background: Wait failed: {}", e);
+        e.to_string()
+    })?;
+
+    println!(">>> process_stream_background: Child process exited with status: {:?}", status);
+    println!(">>> process_stream_background: response_text length: {}", result.response_text.len());
+    println!(">>> process_stream_background: tool_calls count: {}", result.tool_calls.len());
+    println!(">>> process_stream_background: session_id: {:?}", result.session_id);
 
     if !status.success() && result.response_text.is_empty() {
+        println!(">>> process_stream_background: FAILED - non-zero exit with empty response");
         return Err("Agent exited with non-zero status".to_string());
     }
 
+    println!(">>> process_stream_background: SUCCESS");
     Ok((result.response_text, result.tool_calls, result.session_id))
 }
 
