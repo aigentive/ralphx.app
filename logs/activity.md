@@ -1,15 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-27 08:30:00
+**Last Updated:** 2026-01-27 08:45:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 7 / 13
-**Current Task:** Create task context types and API
+**Tasks Completed:** 8 / 13
+**Current Task:** Create TaskContextPanel component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-27 08:45:00 - Create task context types and API (Task 8)
+
+**What was done:**
+- Created `src/types/task-context.ts` with:
+  - `TaskProposalSummary` interface and Zod schema (id, title, description, acceptance criteria, implementation notes, plan version)
+  - `ArtifactSummary` interface and Zod schema (id, title, artifact type, current version, 500-char content preview)
+  - `TaskContext` interface and Zod schema (task, source proposal, plan artifact, related artifacts, context hints)
+- Created `src/api/task-context.ts` with:
+  - `getTaskContext(taskId)` - Fetch rich context for a task
+  - `getArtifactFull(artifactId)` - Fetch full artifact content
+  - `getArtifactVersion(artifactId, version)` - Fetch specific historical version
+  - `getRelatedArtifacts(artifactId)` - Get artifacts related to a specific artifact
+  - `searchArtifacts(projectId, query, artifactTypes?)` - Search for artifacts
+- Added proper snake_case to camelCase transformation functions
+- Followed existing patterns from `src/api/artifact.ts`
+- Type checking passes
+
+**Files created:**
+- `src/types/task-context.ts` - 69 lines
+- `src/api/task-context.ts` - 239 lines
+
+**Commands run:**
+- `npm run typecheck` - Passed
 
 ### 2026-01-27 08:30:00 - Update worker agent with context fetching instructions (Task 7)
 
