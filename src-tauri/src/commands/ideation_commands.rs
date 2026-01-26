@@ -232,14 +232,11 @@ pub async fn list_ideation_sessions(
     project_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<IdeationSessionResponse>, String> {
-    println!("[DEBUG] list_ideation_sessions called with project_id: {}", project_id);
     let project_id = ProjectId::from_string(project_id);
-    let result = state
+    state
         .ideation_session_repo
         .get_by_project(&project_id)
-        .await;
-    println!("[DEBUG] get_by_project result: {:?}", result.as_ref().map(|s| s.len()));
-    result
+        .await
         .map(|sessions| {
             sessions
                 .into_iter()

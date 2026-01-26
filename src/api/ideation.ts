@@ -431,19 +431,12 @@ export const ideationApi = {
      * @returns Array of sessions
      */
     list: async (projectId: string): Promise<IdeationSessionResponse[]> => {
-      console.log("[ideationApi.sessions.list] Calling invoke with projectId:", projectId);
-      try {
-        const raw = await typedInvoke(
-          "list_ideation_sessions",
-          { projectId },  // camelCase - Tauri auto-converts to snake_case for Rust
-          z.array(IdeationSessionResponseSchema)
-        );
-        console.log("[ideationApi.sessions.list] Raw result:", raw);
-        return raw.map(transformSession);
-      } catch (error) {
-        console.error("[ideationApi.sessions.list] Error:", error);
-        throw error;
-      }
+      const raw = await typedInvoke(
+        "list_ideation_sessions",
+        { projectId },  // camelCase - Tauri auto-converts to snake_case for Rust
+        z.array(IdeationSessionResponseSchema)
+      );
+      return raw.map(transformSession);
     },
 
     /**

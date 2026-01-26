@@ -16,6 +16,7 @@ use crate::application::{AppState, CreateProposalOptions, PermissionDecision, Up
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactType, ArtifactSummary, IdeationSessionId, InternalStatus,
     Priority, ProjectId, Task, TaskCategory, TaskContext, TaskId, TaskProposal, TaskProposalId,
+    TaskStep, TaskStepId, TaskStepStatus, StepProgressSummary,
 };
 use crate::error::{AppError, AppResult};
 
@@ -235,6 +236,70 @@ pub struct SearchArtifactsRequest {
 }
 
 // ============================================================================
+// Request/Response Types - Task Steps
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct StartStepRequest {
+    pub step_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompleteStepRequest {
+    pub step_id: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SkipStepRequest {
+    pub step_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FailStepRequest {
+    pub step_id: String,
+    pub error: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddStepRequest {
+    pub task_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub after_step_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StepResponse {
+    pub id: String,
+    pub task_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub sort_order: i32,
+    pub completion_note: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+impl From<TaskStep> for StepResponse {
+    fn from(step: TaskStep) -> Self {
+        Self {
+            id: step.id.as_str().to_string(),
+            task_id: step.task_id.as_str().to_string(),
+            title: step.title,
+            description: step.description,
+            status: step.status.to_db_string().to_string(),
+            sort_order: step.sort_order,
+            completion_note: step.completion_note,
+            started_at: step.started_at.map(|dt| dt.to_rfc3339()),
+            completed_at: step.completed_at.map(|dt| dt.to_rfc3339()),
+        }
+    }
+}
+
+// ============================================================================
 // HTTP Server
 // ============================================================================
 
@@ -266,6 +331,14 @@ pub async fn start_http_server(state: Arc<AppState>) {
         .route("/api/artifact/:artifact_id/version/:version", get(get_artifact_version))
         .route("/api/artifact/:artifact_id/related", get(get_related_artifacts))
         .route("/api/artifacts/search", post(search_artifacts))
+        // Task step endpoints (worker agent)
+        .route("/api/task_steps/:task_id", get(get_task_steps_http))
+        .route("/api/start_step", post(start_step_http))
+        .route("/api/complete_step", post(complete_step_http))
+        .route("/api/skip_step", post(skip_step_http))
+        .route("/api/fail_step", post(fail_step_http))
+        .route("/api/add_step", post(add_step_http))
+        .route("/api/step_progress/:task_id", get(get_step_progress_http))
         // Permission bridge endpoints
         .route("/api/permission/request", post(request_permission))
         .route("/api/permission/await/:request_id", get(await_permission))
@@ -1221,6 +1294,303 @@ async fn update_proposal_impl(
 
     Ok(proposal)
 }
+
+// ============================================================================
+// Handlers - Task Step Tools (worker agent)
+// ============================================================================
+
+/// GET /api/task_steps/:task_id
+///
+/// Fetch all steps for a task
+async fn get_task_steps_http(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> Result<Json<Vec<StepResponse>>, StatusCode> {
+    let task_id = TaskId::from_string(task_id);
+    let steps = state
+        .task_step_repo
+        .get_by_task(&task_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(steps.into_iter().map(StepResponse::from).collect()))
+}
+
+/// POST /api/start_step
+///
+/// Mark a step as in-progress
+async fn start_step_http(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<StartStepRequest>,
+) -> Result<Json<StepResponse>, StatusCode> {
+    let step_id = TaskStepId::from_string(req.step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Validate step is Pending
+    if step.status != TaskStepStatus::Pending {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Update status
+    step.status = TaskStepStatus::InProgress;
+    step.started_at = Some(chrono::Utc::now());
+    step.touch();
+
+    // Save
+    state
+        .task_step_repo
+        .update(&step)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = StepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(Json(StepResponse::from(step)))
+}
+
+/// POST /api/complete_step
+///
+/// Mark a step as completed
+async fn complete_step_http(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CompleteStepRequest>,
+) -> Result<Json<StepResponse>, StatusCode> {
+    let step_id = TaskStepId::from_string(req.step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Validate step is InProgress
+    if step.status != TaskStepStatus::InProgress {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Update status
+    step.status = TaskStepStatus::Completed;
+    step.completed_at = Some(chrono::Utc::now());
+    step.completion_note = req.note;
+    step.touch();
+
+    // Save
+    state
+        .task_step_repo
+        .update(&step)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = StepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(Json(StepResponse::from(step)))
+}
+
+/// POST /api/skip_step
+///
+/// Mark a step as skipped
+async fn skip_step_http(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SkipStepRequest>,
+) -> Result<Json<StepResponse>, StatusCode> {
+    let step_id = TaskStepId::from_string(req.step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Validate step is Pending or InProgress
+    if step.status != TaskStepStatus::Pending && step.status != TaskStepStatus::InProgress {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Update status
+    step.status = TaskStepStatus::Skipped;
+    step.completed_at = Some(chrono::Utc::now());
+    step.completion_note = Some(req.reason);
+    step.touch();
+
+    // Save
+    state
+        .task_step_repo
+        .update(&step)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = StepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(Json(StepResponse::from(step)))
+}
+
+/// POST /api/fail_step
+///
+/// Mark a step as failed
+async fn fail_step_http(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<FailStepRequest>,
+) -> Result<Json<StepResponse>, StatusCode> {
+    let step_id = TaskStepId::from_string(req.step_id);
+
+    // Get existing step
+    let mut step = state
+        .task_step_repo
+        .get_by_id(&step_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Validate step is InProgress
+    if step.status != TaskStepStatus::InProgress {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Update status
+    step.status = TaskStepStatus::Failed;
+    step.completed_at = Some(chrono::Utc::now());
+    step.completion_note = Some(req.error);
+    step.touch();
+
+    // Save
+    state
+        .task_step_repo
+        .update(&step)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = StepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(Json(StepResponse::from(step)))
+}
+
+/// POST /api/add_step
+///
+/// Add a new step to a task during execution
+async fn add_step_http(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<AddStepRequest>,
+) -> Result<Json<StepResponse>, StatusCode> {
+    let task_id = TaskId::from_string(req.task_id);
+
+    // Determine sort_order
+    let sort_order = if let Some(after_step_id_str) = req.after_step_id {
+        // Insert after specified step
+        let after_step_id = TaskStepId::from_string(after_step_id_str);
+        let after_step = state
+            .task_step_repo
+            .get_by_id(&after_step_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
+        after_step.sort_order + 1
+    } else {
+        // Append to end - find max sort_order
+        let steps = state
+            .task_step_repo
+            .get_by_task(&task_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        steps.iter().map(|s| s.sort_order).max().unwrap_or(-1) + 1
+    };
+
+    // Create new step
+    let mut step = TaskStep::new(task_id, req.title, sort_order, "agent".to_string());
+    step.description = req.description;
+
+    // Save to repository
+    let step = state
+        .task_step_repo
+        .create(step)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = StepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:created",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+
+    Ok(Json(StepResponse::from(step)))
+}
+
+/// GET /api/step_progress/:task_id
+///
+/// Get progress summary for a task
+async fn get_step_progress_http(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> Result<Json<StepProgressSummary>, StatusCode> {
+    let task_id = TaskId::from_string(task_id);
+    let steps = state
+        .task_step_repo
+        .get_by_task(&task_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(StepProgressSummary::from_steps(&task_id, &steps)))
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 fn task_to_response(task: &crate::domain::entities::Task) -> TaskResponse {
     TaskResponse {
