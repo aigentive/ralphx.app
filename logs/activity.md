@@ -1,15 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:45:00
+**Last Updated:** 2026-01-26 21:52:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 2 / 13
-**Current Task:** Add HTTP endpoints for worker context tools
+**Tasks Completed:** 3 / 13
+**Current Task:** Add Tauri commands for task context
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:52:00 - Add HTTP endpoints for worker context tools (Task 3)
+
+**What was done:**
+- Added 5 HTTP endpoints to `src-tauri/src/http_server.rs`:
+  - `GET /api/task_context/:task_id` → TaskContext (aggregates task + proposal + plan + related artifacts)
+  - `GET /api/artifact/:artifact_id` → Artifact (full content)
+  - `GET /api/artifact/:artifact_id/version/:version` → Artifact (specific version)
+  - `GET /api/artifact/:artifact_id/related` → Vec<ArtifactSummary> (related artifacts with previews)
+  - `POST /api/artifacts/search` → Vec<ArtifactSummary> (search by query and optional type filter)
+- Created request/response types:
+  - `SearchArtifactsRequest` struct for search parameters
+- Implemented handler functions:
+  - `get_task_context()` - uses helper function `get_task_context_impl()` to aggregate context
+  - `get_artifact_full()` - fetches full artifact by ID
+  - `get_artifact_version()` - fetches specific version
+  - `get_related_artifacts()` - gets related artifacts with summaries
+  - `search_artifacts()` - MVP search implementation (scans all artifacts, filters by query)
+- Added helper functions:
+  - `get_task_context_impl()` - replicates TaskContextService logic for trait objects
+  - `parse_artifact_type()` - parses artifact type strings to ArtifactType enum
+  - `create_artifact_preview()` - creates 500-char content preview
+- Updated imports to include ArtifactSummary, TaskContext, and AppError
+- All endpoints tested with curl and return expected responses
+- All tests pass (cargo test)
+
+**Commands run:**
+- `cargo build`
+- `cargo test`
+- `curl -v http://localhost:3847/api/task_context/test-123` (returns 500 for non-existent task - expected)
+- `curl -v http://localhost:3847/api/artifact/test-artifact-123` (returns 404 - expected)
+- `curl -X POST http://localhost:3847/api/artifacts/search -H 'Content-Type: application/json' -d '{"project_id":"test","query":"test"}'` (returns [] - expected)
 
 ### 2026-01-26 21:45:00 - Create TaskContextService (Task 2)
 
