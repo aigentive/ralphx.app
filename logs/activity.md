@@ -1,15 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 04:03:31
+**Last Updated:** 2026-01-26 05:30:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 7 / 14
-**Current Task:** Implement queue processing on worker completion
+**Tasks Completed:** 8 / 14
+**Current Task:** Update chat store for task_execution context
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 05:30:00 - Add Queue Processing Tests
+
+**What was done:**
+- Added comprehensive tests for queue processing in `src-tauri/src/application/execution_chat_service.rs`:
+  - `test_queue_processing_with_mock_service` - verifies queue can be processed after worker completes
+  - `test_multiple_queued_messages_processed_in_order` - verifies FIFO order processing
+  - `test_queue_empty_when_worker_completes` - verifies no-op when queue is empty
+  - `test_queue_for_different_tasks_isolated` - verifies per-task queue isolation
+  - `test_queue_sent_event_structure` - verifies ExecutionEvent::QueueSent structure
+  - `test_process_queue_method_signature` - verifies queue processing pattern
+  - `test_queue_processing_flow` - tests complete queue lifecycle
+- Verified existing queue processing implementation in spawn_with_persistence (lines 681-754):
+  - Pops messages from queue after worker completes
+  - Persists user messages to chat_messages
+  - Sends via --resume <claude_session_id>
+  - Emits execution:queue_sent events
+  - Continues streaming and persisting responses
+  - Repeats until queue is empty
+
+**Test results:**
+- 17 tests passed (7 new queue processing tests + 10 existing tests)
+- All tests passing without warnings
 
 ### 2026-01-26 04:03:31 - Remove ExecutionChatService Fallback
 
