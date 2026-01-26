@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 17,
+  "currentPhase": 18,
   "phases": [
     {
       "phase": 0,
@@ -140,7 +140,7 @@
       "phase": 18,
       "name": "Task CRUD, Archive & Search",
       "prd": "specs/phases/prd_phase_18_task_crud_archive_search.md",
-      "status": "pending",
+      "status": "active",
       "description": "Full CRUD operations, archive system, search, infinite scroll, context menu, keyboard shortcuts"
     }
   ]
