@@ -68,9 +68,11 @@ function extractArgumentSummary(args: unknown): string[] {
  */
 function createToolSummary(toolCall: ToolCall): { primary: string; details: string[] } {
   const { name, arguments: args } = toolCall;
+  // Normalize tool name to lowercase for matching
+  const normalizedName = name.toLowerCase();
 
   // Known tool formats with primary info extraction
-  switch (name) {
+  switch (normalizedName) {
     case "bash": {
       const typedArgs = args as { command?: string; description?: string } | undefined;
       const desc = typedArgs?.description;
@@ -150,7 +152,8 @@ function createToolSummary(toolCall: ToolCall): { primary: string; details: stri
  * Get a verb for the tool action
  */
 function getToolVerb(name: string): string {
-  switch (name) {
+  const normalizedName = name.toLowerCase();
+  switch (normalizedName) {
     case "bash":
       return "Running";
     case "read":
