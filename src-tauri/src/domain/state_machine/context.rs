@@ -4,6 +4,7 @@
 use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter};
 use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter};
 use super::types::Blocker;
+use crate::application::ExecutionChatService;
 use std::sync::Arc;
 
 /// Container for all services used by the state machine.
@@ -25,6 +26,11 @@ pub struct TaskServices {
 
     /// Service for starting reviews on tasks
     pub review_starter: Arc<dyn ReviewStarter>,
+
+    /// Optional service for persistent worker execution (Phase 15B).
+    /// When available, worker spawning uses this service to persist output to database.
+    /// When None, falls back to agent_spawner.spawn() (backward compatibility).
+    pub execution_chat_service: Option<Arc<dyn ExecutionChatService>>,
 }
 
 impl TaskServices {
@@ -42,7 +48,36 @@ impl TaskServices {
             notifier,
             dependency_manager,
             review_starter,
+            execution_chat_service: None,
         }
+    }
+
+    /// Creates a new TaskServices with all service implementations including ExecutionChatService
+    pub fn new_with_execution_chat(
+        agent_spawner: Arc<dyn AgentSpawner>,
+        event_emitter: Arc<dyn EventEmitter>,
+        notifier: Arc<dyn Notifier>,
+        dependency_manager: Arc<dyn DependencyManager>,
+        review_starter: Arc<dyn ReviewStarter>,
+        execution_chat_service: Arc<dyn ExecutionChatService>,
+    ) -> Self {
+        Self {
+            agent_spawner,
+            event_emitter,
+            notifier,
+            dependency_manager,
+            review_starter,
+            execution_chat_service: Some(execution_chat_service),
+        }
+    }
+
+    /// Sets the execution chat service (builder pattern)
+    pub fn with_execution_chat_service(
+        mut self,
+        service: Arc<dyn ExecutionChatService>,
+    ) -> Self {
+        self.execution_chat_service = Some(service);
+        self
     }
 
     /// Creates a TaskServices with all mock implementations for testing
@@ -53,6 +88,7 @@ impl TaskServices {
             notifier: Arc::new(MockNotifier::new()),
             dependency_manager: Arc::new(MockDependencyManager::new()),
             review_starter: Arc::new(MockReviewStarter::new()),
+            execution_chat_service: None,
         }
     }
 }
@@ -65,6 +101,10 @@ impl std::fmt::Debug for TaskServices {
             .field("notifier", &"<Notifier>")
             .field("dependency_manager", &"<DependencyManager>")
             .field("review_starter", &"<ReviewStarter>")
+            .field(
+                "execution_chat_service",
+                &self.execution_chat_service.as_ref().map(|_| "<ExecutionChatService>"),
+            )
             .finish()
     }
 }
@@ -232,6 +272,7 @@ mod tests {
         assert!(debug_str.contains("notifier"));
         assert!(debug_str.contains("dependency_manager"));
         assert!(debug_str.contains("review_starter"));
+        assert!(debug_str.contains("execution_chat_service"));
     }
 
     // ==================

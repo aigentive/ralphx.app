@@ -1,15 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 10:15:00
+**Last Updated:** 2026-01-26 11:30:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 4 / 14
-**Current Task:** Update TransitionHandler to use spawn_with_persistence
+**Tasks Completed:** 5 / 14
+**Current Task:** Add Tauri commands for execution chat
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 11:30:00 - Update TransitionHandler to use spawn_with_persistence
+
+**What was done:**
+- Updated `TaskServices` struct to include optional `ExecutionChatService` field
+- Added `new_with_execution_chat()` constructor for services with execution chat
+- Added `with_execution_chat_service()` builder method for fluent API
+- Modified `TransitionHandler.on_enter(Executing)` to check for ExecutionChatService:
+  - If available: calls `spawn_with_persistence()` for persistent worker execution
+  - If not available: falls back to `agent_spawner.spawn()` for backward compatibility
+- Added 3 new tests for ExecutionChatService integration:
+  - `test_entering_executing_uses_execution_chat_service_when_available`
+  - `test_entering_executing_falls_back_to_agent_spawner_without_execution_chat_service`
+  - `test_execution_chat_service_unavailable_falls_back_gracefully`
+- All 3025 tests pass
+
+**Key Design Decisions:**
+- ExecutionChatService is optional to maintain backward compatibility
+- TransitionHandler checks for service presence before using it
+- When service is unavailable, graceful degradation to agent_spawner
+- TaskId is constructed from task_id string for type safety
+
+**Files Modified:**
+- `src-tauri/src/domain/state_machine/context.rs` (added ExecutionChatService to TaskServices)
+- `src-tauri/src/domain/state_machine/transition_handler.rs` (updated on_enter(Executing), added tests)
+
+**Commands Run:**
+- `cargo test --lib transition_handler` (27 tests passed)
+- `cargo test --lib` (3025 tests passed)
 
 ### 2026-01-26 10:15:00 - Add Streaming Support to ClaudeCodeClient
 
