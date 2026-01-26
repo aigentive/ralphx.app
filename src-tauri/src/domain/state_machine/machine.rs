@@ -93,6 +93,10 @@ impl TaskStateMachine {
     /// Ready state - task is ready to be picked up
     pub fn ready(&mut self, event: &TaskEvent) -> Response {
         match event {
+            TaskEvent::StartExecution => {
+                // User explicitly starts execution (e.g., drag to "In Progress")
+                Response::Transition(State::Executing)
+            }
             TaskEvent::BlockerDetected { blocker_id } => {
                 // Add blocker to context
                 self.context
@@ -100,7 +104,6 @@ impl TaskStateMachine {
                 Response::Transition(State::Blocked)
             }
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
-            // Auto-transition to Executing happens via entry action check
             _ => Response::NotHandled,
         }
     }

@@ -86,7 +86,11 @@ impl<'a> TransitionHandler<'a> {
     }
 
     /// Execute on-enter action for a state
-    async fn on_enter(&self, state: &State) {
+    ///
+    /// This method is public to allow `TaskTransitionService` to trigger entry actions
+    /// for direct status changes (e.g., Kanban drag-drop) without going through the
+    /// full event-based transition flow.
+    pub async fn on_enter(&self, state: &State) {
         match state {
             State::Ready => {
                 // When entering Ready, spawn QA prep agent if enabled
