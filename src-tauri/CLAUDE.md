@@ -222,6 +222,18 @@ Frontend → Tauri IPC → Backend
 | worker | get_task_context, get_artifact*, search_project_artifacts (Ph17), get_task_steps, start_step, complete_step, skip_step, fail_step, add_step, get_step_progress (Ph19) |
 | supervisor/qa-* | None |
 
+### Task Steps (Ph19)
+Worker agents track deterministic progress using task steps:
+```bash
+# Worker workflow
+1. get_task_steps(task_id)         # Fetch all steps
+2. start_step(step_id)              # Mark step in_progress
+3. [work on step]                   # Implement
+4. complete_step(step_id, note?)    # Mark completed with optional note
+# OR skip_step(step_id, reason)     # Skip if not needed
+# OR fail_step(step_id, error)      # Mark failed
+```
+
 ### Session Management
 - RalphX Context ID: our IDs (ideation session, task, project)
 - Claude Session ID: for `--resume` flag, stored in `chat_conversations.claude_session_id`
@@ -291,15 +303,105 @@ search_project_artifacts(project_id, query, types?) → ArtifactSummary[]
 ### Worker Instructions
 1. get_task_context first | 2. get_artifact(planArtifact) if present | 3. get_related_artifacts optional | 4. implement
 
+## Task Execution Experience (Ph19)
+```rust
+// Entities (domain/entities/)
+pub struct TaskStep {
+    id: TaskStepId,
+    task_id: TaskId,
+    title: String,
+    description: Option<String>,
+    status: TaskStepStatus,
+    sort_order: u32,
+    depends_on: Option<TaskStepId>,
+    created_by: String,
+    completion_note: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
+}
+
+pub enum TaskStepStatus {
+    Pending, InProgress, Completed, Skipped, Failed, Cancelled
+}
+
+pub struct StepProgressSummary {
+    task_id: String,
+    total: u32, completed: u32, in_progress: u32, pending: u32, skipped: u32, failed: u32,
+    current_step: Option<TaskStep>,   // First InProgress
+    next_step: Option<TaskStep>,       // First Pending
+    percent_complete: f32,             // (completed + skipped) / total * 100
+}
+
+impl TaskStep {
+    fn new(task_id: TaskId, title: String, sort_order: u32, created_by: String) -> Self;
+    fn can_start(&self) -> bool;      // status == Pending
+    fn is_terminal(&self) -> bool;    // Completed|Skipped|Failed|Cancelled
+}
+
+impl StepProgressSummary {
+    fn from_steps(task_id: &TaskId, steps: &[TaskStep]) -> Self;
+}
+
+// Repository (domain/repositories/task_step_repository.rs)
+#[async_trait]
+pub trait TaskStepRepository: Send + Sync {
+    async fn create(&self, step: TaskStep) -> AppResult<TaskStep>;
+    async fn get_by_id(&self, id: &TaskStepId) -> AppResult<Option<TaskStep>>;
+    async fn get_by_task(&self, task_id: &TaskId) -> AppResult<Vec<TaskStep>>;
+    async fn get_by_task_and_status(&self, task_id: &TaskId, status: TaskStepStatus) -> AppResult<Vec<TaskStep>>;
+    async fn update(&self, step: &TaskStep) -> AppResult<()>;
+    async fn delete(&self, id: &TaskStepId) -> AppResult<()>;
+    async fn delete_by_task(&self, task_id: &TaskId) -> AppResult<()>;
+    async fn count_by_status(&self, task_id: &TaskId) -> AppResult<HashMap<TaskStepStatus, u32>>;
+    async fn bulk_create(&self, steps: Vec<TaskStep>) -> AppResult<Vec<TaskStep>>;
+    async fn reorder(&self, task_id: &TaskId, step_ids: Vec<TaskStepId>) -> AppResult<()>;
+}
+// Impls: SqliteTaskStepRepository, MemoryTaskStepRepository
+
+// Commands (commands/task_step_commands.rs)
+create_task_step(task_id, title, description?, sort_order?) → TaskStep
+get_task_steps(task_id) → Vec<TaskStep>
+update_task_step(step_id, title?, description?, sort_order?) → TaskStep
+delete_task_step(step_id) → ()
+reorder_task_steps(task_id, step_ids: Vec<String>) → Vec<TaskStep>
+get_step_progress(task_id) → StepProgressSummary
+start_step(step_id) → TaskStep         // Pending → InProgress, emits step:updated
+complete_step(step_id, note?) → TaskStep  // InProgress → Completed, emits step:updated
+skip_step(step_id, reason) → TaskStep   // Pending|InProgress → Skipped, emits step:updated
+fail_step(step_id, error) → TaskStep    // InProgress → Failed, emits step:updated
+
+// HTTP Endpoints (:3847 for MCP)
+GET /api/task_steps/:task_id → Vec<StepResponse>
+POST /api/start_step { step_id } → StepResponse
+POST /api/complete_step { step_id, note? } → StepResponse
+POST /api/skip_step { step_id, reason } → StepResponse
+POST /api/fail_step { step_id, error } → StepResponse
+POST /api/add_step { task_id, title, description?, after_step_id? } → StepResponse
+GET /api/step_progress/:task_id → StepProgressSummary
+
+// Integration
+create_task(steps?: Vec<String>) — creates TaskSteps with created_by="user"
+task created from proposal — imports steps from proposal.steps with created_by="proposal"
+get_task_context — includes steps and step_progress in TaskContext
+
+// Events (Tauri)
+step:created → { task_id, step_id }
+step:updated → { task_id, step_id }
+step:deleted → { task_id, step_id }
+steps:reordered → { task_id, step_ids }
+```
+
 ## Database (SQLite)
 `ralphx.db` (dev) | app data dir (prod)
 Migrations: `infrastructure/sqlite/migrations.rs`, auto-run on startup, version in `schema_version`
 
 ### Key Tables
-tasks (Ph18: archived_at column), projects, status_transitions, task_qa, reviews, ideation_sessions,
+tasks (Ph18: archived_at), projects, status_transitions, task_qa, reviews, ideation_sessions,
 task_proposals, proposal_dependencies, chat_messages, chat_conversations(Ph15), agent_runs(Ph15),
 ideation_settings(Ph16, single-row), task_dependencies, workflows, artifacts, artifact_buckets,
-research_processes, methodologies
+research_processes, methodologies, task_steps (Ph19)
 
 ## Build & Run
 ```bash
