@@ -327,6 +327,25 @@ mod tests {
         async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> {
             Ok(0)
         }
+
+        async fn list_paginated(
+            &self,
+            _project_id: &ProjectId,
+            _status: Option<InternalStatus>,
+            _offset: u32,
+            _limit: u32,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            if let Some(task) = &self.task {
+                Ok(vec![task.clone()])
+            } else {
+                Ok(vec![])
+            }
+        }
+
+        async fn count_tasks(&self, _project_id: &ProjectId, _include_archived: bool) -> AppResult<u32> {
+            Ok(if self.task.is_some() { 1 } else { 0 })
+        }
     }
 
     struct MockTaskProposalRepository {

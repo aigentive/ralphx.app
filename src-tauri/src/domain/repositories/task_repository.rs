@@ -93,6 +93,44 @@ pub trait TaskRepository: Send + Sync {
 
     /// Count archived tasks for a project
     async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32>;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pagination Operations (Phase 18 - Infinite Scroll)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Get paginated tasks for a project
+    ///
+    /// # Arguments
+    /// * `project_id` - The project ID
+    /// * `status` - Optional status filter
+    /// * `offset` - Number of tasks to skip
+    /// * `limit` - Maximum number of tasks to return
+    /// * `include_archived` - Whether to include archived tasks
+    ///
+    /// # Returns
+    /// * Tasks ordered by created_at DESC (newest first)
+    async fn list_paginated(
+        &self,
+        project_id: &ProjectId,
+        status: Option<InternalStatus>,
+        offset: u32,
+        limit: u32,
+        include_archived: bool,
+    ) -> AppResult<Vec<Task>>;
+
+    /// Count total tasks for a project
+    ///
+    /// # Arguments
+    /// * `project_id` - The project ID
+    /// * `include_archived` - Whether to include archived tasks in the count
+    ///
+    /// # Returns
+    /// * Total count of tasks matching the criteria
+    async fn count_tasks(
+        &self,
+        project_id: &ProjectId,
+        include_archived: bool,
+    ) -> AppResult<u32>;
 }
 
 #[cfg(test)]
@@ -190,6 +228,25 @@ mod tests {
         }
 
         async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> {
+            Ok(0)
+        }
+
+        async fn list_paginated(
+            &self,
+            _project_id: &ProjectId,
+            _status: Option<InternalStatus>,
+            _offset: u32,
+            _limit: u32,
+            _include_archived: bool,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
+        async fn count_tasks(
+            &self,
+            _project_id: &ProjectId,
+            _include_archived: bool,
+        ) -> AppResult<u32> {
             Ok(0)
         }
     }
