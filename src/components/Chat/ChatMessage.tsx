@@ -174,6 +174,66 @@ const markdownComponents = {
 // Component
 // ============================================================================
 
+/**
+ * TextBubble - Individual text content bubble
+ */
+function TextBubble({
+  content,
+  isUser,
+  isFirst,
+  isLast,
+}: {
+  content: string;
+  isUser: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  // Refined Studio bubble styles with gradients
+  const bubbleStyle: React.CSSProperties = {
+    background: isUser
+      ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
+      : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
+    color: isUser ? "white" : "var(--text-primary)",
+    border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
+    boxShadow: isUser
+      ? "0 2px 8px rgba(255,107,53,0.2)"
+      : "0 1px 4px rgba(0,0,0,0.15)",
+  };
+
+  // Corner radius varies based on position in sequence
+  const getCornerRadius = () => {
+    if (isUser) {
+      // User bubbles: right-aligned
+      if (isFirst && isLast) return "10px 10px 4px 10px";
+      if (isFirst) return "10px 10px 4px 10px";
+      if (isLast) return "10px 10px 4px 10px";
+      return "10px 10px 4px 10px";
+    } else {
+      // Agent bubbles: left-aligned
+      if (isFirst && isLast) return "10px 10px 10px 4px";
+      if (isFirst) return "10px 10px 10px 4px";
+      if (isLast) return "10px 10px 10px 4px";
+      return "10px 10px 10px 4px";
+    }
+  };
+
+  return (
+    <div
+      className="max-w-[85%] px-3 py-2 break-words"
+      style={{
+        ...bubbleStyle,
+        borderRadius: getCornerRadius(),
+      }}
+    >
+      <div className="text-[13px] leading-relaxed">
+        <ReactMarkdown components={markdownComponents}>
+          {content}
+        </ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
 export function ChatMessage({
   message,
   showFullTimestamp = false,
@@ -182,21 +242,6 @@ export function ChatMessage({
   const isUser = message.role === "user";
   const alignmentClass = isUser ? "items-end" : "items-start";
   const spacingClass = compact ? "mb-1" : "mb-3";
-
-  // Refined Studio bubble styles with gradients
-  const bubbleStyle = useMemo(
-    (): React.CSSProperties => ({
-      background: isUser
-        ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
-        : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
-      color: isUser ? "white" : "var(--text-primary)",
-      border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
-      boxShadow: isUser
-        ? "0 2px 8px rgba(255,107,53,0.2)"
-        : "0 1px 4px rgba(0,0,0,0.15)",
-    }),
-    [isUser]
-  );
 
   const timestamp = useMemo(
     () => formatTimestamp(message.createdAt, showFullTimestamp),
@@ -233,6 +278,10 @@ export function ChatMessage({
   // Use content blocks if available, otherwise fall back to legacy rendering
   const hasContentBlocks = contentBlocks.length > 0;
 
+  // Split content blocks into text and tool_use for rendering
+  const textBlocks = contentBlocks.filter(b => b.type === "text" && b.text);
+  const toolBlocks = contentBlocks.filter(b => b.type === "tool_use" && b.name);
+
   return (
     <article
       data-testid={`chat-message-${message.id}`}
@@ -250,61 +299,57 @@ export function ChatMessage({
         </span>
       )}
 
-      {/* Message bubble - Refined Studio asymmetric corners */}
-      <div
-        data-testid="chat-message-bubble"
-        className="max-w-[85%] px-3 py-2 break-words"
-        style={{
-          ...bubbleStyle,
-          borderRadius: isUser ? "10px 10px 4px 10px" : "10px 10px 10px 4px",
-        }}
-      >
-        {/* Render content blocks if available (preserves interleaved order) */}
-        {hasContentBlocks ? (
-          <div className="text-[13px] leading-relaxed space-y-2">
-            {contentBlocks.map((block, index) => {
-              if (block.type === "text" && block.text) {
-                return (
-                  <div key={`text-${index}`}>
-                    <ReactMarkdown components={markdownComponents}>
-                      {block.text}
-                    </ReactMarkdown>
-                  </div>
-                );
-              } else if (block.type === "tool_use" && block.name) {
+      {/* Render content blocks if available (preserves interleaved order) */}
+      {hasContentBlocks ? (
+        <div className="flex flex-col gap-1.5 max-w-full">
+          {/* Text blocks - each in its own bubble */}
+          {textBlocks.map((block, index) => (
+            <TextBubble
+              key={`text-${index}`}
+              content={block.text!}
+              isUser={isUser}
+              isFirst={index === 0}
+              isLast={index === textBlocks.length - 1}
+            />
+          ))}
+
+          {/* Tool calls - rendered after text */}
+          {toolBlocks.length > 0 && (
+            <div className="max-w-[85%] space-y-1.5">
+              {toolBlocks.map((block, index) => {
                 const toolCall: ToolCall = {
                   id: block.id || `tool-${index}`,
-                  name: block.name,
+                  name: block.name!,
                   arguments: block.arguments,
                   result: block.result,
                 };
                 return (
                   <ToolCallIndicator key={`tool-${index}`} toolCall={toolCall} />
                 );
-              }
-              return null;
-            })}
-          </div>
-        ) : (
-          <>
-            {/* Legacy rendering: concatenated content + tool calls at end */}
-            <div className="text-[13px] leading-relaxed">
-              <ReactMarkdown components={markdownComponents}>
-                {message.content}
-              </ReactMarkdown>
+              })}
             </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Legacy rendering: single bubble with content + tool calls */}
+          <TextBubble
+            content={message.content}
+            isUser={isUser}
+            isFirst={true}
+            isLast={true}
+          />
 
-            {/* Tool calls (if any) */}
-            {toolCalls.length > 0 && (
-              <div className="mt-2.5 space-y-1.5" data-testid="chat-message-tool-calls">
-                {toolCalls.map((toolCall) => (
-                  <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          {/* Tool calls (if any) */}
+          {toolCalls.length > 0 && (
+            <div className="mt-1.5 max-w-[85%] space-y-1.5" data-testid="chat-message-tool-calls">
+              {toolCalls.map((toolCall) => (
+                <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       {/* Timestamp */}
       <time
