@@ -1,0 +1,130 @@
+/**
+ * useInfiniteTasksQuery hook - TanStack Query wrapper for infinite scroll pagination
+ *
+ * Implements cursor-based pagination using TanStack Query's useInfiniteQuery.
+ * Supports filtering by status and archived state.
+ */
+
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { api } from "@/lib/tauri";
+import type { Task, TaskListResponse } from "@/types/task";
+import type { InternalStatus } from "@/types/status";
+
+/**
+ * Parameters for infinite tasks query
+ */
+export interface InfiniteTasksParams {
+  /** The project ID to fetch tasks for */
+  projectId: string;
+  /** Optional status filter */
+  status?: InternalStatus | undefined;
+  /** Whether to include archived tasks (default false) */
+  includeArchived?: boolean | undefined;
+}
+
+/**
+ * Query key factory for infinite tasks queries
+ */
+export const infiniteTaskKeys = {
+  all: ["tasks", "infinite"] as const,
+  list: (params: InfiniteTasksParams) =>
+    [
+      ...infiniteTaskKeys.all,
+      params.projectId,
+      params.status,
+      params.includeArchived,
+    ] as const,
+};
+
+/**
+ * Hook for fetching tasks with infinite scroll pagination
+ *
+ * Uses TanStack Query's useInfiniteQuery for automatic pagination management.
+ * Each page contains 20 tasks. The hook manages the page offset automatically
+ * and provides helpers for loading more data.
+ *
+ * @param params - Query parameters
+ * @param params.projectId - The project ID to fetch tasks for
+ * @param params.status - Optional status filter
+ * @param params.includeArchived - Whether to include archived tasks
+ *
+ * @returns TanStack Query infinite result with pagination helpers
+ *
+ * @example
+ * ```tsx
+ * const {
+ *   data,
+ *   fetchNextPage,
+ *   hasNextPage,
+ *   isFetchingNextPage,
+ *   isLoading,
+ * } = useInfiniteTasksQuery({
+ *   projectId: "project-123",
+ *   status: "backlog",
+ *   includeArchived: false,
+ * });
+ *
+ * const tasks = flattenPages(data);
+ *
+ * return (
+ *   <div>
+ *     {tasks.map(task => <TaskCard key={task.id} task={task} />)}
+ *     {hasNextPage && (
+ *       <button onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+ *         Load More
+ *       </button>
+ *     )}
+ *   </div>
+ * );
+ * ```
+ */
+export function useInfiniteTasksQuery({
+  projectId,
+  status,
+  includeArchived = false,
+}: InfiniteTasksParams) {
+  return useInfiniteQuery<TaskListResponse, Error>({
+    queryKey: infiniteTaskKeys.list({ projectId, status, includeArchived }),
+    queryFn: async ({ pageParam = 0 }) => {
+      return api.tasks.list({
+        projectId,
+        ...(status !== undefined && { status }),
+        offset: pageParam as number,
+        limit: 20,
+        includeArchived,
+      });
+    },
+    getNextPageParam: (lastPage) => {
+      // If there are more pages, return the next offset
+      // Otherwise return undefined to signal no more pages
+      return lastPage.hasMore ? lastPage.offset + 20 : undefined;
+    },
+    initialPageParam: 0,
+    // Local-first app with event-driven updates: longer cache is safe and performant
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache retention
+  });
+}
+
+/**
+ * Helper function to flatten paginated data into a single array
+ *
+ * Extracts all tasks from all loaded pages into a flat array.
+ * Returns empty array if data is undefined.
+ *
+ * @param data - The infinite query data object
+ * @returns Flattened array of tasks from all pages
+ *
+ * @example
+ * ```tsx
+ * const { data } = useInfiniteTasksQuery({ projectId: "123" });
+ * const allTasks = flattenPages(data);
+ * ```
+ */
+export function flattenPages(
+  data: { pages: TaskListResponse[] } | undefined
+): Task[] {
+  if (!data?.pages) return [];
+
+  return data.pages.flatMap((page) => page.tasks);
+}
