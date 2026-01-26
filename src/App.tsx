@@ -86,10 +86,12 @@ const NAV_ITEMS: {
 ];
 
 // Transform API messages to component-compatible format
-function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null }>): ChatMessageType[] {
+function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null; conversationId?: string | null; toolCalls?: string | null }>): ChatMessageType[] {
   return messages.map((msg) => ({
     ...msg,
     role: (["user", "orchestrator", "system"].includes(msg.role) ? msg.role : "system") as "user" | "orchestrator" | "system",
+    conversationId: msg.conversationId ?? null,
+    toolCalls: msg.toolCalls ?? null,
   }));
 }
 
@@ -233,11 +235,19 @@ function AppContent() {
             setCurrentView("settings");
             break;
           case "k":
-          case "K":
-            // Cmd+K to toggle chat panel
+          case "K": {
+            // Cmd+K to toggle chat panel (skip if in input/textarea)
+            const activeElement = document.activeElement;
+            if (
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
             e.preventDefault();
             toggleChatPanel();
             break;
+          }
         }
       }
     };

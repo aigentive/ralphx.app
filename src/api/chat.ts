@@ -17,6 +17,8 @@ const ChatMessageResponseSchema = z.object({
   content: z.string(),
   metadata: z.string().nullable(),
   parent_message_id: z.string().nullable(),
+  conversation_id: z.string().nullable(),
+  tool_calls: z.string().nullable(),
   created_at: z.string(),
 });
 
@@ -33,6 +35,8 @@ export interface ChatMessageResponse {
   content: string;
   metadata: string | null;
   parentMessageId: string | null;
+  conversationId: string | null;
+  toolCalls: string | null;
   createdAt: string;
 }
 
@@ -74,6 +78,8 @@ function transformMessage(raw: RawMessage): ChatMessageResponse {
     content: raw.content,
     metadata: raw.metadata,
     parentMessageId: raw.parent_message_id,
+    conversationId: raw.conversation_id,
+    toolCalls: raw.tool_calls,
     createdAt: raw.created_at,
   };
 }
@@ -379,6 +385,173 @@ export async function isOrchestratorAvailable(): Promise<boolean> {
 }
 
 // ============================================================================
+// Context-Aware Chat API Functions
+// ============================================================================
+
+import type {
+  ChatConversation,
+  AgentRun,
+  ContextType,
+} from "../types/chat-conversation";
+
+// Response schemas for backend snake_case
+const ChatConversationResponseSchema = z.object({
+  id: z.string(),
+  context_type: z.string(),
+  context_id: z.string(),
+  claude_session_id: z.string().nullable(),
+  title: z.string().nullable(),
+  message_count: z.number(),
+  last_message_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const AgentRunResponseSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  status: z.string(),
+  started_at: z.string(),
+  completed_at: z.string().nullable(),
+  error_message: z.string().nullable(),
+});
+
+type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
+type RawAgentRun = z.infer<typeof AgentRunResponseSchema>;
+
+function transformConversation(raw: RawConversation): ChatConversation {
+  return {
+    id: raw.id,
+    contextType: raw.context_type as ContextType,
+    contextId: raw.context_id,
+    claudeSessionId: raw.claude_session_id,
+    title: raw.title,
+    messageCount: raw.message_count,
+    lastMessageAt: raw.last_message_at,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function transformAgentRun(raw: RawAgentRun): AgentRun {
+  return {
+    id: raw.id,
+    conversationId: raw.conversation_id,
+    status: raw.status as AgentRun["status"],
+    startedAt: raw.started_at,
+    completedAt: raw.completed_at,
+    errorMessage: raw.error_message,
+  };
+}
+
+/**
+ * Send a context-aware message (uses conversation and --resume)
+ * @param contextType The context type (ideation, task, project)
+ * @param contextId The context ID (session_id, task_id, project_id)
+ * @param content The message content
+ * @returns The created message
+ */
+export async function sendContextMessage(
+  contextType: ContextType,
+  contextId: string,
+  content: string
+): Promise<ChatMessageResponse> {
+  const raw = await typedInvoke(
+    "send_context_message",
+    {
+      input: {
+        context_type: contextType,
+        context_id: contextId,
+        content,
+      },
+    },
+    ChatMessageResponseSchema
+  );
+  return transformMessage(raw);
+}
+
+/**
+ * List all conversations for a given context
+ * @param contextType The context type
+ * @param contextId The context ID
+ * @returns Array of conversations
+ */
+export async function listConversations(
+  contextType: ContextType,
+  contextId: string
+): Promise<ChatConversation[]> {
+  const raw = await typedInvoke(
+    "list_conversations",
+    {
+      context_type: contextType,
+      context_id: contextId,
+    },
+    z.array(ChatConversationResponseSchema)
+  );
+  return raw.map(transformConversation);
+}
+
+/**
+ * Get a conversation with its messages
+ * @param conversationId The conversation ID
+ * @returns The conversation with messages
+ */
+export async function getConversation(
+  conversationId: string
+): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] }> {
+  const raw = await typedInvoke(
+    "get_conversation",
+    { conversation_id: conversationId },
+    z.object({
+      conversation: ChatConversationResponseSchema,
+      messages: z.array(ChatMessageResponseSchema),
+    })
+  );
+
+  return {
+    conversation: transformConversation(raw.conversation),
+    messages: raw.messages.map(transformMessage),
+  };
+}
+
+/**
+ * Create a new conversation
+ * @param contextType The context type
+ * @param contextId The context ID
+ * @returns The created conversation
+ */
+export async function createConversation(
+  contextType: ContextType,
+  contextId: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "create_conversation",
+    {
+      context_type: contextType,
+      context_id: contextId,
+    },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
+/**
+ * Get the current agent run status for a conversation
+ * @param conversationId The conversation ID
+ * @returns The agent run if one is active, null otherwise
+ */
+export async function getAgentRunStatus(
+  conversationId: string
+): Promise<AgentRun | null> {
+  const raw = await typedInvoke(
+    "get_agent_run_status",
+    { conversation_id: conversationId },
+    AgentRunResponseSchema.nullable()
+  );
+  return raw ? transformAgentRun(raw) : null;
+}
+
+// ============================================================================
 // Namespace Export for Alternative Usage Pattern
 // ============================================================================
 
@@ -397,4 +570,10 @@ export const chatApi = {
   countSessionMessages,
   sendOrchestratorMessage,
   isOrchestratorAvailable,
+  // Context-aware chat functions
+  sendContextMessage,
+  listConversations,
+  getConversation,
+  createConversation,
+  getAgentRunStatus,
 } as const;
