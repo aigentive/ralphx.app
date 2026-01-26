@@ -1,15 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 08:15:00
+**Last Updated:** 2026-01-26 09:30:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 2 / 14
-**Current Task:** Create ExecutionChatService for spawn with persistence
+**Tasks Completed:** 3 / 14
+**Current Task:** Modify ClaudeCodeClient to support execution persistence
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 09:30:00 - Create ExecutionChatService
+
+**What was done:**
+- Created `ExecutionChatService` for persistent worker execution
+- Implemented trait with core methods:
+  - `spawn_with_persistence()` - Creates conversation, agent_run, spawns Claude CLI with worker agent
+  - `get_execution_conversation()` - Get active conversation for task execution
+  - `list_task_executions()` - List all execution attempts for a task
+  - `complete_execution()` - Update conversation with claude_session_id
+  - `is_available()` - Check if CLI is available
+  - `get_active_run()` - Get active agent run for a conversation
+- Added `ClaudeExecutionChatService` production implementation:
+  - Spawns Claude CLI with `--agent worker` and `--output-format stream-json`
+  - Sets `RALPHX_AGENT_TYPE=worker` for MCP tool scoping
+  - Processes streaming output and persists to chat_messages
+  - Captures `claude_session_id` from Result event for `--resume` support
+  - Processes message queue on worker completion
+  - Emits Tauri events: `execution:chunk`, `execution:tool_call`, `execution:run_started`, `execution:run_completed`, `execution:message_created`, `execution:queue_sent`, `execution:error`
+- Added `MockExecutionChatService` for testing with queued responses
+- Added `Worker` variant to `MessageRole` enum for task execution output messages
+- Updated `ideation_commands.rs` to handle Worker role in match statement
+- Wrote 10 unit tests (all passing)
+
+**Files Created:**
+- `src-tauri/src/application/execution_chat_service.rs` (1,000+ lines)
+
+**Files Modified:**
+- `src-tauri/src/application/mod.rs` (exported new service types)
+- `src-tauri/src/domain/entities/ideation.rs` (added Worker variant to MessageRole)
+- `src-tauri/src/commands/ideation_commands.rs` (handle Worker role)
+
+**Commands Run:**
+- `cargo test --lib execution_chat_service` (10 tests passed)
+- `cargo test --lib` (3009 tests passed)
 
 ### 2026-01-26 08:15:00 - Create ExecutionMessageQueue
 

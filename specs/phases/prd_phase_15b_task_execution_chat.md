@@ -112,7 +112,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(application): add ExecutionChatService for persistent worker execution"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
