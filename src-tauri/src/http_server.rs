@@ -14,10 +14,10 @@ use uuid::Uuid;
 
 use crate::application::{AppState, CreateProposalOptions, PermissionDecision, UpdateProposalOptions};
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactId, ArtifactType, IdeationSessionId, Priority, TaskCategory,
-    TaskId, TaskProposal, TaskProposalId,
+    Artifact, ArtifactContent, ArtifactId, ArtifactType, ArtifactSummary, IdeationSessionId, Priority, TaskCategory,
+    TaskContext, TaskId, TaskProposal, TaskProposalId,
 };
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 // ============================================================================
 // Request/Response Types
@@ -210,6 +210,14 @@ impl From<Artifact> for ArtifactResponse {
     }
 }
 
+/// Request for searching artifacts
+#[derive(Debug, Deserialize)]
+pub struct SearchArtifactsRequest {
+    pub project_id: String,
+    pub query: String,
+    pub artifact_types: Option<Vec<String>>,
+}
+
 // ============================================================================
 // HTTP Server
 // ============================================================================
@@ -233,6 +241,12 @@ pub async fn start_http_server(state: Arc<AppState>) {
         .route("/api/get_task_details", post(get_task_details))
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
+        // Worker context tools (worker agent)
+        .route("/api/task_context/:task_id", get(get_task_context))
+        .route("/api/artifact/:artifact_id", get(get_artifact_full))
+        .route("/api/artifact/:artifact_id/version/:version", get(get_artifact_version))
+        .route("/api/artifact/:artifact_id/related", get(get_related_artifacts))
+        .route("/api/artifacts/search", post(search_artifacts))
         // Permission bridge endpoints
         .route("/api/permission/request", post(request_permission))
         .route("/api/permission/await/:request_id", get(await_permission))
@@ -715,6 +729,184 @@ async fn complete_review(
 }
 
 // ============================================================================
+// Handlers - Worker Context Tools
+// ============================================================================
+
+/// GET /api/task_context/:task_id
+///
+/// Get rich context for a task including linked artifacts and proposals
+async fn get_task_context(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> Result<Json<TaskContext>, StatusCode> {
+    let task_id = TaskId::from_string(task_id);
+
+    // Get task context using helper function
+    let context = get_task_context_impl(&state, &task_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(context))
+}
+
+/// GET /api/artifact/:artifact_id
+///
+/// Fetch full artifact content by ID
+async fn get_artifact_full(
+    State(state): State<Arc<AppState>>,
+    Path(artifact_id): Path<String>,
+) -> Result<Json<ArtifactResponse>, StatusCode> {
+    let artifact_id = ArtifactId::from_string(artifact_id);
+
+    let artifact = state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(Json(ArtifactResponse::from(artifact)))
+}
+
+/// GET /api/artifact/:artifact_id/version/:version
+///
+/// Fetch specific version of an artifact
+async fn get_artifact_version(
+    State(state): State<Arc<AppState>>,
+    Path((artifact_id, version)): Path<(String, u32)>,
+) -> Result<Json<ArtifactResponse>, StatusCode> {
+    let artifact_id = ArtifactId::from_string(artifact_id);
+
+    let artifact = state
+        .artifact_repo
+        .get_by_id_at_version(&artifact_id, version)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(Json(ArtifactResponse::from(artifact)))
+}
+
+/// GET /api/artifact/:artifact_id/related
+///
+/// Get artifacts related to a specific artifact
+async fn get_related_artifacts(
+    State(state): State<Arc<AppState>>,
+    Path(artifact_id): Path<String>,
+) -> Result<Json<Vec<ArtifactSummary>>, StatusCode> {
+    let artifact_id = ArtifactId::from_string(artifact_id);
+
+    let related = state
+        .artifact_repo
+        .get_related(&artifact_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Convert to ArtifactSummary with preview
+    let summaries: Vec<ArtifactSummary> = related
+        .into_iter()
+        .map(|artifact| {
+            let content_preview = create_artifact_preview(&artifact);
+            ArtifactSummary {
+                id: artifact.id.clone(),
+                title: artifact.name.clone(),
+                artifact_type: artifact.artifact_type,
+                current_version: artifact.metadata.version,
+                content_preview,
+            }
+        })
+        .collect();
+
+    Ok(Json(summaries))
+}
+
+/// POST /api/artifacts/search
+///
+/// Search artifacts by query and optional type filter
+async fn search_artifacts(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SearchArtifactsRequest>,
+) -> Result<Json<Vec<ArtifactSummary>>, StatusCode> {
+    // For MVP, implement basic search by getting all artifacts and filtering
+    // TODO: Optimize with proper database search in future iteration
+
+    // Get all artifacts (we don't have project filtering yet, so get by type)
+    let all_artifacts: Vec<Artifact> = if let Some(types) = req.artifact_types {
+        let mut results = Vec::new();
+        for type_str in types {
+            if let Ok(artifact_type) = parse_artifact_type(&type_str) {
+                let artifacts = state
+                    .artifact_repo
+                    .get_by_type(artifact_type)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                results.extend(artifacts);
+            }
+        }
+        results
+    } else {
+        // If no type filter, we need to get all types
+        let mut results = Vec::new();
+        for artifact_type in [
+            ArtifactType::Prd,
+            ArtifactType::ResearchDocument,
+            ArtifactType::DesignDoc,
+            ArtifactType::Specification,
+            ArtifactType::CodeChange,
+            ArtifactType::Diff,
+            ArtifactType::TestResult,
+            ArtifactType::TaskSpec,
+            ArtifactType::ReviewFeedback,
+            ArtifactType::Approval,
+            ArtifactType::Findings,
+            ArtifactType::Recommendations,
+            ArtifactType::Context,
+            ArtifactType::PreviousWork,
+            ArtifactType::ResearchBrief,
+        ] {
+            let artifacts = state
+                .artifact_repo
+                .get_by_type(artifact_type)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            results.extend(artifacts);
+        }
+        results
+    };
+
+    // Filter by query (case-insensitive search in name and content)
+    let query_lower = req.query.to_lowercase();
+    let filtered: Vec<Artifact> = all_artifacts
+        .into_iter()
+        .filter(|artifact| {
+            let name_matches = artifact.name.to_lowercase().contains(&query_lower);
+            let content_matches = match &artifact.content {
+                ArtifactContent::Inline { text } => text.to_lowercase().contains(&query_lower),
+                ArtifactContent::File { path } => path.to_lowercase().contains(&query_lower),
+            };
+            name_matches || content_matches
+        })
+        .collect();
+
+    // Convert to ArtifactSummary
+    let summaries: Vec<ArtifactSummary> = filtered
+        .into_iter()
+        .map(|artifact| {
+            let content_preview = create_artifact_preview(&artifact);
+            ArtifactSummary {
+                id: artifact.id.clone(),
+                title: artifact.name.clone(),
+                artifact_type: artifact.artifact_type,
+                current_version: artifact.metadata.version,
+                content_preview,
+            }
+        })
+        .collect();
+
+    Ok(Json(summaries))
+}
+
+// ============================================================================
 // Handlers - Permission Bridge
 // ============================================================================
 
@@ -961,4 +1153,153 @@ fn parse_priority(s: &str) -> Result<Priority, String> {
         "low" => Ok(Priority::Low),
         _ => Err(format!("Invalid priority: {}", s)),
     }
+}
+
+fn parse_artifact_type(s: &str) -> Result<ArtifactType, String> {
+    match s.to_lowercase().as_str() {
+        "prd" => Ok(ArtifactType::Prd),
+        "specification" => Ok(ArtifactType::Specification),
+        "research" | "researchdocument" | "research_document" => Ok(ArtifactType::ResearchDocument),
+        "design" | "designdoc" | "design_doc" => Ok(ArtifactType::DesignDoc),
+        "code_change" | "codechanges" => Ok(ArtifactType::CodeChange),
+        "diff" => Ok(ArtifactType::Diff),
+        "test_result" | "testresult" => Ok(ArtifactType::TestResult),
+        "task_spec" | "taskspec" => Ok(ArtifactType::TaskSpec),
+        "review_feedback" | "reviewfeedback" => Ok(ArtifactType::ReviewFeedback),
+        "approval" => Ok(ArtifactType::Approval),
+        "findings" => Ok(ArtifactType::Findings),
+        "recommendations" => Ok(ArtifactType::Recommendations),
+        "context" => Ok(ArtifactType::Context),
+        "previous_work" | "previouswork" => Ok(ArtifactType::PreviousWork),
+        "research_brief" | "researchbrief" => Ok(ArtifactType::ResearchBrief),
+        _ => Err(format!("Invalid artifact type: {}", s)),
+    }
+}
+
+/// Create a 500-character preview of artifact content
+fn create_artifact_preview(artifact: &Artifact) -> String {
+    let full_content = match &artifact.content {
+        ArtifactContent::Inline { text } => text.clone(),
+        ArtifactContent::File { path } => {
+            format!("[File artifact at: {}]", path)
+        }
+    };
+
+    if full_content.len() <= 500 {
+        full_content
+    } else {
+        format!("{}...", &full_content[..500])
+    }
+}
+
+/// Get task context - implementation that manually aggregates context
+/// This replicates the logic from TaskContextService but works with trait objects
+async fn get_task_context_impl(
+    state: &AppState,
+    task_id: &TaskId,
+) -> AppResult<TaskContext> {
+    // 1. Fetch task by ID
+    let task = state
+        .task_repo
+        .get_by_id(task_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Task not found: {}", task_id)))?;
+
+    // 2. If source_proposal_id present, fetch proposal and create TaskProposalSummary
+    let source_proposal = if let Some(proposal_id) = &task.source_proposal_id {
+        match state.task_proposal_repo.get_by_id(proposal_id).await? {
+            Some(proposal) => {
+                // Parse acceptance_criteria from JSON string to Vec<String>
+                let acceptance_criteria: Vec<String> = proposal
+                    .acceptance_criteria
+                    .as_ref()
+                    .and_then(|json_str| serde_json::from_str(json_str).ok())
+                    .unwrap_or_default();
+
+                Some(crate::domain::entities::TaskProposalSummary {
+                    id: proposal.id.clone(),
+                    title: proposal.title.clone(),
+                    description: proposal.description.clone().unwrap_or_default(),
+                    acceptance_criteria,
+                    implementation_notes: None,
+                    plan_version_at_creation: proposal.plan_version_at_creation,
+                })
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    // 3. If plan_artifact_id present, fetch artifact and create ArtifactSummary
+    let plan_artifact = if let Some(artifact_id) = &task.plan_artifact_id {
+        match state.artifact_repo.get_by_id(artifact_id).await? {
+            Some(artifact) => {
+                let content_preview = create_artifact_preview(&artifact);
+                Some(ArtifactSummary {
+                    id: artifact.id.clone(),
+                    title: artifact.name.clone(),
+                    artifact_type: artifact.artifact_type,
+                    current_version: artifact.metadata.version,
+                    content_preview,
+                })
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    // 4. Fetch related artifacts
+    let related_artifacts = if let Some(artifact_id) = &task.plan_artifact_id {
+        let related = state.artifact_repo.get_related(artifact_id).await?;
+        related
+            .into_iter()
+            .map(|artifact| {
+                let content_preview = create_artifact_preview(&artifact);
+                ArtifactSummary {
+                    id: artifact.id.clone(),
+                    title: artifact.name.clone(),
+                    artifact_type: artifact.artifact_type,
+                    current_version: artifact.metadata.version,
+                    content_preview,
+                }
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // 5. Generate context hints
+    let mut context_hints = Vec::new();
+    if source_proposal.is_some() {
+        context_hints.push(
+            "Task was created from ideation proposal - check acceptance criteria".to_string(),
+        );
+    }
+    if plan_artifact.is_some() {
+        context_hints.push("Implementation plan available - use get_artifact to read full plan before starting".to_string());
+    }
+    if !related_artifacts.is_empty() {
+        context_hints.push(format!(
+            "{} related artifact{} found - may contain useful context",
+            related_artifacts.len(),
+            if related_artifacts.len() == 1 { "" } else { "s" }
+        ));
+    }
+    if task.description.is_some() {
+        context_hints.push("Task has description with additional details".to_string());
+    }
+    if context_hints.is_empty() {
+        context_hints.push("No additional context artifacts found - proceed with task description and acceptance criteria".to_string());
+    }
+
+    // 6. Return TaskContext
+    Ok(TaskContext {
+        task,
+        source_proposal,
+        plan_artifact,
+        related_artifacts,
+        context_hints,
+    })
 }
