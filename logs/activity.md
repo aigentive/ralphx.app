@@ -1,12 +1,13 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 03:01:00
+**Last Updated:** 2026-01-26 03:15:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 23 / 26
-**Current Task:** Update CLAUDE.md and activity log
+**Tasks Completed:** 24 / 26
+**Current Task:** All tasks complete - ready for phase transition
 
 ---
+
 
 ## Session Log
 
@@ -11398,3 +11399,120 @@ Phase 4 (Agentic Client) is now complete with all 23 tasks passing.
 Test Files  2 passed (2)
 Tests       27 passed (27)
 ```
+
+### 2026-01-26 03:15:00 - Phase 15 Documentation Complete
+
+**What was done:**
+- Updated `CLAUDE.md` (root) with MCP Integration section:
+  - Added ralphx-mcp-server directory structure
+  - Updated agent table with chat-task and chat-project agents
+  - Added comprehensive MCP Integration section explaining:
+    - Architecture (TypeScript proxy to Tauri backend)
+    - Tool scoping by agent type
+    - HTTP server on port 3847
+    - Permission bridge flow
+  - Updated directory structure to show .mcp.json and new agents
+
+- Updated `src/CLAUDE.md` (frontend):
+  - Updated API section to note context-aware chat in chat.ts
+  - Expanded Chat components section with all Phase 15 components:
+    - ChatPanel, ChatMessage, ChatInput (context-aware)
+    - ConversationSelector, QueuedMessage, QueuedMessageList
+    - ToolCallIndicator
+  - Added PermissionDialog to components list
+  - Updated hooks section to highlight useChat with context-aware features
+  - Updated chatStore description
+  - Added chat-conversation.ts and permission.ts to types section
+  - Added new "Context-Aware Chat (Phase 15)" section with:
+    - useChat hook API and features
+    - Multiple conversations per context
+    - Message queueing and tool call display
+    - Architecture diagram
+
+- Updated `src-tauri/CLAUDE.md` (backend):
+  - Updated application services section with:
+    - orchestrator_service.rs (--resume support)
+    - permission_state.rs (permission bridge)
+    - http_server.rs (port 3847 MCP proxy)
+  - Updated commands section with:
+    - context_chat_commands.rs
+    - permission_commands.rs
+  - Updated entities table with ChatConversation and AgentRun
+  - Updated command categories list
+  - Updated database tables list with chat_conversations and agent_runs
+  - Updated agent roles to show MCP tool availability
+  - Added comprehensive "Context-Aware Chat System (Phase 15)" section:
+    - Architecture overview with diagram
+    - Key backend components explained
+    - MCP Server structure and tool scoping table
+    - Session management (two types of IDs)
+    - Permission bridge flow
+    - Real-time events
+
+- Updated `logs/activity.md`:
+  - Updated header: tasks completed 24/26
+  - Added this Phase 15 completion summary
+
+**Phase 15 Summary:**
+
+Phase 15 "Context-Aware Chat" is now complete with all 24 tasks finished:
+
+**Database Layer (Tasks 1-2):**
+- ✅ Migration for chat_conversations, agent_runs, tool_calls
+- ✅ ChatConversation and AgentRun entities with repositories
+
+**Backend Infrastructure (Tasks 3-10):**
+- ✅ HTTP server on port 3847 for MCP proxy
+- ✅ RalphX MCP Server (TypeScript proxy)
+- ✅ MCP tool scoping based on RALPHX_AGENT_TYPE
+- ✅ Permission request MCP tool
+- ✅ Permission state and HTTP endpoints
+- ✅ Permission resolution Tauri commands
+- ✅ Claude CLI --permission-prompt-tool flag
+
+**Frontend Permission System (Tasks 11-13):**
+- ✅ Permission types
+- ✅ PermissionDialog component
+- ✅ Mount PermissionDialog globally
+
+**Plugin and Agent Configuration (Task 14):**
+- ✅ MCP server in plugin (.mcp.json)
+- ✅ chat-task and chat-project agents
+
+**Orchestrator Refactor (Task 15):**
+- ✅ Refactored for --resume and MCP delegation
+
+**Backend Commands (Tasks 16-17):**
+- ✅ Context-aware chat commands
+- ✅ Chat conversation types and API
+
+**Frontend Chat System (Tasks 18-23):**
+- ✅ Chat store with queue and conversation state
+- ✅ ToolCallIndicator component
+- ✅ ChatMessage displays tool calls
+- ✅ ConversationSelector component
+- ✅ QueuedMessage and QueuedMessageList components
+- ✅ ChatInput with queue mode and keyboard navigation
+- ✅ ChatPanel with conversation selector, queue, events
+- ✅ useChat hook for context-aware messaging
+
+**Documentation (Task 24):**
+- ✅ Updated all CLAUDE.md files and activity log
+
+**Key Features Delivered:**
+- Multiple conversations per context (ideation/task/project)
+- Claude session management with --resume for continuity
+- Message queueing while agent running
+- Real-time streaming with persistence
+- MCP tool integration with scoped access per agent
+- UI-based permission approval
+- Tool call display in chat
+- Conversation history and switching
+
+**What's Next:**
+Phase 15b (pending) - Task Execution Chat: Persist worker execution output, view as chat, queue messages to worker
+
+**Commands run:**
+- `npm run lint` - passed
+- `npm run typecheck` - passed
+

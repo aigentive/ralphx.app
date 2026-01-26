@@ -509,7 +509,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update logs/activity.md with Phase 15 completion summary",
       "Commit: docs: update documentation for context-aware chat"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
