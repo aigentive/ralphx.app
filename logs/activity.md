@@ -1,15 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 10:30:00
+**Last Updated:** 2026-01-26 10:45:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 0 / 30
-**Current Task:** Add archived_at field and database migration
+**Tasks Completed:** 1 / 30
+**Current Task:** Add archive repository methods
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 10:45:00 - Add archived_at field and database migration (Task 1)
+
+**What was done:**
+- Added `archived_at: Option<DateTime<Utc>>` field to Task entity (task.rs)
+- Created migration v22 with:
+  - ALTER TABLE tasks ADD COLUMN archived_at TEXT
+  - CREATE INDEX idx_tasks_archived ON tasks(project_id, archived_at)
+- Updated all SQL queries in SqliteTaskRepository:
+  - INSERT statement (15 parameters including archived_at)
+  - UPDATE statement (13 parameters including archived_at)
+  - All SELECT statements (6 queries updated)
+- Updated test database schema to include archived_at column
+- Updated test assertions for schema version 22 (5 tests)
+- MemoryTaskRepository automatically supports new field (no code changes needed)
+- All cargo tests passing (3101 tests)
+
+**Commands:**
+- Updated src-tauri/src/domain/entities/task.rs
+- Updated src-tauri/src/infrastructure/sqlite/migrations.rs
+- Updated src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs
+- cargo test (all passing)
+- git commit
+
+---
 
 ### 2026-01-26 10:30:00 - Phase 17 Complete, Phase 18 Active
 
