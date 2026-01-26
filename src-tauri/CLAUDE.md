@@ -37,7 +37,7 @@ src-tauri/
 │   ├── error.rs            # AppError enum, AppResult type alias
 │   │
 │   ├── domain/             # Business logic (no infrastructure deps)
-│   │   ├── entities/       # Core data types (Task, Project, etc.)
+│   │   ├── entities/       # Core data types (Task, Project, TaskContext - Phase 17, etc.)
 │   │   ├── repositories/   # Repository traits (interfaces)
 │   │   ├── state_machine/  # Task lifecycle state machine
 │   │   ├── agents/         # Agent abstraction (AgenticClient trait)
@@ -59,11 +59,13 @@ src-tauri/
 │   │   ├── apply_service.rs
 │   │   ├── orchestrator_service.rs  # Context-aware chat with --resume support
 │   │   ├── execution_chat_service.rs # Task execution chat with persistence (Phase 15B)
+│   │   ├── task_context_service.rs  # Task context aggregation (Phase 17)
 │   │   ├── permission_state.rs      # Permission bridge for UI-based tool approval
 │   │   └── http_server.rs           # HTTP server (port 3847) for MCP proxy
 │   │
 │   ├── commands/           # Tauri commands (thin IPC layer)
 │   │   ├── task_commands.rs
+│   │   ├── task_context_commands.rs  # Task context commands (Phase 17)
 │   │   ├── project_commands.rs
 │   │   ├── ideation_commands.rs
 │   │   ├── context_chat_commands.rs  # Context-aware chat commands (Phase 15A)
@@ -223,6 +225,9 @@ Key files:
 | Entity | File | Description |
 |--------|------|-------------|
 | `Task` | `entities/task.rs` | Work item with status, priority, timestamps |
+| `TaskContext` | `entities/task_context.rs` | Task context aggregation (Phase 17) |
+| `TaskProposalSummary` | `entities/task_context.rs` | Proposal summary for worker context (Phase 17) |
+| `ArtifactSummary` | `entities/task_context.rs` | Artifact summary with 500-char preview (Phase 17) |
 | `Project` | `entities/project.rs` | Project container with path and git mode |
 | `InternalStatus` | `entities/status.rs` | 14-state enum with transition rules |
 | `TaskQA` | `entities/task_qa.rs` | QA test criteria and results |
@@ -258,6 +263,7 @@ pub async fn list_tasks(
 
 Command categories:
 - **Task commands** - CRUD, status changes, blocking
+- **Task context commands** - Task context aggregation, artifact fetching (Phase 17)
 - **Project commands** - Project management
 - **Ideation commands** - Sessions, proposals, chat, orchestrator
 - **Context chat commands** - Context-aware chat with conversations, agent runs (Phase 15A)
@@ -552,7 +558,8 @@ Backend (Rust)
 | `chat-task` | update_task, add_task_note, get_task_details |
 | `chat-project` | suggest_task, list_tasks |
 | `reviewer` | complete_review (submit review decision) |
-| `worker`, `supervisor`, `qa-prep`, `qa-tester` | None (no MCP tools) |
+| `worker` | get_task_context, get_artifact, get_artifact_version, get_related_artifacts, search_project_artifacts (Phase 17) |
+| `supervisor`, `qa-prep`, `qa-tester` | None (no MCP tools) |
 
 ### Session Management
 
@@ -783,7 +790,7 @@ pub async fn apply_proposal(&self, proposal_id: &TaskProposalId) -> AppResult<Ta
 }
 ```
 
-This enables workers to fetch plan context during task execution (future Phase 17).
+This enables workers to fetch plan context during task execution (Phase 17).
 
 ### Database Migration
 
@@ -811,3 +818,147 @@ CREATE TABLE IF NOT EXISTS ideation_settings (
 -- Insert default settings
 INSERT OR IGNORE INTO ideation_settings (id, plan_mode) VALUES (1, 'optional');
 ```
+
+---
+
+## Worker Artifact Context System (Phase 17)
+
+### Overview
+
+Workers can dynamically fetch and use artifacts linked to the task being executed. This provides implementation plans, research documents, and related artifacts as context before beginning work.
+
+### TaskContext Entities
+
+**Location:** `domain/entities/task_context.rs`
+
+```rust
+pub struct TaskContext {
+    pub task: Task,
+    pub source_proposal: Option<TaskProposalSummary>,
+    pub plan_artifact: Option<ArtifactSummary>,
+    pub related_artifacts: Vec<ArtifactSummary>,
+    pub context_hints: Vec<String>,
+}
+
+pub struct TaskProposalSummary {
+    pub id: TaskProposalId,
+    pub title: String,
+    pub description: Option<String>,
+    pub acceptance_criteria: Vec<String>,
+    pub implementation_notes: Option<String>,
+    pub plan_version_at_creation: Option<u32>,
+}
+
+pub struct ArtifactSummary {
+    pub id: ArtifactId,
+    pub title: String,
+    pub artifact_type: String,
+    pub current_version: u32,
+    pub content_preview: String, // 500-char preview
+}
+```
+
+### TaskContextService
+
+**Location:** `application/task_context_service.rs`
+
+Aggregates task context by:
+1. Fetching task by ID
+2. If `source_proposal_id` present, fetch proposal and create summary
+3. If `plan_artifact_id` present, fetch artifact and create summary with 500-char preview
+4. Fetch related artifacts via `ArtifactRelation`
+5. Generate context hints based on available context
+6. Return `TaskContext`
+
+```rust
+pub struct TaskContextService {
+    task_repo: Arc<dyn TaskRepository>,
+    proposal_repo: Arc<dyn TaskProposalRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+}
+
+impl TaskContextService {
+    pub async fn get_task_context(&self, task_id: &TaskId) -> AppResult<TaskContext> {
+        // Aggregates context from multiple repositories
+    }
+}
+```
+
+### HTTP Endpoints for MCP Proxy
+
+**Location:** `application/http_server.rs`
+
+Exposed on port 3847 for MCP server:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/task_context/:task_id` | GET | Get full task context (TaskContext) |
+| `/api/artifact/:artifact_id` | GET | Get full artifact content by ID |
+| `/api/artifact/:artifact_id/version/:version` | GET | Get specific version of artifact |
+| `/api/artifact/:artifact_id/related` | GET | Get related artifacts (ArtifactRelation[]) |
+| `/api/artifacts/search` | POST | Search artifacts by query and type |
+
+### MCP Tools for Workers
+
+**Location:** `ralphx-mcp-server/src/tools/worker-context-tools.ts`
+
+5 tools scoped to `worker` agent type:
+
+| Tool | Parameters | Returns |
+|------|-----------|---------|
+| `get_task_context` | task_id | TaskContext (task, proposal summary, plan preview, related artifacts) |
+| `get_artifact` | artifact_id | Artifact (full content) |
+| `get_artifact_version` | artifact_id, version | Artifact (specific version) |
+| `get_related_artifacts` | artifact_id, relation_types? | ArtifactRelation[] |
+| `search_project_artifacts` | project_id, query, artifact_types? | ArtifactSummary[] |
+
+### Tauri Commands
+
+**Location:** `commands/task_context_commands.rs`
+
+Frontend-facing commands:
+
+```rust
+#[tauri::command]
+pub async fn get_task_context(task_id: String, state: State<'_, AppState>) -> Result<TaskContext, AppError>;
+
+#[tauri::command]
+pub async fn get_artifact_full(artifact_id: String, state: State<'_, AppState>) -> Result<Artifact, AppError>;
+
+#[tauri::command]
+pub async fn get_artifact_version(artifact_id: String, version: u32, state: State<'_, AppState>) -> Result<Artifact, AppError>;
+
+#[tauri::command]
+pub async fn get_related_artifacts(artifact_id: String, state: State<'_, AppState>) -> Result<Vec<ArtifactRelation>, AppError>;
+
+#[tauri::command]
+pub async fn search_artifacts(
+    project_id: String,
+    query: String,
+    artifact_types: Option<Vec<String>>,
+    state: State<'_, AppState>
+) -> Result<Vec<ArtifactSummary>, AppError>;
+```
+
+### Worker Agent Integration
+
+**Location:** `ralphx-plugin/agents/worker.md`
+
+Worker prompt instructs:
+
+1. **Step 1: Get Task Context** - Always call `get_task_context` first
+2. **Step 2: Read Implementation Plan** - If `plan_artifact` exists, fetch with `get_artifact`
+3. **Step 3: Fetch Related Artifacts** - Optional for complex tasks
+4. **Step 4: Begin Implementation** - Start with full context
+
+### Key Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Manual context fetch** | Workers have agency to decide relevance; keeps initial prompt lean |
+| **500-char preview** | Prevents context bloat; full content requires explicit `get_artifact` call |
+| **No caching for MVP** | Keep implementation simple; fetches infrequent; can add later |
+| **5 MCP tools** | Covers all context needs without overwhelming worker |
+| **Worker calls first** | Prompt enforces `get_task_context` as first step |
+
+---
