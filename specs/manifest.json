@@ -133,7 +133,7 @@
       "phase": 17,
       "name": "Worker Artifact Context",
       "prd": "specs/phases/prd_phase_17_worker_artifact_context.md",
-      "status": "active",
+      "status": "complete",
       "description": "MCP tools for workers to fetch artifact context during task execution"
     }
   ]
