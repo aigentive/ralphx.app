@@ -1,15 +1,57 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:30:00
+**Last Updated:** 2026-01-26 05:45:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 8 / 14
-**Current Task:** Update chat store for task_execution context
+**Tasks Completed:** 9 / 14
+**Current Task:** Update ChatPanel for execution context detection
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 05:45:00 - Update Chat Store for Task Execution Context
+
+**What was done:**
+- Added `executionQueuedMessages` state to `src/stores/chatStore.ts`:
+  - Separate queue for worker execution (per-task queues)
+  - Type: `Record<string, QueuedMessage[]>` - indexed by task ID
+  - Independent from `queuedMessages` (used for ideation/task/project chat)
+- Added `queueExecutionMessage(taskId, content)` action:
+  - Creates queued message with unique ID (`queued-exec-${timestamp}-${random}`)
+  - Adds to task-specific queue
+  - Initializes queue array if task not yet present
+- Added `deleteExecutionQueuedMessage(taskId, messageId)` action:
+  - Removes message from task queue
+  - Cleans up empty arrays to prevent memory leaks
+- Added `selectExecutionQueuedMessages(taskId)` selector:
+  - Returns queued messages for specific task
+  - Returns empty array if no queue exists
+- Updated initial state to include `executionQueuedMessages: {}`
+- Added comprehensive tests (86 total tests passed):
+  - Initial state tests for `executionQueuedMessages`
+  - `queueExecutionMessage` tests (6 tests):
+    - Adding messages to queue
+    - Unique ID generation
+    - Timestamp creation
+    - Default isEditing state
+    - Appending to existing queue
+    - Per-task queue isolation
+  - `deleteExecutionQueuedMessage` tests (6 tests):
+    - Removing messages
+    - Cleaning up empty arrays
+    - Unknown task/message handling
+    - Removing specific messages only
+    - Preserving other task queues
+  - `selectExecutionQueuedMessages` tests (3 tests):
+    - Selecting messages for task
+    - Empty array for unknown task
+    - Empty array when no queues exist
+
+**Commands run:**
+- `npm run typecheck` - Passed
+- `npm run test -- src/stores/chatStore.test.ts` - 86 tests passed
 
 ### 2026-01-26 05:30:00 - Add Queue Processing Tests
 

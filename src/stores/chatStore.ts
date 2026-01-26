@@ -54,8 +54,10 @@ interface ChatState {
   isLoading: boolean;
   /** Active conversation ID for the current context */
   activeConversationId: string | null;
-  /** Messages queued to send when agent finishes */
+  /** Messages queued to send when agent finishes (for ideation/task/project chat) */
   queuedMessages: QueuedMessage[];
+  /** Messages queued to send when worker finishes (for task_execution context) */
+  executionQueuedMessages: Record<string, QueuedMessage[]>;
   /** Whether an agent is currently running */
   isAgentRunning: boolean;
 }
@@ -97,6 +99,10 @@ interface ChatActions {
   startEditingQueuedMessage: (id: string) => void;
   /** Stop editing a queued message */
   stopEditingQueuedMessage: (id: string) => void;
+  /** Queue a message to be sent to the worker when it finishes */
+  queueExecutionMessage: (taskId: string, content: string) => void;
+  /** Delete a queued execution message */
+  deleteExecutionQueuedMessage: (taskId: string, messageId: string) => void;
 }
 
 // ============================================================================
@@ -113,6 +119,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     isLoading: false,
     activeConversationId: null,
     queuedMessages: [],
+    executionQueuedMessages: {},
     isAgentRunning: false,
 
     // Actions
@@ -230,6 +237,36 @@ export const useChatStore = create<ChatState & ChatActions>()(
       // 4. Send the message via the API
       // 5. Handle the response
     },
+
+    queueExecutionMessage: (taskId, content) =>
+      set((state) => {
+        const queuedMessage: QueuedMessage = {
+          id: `queued-exec-${Date.now()}-${Math.random()}`,
+          content,
+          createdAt: new Date().toISOString(),
+          isEditing: false,
+        };
+
+        if (!state.executionQueuedMessages[taskId]) {
+          state.executionQueuedMessages[taskId] = [];
+        }
+        state.executionQueuedMessages[taskId].push(queuedMessage);
+      }),
+
+    deleteExecutionQueuedMessage: (taskId, messageId) =>
+      set((state) => {
+        if (state.executionQueuedMessages[taskId]) {
+          state.executionQueuedMessages[taskId] =
+            state.executionQueuedMessages[taskId].filter(
+              (m) => m.id !== messageId
+            );
+
+          // Clean up empty arrays
+          if (state.executionQueuedMessages[taskId].length === 0) {
+            delete state.executionQueuedMessages[taskId];
+          }
+        }
+      }),
   }))
 );
 
@@ -299,3 +336,13 @@ export const selectIsAgentRunning = (
 export const selectActiveConversationId = (
   state: ChatState & ChatActions
 ): string | null => state.activeConversationId;
+
+/**
+ * Select queued execution messages for a specific task
+ * @param taskId - The task ID to get queued messages for
+ * @returns Selector function returning queued execution messages array
+ */
+export const selectExecutionQueuedMessages =
+  (taskId: string) =>
+  (state: ChatState): QueuedMessage[] =>
+    state.executionQueuedMessages[taskId] ?? [];
