@@ -40,7 +40,8 @@ export function TaskSearchBar({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search tasks..."
-        className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground"
+        className="flex-1 bg-transparent border-none outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 [&:focus]:outline-none [&:focus-visible]:outline-none text-foreground placeholder:text-muted-foreground"
+        style={{ outline: 'none' }}
       />
 
       {/* Loading spinner */}
