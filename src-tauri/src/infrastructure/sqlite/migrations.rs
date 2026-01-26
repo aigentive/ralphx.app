@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 21;
+pub const SCHEMA_VERSION: i32 = 22;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -120,6 +120,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 21 {
         migrate_v21(conn)?;
         set_schema_version(conn, 21)?;
+    }
+
+    if current_version < 22 {
+        migrate_v22(conn)?;
+        set_schema_version(conn, 22)?;
     }
 
     Ok(())
@@ -1170,7 +1175,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 21);
+        assert_eq!(SCHEMA_VERSION, 22);
     }
 
     #[test]
@@ -1296,7 +1301,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
     }
 
     #[test]
@@ -1309,7 +1314,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
     }
 
     #[test]
@@ -5350,7 +5355,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
     }
 
     #[test]
@@ -5483,7 +5488,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
     }
 
     #[test]
@@ -5555,4 +5560,27 @@ mod tests {
         assert_eq!(suggest_complex, 1);
         assert_eq!(auto_link, 1);
     }
+}
+
+fn migrate_v22(conn: &Connection) -> AppResult<()> {
+    // ============================================================================
+    // Phase 18: Task CRUD, Archive & Search
+    // Add archived_at field to tasks table for soft delete functionality
+    // ============================================================================
+
+    // Add archived_at column
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN archived_at TEXT",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Create index for archived tasks lookup
+    conn.execute(
+        "CREATE INDEX idx_tasks_archived ON tasks(project_id, archived_at)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
 }

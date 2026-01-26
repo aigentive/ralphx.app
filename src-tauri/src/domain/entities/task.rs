@@ -47,6 +47,9 @@ pub struct Task {
     pub started_at: Option<DateTime<Utc>>,
     /// When the task was completed (status became Approved)
     pub completed_at: Option<DateTime<Utc>>,
+    /// When the task was archived (soft-deleted). None = active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
 }
 
 impl Task {
@@ -74,6 +77,7 @@ impl Task {
             updated_at: now,
             started_at: None,
             completed_at: None,
+            archived_at: None,
         }
     }
 
@@ -130,7 +134,7 @@ impl Task {
     /// Deserialize a Task from a SQLite row.
     /// Expects columns: id, project_id, category, title, description, priority,
     /// internal_status, needs_review_point, source_proposal_id, plan_artifact_id,
-    /// created_at, updated_at, started_at, completed_at
+    /// created_at, updated_at, started_at, completed_at, archived_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: TaskId::from_string(row.get("id")?),
@@ -157,6 +161,9 @@ impl Task {
                 .map(Self::parse_datetime),
             completed_at: row
                 .get::<_, Option<String>>("completed_at")?
+                .map(Self::parse_datetime),
+            archived_at: row
+                .get::<_, Option<String>>("archived_at")?
                 .map(Self::parse_datetime),
         })
     }
@@ -592,7 +599,8 @@ mod tests {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 started_at TEXT,
-                completed_at TEXT
+                completed_at TEXT,
+                archived_at TEXT
             )"#,
             [],
         )
