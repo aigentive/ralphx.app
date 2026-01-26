@@ -258,7 +258,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(hooks): add archive mutations with loading states and error handling"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
