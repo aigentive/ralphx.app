@@ -473,7 +473,7 @@ function AppContent() {
       {/* Header - Premium Design: Fixed 48px, shadow, Tauri drag region */}
       <TooltipProvider delayDuration={300}>
         <header
-          className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-20 border-b z-50"
+          className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-20 border-b z-50 select-none"
           style={{
             backgroundColor: "var(--bg-surface)",
             borderColor: "var(--border-subtle)",

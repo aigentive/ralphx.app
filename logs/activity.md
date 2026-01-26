@@ -1,14 +1,72 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:54:46
+**Last Updated:** 2026-01-26 03:01:00
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 22 / 26
-**Current Task:** Update useChat hook for context-aware messaging
+**Tasks Completed:** 23 / 26
+**Current Task:** Update CLAUDE.md and activity log
 
 ---
 
 ## Session Log
+
+### 2026-01-26 03:01:00 - Updated useChat Hook for Context-Aware Messaging
+
+**What was done:**
+- Refactored `src/hooks/useChat.ts` to support context-aware chat:
+  - **New hooks exported:**
+    - `useConversations(context)` - Fetches all conversations for a context
+    - `useConversation(conversationId)` - Fetches single conversation with messages
+    - `useAgentRunStatus(conversationId)` - Fetches and polls agent run status
+  - **Updated useChat hook:**
+    - Changed from `sendMessageWithContext` to `sendContextMessage` API
+    - Now returns: `messages` (conversation object), `conversations`, `activeConversation`, `agentRunStatus`, `sendMessage`, `switchConversation`, `createConversation`
+    - Manages agent run status with polling (every 2 seconds when running)
+    - Subscribes to Tauri events for real-time updates:
+      - `chat:chunk` - invalidates conversation to refetch messages
+      - `chat:tool_call` - invalidates conversation to show tool calls
+      - `chat:message_created` - invalidates conversation for new messages
+      - `chat:run_completed` - sets agent running false, processes queue
+    - Auto-initializes active conversation from most recent conversation
+    - Processes queued messages on run completion
+  - **New query keys:**
+    - `chatKeys.conversations()` - for all conversations
+    - `chatKeys.conversation(id)` - for specific conversation
+    - `chatKeys.conversationList(contextType, contextId)` - for filtered list
+    - `chatKeys.agentRun(conversationId)` - for agent run status
+  - Uses context type and ID extraction helper: `getContextTypeAndId()`
+
+- Updated `src/hooks/useChat.test.ts` with comprehensive tests:
+  - **New test suites:**
+    - `chatKeys` - validates new query key generation
+    - `useConversations` - tests conversation list fetching for ideation and task contexts
+    - `useConversation` - tests single conversation with messages, null handling
+    - `useAgentRunStatus` - tests status fetching, null handling, enabled logic
+    - `useChat` - expanded tests for:
+      - Context-aware message sending (ideation and task contexts)
+      - Conversation creation and switching
+      - Agent run status updates
+      - Auto-initialization of active conversation
+      - Provides conversations, activeConversation, and agentRunStatus
+      - Error handling
+  - **Total: 19 tests, all passing**
+
+- Updated `src/components/Chat/ChatPanel.tsx` to use new useChat interface:
+  - Destructured new returns: `messages` → `activeConversation`, `conversations`, `switchConversation`, `createConversation`
+  - Extracted messages array: `messagesData = activeConversation.data?.messages ?? []`
+  - Passed real conversation data to ConversationSelector (not empty array)
+  - Updated loading states to use `activeConversation.isLoading`
+  - Removed placeholder TODO handlers (now functional)
+
+**Commands run:**
+- `npm run lint` - passed (only pre-existing warnings)
+- `npm run typecheck` - passed
+- `npm run test -- src/hooks/useChat.test.ts` - 19 tests passed
+
+**Files modified:**
+- `src/hooks/useChat.ts` - refactored for context-aware chat
+- `src/hooks/useChat.test.ts` - comprehensive test coverage
+- `src/components/Chat/ChatPanel.tsx` - integrated new useChat interface
 
 ### 2026-01-26 02:54:46 - Updated ChatPanel with Conversation Selector, Queue UI, and Event Handling
 
