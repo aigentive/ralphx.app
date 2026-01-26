@@ -557,7 +557,14 @@ export function ChatPanel({ context }: ChatPanelProps) {
   const isAgentRunning = useChatStore(selectIsAgentRunning);
   const activeConversationId = useChatStore(selectActiveConversationId);
 
-  const { messages, sendMessage } = useChat(context);
+  const {
+    messages: activeConversation,
+    conversations,
+    sendMessage,
+    switchConversation: handleSelectConversation,
+    createConversation: handleNewConversation,
+  } = useChat(context);
+
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -569,14 +576,17 @@ export function ChatPanel({ context }: ChatPanelProps) {
   const lastMessageCountRef = useRef(0);
   const handleSendRef = useRef<((content: string) => Promise<void>) | null>(null);
 
+  // Extract messages array from active conversation
+  const messagesData = activeConversation.data?.messages ?? [];
+
   // Track unread messages when collapsed
   useEffect(() => {
-    const messageCount = messages.data?.length ?? 0;
+    const messageCount = messagesData.length;
     if (isCollapsed && messageCount > lastMessageCountRef.current) {
       setHasUnread(true);
     }
     lastMessageCountRef.current = messageCount;
-  }, [messages.data?.length, isCollapsed]);
+  }, [messagesData.length, isCollapsed]);
 
   // Clear unread when expanded
   useEffect(() => {
@@ -587,10 +597,10 @@ export function ChatPanel({ context }: ChatPanelProps) {
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if (messagesEndRef.current && messages.data?.length) {
+    if (messagesEndRef.current && messagesData.length) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages.data?.length]);
+  }, [messagesData.length]);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -732,28 +742,16 @@ export function ChatPanel({ context }: ChatPanelProps) {
     };
   }, [setAgentRunning, queuedMessages, deleteQueuedMessage]);
 
-  // Conversation handlers (to be implemented with actual API calls)
-  const handleSelectConversation = useCallback((_conversationId: string) => {
-    // TODO: Implement conversation switching
-    // This will be implemented in the next task (useChat hook update)
-  }, []);
-
-  const handleNewConversation = useCallback(() => {
-    // TODO: Implement new conversation creation
-    // This will be implemented in the next task (useChat hook update)
-  }, []);
-
   // Process messages into groups
   const groupedMessages = useMemo(() => {
-    const msgs = messages.data ?? [];
-    return msgs.map((msg, index) => {
-      const prevMsg = msgs[index - 1];
-      const nextMsg = msgs[index + 1];
+    return messagesData.map((msg, index) => {
+      const prevMsg = messagesData[index - 1];
+      const nextMsg = messagesData[index + 1];
       const isFirstInGroup = !prevMsg || prevMsg.role !== msg.role;
       const isLastInGroup = !nextMsg || nextMsg.role !== msg.role;
       return { ...msg, isFirstInGroup, isLastInGroup };
     });
-  }, [messages.data]);
+  }, [messagesData]);
 
   if (!isOpen) {
     return null;
@@ -768,7 +766,7 @@ export function ChatPanel({ context }: ChatPanelProps) {
     );
   }
 
-  const isLoading = messages.isLoading;
+  const isLoading = activeConversation.isLoading;
   const isSending = sendMessage.isPending;
   const isEmpty = !isLoading && groupedMessages.length === 0;
 
@@ -821,11 +819,11 @@ export function ChatPanel({ context }: ChatPanelProps) {
                   ? context.ideationSessionId
                   : context.selectedTaskId || context.projectId
               }
-              conversations={[]} // TODO: Load from API in next task
+              conversations={conversations.data ?? []}
               activeConversationId={activeConversationId}
               onSelectConversation={handleSelectConversation}
               onNewConversation={handleNewConversation}
-              isLoading={false}
+              isLoading={conversations.isLoading}
             />
             <Button
               variant="ghost"

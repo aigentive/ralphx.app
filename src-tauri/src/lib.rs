@@ -36,6 +36,25 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            // Create the main window programmatically to set traffic light position
+            {
+                use tauri::{WebviewUrl, WebviewWindowBuilder, TitleBarStyle, LogicalPosition, Position};
+
+                let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                    .title("")
+                    .inner_size(1200.0, 800.0)
+                    .hidden_title(true);
+
+                #[cfg(target_os = "macos")]
+                {
+                    builder = builder
+                        .title_bar_style(TitleBarStyle::Overlay)
+                        .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 22.0 }));
+                }
+
+                builder.build()?;
+            }
+
             // Create application state with production SQLite repositories
             let app_state =
                 AppState::new_production(app_handle.clone()).expect("Failed to initialize AppState");
