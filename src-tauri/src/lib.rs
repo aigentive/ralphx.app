@@ -16,6 +16,7 @@ pub use error::{AppError, AppResult};
 
 use std::sync::Arc;
 use tauri::Manager;
+use tracing::{info, warn};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -76,6 +77,23 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 http_server::start_http_server(http_state).await;
             });
+
+            // Register RalphX MCP server with Claude Code CLI
+            // This ensures the MCP tools are available regardless of user's working directory
+            if let (Some(cli_path), Some(plugin_dir)) = (
+                infrastructure::agents::claude::find_claude_cli(),
+                infrastructure::agents::claude::find_plugin_dir(),
+            ) {
+                info!("Registering RalphX MCP server...");
+                tauri::async_runtime::spawn(async move {
+                    match infrastructure::agents::claude::register_mcp_server(&cli_path, &plugin_dir).await {
+                        Ok(()) => info!("RalphX MCP server registered successfully"),
+                        Err(e) => warn!("Failed to register RalphX MCP server: {}", e),
+                    }
+                });
+            } else {
+                warn!("Could not find Claude CLI or plugin directory - MCP server not registered");
+            }
 
             // Register app_state with Tauri's state management
             app.manage(app_state);

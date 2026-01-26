@@ -297,13 +297,15 @@ CREATE INDEX idx_tasks_archived ON tasks(project_id, archived_at);
 [✏️ Edit] [🗄 Archive] [×]
 ```
 
-**TaskDetailModal** (archived task):
+**TaskDetailModal** (archived task) — **Restore only, no editing**:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ [P2]  Task title                  [↩️ Restore] [🗑 Delete] [×]│
 │       ┌──────────────────────┐                               │
 │       │ 🗄 Archived          │  ← Archived badge             │
 │       └──────────────────────┘                               │
+│                                                              │
+│  No edit button — must restore first to make changes         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -462,14 +464,24 @@ function useInfiniteTasksQuery(projectId: string, status: InternalStatus) {
       api.tasks.list(projectId, { status, offset: pageParam, limit: 20 }),
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.offset + 20 : undefined,
+    staleTime: 5 * 60 * 1000,  // Cache for 5 minutes
   });
 }
 ```
+
+**Caching Strategy**:
+- TanStack Query handles caching automatically
+- Loaded pages are cached in memory
+- Cache key: `['tasks', projectId, status]`
+- Stale time: 5 minutes (configurable)
+- Background refetch on window focus (default TanStack behavior)
+- Invalidate on task create/update/delete/archive
 
 **Column Changes**:
 - Use intersection observer at bottom of list
 - Call `fetchNextPage()` when visible
 - Show loading spinner during fetch
+- Pages merge automatically via TanStack Query
 
 ---
 
@@ -602,56 +614,80 @@ Uses shadcn `ContextMenu` component:
 
 ---
 
-## Part 8: Empty Search State (Creative)
+## Part 8: Keyboard Shortcuts
 
-When search returns no results, show a helpful empty state.
+### Kanban Board Shortcuts
 
-### Design Concept: "Lost in Space"
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+N` / `Ctrl+N` | Open full create task modal |
+| `Cmd+F` / `Ctrl+F` | Open search bar |
+| `Escape` | Close search bar (if open) |
+
+### Implementation
+
+**TaskBoard.tsx** - Add keyboard listener:
+```typescript
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // Cmd+N or Ctrl+N → Open create task modal
+    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      e.preventDefault();
+      openModal('task-create', { projectId });
+    }
+    // Cmd+F or Ctrl+F → Open search
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault();
+      setSearchOpen(true);
+    }
+    // Escape → Close search
+    if (e.key === 'Escape' && searchOpen) {
+      setSearchOpen(false);
+      setSearchQuery('');
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [openModal, projectId, searchOpen]);
+```
+
+**Note**: Prevent default to avoid browser's native find dialog on Cmd+F.
+
+---
+
+## Part 9: Empty Search State ("Message in a Bottle")
+
+When search returns no results, turn it into a task creation opportunity.
+
+### Design
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ [🔍 authentication                        ] [×]   [☐ Archived]      │
+│ [🔍 add user login                        ] [×]   [☐ Archived]      │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│                          🔭                                         │
+│                          📝                                         │
 │                                                                     │
-│              No tasks found for "authentication"                    │
+│              No tasks match "add user login"                        │
+│                                                                     │
+│                    Should this be a task?                           │
+│                                                                     │
+│           [+ Create "add user login"]    [Clear Search]             │
 │                                                                     │
 │     ┌─────────────────────────────────────────────────────┐        │
-│     │  Try:                                                │        │
-│     │  • Check your spelling                               │        │
-│     │  • Search for fewer words                            │        │
-│     │  • Enable "Show archived" to search old tasks        │        │
+│     │  💡 Tip: Enable "Show archived" to search old tasks │        │
 │     └─────────────────────────────────────────────────────┘        │
-│                                                                     │
-│                    [Clear Search]  [+ Create Task]                  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 **Key elements**:
-- Telescope icon (🔭 or Lucide `Telescope`) - "searching the void"
-- Quoted search term to confirm what was searched
-- Helpful suggestions in a muted card
-- If archived toggle is off, suggest enabling it
-- Quick action buttons: Clear search, Create task with search term as title
-
-**Animation**: Subtle floating animation on the telescope icon (CSS keyframes)
-
-### Alternative: "Message in a Bottle"
-
-If search term could be a task:
-```
-              📝
-
-    No tasks match "add user login"
-
-    Should this be a task?
-
-    [+ Create "add user login"]    [Clear Search]
-```
-
-This turns a "no results" moment into a task creation opportunity.
+- Notepad icon (📝 or Lucide `FileText`)
+- Quoted search term shown back to user
+- Primary CTA: Create task with search term as title (pre-filled)
+- Secondary: Clear search button
+- Tip about archived toggle (only shown if toggle is off)
 
 ---
 
@@ -671,31 +707,29 @@ This turns a "no results" moment into a task creation opportunity.
 7. **Backend: Pagination** (update list_tasks command with offset/limit)
 8. **Frontend: Infinite Scroll** (useInfiniteQuery with caching)
 
-### Phase D: Search
-9. **Frontend: Search bar** (Cmd+F, column filtering)
-10. **Frontend: Empty search state** (creative "message in a bottle")
+### Phase D: Search & Keyboard
+9. **Frontend: Keyboard shortcuts** (Cmd+N for create, Cmd+F for search)
+10. **Frontend: Search bar** (column filtering, persistence)
+11. **Frontend: Empty search state** ("message in a bottle" create prompt)
 
 ---
 
 ## Open Questions
 
-### Resolved
+### All Resolved
 
 | Question | Answer |
 |----------|--------|
 | Should search filter by category/priority/status? | **No** - title and description only |
-| Cache loaded pages for infinite scroll? | **Yes** - cache loaded pages |
+| Cache loaded pages for infinite scroll? | **Yes** - cache loaded pages (5 min stale time) |
 | Use virtualization for large columns? | **No** - keep it simple for now |
 | Bulk archive support? | **No** |
 | Permanent delete confirmation? | **Yes** |
 | Search highlighting? | **No** |
 | Search persistence? | **Yes** - persist when navigating away and back |
 | Archive from Kanban? | **Yes** - via right-click context menu |
-
-### Still Open
-
-1. **Archived task editing** - Should archived tasks be editable, or restore-only? (Leaning toward restore-only)
-2. **Empty state during search** - Creative solution needed (see below)
+| Archived task editing? | **Restore only** - must restore before editing |
+| Empty state during search? | **"Message in a bottle"** - offer to create task from search term |
 
 ---
 
@@ -709,7 +743,10 @@ This turns a "no results" moment into a task creation opportunity.
 | `src/components/tasks/TaskEditForm.tsx` | Edit form for task detail modal |
 | `src/components/tasks/StatusDropdown.tsx` | Status transition dropdown |
 | `src/components/tasks/TaskSearchBar.tsx` | Search bar component |
-| `src/hooks/useInfiniteTasksQuery.ts` | Infinite scroll query hook |
+| `src/components/tasks/TaskCardContextMenu.tsx` | Right-click context menu |
+| `src/components/tasks/EmptySearchState.tsx` | Creative no-results state |
+| `src/hooks/useInfiniteTasksQuery.ts` | Infinite scroll query hook with caching |
+| `src/lib/statusTransitions.ts` | Utility for valid transition checks |
 
 ### Modified Files
 
@@ -720,9 +757,11 @@ This turns a "no results" moment into a task creation opportunity.
 | `src-tauri/src/commands/task_commands.rs` | Add archive/restore/pagination |
 | `src-tauri/src/domain/repositories/task_repository.rs` | Add archive-aware methods |
 | `src/types/task.ts` | Add `archivedAt` field |
+| `src/types/status.ts` | Add `canTransitionTo()` utility |
 | `src/lib/tauri.ts` | Add archive/restore/pagination bindings |
-| `src/hooks/useTaskMutation.ts` | Add archive/restore mutations |
+| `src/hooks/useTaskMutation.ts` | Add archive/restore/cancel mutations |
 | `src/stores/uiStore.ts` | Add `showArchived`, `boardSearchQuery` |
 | `src/components/tasks/TaskBoard/Column.tsx` | Add hover state, inline add |
-| `src/components/tasks/TaskBoard/TaskBoard.tsx` | Add search, infinite scroll |
-| `src/components/tasks/TaskDetailModal.tsx` | Add edit mode, archive buttons |
+| `src/components/tasks/TaskBoard/TaskBoard.tsx` | Add search, infinite scroll, keyboard listener |
+| `src/components/tasks/TaskBoard/TaskCard.tsx` | Add `isDraggable` logic, wrap with context menu |
+| `src/components/tasks/TaskDetailModal.tsx` | Add edit mode, status dropdown, archive buttons |

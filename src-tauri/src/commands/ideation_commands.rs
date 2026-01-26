@@ -1425,6 +1425,9 @@ pub async fn send_orchestrator_message(
         state.chat_message_repo.clone(),
         state.chat_conversation_repo.clone(),
         state.agent_run_repo.clone(),
+        state.project_repo.clone(),
+        state.task_repo.clone(),
+        state.ideation_session_repo.clone(),
     );
 
     // Check if orchestrator is available
@@ -1470,6 +1473,9 @@ pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<boo
         state.chat_message_repo.clone(),
         state.chat_conversation_repo.clone(),
         state.agent_run_repo.clone(),
+        state.project_repo.clone(),
+        state.task_repo.clone(),
+        state.ideation_session_repo.clone(),
     );
 
     Ok(orchestrator.is_available().await)

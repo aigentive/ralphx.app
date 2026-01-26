@@ -25,7 +25,9 @@ use tokio::sync::Mutex;
 
 use crate::application::orchestrator_service::{
     ChatChunkPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload, ChatToolCallPayload,
-    StreamMessage, ToolCall,
+};
+use crate::infrastructure::agents::claude::{
+    StreamProcessor, StreamEvent as ProcessorStreamEvent, ToolCall,
 };
 use crate::domain::entities::{
     AgentRun, ChatConversation, ChatConversationId, ChatContextType, ChatMessage, ChatMessageId,
@@ -35,6 +37,9 @@ use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository, TaskRepository,
 };
 use crate::domain::services::ExecutionMessageQueue;
+use crate::infrastructure::agents::claude::{
+    build_base_cli_command, add_prompt_args, configure_spawn,
+};
 
 // ============================================================================
 // Types
@@ -222,7 +227,12 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
         message_queue: Arc<ExecutionMessageQueue>,
     ) -> Self {
         let cli_path = which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
-        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Working directory should be project root (parent of src-tauri), not src-tauri itself
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let working_directory = cwd
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or(cwd);
         let plugin_dir = working_directory.join("ralphx-plugin");
 
         Self {
@@ -282,31 +292,16 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
 
     /// Create a Claude CLI command for worker execution
     fn build_command(&self, prompt: &str, resume_session_id: Option<&str>) -> Command {
-        let mut cmd = Command::new(&self.cli_path);
-
-        // Common args
-        cmd.args([
-            "--plugin-dir",
-            self.plugin_dir.to_str().unwrap_or("./ralphx-plugin"),
-        ]);
-        cmd.args(["--output-format", "stream-json"]);
+        // Build base command with common args
+        let mut cmd = build_base_cli_command(&self.cli_path, &self.plugin_dir);
 
         // Worker agent type for MCP tool scoping
         cmd.env("RALPHX_AGENT_TYPE", "worker");
 
-        if let Some(session_id) = resume_session_id {
-            // FOLLOW-UP: Resume existing Claude session
-            cmd.args(["--resume", session_id]);
-            cmd.args(["-p", prompt]);
-        } else {
-            // FIRST MESSAGE: Start new session with worker agent
-            cmd.args(["--agent", "worker"]);
-            cmd.args(["-p", prompt]);
-        }
-
-        cmd.current_dir(&self.working_directory);
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
+        // Add prompt args (resume or new session with worker agent)
+        let agent = if resume_session_id.is_none() { Some("worker") } else { None };
+        add_prompt_args(&mut cmd, prompt, agent, resume_session_id);
+        configure_spawn(&mut cmd, &self.working_directory);
 
         cmd
     }
@@ -317,7 +312,7 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
         &self,
         mut child: tokio::process::Child,
         conversation_id: &ChatConversationId,
-        _task_id: &TaskId,
+        task_id: &TaskId,
     ) -> Result<(String, Vec<ToolCall>, Option<String>), ExecutionChatError> {
         let stdout = child.stdout.take().ok_or_else(|| {
             ExecutionChatError::SpawnFailed("Failed to capture stdout".to_string())
@@ -325,95 +320,62 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
 
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
-
-        let mut response_text = String::new();
-        let mut tool_calls: Vec<ToolCall> = Vec::new();
-        let mut claude_session_id: Option<String> = None;
-        let mut current_tool_name = String::new();
-        let mut current_tool_id: Option<String> = None;
-        let mut current_tool_input = String::new();
+        let mut processor = StreamProcessor::new();
 
         let conversation_id_str = conversation_id.as_str();
+        let task_id_str = task_id.as_str();
 
         while let Some(line) = lines
             .next_line()
             .await
             .map_err(|e| ExecutionChatError::CommunicationFailed(e.to_string()))?
         {
-            if let Ok(msg) = serde_json::from_str::<StreamMessage>(&line) {
-                match msg {
-                    StreamMessage::ContentBlockStart { content_block, .. } => {
-                        if content_block.block_type == "tool_use" {
-                            current_tool_name = content_block.name.unwrap_or_default();
-                            current_tool_id = content_block.id;
-                            current_tool_input.clear();
+            if let Some(msg) = StreamProcessor::parse_line(&line) {
+                let events = processor.process_message(msg);
 
-                            // Emit tool call detected event
+                for event in events {
+                    match event {
+                        ProcessorStreamEvent::TextChunk(text) => {
+                            // Emit execution:chunk event for ChatPanel
+                            self.emit_event(
+                                "execution:chunk",
+                                ChatChunkPayload {
+                                    text: text.clone(),
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+
+                            // ALSO emit agent:message event for Activity Stream
+                            self.emit_event(
+                                "agent:message",
+                                serde_json::json!({
+                                    "taskId": task_id_str,
+                                    "type": "text",
+                                    "content": text,
+                                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                                }),
+                            );
+                        }
+                        ProcessorStreamEvent::ToolCallStarted { name, id } => {
                             self.emit_event(
                                 "execution:tool_call",
                                 ChatToolCallPayload {
-                                    tool_name: current_tool_name.clone(),
-                                    tool_id: current_tool_id.clone(),
+                                    tool_name: name,
+                                    tool_id: id,
                                     arguments: serde_json::Value::Null,
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
                             );
                         }
-                    }
-                    StreamMessage::ContentBlockDelta { delta, .. } => {
-                        if delta.delta_type == "text_delta" {
-                            if let Some(text) = delta.text.clone() {
-                                response_text.push_str(&text);
-
-                                // Emit execution:chunk event for ChatPanel
-                                self.emit_event(
-                                    "execution:chunk",
-                                    ChatChunkPayload {
-                                        text: text.clone(),
-                                        conversation_id: conversation_id_str.to_string(),
-                                    },
-                                );
-
-                                // ALSO emit agent:message event for Activity Stream
-                                self.emit_event(
-                                    "agent:message",
-                                    serde_json::json!({
-                                        "taskId": _task_id.as_str(),
-                                        "type": "text",
-                                        "content": text,
-                                        "timestamp": chrono::Utc::now().timestamp_millis(),
-                                    }),
-                                );
-                            }
-                        } else if delta.delta_type == "input_json_delta" {
-                            if let Some(json) = delta.partial_json {
-                                current_tool_input.push_str(&json);
-                            }
-                        }
-                    }
-                    StreamMessage::ContentBlockStop { .. } => {
-                        if !current_tool_name.is_empty() {
-                            // Parse tool arguments
-                            let args: serde_json::Value =
-                                serde_json::from_str(&current_tool_input).unwrap_or_default();
-
-                            // Store tool call
-                            let tool_call = ToolCall {
-                                id: current_tool_id.clone(),
-                                name: current_tool_name.clone(),
-                                arguments: args.clone(),
-                                result: None,
-                            };
-                            tool_calls.push(tool_call);
-
+                        ProcessorStreamEvent::ToolCallCompleted(tool_call) => {
                             // Emit execution:tool_call event for ChatPanel
                             self.emit_event(
                                 "execution:tool_call",
                                 ChatToolCallPayload {
-                                    tool_name: current_tool_name.clone(),
-                                    tool_id: current_tool_id.clone(),
-                                    arguments: args.clone(),
+                                    tool_name: tool_call.name.clone(),
+                                    tool_id: tool_call.id.clone(),
+                                    arguments: tool_call.arguments.clone(),
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
@@ -423,30 +385,42 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
                             self.emit_event(
                                 "agent:message",
                                 serde_json::json!({
-                                    "taskId": _task_id.as_str(),
+                                    "taskId": task_id_str,
                                     "type": "tool_call",
-                                    "content": format!("{} ({})", current_tool_name, serde_json::to_string(&args).unwrap_or_default()),
+                                    "content": format!("{} ({})", tool_call.name, serde_json::to_string(&tool_call.arguments).unwrap_or_default()),
                                     "timestamp": chrono::Utc::now().timestamp_millis(),
                                     "metadata": {
-                                        "tool_name": current_tool_name.clone(),
-                                        "arguments": args,
+                                        "tool_name": tool_call.name,
+                                        "arguments": tool_call.arguments,
                                     },
                                 }),
                             );
-
-                            current_tool_name.clear();
-                            current_tool_id = None;
-                            current_tool_input.clear();
+                        }
+                        ProcessorStreamEvent::SessionId(_) => {
+                            // Session ID captured in processor.finish()
+                        }
+                        ProcessorStreamEvent::ToolResultReceived {
+                            tool_use_id,
+                            result,
+                        } => {
+                            // Re-emit tool call with result
+                            self.emit_event(
+                                "execution:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: format!("result:{}", tool_use_id),
+                                    tool_id: Some(tool_use_id),
+                                    arguments: serde_json::Value::Null,
+                                    result: Some(result),
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
                         }
                     }
-                    StreamMessage::Result { session_id, .. } => {
-                        // Capture Claude's session_id for future --resume calls
-                        claude_session_id = session_id;
-                    }
-                    _ => {}
                 }
             }
         }
+
+        let result = processor.finish();
 
         // Wait for process to complete
         let status = child
@@ -454,13 +428,13 @@ impl<R: Runtime> ClaudeExecutionChatService<R> {
             .await
             .map_err(|e| ExecutionChatError::CommunicationFailed(e.to_string()))?;
 
-        if !status.success() && response_text.is_empty() {
+        if !status.success() && result.response_text.is_empty() {
             return Err(ExecutionChatError::AgentRunFailed(
                 "Agent exited with non-zero status".to_string(),
             ));
         }
 
-        Ok((response_text, tool_calls, claude_session_id))
+        Ok((result.response_text, result.tool_calls, result.session_id))
     }
 
     /// Process queued messages after worker completes a response
@@ -727,19 +701,11 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
                             user_msg.conversation_id = Some(conversation_id);
                             let _ = chat_message_repo.create(user_msg).await;
 
-                            // Send via --resume and process
-                            let mut cmd = Command::new(&cli_path);
-                            cmd.args([
-                                "--plugin-dir",
-                                plugin_dir.to_str().unwrap_or("./ralphx-plugin"),
-                            ]);
-                            cmd.args(["--output-format", "stream-json"]);
+                            // Send via --resume and process using shared helpers
+                            let mut cmd = build_base_cli_command(&cli_path, &plugin_dir);
                             cmd.env("RALPHX_AGENT_TYPE", "worker");
-                            cmd.args(["--resume", sess_id]);
-                            cmd.args(["-p", &queued_msg.content]);
-                            cmd.current_dir(&working_directory);
-                            cmd.stdout(std::process::Stdio::piped());
-                            cmd.stderr(std::process::Stdio::piped());
+                            add_prompt_args(&mut cmd, &queued_msg.content, None, Some(sess_id));
+                            configure_spawn(&mut cmd, &working_directory);
 
                             if let Ok(child) = cmd.spawn() {
                                 if let Ok((response, tools, _)) = process_stream_background(
@@ -865,7 +831,7 @@ impl<R: Runtime> ExecutionChatService for ClaudeExecutionChatService<R> {
 async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
     conversation_id: &ChatConversationId,
-    _task_id: &TaskId,
+    task_id: &TaskId,
     app_handle: Option<AppHandle<R>>,
 ) -> Result<(String, Vec<ToolCall>, Option<String>), String> {
     let stdout = child
@@ -875,31 +841,47 @@ async fn process_stream_background<R: Runtime>(
 
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
-
-    let mut response_text = String::new();
-    let mut tool_calls: Vec<ToolCall> = Vec::new();
-    let mut claude_session_id: Option<String> = None;
-    let mut current_tool_name = String::new();
-    let mut current_tool_id: Option<String> = None;
-    let mut current_tool_input = String::new();
+    let mut processor = StreamProcessor::new();
 
     let conversation_id_str = conversation_id.as_str();
+    let task_id_str = task_id.as_str();
 
     while let Ok(Some(line)) = lines.next_line().await {
-        if let Ok(msg) = serde_json::from_str::<StreamMessage>(&line) {
-            match msg {
-                StreamMessage::ContentBlockStart { content_block, .. } => {
-                    if content_block.block_type == "tool_use" {
-                        current_tool_name = content_block.name.unwrap_or_default();
-                        current_tool_id = content_block.id;
-                        current_tool_input.clear();
+        if let Some(msg) = StreamProcessor::parse_line(&line) {
+            let events = processor.process_message(msg);
 
+            for event in events {
+                match event {
+                    ProcessorStreamEvent::TextChunk(text) => {
+                        if let Some(ref handle) = app_handle {
+                            // Emit execution:chunk event for ChatPanel
+                            let _ = handle.emit(
+                                "execution:chunk",
+                                ChatChunkPayload {
+                                    text: text.clone(),
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+
+                            // ALSO emit agent:message event for Activity Stream
+                            let _ = handle.emit(
+                                "agent:message",
+                                serde_json::json!({
+                                    "taskId": task_id_str,
+                                    "type": "text",
+                                    "content": text,
+                                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                                }),
+                            );
+                        }
+                    }
+                    ProcessorStreamEvent::ToolCallStarted { name, id } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "execution:tool_call",
                                 ChatToolCallPayload {
-                                    tool_name: current_tool_name.clone(),
-                                    tool_id: current_tool_id.clone(),
+                                    tool_name: name,
+                                    tool_id: id,
                                     arguments: serde_json::Value::Null,
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
@@ -907,61 +889,15 @@ async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                }
-                StreamMessage::ContentBlockDelta { delta, .. } => {
-                    if delta.delta_type == "text_delta" {
-                        if let Some(text) = delta.text {
-                            response_text.push_str(&text);
-
-                            if let Some(ref handle) = app_handle {
-                                // Emit execution:chunk event for ChatPanel
-                                let _ = handle.emit(
-                                    "execution:chunk",
-                                    ChatChunkPayload {
-                                        text: text.clone(),
-                                        conversation_id: conversation_id_str.to_string(),
-                                    },
-                                );
-
-                                // ALSO emit agent:message event for Activity Stream
-                                let _ = handle.emit(
-                                    "agent:message",
-                                    serde_json::json!({
-                                        "taskId": _task_id.as_str(),
-                                        "type": "text",
-                                        "content": text,
-                                        "timestamp": chrono::Utc::now().timestamp_millis(),
-                                    }),
-                                );
-                            }
-                        }
-                    } else if delta.delta_type == "input_json_delta" {
-                        if let Some(json) = delta.partial_json {
-                            current_tool_input.push_str(&json);
-                        }
-                    }
-                }
-                StreamMessage::ContentBlockStop { .. } => {
-                    if !current_tool_name.is_empty() {
-                        let args: serde_json::Value =
-                            serde_json::from_str(&current_tool_input).unwrap_or_default();
-
-                        let tool_call = ToolCall {
-                            id: current_tool_id.clone(),
-                            name: current_tool_name.clone(),
-                            arguments: args.clone(),
-                            result: None,
-                        };
-                        tool_calls.push(tool_call);
-
+                    ProcessorStreamEvent::ToolCallCompleted(tool_call) => {
                         if let Some(ref handle) = app_handle {
                             // Emit execution:tool_call event for ChatPanel
                             let _ = handle.emit(
                                 "execution:tool_call",
                                 ChatToolCallPayload {
-                                    tool_name: current_tool_name.clone(),
-                                    tool_id: current_tool_id.clone(),
-                                    arguments: args.clone(),
+                                    tool_name: tool_call.name.clone(),
+                                    tool_id: tool_call.id.clone(),
+                                    arguments: tool_call.arguments.clone(),
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
@@ -971,39 +907,54 @@ async fn process_stream_background<R: Runtime>(
                             let _ = handle.emit(
                                 "agent:message",
                                 serde_json::json!({
-                                    "taskId": _task_id.as_str(),
+                                    "taskId": task_id_str,
                                     "type": "tool_call",
-                                    "content": format!("{} ({})", current_tool_name, serde_json::to_string(&args).unwrap_or_default()),
+                                    "content": format!("{} ({})", tool_call.name, serde_json::to_string(&tool_call.arguments).unwrap_or_default()),
                                     "timestamp": chrono::Utc::now().timestamp_millis(),
                                     "metadata": {
-                                        "tool_name": current_tool_name.clone(),
-                                        "arguments": args,
+                                        "tool_name": tool_call.name,
+                                        "arguments": tool_call.arguments,
                                     },
                                 }),
                             );
                         }
-
-                        current_tool_name.clear();
-                        current_tool_id = None;
-                        current_tool_input.clear();
+                    }
+                    ProcessorStreamEvent::SessionId(_) => {
+                        // Session ID captured in processor.finish()
+                    }
+                    ProcessorStreamEvent::ToolResultReceived {
+                        tool_use_id,
+                        result,
+                    } => {
+                        if let Some(ref handle) = app_handle {
+                            // Emit execution:tool_call event with result
+                            let _ = handle.emit(
+                                "execution:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: format!("result:{}", tool_use_id),
+                                    tool_id: Some(tool_use_id.clone()),
+                                    arguments: serde_json::Value::Null,
+                                    result: Some(result),
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
                     }
                 }
-                StreamMessage::Result { session_id, .. } => {
-                    claude_session_id = session_id;
-                }
-                _ => {}
             }
         }
     }
 
+    let result = processor.finish();
+
     // Wait for process to complete
     let status = child.wait().await.map_err(|e| e.to_string())?;
 
-    if !status.success() && response_text.is_empty() {
+    if !status.success() && result.response_text.is_empty() {
         return Err("Agent exited with non-zero status".to_string());
     }
 
-    Ok((response_text, tool_calls, claude_session_id))
+    Ok((result.response_text, result.tool_calls, result.session_id))
 }
 
 // ============================================================================
