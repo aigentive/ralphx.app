@@ -1,15 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:44:00
+**Last Updated:** 2026-01-26 22:15:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 34 / 42
-**Current Task:** Add step editor to TaskEditForm
+**Tasks Completed:** 35 / 42
+**Current Task:** Add steps to task creation command
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 22:15:00 - Add step editor to TaskEditForm
+
+**What was done:**
+- Updated `src/components/tasks/TaskEditForm.tsx`:
+  - Added imports: ACTIVE_STATUSES, Plus icon, StepList component, useStepMutations hook
+  - Added step editor state: newStepTitle, isAddingStep
+  - Added isExecuting check using ACTIVE_STATUSES.includes(task.internalStatus)
+  - Added handleAddStep async handler to create new steps
+  - Added 'Steps' section in form with:
+    - Header with label and conditional "cannot be edited while executing" message
+    - StepList component with editable={!isExecuting && !isSaving}
+    - Add step input with Enter key support
+    - 'Add Step' button with Plus icon and loading state
+  - Steps section positioned before form actions
+  - Step editing only allowed when task is not executing
+- Ran npm run typecheck - passing (0 errors)
+- Ran npm run lint - passing (0 errors, 13 pre-existing warnings)
+- Task complete
+
+**Commands:**
+- `npm run typecheck`
+- `npm run lint`
 
 ### 2026-01-26 21:44:00 - Add step editor to TaskCreationForm
 
