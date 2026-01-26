@@ -6,7 +6,7 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use super::{ChatConversationId, IdeationSessionId, ProjectId, TaskId, TaskProposalId};
+use super::{ArtifactId, ChatConversationId, IdeationSessionId, ProjectId, TaskId, TaskProposalId};
 
 /// Status of an ideation session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +76,8 @@ pub struct IdeationSession {
     pub title: Option<String>,
     /// Current status of the session
     pub status: IdeationSessionStatus,
+    /// The implementation plan artifact for this session
+    pub plan_artifact_id: Option<ArtifactId>,
     /// When the session was created
     pub created_at: DateTime<Utc>,
     /// When the session was last updated
@@ -93,6 +95,7 @@ pub struct IdeationSessionBuilder {
     project_id: Option<ProjectId>,
     title: Option<String>,
     status: Option<IdeationSessionStatus>,
+    plan_artifact_id: Option<ArtifactId>,
     created_at: Option<DateTime<Utc>>,
     updated_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
@@ -129,6 +132,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the plan artifact ID
+    pub fn plan_artifact_id(mut self, plan_artifact_id: ArtifactId) -> Self {
+        self.plan_artifact_id = Some(plan_artifact_id);
+        self
+    }
+
     /// Set the created_at timestamp
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
@@ -162,6 +171,7 @@ impl IdeationSessionBuilder {
             project_id: self.project_id.expect("project_id is required"),
             title: self.title,
             status: self.status.unwrap_or_default(),
+            plan_artifact_id: self.plan_artifact_id,
             created_at: self.created_at.unwrap_or(now),
             updated_at: self.updated_at.unwrap_or(now),
             archived_at: self.archived_at,
@@ -228,7 +238,7 @@ impl IdeationSession {
     }
 
     /// Deserialize an IdeationSession from a SQLite row
-    /// Expects columns: id, project_id, title, status, created_at, updated_at, archived_at, converted_at
+    /// Expects columns: id, project_id, title, status, plan_artifact_id, created_at, updated_at, archived_at, converted_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: IdeationSessionId::from_string(row.get::<_, String>("id")?),
@@ -238,6 +248,9 @@ impl IdeationSession {
                 .get::<_, String>("status")?
                 .parse()
                 .unwrap_or(IdeationSessionStatus::Active),
+            plan_artifact_id: row
+                .get::<_, Option<String>>("plan_artifact_id")?
+                .map(ArtifactId::from_string),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
             archived_at: row
@@ -585,6 +598,10 @@ pub struct TaskProposal {
     pub selected: bool,
     /// ID of the created task (if converted)
     pub created_task_id: Option<TaskId>,
+    /// Reference to the implementation plan artifact
+    pub plan_artifact_id: Option<ArtifactId>,
+    /// Plan version when this proposal was created (for historical view)
+    pub plan_version_at_creation: Option<u32>,
     /// Sort order within the session
     pub sort_order: i32,
     /// When the proposal was created
@@ -620,6 +637,8 @@ impl TaskProposal {
             status: ProposalStatus::default(),
             selected: true,
             created_task_id: None,
+            plan_artifact_id: None,
+            plan_version_at_creation: None,
             sort_order: 0,
             created_at: now,
             updated_at: now,
@@ -724,6 +743,10 @@ impl TaskProposal {
             created_task_id: row
                 .get::<_, Option<String>>("created_task_id")?
                 .map(TaskId::from_string),
+            plan_artifact_id: row
+                .get::<_, Option<String>>("plan_artifact_id")?
+                .map(ArtifactId::from_string),
+            plan_version_at_creation: row.get::<_, Option<u32>>("plan_version_at_creation")?,
             sort_order: row.get("sort_order")?,
             created_at: parse_datetime_helper(row.get("created_at")?),
             updated_at: parse_datetime_helper(row.get("updated_at")?),
@@ -1972,6 +1995,7 @@ mod tests {
                 project_id TEXT NOT NULL,
                 title TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
+                plan_artifact_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 archived_at TEXT,
@@ -2585,6 +2609,8 @@ mod tests {
                 status TEXT NOT NULL DEFAULT 'pending',
                 selected INTEGER DEFAULT 1,
                 created_task_id TEXT,
+                plan_artifact_id TEXT,
+                plan_version_at_creation INTEGER,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL

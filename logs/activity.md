@@ -1,15 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 04:59:58
+**Last Updated:** 2026-01-26 05:45:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 2 / 24
-**Current Task:** Add plan_artifact_id fields to IdeationSession and TaskProposal entities
+**Tasks Completed:** 3 / 24
+**Current Task:** Add traceability fields to Task entity for worker context
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 05:45:00 - Plan Artifact Fields for Ideation Entities (Phase 16)
+
+**What was done:**
+- Added `plan_artifact_id: Option<ArtifactId>` field to `IdeationSession` entity
+- Added `plan_artifact_id: Option<ArtifactId>` and `plan_version_at_creation: Option<u32>` fields to `TaskProposal` entity
+- Updated `IdeationSessionBuilder` to support setting plan_artifact_id
+- Updated entity constructors (`IdeationSession::new`, `TaskProposal::new`) to include new fields
+- Updated `from_row` methods for both entities to deserialize plan artifact fields from SQLite
+- Updated all SQLite repository queries:
+  - `SqliteIdeationSessionRepository`: INSERT, SELECT (get_by_id, get_by_project, get_active_by_project)
+  - `SqliteTaskProposalRepository`: INSERT, UPDATE, SELECT (get_by_id, get_by_session, get_selected_by_session)
+- Updated test database schemas to include new columns:
+  - `setup_test_db` for IdeationSession tests
+  - `setup_proposal_test_db` for TaskProposal tests
+- Updated test helper function in `ideation_session_repository.rs`
+
+**Tests:**
+- All 3044 tests passed
+- Verified field persistence through existing repository tests
+
+**Commands run:**
+- `cargo test --lib`
 
 ### 2026-01-26 04:59:58 - IdeationSettings Entity and Repository (Phase 16)
 

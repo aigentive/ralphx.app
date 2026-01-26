@@ -38,13 +38,14 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at, archived_at, converted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO ideation_sessions (id, project_id, title, status, plan_artifact_id, created_at, updated_at, archived_at, converted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
                 session.title,
                 session.status.to_string(),
+                session.plan_artifact_id.as_ref().map(|id| id.as_str()),
                 session.created_at.to_rfc3339(),
                 session.updated_at.to_rfc3339(),
                 session.archived_at.map(|dt| dt.to_rfc3339()),
@@ -60,7 +61,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, project_id, title, status, created_at, updated_at, archived_at, converted_at
+            "SELECT id, project_id, title, status, plan_artifact_id, created_at, updated_at, archived_at, converted_at
              FROM ideation_sessions WHERE id = ?1",
             [id.as_str()],
             |row| IdeationSession::from_row(row),
@@ -78,7 +79,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, created_at, updated_at, archived_at, converted_at
+                "SELECT id, project_id, title, status, plan_artifact_id, created_at, updated_at, archived_at, converted_at
                  FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -169,7 +170,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, created_at, updated_at, archived_at, converted_at
+                "SELECT id, project_id, title, status, plan_artifact_id, created_at, updated_at, archived_at, converted_at
                  FROM ideation_sessions
                  WHERE project_id = ?1 AND status = 'active'
                  ORDER BY updated_at DESC",
