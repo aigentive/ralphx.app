@@ -564,13 +564,41 @@ cargo run
 npm run tauri build
 ```
 
-### Check/Lint
+### Linting
+
+**IMPORTANT: Always run linting before committing code.**
 
 ```bash
-cargo check
-cargo clippy
+# Run clippy with strict warnings (required for all commits)
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Format check (does not modify files)
 cargo fmt --check
+
+# Auto-format code
+cargo fmt
+
+# Type check without building
+cargo check
 ```
+
+**Linting Standards:**
+- All library code (`cargo clippy --lib`) must pass with `-D warnings` enabled
+- Test code may have non-critical style warnings (acceptable)
+- Common patterns have crate-level `#[allow(clippy::...)]` directives in `lib.rs`
+- Format code with `cargo fmt` before committing
+
+**Allowed Clippy Lints:**
+
+The following clippy lints are allowed at the crate level for common patterns:
+- `derivable_impls` - Manual Default implementations for clarity
+- `redundant_closure` - Closures used for readability
+- `too_many_arguments` - Some functions naturally need many params
+- `type_complexity` - Complex types with type aliases
+- `unnecessary_literal_unwrap` - Explicit unwrap in tests
+- `bool_comparison`, `while_let_loop` - Readability preferences
+- `useless_vec`, `let_and_return`, `unwrap_or_default` - Non-critical style
+- `unnecessary_map_or` - Preference for map_or pattern
 
 ---
 
@@ -641,6 +669,14 @@ Key tables:
 - Every public function should have tests
 - Use in-memory repos for unit tests
 - Use `tempfile` for integration tests needing files
+
+### Linting
+
+- **ALWAYS run `cargo clippy --all-targets --all-features -- -D warnings` before committing**
+- All library code must pass clippy with strict warnings enabled
+- Format code with `cargo fmt` before committing
+- Test code may have non-critical style warnings (acceptable)
+- See the "Linting" section under "Build & Run" for full command reference
 
 ---
 
