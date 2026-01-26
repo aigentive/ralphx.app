@@ -135,6 +135,13 @@
       "prd": "specs/phases/prd_phase_17_worker_artifact_context.md",
       "status": "complete",
       "description": "MCP tools for workers to fetch artifact context during task execution"
+    },
+    {
+      "phase": 18,
+      "name": "Task CRUD, Archive & Search",
+      "prd": "specs/phases/prd_phase_18_task_crud_archive_search.md",
+      "status": "pending",
+      "description": "Full CRUD operations, archive system, search, infinite scroll, context menu, keyboard shortcuts"
     }
   ]
 }
