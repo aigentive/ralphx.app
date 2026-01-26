@@ -449,7 +449,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck && npm run test",
       "Commit: feat(components): add StepProgressBar component"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
