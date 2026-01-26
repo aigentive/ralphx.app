@@ -1,15 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:50:00
+**Last Updated:** 2026-01-26 21:15:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 0 / TBD
-**Current Task:** Phase 16 complete, transitioning to Phase 17
+**Tasks Completed:** 1 / 13
+**Current Task:** Create TaskContextService
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:15:00 - Create TaskContext and summary types (Task 1)
+
+**What was done:**
+- Created `src-tauri/src/domain/entities/task_context.rs` with three core types:
+  - `TaskContext` struct: Rich context returned by get_task_context MCP tool (task, source_proposal, plan_artifact, related_artifacts, context_hints)
+  - `TaskProposalSummary` struct: Summary of task proposal for worker context (id, title, description, acceptance_criteria, implementation_notes, plan_version_at_creation)
+  - `ArtifactSummary` struct: Summary of artifact with 500-char preview (id, title, artifact_type, current_version, content_preview)
+- Updated `src-tauri/src/domain/entities/mod.rs` to export new module
+- Fixed pre-existing missing `get_by_id_at_version` implementation in:
+  - `src-tauri/src/infrastructure/memory/memory_artifact_repo.rs`
+  - `src-tauri/src/domain/services/artifact_service.rs` (mock)
+- Wrote 5 unit tests for struct creation, full context, and serialization
+- All tests pass
+
+**Commands run:**
+- `cargo test --lib domain::entities::task_context::tests`
 
 ### 2026-01-26 20:50:00 - Phase 16 Complete
 

@@ -301,6 +301,20 @@ mod tests {
             Ok(artifacts.get(id.as_str()).cloned())
         }
 
+        async fn get_by_id_at_version(&self, id: &ArtifactId, version: u32) -> AppResult<Option<Artifact>> {
+            let artifacts = self.artifacts.lock().await;
+            if let Some(artifact) = artifacts.get(id.as_str()) {
+                // For mock implementation, just return the artifact if the version matches
+                if artifact.metadata.version == version {
+                    Ok(Some(artifact.clone()))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
+        }
+
         async fn get_by_bucket(&self, bucket_id: &ArtifactBucketId) -> AppResult<Vec<Artifact>> {
             let artifacts = self.artifacts.lock().await;
             Ok(artifacts

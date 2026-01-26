@@ -89,7 +89,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(entities): add TaskContext and summary types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
