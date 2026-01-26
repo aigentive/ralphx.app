@@ -385,7 +385,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ideation): handle proactive sync notifications"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
