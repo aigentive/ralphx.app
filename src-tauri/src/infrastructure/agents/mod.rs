@@ -7,5 +7,6 @@ pub mod spawner;
 
 // Re-export commonly used items
 pub use claude::ClaudeCodeClient;
+pub use claude::{StreamEvent, StreamingSpawnResult};
 pub use mock::{MockAgenticClient, MockCall, MockCallType};
 pub use spawner::AgenticClientSpawner;
