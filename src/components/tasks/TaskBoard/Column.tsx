@@ -12,21 +12,32 @@
 
 import { useDroppable, useDndContext } from "@dnd-kit/core";
 import { Inbox, XCircle, Loader2 } from "lucide-react";
-import { useRef, useEffect, useState } from "react";
-import type { BoardColumn } from "./hooks";
+import { useRef, useEffect, useState, useMemo } from "react";
+import type { WorkflowColumn } from "@/types/workflow";
 import { TaskCard } from "./TaskCard";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InlineTaskAdd } from "../InlineTaskAdd";
+import {
+  useInfiniteTasksQuery,
+  flattenPages,
+} from "@/hooks/useInfiniteTasksQuery";
 
 interface ColumnProps {
-  column: BoardColumn;
+  column: WorkflowColumn;
   projectId: string;
+  showArchived: boolean;
   isOver?: boolean;
   isInvalid?: boolean;
   onTaskSelect?: (taskId: string) => void;
   hiddenTaskId?: string | null;
+  /** Optional search results to display instead of fetched tasks */
+  searchTasks?: Task[] | undefined;
+  /** Optional match count badge for search mode */
+  matchCount?: number | undefined;
 }
+
+import type { Task } from "@/types/task";
 
 function InvalidDropIcon() {
   return (
@@ -61,19 +72,41 @@ function TaskSkeleton() {
   );
 }
 
-export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hiddenTaskId }: ColumnProps) {
+export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
   const { active } = useDndContext();
   const isDragging = active !== null;
 
+  // Each column manages its own infinite query
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteTasksQuery({
+    projectId,
+    status: column.mapsTo,
+    includeArchived: showArchived,
+  });
+
+  // Use search tasks if provided (search mode), otherwise use fetched tasks
+  const tasks = useMemo(() => {
+    if (searchTasks) {
+      // In search mode, use provided search results
+      return searchTasks.sort((a, b) => a.priority - b.priority);
+    }
+    // In normal mode, flatten paginated data
+    const flattened = flattenPages(data);
+    return flattened.sort((a, b) => a.priority - b.priority);
+  }, [data, searchTasks]);
+
   // Infinite scroll with IntersectionObserver
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-
-    const { hasNextPage, isFetchingNextPage, fetchNextPage } = column;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -83,8 +116,7 @@ export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hid
           entry &&
           entry.isIntersecting &&
           hasNextPage &&
-          !isFetchingNextPage &&
-          fetchNextPage
+          !isFetchingNextPage
         ) {
           fetchNextPage();
         }
@@ -101,7 +133,7 @@ export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hid
     return () => {
       observer.disconnect();
     };
-  }, [column]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Drop zone styles
   const getDropZoneStyles = (): React.CSSProperties => {
@@ -155,7 +187,8 @@ export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hid
           variant="secondary"
           className="text-[10px] px-1.5 py-0 bg-bg-elevated text-text-secondary"
         >
-          {column.tasks.length}
+          {tasks.length}
+          {matchCount !== undefined && ` (${matchCount})`}
         </Badge>
         {isOver && isInvalid && <InvalidDropIcon />}
       </div>
@@ -168,17 +201,17 @@ export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hid
         style={getDropZoneStyles()}
       >
         {/* Show skeleton cards during initial load */}
-        {column.isLoading ? (
+        {isLoading ? (
           <>
             <TaskSkeleton />
             <TaskSkeleton />
             <TaskSkeleton />
           </>
-        ) : column.tasks.length === 0 ? (
+        ) : tasks.length === 0 ? (
           <EmptyState />
         ) : (
           <>
-            {column.tasks.map((task) => (
+            {tasks.map((task) => (
               <TaskCard
                 key={task.id}
                 task={task}
@@ -191,7 +224,7 @@ export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hid
             <div ref={sentinelRef} className="h-1" aria-hidden="true" />
 
             {/* Loading spinner when fetching next page */}
-            {column.isFetchingNextPage && (
+            {isFetchingNextPage && (
               <div className="flex items-center justify-center py-3">
                 <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--accent-primary)" }} />
               </div>

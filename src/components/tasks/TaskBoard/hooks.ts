@@ -12,24 +12,12 @@ import {
 import type { DragEndEvent } from "@dnd-kit/core";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
-import {
-  useInfiniteTasksQuery,
-  flattenPages,
-  infiniteTaskKeys,
-} from "@/hooks/useInfiniteTasksQuery";
+import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import type { Task, InternalStatus, TaskListResponse } from "@/types/task";
 import type { WorkflowColumn, WorkflowSchema } from "@/types/workflow";
 
-export interface BoardColumn extends WorkflowColumn {
-  tasks: Task[];
-  fetchNextPage?: () => void;
-  hasNextPage?: boolean;
-  isFetchingNextPage?: boolean;
-  isLoading?: boolean;
-}
-
 export interface UseTaskBoardResult {
-  columns: BoardColumn[];
+  columns: WorkflowColumn[];
   onDragEnd: (event: DragEndEvent) => void;
   isLoading: boolean;
   error: Error | null;
@@ -55,28 +43,6 @@ export function useTaskBoard(
     queryKey: workflowKeys.detail(workflowId),
     queryFn: () => api.workflows.get(workflowId),
   });
-
-  // Create infinite queries for each column based on their mapped status
-  const columnQueries = useMemo(() => {
-    if (!workflow) return new Map();
-
-    const queries = new Map<
-      string,
-      ReturnType<typeof useInfiniteTasksQuery>
-    >();
-
-    workflow.columns.forEach((column) => {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const query = useInfiniteTasksQuery({
-        projectId,
-        status: column.mapsTo,
-        includeArchived: showArchived,
-      });
-      queries.set(column.id, query);
-    });
-
-    return queries;
-  }, [workflow, projectId, showArchived]);
 
   const moveMutation = useMutation({
     mutationFn: ({ taskId, toStatus }: { taskId: string; toStatus: string }) =>
@@ -109,19 +75,29 @@ export function useTaskBoard(
         snapshots.set(col.id, queryClient.getQueryData(key));
       });
 
-      // Find the task and its current column
+      // Find the task and its current column by checking each column's cache
       let movedTask: Task | undefined;
       let fromColumn: WorkflowColumn | undefined;
 
-      workflow.columns.forEach((col) => {
-        const query = columnQueries.get(col.id);
-        const tasks = flattenPages(query?.data);
-        const task = tasks.find((t) => t.id === taskId);
-        if (task) {
-          movedTask = task;
-          fromColumn = col;
+      for (const col of workflow.columns) {
+        const key = infiniteTaskKeys.list({
+          projectId,
+          status: col.mapsTo,
+          includeArchived: showArchived,
+        });
+        const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
+        if (data?.pages) {
+          for (const page of data.pages) {
+            const task = page.tasks.find((t: Task) => t.id === taskId);
+            if (task) {
+              movedTask = task;
+              fromColumn = col;
+              break;
+            }
+          }
         }
-      });
+        if (movedTask) break;
+      }
 
       if (!movedTask || !fromColumn) return { snapshots };
 
@@ -208,23 +184,10 @@ export function useTaskBoard(
     },
   });
 
-  const columns = useMemo<BoardColumn[]>(() => {
+  const columns = useMemo<WorkflowColumn[]>(() => {
     if (!workflow) return [];
-
-    return workflow.columns.map((column) => {
-      const query = columnQueries.get(column.id);
-      const tasks = query ? flattenPages(query.data) : [];
-
-      return {
-        ...column,
-        tasks: tasks.sort((a, b) => a.priority - b.priority),
-        fetchNextPage: query?.fetchNextPage,
-        hasNextPage: query?.hasNextPage,
-        isFetchingNextPage: query?.isFetchingNextPage,
-        isLoading: query?.isLoading,
-      };
-    });
-  }, [workflow, columnQueries]);
+    return workflow.columns;
+  }, [workflow]);
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -237,44 +200,41 @@ export function useTaskBoard(
       );
       if (!targetColumn) return;
 
-      // Find the task across all columns
-      let task: Task | undefined;
-      for (const column of columns) {
-        task = column.tasks.find((t) => t.id === taskId);
-        if (task) break;
+      // Find the task's current status from the query cache
+      let currentStatus: string | undefined;
+      for (const col of workflow.columns) {
+        const key = infiniteTaskKeys.list({
+          projectId,
+          status: col.mapsTo,
+          includeArchived: showArchived,
+        });
+        const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
+        if (data?.pages) {
+          for (const page of data.pages) {
+            const task = page.tasks.find((t: Task) => t.id === taskId);
+            if (task) {
+              currentStatus = task.internalStatus;
+              break;
+            }
+          }
+        }
+        if (currentStatus) break;
       }
 
-      if (!task || targetColumn.mapsTo === task.internalStatus) return;
+      if (!currentStatus || targetColumn.mapsTo === currentStatus) return;
 
       moveMutation.mutate({
         taskId,
         toStatus: targetColumn.mapsTo as InternalStatus,
       });
     },
-    [workflow, columns, moveMutation]
+    [workflow, projectId, showArchived, queryClient, moveMutation]
   );
-
-  // Determine overall loading state - loading if workflow is loading OR any initial column load
-  const isLoading = useMemo(() => {
-    if (workflowLoading) return true;
-    // Check if any column is in initial loading state
-    return Array.from(columnQueries.values()).some((q) => q.isLoading);
-  }, [workflowLoading, columnQueries]);
-
-  // Determine overall error state
-  const error = useMemo(() => {
-    if (workflowError) return workflowError;
-    // Check if any column has an error
-    for (const query of columnQueries.values()) {
-      if (query.error) return query.error;
-    }
-    return null;
-  }, [workflowError, columnQueries]);
 
   return {
     columns,
     onDragEnd,
-    isLoading,
-    error,
+    isLoading: workflowLoading,
+    error: workflowError ?? null,
   };
 }

@@ -7,4 +7,4 @@ export { TaskBoardWithHeader } from "./TaskBoardWithHeader";
 export { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 export { Column } from "./Column";
 export { TaskCard } from "./TaskCard";
-export { useTaskBoard, type BoardColumn, type UseTaskBoardResult, workflowKeys } from "./hooks";
+export { useTaskBoard, type UseTaskBoardResult, workflowKeys } from "./hooks";
