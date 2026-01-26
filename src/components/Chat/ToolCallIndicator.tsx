@@ -388,7 +388,7 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
 
         {/* Summary text */}
         <span
-          className="text-xs flex-1"
+          className="text-xs flex-1 truncate min-w-0"
           style={{
             color: hasError ? "var(--text-primary)" : "var(--text-secondary)",
             fontFamily: "var(--font-body)",
