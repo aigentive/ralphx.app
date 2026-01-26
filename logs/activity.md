@@ -1,15 +1,62 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:06:40
+**Last Updated:** 2026-01-26 19:09:20
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 23 / 30
-**Current Task:** Create EmptySearchState component
+**Tasks Completed:** 24 / 30
+**Current Task:** Integrate search into TaskBoard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:09:20 - Create EmptySearchState component (Task 25)
+
+**What was done:**
+- Created `src/components/tasks/EmptySearchState.tsx` component
+  - Props: searchQuery, onCreateTask, onClearSearch, showArchived
+  - Container: flex flex-col items-center justify-center py-16 text-center
+  - FileText icon (Lucide, w-12 h-12, text-muted-foreground)
+  - Heading: 'No tasks match "{searchQuery}"' (text-lg font-medium)
+  - Subheading: 'Should this be a task?' (text-muted-foreground)
+  - Two action buttons in flex row with gap-3:
+    - Primary button (variant default): '+ Create "{searchQuery}"' → calls onCreateTask
+    - Secondary button (variant outline): 'Clear Search' → calls onClearSearch
+  - Conditional tip section (only shown when showArchived === false):
+    - Container: mt-6 p-3 bg-muted/50 rounded-lg with flex items-start gap-2
+    - Lightbulb icon (w-5 h-5, text-muted-foreground, flex-shrink-0)
+    - Text: 'Tip: Enable "Show archived" to search old tasks'
+- Created `src/components/tasks/EmptySearchState.test.tsx` test file
+  - Test search query rendered in heading
+  - Test subheading text rendered
+  - Test FileText icon rendered
+  - Test onCreateTask callback when Create button clicked
+  - Test onClearSearch callback when Clear Search button clicked
+  - Test tip shown when showArchived is false
+  - Test tip hidden when showArchived is true
+  - Test Lightbulb icon shown/hidden based on showArchived
+  - Test both action buttons rendered
+  - Test different search query text displays correctly
+  - All 11 tests passing
+
+**Commands:**
+- `npm run test -- EmptySearchState` - All 11 tests passed
+- `npm run lint` - No new linting issues (12 pre-existing warnings)
+- `npm run typecheck` - Type checking passed
+
+**Files created:**
+- `src/components/tasks/EmptySearchState.tsx` - Empty search state component
+- `src/components/tasks/EmptySearchState.test.tsx` - Component tests
+
+**Design notes:**
+- Implements "message in a bottle" pattern for empty search results
+- Provides immediate action: convert search query into new task
+- Guides user with helpful tip about archived tasks
+- Follows shadcn/ui Button variants: default (primary) and outline (secondary)
+- Clean, centered layout with proper spacing (py-16, gap-3, mt-6)
+
+---
 
 ### 2026-01-26 19:06:40 - Create TaskSearchBar component (Task 24)
 
