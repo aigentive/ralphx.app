@@ -1,15 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:15:00
+**Last Updated:** 2026-01-26 21:45:00
 **Phase:** Phase 17 (Worker Artifact Context)
-**Tasks Completed:** 1 / 13
-**Current Task:** Create TaskContextService
+**Tasks Completed:** 2 / 13
+**Current Task:** Add HTTP endpoints for worker context tools
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:45:00 - Create TaskContextService (Task 2)
+
+**What was done:**
+- Created `src-tauri/src/application/task_context_service.rs`:
+  - Implemented `TaskContextService` with three repository dependencies (TaskRepository, TaskProposalRepository, ArtifactRepository)
+  - Implemented `get_task_context(task_id)` method that aggregates:
+    1. Task by ID
+    2. Source proposal summary (if task.source_proposal_id exists) - parses acceptance_criteria JSON
+    3. Plan artifact summary with 500-char content preview (if task.plan_artifact_id exists)
+    4. Related artifacts via ArtifactRelation
+    5. Context hints based on available artifacts
+  - Added helper methods: `create_content_preview()` (500-char truncation), `generate_context_hints()`
+  - Wrote 6 comprehensive unit tests with mock repositories
+- Updated `src-tauri/src/application/mod.rs`:
+  - Added `task_context_service` module export
+  - Added `TaskContextService` to public API
+- All tests pass (including full cargo test suite)
+
+**Commands run:**
+- `cargo test --lib application::task_context_service::tests`
+- `cargo test` (full suite)
 
 ### 2026-01-26 21:15:00 - Create TaskContext and summary types (Task 1)
 

@@ -112,7 +112,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(application): add TaskContextService for aggregating task context"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
