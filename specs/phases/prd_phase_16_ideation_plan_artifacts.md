@@ -296,7 +296,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(settings): add Ideation section to SettingsView"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

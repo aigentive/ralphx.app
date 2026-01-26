@@ -3,10 +3,10 @@
  *
  * Features:
  * - Glass effect header with Settings icon and saving indicator
- * - Section cards (Execution, Model, Review, Supervisor) with gradient borders
+ * - Section cards (Execution, Model, Review, Supervisor, Ideation) with gradient borders
  * - shadcn Switch, Input, Select for form controls
  * - Master toggle → sub-settings disabled pattern
- * - Lucide icons: Settings, Zap, Brain, FileSearch, Shield, Loader2, AlertCircle, X
+ * - Lucide icons: Settings, Zap, Brain, FileSearch, Shield, Lightbulb, Loader2, AlertCircle, X
  */
 
 import { useState, useCallback } from "react";
@@ -45,6 +45,7 @@ import type {
 } from "@/types/settings";
 import type { Model } from "@/types/agent-profile";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
+import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 
 // ============================================================================
 // Constants
@@ -354,7 +355,7 @@ function SettingsSkeleton() {
       data-testid="settings-skeleton"
       className="p-6 space-y-6 max-w-[720px] mx-auto"
     >
-      {[1, 2, 3, 4].map((i) => (
+      {[1, 2, 3, 4, 5].map((i) => (
         <Card key={i} className="p-5 bg-[var(--bg-elevated)] border-[var(--border-default)]">
           <div className="flex items-center gap-3 mb-4">
             <Skeleton className="w-9 h-9 rounded-lg" />
@@ -796,6 +797,7 @@ export function SettingsView({
             onChange={handleSupervisorChange}
             disabled={isSaving}
           />
+          <IdeationSettingsPanel />
         </div>
       </ScrollArea>
     </div>
