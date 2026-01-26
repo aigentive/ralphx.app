@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive } from "lucide-react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
@@ -44,7 +44,12 @@ interface TaskCardProps {
 /**
  * Get priority color for the left border stripe
  */
-function getPriorityColor(priority: number): string {
+function getPriorityColor(priority: number, isArchived: boolean): string {
+  // Archived tasks always use gray
+  if (isArchived) {
+    return "#a3a3a3"; // bg-neutral-400
+  }
+
   switch (priority) {
     case 1: // Critical
       return "var(--status-error)"; // #ef4444
@@ -89,6 +94,9 @@ export function TaskCard({
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging: isBeingDragged } = useDraggable({ id: task.id });
 
+  // Check if task is archived
+  const isArchived = task.archivedAt !== null;
+
   // Hide when being dragged OR when transitioning after drop
   const shouldHide = isBeingDragged || isHidden;
 
@@ -109,7 +117,7 @@ export function TaskCard({
   // Card styles based on state
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
-      borderLeft: `3px solid ${getPriorityColor(task.priority)}`,
+      borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
       cursor: isDragging ? "grabbing" : "grab",
       transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
     };
@@ -128,7 +136,7 @@ export function TaskCard({
       return {
         ...baseStyles,
         border: "2px solid var(--accent-primary)",
-        borderLeft: `3px solid ${getPriorityColor(task.priority)}`,
+        borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
         background: "var(--accent-muted)",
         boxShadow: "0 0 0 4px rgba(255, 107, 53, 0.15)",
       };
@@ -144,20 +152,29 @@ export function TaskCard({
       {...listeners}
       data-testid={`task-card-${task.id}`}
       onClick={() => onSelect?.(task.id)}
-      className="group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+      className={`group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${isArchived ? "opacity-60" : ""}`}
       style={{ ...getCardStyles(), ...dragStyle }}
       tabIndex={0}
     >
-      {/* Drag handle - appears on hover */}
-      <div
-        data-testid="drag-handle"
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
-      >
-        <GripVertical
-          className="w-4 h-4 hover:text-[var(--text-secondary)]"
-          style={{ color: "var(--text-muted)" }}
-        />
-      </div>
+      {/* Archive badge overlay - only shown for archived tasks */}
+      {isArchived && (
+        <div className="absolute top-2 right-2 bg-neutral-200 rounded-full p-1" data-testid="archive-badge">
+          <Archive className="w-3 h-3 text-neutral-600" />
+        </div>
+      )}
+
+      {/* Drag handle - appears on hover (hidden if archived to show archive badge) */}
+      {!isArchived && (
+        <div
+          data-testid="drag-handle"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+        >
+          <GripVertical
+            className="w-4 h-4 hover:text-[var(--text-secondary)]"
+            style={{ color: "var(--text-muted)" }}
+          />
+        </div>
+      )}
 
       {/* Card content */}
       <div className="pr-6">
