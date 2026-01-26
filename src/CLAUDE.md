@@ -221,6 +221,115 @@ TaskCardContextMenu: right-click menu (view, edit, archive, restore, delete)
 - Loading spinner at bottom when isFetchingNextPage
 ```
 
+## Task Execution Experience (Ph19)
+```typescript
+// Types (types/task-step.ts)
+type TaskStepStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'failed' | 'cancelled'
+interface TaskStep {
+  id: string, taskId: string, title: string, description: string | null,
+  status: TaskStepStatus, sortOrder: number, dependsOn: string | null,
+  createdBy: string, completionNote: string | null,
+  createdAt: string, updatedAt: string, startedAt: string | null, completedAt: string | null
+}
+interface StepProgressSummary {
+  taskId: string, total: number, completed: number, inProgress: number,
+  pending: number, skipped: number, failed: number,
+  currentStep: TaskStep | null, nextStep: TaskStep | null,
+  percentComplete: number
+}
+
+// API (lib/tauri.ts)
+api.steps.getByTask(taskId) → TaskStep[]
+api.steps.create(taskId, data) → TaskStep
+api.steps.update(stepId, data) → TaskStep
+api.steps.delete(stepId) → void
+api.steps.reorder(taskId, stepIds) → TaskStep[]
+api.steps.getProgress(taskId) → StepProgressSummary
+api.steps.start(stepId) → TaskStep
+api.steps.complete(stepId, note?) → TaskStep
+api.steps.skip(stepId, reason) → TaskStep
+api.steps.fail(stepId, error) → TaskStep
+
+// Hooks (hooks/)
+useTaskSteps(taskId) → { data: TaskStep[], isLoading, isError }
+  // Query key: stepKeys.byTask(taskId), staleTime: 30s
+useStepProgress(taskId) → { data: StepProgressSummary, isLoading }
+  // Query key: stepKeys.progress(taskId), staleTime: 5s
+  // Auto-refetch every 5s if inProgress > 0
+useStepMutations(taskId) → { create, update, delete, reorder }
+  // All mutations invalidate stepKeys.byTask(taskId) and stepKeys.progress(taskId)
+useStepEvents() → void
+  // Listens for step:created, step:updated, step:deleted, steps:reordered
+  // Invalidates queries on events
+useTaskExecutionState(taskId) → TaskExecutionState
+  // Combines task status and step progress
+  // Returns: { isActive, duration, phase, stepProgress }
+  // phase: 'idle' | 'executing' | 'qa' | 'review' | 'done'
+
+// Components (components/tasks/)
+StepProgressBar: { taskId, compact? } — Progress dots with status colors
+  // completed: green, skipped: gray, failed: red, in_progress: orange+pulse, pending: border-gray
+  // Shows "{completed+skipped}/{total}" if not compact
+StepItem: { step, index, editable?, onUpdate?, onDelete? } — Single step with status icon
+  // Status icons: Circle(pending), Loader2(in_progress), CheckCircle2(completed),
+  //               MinusCircle(skipped), XCircle(failed)
+  // Highlights in_progress with border-accent-primary, bg-accent-muted
+  // Shows completion_note if exists
+StepList: { taskId, editable? } — List of steps with mutations
+  // Uses useTaskSteps + useStepMutations
+  // EmptyState if no steps
+TaskDetailPanel: { task, showContext?, showHistory? } — Reusable detail content
+  // Extracted from TaskDetailModal
+  // Shows: priority, title, category, status, description, TaskContextPanel, StepList, StateHistoryTimeline
+TaskChatPanel: { taskId, contextType } — Embedded chat without resize/collapse
+  // contextType: 'task' | 'task_execution' (determined by task status)
+  // Shows context indicator header (e.g., "Worker Execution")
+TaskFullView: { taskId, onClose } — Full-screen with split panels
+  // 24px margin Raycast-style overlay
+  // Header: back, title, priority, status, edit/archive buttons, close
+  // Split layout: TaskDetailPanel (left) | TaskChatPanel (right)
+  // Default 50/50 split, resizable with drag handle (min 360px each side)
+  // Escape key closes
+  // Stores panel width in localStorage
+
+// uiStore (stores/uiStore.ts)
+taskFullViewId: string | null
+openTaskFullView: (taskId: string) => void
+closeTaskFullView: () => void
+
+// TaskCard (Ph19 updates)
+- Execution state visuals:
+  - executing: task-card-executing class, pulsing orange border, activity dots (3 dots with staggered bounce)
+  - qa_*: pulsing border with QA icon
+  - pending_review: amber border with Eye icon
+  - revision_needed: task-card-attention class
+- StepProgressBar in bottom (compact mode) when executing/qa/pending_review
+- Duration badge with Clock icon: "2m 15s" format when executing
+- Click behavior: opens TaskFullView for executing/qa/pending_review/revision_needed, modal otherwise
+
+// TaskCreationForm (Ph19 updates)
+- Steps editor: string[] state with add/remove/reorder (up/down arrows)
+- Steps sent to create_task command
+- Simple up/down buttons for reordering (no dnd-kit)
+
+// TaskEditForm (Ph19 updates)
+- StepList with editable={!isExecuting}
+- Add step inline when not executing
+- Changes saved via useStepMutations
+
+// CSS (styles/globals.css)
+@keyframes executing-pulse — box-shadow animation
+@keyframes attention-pulse — opacity animation
+.task-card-executing — pulsing orange border
+.task-card-attention — attention animation
+
+// Events (real-time)
+step:created → { task_id, step_id }
+step:updated → { task_id, step_id }
+step:deleted → { task_id, step_id }
+steps:reordered → { task_id, step_ids }
+```
+
 ## TS Config (strict)
 ```json
 { "strict":true, "noUncheckedIndexedAccess":true, "noImplicitReturns":true, "exactOptionalPropertyTypes":true, "verbatimModuleSyntax":true }
