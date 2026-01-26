@@ -1,15 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 17:42:26
+**Last Updated:** 2026-01-26 17:47:12
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 2 / 30
-**Current Task:** Add archive Tauri commands with event emission
+**Tasks Completed:** 3 / 30
+**Current Task:** Add pagination to list_tasks command
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 17:47:12 - Add archive Tauri commands with event emission (Task 3)
+
+**What was done:**
+- Added `archived_at` field to TaskResponse struct for camelCase serialization to frontend
+- Implemented 4 new Tauri commands in task_commands.rs:
+  - `archive_task(task_id)` - Archives task and emits 'task:archived' event
+  - `restore_task(task_id)` - Restores archived task and emits 'task:restored' event
+  - `permanently_delete_task(task_id)` - Hard deletes ONLY archived tasks, emits 'task:deleted' event
+  - `get_archived_count(project_id)` - Returns count of archived tasks for badge display
+- All commands emit Tauri events for real-time UI updates across windows
+- Added safety check to permanently_delete_task to only delete archived tasks
+- Registered all 4 commands in lib.rs invoke_handler
+- Wrote comprehensive unit tests:
+  - test_archive_task_sets_archived_at
+  - test_restore_task_clears_archived_at
+  - test_get_archived_count_returns_correct_count
+  - test_get_archived_count_zero_when_none_archived
+  - test_permanently_delete_archived_task_succeeds
+  - test_task_response_includes_archived_at
+  - test_task_response_archived_at_null_when_not_archived
+
+**Commands run:**
+- `cargo test --lib commands::task_commands::tests` - All 30 tests passed
+- `cargo clippy --lib -- -D warnings` - No warnings
+
+**Event emission:**
+- task:archived → { taskId, projectId }
+- task:restored → { taskId, projectId }
+- task:deleted → { taskId, projectId }
 
 ### 2026-01-26 17:42:26 - Add archive repository methods (Task 2)
 

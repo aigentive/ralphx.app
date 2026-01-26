@@ -141,7 +141,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(commands): add archive/restore/permanently_delete commands with events"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
