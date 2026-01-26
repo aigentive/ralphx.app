@@ -95,6 +95,10 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     setActiveSession: (sessionId) =>
       set((state) => {
         state.activeSessionId = sessionId;
+        // Clear session-specific state when switching sessions
+        state.planArtifact = null;
+        state.syncNotification = null;
+        state.error = null;
       }),
 
     addSession: (session) =>

@@ -617,7 +617,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck && npm run test",
       "Commit: feat(components): add TaskChatPanel for embedded chat"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
