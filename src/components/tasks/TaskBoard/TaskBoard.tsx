@@ -117,7 +117,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
     return () => cancelAnimationFrame(id);
   }, [movingTaskId]);
 
-  // Keyboard shortcuts: Cmd+F for search, Escape to close search
+  // Keyboard shortcuts: Cmd+N for new task, Cmd+F for search, Escape to close search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Guard: ignore if user is typing in an input/textarea
@@ -128,6 +128,12 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
         activeElement?.hasAttribute('contenteditable')
       ) {
         return;
+      }
+
+      // Cmd+N / Ctrl+N: Open task creation modal
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        openModal('task-create', { projectId });
       }
 
       // Cmd+F / Ctrl+F: Open search
@@ -145,7 +151,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [searchOpen, setBoardSearchQuery]);
+  }, [searchOpen, setBoardSearchQuery, openModal, projectId]);
 
   // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(

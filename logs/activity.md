@@ -1,15 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:15:00
+**Last Updated:** 2026-01-26 20:30:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 25 / 30
-**Current Task:** Add keyboard shortcuts to TaskBoard
+**Tasks Completed:** 26 / 30
+**Current Task:** Create TaskCardContextMenu component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:30:00 - Add keyboard shortcuts to TaskBoard (Task 27)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskBoard.tsx`:
+  - Added Cmd+N / Ctrl+N keyboard shortcut for creating new tasks
+  - Opens task creation modal via `openModal('task-create', { projectId })`
+  - Properly prevents browser default behavior
+  - Existing shortcuts already present (Cmd+F for search, Escape to close)
+  - Added openModal and projectId to useEffect dependencies
+  - Updated comment to reflect all keyboard shortcuts
+
+**Commands:**
+- `npm run lint` - Passed (12 pre-existing warnings, no new issues)
+- `npm run typecheck` - Passed with no errors
+
+**Result:**
+- All keyboard shortcuts now complete: Cmd+N (new task), Cmd+F (search), Escape (close search)
+- Guards against triggering when user is typing in inputs/textareas
+- Clean event listener cleanup on unmount
+
+---
 
 ### 2026-01-26 20:15:00 - Integrate search into TaskBoard (Task 26)
 
