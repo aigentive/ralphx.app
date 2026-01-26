@@ -1,14 +1,59 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:44:45
+**Last Updated:** 2026-01-26 02:54:46
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 21 / 26
-**Current Task:** Update ChatPanel with conversation selector, queue UI, and event handling
+**Tasks Completed:** 22 / 26
+**Current Task:** Update useChat hook for context-aware messaging
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:54:46 - Updated ChatPanel with Conversation Selector, Queue UI, and Event Handling
+
+**What was done:**
+- Updated `src/components/Chat/ChatPanel.tsx`:
+  - Integrated ConversationSelector component in header
+    - Added history icon button to open conversation selector
+    - Placeholder handlers for conversation switching (to be implemented in next task)
+    - Displays context type and ID for conversation filtering
+  - Integrated QueuedMessageList component above input
+    - Shows queued messages when queue is not empty
+    - Supports edit and delete operations via store actions
+  - Replaced direct textarea/button with ChatInput component
+    - Passes `handleSend`, `handleQueue`, `isAgentRunning` props
+    - Supports keyboard navigation (Up arrow to edit last queued)
+    - Shows queue mode placeholder when agent is running
+  - Added Tauri event subscriptions for real-time updates:
+    - `chat:chunk` - streaming text chunks (TODO: real-time display)
+    - `chat:tool_call` - tool call events (TODO: display in UI)
+    - `chat:run_completed` - agent run completion
+      - Sets `isAgentRunning` to false
+      - Processes queue: sends first queued message automatically
+  - Added ref pattern for `handleSend` to avoid stale closures in event listeners
+  - Updated agent running badge: shows "Agent responding..." vs "Working"
+  - Queue processing: removes message from queue before sending
+
+- Updated `src/components/Chat/ChatPanel.test.tsx`:
+  - Added mocks for Tauri event listener (`@tauri-apps/api/event`)
+  - Added mocks for new store actions:
+    - `queueMessage`, `editQueuedMessage`, `deleteQueuedMessage`
+    - `setAgentRunning`, `startEditingQueuedMessage`
+  - Added mocks for store selectors:
+    - `selectQueuedMessages`, `selectIsAgentRunning`, `selectActiveConversationId`
+  - Updated test IDs to match ChatInput component:
+    - `chat-panel-input` → `chat-input-textarea`
+    - `chat-panel-send` → `chat-input-send`
+  - Simplified send tests to verify integration behavior (input clears) instead of internal implementation
+  - All 30 tests passing
+
+**Commands run:**
+- `npm run test -- ChatPanel.test.tsx` (30 tests passed)
+- `npm run lint && npm run typecheck` (passed)
+
+**Next task:**
+- Update useChat hook for context-aware messaging (conversation switching, agent run status, queue processing, Tauri events)
 
 ### 2026-01-26 02:44:45 - Updated ChatInput for Queue Mode and Keyboard Navigation
 

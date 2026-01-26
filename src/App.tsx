@@ -473,13 +473,13 @@ function AppContent() {
       {/* Header - Premium Design: Fixed 48px, shadow, Tauri drag region */}
       <TooltipProvider delayDuration={300}>
         <header
-          className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between pr-4 pl-20 border-b z-50"
+          className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-20 border-b z-50"
           style={{
             backgroundColor: "var(--bg-surface)",
             borderColor: "var(--border-subtle)",
             boxShadow: "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
-            WebkitAppRegion: "drag",
-          } as React.CSSProperties}
+          }}
+          data-tauri-drag-region
           data-testid="app-header"
         >
           {/* Left Section: Branding + Navigation */}
@@ -638,7 +638,7 @@ function AppContent() {
       </TooltipProvider>
 
       {/* Spacer for fixed header */}
-      <div className="h-12 flex-shrink-0" />
+      <div className="h-14 flex-shrink-0" />
 
       {/* Main content area - shows empty state wizard or normal content */}
       {hasNoProjects ? (
