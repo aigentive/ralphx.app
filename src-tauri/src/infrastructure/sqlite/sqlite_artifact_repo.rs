@@ -165,6 +165,52 @@ impl ArtifactRepository for SqliteArtifactRepository {
         }
     }
 
+    async fn get_by_id_at_version(&self, id: &ArtifactId, target_version: u32) -> AppResult<Option<Artifact>> {
+        let conn = self.conn.lock().await;
+
+        // Start with the current artifact
+        let mut current_id = id.clone();
+
+        loop {
+            let result = conn.query_row(
+                "SELECT id, type, name, content_type, content_text, content_path,
+                        bucket_id, task_id, process_id, created_by, version,
+                        previous_version_id, created_at
+                 FROM artifacts WHERE id = ?1",
+                [current_id.as_str()],
+                |row| {
+                    let version: u32 = row.get(10)?;
+                    let previous_version_id: Option<String> = row.get(11)?;
+                    Ok((version, previous_version_id, Self::artifact_from_row(row)?))
+                },
+            );
+
+            match result {
+                Ok((version, previous_version_id, artifact)) => {
+                    // If this is the version we're looking for, return it
+                    if version == target_version {
+                        return Ok(Some(artifact));
+                    }
+
+                    // If we've gone too far back (version < target), the version doesn't exist
+                    if version < target_version {
+                        return Ok(None);
+                    }
+
+                    // Otherwise, follow the previous_version_id chain
+                    if let Some(prev_id) = previous_version_id {
+                        current_id = ArtifactId::from_string(prev_id);
+                    } else {
+                        // No more previous versions, and we haven't found it
+                        return Ok(None);
+                    }
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+                Err(e) => return Err(AppError::Database(e.to_string())),
+            }
+        }
+    }
+
     async fn get_by_bucket(&self, bucket_id: &ArtifactBucketId) -> AppResult<Vec<Artifact>> {
         let conn = self.conn.lock().await;
 

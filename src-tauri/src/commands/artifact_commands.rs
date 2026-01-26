@@ -187,6 +187,22 @@ pub async fn get_artifact(
         .map_err(|e| e.to_string())
 }
 
+/// Get an artifact at a specific version
+#[tauri::command]
+pub async fn get_artifact_at_version(
+    id: String,
+    version: u32,
+    state: State<'_, AppState>,
+) -> Result<Option<ArtifactResponse>, String> {
+    let artifact_id = ArtifactId::from_string(id);
+    state
+        .artifact_repo
+        .get_by_id_at_version(&artifact_id, version)
+        .await
+        .map(|opt| opt.map(ArtifactResponse::from))
+        .map_err(|e| e.to_string())
+}
+
 /// Create a new artifact
 #[tauri::command]
 pub async fn create_artifact(

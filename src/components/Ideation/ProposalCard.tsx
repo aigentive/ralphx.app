@@ -33,6 +33,10 @@ export interface ProposalCardProps {
   blocksCount?: number;
   /** Show complexity indicator */
   showComplexity?: boolean;
+  /** Current version of the linked plan artifact (if any) */
+  currentPlanVersion?: number;
+  /** Callback when "View plan as of creation" link is clicked */
+  onViewHistoricalPlan?: (artifactId: string, version: number) => void;
 }
 
 // ============================================================================
@@ -124,12 +128,21 @@ export function ProposalCard({
   dependsOnCount,
   blocksCount,
   showComplexity = false,
+  currentPlanVersion,
+  onViewHistoricalPlan,
 }: ProposalCardProps) {
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
   const isSelected = proposal.selected;
   const showDependencyInfo =
     (dependsOnCount !== undefined && dependsOnCount > 0) ||
     (blocksCount !== undefined && blocksCount > 0);
+
+  // Check if we should show the historical plan link
+  const showHistoricalPlanLink =
+    proposal.planArtifactId &&
+    proposal.planVersionAtCreation &&
+    currentPlanVersion &&
+    proposal.planVersionAtCreation !== currentPlanVersion;
 
   const handleCheckboxChange = () => {
     onSelect(proposal.id);
@@ -143,6 +156,13 @@ export function ProposalCard({
   const handleRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
     onRemove(proposal.id);
+  };
+
+  const handleViewHistoricalPlan = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (proposal.planArtifactId && proposal.planVersionAtCreation && onViewHistoricalPlan) {
+      onViewHistoricalPlan(proposal.planArtifactId, proposal.planVersionAtCreation);
+    }
   };
 
   return (
@@ -292,6 +312,20 @@ export function ProposalCard({
                   Blocks {blocksCount}
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Historical plan link */}
+          {showHistoricalPlanLink && (
+            <div className="mt-2">
+              <button
+                data-testid="view-historical-plan"
+                onClick={handleViewHistoricalPlan}
+                className="text-xs underline hover:no-underline transition-all"
+                style={{ color: "#ff6b35" }}
+              >
+                View plan as of proposal creation (v{proposal.planVersionAtCreation})
+              </button>
             </div>
           )}
         </div>

@@ -1,15 +1,60 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:13:00
+**Last Updated:** 2026-01-26 19:30:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 19 / 24
-**Current Task:** Add 'View as of proposal creation' historical view
+**Tasks Completed:** 20 / 24
+**Current Task:** Add plan export functionality
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:30:00 - Add historical plan version view (Phase 16, Task 20)
+
+**What was done:**
+- Added backend method `get_by_id_at_version` to `ArtifactRepository` trait:
+  - Traverses `previous_version_id` chain to find artifact at specific version
+  - Returns `None` if version not found or doesn't exist
+  - Implemented in `SqliteArtifactRepository` with recursive query logic
+- Added Tauri command `get_artifact_at_version`:
+  - Exposes backend version retrieval to frontend
+  - Registered in lib.rs invoke_handler
+- Created frontend API function `getAtVersion` in `artifact.ts`:
+  - Type-safe wrapper around `get_artifact_at_version` command
+  - Transforms backend snake_case to frontend camelCase
+- Updated `ProposalCard` component (internal IdeationView version):
+  - Added `currentPlanVersion` prop to receive current plan version
+  - Added `onViewHistoricalPlan` callback prop
+  - Shows "View plan as of creation" link when `planVersionAtCreation` differs from current version
+  - Link displays version number and Eye icon
+- Created `PlanHistoryDialog` component:
+  - Modal dialog using shadcn/ui Dialog component
+  - Fetches artifact at specific version when opened
+  - Displays plan content with markdown rendering
+  - Shows loading state and error handling
+  - Close button to dismiss dialog
+- Updated `IdeationView` component:
+  - Added `planHistoryDialog` state for dialog management
+  - Added `handleViewHistoricalPlan` and `handleClosePlanHistoryDialog` handlers
+  - Passed `currentPlanVersion` from `planArtifact.metadata.version` to ProposalCard
+  - Integrated `PlanHistoryDialog` into component JSX
+- Fixed lint error in `PlanTemplateSelector.test.tsx` (removed unused import)
+
+**Commands run:**
+- `npm run typecheck` - Passed
+- `npm run lint` - Passed (11 warnings, all pre-existing)
+
+**Files modified:**
+- `src-tauri/src/domain/repositories/artifact_repository.rs` - Added trait method
+- `src-tauri/src/infrastructure/sqlite/sqlite_artifact_repo.rs` - Implemented version retrieval logic
+- `src-tauri/src/commands/artifact_commands.rs` - Added Tauri command
+- `src-tauri/src/lib.rs` - Registered new command
+- `src/api/artifact.ts` - Added frontend API function
+- `src/components/Ideation/IdeationView.tsx` - Updated ProposalCard and dialog integration
+- `src/components/Ideation/PlanHistoryDialog.tsx` - Created new component
+- `src/components/Ideation/PlanTemplateSelector.test.tsx` - Removed unused import
 
 ### 2026-01-26 19:13:00 - Add plan template selection infrastructure (Phase 16, Task 19)
 

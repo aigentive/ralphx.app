@@ -181,6 +181,7 @@ pub fn run() {
             // Artifact commands
             commands::artifact_commands::get_artifacts,
             commands::artifact_commands::get_artifact,
+            commands::artifact_commands::get_artifact_at_version,
             commands::artifact_commands::create_artifact,
             commands::artifact_commands::update_artifact,
             commands::artifact_commands::delete_artifact,
