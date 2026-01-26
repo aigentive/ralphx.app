@@ -1,15 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 06:00:00
+**Last Updated:** 2026-01-26 06:30:00
 **Phase:** Phase 15b (Task Execution Chat)
-**Tasks Completed:** 10 / 14
-**Current Task:** Add execution history switching via ConversationSelector
+**Tasks Completed:** 11 / 14
+**Current Task:** Add execution-specific UI elements
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 06:30:00 - Add Execution History Switching in ConversationSelector
+
+**What was done:**
+- Updated `src/components/Chat/ConversationSelector.tsx` to display execution history:
+  - Added imports: `format` from date-fns, status icons (CheckCircle2, XCircle, AlertCircle)
+  - Added imports: `AgentRunStatus`, `useQuery`, `chatApi`
+  - Added helper function `getStatusIcon()` to render status icons based on agent run status
+  - Added helper function `formatExecutionDate()` to format execution timestamps
+  - Updated `getConversationTitle()` to show "Execution #N" for task_execution context
+  - Modified component to detect `contextType === "task_execution"`:
+    - Sort executions by creation date DESC (most recent first)
+    - Hide "New Conversation" button (executions created automatically by worker)
+    - Show "Execution History" label instead of "Conversation History"
+    - Query agent run status for each execution conversation with auto-refresh
+  - Added execution-specific rendering:
+    - Display "Execution #N - <timestamp>" format
+    - Show status icon (pulsing dot for running, check/x/alert for completed/failed/cancelled)
+    - Display "Running" badge for active executions
+    - Show status text with color coding (green/red/yellow) for completed states
+    - Highlight current/running execution
+- Updated `src/components/Chat/ChatPanel.tsx` to fetch execution conversations:
+  - Added imports: `chatKeys`, `useQuery`, `chatApi`
+  - Added separate query for execution conversations using `task_execution` context type
+  - Updated ConversationSelector `contextType` prop to use "task_execution" when in execution mode
+  - Use execution conversations query when `isExecutionMode === true`
+
+**Commands run:**
+- `npm run typecheck` - Passed ✓
+- `npm run lint` - Passed ✓ (no new warnings)
+
+**Files modified:**
+- `src/components/Chat/ConversationSelector.tsx`
+- `src/components/Chat/ChatPanel.tsx`
+- `logs/activity.md`
 
 ### 2026-01-26 06:00:00 - Update ChatPanel for Execution Context Detection
 

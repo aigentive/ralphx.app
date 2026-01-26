@@ -6,7 +6,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { chatApi, type ChatMessageResponse } from "@/api/chat";
 import type { ChatContext } from "@/types/chat";
@@ -161,13 +161,11 @@ export function useChat(context: ChatContext) {
   const agentRunStatus = useAgentRunStatus(activeConversationId);
 
   // Update agent running state when status changes
+  // Only update if we have a conversation and the status actually changed
+  const isRunning = agentRunStatus.data?.status === "running";
   useEffect(() => {
-    if (agentRunStatus.data) {
-      setAgentRunning(agentRunStatus.data.status === "running");
-    } else {
-      setAgentRunning(false);
-    }
-  }, [agentRunStatus.data, setAgentRunning]);
+    setAgentRunning(isRunning);
+  }, [isRunning, setAgentRunning]);
 
   // Send message mutation
   const sendMessage = useMutation<ChatMessageResponse, Error, string>({
@@ -336,20 +334,35 @@ export function useChat(context: ChatContext) {
   ]);
 
   // Initialize active conversation if none is set
+  // Use a ref to track initialization and prevent infinite loops
+  const hasInitializedRef = useRef(false);
+
   useEffect(() => {
+    // Only initialize once per context change
+    if (hasInitializedRef.current) {
+      return;
+    }
+
     if (!activeConversationId && conversations.data && conversations.data.length > 0) {
-      // Set the most recent conversation as active
-      const mostRecent = conversations.data.sort((a, b) => {
+      // IMPORTANT: Create a copy before sorting to avoid mutating React Query's cached data
+      const sorted = [...conversations.data].sort((a, b) => {
         const aTime = a.lastMessageAt || a.createdAt;
         const bTime = b.lastMessageAt || b.createdAt;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
-      })[0];
+      });
+      const mostRecent = sorted[0];
 
       if (mostRecent) {
+        hasInitializedRef.current = true;
         setActiveConversation(mostRecent.id);
       }
     }
   }, [activeConversationId, conversations.data, setActiveConversation]);
+
+  // Reset initialization flag when context changes
+  useEffect(() => {
+    hasInitializedRef.current = false;
+  }, [contextType, contextId]);
 
   return {
     // Messages from active conversation

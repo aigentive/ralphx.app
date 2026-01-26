@@ -15,10 +15,12 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useChat } from "@/hooks/useChat";
+import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
+import { useQuery } from "@tanstack/react-query";
+import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -603,17 +605,37 @@ export function ChatPanel({ context }: ChatPanelProps) {
     context.selectedTaskId ? state.tasks[context.selectedTaskId] : undefined
   );
   const isExecutionMode = selectedTask?.internalStatus === "executing";
-  const executionQueuedMessages = useChatStore(
-    selectExecutionQueuedMessages(context.selectedTaskId ?? "")
+
+  // Memoize the selector to avoid creating new function references on each render
+  const taskIdForQueue = context.selectedTaskId ?? "";
+  const executionQueuedMessagesSelector = useMemo(
+    () => selectExecutionQueuedMessages(taskIdForQueue),
+    [taskIdForQueue]
   );
+  const executionQueuedMessages = useChatStore(executionQueuedMessagesSelector);
+
+  // For execution mode, fetch execution conversations directly using task_execution context
+  // For regular chat, use the standard useChat hook
+  const regularChatData = useChat(context);
+
+  // Fetch execution conversations when in execution mode
+  const executionConversationsQuery = useQuery({
+    queryKey: chatKeys.conversationList("task_execution", context.selectedTaskId ?? ""),
+    queryFn: () => chatApi.listConversations("task_execution", context.selectedTaskId ?? ""),
+    enabled: isExecutionMode && !!context.selectedTaskId,
+  });
+
+  // Use execution conversations when in execution mode, otherwise regular conversations
+  const conversations = isExecutionMode
+    ? executionConversationsQuery
+    : regularChatData.conversations;
 
   const {
     messages: activeConversation,
-    conversations,
     sendMessage,
     switchConversation: handleSelectConversation,
     createConversation: handleNewConversation,
-  } = useChat(context);
+  } = regularChatData;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -902,7 +924,15 @@ export function ChatPanel({ context }: ChatPanelProps) {
           <div className="flex items-center gap-1 shrink-0">
             {/* Conversation Selector */}
             <ConversationSelector
-              contextType={context.view === "ideation" ? "ideation" : context.view === "task_detail" ? "task" : "project"}
+              contextType={
+                isExecutionMode
+                  ? "task_execution"
+                  : context.view === "ideation"
+                    ? "ideation"
+                    : context.view === "task_detail"
+                      ? "task"
+                      : "project"
+              }
               contextId={
                 context.view === "ideation" && context.ideationSessionId
                   ? context.ideationSessionId
