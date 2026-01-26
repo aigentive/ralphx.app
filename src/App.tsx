@@ -734,7 +734,7 @@ function AppContent() {
               )}
               {currentView === "ideation" && (
                 <IdeationView
-                  session={activeSession}
+                  session={sessionData?.session ?? activeSession}
                   sessions={allSessions}
                   messages={transformMessages(sessionData?.messages ?? [])}
                   proposals={proposals}
