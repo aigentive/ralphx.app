@@ -286,6 +286,9 @@ fn get_agent_name(context_type: &ChatContextType) -> &'static str {
         ChatContextType::Ideation => "orchestrator-ideation",
         ChatContextType::Task => "chat-task",
         ChatContextType::Project => "chat-project",
+        // TaskExecution conversations are created by ExecutionChatService (Phase 15B)
+        // and don't use the orchestrator pattern
+        ChatContextType::TaskExecution => "worker",
     }
 }
 

@@ -156,6 +156,9 @@ pub async fn send_context_message(
                 ChatContextType::Project => {
                     ChatConversation::new_project(ProjectId::from_string(input.context_id.clone()))
                 }
+                ChatContextType::TaskExecution => {
+                    ChatConversation::new_task_execution(TaskId::from_string(input.context_id.clone()))
+                }
             };
             state
                 .chat_conversation_repo
@@ -230,7 +233,7 @@ pub async fn get_conversation(
                 .await
                 .map_err(|e| e.to_string())?
         }
-        ChatContextType::Task => {
+        ChatContextType::Task | ChatContextType::TaskExecution => {
             let task_id = TaskId::from_string(conversation.context_id.clone());
             state
                 .chat_message_repo
@@ -274,6 +277,9 @@ pub async fn create_conversation(
         }
         ChatContextType::Project => {
             ChatConversation::new_project(ProjectId::from_string(input.context_id.clone()))
+        }
+        ChatContextType::TaskExecution => {
+            ChatConversation::new_task_execution(TaskId::from_string(input.context_id.clone()))
         }
     };
 

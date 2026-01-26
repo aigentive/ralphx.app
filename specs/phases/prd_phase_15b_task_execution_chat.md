@@ -69,7 +69,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test && npm run typecheck",
       "Commit: feat(types): add task_execution context type"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
