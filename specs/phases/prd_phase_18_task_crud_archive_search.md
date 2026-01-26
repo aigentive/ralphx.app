@@ -446,7 +446,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(board): add Show archived toggle to TaskBoard header"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

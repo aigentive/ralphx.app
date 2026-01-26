@@ -1,15 +1,45 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:52:00
+**Last Updated:** 2026-01-26 18:55:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 18 / 30
-**Current Task:** Add Show archived toggle to TaskBoard header
+**Tasks Completed:** 19 / 30
+**Current Task:** Add archived task appearance to TaskCard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:55:00 - Add Show archived toggle to TaskBoard header (Task 20)
+
+**What was done:**
+- Installed shadcn Toggle component via `npx shadcn@latest add toggle`
+- Updated `src/components/tasks/TaskBoard/TaskBoard.tsx` to add archive toggle
+  - Imported `useQuery` from TanStack Query to fetch archived count
+  - Imported `Toggle` from shadcn and `Archive` icon from Lucide
+  - Added `showArchived` and `setShowArchived` from uiStore
+  - Fetched archived count via `useQuery(['archived-count', projectId])`
+  - Added toggle button in new header section above board
+  - Toggle only visible when `archivedCount > 0`
+  - Display shows "Show archived (N)" with Archive icon
+  - Used `pressed={showArchived}` and `onPressedChange={setShowArchived}`
+  - Added custom styling for pressed state: `data-[state=on]:bg-accent/10 data-[state=on]:text-accent`
+- Wrapped board in flex column layout to accommodate header
+  - Header: border-b with toggle button
+  - Board: flex-1 to take remaining space
+- When `showArchived` changes, infinite queries automatically refetch (already handled in hooks.ts)
+
+**Commands:**
+- `npx shadcn@latest add toggle` - Installed Toggle component
+- `npm run typecheck` - Passed with no errors
+- `npm run lint` - Passed (only pre-existing warnings)
+
+**Files modified:**
+- `src/components/tasks/TaskBoard/TaskBoard.tsx` - Added archive toggle in header
+- `src/components/ui/toggle.tsx` - New shadcn component
+- `specs/phases/prd_phase_18_task_crud_archive_search.md` - Ready to mark task 20 as complete
+- `logs/activity.md` - Updated progress
 
 ### 2026-01-26 18:52:00 - Add infinite scroll to Column component (Task 19)
 
