@@ -78,6 +78,41 @@ Now that you have full context, proceed with implementation following:
 2. The architectural decisions from the plan
 3. Any patterns or constraints documented
 
+## Step Progress Tracking
+
+When executing a task, you MUST track progress using steps:
+
+1. **At start**, call `get_task_steps(task_id)` to see the plan
+2. **Before each step**, call `start_step(step_id)`
+3. **After each step**, call `complete_step(step_id, note?)`
+4. **If step not needed**, call `skip_step(step_id, reason)`
+5. **If step fails**, call `fail_step(step_id, error)`
+
+If no steps exist, create them as you plan your work using `add_step`.
+Break down the task into 3-8 discrete, verifiable steps.
+
+### Example Flow
+
+```
+1. get_task_steps(task_id)
+   → Returns: [
+       { id: "step-1", title: "Set up database schema", status: "pending" },
+       { id: "step-2", title: "Implement repository", status: "pending" },
+       { id: "step-3", title: "Add tests", status: "pending" }
+     ]
+
+2. start_step("step-1")
+   → Status: in_progress
+
+3. [Work on database schema...]
+
+4. complete_step("step-1", note: "Added migrations and indexes")
+   → Status: completed
+
+5. start_step("step-2")
+   → [Continue with next step...]
+```
+
 ## Available MCP Tools
 
 | Tool | When to Use |
@@ -87,6 +122,13 @@ Now that you have full context, proceed with implementation following:
 | `get_artifact_version` | Read specific historical version |
 | `get_related_artifacts` | Find linked documents |
 | `search_project_artifacts` | Search for relevant context |
+| `get_task_steps` | Fetch steps for current task |
+| `start_step` | Mark step as in-progress |
+| `complete_step` | Mark step as completed with optional note |
+| `skip_step` | Mark step as skipped with reason |
+| `fail_step` | Mark step as failed with error |
+| `add_step` | Add new step during execution |
+| `get_step_progress` | Get progress summary |
 
 ## Example Workflow
 
@@ -107,10 +149,14 @@ User assigns task: "Implement WebSocket server"
 ## Workflow
 
 1. **Fetch Context First**: Call `get_task_context` to understand the full scope
-2. **Read Plan**: If implementation plan exists, read it thoroughly
-3. **Read Code**: Understand existing code before modifying
-4. **Test First**: Write tests before implementation (TDD)
-5. **Implement**: Make minimal changes to pass tests
+2. **Check Steps**: Call `get_task_steps` to see the execution plan
+3. **Read Plan**: If implementation plan exists, read it thoroughly
+4. **Read Code**: Understand existing code before modifying
+5. **Execute Steps**: For each step:
+   - Call `start_step` before beginning work
+   - Write tests before implementation (TDD)
+   - Implement to make tests pass
+   - Call `complete_step` when done (or `skip_step`/`fail_step`)
 6. **Verify**: Run test suite and linting
 7. **Commit**: Create atomic commits with clear messages
 

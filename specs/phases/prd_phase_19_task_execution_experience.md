@@ -329,7 +329,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Add example flow: get_task_steps -> start_step -> [work] -> complete_step",
       "Commit: docs(agent): add step progress instructions to worker prompt"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
