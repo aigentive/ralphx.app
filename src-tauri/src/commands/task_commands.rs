@@ -98,6 +98,7 @@ pub struct TaskResponse {
     pub updated_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    pub archived_at: Option<String>,
 }
 
 impl From<Task> for TaskResponse {
@@ -115,6 +116,7 @@ impl From<Task> for TaskResponse {
             updated_at: task.updated_at.to_rfc3339(),
             started_at: task.started_at.map(|dt| dt.to_rfc3339()),
             completed_at: task.completed_at.map(|dt| dt.to_rfc3339()),
+            archived_at: task.archived_at.map(|dt| dt.to_rfc3339()),
         }
     }
 }
@@ -437,6 +439,171 @@ pub async fn answer_user_question(
         resumed_status: task.internal_status.as_str().to_string(),
         answer_recorded: true,
     })
+}
+
+/// Archive a task (soft delete)
+///
+/// Sets the archived_at timestamp to now, effectively removing the task from
+/// normal views while preserving it for potential restore.
+///
+/// # Arguments
+/// * `task_id` - The task ID to archive
+/// * `app` - Tauri app handle for event emission
+///
+/// # Returns
+/// * `TaskResponse` - The archived task
+///
+/// # Events
+/// * Emits 'task:archived' with { task_id, project_id }
+#[tauri::command]
+pub async fn archive_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<TaskResponse, String> {
+    let task_id_obj = TaskId::from_string(task_id.clone());
+
+    // Archive the task via repository
+    let archived_task = state
+        .task_repo
+        .archive(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit event for real-time UI updates
+    let _ = app.emit(
+        "task:archived",
+        serde_json::json!({
+            "taskId": archived_task.id.as_str(),
+            "projectId": archived_task.project_id.as_str(),
+        }),
+    );
+
+    Ok(TaskResponse::from(archived_task))
+}
+
+/// Restore an archived task
+///
+/// Clears the archived_at timestamp, making the task visible in normal views again.
+///
+/// # Arguments
+/// * `task_id` - The task ID to restore
+/// * `app` - Tauri app handle for event emission
+///
+/// # Returns
+/// * `TaskResponse` - The restored task
+///
+/// # Events
+/// * Emits 'task:restored' with { task_id, project_id }
+#[tauri::command]
+pub async fn restore_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<TaskResponse, String> {
+    let task_id_obj = TaskId::from_string(task_id.clone());
+
+    // Restore the task via repository
+    let restored_task = state
+        .task_repo
+        .restore(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit event for real-time UI updates
+    let _ = app.emit(
+        "task:restored",
+        serde_json::json!({
+            "taskId": restored_task.id.as_str(),
+            "projectId": restored_task.project_id.as_str(),
+        }),
+    );
+
+    Ok(TaskResponse::from(restored_task))
+}
+
+/// Permanently delete a task (hard delete)
+///
+/// Only works on archived tasks. This is irreversible.
+///
+/// # Arguments
+/// * `task_id` - The task ID to permanently delete
+/// * `app` - Tauri app handle for event emission
+///
+/// # Returns
+/// * `()` - Success or error
+///
+/// # Errors
+/// * Task not found
+/// * Task is not archived (safety check)
+///
+/// # Events
+/// * Emits 'task:deleted' with { task_id, project_id }
+#[tauri::command]
+pub async fn permanently_delete_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let task_id_obj = TaskId::from_string(task_id.clone());
+
+    // Get the task first to check if it's archived and get project_id for event
+    let task = state
+        .task_repo
+        .get_by_id(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    // Safety check: only allow permanent deletion of archived tasks
+    if task.archived_at.is_none() {
+        return Err(format!(
+            "Cannot permanently delete non-archived task: {}. Archive it first.",
+            task_id
+        ));
+    }
+
+    let project_id = task.project_id.as_str().to_string();
+
+    // Permanently delete
+    state
+        .task_repo
+        .delete(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit event for real-time UI updates
+    let _ = app.emit(
+        "task:deleted",
+        serde_json::json!({
+            "taskId": task_id,
+            "projectId": project_id,
+        }),
+    );
+
+    Ok(())
+}
+
+/// Get the count of archived tasks for a project
+///
+/// Used to show the archived count badge in the UI.
+///
+/// # Arguments
+/// * `project_id` - The project ID
+///
+/// # Returns
+/// * `u32` - The count of archived tasks
+#[tauri::command]
+pub async fn get_archived_count(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<u32, String> {
+    let project_id_obj = ProjectId::from_string(project_id);
+    state
+        .task_repo
+        .get_archived_count(&project_id_obj)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -898,5 +1065,143 @@ mod tests {
         assert_eq!(input.target, "invalid");
 
         // In the actual command, invalid target would be handled as backlog
+    }
+
+    // ========================================
+    // Archive Commands Tests
+    // ========================================
+
+    use chrono::Utc;
+
+    #[tokio::test]
+    async fn test_archive_task_sets_archived_at() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create a task
+        let task = Task::new(project_id, "Task to Archive".to_string());
+        let created = state.task_repo.create(task).await.unwrap();
+
+        // Verify not archived initially
+        assert!(created.archived_at.is_none());
+
+        // Archive the task
+        let archived = state.task_repo.archive(&created.id).await.unwrap();
+
+        // Verify archived_at is set
+        assert!(archived.archived_at.is_some());
+        assert_eq!(archived.id, created.id);
+        assert_eq!(archived.title, "Task to Archive");
+    }
+
+    #[tokio::test]
+    async fn test_restore_task_clears_archived_at() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create and archive a task
+        let task = Task::new(project_id, "Task to Restore".to_string());
+        let created = state.task_repo.create(task).await.unwrap();
+        let archived = state.task_repo.archive(&created.id).await.unwrap();
+
+        // Verify it's archived
+        assert!(archived.archived_at.is_some());
+
+        // Restore the task
+        let restored = state.task_repo.restore(&archived.id).await.unwrap();
+
+        // Verify archived_at is cleared
+        assert!(restored.archived_at.is_none());
+        assert_eq!(restored.id, created.id);
+        assert_eq!(restored.title, "Task to Restore");
+    }
+
+    #[tokio::test]
+    async fn test_get_archived_count_returns_correct_count() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create several tasks
+        let task1 = Task::new(project_id.clone(), "Task 1".to_string());
+        let task2 = Task::new(project_id.clone(), "Task 2".to_string());
+        let task3 = Task::new(project_id.clone(), "Task 3".to_string());
+
+        let created1 = state.task_repo.create(task1).await.unwrap();
+        let created2 = state.task_repo.create(task2).await.unwrap();
+        let _created3 = state.task_repo.create(task3).await.unwrap();
+
+        // Archive two tasks
+        state.task_repo.archive(&created1.id).await.unwrap();
+        state.task_repo.archive(&created2.id).await.unwrap();
+
+        // Check archived count
+        let count = state.task_repo.get_archived_count(&project_id).await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_archived_count_zero_when_none_archived() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create tasks but don't archive them
+        state.task_repo.create(Task::new(project_id.clone(), "Active 1".to_string())).await.unwrap();
+        state.task_repo.create(Task::new(project_id.clone(), "Active 2".to_string())).await.unwrap();
+
+        // Check archived count
+        let count = state.task_repo.get_archived_count(&project_id).await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_permanently_delete_archived_task_succeeds() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create and archive a task
+        let task = Task::new(project_id, "Task to Delete".to_string());
+        let created = state.task_repo.create(task).await.unwrap();
+        let archived = state.task_repo.archive(&created.id).await.unwrap();
+
+        // Verify it's archived
+        assert!(archived.archived_at.is_some());
+
+        // Permanently delete should succeed
+        state.task_repo.delete(&archived.id).await.unwrap();
+
+        // Verify task is gone
+        let found = state.task_repo.get_by_id(&archived.id).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_task_response_includes_archived_at() {
+        let project_id = ProjectId::from_string("proj-123".to_string());
+        let mut task = Task::new(project_id, "Archived Task".to_string());
+        task.archived_at = Some(Utc::now());
+
+        let response = TaskResponse::from(task);
+
+        // Verify archived_at is in response
+        assert!(response.archived_at.is_some());
+
+        // Verify it serializes correctly
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"archivedAt\":"));
+    }
+
+    #[tokio::test]
+    async fn test_task_response_archived_at_null_when_not_archived() {
+        let project_id = ProjectId::from_string("proj-123".to_string());
+        let task = Task::new(project_id, "Active Task".to_string());
+
+        let response = TaskResponse::from(task);
+
+        // Verify archived_at is null
+        assert!(response.archived_at.is_none());
+
+        // Verify it serializes correctly
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"archivedAt\":null"));
     }
 }
