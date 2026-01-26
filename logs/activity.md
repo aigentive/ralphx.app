@@ -1,15 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:48:49
+**Last Updated:** 2026-01-26 18:52:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 17 / 30
-**Current Task:** Add infinite scroll to Column component
+**Tasks Completed:** 18 / 30
+**Current Task:** Add Show archived toggle to TaskBoard header
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:52:00 - Add infinite scroll to Column component (Task 19)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/Column.tsx` to support infinite scroll
+  - Added `useRef` for sentinel element at bottom of task list
+  - Implemented IntersectionObserver to trigger `fetchNextPage` when sentinel becomes visible
+  - Observer triggers only when `hasNextPage && !isFetchingNextPage && fetchNextPage` conditions met
+  - Added 100px `rootMargin` to load next page slightly before reaching bottom
+- Added skeleton loading states
+  - Created `TaskSkeleton` component showing shimmer placeholder
+  - Display 3 skeleton cards during initial column load (`isLoading` state)
+- Added loading spinner
+  - Display `Loader2` (Lucide) with orange color when `isFetchingNextPage` is true
+  - Positioned at bottom of task list during pagination fetch
+- Fixed TypeScript and ESLint issues
+  - Fixed `entry` possibly undefined error by using `entries[0]` with null check
+  - Resolved exhaustive-deps warning by destructuring column props inside effect
+
+**Commands:**
+- `npm run lint` - Passed (Column.tsx warning fixed)
+- `npm run typecheck` - Passed (Column.tsx error fixed)
+
+**Files modified:**
+- `src/components/tasks/TaskBoard/Column.tsx` - Added infinite scroll with IntersectionObserver
+- `specs/phases/prd_phase_18_task_crud_archive_search.md` - Marked task 19 as complete
+- `logs/activity.md` - Updated progress
 
 ### 2026-01-26 18:48:49 - Add infinite scroll orchestration to TaskBoard (Task 18)
 
