@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:41:16
+**Last Updated:** 2026-01-26 06:15:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 9 / 24
-**Current Task:** Create ideation settings types and API
+**Tasks Completed:** 10 / 24
+**Current Task:** Update ideation types for plan artifact fields
 
 ---
 
@@ -12404,3 +12404,40 @@ Phase 15b (pending) - Task Execution Chat: Persist worker execution output, view
 - `npm run lint` - passed
 - `npm run typecheck` - passed
 
+
+### 2026-01-26 06:15:00 - Create Ideation Settings Types and API (Phase 16, Task 10)
+
+**What was done:**
+- Created `src/types/ideation-config.ts` with complete type definitions:
+  - `IdeationPlanMode` type with 3 values: 'required', 'optional', 'parallel'
+  - `IdeationSettings` interface with 4 fields (planMode, requirePlanApproval, suggestPlansForComplex, autoLinkProposals)
+  - Zod schemas for validation: `IdeationPlanModeSchema`, `IdeationSettingsSchema`, `IdeationSettingsResponseSchema`
+  - Default settings matching Rust backend defaults (optional mode, no approval required, suggestions enabled)
+- Updated `src/api/ideation.ts` with settings operations:
+  - Added type-only imports for IdeationSettings types
+  - Imported IdeationSettingsResponseSchema for validation
+  - Created `transformIdeationSettings` function to convert snake_case to camelCase
+  - Added `settings` namespace to ideationApi with two methods:
+    - `get()` - Fetches current ideation settings via `get_ideation_settings` command
+    - `update(settings)` - Updates settings via `update_ideation_settings` command
+  - Both methods handle snake_case/camelCase conversion automatically
+- Verified TypeScript compilation with `npm run typecheck` (passed)
+- Task marked as complete in PRD
+
+**Files created:**
+- `src/types/ideation-config.ts` - Ideation settings type definitions and schemas
+
+**Files modified:**
+- `src/api/ideation.ts` - Added settings API methods
+- `specs/phases/prd_phase_16_ideation_plan_artifacts.md` - Marked task as passes: true
+
+**Commands run:**
+- `npm run typecheck` (passed)
+
+**Acceptance criteria verified:**
+- ✓ IdeationPlanMode type created with 3 values matching backend enum
+- ✓ IdeationSettings interface created with all 4 fields
+- ✓ Zod schemas created for validation
+- ✓ getIdeationSettings() API method implemented
+- ✓ updateIdeationSettings(settings) API method implemented
+- ✓ TypeScript type checking passes
