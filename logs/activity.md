@@ -1,14 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:42:30
+**Last Updated:** 2026-01-26 02:44:45
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 20 / 26
-**Current Task:** Update ChatInput for queue mode and keyboard navigation
+**Tasks Completed:** 21 / 26
+**Current Task:** Update ChatPanel with conversation selector, queue UI, and event handling
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:44:45 - Updated ChatInput for Queue Mode and Keyboard Navigation
+
+**What was done:**
+- Updated `src/components/Chat/ChatInput.tsx`:
+  - Added queue mode support with new props:
+    - `isAgentRunning`: enables queue mode when agent is running
+    - `onQueue`: callback for queueing messages instead of sending
+    - `hasQueuedMessages`: indicates if queue has messages
+    - `onEditLastQueued`: callback to edit the last queued message
+  - Dynamic placeholder: shows "(will be queued)" when agent is running
+  - Queue behavior: calls `onQueue` instead of `onSend` when agent running
+  - Up arrow keyboard navigation: edits last queued message when:
+    - Input is empty
+    - Queue has messages
+    - Up arrow is pressed
+  - Updated helper text to show "↑ to edit last queued message" when queue exists
+  - Proper state management for controlled/uncontrolled modes
+
+- Updated `src/components/Chat/ChatInput.test.tsx`:
+  - Added 14 new tests for queue mode and keyboard navigation:
+    - Queue mode placeholder display
+    - Calls onQueue when agent running
+    - Calls onSend when agent not running
+    - Clears textarea after queueing
+    - Queue on Enter keypress
+    - Up arrow edits last queued message (empty input only)
+    - Does not edit on Up with text in input
+    - Does not edit on Up without queued messages
+    - Helper text shows/hides based on queue state
+  - All 50 tests passing
+
+**Commands run:**
+- `npm run test -- ChatInput.test.tsx` (50 tests passed)
+- `npm run lint && npm run typecheck` (passed)
 
 ### 2026-01-26 02:38:30 - Created ConversationSelector Component
 

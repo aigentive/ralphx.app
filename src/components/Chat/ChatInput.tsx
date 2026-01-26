@@ -30,6 +30,14 @@ export interface ChatInputProps {
   showHelperText?: boolean;
   /** Auto-focus the textarea on mount */
   autoFocus?: boolean;
+  /** Whether an agent is currently running (enables queue mode) */
+  isAgentRunning?: boolean;
+  /** Callback when message is queued (while agent running) */
+  onQueue?: (message: string) => void;
+  /** Whether there are queued messages */
+  hasQueuedMessages?: boolean;
+  /** Callback to edit the last queued message */
+  onEditLastQueued?: () => void;
 }
 
 // ============================================================================
@@ -103,6 +111,10 @@ export function ChatInput({
   onChange: onChangeProp,
   showHelperText = true,
   autoFocus = false,
+  isAgentRunning = false,
+  onQueue,
+  hasQueuedMessages = false,
+  onEditLastQueued,
 }: ChatInputProps) {
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
@@ -110,6 +122,11 @@ export function ChatInput({
   const value = isControlled ? controlledValue : internalValue;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Determine the actual placeholder text
+  const effectivePlaceholder = isAgentRunning
+    ? `${placeholder} (will be queued)`
+    : placeholder;
 
   // Auto-focus on mount if requested
   useEffect(() => {
@@ -131,23 +148,43 @@ export function ChatInput({
     [isControlled, onChangeProp]
   );
 
-  // Handle sending message
+  // Handle sending or queueing message
   const handleSend = useCallback(async () => {
     const trimmedValue = value.trim();
     if (!trimmedValue || isSending) return;
 
     try {
-      await onSend(trimmedValue);
-      // Clear input only on successful send
-      if (isControlled) {
-        onChangeProp?.("");
+      // If agent is running, queue the message instead of sending
+      if (isAgentRunning && onQueue) {
+        onQueue(trimmedValue);
+        // Clear input after queueing
+        if (isControlled) {
+          onChangeProp?.("");
+        } else {
+          setInternalValue("");
+        }
       } else {
-        setInternalValue("");
+        // Normal send flow
+        await onSend(trimmedValue);
+        // Clear input only on successful send
+        if (isControlled) {
+          onChangeProp?.("");
+        } else {
+          setInternalValue("");
+        }
       }
     } catch {
       // Don't clear on error - let user retry
     }
-  }, [value, isSending, onSend, isControlled, onChangeProp]);
+  }, [
+    value,
+    isSending,
+    isAgentRunning,
+    onQueue,
+    onSend,
+    isControlled,
+    onChangeProp,
+  ]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -155,9 +192,13 @@ export function ChatInput({
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
+      } else if (e.key === "ArrowUp" && !value && hasQueuedMessages) {
+        // Up arrow in empty input: edit last queued message
+        e.preventDefault();
+        onEditLastQueued?.();
       }
     },
-    [handleSend]
+    [handleSend, value, hasQueuedMessages, onEditLastQueued]
   );
 
   const isDisabled = isSending;
@@ -190,7 +231,7 @@ export function ChatInput({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           disabled={isDisabled}
-          placeholder={placeholder}
+          placeholder={effectivePlaceholder}
           rows={1}
           aria-label="Message input"
           className="flex-1 px-3 py-2 text-sm resize-none rounded-lg outline-none focus:ring-1 focus:ring-offset-0"
@@ -226,7 +267,9 @@ export function ChatInput({
           className="text-xs mt-1 ml-12"
           style={{ color: "var(--text-muted)" }}
         >
-          Press Enter to send, Shift+Enter for new line
+          {hasQueuedMessages
+            ? "Press Enter to send, Shift+Enter for new line, ↑ to edit last queued message"
+            : "Press Enter to send, Shift+Enter for new line"}
         </p>
       )}
     </div>
