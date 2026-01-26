@@ -1,15 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 22:15:00
+**Last Updated:** 2026-01-26 21:52:22
 **Phase:** Task Execution Experience
-**Tasks Completed:** 35 / 42
-**Current Task:** Add steps to task creation command
+**Tasks Completed:** 36 / 42
+**Current Task:** Update CLAUDE.md files for Phase 19
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:52:22 - Add steps to task creation command
+
+**What was done:**
+- Updated `src-tauri/src/commands/task_commands.rs`:
+  - Added optional `steps: Option<Vec<String>>` parameter to CreateTaskInput
+  - Modified create_task command to handle steps:
+    - Create task first
+    - If steps provided and non-empty, create TaskStep entities for each
+    - Use TaskStep::new() constructor with sort_order from enumerate index
+    - Set created_by = "user" for all steps
+    - Use bulk_create for efficiency
+  - Added 3 unit tests:
+    - test_create_task_with_steps: verifies 3 steps created correctly with proper sort_order and created_by
+    - test_create_task_without_steps: verifies no steps when None provided
+    - test_create_task_with_empty_steps_array: verifies empty array handled correctly
+  - Fixed existing test_create_task_with_defaults to include steps: None
+- All tests passing (5 step-related tests, 3214 total tests)
+- Task complete
+
+**Commands:**
+- `cargo test --lib commands::task_commands::tests::test_create_task_with_steps`
+- `cargo test --lib 'commands::task_commands::tests::test_create_task_with'`
+- `cargo test`
+- `cargo clippy --lib`
 
 ### 2026-01-26 22:15:00 - Add step editor to TaskEditForm
 
