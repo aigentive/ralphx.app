@@ -3,6 +3,7 @@
 
 pub mod agent_profile_commands;
 pub mod artifact_commands;
+pub mod context_chat_commands;
 pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
@@ -78,4 +79,9 @@ pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_
 pub use permission_commands::{
     get_pending_permissions, resolve_permission_request, ResolvePermissionArgs,
     ResolvePermissionResponse,
+};
+pub use context_chat_commands::{
+    create_conversation, get_agent_run_status, get_conversation, list_conversations,
+    send_context_message, AgentRunResponse, ChatConversationResponse, ChatMessageResponse as ContextChatMessageResponse,
+    ConversationWithMessagesResponse, CreateConversationInput, SendContextMessageInput,
 };
