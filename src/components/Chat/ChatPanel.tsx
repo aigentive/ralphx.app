@@ -698,11 +698,17 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
+  // Streaming state - accumulates text chunks as they arrive
+  const [streamingText, setStreamingText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const lastMessageCountRef = useRef(0);
+  // Ref for activeConversationId so event listeners always have current value
+  const activeConversationIdRef = useRef(activeConversationId);
+  activeConversationIdRef.current = activeConversationId;
 
   // Extract messages array from active conversation
   const messagesData = activeConversation.data?.messages ?? [];
@@ -723,12 +729,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }
   }, [isCollapsed]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change or streaming text updates
   useEffect(() => {
-    if (messagesEndRef.current && messagesData.length) {
+    if (messagesEndRef.current && (messagesData.length || streamingText)) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messagesData.length]);
+  }, [messagesData.length, streamingText]);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -824,11 +830,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
     (async () => {
       // Listen for chat chunks (streaming text)
-      const chunkUnlisten = await listen<{ text: string; message_id: string }>(
+      const chunkUnlisten = await listen<{ text: string; conversation_id: string }>(
         "chat:chunk",
         (event) => {
-          console.log("Chat chunk received:", event.payload);
-          // TODO: Update message in real-time (next task)
+          // Only update if this chunk is for our active conversation
+          if (event.payload.conversation_id === activeConversationIdRef.current) {
+            setIsStreaming(true);
+            setStreamingText((prev) => prev + event.payload.text);
+          }
         }
       );
       unlisteners.push(chunkUnlisten);
@@ -838,44 +847,56 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         tool_name: string;
         arguments: unknown;
         result: unknown;
+        conversation_id: string;
       }>("chat:tool_call", (event) => {
         console.log("Tool call received:", event.payload);
-        // TODO: Display tool call (next task)
+        // Tool calls are shown in the final persisted message
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Note: chat:run_completed is handled by useChat hook for queue processing
+      // Listen for chat run completion - clear streaming state
+      const runCompletedUnlisten = await listen<{
+        conversation_id: string;
+      }>("chat:run_completed", (event) => {
+        if (event.payload.conversation_id === activeConversationIdRef.current) {
+          setStreamingText("");
+          setIsStreaming(false);
+        }
+      });
+      unlisteners.push(runCompletedUnlisten);
 
       // Execution-specific events (Phase 15B)
-      // Listen for execution chunks
-      const execChunkUnlisten = await listen<{ text: string; task_id: string }>(
+      // Listen for execution chunks - accumulate streaming text
+      const execChunkUnlisten = await listen<{ text: string; conversation_id: string }>(
         "execution:chunk",
         (event) => {
-          console.log("Execution chunk received:", event.payload);
-          // TODO: Update execution message in real-time
+          // Update streaming text for execution chunks
+          // Note: execution mode uses task_execution context, so check if we're showing that conversation
+          setIsStreaming(true);
+          setStreamingText((prev) => prev + event.payload.text);
         }
       );
       unlisteners.push(execChunkUnlisten);
 
       // Listen for execution tool calls
       const execToolCallUnlisten = await listen<{
-        task_id: string;
+        conversation_id: string;
         tool_name: string;
         arguments: unknown;
       }>("execution:tool_call", (event) => {
         console.log("Execution tool call received:", event.payload);
-        // TODO: Display tool call in execution context
+        // Tool calls are shown in the final persisted message
       });
       unlisteners.push(execToolCallUnlisten);
 
-      // Listen for execution completion
+      // Listen for execution completion - clear streaming and refetch
       const execCompletedUnlisten = await listen<{
-        task_id: string;
         conversation_id: string;
-      }>("execution:completed", (event) => {
+      }>("execution:run_completed", (event) => {
         console.log("Worker execution completed:", event.payload);
-        // Execution completion is handled by task status changes
-        // Queue processing happens on backend
+        setStreamingText("");
+        setIsStreaming(false);
+        // The query will auto-refetch due to the task:event invalidation
       });
       unlisteners.push(execCompletedUnlisten);
     })();
@@ -1019,7 +1040,27 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                     isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
-                {isSending && <TypingIndicator />}
+                {/* Show streaming text as it arrives */}
+                {isStreaming && streamingText && (
+                  <div className="flex items-start gap-2 mb-3">
+                    <Bot className="w-3.5 h-3.5 mt-2.5 shrink-0 text-[var(--text-muted)]" />
+                    <div
+                      className="px-3 py-2 text-sm rounded-[10px_10px_10px_4px] max-w-[85%]"
+                      style={{
+                        backgroundColor: "var(--bg-elevated)",
+                        border: "1px solid var(--border-subtle)",
+                      }}
+                    >
+                      <div className="prose prose-sm prose-invert max-w-none">
+                        <ReactMarkdown components={markdownComponents}>
+                          {streamingText}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Show typing indicator when sending but not yet streaming */}
+                {isSending && !isStreaming && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </>
             )}
