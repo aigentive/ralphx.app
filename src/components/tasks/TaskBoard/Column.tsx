@@ -10,16 +10,18 @@
  * - Drop zone with orange glow on drag-over
  */
 
-import { useDroppable } from "@dnd-kit/core";
+import { useDroppable, useDndContext } from "@dnd-kit/core";
 import { Inbox, XCircle, Loader2 } from "lucide-react";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import type { BoardColumn } from "./hooks";
 import { TaskCard } from "./TaskCard";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InlineTaskAdd } from "../InlineTaskAdd";
 
 interface ColumnProps {
   column: BoardColumn;
+  projectId: string;
   isOver?: boolean;
   isInvalid?: boolean;
   onTaskSelect?: (taskId: string) => void;
@@ -59,9 +61,12 @@ function TaskSkeleton() {
   );
 }
 
-export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }: ColumnProps) {
+export function Column({ column, projectId, isOver, isInvalid, onTaskSelect, hiddenTaskId }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const { active } = useDndContext();
+  const isDragging = active !== null;
 
   // Infinite scroll with IntersectionObserver
   useEffect(() => {
@@ -118,6 +123,12 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
     };
   };
 
+  // Determine if this column should show InlineTaskAdd
+  const showInlineAdd =
+    isHovered &&
+    !isDragging &&
+    (column.id === "draft" || column.id === "backlog");
+
   return (
     <div
       data-testid={`column-${column.id}`}
@@ -128,6 +139,8 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
         maxWidth: "320px",
         scrollSnapAlign: "start",
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Glass effect header */}
       <div
@@ -184,6 +197,11 @@ export function Column({ column, isOver, isInvalid, onTaskSelect, hiddenTaskId }
               </div>
             )}
           </>
+        )}
+
+        {/* Inline task add - appears on hover (only in draft/backlog columns, not during drag) */}
+        {showInlineAdd && (
+          <InlineTaskAdd projectId={projectId} columnId={column.id} />
         )}
       </div>
     </div>

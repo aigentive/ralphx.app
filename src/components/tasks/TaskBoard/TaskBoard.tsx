@@ -174,6 +174,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
             <Column
               key={column.id}
               column={column}
+              projectId={projectId}
               isOver={overColumnId === column.id}
               isInvalid={
                 overColumnId === column.id && lockedColumns.includes(column.id)
