@@ -1179,6 +1179,8 @@ pub enum MessageRole {
     Orchestrator,
     /// System message (e.g., session started, context changed)
     System,
+    /// Message from the Worker AI agent (task execution output)
+    Worker,
 }
 
 impl Default for MessageRole {
@@ -1193,6 +1195,7 @@ impl std::fmt::Display for MessageRole {
             MessageRole::User => write!(f, "user"),
             MessageRole::Orchestrator => write!(f, "orchestrator"),
             MessageRole::System => write!(f, "system"),
+            MessageRole::Worker => write!(f, "worker"),
         }
     }
 }
@@ -1219,6 +1222,7 @@ impl FromStr for MessageRole {
             "user" => Ok(MessageRole::User),
             "orchestrator" => Ok(MessageRole::Orchestrator),
             "system" => Ok(MessageRole::System),
+            "worker" => Ok(MessageRole::Worker),
             _ => Err(ParseMessageRoleError {
                 value: s.to_string(),
             }),
