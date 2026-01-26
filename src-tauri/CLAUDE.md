@@ -56,12 +56,16 @@ src-tauri/
 │   │   ├── dependency_service.rs
 │   │   ├── priority_service.rs
 │   │   ├── apply_service.rs
-│   │   └── orchestrator_service.rs
+│   │   ├── orchestrator_service.rs  # Context-aware chat with --resume support
+│   │   ├── permission_state.rs      # Permission bridge for UI-based tool approval
+│   │   └── http_server.rs           # HTTP server (port 3847) for MCP proxy
 │   │
 │   ├── commands/           # Tauri commands (thin IPC layer)
 │   │   ├── task_commands.rs
 │   │   ├── project_commands.rs
 │   │   ├── ideation_commands.rs
+│   │   ├── context_chat_commands.rs  # Context-aware chat commands (Phase 15)
+│   │   ├── permission_commands.rs    # Permission resolution commands
 │   │   ├── workflow_commands.rs
 │   │   ├── artifact_commands.rs
 │   │   ├── research_commands.rs
@@ -222,7 +226,9 @@ Key files:
 | `Review` | `entities/review.rs` | Code review records |
 | `IdeationSession` | `entities/ideation.rs` | Chat-based ideation session |
 | `TaskProposal` | `entities/ideation.rs` | Proposed task from ideation |
-| `ChatMessage` | `entities/ideation.rs` | Chat messages in sessions |
+| `ChatMessage` | `entities/ideation.rs` | Chat messages (with tool_calls field) |
+| `ChatConversation` | `entities/chat_conversation.rs` | Chat conversation with Claude session tracking (Phase 15) |
+| `AgentRun` | `entities/agent_run.rs` | Agent execution status tracking (Phase 15) |
 | `WorkflowSchema` | `entities/workflow.rs` | Kanban column configuration |
 | `Artifact` | `entities/artifact.rs` | Generated artifacts (PRD, etc.) |
 | `ResearchProcess` | `entities/research.rs` | Research task tracking |
@@ -250,6 +256,8 @@ Command categories:
 - **Task commands** - CRUD, status changes, blocking
 - **Project commands** - Project management
 - **Ideation commands** - Sessions, proposals, chat, orchestrator
+- **Context chat commands** - Context-aware chat with conversations, agent runs (Phase 15)
+- **Permission commands** - Permission resolution for UI-based tool approval (Phase 15)
 - **Workflow commands** - Custom workflow schemas
 - **Artifact commands** - Artifact and bucket management
 - **Research commands** - Research process control
@@ -392,7 +400,9 @@ Key tables:
 - `ideation_sessions` - Ideation sessions
 - `task_proposals` - Task proposals
 - `proposal_dependencies` - Proposal DAG
-- `chat_messages` - Chat history
+- `chat_messages` - Chat history (with tool_calls JSON field)
+- `chat_conversations` - Chat conversations with Claude session IDs (Phase 15)
+- `agent_runs` - Agent execution tracking (Phase 15)
 - `task_dependencies` - Task blockers
 - `workflows` - Workflow schemas
 - `artifacts` / `artifact_buckets` - Artifact system
@@ -485,4 +495,83 @@ pub trait AgenticClient: Send + Sync {
 - `Reviewer` - Reviews implementations
 - `Supervisor` - Oversees execution
 - `QA` - Runs QA tests
-- `Orchestrator` - Handles ideation chat
+- `Orchestrator` - Handles ideation chat (with MCP tools)
+- `chat-task` - Task-focused chat (with MCP tools)
+- `chat-project` - Project-focused chat (with MCP tools)
+
+---
+
+## Context-Aware Chat System (Phase 15)
+
+### Architecture Overview
+
+The context-aware chat system enables multi-conversation chat with full MCP tool integration:
+
+```
+Frontend (React)
+    ↓ Tauri IPC
+Backend (Rust)
+    ├─→ HTTP Server (port 3847) ─→ MCP Server (TypeScript proxy)
+    │                                      ↓
+    │                              RalphX business logic via HTTP
+    └─→ Claude CLI (--agent flag, --resume for continuation)
+           ├─→ RALPHX_AGENT_TYPE env var passed to MCP
+           └─→ MCP Server returns scoped tools per agent type
+```
+
+### Key Components
+
+**Backend:**
+- `http_server.rs` - Axum HTTP server (port 3847) exposing RalphX operations to MCP server
+- `orchestrator_service.rs` - Spawns Claude CLI with `--agent` and `--resume` flags, captures session IDs
+- `permission_state.rs` - Long-polling permission bridge for UI-based tool approval
+- `context_chat_commands.rs` - Tauri commands for sending messages, managing conversations
+- `permission_commands.rs` - Tauri commands for resolving permission requests
+- `chat_conversation_repository.rs` - Manages conversations with Claude session ID tracking
+- `agent_run_repository.rs` - Tracks agent execution status (running/completed/failed)
+
+**MCP Server (ralphx-mcp-server/):**
+- TypeScript proxy that exposes RalphX tools to Claude via MCP protocol
+- Reads `RALPHX_AGENT_TYPE` env var to scope tools per agent
+- Forwards all tool calls to Tauri backend via HTTP (no business logic in MCP)
+- Implements `permission_request` MCP tool for UI-based approval
+
+**Tool Scoping:**
+| Agent Type | Allowed MCP Tools |
+|------------|------------------|
+| `orchestrator-ideation` | create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency |
+| `chat-task` | update_task, add_task_note, get_task_details |
+| `chat-project` | suggest_task, list_tasks |
+| `reviewer` | complete_review (submit review decision) |
+| `worker`, `supervisor`, `qa-prep`, `qa-tester` | None (no MCP tools) |
+
+### Session Management
+
+**Two types of IDs:**
+1. **RalphX Context ID** - Our internal IDs (ideation session, task, project)
+2. **Claude Session ID** - Claude's session ID for `--resume` flag
+
+**Flow:**
+1. User sends first message → Claude CLI spawned with `--agent orchestrator-ideation`
+2. Claude returns `session_id` in stream-json output → stored in `chat_conversations.claude_session_id`
+3. User sends follow-up → Claude CLI spawned with `--resume <session_id>` → Claude remembers full context
+
+### Permission Bridge
+
+Enables UI-based approval for non-pre-approved tools:
+
+1. Agent calls `permission_request` MCP tool
+2. MCP server POSTs to `/api/permission/request` → returns `request_id`
+3. Tauri backend emits `permission:request` event → PermissionDialog appears
+4. MCP server long-polls `/api/permission/await/:request_id` (5 min timeout)
+5. User clicks Allow/Deny → calls `resolve_permission_request` Tauri command
+6. Backend signals waiting MCP request → MCP returns decision to Claude CLI
+7. Claude CLI continues or stops based on decision
+
+### Events
+
+The orchestrator service emits real-time Tauri events:
+- `chat:message_created` - New message saved
+- `chat:chunk` - Streaming response chunk
+- `chat:tool_call` - Tool call detected in stream
+- `chat:run_completed` - Agent finished (triggers queue processing)

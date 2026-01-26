@@ -55,6 +55,7 @@ ralphx/
 ├── ralphx-plugin/              # Claude Code plugin (agents, skills, hooks)
 │   ├── .claude-plugin/
 │   │   └── plugin.json         # Plugin manifest
+│   ├── .mcp.json               # MCP server configuration (ralphx MCP server)
 │   ├── agents/                 # All agent definitions
 │   │   ├── worker.md
 │   │   ├── reviewer.md
@@ -63,7 +64,9 @@ ralphx/
 │   │   ├── deep-researcher.md
 │   │   ├── qa-prep.md
 │   │   ├── qa-executor.md
-│   │   └── orchestrator-ideation.md
+│   │   ├── orchestrator-ideation.md
+│   │   ├── chat-task.md        # Task-focused chat agent (Phase 15)
+│   │   └── chat-project.md     # Project-focused chat agent (Phase 15)
 │   ├── skills/                 # All skill definitions
 │   │   ├── coding-standards/
 │   │   ├── testing-patterns/
@@ -78,6 +81,15 @@ ralphx/
 │   │   └── dependency-analysis/
 │   └── hooks/                  # Plugin hooks
 │       └── hooks.json
+│
+├── ralphx-mcp-server/          # MCP server (TypeScript proxy to Tauri backend)
+│   ├── package.json            # MCP SDK dependency
+│   ├── tsconfig.json           # TypeScript config
+│   └── src/
+│       ├── index.ts            # MCP server entry point with tool scoping
+│       ├── tauri-client.ts     # HTTP client for Tauri backend
+│       ├── tools.ts            # Tool definitions (proxied to backend)
+│       └── permission-handler.ts # Permission request MCP tool
 │
 └── screenshots/                # Visual verification (via tauri-visual-test skill)
 ```
@@ -110,13 +122,15 @@ The Rust `ClaudeCodeClient` automatically adds `--plugin-dir ./ralphx-plugin` to
 | Agent | Role | Description |
 |-------|------|-------------|
 | `worker` | Worker | Executes implementation tasks |
-| `reviewer` | Reviewer | Reviews code changes |
+| `reviewer` | Reviewer | Reviews code changes (has complete_review MCP tool) |
 | `supervisor` | Supervisor | Monitors task execution |
 | `orchestrator` | Orchestrator | Coordinates multi-step tasks |
 | `deep-researcher` | Researcher | Conducts thorough research |
 | `qa-prep` | QA | Generates acceptance criteria |
 | `qa-executor` | QA | Executes browser tests |
-| `orchestrator-ideation` | Ideation | Facilitates brainstorming |
+| `orchestrator-ideation` | Ideation | Facilitates brainstorming (has ideation MCP tools) |
+| `chat-task` | Chat | Task-focused chat (has task MCP tools) |
+| `chat-project` | Chat | Project-focused chat (has project MCP tools) |
 
 ### Available Skills
 
@@ -133,6 +147,69 @@ The Rust `ClaudeCodeClient` automatically adds `--plugin-dir ./ralphx-plugin` to
 | `task-decomposition` | orchestrator-ideation | Task breakdown |
 | `priority-assessment` | orchestrator-ideation | Priority scoring |
 | `dependency-analysis` | orchestrator-ideation | Dependency mapping |
+
+---
+
+## MCP Integration (Phase 15)
+
+RalphX uses the **Model Context Protocol (MCP)** to expose custom tools to Claude agents during chat interactions.
+
+### Architecture
+
+```
+Claude Agent (orchestrator-ideation, chat-task, etc.)
+    ↓ MCP Protocol
+RalphX MCP Server (ralphx-mcp-server/)
+    ↓ HTTP (localhost:3847)
+Tauri Backend (existing business logic)
+```
+
+**Key design decisions:**
+- **MCP server is a TypeScript proxy** - No business logic, just forwards to Tauri backend
+- **All business logic stays in Rust** - MCP server calls HTTP endpoints on port 3847
+- **Tool scoping via RALPHX_AGENT_TYPE** - Each agent only sees tools appropriate for its role
+- **Permission bridge** - UI-based approval for non-pre-approved tools via MCP `permission_request` tool
+
+### MCP Server
+
+Located in `ralphx-mcp-server/`, the MCP server:
+- Reads `RALPHX_AGENT_TYPE` env var (set by Tauri when spawning Claude CLI)
+- Filters available tools based on agent type
+- Forwards all tool calls to Tauri backend HTTP endpoints
+- Implements `permission_request` MCP tool for UI-based approval flow
+
+### Tool Scoping
+
+| Agent Type | Tools Available |
+|------------|-----------------|
+| `orchestrator-ideation` | create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency |
+| `chat-task` | update_task, add_task_note, get_task_details |
+| `chat-project` | suggest_task, list_tasks |
+| `reviewer` | complete_review (submit review decision: approved/needs_changes/escalate) |
+| `worker`, `supervisor`, `qa-prep`, `qa-tester` | None |
+
+This ensures agents can only perform actions appropriate to their role (e.g., worker cannot create proposals).
+
+### HTTP Server (Port 3847)
+
+The Tauri backend runs an Axum HTTP server on port 3847 that exposes:
+- MCP tool endpoints (POST /api/create_task_proposal, etc.)
+- Permission bridge endpoints (POST /api/permission/request, GET /api/permission/await/:id, POST /api/permission/resolve)
+
+All endpoints reuse existing service logic - no duplication.
+
+### Permission Bridge
+
+For tools not pre-approved in `.claude/settings.json`:
+1. Agent calls `permission_request` MCP tool with tool name and arguments
+2. MCP server POSTs to `/api/permission/request` → Tauri backend emits `permission:request` event
+3. Frontend shows PermissionDialog with tool details
+4. MCP server long-polls `/api/permission/await/:request_id` (5 min timeout)
+5. User clicks Allow/Deny → frontend calls `resolve_permission_request` Tauri command
+6. Backend signals waiting MCP request → returns decision to Claude
+7. Claude continues (allow) or stops (deny)
+
+This enables secure, UI-based approval for powerful tools like Write, Edit, Bash without pre-approving them globally.
 
 ---
 

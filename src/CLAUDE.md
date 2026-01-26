@@ -27,10 +27,18 @@ src/
 ├── api/                    # Tauri API wrappers (ideation, proposals, chat)
 │   ├── ideation.ts         # Session/proposal/dependency API with transforms
 │   ├── proposal.ts         # Proposal-specific API
-│   └── chat.ts             # Chat message API
+│   └── chat.ts             # Context-aware chat API (sendContextMessage, conversations, agent runs)
 │
 ├── components/             # React components
-│   ├── Chat/               # Chat panel (ChatPanel, ChatMessage, ChatInput)
+│   ├── Chat/               # Context-aware chat (Phase 15)
+│   │   ├── ChatPanel       # Main chat interface with conversation switching
+│   │   ├── ChatMessage     # Message bubbles with tool call display
+│   │   ├── ChatInput       # Input with queue mode and keyboard navigation
+│   │   ├── ConversationSelector  # History dropdown with new conversation
+│   │   ├── QueuedMessage   # Individual queued message (edit/delete)
+│   │   ├── QueuedMessageList     # Queue UI shown when agent running
+│   │   └── ToolCallIndicator     # Collapsible tool call display
+│   ├── PermissionDialog.tsx      # UI-based permission approval for agent tools
 │   ├── execution/          # Execution control (ExecutionControlBar)
 │   ├── Ideation/           # Ideation view (ProposalCard, ProposalList, etc.)
 │   ├── modals/             # Modal dialogs (AskUserQuestionModal)
@@ -42,6 +50,7 @@ src/
 │
 ├── hooks/                  # Custom React hooks
 │   ├── use*.ts             # TanStack Query hooks (useTasks, useProjects, etc.)
+│   ├── useChat.ts          # Context-aware chat with conversation switching, queue, events
 │   ├── useEvents.ts        # Tauri event listeners
 │   └── use*Mutation.ts     # Mutation hooks for data updates
 │
@@ -61,7 +70,7 @@ src/
 │   ├── uiStore.ts          # UI state (modals, sidebar, views)
 │   ├── ideationStore.ts    # Ideation session state
 │   ├── proposalStore.ts    # Task proposal state
-│   ├── chatStore.ts        # Chat panel state
+│   ├── chatStore.ts        # Chat state (active conversation, queue, agent running)
 │   ├── qaStore.ts          # QA state
 │   ├── reviewStore.ts      # Review state
 │   └── ...Store.ts         # Additional domain stores
@@ -78,6 +87,8 @@ src/
 │   ├── task.ts             # Task type and schemas
 │   ├── project.ts          # Project type and schemas
 │   ├── status.ts           # InternalStatus enum (14 statuses)
+│   ├── chat-conversation.ts # ChatConversation and AgentRun types (Phase 15)
+│   ├── permission.ts       # Permission request types for UI-based approval
 │   └── *.ts                # Domain-specific types (qa, review, ideation, etc.)
 │
 ├── integration/            # Integration tests
@@ -248,6 +259,55 @@ Import paths use the `@/` alias (configured in vite.config.ts and tsconfig.json)
 import { Task } from "@/types/task";
 import { useTaskStore } from "@/stores/taskStore";
 import { api } from "@/lib/tauri";
+```
+
+### 8. Context-Aware Chat (Phase 15)
+
+The chat system supports multiple conversations per context with MCP tool integration:
+
+```typescript
+// useChat hook provides full chat functionality
+export function useChat() {
+  const { contextType, contextId } = useActiveContext();
+
+  const hook = useChat({
+    contextType,
+    contextId
+  });
+
+  // hook provides:
+  // - messages: current conversation's messages
+  // - conversations: list of all conversations for this context
+  // - activeConversation: current conversation object
+  // - agentRunStatus: current agent run status
+  // - sendMessage: send message (or queue if agent running)
+  // - switchConversation: switch to different conversation
+  // - createConversation: start new conversation
+}
+```
+
+**Key features:**
+- **Multiple conversations per context** - Each ideation session, task, or project can have multiple chat conversations
+- **Conversation switching** - ConversationSelector component lets you switch between conversations or start new ones
+- **Message queueing** - Messages sent while agent running are queued and auto-sent on completion
+- **Tool call display** - ToolCallIndicator shows collapsible view of MCP tool calls
+- **Keyboard navigation** - Up arrow in empty input edits last queued message
+- **Real-time updates** - Subscribes to Tauri events: `chat:chunk`, `chat:tool_call`, `chat:run_completed`
+- **Permission system** - PermissionDialog provides UI-based approval for non-pre-approved tools
+
+**Architecture:**
+```
+ChatPanel (with ConversationSelector)
+    ↓
+useChat hook
+    ↓
+chatApi.sendContextMessage()
+    ↓
+Tauri backend spawns Claude CLI with --agent flag
+    ↓
+MCP server (ralphx-mcp-server) provides scoped tools
+    ↓
+Tool calls displayed in chat UI
 ```
 
 ---
