@@ -215,7 +215,13 @@ pub fn run() {
             commands::context_chat_commands::list_conversations,
             commands::context_chat_commands::get_conversation,
             commands::context_chat_commands::create_conversation,
-            commands::context_chat_commands::get_agent_run_status
+            commands::context_chat_commands::get_agent_run_status,
+            // Execution chat commands
+            commands::execution_chat_commands::get_execution_conversation,
+            commands::execution_chat_commands::list_task_executions,
+            commands::execution_chat_commands::queue_execution_message,
+            commands::execution_chat_commands::get_queued_execution_messages,
+            commands::execution_chat_commands::delete_queued_execution_message
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
