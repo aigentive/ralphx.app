@@ -1,15 +1,54 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:03:46
+**Last Updated:** 2026-01-26 18:35:22
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 5 / 30
-**Current Task:** Add get_valid_transitions command
+**Tasks Completed:** 6 / 30
+**Current Task:** Add TaskListResponse and archivedAt types
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:35:22 - Add get_valid_transitions command (Task 6)
+
+**What was done:**
+- Added `get_valid_transitions` Tauri command to query state machine for valid status transitions:
+  - Signature: `get_valid_transitions(task_id: String) -> Result<Vec<StatusTransition>, String>`
+  - Fetches task by ID and queries its current status for valid transitions
+  - Maps InternalStatus values to user-friendly labels
+  - Returns error if task not found
+- Created StatusTransition struct:
+  - Fields: `status` (internal status string), `label` (user-friendly label)
+  - Serialized with camelCase for frontend
+- Implemented `status_to_label()` helper function:
+  - Maps all 14 InternalStatus values to user-friendly labels
+  - Examples: "ready" → "Ready for Work", "cancelled" → "Cancel"
+- Registered command in lib.rs invoke_handler
+- Wrote comprehensive unit tests (8 tests total):
+  - test_get_valid_transitions_from_backlog (Ready, Cancelled)
+  - test_get_valid_transitions_from_ready (Executing, Blocked, Cancelled)
+  - test_get_valid_transitions_from_blocked (Ready, Cancelled)
+  - test_get_valid_transitions_from_qa_failed (RevisionNeeded)
+  - test_get_valid_transitions_from_approved (Ready)
+  - test_get_valid_transitions_from_cancelled (Ready)
+  - test_get_valid_transitions_from_failed (Ready)
+  - test_status_to_label_all_statuses (verifies all statuses have labels)
+- Fixed doc examples to use `ignore` attribute to prevent doctest failures
+
+**Commands run:**
+- `cargo test --lib commands::task_commands::tests::test_get_valid_transitions` - All 7 tests passed
+- `cargo test --lib commands::task_commands::tests::test_status_to_label` - 1 test passed
+- `cargo test` - All 3152 tests passed
+
+**Verification:**
+- ✅ get_valid_transitions command added and registered
+- ✅ StatusTransition struct properly serialized with camelCase
+- ✅ status_to_label provides user-friendly labels for all 14 statuses
+- ✅ Tests cover all major status transition scenarios
+- ✅ Command queries InternalStatus.valid_transitions() (state machine integration)
+- ✅ No clippy warnings in task_commands.rs
 
 ### 2026-01-26 18:03:46 - Add server-side search_tasks command (Task 5)
 

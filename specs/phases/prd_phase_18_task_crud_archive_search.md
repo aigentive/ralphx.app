@@ -201,7 +201,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(commands): add get_valid_transitions for status dropdown"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

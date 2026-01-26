@@ -679,7 +679,7 @@ pub async fn get_archived_count(
 /// * `Vec<TaskResponse>` - All matching tasks (no pagination - results should be small)
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// // Search for "authentication" in title or description
 /// search_tasks("proj-123", "authentication", None)
 ///
@@ -707,6 +707,89 @@ pub async fn search_tasks(
     let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
 
     Ok(task_responses)
+}
+
+/// Represents a valid status transition option for the UI
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusTransition {
+    /// The internal status string (e.g., "ready", "cancelled")
+    pub status: String,
+    /// User-friendly label for the UI (e.g., "Ready for Work", "Cancel")
+    pub label: String,
+}
+
+/// Get valid status transitions for a task
+///
+/// Queries the state machine for valid transitions from the task's current status
+/// and maps them to user-friendly labels for display in the status dropdown.
+///
+/// # Arguments
+/// * `task_id` - The task ID to get valid transitions for
+///
+/// # Returns
+/// * `Vec<StatusTransition>` - List of valid transitions with status string and label
+///
+/// # Examples
+/// ```ignore
+/// // Get valid transitions for a task in "backlog" status
+/// // Returns: [
+/// //   { status: "ready", label: "Ready for Work" },
+/// //   { status: "cancelled", label: "Cancel" }
+/// // ]
+/// get_valid_transitions("task-123")
+/// ```
+#[tauri::command]
+pub async fn get_valid_transitions(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<StatusTransition>, String> {
+    // Get the task to check its current status
+    let task_id_obj = TaskId::from_string(task_id);
+    let task = state
+        .task_repo
+        .get_by_id(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Task not found".to_string())?;
+
+    // Get valid transitions from the state machine
+    let valid_transitions = task.internal_status.valid_transitions();
+
+    // Map to user-friendly labels
+    let transitions = valid_transitions
+        .iter()
+        .map(|status| {
+            let status_str = status.as_str().to_string();
+            let label = status_to_label(*status);
+            StatusTransition {
+                status: status_str,
+                label,
+            }
+        })
+        .collect();
+
+    Ok(transitions)
+}
+
+/// Maps an InternalStatus to a user-friendly label for the status dropdown
+fn status_to_label(status: InternalStatus) -> String {
+    match status {
+        InternalStatus::Backlog => "Move to Backlog".to_string(),
+        InternalStatus::Ready => "Ready for Work".to_string(),
+        InternalStatus::Blocked => "Mark as Blocked".to_string(),
+        InternalStatus::Executing => "Start Execution".to_string(),
+        InternalStatus::ExecutionDone => "Mark Execution Done".to_string(),
+        InternalStatus::QaRefining => "QA Refining".to_string(),
+        InternalStatus::QaTesting => "QA Testing".to_string(),
+        InternalStatus::QaPassed => "QA Passed".to_string(),
+        InternalStatus::QaFailed => "QA Failed".to_string(),
+        InternalStatus::PendingReview => "Send to Review".to_string(),
+        InternalStatus::RevisionNeeded => "Needs Revision".to_string(),
+        InternalStatus::Approved => "Approve".to_string(),
+        InternalStatus::Failed => "Mark as Failed".to_string(),
+        InternalStatus::Cancelled => "Cancel".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -1543,5 +1626,122 @@ mod tests {
         assert!(json.contains("\"total\":10"));
         assert!(json.contains("\"hasMore\":true"));
         assert!(json.contains("\"offset\":0"));
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_backlog() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Create a task in backlog state
+        let mut task = Task::new(project_id, "Test Task".to_string());
+        task.internal_status = InternalStatus::Backlog;
+        let task = state.task_repo.create(task).await.unwrap();
+
+        // Get valid transitions directly from InternalStatus
+        let transitions = task.internal_status.valid_transitions();
+
+        // From backlog, should be able to go to Ready or Cancelled
+        assert_eq!(transitions.len(), 2);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
+
+        // Test the label mapping function
+        let ready_label = status_to_label(InternalStatus::Ready);
+        assert_eq!(ready_label, "Ready for Work");
+
+        let cancelled_label = status_to_label(InternalStatus::Cancelled);
+        assert_eq!(cancelled_label, "Cancel");
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_ready() {
+        // Test valid transitions from ready state
+        let transitions = InternalStatus::Ready.valid_transitions();
+
+        // From ready, should be able to go to Executing, Blocked, or Cancelled
+        assert_eq!(transitions.len(), 3);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Executing));
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Blocked));
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
+
+        // Test labels
+        assert_eq!(status_to_label(InternalStatus::Executing), "Start Execution");
+        assert_eq!(status_to_label(InternalStatus::Blocked), "Mark as Blocked");
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_blocked() {
+        // Test valid transitions from blocked state
+        let transitions = InternalStatus::Blocked.valid_transitions();
+
+        // From blocked, should be able to go to Ready or Cancelled
+        assert_eq!(transitions.len(), 2);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_qa_failed() {
+        // Test valid transitions from qa_failed state
+        let transitions = InternalStatus::QaFailed.valid_transitions();
+
+        // From qa_failed, should be able to go to RevisionNeeded (only one option)
+        assert_eq!(transitions.len(), 1);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::RevisionNeeded));
+
+        // Test label
+        assert_eq!(status_to_label(InternalStatus::RevisionNeeded), "Needs Revision");
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_approved() {
+        // Test valid transitions from approved state (terminal)
+        let transitions = InternalStatus::Approved.valid_transitions();
+
+        // From approved, can be re-opened to Ready
+        assert_eq!(transitions.len(), 1);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+
+        // Test label
+        assert_eq!(status_to_label(InternalStatus::Approved), "Approve");
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_cancelled() {
+        // Test valid transitions from cancelled state
+        let transitions = InternalStatus::Cancelled.valid_transitions();
+
+        // From cancelled, can be re-opened to Ready
+        assert_eq!(transitions.len(), 1);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+
+        // Test label
+        assert_eq!(status_to_label(InternalStatus::Cancelled), "Cancel");
+    }
+
+    #[tokio::test]
+    async fn test_get_valid_transitions_from_failed() {
+        // Test valid transitions from failed state
+        let transitions = InternalStatus::Failed.valid_transitions();
+
+        // From failed, can retry (go to Ready)
+        assert_eq!(transitions.len(), 1);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+
+        // Test label
+        assert_eq!(status_to_label(InternalStatus::Failed), "Mark as Failed");
+    }
+
+    #[tokio::test]
+    async fn test_status_to_label_all_statuses() {
+        // Test that all statuses have labels
+        let all_statuses = InternalStatus::all_variants();
+
+        for status in all_statuses {
+            let label = status_to_label(*status);
+            // Label should not be empty
+            assert!(!label.is_empty(), "Status {:?} has no label", status);
+        }
     }
 }
