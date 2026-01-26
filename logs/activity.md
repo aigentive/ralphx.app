@@ -1,15 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 23:42:18
+**Last Updated:** 2026-01-26 23:49:33
 **Phase:** Task Execution Experience
-**Tasks Completed:** 13 / 42
-**Current Task:** Update worker agent prompt with step instructions
+**Tasks Completed:** 14 / 42
+**Current Task:** Add TaskStep types and schemas
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 23:49:33 - Update worker agent prompt with step instructions
+
+**What was done:**
+- Updated `ralphx-plugin/agents/worker.md`:
+  - Added new "## Step Progress Tracking" section with detailed instructions
+  - Documented when and how to use step tracking MCP tools
+  - Added example flow showing: get_task_steps → start_step → [work] → complete_step
+  - Updated "## Available MCP Tools" table to include all step-related tools:
+    - get_task_steps, start_step, complete_step, skip_step, fail_step, add_step, get_step_progress
+  - Updated "## Workflow" section to integrate step tracking into execution flow
+  - Step 2 now calls get_task_steps to check execution plan
+  - Step 5 now includes calling start_step before work and complete_step after
+
+**Instructions added:**
+- Workers MUST call get_task_steps at start to see the plan
+- Before each step, call start_step(step_id)
+- After each step, call complete_step(step_id, note?)
+- If step not needed, call skip_step(step_id, reason)
+- If step fails, call fail_step(step_id, error)
+- If no steps exist, create them using add_step (3-8 discrete steps)
+
+**Commits:**
+```
+docs(agent): add step progress instructions to worker prompt
+```
 
 ### 2026-01-26 23:42:18 - Include steps in TaskContext for worker
 
