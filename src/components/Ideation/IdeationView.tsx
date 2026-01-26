@@ -259,18 +259,18 @@ const markdownComponents = {
 
 function TypingIndicator() {
   return (
-    <div data-testid="typing-indicator" className="flex items-start gap-3 mb-4">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
-        <Bot className="w-4 h-4 text-[#ff6b35]" />
+    <div data-testid="typing-indicator" className="flex items-start gap-2 mb-3">
+      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+        <Bot className="w-3 h-3 text-[#ff6b35]" />
       </div>
       <div
-        className="px-4 py-3 rounded-2xl rounded-tl-md bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/[0.06] backdrop-blur-sm"
+        className="px-3 py-2 rounded-xl rounded-tl-sm bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/[0.06] backdrop-blur-sm"
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="typing-dot w-2 h-2 rounded-full bg-[#ff6b35]"
+              className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]"
               style={{ animationDelay: `${i * 0.15}s` }}
             />
           ))}
@@ -339,21 +339,21 @@ function MessageItem({
       className={cn(
         "flex session-card-enter",
         isUser ? "justify-end" : "justify-start",
-        isLastInGroup ? "mb-4" : "mb-1.5"
+        isLastInGroup ? "mb-3" : "mb-1"
       )}
     >
       {/* Agent avatar */}
       {!isUser && isFirstInGroup && (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20 mr-3 flex-shrink-0">
-          <Bot className="w-4 h-4 text-[#ff6b35]" />
+        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20 mr-2 flex-shrink-0">
+          <Bot className="w-3 h-3 text-[#ff6b35]" />
         </div>
       )}
-      {!isUser && !isFirstInGroup && <div className="w-8 mr-3 flex-shrink-0" />}
+      {!isUser && !isFirstInGroup && <div className="w-6 mr-2 flex-shrink-0" />}
 
       <div className="flex flex-col max-w-[80%]">
         {/* Tool calls */}
         {!isUser && parsedToolCalls.length > 0 && (
-          <div className="space-y-2 mb-2">
+          <div className="space-y-1.5 mb-1.5">
             {parsedToolCalls.map((tc) => (
               <ToolCallIndicator key={tc.id} toolCall={tc} />
             ))}
@@ -363,10 +363,10 @@ function MessageItem({
         {/* Message bubble */}
         <div
           className={cn(
-            "px-4 py-3 text-[14px] leading-relaxed",
+            "px-3 py-2 text-[13px] leading-relaxed",
             isUser
-              ? "rounded-2xl rounded-tr-md bg-gradient-to-br from-[#ff6b35] to-[#e55a2b] text-white shadow-lg shadow-[#ff6b35]/20"
-              : "rounded-2xl rounded-tl-md bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/[0.06] backdrop-blur-sm"
+              ? "rounded-xl rounded-tr-sm bg-gradient-to-br from-[#ff6b35] to-[#e55a2b] text-white shadow-md shadow-[#ff6b35]/15"
+              : "rounded-xl rounded-tl-sm bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/[0.06] backdrop-blur-sm"
           )}
         >
           {isUser ? (
@@ -379,7 +379,7 @@ function MessageItem({
         </div>
 
         {isLastInGroup && (
-          <span className={cn("text-[11px] mt-1.5 px-1 text-[var(--text-muted)]", isUser ? "text-right" : "text-left")}>
+          <span className={cn("text-[10px] mt-1 px-0.5 text-[var(--text-muted)]", isUser ? "text-right" : "text-left")}>
             {timestamp}
           </span>
         )}
@@ -394,20 +394,20 @@ function MessageItem({
 
 function ConversationEmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8">
+    <div className="flex flex-col items-center justify-center h-full p-6">
       <div className="relative">
         {/* Glow effect */}
-        <div className="absolute inset-0 bg-[#ff6b35]/10 rounded-3xl blur-3xl" />
+        <div className="absolute inset-0 bg-[#ff6b35]/10 rounded-xl blur-2xl" />
 
-        <div className="relative p-10 rounded-2xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] backdrop-blur-sm text-center">
-          <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
-            <MessageSquareText className="w-8 h-8 text-[#ff6b35]" />
+        <div className="relative px-8 py-6 rounded-xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] backdrop-blur-sm text-center">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+            <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
           </div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
             Start the conversation
           </h3>
-          <p className="text-sm text-[var(--text-secondary)] max-w-[240px] leading-relaxed">
-            Describe your ideas and I'll help create actionable task proposals
+          <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
+            Describe your ideas and I'll help create task proposals
           </p>
         </div>
       </div>
@@ -417,18 +417,18 @@ function ConversationEmptyState() {
 
 function ProposalsEmptyState() {
   return (
-    <div data-testid="proposals-empty-state" className="flex flex-col items-center justify-center h-full p-8">
+    <div data-testid="proposals-empty-state" className="flex flex-col items-center justify-center h-full p-6">
       <div className="relative">
-        <div className="absolute inset-0 bg-amber-500/5 rounded-3xl blur-3xl" />
+        <div className="absolute inset-0 bg-amber-500/5 rounded-xl blur-2xl" />
 
-        <div className="relative p-10 rounded-2xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] backdrop-blur-sm text-center">
-          <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 flex items-center justify-center border border-amber-500/20">
-            <Lightbulb className="w-8 h-8 text-amber-400" />
+        <div className="relative px-8 py-6 rounded-xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] backdrop-blur-sm text-center">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-gradient-to-br from-amber-500/15 to-amber-500/5 flex items-center justify-center border border-amber-500/20">
+            <Lightbulb className="w-6 h-6 text-amber-400" />
           </div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
             No proposals yet
           </h3>
-          <p className="text-sm text-[var(--text-secondary)] max-w-[240px] leading-relaxed">
+          <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
             Chat with the orchestrator to generate task proposals
           </p>
         </div>
@@ -474,18 +474,18 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
     <div
       data-testid="session-browser"
       className="flex flex-col h-full bg-[#0a0a0a] border-r border-white/[0.06]"
-      style={{ width: "300px", minWidth: "300px", flexShrink: 0 }}
+      style={{ width: "260px", minWidth: "260px", flexShrink: 0 }}
     >
       {/* Header */}
-      <div className="px-5 py-4 border-b border-white/[0.06]">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
-              <Layers className="w-4 h-4 text-[#ff6b35]" />
+      <div className="px-3 py-3 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+              <Layers className="w-3.5 h-3.5 text-[#ff6b35]" />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Sessions</h2>
-              <p className="text-[11px] text-[var(--text-muted)]">{sessions.length} total</p>
+              <p className="text-[10px] text-[var(--text-muted)]">{sessions.length} total</p>
             </div>
           </div>
         </div>
@@ -493,22 +493,23 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
         {/* New Session Button */}
         <Button
           onClick={onNewSession}
-          className="w-full h-10 bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] text-white font-medium shadow-lg shadow-[#ff6b35]/20 border-0 transition-all duration-200"
+          size="sm"
+          className="w-full h-8 text-xs bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] text-white font-medium shadow-md shadow-[#ff6b35]/15 border-0 transition-all duration-200"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-3.5 h-3.5 mr-1.5" />
           New Session
         </Button>
       </div>
 
       {/* Session List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sortedSessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-            <div className="w-12 h-12 rounded-xl bg-white/[0.03] flex items-center justify-center mb-3 border border-white/[0.06]">
-              <Sparkles className="w-5 h-5 text-[var(--text-muted)]" />
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <div className="w-9 h-9 rounded-lg bg-white/[0.03] flex items-center justify-center mb-2 border border-white/[0.06]">
+              <Sparkles className="w-4 h-4 text-[var(--text-muted)]" />
             </div>
-            <p className="text-sm text-[var(--text-muted)]">No sessions yet</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">Start your first brainstorm</p>
+            <p className="text-xs text-[var(--text-muted)]">No sessions yet</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Start your first brainstorm</p>
           </div>
         ) : (
           sortedSessions.map((session, index) => {
@@ -519,45 +520,45 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
                 data-testid={`session-item-${session.id}`}
                 onClick={() => onSelectSession(session.id)}
                 className={cn(
-                  "session-card-enter w-full p-4 rounded-xl text-left transition-all duration-200",
+                  "session-card-enter w-full p-2.5 rounded-lg text-left transition-all duration-200",
                   "border border-transparent",
                   "hover:bg-white/[0.03] hover:border-white/[0.06]",
                   isSelected && "bg-gradient-to-br from-[#ff6b35]/10 to-[#ff6b35]/5 border-[#ff6b35]/30 active-session-glow"
                 )}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-2.5">
                   {/* Session indicator */}
                   <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                    "w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors",
                     isSelected
                       ? "bg-gradient-to-br from-[#ff6b35]/30 to-[#ff6b35]/10 border border-[#ff6b35]/30"
                       : "bg-white/[0.03] border border-white/[0.06]"
                   )}>
-                    <MessageSquare className={cn("w-4 h-4", isSelected ? "text-[#ff6b35]" : "text-[var(--text-muted)]")} />
+                    <MessageSquare className={cn("w-3.5 h-3.5", isSelected ? "text-[#ff6b35]" : "text-[var(--text-muted)]")} />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-1.5 mb-0.5">
                       <span className={cn(
-                        "text-sm font-medium truncate",
+                        "text-xs font-medium truncate",
                         isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
                       )}>
                         {session.title || "Untitled Session"}
                       </span>
                       {isSelected && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#ff6b35] flex-shrink-0" />
+                        <span className="w-1 h-1 rounded-full bg-[#ff6b35] flex-shrink-0" />
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                      <Clock className="w-3 h-3" />
+                    <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                      <Clock className="w-2.5 h-2.5" />
                       <span>{formatRelativeTime(session.updatedAt)}</span>
                     </div>
                   </div>
 
                   {/* Arrow indicator */}
                   <ArrowRight className={cn(
-                    "w-4 h-4 flex-shrink-0 transition-all duration-200",
+                    "w-3.5 h-3.5 flex-shrink-0 transition-all duration-200",
                     isSelected ? "text-[#ff6b35] translate-x-0 opacity-100" : "text-[var(--text-muted)] -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
                   )} />
                 </div>
@@ -576,42 +577,41 @@ function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSess
 
 function StartSessionPanel({ onNewSession }: { onNewSession: () => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden">
+    <div className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Background effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#ff6b35]/[0.02] via-transparent to-purple-500/[0.02]" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#ff6b35]/5 rounded-full blur-[120px]" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-[120px]" />
+      <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-[#ff6b35]/5 rounded-full blur-[80px]" />
+      <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-amber-500/5 rounded-full blur-[80px]" />
 
-      <div className="relative z-10 text-center max-w-lg">
+      <div className="relative z-10 text-center max-w-md">
         {/* Icon */}
-        <div className="relative mx-auto mb-8">
-          <div className="absolute inset-0 bg-[#ff6b35]/20 rounded-3xl blur-2xl" />
-          <div className="relative w-24 h-24 rounded-2xl bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20 mx-auto">
-            <Lightbulb className="w-12 h-12 text-[#ff6b35]" />
+        <div className="relative mx-auto mb-6">
+          <div className="absolute inset-0 bg-[#ff6b35]/15 rounded-2xl blur-xl" />
+          <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20 mx-auto">
+            <Lightbulb className="w-8 h-8 text-[#ff6b35]" />
           </div>
         </div>
 
         {/* Content */}
-        <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-4 tracking-tight">
+        <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
           Ideation Studio
         </h1>
-        <p className="text-lg text-[var(--text-secondary)] mb-8 leading-relaxed">
-          Select a session from the sidebar to continue your work, or start a fresh brainstorming session.
+        <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed max-w-xs mx-auto">
+          Select a session from the sidebar or start a new brainstorming session.
         </p>
 
         {/* Action button */}
         <Button
           onClick={onNewSession}
-          size="lg"
-          className="h-12 px-8 bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] text-white font-semibold shadow-xl shadow-[#ff6b35]/25 border-0 transition-all duration-200"
+          className="h-9 px-5 text-sm bg-gradient-to-r from-[#ff6b35] to-[#e55a2b] hover:from-[#ff7a4a] hover:to-[#ff6b35] text-white font-medium shadow-lg shadow-[#ff6b35]/20 border-0 transition-all duration-200"
         >
-          <Zap className="w-5 h-5 mr-2" />
+          <Zap className="w-4 h-4 mr-1.5" />
           Start New Session
         </Button>
 
         {/* Hint */}
-        <p className="text-sm text-[var(--text-muted)] mt-6">
-          Press <kbd className="px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[11px] font-mono">⌘ N</kbd> to quickly start a new session
+        <p className="text-[11px] text-[var(--text-muted)] mt-4">
+          Press <kbd className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[10px] font-mono">⌘ N</kbd> to quickly start
         </p>
       </div>
     </div>
@@ -661,55 +661,55 @@ function ProposalCard({
     <div
       data-testid={`proposal-card-${proposal.id}`}
       className={cn(
-        "group relative p-4 rounded-xl transition-all duration-200 cursor-pointer session-card-enter",
+        "group relative p-3 rounded-lg transition-all duration-200 cursor-pointer session-card-enter",
         "bg-gradient-to-br",
         config.gradient,
         "border",
         isHighlighted
-          ? "border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.2)]"
+          ? "border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.15)]"
           : isSelected
-            ? "border-[#ff6b35]/40 shadow-[0_0_30px_rgba(255,107,53,0.15)]"
-            : "border-white/[0.06] hover:border-white/[0.1] hover:shadow-lg hover:shadow-black/20",
+            ? "border-[#ff6b35]/40 shadow-[0_0_20px_rgba(255,107,53,0.1)]"
+            : "border-white/[0.06] hover:border-white/[0.1] hover:shadow-md hover:shadow-black/15",
         config.glow
       )}
       onClick={() => onSelect(proposal.id)}
     >
       {/* Selection indicator bar */}
       <div className={cn(
-        "absolute left-0 top-3 bottom-3 w-1 rounded-full transition-all duration-200",
+        "absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-all duration-200",
         isSelected ? "bg-[#ff6b35]" : "bg-transparent"
       )} />
 
-      <div className="flex items-start gap-3 pl-2">
+      <div className="flex items-start gap-2 pl-1.5">
         {/* Checkbox */}
-        <div className="pt-0.5">
+        <div className="pt-px">
           <Checkbox
             checked={isSelected}
             onCheckedChange={() => onSelect(proposal.id)}
             aria-label={`Select ${proposal.title}`}
-            className="data-[state=checked]:bg-[#ff6b35] data-[state=checked]:border-[#ff6b35] border-white/20"
+            className="h-3.5 w-3.5 data-[state=checked]:bg-[#ff6b35] data-[state=checked]:border-[#ff6b35] border-white/20"
           />
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-medium text-[var(--text-primary)] leading-snug">
+          <div className="flex items-start justify-between gap-1.5">
+            <h3 className="text-xs font-medium text-[var(--text-primary)] leading-snug">
               {proposal.title}
             </h3>
 
             {/* Actions */}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 hover:bg-white/[0.06]"
+                      className="h-6 w-6 hover:bg-white/[0.06]"
                       onClick={(e) => { e.stopPropagation(); onEdit(proposal.id); }}
                     >
-                      <FileEdit className="w-3.5 h-3.5" />
+                      <FileEdit className="w-3 h-3" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Edit</TooltipContent>
@@ -719,10 +719,10 @@ function ProposalCard({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 hover:bg-red-500/10 hover:text-red-400"
+                      className="h-6 w-6 hover:bg-red-500/10 hover:text-red-400"
                       onClick={(e) => { e.stopPropagation(); onRemove(proposal.id); }}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3 h-3" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Remove</TooltipContent>
@@ -731,14 +731,14 @@ function ProposalCard({
             </div>
           </div>
 
-          <p className="text-xs text-[var(--text-secondary)] mt-1.5 line-clamp-2 leading-relaxed">
+          <p className="text-[11px] text-[var(--text-secondary)] mt-1 line-clamp-2 leading-relaxed">
             {proposal.description || "No description"}
           </p>
 
           {/* Tags */}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
             <span className={cn(
-              "px-2 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wider",
+              "px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wider",
               effectivePriority === "critical" && "bg-red-500/20 text-red-400",
               effectivePriority === "high" && "bg-[#ff6b35]/20 text-[#ff6b35]",
               effectivePriority === "medium" && "bg-amber-500/20 text-amber-400",
@@ -746,11 +746,11 @@ function ProposalCard({
             )}>
               {config.label}
             </span>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
+            <span className="px-1.5 py-px rounded text-[9px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
               {proposal.category}
             </span>
             {proposal.userModified && (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-purple-500/20 text-purple-400 italic">
+              <span className="px-1.5 py-px rounded text-[9px] font-medium bg-purple-500/20 text-purple-400 italic">
                 Modified
               </span>
             )}
@@ -789,26 +789,26 @@ function ProactiveSyncNotificationBanner({ notification, onDismiss, onReview, on
   return (
     <div
       data-testid="proactive-sync-notification"
-      className="mb-4 p-4 rounded-xl bg-gradient-to-br from-[#ff6b35]/10 to-[#ff6b35]/5 border border-[#ff6b35]/30"
+      className="mb-3 p-3 rounded-lg bg-gradient-to-br from-[#ff6b35]/10 to-[#ff6b35]/5 border border-[#ff6b35]/30"
     >
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-[#ff6b35]/20 flex items-center justify-center flex-shrink-0">
-          <AlertCircle className="w-5 h-5 text-[#ff6b35]" />
+      <div className="flex items-start gap-2">
+        <div className="w-7 h-7 rounded-md bg-[#ff6b35]/20 flex items-center justify-center flex-shrink-0">
+          <AlertCircle className="w-3.5 h-3.5 text-[#ff6b35]" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-[var(--text-primary)] mb-1">Plan updated</p>
-          <p className="text-sm text-[var(--text-secondary)]">
+          <p className="text-xs font-medium text-[var(--text-primary)] mb-0.5">Plan updated</p>
+          <p className="text-[11px] text-[var(--text-secondary)]">
             {affectedCount} proposal{affectedCount !== 1 ? "s" : ""} may need revision.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onReview} className="text-[#ff6b35] hover:bg-[#ff6b35]/10">
-            <Eye className="w-4 h-4 mr-1" /> Review
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={onReview} className="h-6 px-2 text-[11px] text-[#ff6b35] hover:bg-[#ff6b35]/10">
+            <Eye className="w-3 h-3 mr-1" /> Review
           </Button>
-          <Button variant="ghost" size="sm" onClick={onUndo} className="hover:bg-white/[0.06]">
-            <Undo2 className="w-4 h-4 mr-1" /> Undo
+          <Button variant="ghost" size="sm" onClick={onUndo} className="h-6 px-2 text-[11px] hover:bg-white/[0.06]">
+            <Undo2 className="w-3 h-3 mr-1" /> Undo
           </Button>
-          <Button variant="ghost" size="icon" onClick={onDismiss} className="h-7 w-7 hover:bg-white/[0.06]">
+          <Button variant="ghost" size="icon" onClick={onDismiss} className="h-6 w-6 hover:bg-white/[0.06]">
             ×
           </Button>
         </div>
@@ -832,46 +832,46 @@ interface ProposalsToolbarProps {
 
 function ProposalsToolbar({ selectedCount, totalCount, onSelectAll, onDeselectAll, onSortByPriority, onClearAll }: ProposalsToolbarProps) {
   return (
-    <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06] bg-black/20">
-      <span className="text-xs text-[var(--text-muted)]">
+    <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-black/20">
+      <span className="text-[10px] text-[var(--text-muted)]">
         <span className="text-[var(--text-primary)] font-medium">{selectedCount}</span> of {totalCount} selected
       </span>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-white/[0.06]" onClick={onSelectAll}>
-                <CheckSquare className="w-3.5 h-3.5" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/[0.06]" onClick={onSelectAll}>
+                <CheckSquare className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Select all</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-white/[0.06]" onClick={onDeselectAll}>
-                <Square className="w-3.5 h-3.5" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/[0.06]" onClick={onDeselectAll}>
+                <Square className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Deselect all</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
-        <div className="w-px h-4 bg-white/[0.1] mx-1" />
+        <div className="w-px h-3 bg-white/[0.1] mx-0.5" />
 
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-white/[0.06]" onClick={onSortByPriority}>
-                <ArrowUpDown className="w-3.5 h-3.5" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/[0.06]" onClick={onSortByPriority}>
+                <ArrowUpDown className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Sort by priority</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-400" onClick={onClearAll}>
-                <Trash2 className="w-3.5 h-3.5" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-red-500/10 hover:text-red-400" onClick={onClearAll}>
+                <Trash2 className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Clear all</TooltipContent>
@@ -1114,23 +1114,23 @@ export function IdeationView({
             {/* Header */}
             <header
               data-testid="ideation-header"
-              className="flex items-center justify-between h-14 px-6 border-b border-white/[0.06] bg-black/40 backdrop-blur-xl"
+              className="flex items-center justify-between h-11 px-4 border-b border-white/[0.06] bg-black/40 backdrop-blur-xl"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
-                  <Sparkles className="w-4 h-4 text-[#ff6b35]" />
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 flex items-center justify-center border border-[#ff6b35]/20">
+                  <Sparkles className="w-3 h-3 text-[#ff6b35]" />
                 </div>
                 <div>
-                  <h1 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
+                  <h1 className="text-xs font-semibold text-[var(--text-primary)] tracking-tight">
                     {session.title || "New Session"}
                   </h1>
-                  <p className="text-[11px] text-[var(--text-muted)]">
+                  <p className="text-[10px] text-[var(--text-muted)]">
                     {messages.length} messages · {proposals.length} proposals
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" onClick={handleArchive} className="gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06]">
-                <Archive className="w-4 h-4" />
+              <Button variant="ghost" size="sm" onClick={handleArchive} className="h-7 gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06]">
+                <Archive className="w-3.5 h-3.5" />
                 Archive
               </Button>
             </header>
@@ -1141,16 +1141,16 @@ export function IdeationView({
               <div
                 data-testid="conversation-panel"
                 className="flex flex-col border-r border-white/[0.06] bg-gradient-to-b from-black/20 to-transparent"
-                style={{ width: `${leftPanelWidth}%`, minWidth: "360px" }}
+                style={{ width: `${leftPanelWidth}%`, minWidth: "320px" }}
               >
                 {/* Panel Header */}
-                <div className="flex items-center gap-2 px-5 py-3 h-12 border-b border-white/[0.06] bg-black/20">
-                  <MessageSquare className="w-4 h-4 text-[var(--text-muted)]" />
-                  <h2 className="text-sm font-medium text-[var(--text-primary)]">Conversation</h2>
+                <div className="flex items-center gap-1.5 px-3 py-2 h-9 border-b border-white/[0.06] bg-black/20">
+                  <MessageSquare className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  <h2 className="text-xs font-medium text-[var(--text-primary)]">Conversation</h2>
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-5">
+                <div className="flex-1 overflow-y-auto p-3">
                   {messages.length === 0 ? (
                     <ConversationEmptyState />
                   ) : (

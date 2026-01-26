@@ -49,25 +49,20 @@ function InvalidDropIcon() {
 
 function EmptyState() {
   return (
-    <div
-      className="flex flex-col items-center justify-center gap-3 p-6 rounded-lg"
-      style={{
-        border: "2px dashed var(--border-subtle)",
-      }}
-    >
-      <Inbox className="w-6 h-6" style={{ color: "var(--text-muted)" }} />
-      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-        No tasks
-      </p>
+    <div className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border border-dashed border-white/10">
+      <div className="w-8 h-8 rounded-lg bg-white/[0.03] flex items-center justify-center border border-white/[0.06]">
+        <Inbox className="w-4 h-4 text-white/30" />
+      </div>
+      <p className="text-[11px] text-white/40">No tasks</p>
     </div>
   );
 }
 
 function TaskSkeleton() {
   return (
-    <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--bg-elevated)" }}>
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-3 w-1/2" />
+    <div className="rounded-lg p-2.5 space-y-2 bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/[0.06]">
+      <Skeleton className="h-3 w-3/4 bg-white/5" />
+      <Skeleton className="h-2.5 w-1/2 bg-white/5" />
     </div>
   );
 }
@@ -135,23 +130,23 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
     };
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Drop zone styles
+  // Drop zone styles (Refined Studio aesthetic)
   const getDropZoneStyles = (): React.CSSProperties => {
     if (isOver && isInvalid) {
       return {
-        border: "2px dashed var(--status-error)",
+        border: "1px dashed rgba(239, 68, 68, 0.5)",
         background: "rgba(239, 68, 68, 0.05)",
       };
     }
     if (isOver) {
       return {
-        border: "2px dashed var(--accent-primary)",
-        background: "var(--accent-muted)",
-        boxShadow: "inset 0 0 20px rgba(255, 107, 53, 0.1)",
+        border: "1px dashed rgba(255, 107, 53, 0.5)",
+        background: "rgba(255, 107, 53, 0.05)",
+        boxShadow: "inset 0 0 16px rgba(255, 107, 53, 0.08)",
       };
     }
     return {
-      border: "2px dashed transparent",
+      border: "1px dashed transparent",
     };
   };
 
@@ -166,26 +161,24 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
       data-testid={`column-${column.id}`}
       className="flex-shrink-0 flex flex-col h-full"
       style={{
-        width: "300px",
-        minWidth: "280px",
-        maxWidth: "320px",
+        width: "280px",
+        minWidth: "260px",
+        maxWidth: "300px",
         scrollSnapAlign: "start",
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Glass effect header */}
-      <div
-        className="flex items-center gap-2 px-2.5 py-1.5 rounded-md mb-2 bg-bg-surface/85 backdrop-blur-md"
-      >
+      {/* Glass effect header (Refined Studio) */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md mb-2 bg-gradient-to-r from-white/[0.04] to-transparent backdrop-blur-sm border border-white/[0.04]">
         {/* Orange accent dot */}
-        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-accent-primary" />
-        <h3 className="text-[0.92rem] font-medium flex-1 text-text-primary tracking-tight m-0">
+        <span className="w-1 h-1 rounded-full flex-shrink-0 bg-[#ff6b35]" />
+        <h3 className="text-xs font-medium flex-1 text-white/90 tracking-tight m-0">
           {column.name}
         </h3>
         <Badge
           variant="secondary"
-          className="text-[10px] px-1.5 py-0 bg-bg-elevated text-text-secondary"
+          className="text-[9px] px-1.5 py-px bg-white/5 text-white/50 border-white/10"
         >
           {tasks.length}
           {matchCount !== undefined && ` (${matchCount})`}
@@ -197,7 +190,7 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
-        className="flex-1 flex flex-col gap-3 p-3 rounded-lg transition-all bg-bg-surface/50 overflow-y-auto"
+        className="flex-1 flex flex-col gap-2 p-2 rounded-lg transition-all bg-white/[0.02] overflow-y-auto"
         style={getDropZoneStyles()}
       >
         {/* Show skeleton cards during initial load */}

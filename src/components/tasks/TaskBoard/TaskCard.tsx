@@ -56,23 +56,23 @@ interface TaskCardProps {
 }
 
 /**
- * Get priority color for the left border stripe
+ * Get priority gradient for the left border stripe (Refined Studio aesthetic)
  */
 function getPriorityColor(priority: number, isArchived: boolean): string {
   // Archived tasks always use gray
   if (isArchived) {
-    return "#a3a3a3"; // bg-neutral-400
+    return "#525252"; // neutral-600
   }
 
   switch (priority) {
     case 1: // Critical
-      return "var(--status-error)"; // #ef4444
+      return "#ef4444"; // red-500
     case 2: // High
-      return "var(--status-warning)"; // #f59e0b
+      return "#f97316"; // orange-500
     case 3: // Medium
-      return "var(--accent-primary)"; // #ff6b35
+      return "#ff6b35"; // accent-primary
     case 4: // Low
-      return "var(--text-muted)"; // #666666
+      return "#525252"; // neutral-600
     default: // None or unknown
       return "transparent";
   }
@@ -82,10 +82,10 @@ function CheckpointIndicator() {
   return (
     <Badge
       data-testid="checkpoint-indicator"
-      className="text-xs"
+      className="text-[9px] px-1.5 py-px"
       style={{
-        backgroundColor: "var(--accent-secondary)",
-        color: "var(--bg-base)",
+        backgroundColor: "rgba(255, 169, 77, 0.2)",
+        color: "#ffa94d",
         border: "none",
       }}
     >
@@ -157,20 +157,23 @@ export function TaskCard({
     ...(testStatus !== undefined && { testStatus }),
   };
 
-  // Card styles based on state
+  // Card styles based on state (Refined Studio aesthetic)
   const getCardStyles = (): React.CSSProperties => {
     const baseStyles: React.CSSProperties = {
       borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
       cursor: isDragging ? "grabbing" : (isDraggable ? "grab" : "default"),
-      transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+      transition: "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+      background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
+      border: "1px solid rgba(255,255,255,0.06)",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.1)",
     };
 
     if (isDragging) {
       return {
         ...baseStyles,
-        transform: "scale(1.02) rotate(2deg)",
-        boxShadow: "var(--shadow-md)",
-        opacity: 0.9,
+        transform: "scale(1.02) rotate(1deg)",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.2)",
+        opacity: 0.95,
         zIndex: 50,
       };
     }
@@ -178,10 +181,9 @@ export function TaskCard({
     if (isSelected) {
       return {
         ...baseStyles,
-        border: "2px solid var(--accent-primary)",
-        borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
-        background: "var(--accent-muted)",
-        boxShadow: "0 0 0 4px rgba(255, 107, 53, 0.15)",
+        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.04) 100%)",
+        borderColor: "rgba(255,107,53,0.3)",
+        boxShadow: "0 0 12px rgba(255,107,53,0.1), 0 2px 8px rgba(0,0,0,0.2)",
       };
     }
 
@@ -234,15 +236,15 @@ export function TaskCard({
           {...(isDraggable ? { ...attributes, ...listeners } : {})}
           data-testid={`task-card-${task.id}`}
           onClick={() => onSelect?.(task.id)}
-          className={`group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${isArchived ? "opacity-60" : ""} ${!isDraggable ? "opacity-75" : ""}`}
+          className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""}`}
           style={{ ...getCardStyles(), ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
       {/* Archive badge overlay - only shown for archived tasks */}
       {isArchived && (
-        <div className="absolute top-2 right-2 bg-neutral-200 rounded-full p-1" data-testid="archive-badge">
-          <Archive className="w-3 h-3 text-neutral-600" />
+        <div className="absolute top-1.5 right-1.5 bg-white/10 rounded-full p-0.5" data-testid="archive-badge">
+          <Archive className="w-2.5 h-2.5 text-white/50" />
         </div>
       )}
 
@@ -250,42 +252,32 @@ export function TaskCard({
       {!isArchived && (
         <div
           data-testid="drag-handle"
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
         >
-          <GripVertical
-            className="w-4 h-4 hover:text-[var(--text-secondary)]"
-            style={{ color: "var(--text-muted)" }}
-          />
+          <GripVertical className="w-3.5 h-3.5 text-white/30 hover:text-white/50" />
         </div>
       )}
 
       {/* Card content */}
-      <div className="pr-6">
+      <div className="pr-5">
         {/* Title */}
         <div
           data-testid="task-title"
-          className="text-sm font-medium truncate"
-          style={{
-            color: "var(--text-primary)",
-            letterSpacing: "var(--tracking-tight)",
-          }}
+          className="text-xs font-medium truncate text-white/90 tracking-tight"
         >
           {task.title}
         </div>
 
         {/* Description - 2 line clamp */}
         {task.description && (
-          <div
-            className="text-xs mt-1 line-clamp-2"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <div className="text-[11px] mt-1 line-clamp-2 text-white/50 leading-relaxed">
             {task.description}
           </div>
         )}
 
         {/* Badge row */}
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+          <Badge variant="secondary" className="text-[9px] px-1.5 py-px bg-white/5 text-white/60 border-white/10">
             {task.category}
           </Badge>
           {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}

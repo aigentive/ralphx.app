@@ -10,9 +10,9 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ArtifactSummary, Task, TaskContext, TaskId, TaskProposalSummary,
+    ArtifactSummary, Task, TaskContext, TaskId, TaskProposalSummary, StepProgressSummary,
 };
-use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository};
+use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository};
 use crate::error::{AppError, AppResult};
 
 /// Service for aggregating task context for worker execution
@@ -20,6 +20,7 @@ pub struct TaskContextService {
     task_repo: Arc<dyn TaskRepository>,
     proposal_repo: Arc<dyn TaskProposalRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
+    step_repo: Arc<dyn TaskStepRepository>,
 }
 
 impl TaskContextService
@@ -29,11 +30,13 @@ impl TaskContextService
         task_repo: Arc<dyn TaskRepository>,
         proposal_repo: Arc<dyn TaskProposalRepository>,
         artifact_repo: Arc<dyn ArtifactRepository>,
+        step_repo: Arc<dyn TaskStepRepository>,
     ) -> Self {
         Self {
             task_repo,
             proposal_repo,
             artifact_repo,
+            step_repo,
         }
     }
 
@@ -118,20 +121,33 @@ impl TaskContextService
             vec![]
         };
 
-        // 5. Generate context_hints based on what's available
+        // 5. Fetch steps for the task
+        let steps = self.step_repo.get_by_task(task_id).await?;
+
+        // 6. Calculate step progress summary if steps exist
+        let step_progress = if !steps.is_empty() {
+            Some(StepProgressSummary::from_steps(task_id, &steps))
+        } else {
+            None
+        };
+
+        // 7. Generate context_hints based on what's available
         let context_hints = self.generate_context_hints(
             &task,
             source_proposal.is_some(),
             plan_artifact.is_some(),
             related_artifacts.len(),
+            steps.len(),
         );
 
-        // 6. Return TaskContext
+        // 8. Return TaskContext
         Ok(TaskContext {
             task,
             source_proposal,
             plan_artifact,
             related_artifacts,
+            steps,
+            step_progress,
             context_hints,
         })
     }
@@ -164,6 +180,7 @@ impl TaskContextService
         has_proposal: bool,
         has_plan: bool,
         related_count: usize,
+        step_count: usize,
     ) -> Vec<String> {
         let mut hints = Vec::new();
 
@@ -185,6 +202,14 @@ impl TaskContextService
             ));
         }
 
+        if step_count > 0 {
+            hints.push(format!(
+                "Task has {} step{} defined - use get_task_steps to see them",
+                step_count,
+                if step_count == 1 { "" } else { "s" }
+            ));
+        }
+
         if task.description.is_some() {
             hints.push("Task has description with additional details".to_string());
         }
@@ -203,10 +228,12 @@ mod tests {
     use crate::domain::entities::{
         Artifact, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType,
         InternalStatus, Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId,
+        TaskStep, TaskStepId,
     };
-    use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository};
+    use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository};
     use async_trait::async_trait;
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     // Mock repositories for testing
     struct MockTaskRepository {
@@ -567,6 +594,110 @@ mod tests {
         }
     }
 
+    struct MockTaskStepRepository {
+        steps: Mutex<HashMap<String, TaskStep>>,
+    }
+
+    impl MockTaskStepRepository {
+        fn empty() -> Self {
+            Self {
+                steps: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl TaskStepRepository for MockTaskStepRepository {
+        async fn create(&self, step: TaskStep) -> AppResult<TaskStep> {
+            self.steps
+                .lock()
+                .unwrap()
+                .insert(step.id.to_string(), step.clone());
+            Ok(step)
+        }
+
+        async fn get_by_id(&self, id: &TaskStepId) -> AppResult<Option<TaskStep>> {
+            Ok(self.steps.lock().unwrap().get(&id.to_string()).cloned())
+        }
+
+        async fn get_by_task(&self, task_id: &TaskId) -> AppResult<Vec<TaskStep>> {
+            let mut steps: Vec<_> = self
+                .steps
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|s| &s.task_id == task_id)
+                .cloned()
+                .collect();
+            steps.sort_by_key(|s| s.sort_order);
+            Ok(steps)
+        }
+
+        async fn get_by_task_and_status(
+            &self,
+            task_id: &TaskId,
+            status: crate::domain::entities::TaskStepStatus,
+        ) -> AppResult<Vec<TaskStep>> {
+            let mut steps: Vec<_> = self
+                .steps
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|s| &s.task_id == task_id && s.status == status)
+                .cloned()
+                .collect();
+            steps.sort_by_key(|s| s.sort_order);
+            Ok(steps)
+        }
+
+        async fn update(&self, step: &TaskStep) -> AppResult<()> {
+            self.steps
+                .lock()
+                .unwrap()
+                .insert(step.id.to_string(), step.clone());
+            Ok(())
+        }
+
+        async fn delete(&self, id: &TaskStepId) -> AppResult<()> {
+            self.steps.lock().unwrap().remove(&id.to_string());
+            Ok(())
+        }
+
+        async fn delete_by_task(&self, task_id: &TaskId) -> AppResult<()> {
+            self.steps
+                .lock()
+                .unwrap()
+                .retain(|_, s| &s.task_id != task_id);
+            Ok(())
+        }
+
+        async fn count_by_status(
+            &self,
+            task_id: &TaskId,
+        ) -> AppResult<HashMap<crate::domain::entities::TaskStepStatus, u32>> {
+            let steps = self.get_by_task(task_id).await?;
+            let mut counts = HashMap::new();
+            for step in steps {
+                *counts.entry(step.status).or_insert(0) += 1;
+            }
+            Ok(counts)
+        }
+
+        async fn bulk_create(&self, steps: Vec<TaskStep>) -> AppResult<Vec<TaskStep>> {
+            for step in &steps {
+                self.steps
+                    .lock()
+                    .unwrap()
+                    .insert(step.id.to_string(), step.clone());
+            }
+            Ok(steps)
+        }
+
+        async fn reorder(&self, _task_id: &TaskId, _step_ids: Vec<TaskStepId>) -> AppResult<()> {
+            Ok(())
+        }
+    }
+
     #[tokio::test]
     async fn test_get_task_context_basic() {
         let task = Task::new(ProjectId::new(), "Test Task".to_string());
@@ -576,6 +707,7 @@ mod tests {
             Arc::new(MockTaskRepository::with_task(task.clone())),
             Arc::new(MockTaskProposalRepository::empty()),
             Arc::new(MockArtifactRepository::empty()),
+            Arc::new(MockTaskStepRepository::empty()),
         );
 
         let context = service.get_task_context(&task_id).await.unwrap();
@@ -584,6 +716,8 @@ mod tests {
         assert!(context.source_proposal.is_none());
         assert!(context.plan_artifact.is_none());
         assert_eq!(context.related_artifacts.len(), 0);
+        assert_eq!(context.steps.len(), 0);
+        assert!(context.step_progress.is_none());
         assert!(!context.context_hints.is_empty());
     }
 
@@ -609,6 +743,7 @@ mod tests {
             Arc::new(MockTaskRepository::with_task(task.clone())),
             Arc::new(MockTaskProposalRepository::with_proposal(proposal)),
             Arc::new(MockArtifactRepository::empty()),
+            Arc::new(MockTaskStepRepository::empty()),
         );
 
         let context = service.get_task_context(&task_id).await.unwrap();
@@ -639,6 +774,7 @@ mod tests {
             Arc::new(MockTaskRepository::with_task(task.clone())),
             Arc::new(MockTaskProposalRepository::empty()),
             Arc::new(MockArtifactRepository::with_artifact(artifact)),
+            Arc::new(MockTaskStepRepository::empty()),
         );
 
         let context = service.get_task_context(&task_id).await.unwrap();
@@ -677,6 +813,7 @@ mod tests {
                 artifact,
                 vec![related1, related2],
             )),
+            Arc::new(MockTaskStepRepository::empty()),
         );
 
         let context = service.get_task_context(&task_id).await.unwrap();
@@ -713,6 +850,7 @@ mod tests {
             Arc::new(MockTaskRepository { task: None }),
             Arc::new(MockTaskProposalRepository::empty()),
             Arc::new(MockArtifactRepository::empty()),
+            Arc::new(MockTaskStepRepository::empty()),
         );
 
         let result = service.get_task_context(&TaskId::new()).await;

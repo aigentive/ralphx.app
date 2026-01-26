@@ -6,22 +6,38 @@ The definitive design guide for RalphX. All UI work must follow these specificat
 
 ## 1. Design Philosophy
 
-### Premium 10x Designer Aesthetic
+### The "Refined Studio" Aesthetic
 
-RalphX is a native Mac app that should feel like it was crafted by a world-class designer. Every pixel matters. Every interaction is intentional.
+RalphX embodies a **Refined Studio** aesthetic—a luxurious, sophisticated dark interface with editorial typography and warm jewel accents. Think of a high-end creative tool meets premium Mac app.
+
+**Core Principles:**
+
+| Principle | Description |
+|-----------|-------------|
+| **Sophisticated Depth** | Multiple subtle layers create dimensionality through gradient backgrounds, layered shadows, and glass panels |
+| **Editorial Typography** | Clean, purposeful text hierarchy with SF Pro Display, tight tracking, generous breathing room |
+| **Jewel Accents** | Warm orange (#ff6b35) used sparingly as precious highlights—3-5% of surface area |
+| **Atmospheric Backgrounds** | Rich, textured dark surfaces using gradient meshes, subtle blur effects |
+| **Premium Motion** | Deliberate, refined animations—subtle glow pulses, smooth fades, elegant transitions |
 
 **What makes it feel premium:**
 - **Intentionality** - Every element has a purpose; no visual noise
 - **Restraint** - Strategic use of color, especially accent (5% rule)
 - **Polish** - Micro-interactions, layered shadows, refined typography
 - **Consistency** - Same patterns applied everywhere
-- **Depth** - Not flat; surfaces have subtle elevation and dimensionality
+- **Depth** - Not flat; surfaces have subtle elevation and dimensionality through gradients
+- **Atmosphere** - Backgrounds have texture and warmth, never flat black
 
 ### Reference Apps
 - **Linear** - Board layout, card interactions, keyboard-first UX
 - **Raycast** - Mac-native feel, glass effects, spacing discipline
 - **Arc** - Spatial organization, bold typography, warm palette
 - **Vercel Dashboard** - Typography scale, dark theme execution, status indicators
+- **Notion** - Clean panels, sophisticated simplicity
+- **Figma** - Premium dark UI, atmospheric depth
+
+### Detailed Pattern Reference
+See **[Refined Studio Patterns](design/refined-studio-patterns.md)** for comprehensive code examples and implementation patterns.
 
 ---
 
@@ -32,33 +48,60 @@ RalphX is a native Mac app that should feel like it was crafted by a world-class
 - ❌ Inter font (use SF Pro instead)
 - ❌ Generic icon grids (4x4 squares of identical icons)
 - ❌ High saturation colors on dark backgrounds
-- ❌ Flat, lifeless surfaces without depth
+- ❌ Flat, lifeless surfaces without depth (plain `#0f0f0f` backgrounds)
 - ❌ Rainbow gradients or excessive color variety
 - ❌ Overly rounded corners (pill shapes everywhere)
 - ❌ Generic stock-photo-style illustrations
+- ❌ Single-value box shadows (always layer multiple shadows)
+- ❌ Static hover states (just color change, no transform)
+- ❌ Uniform card grids without hierarchy
+- ❌ Harsh borders without gradient softening
 
 **ALWAYS use these patterns:**
 - ✅ Warm orange accent (#ff6b35) - distinctive and intentional
-- ✅ Layered shadows for realistic depth
-- ✅ Micro-interactions (hover lift, press scale)
-- ✅ Typography refinement (letter-spacing, line-height)
-- ✅ Strategic accent usage (5% of surface area max)
-- ✅ Glass effects only for modals/overlays
-- ✅ Subtle gradients (nearly imperceptible)
+- ✅ Layered shadows for realistic depth (multiple shadow values)
+- ✅ Micro-interactions (hover lift with translateY, subtle scale)
+- ✅ Typography refinement (letter-spacing -0.02em for headings)
+- ✅ Strategic accent usage (3-5% of surface area max)
+- ✅ Glass effects with backdrop-blur for panels and overlays
+- ✅ Subtle gradient backgrounds (warm radial at top, cool at bottom)
+- ✅ Gradient borders (transparent border with gradient background)
+- ✅ Premium empty states with icon glow effects
+- ✅ Staggered entry animations for lists
+- ✅ Subtle glow pulses for selected/active states
 
 ---
 
 ## 3. Color System
 
 ### Backgrounds
-Dark grays, NOT pure black. Create depth through subtle variation.
+Dark grays with **gradient depth**, NOT pure black. Create atmospheric layering.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--bg-base` | `#0f0f0f` | Page background, main canvas |
-| `--bg-surface` | `#1a1a1a` | Cards, panels, elevated containers |
-| `--bg-elevated` | `#242424` | Modals, popovers, highest elevation |
-| `--bg-hover` | `#2d2d2d` | Hover states on interactive elements |
+| `--bg-base` | `#0a0a0a` | Deepest background layer |
+| `--bg-surface` | `#141414` | Primary surface, panels |
+| `--bg-elevated` | `#1a1a1a` | Cards, elevated containers |
+| `--bg-hover` | `#262626` | Hover states on interactive elements |
+
+### Atmospheric Gradients (Preferred over flat colors)
+
+| Pattern | CSS | Usage |
+|---------|-----|-------|
+| **Page Background** | `linear-gradient(180deg, #141414 0%, #0a0a0a 100%)` | Main canvas |
+| **Warm Radial** | `radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.04) 0%, transparent 50%)` | Top-left warmth |
+| **Glass Panel** | `linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)` | Floating panels |
+| **Card Surface** | `linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)` | Interactive cards |
+
+```css
+/* Full atmospheric background stack */
+.atmospheric-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139,92,246,0.02) 0%, transparent 50%),
+    linear-gradient(180deg, #141414 0%, #0a0a0a 100%);
+}
+```
 
 ### Text
 Off-white, NOT pure white. Reduce eye strain with softer contrast.
@@ -117,17 +160,21 @@ System fonts for performance and Mac-native feel.
 | `--font-body` | SF Pro Text, -apple-system, sans-serif | Body text, UI labels |
 | `--font-mono` | JetBrains Mono, Menlo, monospace | Code, diffs, IDs |
 
-### Type Scale
+### Type Scale (Compact Application UI)
+
+RalphX is a **native application**, not a marketing website. Use compact sizing to maximize information density.
 
 | Class | Size | Usage |
 |-------|------|-------|
-| `text-xs` | 12px (0.75rem) | Timestamps, badges, fine print |
-| `text-sm` | 14px (0.875rem) | Secondary text, descriptions |
-| `text-base` | 16px (1rem) | Body text, primary content |
-| `text-lg` | 18px (1.125rem) | Section titles, card headers |
-| `text-xl` | 20px (1.25rem) | Page section headings |
-| `text-2xl` | 24px (1.5rem) | Page titles |
-| `text-3xl` | 30px (1.875rem) | Hero text (rare) |
+| `text-[9px]` | 9px | Priority badges, mini labels |
+| `text-[10px]` | 10px | Timestamps, metadata, counts |
+| `text-[11px]` | 11px | Secondary info, hints |
+| `text-xs` | 12px | Descriptions, card content |
+| `text-sm` | 14px | Primary UI text, titles |
+| `text-base` | 16px | Section headers (use sparingly) |
+| `text-lg` | 18px | Modal titles, hero text (rare) |
+
+**Principle**: Most UI text should be 12-14px. Reserve 16px+ for key headings only.
 
 ### Letter Spacing
 
@@ -160,49 +207,103 @@ System fonts for performance and Mac-native feel.
 ### Base Unit
 4px base unit, 8pt grid for component alignment.
 
-### Spacing Tokens
+### Spacing Tokens (Compact Application UI)
+
+RalphX favors compact spacing to maximize screen real estate for information-dense views.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--space-1` | 4px | Micro gaps (icon-to-text, badge padding) |
-| `--space-2` | 8px | Tight spacing (list items, inline elements) |
-| `--space-3` | 12px | Component padding (buttons, inputs) |
-| `--space-4` | 16px | Card padding, section gaps |
-| `--space-5` | 20px | Medium sections |
-| `--space-6` | 24px | Large gaps, column gutters |
-| `--space-8` | 32px | Section separations |
-| `--space-10` | 40px | Page margins (sides) |
-| `--space-12` | 48px | Major section breaks |
-| `--space-16` | 64px | Hero spacing, page headers |
+| `--space-0.5` | 2px | Micro gaps (between badge text and border) |
+| `--space-1` | 4px | Icon-to-text gaps, inline elements |
+| `--space-1.5` | 6px | Tight list spacing |
+| `--space-2` | 8px | Card content gaps, button padding |
+| `--space-2.5` | 10px | Session card padding |
+| `--space-3` | 12px | Panel headers, section padding |
+| `--space-4` | 16px | Larger containers (modals) |
+| `--space-5` | 20px | Empty state padding |
+| `--space-6` | 24px | Major section breaks |
 
-### Usage Categories
-- **Micro** (4-8px): Inside badges, between icons and text
-- **Component** (12-16px): Padding inside buttons, inputs, cards
-- **Section** (24-32px): Between related groups
-- **Page** (48-64px): Page margins, major breaks
+### Component Sizing Guide
+
+| Component | Height | Padding | Font |
+|-----------|--------|---------|------|
+| Sidebar header | auto | px-3 py-3 | text-sm |
+| Panel header | h-9 (36px) | px-3 py-2 | text-xs |
+| Main header | h-11 (44px) | px-4 | text-xs |
+| Session card | auto | p-2.5 | text-xs |
+| Proposal card | auto | p-3 | text-xs |
+| Message bubble | auto | px-3 py-2 | text-[13px] |
+| Button (small) | h-6-8 | px-2-3 | text-xs |
+| Badge | auto | px-1.5 py-px | text-[9px] |
+| Icon (inline) | w-3-3.5 | - | - |
+| Avatar | w-6-7 | - | - |
+
+### Compact UI Principles
+- **Cards**: Use p-2.5 to p-3, not p-4
+- **Sidebars**: 260px width, tight item spacing (space-y-1)
+- **Headers**: h-9 to h-11, not h-14+
+- **Icons**: 12-16px for UI, 20-24px for empty states
+- **Empty states**: Keep decorative but not oversized (w-12 icons, not w-16)
 
 ---
 
 ## 6. Shadow System (Layered)
 
-Shadows provide depth and hierarchy. Use multiple layers for realistic elevation.
+Shadows provide depth and hierarchy. **Always use multiple layers** for realistic elevation. Single shadows look flat.
 
 ### Shadow Tokens
 
 | Token | CSS | Usage |
 |-------|-----|-------|
-| `--shadow-xs` | `0 1px 2px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.1)` | Subtle card lift |
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2)` | Hover states, dropdowns |
-| `--shadow-md` | `0 4px 6px rgba(0,0,0,0.3), 0 8px 16px rgba(0,0,0,0.2)` | Modals, floating panels |
-| `--shadow-lg` | `0 10px 15px rgba(0,0,0,0.3), 0 20px 40px rgba(0,0,0,0.25)` | Large overlays |
-| `--shadow-glow` | `0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent-primary)` | Focus rings |
+| `--shadow-xs` | `0 1px 2px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)` | Subtle card lift |
+| `--shadow-sm` | `0 2px 4px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.15)` | Hover states, dropdowns |
+| `--shadow-md` | `0 4px 12px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.2)` | Modals, floating panels |
+| `--shadow-lg` | `0 8px 24px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.3)` | Large overlays |
+| `--shadow-glow` | `0 0 0 3px rgba(255,107,53,0.1), 0 0 12px rgba(255,107,53,0.15)` | Focus/active glow |
+
+### Premium Card Shadow (Recommended)
+
+```css
+.premium-card {
+  box-shadow:
+    0 2px 8px rgba(0,0,0,0.2),
+    0 1px 2px rgba(0,0,0,0.1),
+    inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.premium-card:hover {
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.3),
+    0 2px 4px rgba(0,0,0,0.15),
+    0 0 0 1px rgba(255,255,255,0.05);
+}
+```
+
+### Accent Glow (Selected/Active States)
+
+```css
+/* Subtle pulsing glow for selected items */
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(255,107,53,0.08), 0 0 24px rgba(255,107,53,0.04);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255,107,53,0.15), 0 0 36px rgba(255,107,53,0.08);
+  }
+}
+
+.selected {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+```
 
 ### Shadow Usage
-- **Cards at rest**: `--shadow-xs` or no shadow (border-only)
-- **Cards on hover**: `--shadow-sm` + translateY(-2px)
-- **Dropdowns/Popovers**: `--shadow-sm` to `--shadow-md`
-- **Modals**: `--shadow-md` to `--shadow-lg`
-- **Focus states**: `--shadow-glow`
+- **Cards at rest**: Layered shadow with inset highlight
+- **Cards on hover**: Increased shadow + slight lift (`translateY(-1px)`)
+- **Dropdowns/Popovers**: `--shadow-md` with backdrop blur
+- **Modals**: `--shadow-lg` with dark backdrop
+- **Selected states**: Subtle glow animation
+- **Focus states**: `--shadow-glow` ring
 
 ---
 
@@ -243,18 +344,36 @@ For premium cards with subtle depth:
 
 ### Buttons
 
+**Primary Button (Gradient):**
+```css
+.btn-primary {
+  background: linear-gradient(180deg, #ff6b35 0%, #f97316 100%);
+  color: white;
+  font-weight: 500;
+  box-shadow:
+    0 2px 8px rgba(255,107,53,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(180deg, #ff7a4d 0%, #fb923c 100%);
+  box-shadow: 0 4px 12px rgba(255,107,53,0.4);
+  transform: translateY(-1px);
+}
+```
+
 **Variants:**
 | Variant | Background | Text | Usage |
 |---------|------------|------|-------|
-| Primary | `--accent-primary` | white | Main actions (1 per section) |
-| Secondary | `--bg-surface` | `--text-primary` | Secondary actions |
+| Primary | gradient `#ff6b35` to `#f97316` | white | Main actions (1 per section) |
+| Secondary | `rgba(255,255,255,0.05)` | `--text-primary` | Secondary actions |
 | Ghost | transparent | `--text-secondary` | Tertiary, navigation |
 | Destructive | `--status-error` | white | Delete, dangerous actions |
 
 **States:**
-- Hover: lighten bg, subtle shadow
+- Hover: gradient shift + shadow increase + `translateY(-1px)`
 - Active: `scale(0.98)`, darken bg
-- Focus: `--shadow-glow`
+- Focus: `--shadow-glow` ring
 - Disabled: 50% opacity, no pointer events
 
 **Sizing:**
@@ -262,17 +381,34 @@ For premium cards with subtle depth:
 - Default: 36px height, text-sm, px-4
 - Large: 44px height, text-base, px-6
 
-### Cards
+### Cards (Premium Pattern)
+
+**Recommended Card Structure:**
+```css
+.premium-card {
+  background: linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.premium-card:hover {
+  background: linear-gradient(180deg, rgba(32,32,32,0.95) 0%, rgba(26,26,26,0.98) 100%);
+  border-color: rgba(255,255,255,0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+```
 
 **Variants:**
 | Variant | Background | Border | Shadow |
 |---------|------------|--------|--------|
-| Flat | `--bg-surface` | none | none |
-| Outlined | `--bg-surface` | `--border-default` | none |
-| Raised | `--bg-surface` | none | `--shadow-xs` |
-| Glass | rgba(26,26,26,0.85) + blur(20px) | gradient | `--shadow-md` |
+| Standard | gradient `#1c1c1c` to `#161616` | `rgba(255,255,255,0.06)` | layered |
+| Glass | `rgba(26,26,26,0.95)` + blur(20px) | gradient | `--shadow-md` |
+| Selected | gradient with `#ff6b35` tint | `rgba(255,107,53,0.25)` | glow pulse |
 
-**Card Padding:** 16px (--space-4) default, 12px for compact cards
+**Card Padding:** 14-16px default, 12px for compact cards
 
 ### Inputs
 
@@ -336,21 +472,87 @@ Close: Escape key + backdrop click (unless destructive)
 | Token | Value | Usage |
 |-------|-------|-------|
 | `--transition-fast` | 150ms | Hover states, micro-feedback |
-| `--transition-normal` | 200ms | Most transitions |
-| `--transition-slow` | 300ms | Complex animations, modals |
+| `--transition-normal` | 200ms | Most transitions, card interactions |
+| `--transition-slow` | 300ms | Complex animations, modals, entry |
 
-### Standard Interactions
+### Premium Hover Pattern
 
-**Hover Lift (Cards, Buttons):**
 ```css
-.hoverable {
-  transition: transform 150ms ease, box-shadow 150ms ease;
+.premium-hoverable {
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.hoverable:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
+
+.premium-hoverable:hover {
+  transform: translateY(-1px);
+  background: /* slightly lighter gradient */;
+  border-color: rgba(255,255,255,0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 ```
+
+### Entry Animations
+
+**Fade Slide In (Lists, Cards):**
+```css
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeSlideIn 0.3s ease-out forwards;
+}
+
+/* Staggered children for lists */
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger > *:nth-child(3) { animation-delay: 0.15s; }
+```
+
+### Glow Pulse (Selected States)
+
+```css
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(255,107,53,0.08), 0 0 24px rgba(255,107,53,0.04);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255,107,53,0.15), 0 0 36px rgba(255,107,53,0.08);
+  }
+}
+
+.selected-glow {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+```
+
+### Shimmer Loading
+
+```css
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer-loading {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.05) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+```
+
+### Standard Interactions
 
 **Active Press:**
 ```css
@@ -363,7 +565,7 @@ Close: Escape key + backdrop click (unless destructive)
 ```css
 .focusable:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(255,107,53,0.1), 0 0 12px rgba(255,107,53,0.15);
 }
 ```
 
