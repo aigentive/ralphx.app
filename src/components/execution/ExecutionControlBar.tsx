@@ -78,7 +78,7 @@ export function ExecutionControlBar({
         role="region"
         aria-label="Execution controls"
         aria-live="polite"
-        className="flex h-12 items-center justify-between px-4 border-t z-10"
+        className="flex py-3 items-center justify-between px-4 border-t z-10"
         style={{
           backgroundColor: "var(--bg-surface)",
           borderColor: "var(--border-subtle)",
