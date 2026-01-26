@@ -202,7 +202,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test agent invocation manually",
       "Commit: feat(plugin): add context fetching instructions to worker agent"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
