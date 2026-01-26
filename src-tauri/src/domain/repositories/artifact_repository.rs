@@ -21,6 +21,10 @@ pub trait ArtifactRepository: Send + Sync {
     /// Get artifact by ID
     async fn get_by_id(&self, id: &ArtifactId) -> AppResult<Option<Artifact>>;
 
+    /// Get artifact at a specific version by traversing the version history
+    /// Returns None if the artifact doesn't exist or the version is not found
+    async fn get_by_id_at_version(&self, id: &ArtifactId, version: u32) -> AppResult<Option<Artifact>>;
+
     /// Get all artifacts in a bucket
     async fn get_by_bucket(&self, bucket_id: &ArtifactBucketId) -> AppResult<Vec<Artifact>>;
 
@@ -101,6 +105,10 @@ mod tests {
         }
 
         async fn get_by_id(&self, _id: &ArtifactId) -> AppResult<Option<Artifact>> {
+            Ok(self.return_artifact.clone())
+        }
+
+        async fn get_by_id_at_version(&self, _id: &ArtifactId, _version: u32) -> AppResult<Option<Artifact>> {
             Ok(self.return_artifact.clone())
         }
 

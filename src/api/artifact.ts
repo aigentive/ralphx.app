@@ -88,6 +88,21 @@ export const artifactApi = {
   },
 
   /**
+   * Get an artifact at a specific version
+   * @param artifactId The artifact ID
+   * @param version The version number to retrieve
+   * @returns The artifact at the specified version or null if not found
+   */
+  getAtVersion: async (artifactId: string, version: number): Promise<Artifact | null> => {
+    const raw = await typedInvoke(
+      "get_artifact_at_version",
+      { id: artifactId, version },
+      ArtifactResponseSchema.nullable()
+    );
+    return raw ? transformArtifact(raw) : null;
+  },
+
+  /**
    * Get all artifacts for a task
    * @param taskId The task ID
    * @returns Array of artifacts

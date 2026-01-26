@@ -61,6 +61,7 @@ import { Card } from "@/components/ui/card";
 import ReactMarkdown from "react-markdown";
 import type { Priority } from "@/types/ideation";
 import { PlanDisplay } from "./PlanDisplay";
+import { PlanHistoryDialog } from "./PlanHistoryDialog";
 import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
 
 // ============================================================================
@@ -317,12 +318,35 @@ interface ProposalCardProps {
   onEdit: (proposalId: string) => void;
   onRemove: (proposalId: string) => void;
   isHighlighted?: boolean;
+  currentPlanVersion?: number | undefined;
+  onViewHistoricalPlan?: (artifactId: string, version: number) => void | undefined;
 }
 
-function ProposalCard({ proposal, onSelect, onEdit, onRemove, isHighlighted = false }: ProposalCardProps) {
+function ProposalCard({
+  proposal,
+  onSelect,
+  onEdit,
+  onRemove,
+  isHighlighted = false,
+  currentPlanVersion,
+  onViewHistoricalPlan,
+}: ProposalCardProps) {
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
   const isSelected = proposal.selected;
   const priorityStyle = PRIORITY_STYLES[effectivePriority];
+
+  // Check if we should show the historical plan link
+  const showHistoricalPlanLink =
+    proposal.planArtifactId &&
+    proposal.planVersionAtCreation &&
+    currentPlanVersion &&
+    proposal.planVersionAtCreation !== currentPlanVersion;
+
+  const handleViewHistoricalPlan = () => {
+    if (proposal.planArtifactId && proposal.planVersionAtCreation && onViewHistoricalPlan) {
+      onViewHistoricalPlan(proposal.planArtifactId, proposal.planVersionAtCreation);
+    }
+  };
 
   return (
     <Card
@@ -412,6 +436,24 @@ function ProposalCard({ proposal, onSelect, onEdit, onRemove, isHighlighted = fa
               </Badge>
             )}
           </div>
+
+          {/* Historical plan link */}
+          {showHistoricalPlanLink && (
+            <div className="mt-2">
+              <button
+                data-testid="view-historical-plan"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleViewHistoricalPlan();
+                }}
+                className="text-xs underline hover:no-underline transition-all flex items-center gap-1"
+                style={{ color: "#ff6b35" }}
+              >
+                <Eye className="w-3 h-3" />
+                View plan as of proposal creation (v{proposal.planVersionAtCreation})
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Card>
@@ -823,6 +865,21 @@ export function IdeationView({
   // Proactive sync notification handlers
   const [highlightedProposalIds, setHighlightedProposalIds] = useState<Set<string>>(new Set());
 
+  // Plan history dialog state
+  const [planHistoryDialog, setPlanHistoryDialog] = useState<{
+    isOpen: boolean;
+    artifactId: string;
+    version: number;
+  } | null>(null);
+
+  const handleViewHistoricalPlan = useCallback((artifactId: string, version: number) => {
+    setPlanHistoryDialog({ isOpen: true, artifactId, version });
+  }, []);
+
+  const handleClosePlanHistoryDialog = useCallback(() => {
+    setPlanHistoryDialog(null);
+  }, []);
+
   const handleReviewSync = useCallback(() => {
     if (syncNotification) {
       setHighlightedProposalIds(new Set(syncNotification.proposalIds));
@@ -1056,6 +1113,8 @@ export function IdeationView({
                     onEdit={onEditProposal}
                     onRemove={onRemoveProposal}
                     isHighlighted={highlightedProposalIds.has(proposal.id)}
+                    currentPlanVersion={planArtifact?.metadata.version ?? undefined}
+                    onViewHistoricalPlan={handleViewHistoricalPlan}
                   />
                 ))}
               </div>
@@ -1096,6 +1155,16 @@ export function IdeationView({
           </div>
         </div>
       </div>
+
+      {/* Plan History Dialog */}
+      {planHistoryDialog && (
+        <PlanHistoryDialog
+          isOpen={planHistoryDialog.isOpen}
+          onClose={handleClosePlanHistoryDialog}
+          artifactId={planHistoryDialog.artifactId}
+          version={planHistoryDialog.version}
+        />
+      )}
     </div>
   );
 }
