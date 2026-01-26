@@ -1,15 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:32:04
+**Last Updated:** 2026-01-26 21:36:15
 **Phase:** Task Execution Experience
-**Tasks Completed:** 29 / 42
-**Current Task:** Create TaskFullView component
+**Tasks Completed:** 30 / 42
+**Current Task:** Add resizable panels to TaskFullView
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:36:15 - Create TaskFullView component
+
+**What was done:**
+- Created `src/components/tasks/TaskFullView.tsx`:
+  - Full-screen overlay with 24px margin (Raycast-style)
+  - Props: `taskId: string`, `onClose: () => void`
+  - Header with back button, title, priority badge, status badge, action buttons (edit, archive, close)
+  - Split layout: left panel (TaskDetailPanel) | right panel (TaskChatPanel)
+  - Default 50/50 split with panelWidth state persisted to localStorage
+  - Drag handle between panels for resizing with mouse events
+  - Minimum panel width: 360px enforced on both sides
+  - Context-aware chat: determines 'task' vs 'task_execution' based on task status
+  - Footer with execution controls (Pause/Stop) shown when task is executing
+  - Escape key closes view
+  - Task fetched from useTasks hook based on taskId
+  - Loading state shown when task not found
+- Created `src/components/tasks/TaskFullView.test.tsx`:
+  - 13 comprehensive tests covering core functionality
+  - Tests for rendering, header elements, panels, drag handle, footer, close handlers
+  - All tests passing with mocked hooks and stores
+- All lint checks passing (no errors, only pre-existing warnings)
+- TypeScript type checking passing
+- All 13 tests passing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test -- TaskFullView.test.tsx`
 
 ### 2026-01-26 21:32:04 - Create TaskChatPanel component
 
