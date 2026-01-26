@@ -21,6 +21,8 @@ const userMessage: ChatMessageType = {
   content: "Hello, I need help with authentication",
   metadata: null,
   parentMessageId: null,
+  conversationId: null,
+  toolCalls: null,
   createdAt: "2026-01-24T12:00:00Z",
 };
 
@@ -33,6 +35,8 @@ const orchestratorMessage: ChatMessageType = {
   content: "I can help you design an authentication system.",
   metadata: null,
   parentMessageId: "msg-1",
+  conversationId: null,
+  toolCalls: null,
   createdAt: "2026-01-24T12:01:00Z",
 };
 
@@ -45,6 +49,8 @@ const systemMessage: ChatMessageType = {
   content: "Session started",
   metadata: null,
   parentMessageId: null,
+  conversationId: null,
+  toolCalls: null,
   createdAt: "2026-01-24T11:59:00Z",
 };
 
@@ -58,7 +64,69 @@ const markdownMessage: ChatMessageType = {
     "Here's a **bold** suggestion:\n\n1. First step\n2. Second step\n\n```typescript\nconst auth = new Auth();\n```",
   metadata: null,
   parentMessageId: null,
+  conversationId: null,
+  toolCalls: null,
   createdAt: "2026-01-24T12:05:00Z",
+};
+
+const messageWithToolCalls: ChatMessageType = {
+  id: "msg-5",
+  sessionId: "session-1",
+  projectId: "project-1",
+  taskId: null,
+  role: "orchestrator",
+  content: "I'll create a task proposal for you.",
+  metadata: null,
+  parentMessageId: null,
+  conversationId: null,
+  toolCalls: JSON.stringify([
+    {
+      id: "call-1",
+      name: "create_task_proposal",
+      input: {
+        title: "Add authentication",
+        category: "feature",
+      },
+      result: {
+        proposal_id: "proposal-123",
+      },
+    },
+    {
+      id: "call-2",
+      name: "update_task",
+      input: {
+        task_id: "task-456",
+        status: "in_progress",
+      },
+      result: {
+        success: true,
+      },
+    },
+  ]),
+  createdAt: "2026-01-24T12:10:00Z",
+};
+
+const messageWithFailedToolCall: ChatMessageType = {
+  id: "msg-6",
+  sessionId: "session-1",
+  projectId: "project-1",
+  taskId: null,
+  role: "orchestrator",
+  content: "I tried to read the file but encountered an error.",
+  metadata: null,
+  parentMessageId: null,
+  conversationId: null,
+  toolCalls: JSON.stringify([
+    {
+      id: "call-3",
+      name: "read",
+      input: {
+        file_path: "/nonexistent/file.txt",
+      },
+      error: "File not found",
+    },
+  ]),
+  createdAt: "2026-01-24T12:15:00Z",
 };
 
 // ============================================================================
@@ -311,6 +379,81 @@ describe("ChatMessage", () => {
       render(<ChatMessage message={userMessage} compact />);
 
       expect(screen.queryByTestId("chat-message-role")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Tool Calls", () => {
+    it("does not render tool calls section when message has no tool calls", () => {
+      render(<ChatMessage message={userMessage} />);
+
+      expect(
+        screen.queryByTestId("chat-message-tool-calls")
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render tool calls section when toolCalls is null", () => {
+      render(<ChatMessage message={orchestratorMessage} />);
+
+      expect(
+        screen.queryByTestId("chat-message-tool-calls")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders tool calls when message has tool calls", () => {
+      render(<ChatMessage message={messageWithToolCalls} />);
+
+      expect(screen.getByTestId("chat-message-tool-calls")).toBeInTheDocument();
+    });
+
+    it("renders multiple tool call indicators", () => {
+      render(<ChatMessage message={messageWithToolCalls} />);
+
+      const toolCallIndicators = screen.getAllByTestId("tool-call-indicator");
+      expect(toolCallIndicators).toHaveLength(2);
+    });
+
+    it("renders tool calls within message bubble", () => {
+      render(<ChatMessage message={messageWithToolCalls} />);
+
+      const bubble = screen.getByTestId("chat-message-bubble");
+      const toolCallsSection = screen.getByTestId("chat-message-tool-calls");
+
+      expect(bubble).toContainElement(toolCallsSection);
+    });
+
+    it("handles failed tool calls", () => {
+      render(<ChatMessage message={messageWithFailedToolCall} />);
+
+      expect(screen.getByTestId("chat-message-tool-calls")).toBeInTheDocument();
+      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+    });
+
+    it("handles invalid JSON in toolCalls gracefully", () => {
+      const invalidMessage: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-invalid",
+        toolCalls: "invalid json{{{",
+      };
+      render(<ChatMessage message={invalidMessage} />);
+
+      // Should not render tool calls section for invalid JSON
+      expect(
+        screen.queryByTestId("chat-message-tool-calls")
+      ).not.toBeInTheDocument();
+    });
+
+    it("handles non-array JSON in toolCalls gracefully", () => {
+      const nonArrayMessage: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-non-array",
+        toolCalls: JSON.stringify({ not: "an array" }),
+      };
+      render(<ChatMessage message={nonArrayMessage} />);
+
+      // Should not render tool calls section for non-array JSON
+      expect(
+        screen.queryByTestId("chat-message-tool-calls")
+      ).not.toBeInTheDocument();
     });
   });
 });

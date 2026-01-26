@@ -12,6 +12,7 @@
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import type { ChatMessage as ChatMessageType, MessageRole } from "@/types/ideation";
+import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 
 // ============================================================================
 // Types
@@ -186,6 +187,17 @@ export function ChatMessage({
     [message.role]
   );
 
+  // Parse tool calls if present
+  const toolCalls = useMemo<ToolCall[]>(() => {
+    if (!message.toolCalls) return [];
+    try {
+      const parsed = JSON.parse(message.toolCalls);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [message.toolCalls]);
+
   return (
     <article
       data-testid={`chat-message-${message.id}`}
@@ -214,6 +226,15 @@ export function ChatMessage({
             {message.content}
           </ReactMarkdown>
         </div>
+
+        {/* Tool calls (if any) */}
+        {toolCalls.length > 0 && (
+          <div className="mt-3 space-y-2" data-testid="chat-message-tool-calls">
+            {toolCalls.map((toolCall) => (
+              <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Timestamp */}
