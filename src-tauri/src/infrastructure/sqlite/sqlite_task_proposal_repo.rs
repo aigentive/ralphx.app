@@ -50,9 +50,9 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                 id, session_id, title, description, category, steps, acceptance_criteria,
                 suggested_priority, priority_score, priority_reason, priority_factors,
                 estimated_complexity, user_priority, user_modified, status, selected,
-                created_task_id, sort_order, created_at, updated_at
+                created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
             )",
             rusqlite::params![
                 proposal.id.as_str(),
@@ -72,6 +72,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                 proposal.status.to_string(),
                 proposal.selected as i32,
                 proposal.created_task_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_version_at_creation,
                 proposal.sort_order,
                 proposal.created_at.to_rfc3339(),
                 proposal.updated_at.to_rfc3339(),
@@ -89,7 +91,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                     suggested_priority, priority_score, priority_reason, priority_factors,
                     estimated_complexity, user_priority, user_modified, status, selected,
-                    created_task_id, sort_order, created_at, updated_at
+                    created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
              FROM task_proposals WHERE id = ?1",
             [id.as_str()],
             |row| TaskProposal::from_row(row),
@@ -110,7 +112,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                 "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                         suggested_priority, priority_score, priority_reason, priority_factors,
                         estimated_complexity, user_priority, user_modified, status, selected,
-                        created_task_id, sort_order, created_at, updated_at
+                        created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
                  FROM task_proposals WHERE session_id = ?1 ORDER BY sort_order ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -139,7 +141,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                 title = ?2, description = ?3, category = ?4, steps = ?5, acceptance_criteria = ?6,
                 suggested_priority = ?7, priority_score = ?8, priority_reason = ?9, priority_factors = ?10,
                 estimated_complexity = ?11, user_priority = ?12, user_modified = ?13, status = ?14,
-                selected = ?15, created_task_id = ?16, sort_order = ?17, updated_at = ?18
+                selected = ?15, created_task_id = ?16, plan_artifact_id = ?17, plan_version_at_creation = ?18,
+                sort_order = ?19, updated_at = ?20
              WHERE id = ?1",
             rusqlite::params![
                 proposal.id.as_str(),
@@ -158,6 +161,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                 proposal.status.to_string(),
                 proposal.selected as i32,
                 proposal.created_task_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_version_at_creation,
                 proposal.sort_order,
                 now.to_rfc3339(),
             ],
@@ -276,7 +281,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                 "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                         suggested_priority, priority_score, priority_reason, priority_factors,
                         estimated_complexity, user_priority, user_modified, status, selected,
-                        created_task_id, sort_order, created_at, updated_at
+                        created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
                  FROM task_proposals
                  WHERE session_id = ?1 AND selected = 1
                  ORDER BY sort_order ASC",

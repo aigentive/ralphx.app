@@ -120,7 +120,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(entities): add plan artifact fields to ideation entities"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

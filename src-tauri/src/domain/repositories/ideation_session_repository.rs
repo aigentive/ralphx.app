@@ -150,6 +150,7 @@ mod tests {
             project_id: project_id.clone(),
             title: Some("Test Session".to_string()),
             status: IdeationSessionStatus::Active,
+            plan_artifact_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
