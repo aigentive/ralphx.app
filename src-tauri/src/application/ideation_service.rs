@@ -8,8 +8,8 @@
 // - Retrieving session data with proposals and messages
 
 use crate::domain::entities::{
-    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
-    ProposalStatus, TaskCategory, TaskProposal, TaskProposalId,
+    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, MethodologyExtension,
+    Priority, ProjectId, ProposalStatus, TaskCategory, TaskProposal, TaskProposalId,
 };
 use crate::domain::repositories::{
     ChatMessageRepository, IdeationSessionRepository, ProposalDependencyRepository,
@@ -18,6 +18,15 @@ use crate::domain::repositories::{
 use crate::error::{AppError, AppResult};
 use chrono::Utc;
 use std::sync::Arc;
+
+/// Configuration for plan artifacts in ideation flow
+#[derive(Debug, Clone)]
+pub struct PlanArtifactConfig {
+    /// Artifact type to use for plans
+    pub artifact_type: String,
+    /// Bucket ID to store plans in
+    pub bucket_id: String,
+}
 
 /// Data returned when fetching a session with all related data
 #[derive(Debug, Clone)]
@@ -433,6 +442,28 @@ where
             selected_proposals,
             message_count,
         })
+    }
+
+    /// Get plan artifact configuration
+    ///
+    /// Returns the artifact type and bucket to use for ideation plans.
+    /// If a methodology is active and provides custom configuration, that is used.
+    /// Otherwise, returns default configuration (Specification type, prd-library bucket).
+    ///
+    /// This is infrastructure for future methodology integration - currently always returns defaults.
+    pub fn get_plan_artifact_config(
+        active_methodology: Option<&MethodologyExtension>,
+    ) -> PlanArtifactConfig {
+        match active_methodology.and_then(|m| m.plan_artifact_config.as_ref()) {
+            Some(config) => PlanArtifactConfig {
+                artifact_type: config.artifact_type.clone(),
+                bucket_id: config.bucket_id.clone(),
+            },
+            None => PlanArtifactConfig {
+                artifact_type: "specification".to_string(),
+                bucket_id: "prd-library".to_string(),
+            },
+        }
     }
 }
 
