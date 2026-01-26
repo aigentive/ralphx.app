@@ -1,15 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:08:29
+**Last Updated:** 2026-01-26 21:12:45
 **Phase:** Task Execution Experience
-**Tasks Completed:** 22 / 42
-**Current Task:** Add execution state animations to CSS
+**Tasks Completed:** 23 / 42
+**Current Task:** Create useTaskExecutionState hook
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:12:45 - Add execution state animations to CSS
+
+**What was done:**
+- Updated `src/styles/globals.css` with task execution animations:
+  - Added CSS variables for animations:
+    - `--animation-executing-pulse`: 2s infinite pulse animation for executing tasks
+    - `--animation-attention-pulse`: 1.5s infinite pulse for tasks needing attention
+  - Created `@keyframes executing-pulse`:
+    - Animated box-shadow glow effect using accent-primary color
+    - Expands from 0px to 4px with fading opacity (0.6 → 0)
+    - Additional outer glow 8px → 12px
+  - Created `@keyframes attention-pulse`:
+    - Simple opacity animation (1 → 0.7 → 1)
+    - Subtle attention-grabbing effect
+  - Added `.task-card-executing` class:
+    - Applies executing-pulse animation
+    - Sets 2px border with accent-primary color
+    - Creates pulsing orange glow effect
+  - Added `.task-card-attention` class:
+    - Applies attention-pulse animation
+    - Sets 2px border with status-warning color
+    - For tasks needing attention (revision_needed status)
+
+**Commands:**
+- `npm run lint` (passed, no errors)
 
 ### 2026-01-26 21:08:29 - Create StepList component
 

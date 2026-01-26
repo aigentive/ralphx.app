@@ -82,6 +82,10 @@
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
 
+  /* Execution animations */
+  --animation-executing-pulse: executing-pulse 2s ease-in-out infinite;
+  --animation-attention-pulse: attention-pulse 1.5s ease-in-out infinite;
+
   /* ============================================================================
    * shadcn/ui CSS Variables - Mapped to RalphX Design Tokens
    * Using our dark theme as default (RalphX is dark-only)
@@ -518,4 +522,44 @@ body {
 
 .task-name-enter {
   animation: slide-in-right 200ms ease-out;
+}
+
+/* ============================================================================
+ * Task Execution State Animations
+ * ============================================================================ */
+
+/* Executing pulse - subtle glow effect for executing tasks */
+@keyframes executing-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsla(14 100% 60% / 0.6),
+                0 0 8px hsla(14 100% 60% / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 4px hsla(14 100% 60% / 0),
+                0 0 12px hsla(14 100% 60% / 0.5);
+  }
+}
+
+/* Attention pulse - opacity animation for tasks needing attention */
+@keyframes attention-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Task card executing state - border and glow */
+.task-card-executing {
+  animation: var(--animation-executing-pulse);
+  border-color: var(--accent-primary);
+  border-width: 2px;
+}
+
+/* Task card attention state - subtle pulse */
+.task-card-attention {
+  animation: var(--animation-attention-pulse);
+  border-color: var(--status-warning);
+  border-width: 2px;
 }
