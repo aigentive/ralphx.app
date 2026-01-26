@@ -11,10 +11,13 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useReviewsByTaskId, useTaskStateHistory } from "@/hooks/useReviews";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
+import { TaskContextPanel } from "./TaskContextPanel";
 import type { Task, InternalStatus } from "@/types/task";
-import { X, Bot, User, Wrench, Loader2 } from "lucide-react";
+import { X, Bot, User, Wrench, Loader2, FileText } from "lucide-react";
+import { useState } from "react";
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -222,6 +225,7 @@ export function TaskDetailModal({
   onClose,
   fixTaskCount,
 }: TaskDetailModalProps) {
+  const [showContext, setShowContext] = useState(false);
   const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(
     task?.id ?? ""
   );
@@ -231,6 +235,7 @@ export function TaskDetailModal({
 
   const hasReviews = reviews.length > 0;
   const hasFixTasks = fixTaskCount !== undefined && fixTaskCount > 0;
+  const hasContext = !!(task.sourceProposalId || task.planArtifactId);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -319,6 +324,29 @@ export function TaskDetailModal({
               data-task-id={task.id}
               className="px-6 py-4 space-y-6"
             >
+              {/* View Context Button */}
+              {hasContext && (
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowContext(!showContext)}
+                    data-testid="view-context-button"
+                    className="w-full justify-center"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    {showContext ? "Hide Context" : "View Context"}
+                  </Button>
+                </div>
+              )}
+
+              {/* Task Context Panel */}
+              {showContext && hasContext && (
+                <div data-testid="task-context-section">
+                  <TaskContextPanel taskId={task.id} />
+                </div>
+              )}
+
               {/* Description Section */}
               {task.description ? (
                 <div>
