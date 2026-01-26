@@ -1,15 +1,50 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 23:15:12
+**Last Updated:** 2026-01-26 23:42:18
 **Phase:** Task Execution Experience
-**Tasks Completed:** 12 / 42
-**Current Task:** Include steps in TaskContext for worker
+**Tasks Completed:** 13 / 42
+**Current Task:** Update worker agent prompt with step instructions
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 23:42:18 - Include steps in TaskContext for worker
+
+**What was done:**
+- Updated `src-tauri/src/domain/entities/task_context.rs`:
+  - Added `TaskStep` and `StepProgressSummary` to imports
+  - Added `steps: Vec<TaskStep>` field to `TaskContext` struct
+  - Added `step_progress: Option<StepProgressSummary>` field to `TaskContext` struct
+  - Updated all test cases to include new fields (initialized as empty vec and None)
+- Updated `src-tauri/src/http_server.rs`:
+  - Modified `get_task_context_impl()` function to fetch steps via `task_step_repo.get_by_task()`
+  - Calculate `StepProgressSummary` using `StepProgressSummary::from_steps()` if steps exist
+  - Added context hint: "Task has N step(s) defined - use get_task_steps to see them"
+  - Include steps and step_progress in returned `TaskContext`
+- Updated `src-tauri/src/application/task_context_service.rs`:
+  - Added `TaskStepRepository` to service dependencies
+  - Updated constructor to accept `step_repo` parameter
+  - Fetch steps in `get_task_context()` method
+  - Calculate step progress summary if steps exist
+  - Updated `generate_context_hints()` to accept `step_count` parameter and add step hint
+  - Added `MockTaskStepRepository` for testing with full trait implementation
+  - Updated all test cases to include `MockTaskStepRepository::empty()`
+- Updated `src-tauri/src/commands/task_context_commands.rs`:
+  - Pass `state.task_step_repo.clone()` to `TaskContextService::new()`
+
+**Test results:**
+```
+cargo test
+test result: ok. All tests passed
+```
+
+**Commits:**
+```
+feat(context): include steps in TaskContext for worker
+```
 
 ### 2026-01-26 23:15:12 - Import steps from proposal when creating task
 

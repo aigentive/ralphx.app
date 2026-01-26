@@ -311,7 +311,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(context): include steps in TaskContext for worker"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "agent",

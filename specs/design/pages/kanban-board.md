@@ -1,8 +1,8 @@
 # Kanban Board
 
-The Kanban view is the primary interface for task management. It should feel like a premium native Mac app with physical depth and dimensionality.
+The Kanban view is the primary interface for task management. It embodies the **Refined Studio** aesthetic—a premium native Mac app with sophisticated depth, compact sizing, and warm orange jewel accents.
 
-**Reference Inspiration**: Linear (card interactions, keyboard-first), Raycast (Mac-native feel, spacing discipline)
+**Reference Inspiration**: Linear (card interactions, keyboard-first), Raycast (Mac-native feel, compact density), Notion (clean hierarchy)
 
 ## TaskBoard
 
@@ -10,12 +10,17 @@ The Kanban view is the primary interface for task management. It should feel lik
 - Viewport-filling height (`calc(100vh - header - control-bar)`)
 - Horizontal scroll with CSS scroll-snap for column alignment
 - Fade edges at overflow boundaries (gradient masks)
-- 24px (`--space-6`) gutters between columns
+- 16-20px gutters between columns (compact, not 24px)
 
-**Background:**
-- Subtle radial gradient, NOT flat `--bg-base`
-- Gradient: `radial-gradient(ellipse at top, rgba(255,107,53,0.03) 0%, var(--bg-base) 50%)`
-- Creates warmth without being distracting
+**Background (Atmospheric Gradient):**
+```css
+.task-board {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139,92,246,0.02) 0%, transparent 50%),
+    linear-gradient(180deg, #141414 0%, #0a0a0a 100%);
+}
+```
 
 **Scroll Behavior:**
 - Horizontal scroll with momentum (native Mac feel)

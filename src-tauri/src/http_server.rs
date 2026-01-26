@@ -1739,7 +1739,17 @@ async fn get_task_context_impl(
         vec![]
     };
 
-    // 5. Generate context hints
+    // 5. Fetch steps for the task
+    let steps = state.task_step_repo.get_by_task(task_id).await?;
+
+    // 6. Calculate step progress summary if steps exist
+    let step_progress = if !steps.is_empty() {
+        Some(StepProgressSummary::from_steps(task_id, &steps))
+    } else {
+        None
+    };
+
+    // 7. Generate context hints
     let mut context_hints = Vec::new();
     if source_proposal.is_some() {
         context_hints.push(
@@ -1756,6 +1766,13 @@ async fn get_task_context_impl(
             if related_artifacts.len() == 1 { "" } else { "s" }
         ));
     }
+    if !steps.is_empty() {
+        context_hints.push(format!(
+            "Task has {} step{} defined - use get_task_steps to see them",
+            steps.len(),
+            if steps.len() == 1 { "" } else { "s" }
+        ));
+    }
     if task.description.is_some() {
         context_hints.push("Task has description with additional details".to_string());
     }
@@ -1763,12 +1780,14 @@ async fn get_task_context_impl(
         context_hints.push("No additional context artifacts found - proceed with task description and acceptance criteria".to_string());
     }
 
-    // 6. Return TaskContext
+    // 8. Return TaskContext
     Ok(TaskContext {
         task,
         source_proposal,
         plan_artifact,
         related_artifacts,
+        steps,
+        step_progress,
         context_hints,
     })
 }

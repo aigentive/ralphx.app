@@ -23,6 +23,7 @@ pub async fn get_task_context(
         state.task_repo.clone(),
         state.task_proposal_repo.clone(),
         state.artifact_repo.clone(),
+        state.task_step_repo.clone(),
     );
 
     service

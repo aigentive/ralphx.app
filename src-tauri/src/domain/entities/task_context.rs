@@ -1,5 +1,7 @@
-use super::{ArtifactId, ArtifactType, Task, TaskProposalId};
+use super::{ArtifactId, ArtifactType, Task, TaskProposalId, TaskStep};
 use serde::{Deserialize, Serialize};
+
+use super::task_step::StepProgressSummary;
 
 /// Rich context returned by get_task_context MCP tool
 /// Contains the task being executed along with linked artifacts and proposals
@@ -16,6 +18,12 @@ pub struct TaskContext {
 
     /// Other artifacts related to the plan
     pub related_artifacts: Vec<ArtifactSummary>,
+
+    /// Steps defined for this task (for progress tracking)
+    pub steps: Vec<TaskStep>,
+
+    /// Progress summary for the task's steps
+    pub step_progress: Option<StepProgressSummary>,
 
     /// Hints for worker about what context might be useful
     pub context_hints: Vec<String>,
@@ -61,6 +69,8 @@ mod tests {
             source_proposal: None,
             plan_artifact: None,
             related_artifacts: vec![],
+            steps: vec![],
+            step_progress: None,
             context_hints: vec!["No additional context available".to_string()],
         };
 
@@ -68,6 +78,8 @@ mod tests {
         assert!(context.source_proposal.is_none());
         assert!(context.plan_artifact.is_none());
         assert_eq!(context.related_artifacts.len(), 0);
+        assert_eq!(context.steps.len(), 0);
+        assert!(context.step_progress.is_none());
         assert_eq!(context.context_hints.len(), 1);
     }
 
@@ -143,6 +155,8 @@ mod tests {
             source_proposal: Some(proposal_summary.clone()),
             plan_artifact: Some(plan_summary.clone()),
             related_artifacts: vec![related_artifact],
+            steps: vec![],
+            step_progress: None,
             context_hints: vec![
                 "Implementation plan available".to_string(),
                 "Related research document found".to_string(),
@@ -161,6 +175,8 @@ mod tests {
             "Implementation Plan"
         );
         assert_eq!(context.related_artifacts.len(), 1);
+        assert_eq!(context.steps.len(), 0);
+        assert!(context.step_progress.is_none());
         assert_eq!(context.context_hints.len(), 2);
     }
 

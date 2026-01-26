@@ -1,8 +1,8 @@
 # Chat Panel (Global)
 
-The global Chat Panel is a persistent, resizable side panel for interacting with AI agents during task execution. Unlike the Ideation view's full-screen chat, this panel overlays the current view and provides contextual assistance.
+The global Chat Panel is a persistent, resizable side panel for interacting with AI agents during task execution. It embodies the **Refined Studio** aesthetic—premium glass effects, compact sizing, and warm orange accents.
 
-**Reference Inspiration**: Raycast (resizable panel, Mac-native), Vercel v0 (contextual chat), GitHub Copilot Chat (inline assistance)
+**Reference Inspiration**: Raycast (resizable panel, Mac-native), Vercel v0 (contextual chat), Linear (compact density)
 
 ## Panel Structure
 
@@ -211,41 +211,47 @@ When collapsed, the panel reduces to a thin bar that can be expanded.
 
 ## Message Design
 
-Messages share styling with Ideation chat for consistency but are more compact.
+Messages use the **Refined Studio** aesthetic with gradient backgrounds and compact sizing.
 
 **User Messages:**
 - Right-aligned
-- Background: `--accent-primary` (#ff6b35)
+- Background: `linear-gradient(135deg, #ff6b35 0%, #f97316 100%)`
 - Text: white
-- Border radius: 10px 10px 4px 10px (tail bottom-right)
-- Max width: 85%
-- Padding: 8px 12px
-- Shadow: `--shadow-xs`
-- Font size: 14px (`text-sm`)
+- Border radius: 12px 12px 4px 12px (tail bottom-right)
+- Max width: 80%
+- Padding: 8px 12px (px-3 py-2)
+- Shadow: `0 2px 8px rgba(255,107,53,0.2)`
+- Font size: 13px
 
 **Assistant Messages:**
 - Left-aligned
-- Background: `--bg-elevated`
-- Border: `1px solid var(--border-subtle)`
-- Border radius: 10px 10px 10px 4px (tail bottom-left)
-- Max width: 85%
-- Padding: 8px 12px
-- Font size: 14px (`text-sm`)
+- Background: `linear-gradient(180deg, rgba(38,38,38,0.95) 0%, rgba(32,32,32,0.98) 100%)`
+- Border: `1px solid rgba(255,255,255,0.06)`
+- Border radius: 12px 12px 12px 4px (tail bottom-left)
+- Max width: 80%
+- Padding: 8px 12px (px-3 py-2)
+- Font size: 13px
+- backdrop-filter: blur(8px)
 
 ```css
 .message-user {
   align-self: flex-end;
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, #ff6b35 0%, #f97316 100%);
   color: white;
-  border-radius: 10px 10px 4px 10px;
-  box-shadow: var(--shadow-xs);
+  border-radius: 12px 12px 4px 12px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 8px rgba(255,107,53,0.2);
+  font-size: 13px;
 }
 
 .message-assistant {
   align-self: flex-start;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px 10px 10px 4px;
+  background: linear-gradient(180deg, rgba(38,38,38,0.95) 0%, rgba(32,32,32,0.98) 100%);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px 12px 12px 4px;
+  padding: 8px 12px;
+  backdrop-filter: blur(8px);
+  font-size: 13px;
 }
 ```
 
