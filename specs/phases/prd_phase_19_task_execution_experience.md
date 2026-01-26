@@ -657,7 +657,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(fullview): add resizable panels"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
