@@ -1,15 +1,61 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:09:20
+**Last Updated:** 2026-01-26 20:15:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 24 / 30
-**Current Task:** Integrate search into TaskBoard
+**Tasks Completed:** 25 / 30
+**Current Task:** Add keyboard shortcuts to TaskBoard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:15:00 - Integrate search into TaskBoard (Task 26)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskBoard.tsx` with search integration:
+  - Added `searchOpen` state (default false)
+  - Get `boardSearchQuery` and `setBoardSearchQuery` from uiStore (already existed)
+  - Added `useTaskSearch` hook call with projectId, boardSearchQuery, includeArchived params
+  - Added keyboard shortcuts with useEffect:
+    - Cmd+F / Ctrl+F: opens search (with preventDefault to avoid browser find)
+    - Escape: closes search and clears query
+    - Properly guards against triggering when user is typing in inputs
+  - Implemented search mode logic:
+    - `isSearchActive` checks if search is open AND query has 2+ chars
+    - `searchTasksByColumn` groups search results by column.mapsTo status
+    - `displayColumns` filters to only show columns with search results during search
+  - Render TaskSearchBar in header when searchOpen:
+    - Passes value, onChange, onClose, resultCount, isSearching
+    - onClose clears search state
+  - Show EmptySearchState when search returns 0 results:
+    - onCreateTask opens modal with pre-filled title from search query
+    - onClearSearch clears the search query
+  - Pass searchTasks and matchCount props to Column during search mode
+- Updated `src/components/tasks/TaskBoard/Column.tsx`:
+  - Added optional `searchTasks?: Task[]` and `matchCount?: number` props
+  - Modified tasks useMemo to use searchTasks when provided (search mode)
+  - Updated Badge to show matchCount: `{tasks.length}{matchCount !== undefined && ` (${matchCount})`}`
+- Fixed TaskBoard data flow issues:
+  - handleTaskSelect now fetches task via API instead of searching columns
+  - handleDragStart queries TanStack Query cache to find dragged task
+  - Import InfiniteData and TaskListResponse types
+  - Import infiniteTaskKeys for cache queries
+- Removed obsolete BoardColumn export from index.tsx
+
+**Commands:**
+- `npm run typecheck` - Type checking passed
+- `npm run lint` - No new errors (12 pre-existing warnings)
+
+**Files modified:**
+- `src/components/tasks/TaskBoard/TaskBoard.tsx` - Search integration, keyboard shortcuts
+- `src/components/tasks/TaskBoard/Column.tsx` - Support search mode with searchTasks prop
+- `src/components/tasks/TaskBoard/hooks.ts` - (no changes, verified structure)
+- `src/components/tasks/TaskBoard/index.tsx` - Removed BoardColumn export
+
+**Commit:**
+- `feat(board): integrate search bar with server-side search`
 
 ### 2026-01-26 19:09:20 - Create EmptySearchState component (Task 25)
 
