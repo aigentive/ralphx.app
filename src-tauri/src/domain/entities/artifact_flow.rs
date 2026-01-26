@@ -47,6 +47,8 @@ impl fmt::Display for ArtifactFlowId {
 pub enum ArtifactFlowEvent {
     /// Triggered when an artifact is created
     ArtifactCreated,
+    /// Triggered when an artifact is updated (new version created)
+    ArtifactUpdated,
     /// Triggered when a task is completed
     TaskCompleted,
     /// Triggered when a process is completed
@@ -58,6 +60,7 @@ impl ArtifactFlowEvent {
     pub fn as_str(&self) -> &'static str {
         match self {
             ArtifactFlowEvent::ArtifactCreated => "artifact_created",
+            ArtifactFlowEvent::ArtifactUpdated => "artifact_updated",
             ArtifactFlowEvent::TaskCompleted => "task_completed",
             ArtifactFlowEvent::ProcessCompleted => "process_completed",
         }
@@ -67,6 +70,7 @@ impl ArtifactFlowEvent {
     pub fn all() -> &'static [ArtifactFlowEvent] {
         &[
             ArtifactFlowEvent::ArtifactCreated,
+            ArtifactFlowEvent::ArtifactUpdated,
             ArtifactFlowEvent::TaskCompleted,
             ArtifactFlowEvent::ProcessCompleted,
         ]
@@ -99,6 +103,7 @@ impl FromStr for ArtifactFlowEvent {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "artifact_created" => Ok(ArtifactFlowEvent::ArtifactCreated),
+            "artifact_updated" => Ok(ArtifactFlowEvent::ArtifactUpdated),
             "task_completed" => Ok(ArtifactFlowEvent::TaskCompleted),
             "process_completed" => Ok(ArtifactFlowEvent::ProcessCompleted),
             _ => Err(ParseArtifactFlowEventError {
@@ -186,6 +191,11 @@ impl ArtifactFlowTrigger {
         Self::on_event(ArtifactFlowEvent::ArtifactCreated)
     }
 
+    /// Creates a trigger for artifact_updated event
+    pub fn on_artifact_updated() -> Self {
+        Self::on_event(ArtifactFlowEvent::ArtifactUpdated)
+    }
+
     /// Creates a trigger for task_completed event
     pub fn on_task_completed() -> Self {
         Self::on_event(ArtifactFlowEvent::TaskCompleted)
@@ -227,6 +237,13 @@ pub enum ArtifactFlowStep {
         /// The agent profile to use for the process
         agent_profile: String,
     },
+    /// Emit a Tauri event to the frontend
+    EmitEvent {
+        /// The event name (e.g., "plan:proposals_may_need_update")
+        event_name: String,
+    },
+    /// Find proposals linked to a plan artifact (for proactive sync)
+    FindLinkedProposals,
 }
 
 impl ArtifactFlowStep {
@@ -243,6 +260,18 @@ impl ArtifactFlowStep {
         }
     }
 
+    /// Creates an emit_event step
+    pub fn emit_event(event_name: impl Into<String>) -> Self {
+        ArtifactFlowStep::EmitEvent {
+            event_name: event_name.into(),
+        }
+    }
+
+    /// Creates a find_linked_proposals step
+    pub fn find_linked_proposals() -> Self {
+        ArtifactFlowStep::FindLinkedProposals
+    }
+
     /// Returns true if this is a copy step
     pub fn is_copy(&self) -> bool {
         matches!(self, ArtifactFlowStep::Copy { .. })
@@ -253,11 +282,23 @@ impl ArtifactFlowStep {
         matches!(self, ArtifactFlowStep::SpawnProcess { .. })
     }
 
+    /// Returns true if this is an emit_event step
+    pub fn is_emit_event(&self) -> bool {
+        matches!(self, ArtifactFlowStep::EmitEvent { .. })
+    }
+
+    /// Returns true if this is a find_linked_proposals step
+    pub fn is_find_linked_proposals(&self) -> bool {
+        matches!(self, ArtifactFlowStep::FindLinkedProposals)
+    }
+
     /// Returns the step type as a string
     pub fn step_type(&self) -> &'static str {
         match self {
             ArtifactFlowStep::Copy { .. } => "copy",
             ArtifactFlowStep::SpawnProcess { .. } => "spawn_process",
+            ArtifactFlowStep::EmitEvent { .. } => "emit_event",
+            ArtifactFlowStep::FindLinkedProposals => "find_linked_proposals",
         }
     }
 }
@@ -345,6 +386,16 @@ impl ArtifactFlowContext {
     pub fn artifact_created(artifact: Artifact) -> Self {
         Self {
             event: ArtifactFlowEvent::ArtifactCreated,
+            artifact: Some(artifact),
+            task_id: None,
+            process_id: None,
+        }
+    }
+
+    /// Creates a context for artifact_updated event
+    pub fn artifact_updated(artifact: Artifact) -> Self {
+        Self {
+            event: ArtifactFlowEvent::ArtifactUpdated,
             artifact: Some(artifact),
             task_id: None,
             process_id: None,
@@ -464,6 +515,12 @@ impl ArtifactFlowEngine {
         self.evaluate_triggers(&context)
     }
 
+    /// Convenience method to evaluate triggers for artifact_updated event
+    pub fn on_artifact_updated(&self, artifact: &Artifact) -> Vec<ArtifactFlowEvaluation> {
+        let context = ArtifactFlowContext::artifact_updated(artifact.clone());
+        self.evaluate_triggers(&context)
+    }
+
     /// Convenience method to evaluate triggers for task_completed event
     pub fn on_task_completed(
         &self,
@@ -502,6 +559,28 @@ pub fn create_research_to_dev_flow() -> ArtifactFlow {
         "task_decomposition",
         "orchestrator",
     ))
+}
+
+/// Creates the "plan_updated_sync" flow for proactive sync of ideation plans.
+///
+/// This flow triggers when a Specification artifact (implementation plan) in the
+/// prd-library bucket is updated. It:
+/// 1. Finds all proposals linked to the plan artifact
+/// 2. Emits a `plan:proposals_may_need_update` event to notify the UI
+///
+/// The UI can then show a notification like:
+/// "Plan updated. N proposals may need revision. [Review]"
+pub fn create_plan_updated_sync_flow() -> ArtifactFlow {
+    ArtifactFlow::new(
+        "Plan Updated Sync",
+        ArtifactFlowTrigger::on_artifact_updated().with_filter(
+            ArtifactFlowFilter::new()
+                .with_artifact_types(vec![ArtifactType::Specification])
+                .with_source_bucket(ArtifactBucketId::from_string("prd-library")),
+        ),
+    )
+    .with_step(ArtifactFlowStep::find_linked_proposals())
+    .with_step(ArtifactFlowStep::emit_event("plan:proposals_may_need_update"))
 }
 
 #[cfg(test)]
@@ -550,9 +629,9 @@ mod tests {
     // ===== ArtifactFlowEvent Tests =====
 
     #[test]
-    fn artifact_flow_event_all_returns_3_events() {
+    fn artifact_flow_event_all_returns_4_events() {
         let all = ArtifactFlowEvent::all();
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 4);
     }
 
     #[test]
@@ -1104,6 +1183,207 @@ mod tests {
         // Should not match: wrong bucket
         let wrong_bucket = create_test_artifact(ArtifactType::Recommendations, Some("other"));
         let evals = engine.on_artifact_created(&wrong_bucket);
+        assert_eq!(evals.len(), 0);
+    }
+
+    // ===== ArtifactUpdated Event Tests =====
+
+    #[test]
+    fn artifact_flow_event_includes_artifact_updated() {
+        let all = ArtifactFlowEvent::all();
+        assert!(all.contains(&ArtifactFlowEvent::ArtifactUpdated));
+    }
+
+    #[test]
+    fn artifact_flow_event_artifact_updated_serializes() {
+        assert_eq!(
+            serde_json::to_string(&ArtifactFlowEvent::ArtifactUpdated).unwrap(),
+            "\"artifact_updated\""
+        );
+    }
+
+    #[test]
+    fn artifact_flow_event_artifact_updated_parses() {
+        let event: ArtifactFlowEvent = "artifact_updated".parse().unwrap();
+        assert_eq!(event, ArtifactFlowEvent::ArtifactUpdated);
+    }
+
+    #[test]
+    fn artifact_flow_trigger_on_artifact_updated() {
+        let trigger = ArtifactFlowTrigger::on_artifact_updated();
+        assert_eq!(trigger.event, ArtifactFlowEvent::ArtifactUpdated);
+        assert!(trigger.filter.is_none());
+    }
+
+    #[test]
+    fn artifact_flow_context_artifact_updated() {
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let context = ArtifactFlowContext::artifact_updated(artifact.clone());
+        assert_eq!(context.event, ArtifactFlowEvent::ArtifactUpdated);
+        assert!(context.artifact.is_some());
+        assert!(context.task_id.is_none());
+        assert!(context.process_id.is_none());
+    }
+
+    #[test]
+    fn artifact_flow_engine_on_artifact_updated() {
+        let mut engine = ArtifactFlowEngine::new();
+        engine.register_flow(
+            ArtifactFlow::new("Update Flow", ArtifactFlowTrigger::on_artifact_updated())
+                .with_step(ArtifactFlowStep::emit_event("artifact:updated")),
+        );
+
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let evals = engine.on_artifact_updated(&artifact);
+        assert_eq!(evals.len(), 1);
+        assert_eq!(evals[0].flow_name, "Update Flow");
+    }
+
+    #[test]
+    fn artifact_flow_engine_artifact_updated_does_not_trigger_created_flows() {
+        let mut engine = ArtifactFlowEngine::new();
+        engine.register_flow(
+            ArtifactFlow::new("Create Flow", ArtifactFlowTrigger::on_artifact_created())
+                .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("target"))),
+        );
+
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let evals = engine.on_artifact_updated(&artifact);
+        assert_eq!(evals.len(), 0);
+    }
+
+    // ===== New Step Types Tests =====
+
+    #[test]
+    fn artifact_flow_step_emit_event_creates_correctly() {
+        let step = ArtifactFlowStep::emit_event("plan:proposals_may_need_update");
+        assert!(step.is_emit_event());
+        assert_eq!(step.step_type(), "emit_event");
+
+        if let ArtifactFlowStep::EmitEvent { event_name } = step {
+            assert_eq!(event_name, "plan:proposals_may_need_update");
+        } else {
+            panic!("Expected EmitEvent step");
+        }
+    }
+
+    #[test]
+    fn artifact_flow_step_emit_event_serializes() {
+        let step = ArtifactFlowStep::emit_event("test:event");
+        let json = serde_json::to_string(&step).unwrap();
+        assert!(json.contains("\"emit_event\""));
+        assert!(json.contains("\"test:event\""));
+    }
+
+    #[test]
+    fn artifact_flow_step_emit_event_deserializes() {
+        let json = r#"{"type":"emit_event","event_name":"my:event"}"#;
+        let step: ArtifactFlowStep = serde_json::from_str(json).unwrap();
+        assert!(step.is_emit_event());
+    }
+
+    #[test]
+    fn artifact_flow_step_find_linked_proposals_creates_correctly() {
+        let step = ArtifactFlowStep::find_linked_proposals();
+        assert!(step.is_find_linked_proposals());
+        assert_eq!(step.step_type(), "find_linked_proposals");
+    }
+
+    #[test]
+    fn artifact_flow_step_find_linked_proposals_serializes() {
+        let step = ArtifactFlowStep::find_linked_proposals();
+        let json = serde_json::to_string(&step).unwrap();
+        assert!(json.contains("\"find_linked_proposals\""));
+    }
+
+    #[test]
+    fn artifact_flow_step_find_linked_proposals_deserializes() {
+        let json = r#"{"type":"find_linked_proposals"}"#;
+        let step: ArtifactFlowStep = serde_json::from_str(json).unwrap();
+        assert!(step.is_find_linked_proposals());
+    }
+
+    // ===== Plan Updated Sync Flow Tests =====
+
+    #[test]
+    fn create_plan_updated_sync_flow_has_correct_structure() {
+        let flow = create_plan_updated_sync_flow();
+        assert_eq!(flow.name, "Plan Updated Sync");
+        assert_eq!(flow.trigger.event, ArtifactFlowEvent::ArtifactUpdated);
+        assert!(flow.trigger.filter.is_some());
+
+        let filter = flow.trigger.filter.as_ref().unwrap();
+        assert_eq!(filter.artifact_types.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            filter.artifact_types.as_ref().unwrap()[0],
+            ArtifactType::Specification
+        );
+        assert_eq!(filter.source_bucket.as_ref().unwrap().as_str(), "prd-library");
+
+        assert_eq!(flow.steps.len(), 2);
+        assert!(flow.steps[0].is_find_linked_proposals());
+        assert!(flow.steps[1].is_emit_event());
+    }
+
+    #[test]
+    fn plan_updated_sync_flow_triggers_on_specification_update() {
+        let flow = create_plan_updated_sync_flow();
+        let engine = {
+            let mut e = ArtifactFlowEngine::new();
+            e.register_flow(flow);
+            e
+        };
+
+        // Should match: specification in prd-library being updated
+        let good = create_test_artifact(ArtifactType::Specification, Some("prd-library"));
+        let evals = engine.on_artifact_updated(&good);
+        assert_eq!(evals.len(), 1);
+        assert_eq!(evals[0].flow_name, "Plan Updated Sync");
+        assert_eq!(evals[0].steps.len(), 2);
+    }
+
+    #[test]
+    fn plan_updated_sync_flow_does_not_trigger_on_created() {
+        let flow = create_plan_updated_sync_flow();
+        let engine = {
+            let mut e = ArtifactFlowEngine::new();
+            e.register_flow(flow);
+            e
+        };
+
+        // Should not match: artifact created (not updated)
+        let artifact = create_test_artifact(ArtifactType::Specification, Some("prd-library"));
+        let evals = engine.on_artifact_created(&artifact);
+        assert_eq!(evals.len(), 0);
+    }
+
+    #[test]
+    fn plan_updated_sync_flow_does_not_trigger_wrong_type() {
+        let flow = create_plan_updated_sync_flow();
+        let engine = {
+            let mut e = ArtifactFlowEngine::new();
+            e.register_flow(flow);
+            e
+        };
+
+        // Should not match: wrong artifact type
+        let wrong_type = create_test_artifact(ArtifactType::Prd, Some("prd-library"));
+        let evals = engine.on_artifact_updated(&wrong_type);
+        assert_eq!(evals.len(), 0);
+    }
+
+    #[test]
+    fn plan_updated_sync_flow_does_not_trigger_wrong_bucket() {
+        let flow = create_plan_updated_sync_flow();
+        let engine = {
+            let mut e = ArtifactFlowEngine::new();
+            e.register_flow(flow);
+            e
+        };
+
+        // Should not match: wrong bucket
+        let wrong_bucket = create_test_artifact(ArtifactType::Specification, Some("other-bucket"));
+        let evals = engine.on_artifact_updated(&wrong_bucket);
         assert_eq!(evals.len(), 0);
     }
 }

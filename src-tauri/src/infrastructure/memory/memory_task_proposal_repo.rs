@@ -7,7 +7,7 @@ use std::sync::RwLock;
 use async_trait::async_trait;
 
 use crate::domain::entities::{
-    IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
+    ArtifactId, IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::repositories::TaskProposalRepository;
 use crate::error::AppResult;
@@ -150,6 +150,19 @@ impl TaskProposalRepository for MemoryTaskProposalRepository {
             .values()
             .filter(|p| &p.session_id == session_id && p.selected)
             .count() as u32)
+    }
+
+    async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>> {
+        let mut proposals: Vec<_> = self
+            .proposals
+            .read()
+            .unwrap()
+            .values()
+            .filter(|p| p.plan_artifact_id.as_ref() == Some(artifact_id))
+            .cloned()
+            .collect();
+        proposals.sort_by_key(|p| p.sort_order);
+        Ok(proposals)
     }
 }
 

@@ -482,7 +482,7 @@ pub struct SessionStats {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use crate::domain::entities::{ChatMessageId, MessageRole, PriorityAssessment, TaskId};
+    use crate::domain::entities::{ArtifactId, ChatMessageId, MessageRole, PriorityAssessment, TaskId};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -737,6 +737,17 @@ mod tests {
                 .values()
                 .filter(|p| &p.session_id == session_id && p.selected)
                 .count() as u32)
+        }
+
+        async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>> {
+            Ok(self
+                .proposals
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|p| p.plan_artifact_id.as_ref() == Some(artifact_id))
+                .cloned()
+                .collect())
         }
     }
 

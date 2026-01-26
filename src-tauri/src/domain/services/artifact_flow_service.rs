@@ -27,6 +27,18 @@ pub enum StepExecutionResult {
         process_type: String,
         agent_profile: String,
     },
+    /// Emit event step - carries event name and artifact ID for frontend handling
+    EventEmitted {
+        event_name: String,
+        artifact_id: String,
+    },
+    /// Find linked proposals step - returns proposal IDs linked to the artifact
+    LinkedProposalsFound {
+        artifact_id: String,
+        /// Placeholder: actual proposal IDs will be populated by the caller
+        /// since the service doesn't have access to the proposal repository
+        proposal_ids: Vec<String>,
+    },
 }
 
 /// Result of executing a complete flow
@@ -79,6 +91,11 @@ impl<R: ArtifactFlowRepository> ArtifactFlowService<R> {
         self.engine.on_artifact_created(artifact)
     }
 
+    /// Evaluate flows when an artifact is updated
+    pub fn on_artifact_updated(&self, artifact: &Artifact) -> Vec<ArtifactFlowEvaluation> {
+        self.engine.on_artifact_updated(artifact)
+    }
+
     /// Evaluate flows when a task is completed
     pub fn on_task_completed(
         &self,
@@ -104,8 +121,9 @@ impl<R: ArtifactFlowRepository> ArtifactFlowService<R> {
 
     /// Execute the steps of a flow evaluation.
     /// Returns the results of each step execution.
-    /// Note: The actual artifact copy and process spawn are handled by the caller,
-    /// as this service does not have direct access to artifact/process repositories.
+    /// Note: The actual artifact copy, process spawn, event emission, and proposal lookup
+    /// are handled by the caller, as this service does not have direct access to
+    /// artifact/process/proposal repositories or the Tauri app handle.
     pub fn execute_steps(
         &self,
         evaluation: &ArtifactFlowEvaluation,
@@ -125,6 +143,15 @@ impl<R: ArtifactFlowRepository> ArtifactFlowService<R> {
                 } => StepExecutionResult::ProcessSpawned {
                     process_type: process_type.clone(),
                     agent_profile: agent_profile.clone(),
+                },
+                ArtifactFlowStep::EmitEvent { event_name } => StepExecutionResult::EventEmitted {
+                    event_name: event_name.clone(),
+                    artifact_id: artifact.id.as_str().to_string(),
+                },
+                ArtifactFlowStep::FindLinkedProposals => StepExecutionResult::LinkedProposalsFound {
+                    artifact_id: artifact.id.as_str().to_string(),
+                    // Proposal IDs will be populated by the caller who has access to the proposal repo
+                    proposal_ids: vec![],
                 },
             })
             .collect()
@@ -197,6 +224,21 @@ impl<R: ArtifactFlowRepository> ArtifactFlowService<R> {
 
         // Evaluate which flows should trigger
         let evaluations = self.on_artifact_created(artifact);
+
+        // Execute all matching flows
+        Ok(self.execute_all_flows(&evaluations, artifact))
+    }
+
+    /// Process an artifact_updated event: evaluate triggers and return execution plan
+    pub async fn process_artifact_updated(
+        &mut self,
+        artifact: &Artifact,
+    ) -> AppResult<Vec<FlowExecutionResult>> {
+        // Ensure engine has latest flows
+        self.load_active_flows().await?;
+
+        // Evaluate which flows should trigger
+        let evaluations = self.on_artifact_updated(artifact);
 
         // Execute all matching flows
         Ok(self.execute_all_flows(&evaluations, artifact))
@@ -1073,5 +1115,133 @@ mod tests {
         let results = service.process_artifact_created(&artifact).await.unwrap();
 
         assert!(results.is_empty());
+    }
+
+    // ==================== New Step Types Tests ====================
+
+    #[test]
+    fn execute_steps_emit_event_step() {
+        let (service, _) = create_service();
+
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let evaluation = ArtifactFlowEvaluation {
+            flow_id: ArtifactFlowId::new(),
+            flow_name: "Test".to_string(),
+            steps: vec![ArtifactFlowStep::emit_event("plan:proposals_may_need_update")],
+        };
+
+        let results = service.execute_steps(&evaluation, &artifact);
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            StepExecutionResult::EventEmitted {
+                event_name,
+                artifact_id,
+            } => {
+                assert_eq!(event_name, "plan:proposals_may_need_update");
+                assert_eq!(artifact_id, artifact.id.as_str());
+            }
+            _ => panic!("Expected EventEmitted result"),
+        }
+    }
+
+    #[test]
+    fn execute_steps_find_linked_proposals_step() {
+        let (service, _) = create_service();
+
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let evaluation = ArtifactFlowEvaluation {
+            flow_id: ArtifactFlowId::new(),
+            flow_name: "Test".to_string(),
+            steps: vec![ArtifactFlowStep::find_linked_proposals()],
+        };
+
+        let results = service.execute_steps(&evaluation, &artifact);
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            StepExecutionResult::LinkedProposalsFound {
+                artifact_id,
+                proposal_ids,
+            } => {
+                assert_eq!(artifact_id, artifact.id.as_str());
+                // Proposal IDs are empty because service doesn't have repo access
+                assert!(proposal_ids.is_empty());
+            }
+            _ => panic!("Expected LinkedProposalsFound result"),
+        }
+    }
+
+    #[test]
+    fn execute_steps_plan_updated_sync_flow() {
+        let (service, _) = create_service();
+
+        let artifact = create_test_artifact(ArtifactType::Specification, Some("prd-library"));
+        let evaluation = ArtifactFlowEvaluation {
+            flow_id: ArtifactFlowId::new(),
+            flow_name: "Plan Updated Sync".to_string(),
+            steps: vec![
+                ArtifactFlowStep::find_linked_proposals(),
+                ArtifactFlowStep::emit_event("plan:proposals_may_need_update"),
+            ],
+        };
+
+        let results = service.execute_steps(&evaluation, &artifact);
+
+        assert_eq!(results.len(), 2);
+        assert!(matches!(
+            results[0],
+            StepExecutionResult::LinkedProposalsFound { .. }
+        ));
+        assert!(matches!(
+            results[1],
+            StepExecutionResult::EventEmitted { .. }
+        ));
+    }
+
+    // ==================== on_artifact_updated Tests ====================
+
+    #[test]
+    fn on_artifact_updated_matches_update_flow() {
+        let (mut service, _) = create_service();
+
+        use crate::domain::entities::ArtifactFlowTrigger;
+        let flow = ArtifactFlow::new("Update Flow", ArtifactFlowTrigger::on_artifact_updated())
+            .with_step(ArtifactFlowStep::emit_event("artifact:updated"));
+        service.register_flow(flow);
+
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let evaluations = service.on_artifact_updated(&artifact);
+
+        assert_eq!(evaluations.len(), 1);
+        assert_eq!(evaluations[0].flow_name, "Update Flow");
+    }
+
+    #[test]
+    fn on_artifact_updated_does_not_match_created_flow() {
+        let (mut service, _) = create_service();
+        service.register_flow(create_basic_flow()); // triggers on artifact_created
+
+        let artifact = create_test_artifact(ArtifactType::Prd, None);
+        let evaluations = service.on_artifact_updated(&artifact);
+
+        assert!(evaluations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn process_artifact_updated_loads_flows_and_executes() {
+        let (mut service, flow_repo) = create_service();
+
+        use crate::domain::entities::ArtifactFlowTrigger;
+        let flow = ArtifactFlow::new("Update Flow", ArtifactFlowTrigger::on_artifact_updated())
+            .with_step(ArtifactFlowStep::emit_event("artifact:updated"));
+        flow_repo.add_flow(flow).await;
+
+        let artifact = create_test_artifact(ArtifactType::Specification, None);
+        let results = service.process_artifact_updated(&artifact).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].flow_name, "Update Flow");
+        assert_eq!(results[0].step_results.len(), 1);
     }
 }

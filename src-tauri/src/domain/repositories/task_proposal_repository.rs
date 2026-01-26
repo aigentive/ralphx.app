@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 
 use crate::domain::entities::{
-    IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
+    ArtifactId, IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::error::AppResult;
 
@@ -65,6 +65,10 @@ pub trait TaskProposalRepository: Send + Sync {
 
     /// Count selected proposals by session
     async fn count_selected_by_session(&self, session_id: &IdeationSessionId) -> AppResult<u32>;
+
+    /// Get proposals linked to a plan artifact
+    /// Used by proactive sync to find proposals that may need updating when a plan changes
+    async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>>;
 }
 
 #[cfg(test)]
@@ -196,6 +200,18 @@ mod tests {
                 .iter()
                 .filter(|p| &p.session_id == session_id && p.selected)
                 .count() as u32)
+        }
+
+        async fn get_by_plan_artifact_id(
+            &self,
+            artifact_id: &ArtifactId,
+        ) -> AppResult<Vec<TaskProposal>> {
+            Ok(self
+                .proposals
+                .iter()
+                .filter(|p| p.plan_artifact_id.as_ref() == Some(artifact_id))
+                .cloned()
+                .collect())
         }
     }
 
