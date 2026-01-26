@@ -103,6 +103,7 @@ Entries: `### YYYY-MM-DD HH:MM:SS - Title\n**What:**\n- ...\n**Commands:**\n- \`
 6. Full timestamps in activity log
 7. **USE TransitionHandler for status changes** — NEVER direct DB update
 8. **Lint before commit**: `cargo clippy --all-targets --all-features -- -D warnings` + `npm run lint`
+9. **NEVER start/stop dev server** — User manages dev server manually. Only touch it if explicitly asked.
 
 ## Slash Commands
 - `/activate-prd <path>` — Switch active PRD (updates manifest, logs, commits)
