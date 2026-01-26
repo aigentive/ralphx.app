@@ -1,15 +1,49 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:00:44
+**Last Updated:** 2026-01-26 19:04:12
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 21 / 30
-**Current Task:** Add hover state and InlineTaskAdd to Column
+**Tasks Completed:** 22 / 30
+**Current Task:** Create TaskSearchBar component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:04:12 - Add hover state and InlineTaskAdd to Column (Task 23)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/Column.tsx` to integrate InlineTaskAdd component
+  - Added `projectId` prop to ColumnProps interface
+  - Added `isHovered` state to track column hover state
+  - Added `onMouseEnter` and `onMouseLeave` handlers on the column container
+  - Imported and used `useDndContext()` from dnd-kit to detect drag state
+  - Added `isDragging` check using `active !== null` from dnd context
+  - Conditionally render InlineTaskAdd at bottom of task list when ALL conditions met:
+    - isHovered === true
+    - isDragging === false (from useDndContext)
+    - columnId is 'draft' OR 'backlog' (user-addable columns)
+  - Pass projectId and columnId to InlineTaskAdd component
+- Updated `src/components/tasks/TaskBoard/TaskBoard.tsx` to pass projectId to Column
+  - Added `projectId={projectId}` prop to all Column components
+
+**Commands:**
+- `npm run typecheck` - Passed with no errors
+- `npm run lint` - Passed (only pre-existing warnings from other files)
+
+**Files modified:**
+- `src/components/tasks/TaskBoard/Column.tsx` - Added hover state and InlineTaskAdd integration
+- `src/components/tasks/TaskBoard/TaskBoard.tsx` - Pass projectId to Column components
+- `specs/phases/prd_phase_18_task_crud_archive_search.md` - Marked task 23 as passes: true
+- `logs/activity.md` - Updated progress
+
+**Design notes:**
+- Ghost card only appears when hovering AND not dragging to avoid interference with dnd-kit drop zones
+- Only shows in 'draft' and 'backlog' columns per spec
+- Uses existing InlineTaskAdd component created in previous task
+
+---
 
 ### 2026-01-26 19:00:44 - Create InlineTaskAdd component (Task 22)
 
