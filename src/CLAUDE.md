@@ -18,9 +18,12 @@ src/
 │  ├─ qa/                # TaskQABadge, QASettingsPanel
 │  ├─ reviews/           # ReviewsPanel, ReviewCard
 │  ├─ settings/          # IdeationSettingsPanel (Ph16)
-│  ├─ Task/              # TaskBoard/ (dnd-kit), TaskDetailPanel, TaskContextPanel (Ph17)
+│  ├─ Task/              # TaskBoard/ (dnd-kit), TaskDetailPanel, TaskContextPanel (Ph17),
+│  │                     # StatusDropdown, TaskEditForm, InlineTaskAdd, TaskSearchBar,
+│  │                     # EmptySearchState, TaskCardContextMenu (Ph18)
 │  └─ ui/                # StatusBadge, shadcn components
-├─ hooks/                # useTasks, useChat, useEvents, use*Mutation
+├─ hooks/                # useTasks, useChat, useEvents, use*Mutation,
+│                        # useInfiniteTasksQuery, useTaskSearch (Ph18)
 ├─ lib/
 │  ├─ api/               # Additional wrappers (workflows, artifacts, task-context)
 │  ├─ tauri.ts           # typedInvoke with Zod validation
@@ -29,11 +32,12 @@ src/
 ├─ providers/            # EventProvider (global Tauri events)
 ├─ stores/               # *Store.ts (Zustand+immer): task, project, ui, ideation,
 │                        # proposal, chat, qa, review
+│                        # uiStore (Ph18): showArchived, boardSearchQuery, isSearching
 ├─ styles/globals.css    # @theme inline, design tokens
 ├─ test/                 # setup.ts (mocks Tauri), store-utils.ts
 ├─ types/                # Zod schemas: task, project, status (14 states),
 │                        # chat-conversation, permission, ideation, ideation-config,
-│                        # task-context (Ph17)
+│                        # task-context (Ph17), TaskListResponse, StatusTransition (Ph18)
 └─ App.tsx, main.tsx
 ```
 
@@ -151,6 +155,70 @@ searchArtifacts(projectId, query, types?) → ArtifactSummary[]
 // TaskDetailPanel: "View Context" button when sourceProposalId || planArtifactId
 // TaskCard indicators: FileText icon (plan) | Lightbulb icon (proposal)
 // ToolCallIndicator: previews get_task_context, get_artifact* tool results
+```
+
+## Task CRUD, Archive & Search (Ph18)
+```typescript
+// Types (task.ts)
+interface Task { archivedAt: string | null, ... }
+interface TaskListResponse { tasks: Task[], total: number, hasMore: boolean, offset: number }
+interface StatusTransition { status: string, label: string }
+
+// API (lib/tauri.ts)
+api.tasks.archive(taskId)
+api.tasks.restore(taskId)
+api.tasks.permanentlyDelete(taskId)
+api.tasks.getArchivedCount(projectId)
+api.tasks.getValidTransitions(taskId)
+api.tasks.search(projectId, query, includeArchived?)
+api.tasks.list({ projectId, status?, offset?, limit?, includeArchived? })
+
+// Mutations (hooks/useTaskMutation.ts)
+archiveMutation, restoreMutation, permanentlyDeleteMutation
+// States: isArchiving, isRestoring, isPermanentlyDeleting
+
+// uiStore
+showArchived: boolean, setShowArchived(show)
+boardSearchQuery: string | null, setBoardSearchQuery(query)
+isSearching: boolean, setIsSearching(searching)
+
+// Hooks (hooks/)
+useInfiniteTasksQuery({ projectId, status?, includeArchived? })
+  → { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, flattenPages }
+useTaskSearch({ projectId, query, includeArchived? })
+  → { data: Task[], isLoading, isError }
+
+// Components (components/tasks/)
+StatusDropdown: fetches valid transitions from state machine, shows dropdown
+TaskEditForm: edit task details (title, category, description, priority)
+InlineTaskAdd: ghost card for quick-add in columns (draft, backlog)
+TaskSearchBar: search input with result count, loading, close button
+EmptySearchState: message-in-a-bottle when search returns no results
+TaskCardContextMenu: right-click menu (view, edit, archive, restore, delete)
+
+// TaskDetailModal (Ph18 updates)
+- Edit mode toggle (Pencil icon) - only for non-archived, non-system-controlled tasks
+- StatusDropdown for quick status changes
+- Archive/Restore/Permanently Delete buttons based on archived state
+- Archive badge for archived tasks
+
+// TaskBoard (Ph18 updates)
+- Infinite scroll per column via useInfiniteTasksQuery
+- Search bar (Cmd+F) with server-side search via useTaskSearch
+- Show archived toggle when archivedCount > 0
+- Keyboard shortcuts: Cmd+N (create), Cmd+F (search), Escape (close search)
+- Real-time updates via Tauri events: task:archived, task:restored, task:deleted
+
+// TaskCard (Ph18 updates)
+- Archived appearance: opacity-60, gray priority stripe, archive badge
+- isDraggable logic: false for system-controlled states (executing, qa_*, pending_review, etc.)
+- Context menu wrapper: right-click for quick actions
+- Non-draggable visual: opacity-75, cursor-default, title tooltip
+
+// Column (Ph18 updates)
+- Infinite scroll with IntersectionObserver on sentinel element
+- InlineTaskAdd on hover (draft/backlog only, not while dragging)
+- Loading spinner at bottom when isFetchingNextPage
 ```
 
 ## TS Config (strict)

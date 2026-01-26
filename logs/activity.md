@@ -1,15 +1,66 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:28:56
+**Last Updated:** 2026-01-26 20:15:00
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 30 / 30
-**Current Task:** Update CLAUDE.md files for Phase 18
+**Tasks Completed:** 31 / 31
+**Current Task:** Phase 18 Complete
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:15:00 - Update CLAUDE.md files for Phase 18 (Task 31 - Phase 18 Complete)
+
+**What was done:**
+- Updated `src/CLAUDE.md`:
+  - Added Phase 18 components to structure: StatusDropdown, TaskEditForm, InlineTaskAdd, TaskSearchBar, EmptySearchState, TaskCardContextMenu
+  - Added Phase 18 hooks to structure: useInfiniteTasksQuery, useTaskSearch
+  - Added Phase 18 uiStore state: showArchived, boardSearchQuery, isSearching
+  - Added Phase 18 types: TaskListResponse, StatusTransition, archivedAt field
+  - Added new Phase 18 section documenting:
+    - Archive system API: archive, restore, permanentlyDelete, getArchivedCount
+    - Search and pagination: search, list with pagination params, getValidTransitions
+    - Infinite scroll implementation with TanStack Query
+    - Component updates: TaskDetailModal (edit mode), TaskBoard (search, shortcuts), TaskCard (draggable logic, context menu), Column (infinite scroll)
+    - Mutations: archiveMutation, restoreMutation, permanentlyDeleteMutation with loading states
+
+- Updated `src-tauri/CLAUDE.md`:
+  - Added archive commands: archive_task, restore_task, permanently_delete_task, get_archived_count
+  - Added search command: search_tasks with server-side search
+  - Added pagination parameters to list_tasks
+  - Added get_valid_transitions command
+  - Added Tauri events: task:archived, task:restored, task:deleted
+  - Updated TaskRepository trait with archive methods: archive, restore, get_archived_count, get_by_project_filtered
+  - Updated TaskRepository trait with pagination methods: list_paginated, count_tasks, search
+  - Updated database tables documentation: tasks table now has archived_at column
+
+- Updated `logs/activity.md`:
+  - Updated header: Tasks Completed 31/31, Current Task: Phase 18 Complete
+  - Added Phase 18 completion summary entry
+
+**Commands:**
+- None (documentation only)
+
+**Progress:**
+- Task 31/31 complete
+- Phase 18 complete: All tasks passed
+- Documentation fully updated for Phase 18 features
+
+**Phase 18 Summary:**
+Phase 18 delivered a complete task management system with:
+- **Archive System**: Soft delete with restore and permanent delete, archived count, real-time events
+- **Task Editing**: StatusDropdown querying state machine, TaskEditForm, edit mode in TaskDetailModal
+- **Inline Quick-Add**: Ghost card in columns (draft/backlog) with hover state
+- **Search**: Server-side search with Cmd+F shortcut, search bar, empty state with task creation
+- **Infinite Scroll**: TanStack Query pagination per column, 10-minute cache, loading states
+- **Context Menu**: Right-click actions on task cards (view, edit, archive, restore, delete)
+- **Keyboard Shortcuts**: Cmd+N (create), Cmd+F (search), Escape (close search)
+- **Enhanced Drag-Drop**: Non-draggable system-controlled states, visual feedback
+- **Real-time Updates**: Tauri events for archive/restore/delete with query invalidation
+
+All 31 tasks completed with full backend (Rust), frontend (React/TS), and documentation coverage.
 
 ### 2026-01-26 19:28:56 - Listen for archive/restore events for real-time updates (Task 28)
 
