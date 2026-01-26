@@ -174,7 +174,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(backend): add plan artifact HTTP endpoints for MCP proxy"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",
