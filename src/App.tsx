@@ -28,7 +28,7 @@ import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
 import type { ChatContext, ViewType } from "@/types/chat";
-import type { ChatMessage as ChatMessageType, ApplyProposalsInput } from "@/types/ideation";
+import type { ChatMessage as ChatMessageType, ApplyProposalsInput, TaskProposal } from "@/types/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
@@ -139,6 +139,7 @@ function AppContent() {
   const activeSessionId = activeSession?.id ?? "";
   // Get raw proposals from store and memoize the filtered/sorted version
   const allProposals = useProposalStore((s) => s.proposals);
+  const setProposals = useProposalStore((s) => s.setProposals);
   const proposals = useMemo(() => {
     if (!activeSessionId) return [];
     return Object.values(allProposals)
@@ -171,6 +172,14 @@ function AppContent() {
   const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
   const orchestratorMessage = useOrchestratorMessage(activeSession?.id ?? "");
+
+  // Sync proposals from sessionData to the store
+  useEffect(() => {
+    if (sessionData?.proposals) {
+      // Cast API response to store type (string -> enum fields are compatible at runtime)
+      setProposals(sessionData.proposals as unknown as TaskProposal[]);
+    }
+  }, [sessionData?.proposals, setProposals]);
 
   // Seed builtin workflows on app startup
   useEffect(() => {

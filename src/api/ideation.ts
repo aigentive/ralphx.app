@@ -48,6 +48,8 @@ const TaskProposalResponseSchema = z.object({
   status: z.string(),
   selected: z.boolean(),
   created_task_id: z.string().nullable(),
+  plan_artifact_id: z.string().nullable(),
+  plan_version_at_creation: z.number().nullable(),
   sort_order: z.number(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -160,6 +162,8 @@ export interface TaskProposalResponse {
   status: string;
   selected: boolean;
   createdTaskId: string | null;
+  planArtifactId: string | null;
+  planVersionAtCreation: number | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -286,6 +290,8 @@ function transformProposal(raw: z.infer<typeof TaskProposalResponseSchema>): Tas
     status: raw.status,
     selected: raw.selected,
     createdTaskId: raw.created_task_id,
+    planArtifactId: raw.plan_artifact_id,
+    planVersionAtCreation: raw.plan_version_at_creation,
     sortOrder: raw.sort_order,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
