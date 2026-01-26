@@ -101,7 +101,7 @@ impl SqliteReviewRepository {
             id: ReviewActionId::from_string(id),
             review_id: ReviewId::from_string(review_id),
             action_type,
-            target_task_id: target_task_id.map(|s| TaskId::from_string(s)),
+            target_task_id: target_task_id.map(TaskId::from_string),
             created_at,
         })
     }

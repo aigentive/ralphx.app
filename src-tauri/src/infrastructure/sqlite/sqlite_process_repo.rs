@@ -184,7 +184,7 @@ impl ProcessRepository for SqliteProcessRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let processes = stmt
-            .query_map([], |row| Self::process_from_row(row))
+            .query_map([], Self::process_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -206,7 +206,7 @@ impl ProcessRepository for SqliteProcessRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let processes = stmt
-            .query_map([status.as_str()], |row| Self::process_from_row(row))
+            .query_map([status.as_str()], Self::process_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -225,7 +225,7 @@ impl ProcessRepository for SqliteProcessRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let processes = stmt
-            .query_map([], |row| Self::process_from_row(row))
+            .query_map([], Self::process_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

@@ -124,7 +124,7 @@ impl ArtifactBucketRepository for SqliteArtifactBucketRepository {
             "SELECT id, name, config_json, is_system
              FROM artifact_buckets WHERE id = ?1",
             [id.as_str()],
-            |row| Self::bucket_from_row(row),
+            Self::bucket_from_row,
         );
 
         match result {
@@ -145,7 +145,7 @@ impl ArtifactBucketRepository for SqliteArtifactBucketRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let buckets = stmt
-            .query_map([], |row| Self::bucket_from_row(row))
+            .query_map([], Self::bucket_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -164,7 +164,7 @@ impl ArtifactBucketRepository for SqliteArtifactBucketRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let buckets = stmt
-            .query_map([], |row| Self::bucket_from_row(row))
+            .query_map([], Self::bucket_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

@@ -65,7 +65,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, created_at
              FROM chat_messages WHERE id = ?1",
             [id.as_str()],
-            |row| ChatMessage::from_row(row),
+            ChatMessage::from_row,
         );
 
         match result {
@@ -86,7 +86,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let messages = stmt
-            .query_map([session_id.as_str()], |row| ChatMessage::from_row(row))
+            .query_map([session_id.as_str()], ChatMessage::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -106,7 +106,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let messages = stmt
-            .query_map([project_id.as_str()], |row| ChatMessage::from_row(row))
+            .query_map([project_id.as_str()], ChatMessage::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -125,7 +125,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let messages = stmt
-            .query_map([task_id.as_str()], |row| ChatMessage::from_row(row))
+            .query_map([task_id.as_str()], ChatMessage::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -144,7 +144,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let messages = stmt
-            .query_map([conversation_id.as_str()], |row| ChatMessage::from_row(row))
+            .query_map([conversation_id.as_str()], ChatMessage::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

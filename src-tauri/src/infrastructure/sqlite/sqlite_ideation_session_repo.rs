@@ -85,7 +85,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let sessions = stmt
-            .query_map([project_id.as_str()], |row| IdeationSession::from_row(row))
+            .query_map([project_id.as_str()], IdeationSession::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -191,7 +191,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let sessions = stmt
-            .query_map([project_id.as_str()], |row| IdeationSession::from_row(row))
+            .query_map([project_id.as_str()], IdeationSession::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

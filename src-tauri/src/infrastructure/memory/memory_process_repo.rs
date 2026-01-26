@@ -187,7 +187,7 @@ mod tests {
     #[tokio::test]
     async fn test_complete_process() {
         let repo = MemoryProcessRepository::new();
-        let mut process = create_running_process();
+        let process = create_running_process();
 
         repo.create(process.clone()).await.unwrap();
         repo.complete(&process.id).await.unwrap();

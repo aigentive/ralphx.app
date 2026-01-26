@@ -84,7 +84,7 @@ impl ProjectRepository for SqliteProjectRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let projects = stmt
-            .query_map([], |row| Project::from_row(row))
+            .query_map([], Project::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

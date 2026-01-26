@@ -118,7 +118,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let proposals = stmt
-            .query_map([session_id.as_str()], |row| TaskProposal::from_row(row))
+            .query_map([session_id.as_str()], TaskProposal::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -289,7 +289,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let proposals = stmt
-            .query_map([session_id.as_str()], |row| TaskProposal::from_row(row))
+            .query_map([session_id.as_str()], TaskProposal::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -341,7 +341,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let proposals = stmt
-            .query_map([artifact_id.as_str()], |row| TaskProposal::from_row(row))
+            .query_map([artifact_id.as_str()], TaskProposal::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

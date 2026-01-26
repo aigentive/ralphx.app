@@ -707,7 +707,7 @@ mod tests {
             content: ArtifactContent::inline("Test content"),
             metadata: ArtifactMetadata::new("user"),
             derived_from: vec![],
-            bucket_id: bucket_id.map(|s| ArtifactBucketId::from_string(s)),
+            bucket_id: bucket_id.map(ArtifactBucketId::from_string),
         }
     }
 

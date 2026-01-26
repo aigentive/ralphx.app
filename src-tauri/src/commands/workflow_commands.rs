@@ -545,7 +545,7 @@ mod tests {
                 WorkflowColumn::new("b", "B", InternalStatus::Approved),
             ],
         ).as_default();
-        let id = workflow.id.clone();
+        let _id = workflow.id.clone();
 
         state.workflow_repo.create(workflow).await.unwrap();
 

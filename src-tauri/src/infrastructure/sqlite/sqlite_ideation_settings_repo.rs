@@ -104,9 +104,9 @@ mod tests {
 
         let settings = repo.get_settings().await.unwrap();
         assert_eq!(settings.plan_mode, IdeationPlanMode::Optional);
-        assert_eq!(settings.require_plan_approval, false);
-        assert_eq!(settings.suggest_plans_for_complex, true);
-        assert_eq!(settings.auto_link_proposals, true);
+        assert!(!settings.require_plan_approval);
+        assert!(settings.suggest_plans_for_complex);
+        assert!(settings.auto_link_proposals);
     }
 
     #[tokio::test]
@@ -124,16 +124,16 @@ mod tests {
 
         let updated = repo.update_settings(&new_settings).await.unwrap();
         assert_eq!(updated.plan_mode, IdeationPlanMode::Required);
-        assert_eq!(updated.require_plan_approval, true);
-        assert_eq!(updated.suggest_plans_for_complex, false);
-        assert_eq!(updated.auto_link_proposals, false);
+        assert!(updated.require_plan_approval);
+        assert!(!updated.suggest_plans_for_complex);
+        assert!(!updated.auto_link_proposals);
 
         // Verify persistence
         let retrieved = repo.get_settings().await.unwrap();
         assert_eq!(retrieved.plan_mode, IdeationPlanMode::Required);
-        assert_eq!(retrieved.require_plan_approval, true);
-        assert_eq!(retrieved.suggest_plans_for_complex, false);
-        assert_eq!(retrieved.auto_link_proposals, false);
+        assert!(retrieved.require_plan_approval);
+        assert!(!retrieved.suggest_plans_for_complex);
+        assert!(!retrieved.auto_link_proposals);
     }
 
     #[tokio::test]

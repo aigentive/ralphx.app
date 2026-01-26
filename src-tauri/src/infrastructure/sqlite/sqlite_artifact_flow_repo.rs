@@ -94,7 +94,7 @@ impl ArtifactFlowRepository for SqliteArtifactFlowRepository {
             "SELECT id, name, trigger_json, steps_json, is_active, created_at
              FROM artifact_flows WHERE id = ?1",
             [id.as_str()],
-            |row| Self::flow_from_row(row),
+            Self::flow_from_row,
         );
 
         match result {
@@ -115,7 +115,7 @@ impl ArtifactFlowRepository for SqliteArtifactFlowRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let flows = stmt
-            .query_map([], |row| Self::flow_from_row(row))
+            .query_map([], Self::flow_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -134,7 +134,7 @@ impl ArtifactFlowRepository for SqliteArtifactFlowRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let flows = stmt
-            .query_map([], |row| Self::flow_from_row(row))
+            .query_map([], Self::flow_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

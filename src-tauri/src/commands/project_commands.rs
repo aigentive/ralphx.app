@@ -198,7 +198,7 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let branches: Vec<String> = stdout
         .lines()
-        .map(|line| {
+        .filter_map(|line| {
             // Remove leading whitespace and asterisk (for current branch)
             let trimmed = line.trim().trim_start_matches("* ");
             // Handle remote branches like "remotes/origin/main" -> just "main"
@@ -212,7 +212,6 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
                 Some(trimmed.to_string())
             }
         })
-        .flatten()
         .collect::<std::collections::HashSet<_>>() // Deduplicate
         .into_iter()
         .collect();

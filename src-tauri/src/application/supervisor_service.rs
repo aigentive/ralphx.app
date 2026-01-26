@@ -115,8 +115,11 @@ pub struct SupervisorService {
     /// State for each monitored task
     task_states: Arc<RwLock<HashMap<String, TaskMonitorState>>>,
     /// Callback for executing actions (optional)
-    action_handler: Option<Arc<dyn Fn(SupervisorAction, &str) + Send + Sync>>,
+    action_handler: Option<ActionHandler>,
 }
+
+/// Type alias for supervisor action handler callback
+type ActionHandler = Arc<dyn Fn(SupervisorAction, &str) + Send + Sync>;
 
 impl SupervisorService {
     /// Create a new supervisor service with default config

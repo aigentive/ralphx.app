@@ -100,7 +100,7 @@ impl WorkflowRepository for SqliteWorkflowRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let workflows = stmt
-            .query_map([], |row| Self::workflow_from_row(row))
+            .query_map([], Self::workflow_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

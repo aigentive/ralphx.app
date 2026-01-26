@@ -75,7 +75,7 @@ impl SqliteArtifactRepository {
         let metadata = ArtifactMetadata {
             created_at,
             created_by,
-            task_id: task_id.map(|s| TaskId::from_string(s)),
+            task_id: task_id.map(TaskId::from_string),
             process_id: process_id.map(ProcessId::from_string),
             version: version as u32,
         };
@@ -155,7 +155,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                     previous_version_id, created_at
              FROM artifacts WHERE id = ?1",
             [id.as_str()],
-            |row| Self::artifact_from_row(row),
+            Self::artifact_from_row,
         );
 
         match result {
@@ -225,7 +225,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let artifacts = stmt
-            .query_map([bucket_id.as_str()], |row| Self::artifact_from_row(row))
+            .query_map([bucket_id.as_str()], Self::artifact_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -247,7 +247,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let artifacts = stmt
-            .query_map([artifact_type.as_str()], |row| Self::artifact_from_row(row))
+            .query_map([artifact_type.as_str()], Self::artifact_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -269,7 +269,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let artifacts = stmt
-            .query_map([task_id.as_str()], |row| Self::artifact_from_row(row))
+            .query_map([task_id.as_str()], Self::artifact_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -291,7 +291,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let artifacts = stmt
-            .query_map([process_id.as_str()], |row| Self::artifact_from_row(row))
+            .query_map([process_id.as_str()], Self::artifact_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -357,7 +357,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let artifacts = stmt
-            .query_map([artifact_id.as_str()], |row| Self::artifact_from_row(row))
+            .query_map([artifact_id.as_str()], Self::artifact_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -384,7 +384,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let artifacts = stmt
-            .query_map([artifact_id.as_str()], |row| Self::artifact_from_row(row))
+            .query_map([artifact_id.as_str()], Self::artifact_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -423,7 +423,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let relations = stmt
-            .query_map([artifact_id.as_str()], |row| Self::relation_from_row(row))
+            .query_map([artifact_id.as_str()], Self::relation_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -451,7 +451,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
         let relations = stmt
             .query_map(
                 rusqlite::params![artifact_id.as_str(), relation_type.as_str()],
-                |row| Self::relation_from_row(row),
+                Self::relation_from_row,
             )
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()

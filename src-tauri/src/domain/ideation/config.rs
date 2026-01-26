@@ -54,9 +54,9 @@ mod tests {
     fn test_ideation_settings_default() {
         let settings = IdeationSettings::default();
         assert_eq!(settings.plan_mode, IdeationPlanMode::Optional);
-        assert_eq!(settings.require_plan_approval, false);
-        assert_eq!(settings.suggest_plans_for_complex, true);
-        assert_eq!(settings.auto_link_proposals, true);
+        assert!(!settings.require_plan_approval);
+        assert!(settings.suggest_plans_for_complex);
+        assert!(settings.auto_link_proposals);
     }
 
     #[test]
@@ -87,8 +87,8 @@ mod tests {
         let deserialized: IdeationSettings = serde_json::from_str(&json).unwrap();
 
         assert_eq!(deserialized.plan_mode, IdeationPlanMode::Required);
-        assert_eq!(deserialized.require_plan_approval, true);
-        assert_eq!(deserialized.suggest_plans_for_complex, false);
-        assert_eq!(deserialized.auto_link_proposals, false);
+        assert!(deserialized.require_plan_approval);
+        assert!(!deserialized.suggest_plans_for_complex);
+        assert!(!deserialized.auto_link_proposals);
     }
 }

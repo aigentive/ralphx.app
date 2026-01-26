@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn clone_works() {
         let status = InternalStatus::Executing;
-        let cloned = status.clone();
+        let cloned = status;
         assert_eq!(status, cloned);
     }
 

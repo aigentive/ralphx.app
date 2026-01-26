@@ -19,8 +19,6 @@ import {
   ListTodo,
   Plus,
   Archive,
-  Send,
-  Paperclip,
   Lightbulb,
   MessageSquareText,
   Loader2,
@@ -35,6 +33,7 @@ import {
   Undo2,
   Eye,
   Upload,
+  Bot,
 } from "lucide-react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -64,6 +63,9 @@ import type { Priority } from "@/types/ideation";
 import { PlanDisplay } from "./PlanDisplay";
 import { PlanHistoryDialog } from "./PlanHistoryDialog";
 import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
+import { ChatInput } from "@/components/Chat/ChatInput";
+import { ToolCallIndicator, type ToolCall } from "@/components/Chat/ToolCallIndicator";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Types
@@ -160,28 +162,46 @@ const markdownComponents = {
 // Typing Indicator
 // ============================================================================
 
+const animationStyles = `
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+
+.typing-dot {
+  animation: typingBounce 1.4s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+`;
+
 function TypingIndicator() {
   return (
     <div
       data-testid="typing-indicator"
-      className="flex items-start mb-3"
+      className="flex items-start gap-2 mb-2"
     >
+      <Bot className="w-3.5 h-3.5 mt-2.5 shrink-0 text-[var(--text-muted)]" />
       <div
-        className="px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]"
-        style={{ borderRadius: "12px 12px 12px 4px" }}
+        className="px-3.5 py-2.5 rounded-[10px_10px_10px_4px]"
+        style={{
+          backgroundColor: "var(--bg-elevated)",
+          border: "1px solid var(--border-subtle)",
+        }}
       >
         <div className="flex items-center gap-1">
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce"
-            style={{ animationDelay: "0ms", animationDuration: "1.4s" }}
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--text-muted)" }}
           />
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce"
-            style={{ animationDelay: "100ms", animationDuration: "1.4s" }}
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--text-muted)" }}
           />
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce"
-            style={{ animationDelay: "200ms", animationDuration: "1.4s" }}
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--text-muted)" }}
           />
         </div>
       </div>
@@ -193,50 +213,123 @@ function TypingIndicator() {
 // Chat Message Bubble
 // ============================================================================
 
-interface MessageBubbleProps {
-  message: ChatMessageType;
+interface MessageItemProps {
+  role: string;
+  content: string;
+  createdAt: string;
+  toolCalls?: string | null;
+  isFirstInGroup?: boolean;
+  isLastInGroup?: boolean;
 }
 
-function MessageBubble({ message }: MessageBubbleProps) {
-  const isUser = message.role === "user";
+function MessageItem({
+  role,
+  content,
+  createdAt,
+  toolCalls,
+  isFirstInGroup = true,
+  isLastInGroup = true,
+}: MessageItemProps) {
+  const isUser = role === "user";
 
   const timestamp = useMemo(() => {
-    const date = new Date(message.createdAt);
+    const date = new Date(createdAt);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+
     return date.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
     });
-  }, [message.createdAt]);
+  }, [createdAt]);
+
+  // Parse tool calls from JSON string
+  const parsedToolCalls = useMemo((): ToolCall[] => {
+    if (!toolCalls) return [];
+    try {
+      const parsed = JSON.parse(toolCalls);
+      if (Array.isArray(parsed)) {
+        return parsed.map((tc, idx) => ({
+          id: tc.id ?? `tool-${idx}`,
+          name: tc.name ?? "unknown",
+          arguments: tc.arguments ?? {},
+          result: tc.result,
+          error: tc.error,
+        }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }, [toolCalls]);
 
   return (
     <div
-      data-testid={`chat-message-${message.id}`}
-      className={`flex flex-col mb-3 ${isUser ? "items-end" : "items-start"}`}
+      className={cn(
+        "flex",
+        isUser ? "justify-end" : "justify-start",
+        isLastInGroup ? "mb-3" : "mb-1"
+      )}
     >
-      <div
-        className={`max-w-[85%] px-4 py-3 ${
-          isUser
-            ? "bg-[var(--accent-primary)] text-white"
-            : "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)]"
-        }`}
-        style={{
-          borderRadius: isUser ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-          boxShadow: isUser ? "var(--shadow-xs)" : "none",
-        }}
-      >
-        <div className="text-sm">
-          <ReactMarkdown components={markdownComponents}>
-            {message.content}
-          </ReactMarkdown>
+      {/* Agent indicator for first assistant message */}
+      {!isUser && isFirstInGroup && (
+        <Bot className="w-3.5 h-3.5 mt-2.5 mr-2 shrink-0 text-[var(--text-muted)]" />
+      )}
+      {!isUser && !isFirstInGroup && <div className="w-3.5 mr-2 shrink-0" />}
+
+      <div className="flex flex-col max-w-[85%]">
+        {/* Tool calls (shown before text content for assistant messages) */}
+        {!isUser && parsedToolCalls.length > 0 && (
+          <div className="space-y-1.5 mb-2">
+            {parsedToolCalls.map((tc) => (
+              <ToolCallIndicator key={tc.id} toolCall={tc} />
+            ))}
+          </div>
+        )}
+
+        {/* Message content */}
+        <div
+          className={cn(
+            "px-3 py-2 text-sm",
+            isUser
+              ? "rounded-[10px_10px_4px_10px]"
+              : "rounded-[10px_10px_10px_4px]"
+          )}
+          style={{
+            backgroundColor: isUser
+              ? "var(--accent-primary)"
+              : "var(--bg-elevated)",
+            color: isUser ? "white" : "var(--text-primary)",
+            border: isUser ? "none" : "1px solid var(--border-subtle)",
+            boxShadow: isUser ? "var(--shadow-xs)" : "none",
+          }}
+        >
+          {isUser ? (
+            <p className="whitespace-pre-wrap break-words">{content}</p>
+          ) : (
+            <div className="prose prose-sm prose-invert max-w-none">
+              <ReactMarkdown components={markdownComponents}>
+                {content}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
+        {isLastInGroup && (
+          <span
+            className={cn(
+              "text-[11px] mt-1 px-1",
+              isUser ? "text-right" : "text-left"
+            )}
+            style={{ color: "var(--text-muted)" }}
+          >
+            {timestamp}
+          </span>
+        )}
       </div>
-      <time
-        className={`text-[11px] mt-1 px-1 text-[var(--text-muted)] ${
-          isUser ? "text-right" : "text-left"
-        }`}
-      >
-        {timestamp}
-      </time>
     </div>
   );
 }
@@ -615,90 +708,7 @@ function ProposalsToolbar({
   );
 }
 
-// ============================================================================
-// Chat Input (Premium)
-// ============================================================================
-
-interface PremiumChatInputProps {
-  onSend: (message: string) => void;
-  isSending: boolean;
-}
-
-function PremiumChatInput({ onSend, isSending }: PremiumChatInputProps) {
-  const [value, setValue] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const canSend = value.trim().length > 0 && !isSending;
-
-  const handleSend = useCallback(() => {
-    if (canSend) {
-      onSend(value.trim());
-      setValue("");
-    }
-  }, [canSend, value, onSend]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend]
-  );
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      const newHeight = Math.min(120, Math.max(44, textareaRef.current.scrollHeight));
-      textareaRef.current.style.height = `${newHeight}px`;
-    }
-  }, [value]);
-
-  return (
-    <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-      <div className="flex items-end gap-2">
-        <Button variant="ghost" size="icon" disabled className="shrink-0 h-11 w-11 opacity-50">
-          <Paperclip className="w-5 h-5" />
-        </Button>
-
-        <textarea
-          ref={textareaRef}
-          data-testid="chat-input-textarea"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isSending}
-          placeholder="Send a message..."
-          rows={1}
-          className="flex-1 px-4 py-3 text-sm resize-none rounded-lg outline-none transition-shadow
-            bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-default)]
-            focus:border-[var(--accent-primary)] focus:shadow-[var(--shadow-glow)]
-            placeholder:text-[var(--text-muted)]"
-          style={{ minHeight: "44px", maxHeight: "120px" }}
-        />
-
-        <Button
-          data-testid="chat-input-send"
-          size="icon"
-          disabled={!canSend}
-          onClick={handleSend}
-          className="shrink-0 h-11 w-11"
-        >
-          {isSending ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <Send className="w-5 h-5" />
-          )}
-        </Button>
-      </div>
-      <p className="text-[11px] text-[var(--text-muted)] mt-1.5 ml-14">
-        Enter to send, Shift+Enter for new line
-      </p>
-    </div>
-  );
-}
+// Removed - using ChatInput from @/components/chat/ChatInput instead
 
 // ============================================================================
 // Main Component
@@ -982,36 +992,36 @@ export function IdeationView({
     [proposals]
   );
 
+  // Process messages into groups (for message grouping like ChatPanel)
+  const groupedMessages = useMemo(() => {
+    return messages.map((msg, index) => {
+      const prevMsg = messages[index - 1];
+      const nextMsg = messages[index + 1];
+      const isFirstInGroup = !prevMsg || prevMsg.role !== msg.role;
+      const isLastInGroup = !nextMsg || nextMsg.role !== msg.role;
+      return { ...msg, isFirstInGroup, isLastInGroup };
+    });
+  }, [messages]);
+
   // No session state
   if (!session) {
     return <NoSessionState onNewSession={onNewSession} />;
   }
 
   return (
-    <div
-      ref={containerRef}
-      data-testid="ideation-view"
-      className="flex flex-col h-full relative"
-      style={{
-        background:
-          "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
-      }}
-      role="main"
-    >
-      {/* Loading overlay */}
-      {isLoading && (
-        <div
-          data-testid="ideation-loading"
-          className="absolute inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm"
-        >
-          <div className="px-6 py-4 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-md)] flex items-center gap-3">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--accent-primary)]" />
-            <span className="text-sm font-medium">Processing...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Header with glass effect */}
+    <>
+      <style>{animationStyles}</style>
+      <div
+        ref={containerRef}
+        data-testid="ideation-view"
+        className="flex flex-col h-full relative"
+        style={{
+          background:
+            "radial-gradient(ellipse at top left, rgba(255,107,53,0.02) 0%, var(--bg-base) 40%)",
+        }}
+        role="main"
+      >
+        {/* Header with glass effect */}
       <header
         data-testid="ideation-header"
         className="flex items-center justify-between h-[52px] px-4 border-b border-[var(--border-subtle)]
@@ -1056,8 +1066,16 @@ export function IdeationView({
               <ConversationEmptyState />
             ) : (
               <>
-                {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} />
+                {groupedMessages.map((msg) => (
+                  <MessageItem
+                    key={msg.id}
+                    role={msg.role}
+                    content={msg.content}
+                    createdAt={msg.createdAt}
+                    toolCalls={msg.toolCalls}
+                    isFirstInGroup={msg.isFirstInGroup}
+                    isLastInGroup={msg.isLastInGroup}
+                  />
                 ))}
                 {isLoading && <TypingIndicator />}
                 <div ref={messagesEndRef} />
@@ -1066,7 +1084,15 @@ export function IdeationView({
           </div>
 
           {/* Chat Input */}
-          <PremiumChatInput onSend={onSendMessage} isSending={isLoading} />
+          <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+            <ChatInput
+              onSend={onSendMessage}
+              isSending={isLoading}
+              placeholder="Send a message..."
+              showHelperText={true}
+              autoFocus={false}
+            />
+          </div>
         </div>
 
         {/* Resize Handle */}
@@ -1279,6 +1305,7 @@ export function IdeationView({
         className="hidden"
         data-testid="plan-import-file-input"
       />
-    </div>
+      </div>
+    </>
   );
 }

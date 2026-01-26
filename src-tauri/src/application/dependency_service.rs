@@ -140,7 +140,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
 
         for proposal in proposals {
             if !visited.contains(&proposal.id) {
-                self.dfs_detect_cycle(
+                Self::dfs_detect_cycle(
                     &proposal.id,
                     from_map,
                     &mut visited,
@@ -156,7 +156,6 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
 
     /// DFS helper for cycle detection
     fn dfs_detect_cycle(
-        &self,
         node: &TaskProposalId,
         from_map: &HashMap<TaskProposalId, Vec<TaskProposalId>>,
         visited: &mut HashSet<TaskProposalId>,
@@ -171,7 +170,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
         if let Some(neighbors) = from_map.get(node) {
             for neighbor in neighbors {
                 if !visited.contains(neighbor) {
-                    self.dfs_detect_cycle(neighbor, from_map, visited, rec_stack, path, cycles);
+                    Self::dfs_detect_cycle(neighbor, from_map, visited, rec_stack, path, cycles);
                 } else if rec_stack.contains(neighbor) {
                     // Found a cycle - extract it from the path
                     if let Some(start_idx) = path.iter().position(|n| n == neighbor) {
