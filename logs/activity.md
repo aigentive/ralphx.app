@@ -1,15 +1,52 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 06:30:00
+**Last Updated:** 2026-01-26 05:48:13
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 11 / 24
-**Current Task:** Create IdeationSettingsPanel component
+**Tasks Completed:** 12 / 24
+**Current Task:** Add Ideation section to SettingsView
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 05:48:13 - Create IdeationSettingsPanel Component (Phase 16, Task 12)
+
+**What was done:**
+- Created `src/hooks/useIdeationSettings.ts` TanStack Query hook:
+  - Query hook for fetching ideation settings with 5min staleTime
+  - Mutation hook for updating settings with optimistic updates
+  - Proper error handling and rollback on failure
+  - Returns loading/error states and update function
+- Created `src/components/settings/IdeationSettingsPanel.tsx` component:
+  - Plan Workflow Mode radio group (Required/Optional/Parallel)
+  - "Require explicit approval" checkbox (disabled when not in Required mode)
+  - "Suggest plans for complex features" checkbox
+  - "Auto-link proposals to session plan" checkbox
+  - Follows existing SettingsView pattern with SettingRow and SectionCard structure
+  - Uses shadcn RadioGroup and Checkbox components
+  - Lightbulb icon for Ideation section
+- Created comprehensive test suite `src/components/settings/IdeationSettingsPanel.test.tsx`:
+  - Tests rendering of all components and settings
+  - Tests plan mode selection and state
+  - Tests conditional disabling of "require plan approval" based on mode
+  - Tests update callbacks for all settings
+  - Tests checkbox state reflection from settings
+  - 9 tests passing
+
+**Files created:**
+- `src/hooks/useIdeationSettings.ts` - TanStack Query hook for ideation settings
+- `src/components/settings/IdeationSettingsPanel.tsx` - Settings panel component
+- `src/components/settings/IdeationSettingsPanel.test.tsx` - Test suite
+
+**Files modified:**
+- `specs/phases/prd_phase_16_ideation_plan_artifacts.md` - Marked task 12 as passes: true
+
+**Commands run:**
+- `npm run lint` - Passed with existing warnings (no new errors)
+- `npm run typecheck` - Passed successfully
+- `npm run test -- src/components/settings/IdeationSettingsPanel.test.tsx` - 9/9 tests passed
 
 ### 2026-01-26 06:30:00 - Update Ideation Types for Plan Artifact Fields (Phase 16, Task 11)
 
