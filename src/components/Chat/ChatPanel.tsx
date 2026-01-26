@@ -49,7 +49,7 @@ import { ChatInput } from "./ChatInput";
 // Constants
 // ============================================================================
 
-const MIN_WIDTH = 280;
+const MIN_WIDTH = 320;
 const MAX_WIDTH_PERCENT = 50;
 const COLLAPSED_WIDTH = 40;
 

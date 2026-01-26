@@ -15,9 +15,9 @@ import type { ChatContext } from "@/types/chat";
 // Constants
 // ============================================================================
 
-const MIN_WIDTH = 280;
+const MIN_WIDTH = 320;
 const MAX_WIDTH = 800;
-const DEFAULT_WIDTH = 320;
+const DEFAULT_WIDTH = 384; // Matches ReviewsPanel (w-96)
 
 // ============================================================================
 // Types
