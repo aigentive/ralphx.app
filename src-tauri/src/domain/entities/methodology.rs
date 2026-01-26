@@ -41,6 +41,28 @@ impl fmt::Display for MethodologyId {
     }
 }
 
+/// Configuration for plan artifacts in ideation flow
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MethodologyPlanArtifactConfig {
+    /// Artifact type to use for plans (e.g., "specification", "design_doc")
+    pub artifact_type: String,
+    /// Bucket ID to store plans in (e.g., "prd-library")
+    pub bucket_id: String,
+}
+
+/// Plan template provided by a methodology
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MethodologyPlanTemplate {
+    /// Unique identifier for the template
+    pub id: String,
+    /// Display name for the template
+    pub name: String,
+    /// Description of when to use this template
+    pub description: String,
+    /// Markdown template content with {{placeholders}}
+    pub template_content: String,
+}
+
 /// A methodology extension - a configuration package that brings workflow, agents, skills, phases
 ///
 /// A methodology is a combination of Workflow + Agents + Artifacts. When a user activates
@@ -69,6 +91,12 @@ pub struct MethodologyExtension {
     /// Document templates
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub templates: Vec<MethodologyTemplate>,
+    /// Custom artifact configuration for ideation plans
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_artifact_config: Option<MethodologyPlanArtifactConfig>,
+    /// Plan templates provided by this methodology
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plan_templates: Vec<MethodologyPlanTemplate>,
     /// Hooks configuration (stored as JSON for flexibility)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hooks_config: Option<serde_json::Value>,
@@ -91,6 +119,8 @@ impl MethodologyExtension {
             workflow,
             phases: vec![],
             templates: vec![],
+            plan_artifact_config: None,
+            plan_templates: vec![],
             hooks_config: None,
             is_active: false,
             created_at: Utc::now(),
@@ -148,6 +178,24 @@ impl MethodologyExtension {
     /// Adds multiple templates
     pub fn with_templates(mut self, templates: impl IntoIterator<Item = MethodologyTemplate>) -> Self {
         self.templates.extend(templates);
+        self
+    }
+
+    /// Sets the plan artifact configuration
+    pub fn with_plan_artifact_config(mut self, config: MethodologyPlanArtifactConfig) -> Self {
+        self.plan_artifact_config = Some(config);
+        self
+    }
+
+    /// Adds a plan template
+    pub fn with_plan_template(mut self, template: MethodologyPlanTemplate) -> Self {
+        self.plan_templates.push(template);
+        self
+    }
+
+    /// Adds multiple plan templates
+    pub fn with_plan_templates(mut self, templates: impl IntoIterator<Item = MethodologyPlanTemplate>) -> Self {
+        self.plan_templates.extend(templates);
         self
     }
 
@@ -287,6 +335,8 @@ impl MethodologyExtension {
                     .with_name("UX Design Spec")
                     .with_description("User experience design specification"),
             ],
+            plan_artifact_config: None,
+            plan_templates: vec![],
             hooks_config: Some(serde_json::json!({
                 "phase_gates": {
                     "analysis": ["requirements_documented"],
@@ -415,6 +465,8 @@ impl MethodologyExtension {
                     .with_name("STATE.md Template")
                     .with_description("State tracking document for GSD execution"),
             ],
+            plan_artifact_config: None,
+            plan_templates: vec![],
             hooks_config: Some(serde_json::json!({
                 "checkpoint_types": ["auto", "human-verify", "decision", "human-action"],
                 "wave_execution": {

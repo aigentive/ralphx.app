@@ -1,15 +1,66 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 05:33:00
+**Last Updated:** 2026-01-26 05:50:00
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 7 / 24
-**Current Task:** Implement generic methodology integration infrastructure for plan artifacts
+**Tasks Completed:** 8 / 24
+**Current Task:** Update orchestrator-ideation agent for plan workflow
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 05:50:00 - Methodology Integration Infrastructure for Plan Artifacts (Phase 16, Task 8)
+
+**What was done:**
+- Added `MethodologyPlanArtifactConfig` struct to `src-tauri/src/domain/entities/methodology.rs`:
+  - `artifact_type: String` - Artifact type to use for plans (e.g., "specification")
+  - `bucket_id: String` - Bucket ID to store plans in (e.g., "prd-library")
+- Added `MethodologyPlanTemplate` struct to methodology.rs:
+  - `id: String` - Unique identifier for the template
+  - `name: String` - Display name for the template
+  - `description: String` - When to use this template
+  - `template_content: String` - Markdown template with {{placeholders}}
+- Extended `MethodologyExtension` struct with new fields:
+  - `plan_artifact_config: Option<MethodologyPlanArtifactConfig>` - Custom artifact config for ideation plans
+  - `plan_templates: Vec<MethodologyPlanTemplate>` - Plan templates provided by this methodology
+- Added builder methods to MethodologyExtension:
+  - `with_plan_artifact_config()` - Set plan artifact configuration
+  - `with_plan_template()` - Add single plan template
+  - `with_plan_templates()` - Add multiple plan templates
+- Updated BMAD and GSD built-in methodologies to initialize new fields (None for config, empty vec for templates)
+- Updated `SqliteMethodologyRepository`:
+  - Extended `MethodologyConfig` struct with new fields
+  - Updated `methodology_from_row()` to deserialize new fields
+  - Updated `From<&MethodologyExtension> for MethodologyConfig` to serialize new fields
+- Added `PlanArtifactConfig` struct to IdeationService
+- Implemented `get_plan_artifact_config()` helper method in IdeationService:
+  - Static method that takes optional MethodologyExtension reference
+  - Returns methodology's custom config if present, or default (Specification type, prd-library bucket)
+  - Infrastructure ready for future methodologies to define custom plan artifact configs
+- All tests pass (3052 passed, 0 failed)
+
+**Commands run:**
+- `cargo test --lib` - verify all tests pass
+
+**Test results:**
+```
+✓ 3052 tests passed
+✓ 0 failed
+✓ No compilation errors
+```
+
+**Files modified:**
+- `src-tauri/src/domain/entities/methodology.rs` (+68 lines: new structs, fields, methods)
+- `src-tauri/src/infrastructure/sqlite/sqlite_methodology_repo.rs` (+4 lines: MethodologyConfig fields, deserialization)
+- `src-tauri/src/application/ideation_service.rs` (+26 lines: PlanArtifactConfig struct, get_plan_artifact_config method)
+
+**Architecture note:**
+This is **generic infrastructure only** - no specific methodology configs are implemented yet. The system:
+- Defaults to `Specification` artifact type and `prd-library` bucket when no methodology is active
+- Is ready for future methodologies (like BMAD or GSD) to define custom plan artifact types and buckets
+- Provides the foundation for methodology-driven plan template selection
 
 ### 2026-01-26 05:33:00 - Plan Artifact Tools for MCP Server (Phase 16)
 

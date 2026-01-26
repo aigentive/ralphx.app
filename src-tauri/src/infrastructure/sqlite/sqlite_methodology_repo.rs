@@ -58,6 +58,8 @@ impl SqliteMethodologyRepository {
             workflow: config.workflow,
             phases: config.phases,
             templates: config.templates,
+            plan_artifact_config: config.plan_artifact_config,
+            plan_templates: config.plan_templates,
             hooks_config: config.hooks_config,
             is_active: is_active != 0,
             created_at: created_at_parsed,
@@ -79,6 +81,10 @@ struct MethodologyConfig {
     #[serde(default)]
     templates: Vec<crate::domain::entities::methodology::MethodologyTemplate>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    plan_artifact_config: Option<crate::domain::entities::methodology::MethodologyPlanArtifactConfig>,
+    #[serde(default)]
+    plan_templates: Vec<crate::domain::entities::methodology::MethodologyPlanTemplate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hooks_config: Option<serde_json::Value>,
 }
 
@@ -90,6 +96,8 @@ impl From<&MethodologyExtension> for MethodologyConfig {
             workflow: methodology.workflow.clone(),
             phases: methodology.phases.clone(),
             templates: methodology.templates.clone(),
+            plan_artifact_config: methodology.plan_artifact_config.clone(),
+            plan_templates: methodology.plan_templates.clone(),
             hooks_config: methodology.hooks_config.clone(),
         }
     }
