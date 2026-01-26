@@ -20,6 +20,24 @@ const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 320;
 
 // ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * A queued message that will be sent when the agent finishes
+ */
+export interface QueuedMessage {
+  /** Local ID for tracking */
+  id: string;
+  /** Message content */
+  content: string;
+  /** When the message was queued */
+  createdAt: string;
+  /** Whether this message is currently being edited */
+  isEditing: boolean;
+}
+
+// ============================================================================
 // State Interface
 // ============================================================================
 
@@ -34,6 +52,12 @@ interface ChatState {
   width: number;
   /** Loading state for async operations */
   isLoading: boolean;
+  /** Active conversation ID for the current context */
+  activeConversationId: string | null;
+  /** Messages queued to send when agent finishes */
+  queuedMessages: QueuedMessage[];
+  /** Whether an agent is currently running */
+  isAgentRunning: boolean;
 }
 
 // ============================================================================
@@ -57,6 +81,22 @@ interface ChatActions {
   clearMessages: (contextKey: string) => void;
   /** Set loading state */
   setLoading: (isLoading: boolean) => void;
+  /** Set the active conversation ID */
+  setActiveConversation: (conversationId: string | null) => void;
+  /** Set whether an agent is currently running */
+  setAgentRunning: (isRunning: boolean) => void;
+  /** Queue a message to be sent when the agent finishes */
+  queueMessage: (content: string) => void;
+  /** Edit a queued message */
+  editQueuedMessage: (id: string, content: string) => void;
+  /** Delete a queued message */
+  deleteQueuedMessage: (id: string) => void;
+  /** Process the queue (send first message and remove from queue) */
+  processQueue: () => Promise<void>;
+  /** Start editing a queued message */
+  startEditingQueuedMessage: (id: string) => void;
+  /** Stop editing a queued message */
+  stopEditingQueuedMessage: (id: string) => void;
 }
 
 // ============================================================================
@@ -64,13 +104,16 @@ interface ChatActions {
 // ============================================================================
 
 export const useChatStore = create<ChatState & ChatActions>()(
-  immer((set) => ({
+  immer((set, get) => ({
     // Initial state
     messages: {},
     context: null,
     isOpen: false,
     width: DEFAULT_WIDTH,
     isLoading: false,
+    activeConversationId: null,
+    queuedMessages: [],
+    isAgentRunning: false,
 
     // Actions
     setContext: (context) =>
@@ -115,6 +158,78 @@ export const useChatStore = create<ChatState & ChatActions>()(
       set((state) => {
         state.isLoading = isLoading;
       }),
+
+    setActiveConversation: (conversationId) =>
+      set((state) => {
+        state.activeConversationId = conversationId;
+      }),
+
+    setAgentRunning: (isRunning) =>
+      set((state) => {
+        state.isAgentRunning = isRunning;
+      }),
+
+    queueMessage: (content) =>
+      set((state) => {
+        const queuedMessage: QueuedMessage = {
+          id: `queued-${Date.now()}-${Math.random()}`,
+          content,
+          createdAt: new Date().toISOString(),
+          isEditing: false,
+        };
+        state.queuedMessages.push(queuedMessage);
+      }),
+
+    editQueuedMessage: (id, content) =>
+      set((state) => {
+        const message = state.queuedMessages.find((m) => m.id === id);
+        if (message) {
+          message.content = content;
+          message.isEditing = false;
+        }
+      }),
+
+    deleteQueuedMessage: (id) =>
+      set((state) => {
+        state.queuedMessages = state.queuedMessages.filter((m) => m.id !== id);
+      }),
+
+    startEditingQueuedMessage: (id) =>
+      set((state) => {
+        const message = state.queuedMessages.find((m) => m.id === id);
+        if (message) {
+          message.isEditing = true;
+        }
+      }),
+
+    stopEditingQueuedMessage: (id) =>
+      set((state) => {
+        const message = state.queuedMessages.find((m) => m.id === id);
+        if (message) {
+          message.isEditing = false;
+        }
+      }),
+
+    processQueue: async () => {
+      const state = get();
+      if (state.queuedMessages.length === 0) {
+        return;
+      }
+
+      // Remove the first message from the queue
+      set((draft) => {
+        draft.queuedMessages.shift();
+      });
+
+      // The actual sending logic will be handled by the useChat hook
+      // This function just manages the queue state
+      // The useChat hook will:
+      // 1. Subscribe to chat:run_completed events
+      // 2. Get the first queued message BEFORE calling processQueue
+      // 3. Call processQueue to remove it from the queue
+      // 4. Send the message via the API
+      // 5. Handle the response
+    },
   }))
 );
 
@@ -160,3 +275,27 @@ export const selectMessageCount =
   (contextKey: string) =>
   (state: ChatState): number =>
     state.messages[contextKey]?.length ?? 0;
+
+/**
+ * Select queued messages
+ * @returns Selector function returning queued messages array
+ */
+export const selectQueuedMessages = (
+  state: ChatState & ChatActions
+): QueuedMessage[] => state.queuedMessages;
+
+/**
+ * Select whether an agent is currently running
+ * @returns Selector function returning agent running state
+ */
+export const selectIsAgentRunning = (
+  state: ChatState & ChatActions
+): boolean => state.isAgentRunning;
+
+/**
+ * Select active conversation ID
+ * @returns Selector function returning active conversation ID
+ */
+export const selectActiveConversationId = (
+  state: ChatState & ChatActions
+): string | null => state.activeConversationId;

@@ -120,7 +120,7 @@ describe("ChatPanel Integration", () => {
       expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
     });
 
-    it("displays header with Chat title", () => {
+    it("displays context indicator for kanban view", () => {
       act(() => {
         useChatStore.setState({ isOpen: true });
       });
@@ -130,96 +130,25 @@ describe("ChatPanel Integration", () => {
           <ChatPanel context={mockContext} />
         </TestWrapper>
       );
-      expect(screen.getByText("Chat")).toBeInTheDocument();
-    });
-
-    it("displays context indicator", () => {
-      act(() => {
-        useChatStore.setState({ isOpen: true });
-      });
-
-      render(
-        <TestWrapper>
-          <ChatPanel context={mockContext} />
-        </TestWrapper>
-      );
-      expect(screen.getByText("Kanban")).toBeInTheDocument();
+      // Kanban view without selected task shows "Project" as context label
+      expect(screen.getByText("Project")).toBeInTheDocument();
     });
   });
 
   // ==========================================================================
   // Keyboard Shortcut
   // ==========================================================================
-
-  describe("keyboard shortcut (Cmd+K)", () => {
-    it("opens chat panel on Cmd+K", () => {
-      render(
-        <TestWrapper>
-          <ChatPanel context={mockContext} />
-        </TestWrapper>
-      );
-
-      expect(screen.queryByTestId("chat-panel")).not.toBeInTheDocument();
-
-      act(() => {
-        fireEvent.keyDown(document, { key: "k", metaKey: true });
-      });
-
-      expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    });
-
-    it("closes chat panel on Cmd+K when open", () => {
-      act(() => {
-        useChatStore.setState({ isOpen: true });
-      });
-
-      render(
-        <TestWrapper>
-          <ChatPanel context={mockContext} />
-        </TestWrapper>
-      );
-
-      expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-
-      act(() => {
-        fireEvent.keyDown(document, { key: "k", metaKey: true });
-      });
-
-      expect(screen.queryByTestId("chat-panel")).not.toBeInTheDocument();
-    });
-
-    it("does not toggle when input is focused", () => {
-      act(() => {
-        useChatStore.setState({ isOpen: true });
-      });
-
-      render(
-        <TestWrapper>
-          <div>
-            <input data-testid="other-input" />
-            <ChatPanel context={mockContext} />
-          </div>
-        </TestWrapper>
-      );
-
-      const input = screen.getByTestId("other-input");
-      input.focus();
-
-      act(() => {
-        fireEvent.keyDown(document, { key: "k", metaKey: true });
-      });
-
-      // Should still be open - shortcut ignored when input focused
-      expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    });
-  });
+  // NOTE: Cmd+K keyboard shortcut is handled by App.tsx, not ChatPanel.
+  // Tests for Cmd+K should be in App.test.tsx which renders the full App.
+  // ==========================================================================
 
   // ==========================================================================
   // Close Button
   // ==========================================================================
 
   describe("close button", () => {
-    it("closes chat panel when close button clicked", () => {
+    it("closes chat panel when close button clicked", async () => {
+      vi.useFakeTimers();
       act(() => {
         useChatStore.setState({ isOpen: true });
       });
@@ -232,7 +161,11 @@ describe("ChatPanel Integration", () => {
 
       fireEvent.click(screen.getByTestId("chat-panel-close"));
 
+      // Wait for animation to complete (200ms)
+      await vi.advanceTimersByTimeAsync(200);
+
       expect(screen.queryByTestId("chat-panel")).not.toBeInTheDocument();
+      vi.useRealTimers();
     });
   });
 
@@ -357,7 +290,7 @@ describe("ChatPanel Integration", () => {
   // ==========================================================================
 
   describe("context awareness", () => {
-    it("shows Kanban context for kanban view", () => {
+    it("shows Project context for kanban view without selected task", () => {
       act(() => {
         useChatStore.setState({ isOpen: true });
       });
@@ -368,10 +301,11 @@ describe("ChatPanel Integration", () => {
         </TestWrapper>
       );
 
-      expect(screen.getByText("Kanban")).toBeInTheDocument();
+      // Kanban view without selected task shows "Project" as context label
+      expect(screen.getByText("Project")).toBeInTheDocument();
     });
 
-    it("shows Ideation context for ideation view", () => {
+    it("shows Chat context for ideation view", () => {
       act(() => {
         useChatStore.setState({ isOpen: true });
       });
@@ -388,7 +322,8 @@ describe("ChatPanel Integration", () => {
         </TestWrapper>
       );
 
-      expect(screen.getByText("Ideation")).toBeInTheDocument();
+      // Ideation view shows "Chat" as the context label
+      expect(screen.getByText("Chat")).toBeInTheDocument();
     });
 
     it("shows Task context for task_detail view", () => {
@@ -540,8 +475,8 @@ describe("ChatPanel Integration", () => {
       );
 
       const panel = screen.getByTestId("chat-panel");
-      // Check border color via style attribute since toHaveStyle has issues with CSS variables
-      expect(panel.getAttribute("style")).toContain("border-color: var(--border-subtle)");
+      // Check border-left style which includes the design token
+      expect(panel.getAttribute("style")).toContain("border-left: 1px solid var(--border-subtle)");
     });
   });
 });

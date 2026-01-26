@@ -3,6 +3,9 @@ import {
   useChatStore,
   selectMessagesForContext,
   selectMessageCount,
+  selectQueuedMessages,
+  selectIsAgentRunning,
+  selectActiveConversationId,
   getContextKey,
 } from "./chatStore";
 import type { ChatMessage } from "@/types/ideation";
@@ -38,6 +41,9 @@ describe("chatStore", () => {
       isOpen: false,
       width: 320,
       isLoading: false,
+      activeConversationId: null,
+      queuedMessages: [],
+      isAgentRunning: false,
     });
   });
 
@@ -65,6 +71,21 @@ describe("chatStore", () => {
     it("has isLoading false", () => {
       const state = useChatStore.getState();
       expect(state.isLoading).toBe(false);
+    });
+
+    it("has null activeConversationId", () => {
+      const state = useChatStore.getState();
+      expect(state.activeConversationId).toBeNull();
+    });
+
+    it("has empty queuedMessages", () => {
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(0);
+    });
+
+    it("has isAgentRunning false", () => {
+      const state = useChatStore.getState();
+      expect(state.isAgentRunning).toBe(false);
     });
   });
 
@@ -315,6 +336,249 @@ describe("chatStore", () => {
       expect(state.isLoading).toBe(false);
     });
   });
+
+  describe("setActiveConversation", () => {
+    it("sets activeConversationId", () => {
+      useChatStore.getState().setActiveConversation("conv-123");
+
+      const state = useChatStore.getState();
+      expect(state.activeConversationId).toBe("conv-123");
+    });
+
+    it("replaces previous conversation ID", () => {
+      useChatStore.setState({ activeConversationId: "conv-old" });
+
+      useChatStore.getState().setActiveConversation("conv-new");
+
+      const state = useChatStore.getState();
+      expect(state.activeConversationId).toBe("conv-new");
+    });
+
+    it("sets to null", () => {
+      useChatStore.setState({ activeConversationId: "conv-123" });
+
+      useChatStore.getState().setActiveConversation(null);
+
+      const state = useChatStore.getState();
+      expect(state.activeConversationId).toBeNull();
+    });
+  });
+
+  describe("setAgentRunning", () => {
+    it("sets isAgentRunning to true", () => {
+      useChatStore.getState().setAgentRunning(true);
+
+      const state = useChatStore.getState();
+      expect(state.isAgentRunning).toBe(true);
+    });
+
+    it("sets isAgentRunning to false", () => {
+      useChatStore.setState({ isAgentRunning: true });
+
+      useChatStore.getState().setAgentRunning(false);
+
+      const state = useChatStore.getState();
+      expect(state.isAgentRunning).toBe(false);
+    });
+  });
+
+  describe("queueMessage", () => {
+    it("adds message to queue", () => {
+      useChatStore.getState().queueMessage("Hello");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(1);
+      expect(state.queuedMessages[0].content).toBe("Hello");
+    });
+
+    it("generates unique ID for queued message", () => {
+      useChatStore.getState().queueMessage("First");
+      useChatStore.getState().queueMessage("Second");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].id).not.toBe(state.queuedMessages[1].id);
+    });
+
+    it("sets createdAt timestamp", () => {
+      useChatStore.getState().queueMessage("Test");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].createdAt).toBeDefined();
+      expect(new Date(state.queuedMessages[0].createdAt).getTime()).toBeLessThanOrEqual(
+        Date.now()
+      );
+    });
+
+    it("sets isEditing to false by default", () => {
+      useChatStore.getState().queueMessage("Test");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].isEditing).toBe(false);
+    });
+
+    it("appends to existing queue", () => {
+      useChatStore.getState().queueMessage("First");
+      useChatStore.getState().queueMessage("Second");
+      useChatStore.getState().queueMessage("Third");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(3);
+      expect(state.queuedMessages[0].content).toBe("First");
+      expect(state.queuedMessages[1].content).toBe("Second");
+      expect(state.queuedMessages[2].content).toBe("Third");
+    });
+  });
+
+  describe("editQueuedMessage", () => {
+    it("updates message content", () => {
+      useChatStore.getState().queueMessage("Original");
+      const messageId = useChatStore.getState().queuedMessages[0].id;
+
+      useChatStore.getState().editQueuedMessage(messageId, "Updated");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].content).toBe("Updated");
+    });
+
+    it("sets isEditing to false after edit", () => {
+      useChatStore.getState().queueMessage("Test");
+      const messageId = useChatStore.getState().queuedMessages[0].id;
+      useChatStore.setState({
+        queuedMessages: [{ ...useChatStore.getState().queuedMessages[0], isEditing: true }],
+      });
+
+      useChatStore.getState().editQueuedMessage(messageId, "Updated");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].isEditing).toBe(false);
+    });
+
+    it("does nothing if message not found", () => {
+      useChatStore.getState().queueMessage("Test");
+
+      useChatStore.getState().editQueuedMessage("nonexistent-id", "Updated");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].content).toBe("Test");
+    });
+
+    it("only updates specified message", () => {
+      useChatStore.getState().queueMessage("First");
+      useChatStore.getState().queueMessage("Second");
+      useChatStore.getState().queueMessage("Third");
+      const secondId = useChatStore.getState().queuedMessages[1].id;
+
+      useChatStore.getState().editQueuedMessage(secondId, "Updated Second");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].content).toBe("First");
+      expect(state.queuedMessages[1].content).toBe("Updated Second");
+      expect(state.queuedMessages[2].content).toBe("Third");
+    });
+  });
+
+  describe("deleteQueuedMessage", () => {
+    it("removes message from queue", () => {
+      useChatStore.getState().queueMessage("Test");
+      const messageId = useChatStore.getState().queuedMessages[0].id;
+
+      useChatStore.getState().deleteQueuedMessage(messageId);
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(0);
+    });
+
+    it("does nothing if message not found", () => {
+      useChatStore.getState().queueMessage("Test");
+
+      useChatStore.getState().deleteQueuedMessage("nonexistent-id");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(1);
+    });
+
+    it("only removes specified message", () => {
+      useChatStore.getState().queueMessage("First");
+      useChatStore.getState().queueMessage("Second");
+      useChatStore.getState().queueMessage("Third");
+      const secondId = useChatStore.getState().queuedMessages[1].id;
+
+      useChatStore.getState().deleteQueuedMessage(secondId);
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(2);
+      expect(state.queuedMessages[0].content).toBe("First");
+      expect(state.queuedMessages[1].content).toBe("Third");
+    });
+  });
+
+  describe("startEditingQueuedMessage", () => {
+    it("sets isEditing to true", () => {
+      useChatStore.getState().queueMessage("Test");
+      const messageId = useChatStore.getState().queuedMessages[0].id;
+
+      useChatStore.getState().startEditingQueuedMessage(messageId);
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].isEditing).toBe(true);
+    });
+
+    it("does nothing if message not found", () => {
+      useChatStore.getState().queueMessage("Test");
+
+      useChatStore.getState().startEditingQueuedMessage("nonexistent-id");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].isEditing).toBe(false);
+    });
+  });
+
+  describe("stopEditingQueuedMessage", () => {
+    it("sets isEditing to false", () => {
+      useChatStore.getState().queueMessage("Test");
+      const messageId = useChatStore.getState().queuedMessages[0].id;
+      useChatStore.setState({
+        queuedMessages: [{ ...useChatStore.getState().queuedMessages[0], isEditing: true }],
+      });
+
+      useChatStore.getState().stopEditingQueuedMessage(messageId);
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].isEditing).toBe(false);
+    });
+
+    it("does nothing if message not found", () => {
+      useChatStore.getState().queueMessage("Test");
+      useChatStore.setState({
+        queuedMessages: [{ ...useChatStore.getState().queuedMessages[0], isEditing: true }],
+      });
+
+      useChatStore.getState().stopEditingQueuedMessage("nonexistent-id");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[0].isEditing).toBe(true);
+    });
+  });
+
+  describe("processQueue", () => {
+    it("removes first message from queue", async () => {
+      useChatStore.getState().queueMessage("First");
+      useChatStore.getState().queueMessage("Second");
+
+      await useChatStore.getState().processQueue();
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(1);
+      expect(state.queuedMessages[0].content).toBe("Second");
+    });
+
+    it("does nothing if queue is empty", async () => {
+      await useChatStore.getState().processQueue();
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages).toHaveLength(0);
+    });
+  });
 });
 
 describe("getContextKey", () => {
@@ -382,6 +646,9 @@ describe("selectors", () => {
       isOpen: false,
       width: 320,
       isLoading: false,
+      activeConversationId: null,
+      queuedMessages: [],
+      isAgentRunning: false,
     });
   });
 
@@ -426,6 +693,57 @@ describe("selectors", () => {
       const result = selectMessageCount("session:unknown")(useChatStore.getState());
 
       expect(result).toBe(0);
+    });
+  });
+
+  describe("selectQueuedMessages", () => {
+    it("returns queued messages", () => {
+      useChatStore.getState().queueMessage("First");
+      useChatStore.getState().queueMessage("Second");
+
+      const result = selectQueuedMessages(useChatStore.getState());
+
+      expect(result).toHaveLength(2);
+      expect(result[0].content).toBe("First");
+      expect(result[1].content).toBe("Second");
+    });
+
+    it("returns empty array when no queued messages", () => {
+      const result = selectQueuedMessages(useChatStore.getState());
+
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("selectIsAgentRunning", () => {
+    it("returns true when agent is running", () => {
+      useChatStore.setState({ isAgentRunning: true });
+
+      const result = selectIsAgentRunning(useChatStore.getState());
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when agent is not running", () => {
+      const result = selectIsAgentRunning(useChatStore.getState());
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("selectActiveConversationId", () => {
+    it("returns active conversation ID", () => {
+      useChatStore.setState({ activeConversationId: "conv-123" });
+
+      const result = selectActiveConversationId(useChatStore.getState());
+
+      expect(result).toBe("conv-123");
+    });
+
+    it("returns null when no active conversation", () => {
+      const result = selectActiveConversationId(useChatStore.getState());
+
+      expect(result).toBeNull();
     });
   });
 });
