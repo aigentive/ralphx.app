@@ -1,15 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 23:55:12
+**Last Updated:** 2026-01-26 23:58:45
 **Phase:** Task Execution Experience
-**Tasks Completed:** 15 / 42
-**Current Task:** Add step API bindings
+**Tasks Completed:** 16 / 42
+**Current Task:** Create useTaskSteps hook
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 23:58:45 - Add step API bindings
+
+**What was done:**
+- Updated `src/lib/tauri.ts` with complete step API namespace:
+  - Added imports for `TaskStepSchema` and `StepProgressSummarySchema`
+  - Created `TaskStepListSchema` for array responses
+  - Added `api.steps` namespace with 10 methods:
+    - `getByTask` - Get all steps for a task
+    - `create` - Create a new task step
+    - `update` - Update an existing step
+    - `delete` - Delete a step
+    - `reorder` - Reorder steps for a task
+    - `getProgress` - Get step progress summary
+    - `start` - Mark step as in_progress
+    - `complete` - Mark step as completed with optional note
+    - `skip` - Mark step as skipped with reason
+    - `fail` - Mark step as failed with error message
+  - All methods use `typedInvoke` with proper Zod schema validation
+  - Added comprehensive JSDoc comments for each method
+
+**Tests performed:**
+- npm run typecheck - passed
+
+**Commits:**
+```
+feat(api): add step API bindings
+```
 
 ### 2026-01-26 23:55:12 - Add TaskStep types and schemas
 

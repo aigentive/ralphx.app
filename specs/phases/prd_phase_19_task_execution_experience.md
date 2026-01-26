@@ -368,7 +368,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(api): add step API bindings"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
