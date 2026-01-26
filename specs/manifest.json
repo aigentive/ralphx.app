@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 18,
+  "currentPhase": 19,
   "phases": [
     {
       "phase": 0,
@@ -140,14 +140,14 @@
       "phase": 18,
       "name": "Task CRUD, Archive & Search",
       "prd": "specs/phases/prd_phase_18_task_crud_archive_search.md",
-      "status": "active",
+      "status": "complete",
       "description": "Full CRUD operations, archive system, search, infinite scroll, context menu, keyboard shortcuts"
     },
     {
       "phase": 19,
       "name": "Task Execution Experience",
       "prd": "specs/phases/prd_phase_19_task_execution_experience.md",
-      "status": "pending",
+      "status": "active",
       "description": "Task Steps for deterministic progress, reactive TaskCards, full-screen TaskFullView with integrated chat"
     }
   ]
