@@ -17,7 +17,7 @@ import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveC
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
 import { useUiStore } from "@/stores/uiStore";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -446,8 +446,6 @@ interface MessageItemProps {
   content: string;
   createdAt: string;
   toolCalls?: string | null;
-  isFirstInGroup?: boolean;
-  isLastInGroup?: boolean;
 }
 
 function MessageItem({
@@ -455,8 +453,6 @@ function MessageItem({
   content,
   createdAt,
   toolCalls,
-  isFirstInGroup = true,
-  isLastInGroup = true,
 }: MessageItemProps) {
   const isUser = role === "user";
 
@@ -498,16 +494,14 @@ function MessageItem({
   return (
     <div
       className={cn(
-        "flex",
-        isUser ? "justify-end" : "justify-start",
-        isLastInGroup ? "mb-3" : "mb-1"
+        "flex mb-3",
+        isUser ? "justify-end" : "justify-start"
       )}
     >
-      {/* Agent indicator for first assistant message */}
-      {!isUser && isFirstInGroup && (
+      {/* Agent indicator for assistant messages */}
+      {!isUser && (
         <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
       )}
-      {!isUser && !isFirstInGroup && <div className="w-3.5 mr-2 shrink-0" />}
 
       <div className="flex flex-col max-w-[85%]">
         {/* Tool calls (shown before text content for assistant messages) */}
@@ -548,17 +542,15 @@ function MessageItem({
             </div>
           )}
         </div>
-        {isLastInGroup && (
-          <span
-            className={cn(
-              "text-[10px] mt-1 px-1",
-              isUser ? "text-right" : "text-left"
-            )}
-            style={{ color: "rgba(255,255,255,0.4)" }}
-          >
-            {timestamp}
-          </span>
-        )}
+        <span
+          className={cn(
+            "text-[10px] mt-1 px-1",
+            isUser ? "text-right" : "text-left"
+          )}
+          style={{ color: "rgba(255,255,255,0.4)" }}
+        >
+          {timestamp}
+        </span>
       </div>
     </div>
   );
@@ -663,6 +655,7 @@ export function ChatPanel({ context }: ChatPanelProps) {
 }
 
 function ChatPanelContent({ context }: ChatPanelProps) {
+  const queryClient = useQueryClient();
   const {
     width,
     togglePanel,
@@ -865,7 +858,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
-      // Listen for tool calls - accumulate for streaming display
+      // Listen for tool calls - accumulate for streaming display and invalidate cache
       const toolCallUnlisten = await listen<{
         tool_name: string;
         arguments: unknown;
@@ -884,17 +877,28 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               result,
             },
           ]);
+          // Invalidate cache to pick up any new messages from backend
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
         }
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for chat run completion - clear streaming state
+      // Listen for chat run completion - clear streaming state and refresh
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("chat:run_completed", (event) => {
         console.log("Chat run completed:", event.payload);
-        // Clear streaming tool calls and scroll to bottom
+        const { conversation_id } = event.payload;
+        // Clear streaming tool calls
         setStreamingToolCalls([]);
+        // Invalidate cache to get final messages
+        if (conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
         // Force scroll to bottom after completion
         setTimeout(() => {
           if (messagesEndRef.current) {
@@ -922,17 +926,29 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               arguments: args,
             },
           ]);
+          // Invalidate cache to pick up any new messages from backend
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
         }
       });
       unlisteners.push(execToolCallUnlisten);
 
-      // Listen for execution completion - clear streaming state
+      // Listen for execution completion - clear streaming state and refresh
       const execCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("execution:run_completed", (event) => {
         console.log("Worker execution completed:", event.payload);
-        // Clear streaming tool calls and scroll to bottom
+        const { conversation_id } = event.payload;
+        // Clear streaming tool calls
         setStreamingToolCalls([]);
+        // Invalidate cache to get final messages
+        if (conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
+        // Scroll to bottom
         setTimeout(() => {
           if (messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -945,17 +961,13 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, []); // Empty deps - only run on mount/unmount
+  }, [queryClient]);
 
-  // Process messages into groups
-  const groupedMessages = useMemo(() => {
-    return messagesData.map((msg, index) => {
-      const prevMsg = messagesData[index - 1];
-      const nextMsg = messagesData[index + 1];
-      const isFirstInGroup = !prevMsg || prevMsg.role !== msg.role;
-      const isLastInGroup = !nextMsg || nextMsg.role !== msg.role;
-      return { ...msg, isFirstInGroup, isLastInGroup };
-    });
+  // Sort messages by createdAt - render in chronological order, no grouping
+  const sortedMessages = useMemo(() => {
+    return [...messagesData].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
   }, [messagesData]);
 
   if (isCollapsed) {
@@ -969,7 +981,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
   const isLoading = activeConversation.isLoading;
   const isSending = sendMessage.isPending;
-  const isEmpty = !isLoading && groupedMessages.length === 0;
+  const isEmpty = !isLoading && sortedMessages.length === 0;
 
   return (
     <>
@@ -1081,15 +1093,13 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               <EmptyState />
             ) : (
               <>
-                {groupedMessages.map((msg) => (
+                {sortedMessages.map((msg) => (
                   <MessageItem
                     key={msg.id}
                     role={msg.role}
                     content={msg.content}
                     createdAt={msg.createdAt}
                     toolCalls={msg.toolCalls}
-                    isFirstInGroup={msg.isFirstInGroup}
-                    isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
                 {/* Show streaming tool calls or typing indicator while agent is working */}

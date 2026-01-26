@@ -10,7 +10,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -323,8 +323,6 @@ interface MessageItemProps {
   content: string;
   createdAt: string;
   toolCalls?: string | null;
-  isFirstInGroup?: boolean;
-  isLastInGroup?: boolean;
 }
 
 function MessageItem({
@@ -332,8 +330,6 @@ function MessageItem({
   content,
   createdAt,
   toolCalls,
-  isFirstInGroup = true,
-  isLastInGroup = true,
 }: MessageItemProps) {
   const isUser = role === "user";
 
@@ -375,16 +371,14 @@ function MessageItem({
   return (
     <div
       className={cn(
-        "flex",
-        isUser ? "justify-end" : "justify-start",
-        isLastInGroup ? "mb-3" : "mb-1"
+        "flex mb-3",
+        isUser ? "justify-end" : "justify-start"
       )}
     >
-      {/* Agent indicator for first assistant message */}
-      {!isUser && isFirstInGroup && (
+      {/* Agent indicator for assistant messages */}
+      {!isUser && (
         <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
       )}
-      {!isUser && !isFirstInGroup && <div className="w-3.5 mr-2 shrink-0" />}
 
       <div className="flex flex-col max-w-[85%]">
         {/* Tool calls (shown before text content for assistant messages) */}
@@ -425,17 +419,15 @@ function MessageItem({
             </div>
           )}
         </div>
-        {isLastInGroup && (
-          <span
-            className={cn(
-              "text-[10px] mt-1 px-1",
-              isUser ? "text-right" : "text-left"
-            )}
-            style={{ color: "rgba(255,255,255,0.4)" }}
-          >
-            {timestamp}
-          </span>
-        )}
+        <span
+          className={cn(
+            "text-[10px] mt-1 px-1",
+            isUser ? "text-right" : "text-left"
+          )}
+          style={{ color: "rgba(255,255,255,0.4)" }}
+        >
+          {timestamp}
+        </span>
       </div>
     </div>
   );
@@ -452,6 +444,7 @@ export interface TaskChatPanelProps {
 }
 
 export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
+  const queryClient = useQueryClient();
   const {
     queueMessage,
     editQueuedMessage,
@@ -564,51 +557,81 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
-      // Listen for chat chunks (streaming text)
-      // Note: chat:chunk events arrive but contain complete messages (not streaming deltas)
-      // We just show a typing indicator instead of trying to render partial content
-
-      // Listen for tool calls
+      // Listen for tool calls - invalidate cache to pick up new messages
       const toolCallUnlisten = await listen<{
         tool_name: string;
         arguments: unknown;
         result: unknown;
         conversation_id: string;
       }>("chat:tool_call", (event) => {
+        const { conversation_id } = event.payload;
         console.log("Tool call received:", event.payload);
-        // Tool calls are shown in the final persisted message
+        // Invalidate cache to pick up any new messages from backend
+        if (conversation_id === activeConversationIdRef.current) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for chat run completion
+      // Listen for chat run completion - refresh messages
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("chat:run_completed", (event) => {
+        const { conversation_id } = event.payload;
         console.log("Chat run completed:", event.payload);
-        // Query will auto-refetch
+        // Invalidate cache to get final messages
+        if (conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
+        // Scroll to bottom
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
       });
       unlisteners.push(runCompletedUnlisten);
 
-      // Execution-specific events (Phase 15B)
-      // Note: execution:chunk events contain complete messages, not streaming deltas
-
-      // Listen for execution tool calls
+      // Execution-specific events
+      // Listen for execution tool calls - invalidate cache
       const execToolCallUnlisten = await listen<{
         conversation_id: string;
         tool_name: string;
         arguments: unknown;
       }>("execution:tool_call", (event) => {
+        const { conversation_id } = event.payload;
         console.log("Execution tool call received:", event.payload);
-        // Tool calls are shown in the final persisted message
+        // Invalidate cache to pick up any new messages from backend
+        if (conversation_id === activeConversationIdRef.current) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
       });
       unlisteners.push(execToolCallUnlisten);
 
-      // Listen for execution completion
+      // Listen for execution completion - refresh messages
       const execCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("execution:run_completed", (event) => {
+        const { conversation_id } = event.payload;
         console.log("Worker execution completed:", event.payload);
-        // Query will auto-refetch due to the task:event invalidation
+        // Invalidate cache to get final messages
+        if (conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
+        // Scroll to bottom
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
       });
       unlisteners.push(execCompletedUnlisten);
     })();
@@ -616,22 +639,18 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, []); // Empty deps - only run on mount/unmount
+  }, [queryClient]);
 
-  // Process messages into groups
-  const groupedMessages = useMemo(() => {
-    return messagesData.map((msg, index) => {
-      const prevMsg = messagesData[index - 1];
-      const nextMsg = messagesData[index + 1];
-      const isFirstInGroup = !prevMsg || prevMsg.role !== msg.role;
-      const isLastInGroup = !nextMsg || nextMsg.role !== msg.role;
-      return { ...msg, isFirstInGroup, isLastInGroup };
-    });
+  // Sort messages by createdAt - render in chronological order, no grouping
+  const sortedMessages = useMemo(() => {
+    return [...messagesData].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
   }, [messagesData]);
 
   const isLoading = activeConversation.isLoading;
   const isSending = sendMessage.isPending;
-  const isEmpty = !isLoading && groupedMessages.length === 0;
+  const isEmpty = !isLoading && sortedMessages.length === 0;
 
   return (
     <>
@@ -692,15 +711,13 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
               <EmptyState />
             ) : (
               <>
-                {groupedMessages.map((msg) => (
+                {sortedMessages.map((msg) => (
                   <MessageItem
                     key={msg.id}
                     role={msg.role}
                     content={msg.content}
                     createdAt={msg.createdAt}
                     toolCalls={msg.toolCalls}
-                    isFirstInGroup={msg.isFirstInGroup}
-                    isLastInGroup={msg.isLastInGroup}
                   />
                 ))}
                 {/* Show typing indicator while agent is working (not streaming text) */}
