@@ -197,9 +197,11 @@ impl AppState {
 }
 ```
 
-### State Machine (statig-inspired)
+### State Machine Architecture (CRITICAL)
 
-Task lifecycle uses a 14-state machine defined in `domain/state_machine/`:
+Task lifecycle uses a 14-state machine defined in `domain/state_machine/`. **This is the authoritative way to handle task status transitions.**
+
+#### State Flow
 
 ```
 Backlog → Ready → Executing → ExecutionDone → QaRefining → QaTesting →
@@ -211,12 +213,150 @@ With failure paths:
 - PendingReview → RevisionNeeded → Executing
 ```
 
-Key files:
-- `machine.rs` - State handlers and dispatch
-- `events.rs` - TaskEvent enum
-- `types.rs` - State data (FailedData, QaFailedData)
-- `context.rs` - TaskContext (shared data)
-- `persistence.rs` - SQLite state persistence
+#### Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `TaskStateMachine` | `machine.rs` | State handlers and event dispatch |
+| `TransitionHandler` | `transition_handler.rs` | **Orchestrates transitions with entry/exit actions** |
+| `TaskContext` | `context.rs` | Shared data (task_id, project_id, qa_enabled, services) |
+| `TaskServices` | `context.rs` | Service dependencies (spawner, emitter, notifier, etc.) |
+| `TaskEvent` | `events.rs` | Events that trigger transitions |
+| State types | `types.rs` | State-local data (FailedData, QaFailedData) |
+
+#### How to Handle Status Transitions
+
+**⚠️ NEVER update task status directly in the database. Always use the TransitionHandler.**
+
+```rust
+// ❌ WRONG - Bypasses entry actions, no side effects triggered
+task.internal_status = InternalStatus::Executing;
+task_repo.update(&task).await?;
+
+// ✅ CORRECT - Uses TransitionHandler with proper entry actions
+use crate::domain::state_machine::{
+    context::{TaskContext, TaskServices},
+    machine::TaskStateMachine,
+    transition_handler::TransitionHandler,
+    events::TaskEvent,
+};
+
+// 1. Build TaskServices with required dependencies
+let services = TaskServices::new(
+    agent_spawner,           // Arc<dyn AgentSpawner>
+    event_emitter,           // Arc<dyn EventEmitter>
+    notifier,                // Arc<dyn Notifier>
+    dependency_manager,      // Arc<dyn DependencyManager>
+    review_starter,          // Arc<dyn ReviewStarter>
+    execution_chat_service,  // Arc<dyn ExecutionChatService>
+);
+
+// 2. Create TaskContext with services
+let context = TaskContext::new(&task_id, &project_id, services);
+
+// 3. Create state machine and handler
+let mut machine = TaskStateMachine::new(context);
+let mut handler = TransitionHandler::new(&mut machine);
+
+// 4. Handle transition - this triggers entry actions!
+let result = handler
+    .handle_transition(&current_state, &TaskEvent::Schedule)
+    .await;
+```
+
+#### Entry Actions (Triggered Automatically)
+
+The `TransitionHandler::on_enter()` method triggers side effects when entering states:
+
+| State | Entry Action |
+|-------|--------------|
+| `Ready` | Spawn QA prep agent (if QA enabled) |
+| `Executing` | **Spawn worker via `ExecutionChatService.spawn_with_persistence()`** |
+| `QaRefining` | Wait for QA prep, spawn QA refiner agent |
+| `QaTesting` | Spawn QA tester agent |
+| `QaPassed` | Emit `qa_passed` event |
+| `QaFailed` | Emit `qa_failed` event, notify user |
+| `PendingReview` | Start AI review via `ReviewStarter`, spawn reviewer agent |
+| `Approved` | Emit `task_completed` event, unblock dependent tasks |
+| `Failed` | Emit `task_failed` event |
+
+#### Auto-Transitions
+
+Some states automatically transition to the next state:
+
+| From State | Auto-Transitions To | Condition |
+|------------|---------------------|-----------|
+| `ExecutionDone` | `QaRefining` | QA enabled |
+| `ExecutionDone` | `PendingReview` | QA disabled (default) |
+| `QaPassed` | `PendingReview` | Always |
+| `RevisionNeeded` | `Executing` | Always (retry) |
+
+#### TaskServices Dependencies
+
+`TaskServices` requires these trait implementations:
+
+```rust
+pub struct TaskServices {
+    pub agent_spawner: Arc<dyn AgentSpawner>,           // Spawn agents
+    pub event_emitter: Arc<dyn EventEmitter>,           // Emit Tauri events
+    pub notifier: Arc<dyn Notifier>,                    // User notifications
+    pub dependency_manager: Arc<dyn DependencyManager>, // Task dependencies
+    pub review_starter: Arc<dyn ReviewStarter>,         // Start AI reviews
+    pub execution_chat_service: Arc<dyn ExecutionChatService>, // Worker execution
+}
+```
+
+Production implementations:
+- `TauriEventEmitter` - Emits to Tauri app handle
+- `AgenticClientSpawner` - Spawns Claude CLI agents
+- `ClaudeExecutionChatService` - Worker execution with persistence
+
+No-op implementations (for testing or when not fully wired):
+- `LoggingNotifier` - Logs notifications
+- `NoOpDependencyManager` - Placeholder for task dependencies
+- `NoOpReviewStarter` - Placeholder for review system
+
+#### Example: Handling Kanban Drag-Drop
+
+When a user drags a task to a new column (e.g., "In Progress"):
+
+```rust
+// In task_commands.rs move_task handler
+pub async fn move_task(task_id: String, to_status: String, ...) {
+    // 1. Parse status
+    let new_status: InternalStatus = to_status.parse()?;
+
+    // 2. Get current task state
+    let task = task_repo.get_by_id(&task_id).await?;
+    let current_state = State::from_str(task.internal_status.as_str())?;
+
+    // 3. Build services and context
+    let services = build_task_services(...);
+    let context = TaskContext::new(&task_id, &project_id, services);
+
+    // 4. Create machine and handler
+    let mut machine = TaskStateMachine::new(context);
+    let mut handler = TransitionHandler::new(&mut machine);
+
+    // 5. Determine the event for this transition
+    let event = match new_status {
+        InternalStatus::Ready => TaskEvent::Schedule,
+        InternalStatus::Executing => TaskEvent::StartExecution,
+        // ... map other statuses to events
+    };
+
+    // 6. Handle transition - entry actions fire automatically!
+    let result = handler.handle_transition(&current_state, &event).await;
+
+    // 7. Persist the new state
+    if let Some(new_state) = result.state() {
+        task.internal_status = InternalStatus::from_str(new_state.as_str())?;
+        task_repo.update(&task).await?;
+    }
+}
+```
+
+This ensures that when a task moves to "In Progress" (Executing), the worker agent is automatically spawned via the entry action.
 
 ---
 

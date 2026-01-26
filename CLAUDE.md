@@ -500,6 +500,7 @@ From the master plan:
 5. **Preserve details** - When creating PRDs, don't summarize - keep ALL specifics
 6. **Atomic tasks** - Each task completable in one focused session
 7. **Full timestamps** - Activity log entries use `YYYY-MM-DD HH:MM:SS` format
+8. **Use TransitionHandler for task status changes** - NEVER update task status directly in the database. Always use `TransitionHandler` from `domain/state_machine/` to ensure entry actions (spawn workers, start reviews, emit events) are triggered. See `src-tauri/CLAUDE.md` for detailed architecture.
 
 ---
 
