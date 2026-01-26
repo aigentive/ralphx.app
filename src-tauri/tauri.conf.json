@@ -12,7 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "RalphX",
+        "title": "",
+        "titleBarStyle": "overlay",
+        "hiddenTitle": true,
         "width": 1200,
         "height": 800
       }

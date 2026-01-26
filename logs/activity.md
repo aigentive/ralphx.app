@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:38:30
+**Last Updated:** 2026-01-26 02:42:30
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 19 / 26
-**Current Task:** Create QueuedMessage components
+**Tasks Completed:** 20 / 26
+**Current Task:** Update ChatInput for queue mode and keyboard navigation
 
 ---
 
@@ -11185,3 +11185,78 @@ Phase 4 (Agentic Client) is now complete with all 23 tasks passing.
 - Run cargo test
 - Commit changes
 
+
+### 2026-01-26 02:42:30 - Created QueuedMessage Components
+
+**What was done:**
+- Created `src/components/Chat/QueuedMessage.tsx`:
+  - Displays queued message content with pending/queued visual style
+  - Send icon indicator (muted color) to show message is queued
+  - Edit button (Pencil icon) that switches to inline edit mode
+  - Delete button (X icon) that removes message from queue
+  - Inline edit mode with textarea:
+    - Auto-focus on edit
+    - Save button (check mark icon) to confirm changes
+    - Cancel button (X icon) to discard changes
+    - Enter to save, Escape to cancel keyboard shortcuts
+    - Shift+Enter for newline support
+  - Disables save button when content is empty or whitespace
+  - Trims whitespace when saving
+  - Muted styling: elevated background, subtle border, secondary text color
+  - Uses design system tokens for all colors and spacing
+
+- Created `src/components/Chat/QueuedMessageList.tsx`:
+  - Container for displaying queued messages
+  - Header with title "QUEUED MESSAGES (N)" showing message count
+  - Explanatory text: "These messages will be sent when the agent finishes."
+  - Lists all QueuedMessage components with 2px gap
+  - Only renders if queue is not empty (null otherwise)
+  - Uses design system tokens for surface background, borders, colors
+  - Proper spacing and visual hierarchy
+
+- Created `src/components/Chat/QueuedMessage.test.tsx`:
+  - 16 comprehensive tests covering all functionality:
+    - Renders message content
+    - Displays send icon indicator
+    - Shows edit and delete buttons when not editing
+    - Calls onDelete when delete button clicked
+    - Enters edit mode on edit button click
+    - Shows save and cancel buttons in edit mode
+    - Calls onEdit with new content when save clicked
+    - Cancels edit mode when cancel button clicked
+    - Saves edit on Enter keypress
+    - Cancels edit on Escape keypress
+    - Allows Shift+Enter for newline
+    - Disables save button when content empty
+    - Disables save button when content is whitespace
+    - Starts in edit mode if message.isEditing is true
+    - Trims whitespace when saving
+    - Renders long messages correctly
+
+- Created `src/components/Chat/QueuedMessageList.test.tsx`:
+  - 11 comprehensive tests covering all functionality:
+    - Does not render when messages array is empty
+    - Renders header with message count
+    - Renders explanatory text
+    - Renders all queued messages
+    - Passes onEdit callback to QueuedMessage components
+    - Passes onDelete callback to QueuedMessage components
+    - Renders messages in correct order
+    - Updates count when single message is present
+    - Handles large number of messages (20+)
+    - Applies correct styling to container
+    - Renders messages with different properties (short, long, multiline)
+
+**Commands run:**
+- `npm run lint` - passed (no new errors)
+- `npm run typecheck` - passed
+- `npm run test` - all 27 tests passed
+
+**Test results:**
+```
+✓ src/components/Chat/QueuedMessageList.test.tsx (11 tests)
+✓ src/components/Chat/QueuedMessage.test.tsx (16 tests)
+
+Test Files  2 passed (2)
+Tests       27 passed (27)
+```
