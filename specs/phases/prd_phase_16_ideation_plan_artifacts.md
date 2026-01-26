@@ -247,7 +247,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(types): add ideation settings types and API"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

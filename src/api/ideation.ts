@@ -2,6 +2,11 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import type {
+  IdeationSettings,
+  IdeationSettingsResponse,
+} from "../types/ideation-config";
+import { IdeationSettingsResponseSchema } from "../types/ideation-config";
 
 // ============================================================================
 // Response Schemas (matching Rust backend serialization with snake_case)
@@ -333,6 +338,15 @@ function transformApplyResult(raw: z.infer<typeof ApplyProposalsResultResponseSc
     dependenciesCreated: raw.dependencies_created,
     warnings: raw.warnings,
     sessionConverted: raw.session_converted,
+  };
+}
+
+function transformIdeationSettings(raw: IdeationSettingsResponse): IdeationSettings {
+  return {
+    planMode: raw.plan_mode as IdeationSettings["planMode"],
+    requirePlanApproval: raw.require_plan_approval,
+    suggestPlansForComplex: raw.suggest_plans_for_complex,
+    autoLinkProposals: raw.auto_link_proposals,
   };
 }
 
@@ -712,6 +726,45 @@ export const ideationApi = {
         { task_id: taskId },
         z.array(z.string())
       );
+    },
+  },
+
+  /**
+   * Ideation settings operations
+   */
+  settings: {
+    /**
+     * Get current ideation settings
+     * @returns Current ideation settings
+     */
+    get: async (): Promise<IdeationSettings> => {
+      const raw = await typedInvoke(
+        "get_ideation_settings",
+        {},
+        IdeationSettingsResponseSchema
+      );
+      return transformIdeationSettings(raw);
+    },
+
+    /**
+     * Update ideation settings
+     * @param settings New settings to apply
+     * @returns Updated settings
+     */
+    update: async (settings: IdeationSettings): Promise<IdeationSettings> => {
+      const raw = await typedInvoke(
+        "update_ideation_settings",
+        {
+          settings: {
+            plan_mode: settings.planMode,
+            require_plan_approval: settings.requirePlanApproval,
+            suggest_plans_for_complex: settings.suggestPlansForComplex,
+            auto_link_proposals: settings.autoLinkProposals,
+          },
+        },
+        IdeationSettingsResponseSchema
+      );
+      return transformIdeationSettings(raw);
     },
   },
 } as const;

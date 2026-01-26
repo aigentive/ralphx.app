@@ -83,7 +83,7 @@ export function TaskBoard({ projectId, workflowId }: TaskBoardProps) {
           color: "var(--status-error)",
         }}
       >
-        Error: {error.message}
+        Error: {error.message || String(error)}
       </div>
     );
   }
