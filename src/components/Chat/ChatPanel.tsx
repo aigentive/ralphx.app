@@ -14,12 +14,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useChat } from "@/hooks/useChat";
-import { useChatStore } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   MessageSquare,
@@ -29,13 +29,15 @@ import {
   X,
   PanelRightClose,
   PanelRightOpen,
-  ArrowUp,
   Loader2,
   Copy,
   Check,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
+import { ConversationSelector } from "./ConversationSelector";
+import { QueuedMessageList } from "./QueuedMessageList";
+import { ChatInput } from "./ChatInput";
 
 // ============================================================================
 // Constants
@@ -540,9 +542,22 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ context }: ChatPanelProps) {
-  const { isOpen, width, togglePanel, setWidth } = useChatStore();
+  const {
+    isOpen,
+    width,
+    togglePanel,
+    setWidth,
+    queueMessage,
+    editQueuedMessage,
+    deleteQueuedMessage,
+    setAgentRunning,
+    startEditingQueuedMessage,
+  } = useChatStore();
+  const queuedMessages = useChatStore(selectQueuedMessages);
+  const isAgentRunning = useChatStore(selectIsAgentRunning);
+  const activeConversationId = useChatStore(selectActiveConversationId);
+
   const { messages, sendMessage } = useChat(context);
-  const [inputValue, setInputValue] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -552,6 +567,7 @@ export function ChatPanel({ context }: ChatPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const lastMessageCountRef = useRef(0);
+  const handleSendRef = useRef<((content: string) => Promise<void>) | null>(null);
 
   // Track unread messages when collapsed
   useEffect(() => {
@@ -629,28 +645,103 @@ export function ChatPanel({ context }: ChatPanelProps) {
   );
 
   // Send message handler
-  const handleSend = useCallback(async () => {
-    const trimmedValue = inputValue.trim();
-    if (!trimmedValue || sendMessage.isPending) return;
+  const handleSend = useCallback(
+    async (content: string) => {
+      if (!content.trim() || sendMessage.isPending) return;
 
-    try {
-      await sendMessage.mutateAsync(trimmedValue);
-      setInputValue("");
-    } catch {
-      // Error is handled by the mutation
-    }
-  }, [inputValue, sendMessage]);
-
-  // Input key handler
-  const handleInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
+      try {
+        await sendMessage.mutateAsync(content);
+      } catch {
+        // Error is handled by the mutation
       }
     },
-    [handleSend]
+    [sendMessage]
   );
+
+  // Keep ref updated for use in event listeners
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
+
+  // Queue message handler (when agent is running)
+  const handleQueue = useCallback(
+    (content: string) => {
+      if (!content.trim()) return;
+      queueMessage(content);
+    },
+    [queueMessage]
+  );
+
+  // Edit last queued message
+  const handleEditLastQueued = useCallback(() => {
+    const lastMessage = queuedMessages[queuedMessages.length - 1];
+    if (!lastMessage) return;
+    startEditingQueuedMessage(lastMessage.id);
+  }, [queuedMessages, startEditingQueuedMessage]);
+
+  // Subscribe to Tauri events for real-time updates
+  useEffect(() => {
+    const unlisteners: UnlistenFn[] = [];
+
+    (async () => {
+      // Listen for chat chunks (streaming text)
+      const chunkUnlisten = await listen<{ text: string; message_id: string }>(
+        "chat:chunk",
+        (event) => {
+          console.log("Chat chunk received:", event.payload);
+          // TODO: Update message in real-time (next task)
+        }
+      );
+      unlisteners.push(chunkUnlisten);
+
+      // Listen for tool calls
+      const toolCallUnlisten = await listen<{
+        tool_name: string;
+        args: unknown;
+        result: unknown;
+      }>("chat:tool_call", (event) => {
+        console.log("Tool call received:", event.payload);
+        // TODO: Display tool call (next task)
+      });
+      unlisteners.push(toolCallUnlisten);
+
+      // Listen for run completion
+      const runCompletedUnlisten = await listen<{ conversation_id: string }>(
+        "chat:run_completed",
+        async (event) => {
+          console.log("Agent run completed:", event.payload);
+          setAgentRunning(false);
+
+          // Process queue: send first queued message if any
+          if (queuedMessages.length > 0) {
+            const firstMessage = queuedMessages[0];
+            if (firstMessage) {
+              // Remove from queue first
+              deleteQueuedMessage(firstMessage.id);
+              // Then send it using ref to avoid stale closure
+              await handleSendRef.current?.(firstMessage.content);
+            }
+          }
+        }
+      );
+      unlisteners.push(runCompletedUnlisten);
+    })();
+
+    return () => {
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [setAgentRunning, queuedMessages, deleteQueuedMessage]);
+
+  // Conversation handlers (to be implemented with actual API calls)
+  const handleSelectConversation = useCallback((_conversationId: string) => {
+    // TODO: Implement conversation switching
+    // This will be implemented in the next task (useChat hook update)
+  }, []);
+
+  const handleNewConversation = useCallback(() => {
+    // TODO: Implement new conversation creation
+    // This will be implemented in the next task (useChat hook update)
+  }, []);
 
   // Process messages into groups
   const groupedMessages = useMemo(() => {
@@ -714,14 +805,28 @@ export function ChatPanel({ context }: ChatPanelProps) {
           <ContextIndicator context={context} />
 
           {/* Active agent badge */}
-          {isSending && (
+          {(isSending || isAgentRunning) && (
             <Badge variant="secondary" className="shrink-0 mr-2">
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              Working
+              {isAgentRunning ? "Agent responding..." : "Working"}
             </Badge>
           )}
 
           <div className="flex items-center gap-1 shrink-0">
+            {/* Conversation Selector */}
+            <ConversationSelector
+              contextType={context.view === "ideation" ? "ideation" : context.view === "task_detail" ? "task" : "project"}
+              contextId={
+                context.view === "ideation" && context.ideationSessionId
+                  ? context.ideationSessionId
+                  : context.selectedTaskId || context.projectId
+              }
+              conversations={[]} // TODO: Load from API in next task
+              activeConversationId={activeConversationId}
+              onSelectConversation={handleSelectConversation}
+              onNewConversation={handleNewConversation}
+              isLoading={false}
+            />
             <Button
               variant="ghost"
               size="icon-sm"
@@ -773,45 +878,31 @@ export function ChatPanel({ context }: ChatPanelProps) {
         </ScrollArea>
 
         {/* Input Area */}
-        <div
-          className="relative p-3 border-t"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
-          <Textarea
-            data-testid="chat-panel-input"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            disabled={isSending}
-            placeholder="Send a message..."
-            className="pr-12 min-h-[40px] max-h-[100px] resize-none text-sm"
-            style={{
-              backgroundColor: "var(--bg-elevated)",
-              borderColor: "var(--border-subtle)",
-            }}
-            rows={1}
-            aria-label="Message input"
-          />
-          <Button
-            data-testid="chat-panel-send"
-            variant={inputValue.trim() ? "default" : "ghost"}
-            size="icon-sm"
-            disabled={!inputValue.trim() || isSending}
-            onClick={handleSend}
-            className="absolute right-4 top-1/2 -translate-y-1/2"
-            style={{
-              backgroundColor: inputValue.trim()
-                ? "var(--accent-primary)"
-                : "transparent",
-            }}
-            aria-label="Send message"
-          >
-            {isSending ? (
-              <Loader2 className="w-[18px] h-[18px] animate-spin" />
-            ) : (
-              <ArrowUp className="w-[18px] h-[18px]" />
-            )}
-          </Button>
+        <div className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
+          {/* Queued Messages */}
+          {queuedMessages.length > 0 && (
+            <div className="p-3 pb-0">
+              <QueuedMessageList
+                messages={queuedMessages}
+                onEdit={editQueuedMessage}
+                onDelete={deleteQueuedMessage}
+              />
+            </div>
+          )}
+
+          {/* Chat Input */}
+          <div className="p-3">
+            <ChatInput
+              onSend={handleSend}
+              onQueue={handleQueue}
+              isAgentRunning={isAgentRunning}
+              isSending={isSending}
+              hasQueuedMessages={queuedMessages.length > 0}
+              onEditLastQueued={handleEditLastQueued}
+              placeholder="Send a message..."
+              showHelperText={queuedMessages.length > 0}
+            />
+          </div>
         </div>
       </aside>
     </>
