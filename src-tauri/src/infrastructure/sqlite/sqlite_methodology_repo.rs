@@ -158,7 +158,7 @@ impl MethodologyRepository for SqliteMethodologyRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let methodologies = stmt
-            .query_map([], |row| Self::methodology_from_row(row))
+            .query_map([], Self::methodology_from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

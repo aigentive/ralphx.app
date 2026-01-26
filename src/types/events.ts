@@ -179,3 +179,72 @@ export const QATestEventSchema = z.object({
 });
 
 export type QATestEvent = z.infer<typeof QATestEventSchema>;
+
+// ============================================================================
+// Proposal Events
+// ============================================================================
+
+/**
+ * Schema for task proposal events
+ * Emitted when proposals are created, updated, or deleted in ideation sessions
+ */
+export const ProposalEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("created"),
+    proposal: z.object({
+      id: z.string(),
+      sessionId: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+      category: z.string(),
+      steps: z.array(z.string()),
+      acceptanceCriteria: z.array(z.string()),
+      suggestedPriority: z.string(),
+      priorityScore: z.number(),
+      priorityReason: z.string().nullable(),
+      estimatedComplexity: z.string(),
+      userPriority: z.string().nullable(),
+      userModified: z.boolean(),
+      status: z.string(),
+      selected: z.boolean(),
+      createdTaskId: z.string().nullable(),
+      planArtifactId: z.string().nullable(),
+      planVersionAtCreation: z.number().nullable(),
+      sortOrder: z.number(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  }),
+  z.object({
+    type: z.literal("updated"),
+    proposal: z.object({
+      id: z.string(),
+      sessionId: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+      category: z.string(),
+      steps: z.array(z.string()),
+      acceptanceCriteria: z.array(z.string()),
+      suggestedPriority: z.string(),
+      priorityScore: z.number(),
+      priorityReason: z.string().nullable(),
+      estimatedComplexity: z.string(),
+      userPriority: z.string().nullable(),
+      userModified: z.boolean(),
+      status: z.string(),
+      selected: z.boolean(),
+      createdTaskId: z.string().nullable(),
+      planArtifactId: z.string().nullable(),
+      planVersionAtCreation: z.number().nullable(),
+      sortOrder: z.number(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  }),
+  z.object({
+    type: z.literal("deleted"),
+    proposalId: z.string(),
+  }),
+]);
+
+export type ProposalEvent = z.infer<typeof ProposalEventSchema>;

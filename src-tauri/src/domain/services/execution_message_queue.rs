@@ -53,7 +53,7 @@ impl ExecutionMessageQueue {
         let mut queues = self.queues.lock().unwrap();
         queues
             .entry(task_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(message.clone());
         message
     }

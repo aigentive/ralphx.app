@@ -650,7 +650,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pending_review_rejected_auto_transitions_to_executing() {
-        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+        let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);

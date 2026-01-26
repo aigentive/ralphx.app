@@ -300,7 +300,7 @@ async fn create_task_proposal(
     let priority = req
         .priority
         .as_ref()
-        .map(|p| parse_priority(p))
+        .map(|s| parse_priority(s.as_str()))
         .transpose()
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .unwrap_or(Priority::Medium);
@@ -338,7 +338,7 @@ async fn update_task_proposal(
     let category = req
         .category
         .as_ref()
-        .map(|c| parse_category(c))
+        .map(|s| parse_category(s.as_str()))
         .transpose()
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -346,7 +346,7 @@ async fn update_task_proposal(
     let user_priority = req
         .user_priority
         .as_ref()
-        .map(|p| parse_priority(p))
+        .map(|s| parse_priority(s.as_str()))
         .transpose()
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 

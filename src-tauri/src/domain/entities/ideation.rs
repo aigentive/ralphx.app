@@ -167,7 +167,7 @@ impl IdeationSessionBuilder {
     pub fn build(self) -> IdeationSession {
         let now = Utc::now();
         IdeationSession {
-            id: self.id.unwrap_or_else(IdeationSessionId::new),
+            id: self.id.unwrap_or_default(),
             project_id: self.project_id.expect("project_id is required"),
             title: self.title,
             status: self.status.unwrap_or_default(),

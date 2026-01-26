@@ -706,7 +706,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const lastMessageCountRef = useRef(0);
   // Ref for activeConversationId so event listeners always have current value
   const activeConversationIdRef = useRef(activeConversationId);
-  activeConversationIdRef.current = activeConversationId;
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   // Extract messages array from active conversation
   const messagesData = activeConversation.data?.messages ?? [];

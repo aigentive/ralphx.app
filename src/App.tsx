@@ -134,6 +134,7 @@ function AppContent() {
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
+  const addSession = useIdeationStore((s) => s.addSession);
   const activeSessionId = activeSession?.id ?? "";
   // Get raw proposals from store and memoize the filtered/sorted version
   const allProposals = useProposalStore((s) => s.proposals);
@@ -352,15 +353,21 @@ function AppContent() {
 
   // Ideation handlers
   const handleNewSession = useCallback(async () => {
+    console.log("handleNewSession called with projectId:", currentProjectId);
     try {
+      console.log("About to call createSession.mutateAsync");
       const session = await createSession.mutateAsync({
         projectId: currentProjectId,
       });
+      console.log("Session created:", session);
+      // Add session to store immediately (don't wait for refetch)
+      addSession(session);
       setActiveSession(session.id);
     } catch (error) {
       console.error("Failed to create session:", error);
+      console.error("Error details:", error);
     }
-  }, [createSession, setActiveSession, currentProjectId]);
+  }, [createSession, addSession, setActiveSession, currentProjectId]);
 
   const handleArchiveSession = useCallback(async (sessionId: string) => {
     try {

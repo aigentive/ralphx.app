@@ -176,10 +176,6 @@ pub async fn seed_builtin_profiles(state: State<'_, AppState>) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::memory::{
-        MemoryAgentProfileRepository, MemoryProjectRepository, MemoryTaskRepository,
-    };
-    use std::sync::Arc;
 
     fn setup_test_state() -> AppState {
         AppState::new_test()

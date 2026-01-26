@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
@@ -27,6 +27,7 @@ pub struct IdeationSessionResponse {
     pub project_id: String,
     pub title: Option<String>,
     pub status: String,
+    pub plan_artifact_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -40,6 +41,7 @@ impl From<IdeationSession> for IdeationSessionResponse {
             project_id: session.project_id.as_str().to_string(),
             title: session.title,
             status: session.status.to_string(),
+            plan_artifact_id: session.plan_artifact_id.map(|id| id.as_str().to_string()),
             created_at: session.created_at.to_rfc3339(),
             updated_at: session.updated_at.to_rfc3339(),
             archived_at: session.archived_at.map(|dt| dt.to_rfc3339()),
@@ -119,6 +121,7 @@ pub struct ChatMessageResponse {
     pub content: String,
     pub metadata: Option<String>,
     pub parent_message_id: Option<String>,
+    pub tool_calls: Option<String>,
     pub created_at: String,
 }
 
@@ -133,6 +136,7 @@ impl From<ChatMessage> for ChatMessageResponse {
             content: message.content,
             metadata: message.metadata,
             parent_message_id: message.parent_message_id.map(|id| id.as_str().to_string()),
+            tool_calls: message.tool_calls,
             created_at: message.created_at.to_rfc3339(),
         }
     }
@@ -359,12 +363,24 @@ pub async fn create_task_proposal(
         }
     }
 
-    state
+    let created_proposal = state
         .task_proposal_repo
         .create(proposal)
         .await
-        .map(TaskProposalResponse::from)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskProposalResponse::from(created_proposal.clone());
+        let _ = app_handle.emit(
+            "proposal:created",
+            serde_json::json!({
+                "proposal": response
+            }),
+        );
+    }
+
+    Ok(TaskProposalResponse::from(created_proposal))
 }
 
 /// Get a task proposal by ID
@@ -463,18 +479,42 @@ pub async fn update_task_proposal(
         .await
         .map_err(|e| e.to_string())?;
 
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskProposalResponse::from(proposal.clone());
+        let _ = app_handle.emit(
+            "proposal:updated",
+            serde_json::json!({
+                "proposal": response
+            }),
+        );
+    }
+
     Ok(TaskProposalResponse::from(proposal))
 }
 
 /// Delete a task proposal
 #[tauri::command]
 pub async fn delete_task_proposal(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let proposal_id = TaskProposalId::from_string(id);
+    let proposal_id = TaskProposalId::from_string(id.clone());
+
     state
         .task_proposal_repo
         .delete(&proposal_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let _ = app_handle.emit(
+            "proposal:deleted",
+            serde_json::json!({
+                "proposalId": id
+            }),
+        );
+    }
+
+    Ok(())
 }
 
 /// Toggle proposal selection state
@@ -1038,7 +1078,7 @@ pub async fn apply_proposals_to_kanban(
         let mut task = Task::new(session.project_id.clone(), proposal.title.clone());
         task.description = proposal.description.clone();
         task.category = proposal.category.to_string();
-        task.internal_status = target_status.clone();
+        task.internal_status = target_status;
 
         // Set priority based on user override or suggested (use priority score as i32)
         if proposal.user_priority.is_some() {
@@ -1790,7 +1830,7 @@ mod tests {
         for i in 0..3 {
             let proposal = TaskProposal::new(
                 created_session.id.clone(),
-                &format!("Proposal {}", i),
+                format!("Proposal {}", i),
                 TaskCategory::Feature,
                 Priority::Medium,
             );
@@ -1917,7 +1957,7 @@ mod tests {
         for i in 0..3 {
             let proposal = TaskProposal::new(
                 created_session.id.clone(),
-                &format!("Proposal {}", i),
+                format!("Proposal {}", i),
                 TaskCategory::Feature,
                 Priority::Medium,
             );
@@ -2476,9 +2516,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(settings.plan_mode, crate::domain::ideation::IdeationPlanMode::Optional);
-        assert_eq!(settings.require_plan_approval, false);
-        assert_eq!(settings.suggest_plans_for_complex, true);
-        assert_eq!(settings.auto_link_proposals, true);
+        assert!(!settings.require_plan_approval);
+        assert!(settings.suggest_plans_for_complex);
+        assert!(settings.auto_link_proposals);
     }
 
     #[tokio::test]
@@ -2501,9 +2541,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(updated.plan_mode, crate::domain::ideation::IdeationPlanMode::Required);
-        assert_eq!(updated.require_plan_approval, true);
-        assert_eq!(updated.suggest_plans_for_complex, false);
-        assert_eq!(updated.auto_link_proposals, false);
+        assert!(updated.require_plan_approval);
+        assert!(!updated.suggest_plans_for_complex);
+        assert!(!updated.auto_link_proposals);
     }
 
     #[tokio::test]
@@ -2532,8 +2572,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(retrieved.plan_mode, crate::domain::ideation::IdeationPlanMode::Parallel);
-        assert_eq!(retrieved.require_plan_approval, false);
-        assert_eq!(retrieved.suggest_plans_for_complex, true);
-        assert_eq!(retrieved.auto_link_proposals, false);
+        assert!(!retrieved.require_plan_approval);
+        assert!(retrieved.suggest_plans_for_complex);
+        assert!(!retrieved.auto_link_proposals);
     }
 }

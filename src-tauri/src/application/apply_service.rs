@@ -188,7 +188,7 @@ where
 
         for node in nodes {
             if !visited.contains(node) {
-                self.dfs_cycle_detect(node, adj, &mut visited, &mut rec_stack, &mut path, &mut cycles);
+                Self::dfs_cycle_detect(node, adj, &mut visited, &mut rec_stack, &mut path, &mut cycles);
             }
         }
 
@@ -196,7 +196,6 @@ where
     }
 
     fn dfs_cycle_detect(
-        &self,
         node: &str,
         adj: &HashMap<String, Vec<String>>,
         visited: &mut HashSet<String>,
@@ -211,7 +210,7 @@ where
         if let Some(neighbors) = adj.get(node) {
             for neighbor in neighbors {
                 if !visited.contains(neighbor) {
-                    self.dfs_cycle_detect(neighbor, adj, visited, rec_stack, path, cycles);
+                    Self::dfs_cycle_detect(neighbor, adj, visited, rec_stack, path, cycles);
                 } else if rec_stack.contains(neighbor) {
                     // Found a cycle - extract it from path
                     let cycle_start = path.iter().position(|n| n == neighbor).unwrap();
@@ -480,7 +479,7 @@ mod tests {
 
         async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()> {
             if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
-                session.plan_artifact_id = plan_artifact_id.map(|s| crate::domain::entities::ArtifactId::from_string(s));
+                session.plan_artifact_id = plan_artifact_id.map(crate::domain::entities::ArtifactId::from_string);
             }
             Ok(())
         }

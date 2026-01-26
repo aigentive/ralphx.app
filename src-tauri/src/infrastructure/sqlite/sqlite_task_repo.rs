@@ -91,7 +91,7 @@ impl TaskRepository for SqliteTaskRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let tasks = stmt
-            .query_map([project_id.as_str()], |row| Task::from_row(row))
+            .query_map([project_id.as_str()], Task::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -281,7 +281,7 @@ impl TaskRepository for SqliteTaskRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let tasks = stmt
-            .query_map([id.as_str()], |row| Task::from_row(row))
+            .query_map([id.as_str()], Task::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -302,7 +302,7 @@ impl TaskRepository for SqliteTaskRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let tasks = stmt
-            .query_map([id.as_str()], |row| Task::from_row(row))
+            .query_map([id.as_str()], Task::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

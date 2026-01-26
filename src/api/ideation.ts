@@ -7,6 +7,7 @@ import type {
   IdeationSettingsResponse,
 } from "../types/ideation-config";
 import { IdeationSettingsResponseSchema } from "../types/ideation-config";
+import type { IdeationSessionStatus } from "../types/ideation";
 
 // ============================================================================
 // Response Schemas (matching Rust backend serialization with snake_case)
@@ -20,6 +21,7 @@ const IdeationSessionResponseSchema = z.object({
   project_id: z.string(),
   title: z.string().nullable(),
   status: z.string(),
+  plan_artifact_id: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
   archived_at: z.string().nullable(),
@@ -62,6 +64,7 @@ const ChatMessageResponseSchema = z.object({
   role: z.string(),
   content: z.string(),
   metadata: z.string().nullable(),
+  tool_calls: z.string().nullable(),
   parent_message_id: z.string().nullable(),
   created_at: z.string(),
 });
@@ -132,7 +135,8 @@ export interface IdeationSessionResponse {
   id: string;
   projectId: string;
   title: string | null;
-  status: string;
+  status: IdeationSessionStatus;
+  planArtifactId: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -170,6 +174,7 @@ export interface ChatMessageResponse {
   content: string;
   metadata: string | null;
   parentMessageId: string | null;
+  toolCalls: string | null;
   createdAt: string;
 }
 
@@ -254,7 +259,8 @@ function transformSession(raw: z.infer<typeof IdeationSessionResponseSchema>): I
     id: raw.id,
     projectId: raw.project_id,
     title: raw.title,
-    status: raw.status,
+    status: raw.status as IdeationSessionStatus,
+    planArtifactId: raw.plan_artifact_id,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     archivedAt: raw.archived_at,
@@ -295,6 +301,7 @@ function transformMessage(raw: z.infer<typeof ChatMessageResponseSchema>): ChatM
     role: raw.role,
     content: raw.content,
     metadata: raw.metadata,
+    toolCalls: raw.tool_calls,
     parentMessageId: raw.parent_message_id,
     createdAt: raw.created_at,
   };

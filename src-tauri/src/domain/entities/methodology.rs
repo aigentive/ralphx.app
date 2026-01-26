@@ -593,10 +593,11 @@ impl MethodologyTemplate {
 }
 
 /// Status of a methodology in a project
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MethodologyStatus {
     /// Available but not active
+    #[default]
     Available,
     /// Currently active for the project
     Active,
@@ -656,12 +657,6 @@ impl FromStr for MethodologyStatus {
                 value: s.to_string(),
             }),
         }
-    }
-}
-
-impl Default for MethodologyStatus {
-    fn default() -> Self {
-        MethodologyStatus::Available
     }
 }
 

@@ -95,7 +95,7 @@ impl EventSubscriber {
 
     /// Check if the channel is closed
     pub fn is_closed(&self) -> bool {
-        self.receiver.is_empty() && self.receiver.len() == 0
+        self.receiver.is_empty() && self.receiver.is_empty()
     }
 }
 
@@ -331,7 +331,7 @@ mod tests {
 
         // Publish more events than capacity
         for i in 0..5 {
-            bus.publish(SupervisorEvent::task_start(&format!("task-{}", i), "Test")).ok();
+            bus.publish(SupervisorEvent::task_start(format!("task-{}", i), "Test")).ok();
         }
 
         // First recv should indicate lagged
@@ -355,7 +355,7 @@ mod tests {
         let publisher = tokio::spawn(async move {
             barrier_clone.wait().await;
             for i in 0..10 {
-                bus_clone.publish(SupervisorEvent::task_start(&format!("task-{}", i), "Test")).ok();
+                bus_clone.publish(SupervisorEvent::task_start(format!("task-{}", i), "Test")).ok();
             }
         });
 

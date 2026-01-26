@@ -77,32 +77,26 @@ impl std::fmt::Display for Model {
 /// Permission mode for agent execution
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum PermissionMode {
+    #[default]
     Default,
     AcceptEdits,
     BypassPermissions,
 }
 
-impl Default for PermissionMode {
-    fn default() -> Self {
-        PermissionMode::Default
-    }
-}
 
 /// Autonomy level for agent behavior
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AutonomyLevel {
+    #[default]
     Supervised,
     SemiAutonomous,
     FullyAutonomous,
 }
 
-impl Default for AutonomyLevel {
-    fn default() -> Self {
-        AutonomyLevel::Supervised
-    }
-}
 
 /// Claude Code component references
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

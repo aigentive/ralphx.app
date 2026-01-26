@@ -144,8 +144,8 @@ impl ToolCallWindow {
 
         if max_count >= self.loop_threshold {
             let call = max_call.unwrap();
-            let confidence = if max_count >= self.loop_threshold + 2 { 95 }
-                           else if max_count >= self.loop_threshold + 1 { 85 }
+            let confidence = if max_count > self.loop_threshold + 1 { 95 }
+                           else if max_count > self.loop_threshold { 85 }
                            else { 75 };
 
             Some(DetectionResult::new(
@@ -163,8 +163,8 @@ impl ToolCallWindow {
     /// Returns Some if no progress for threshold minutes
     pub fn detect_stuck(&self, no_progress_threshold: usize) -> Option<DetectionResult> {
         if self.no_progress_count >= no_progress_threshold {
-            let confidence = if self.no_progress_count >= no_progress_threshold + 3 { 95 }
-                           else if self.no_progress_count >= no_progress_threshold + 1 { 80 }
+            let confidence = if self.no_progress_count > no_progress_threshold + 2 { 95 }
+                           else if self.no_progress_count > no_progress_threshold { 80 }
                            else { 70 };
 
             Some(DetectionResult::new(

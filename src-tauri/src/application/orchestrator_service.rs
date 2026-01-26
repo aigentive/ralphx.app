@@ -11,7 +11,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -464,7 +464,7 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
         conversation: &ChatConversation,
         user_message: &str,
         session_id: &IdeationSessionId,
-        working_directory: &PathBuf,
+        working_directory: &Path,
     ) -> Command {
         self.build_command_for_context(conversation, user_message, session_id.as_str(), working_directory)
     }
@@ -475,7 +475,7 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
         conversation: &ChatConversation,
         user_message: &str,
         context_id: &str,
-        working_directory: &PathBuf,
+        working_directory: &Path,
     ) -> Command {
         let mut cmd = build_base_cli_command(&self.cli_path, &self.plugin_dir);
 
