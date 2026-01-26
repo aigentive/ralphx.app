@@ -1,15 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 23:49:33
+**Last Updated:** 2026-01-26 23:55:12
 **Phase:** Task Execution Experience
-**Tasks Completed:** 14 / 42
-**Current Task:** Add TaskStep types and schemas
+**Tasks Completed:** 15 / 42
+**Current Task:** Add step API bindings
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 23:55:12 - Add TaskStep types and schemas
+
+**What was done:**
+- Created `src/types/task-step.ts` with complete type definitions:
+  - `TaskStepStatusSchema` - Zod enum for step statuses: pending, in_progress, completed, skipped, failed, cancelled
+  - `TaskStepSchema` - Full task step entity schema with all fields (id, taskId, title, description, status, sortOrder, dependsOn, createdBy, completionNote, timestamps)
+  - `StepProgressSummarySchema` - Aggregated progress statistics with current/next step info
+  - Helper functions: isTaskStepPending, isTaskStepInProgress, isTaskStepCompleted, isTaskStepSkipped, isTaskStepFailed, isTaskStepCancelled, isTaskStepTerminal, isTaskStepActive
+  - TASK_STEP_STATUS_VALUES constant
+- Updated `src/types/index.ts` to export all new types and helpers
+- Fixed naming conflicts with QA types by using "TaskStep" prefix for helper functions
+- All fields use camelCase to match Rust backend serialization with serde_json
+
+**Tests performed:**
+- npm run typecheck - passed
+- npm run lint - passed (12 pre-existing warnings, no new ones)
+
+**Commits:**
+```
+feat(types): add TaskStep types and schemas
+```
 
 ### 2026-01-26 23:49:33 - Update worker agent prompt with step instructions
 

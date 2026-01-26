@@ -33,6 +33,23 @@ export {
 } from "./task";
 export type { Task, TaskCategory, CreateTask, UpdateTask, TaskList } from "./task";
 
+// Task Step types
+export {
+  TaskStepStatusSchema,
+  TaskStepSchema,
+  StepProgressSummarySchema,
+  TASK_STEP_STATUS_VALUES,
+  isTaskStepPending,
+  isTaskStepInProgress,
+  isTaskStepCompleted,
+  isTaskStepSkipped,
+  isTaskStepFailed,
+  isTaskStepCancelled,
+  isTaskStepTerminal,
+  isTaskStepActive,
+} from "./task-step";
+export type { TaskStepStatus, TaskStep, StepProgressSummary } from "./task-step";
+
 // Event types and schemas
 export {
   AgentMessageEventSchema,
