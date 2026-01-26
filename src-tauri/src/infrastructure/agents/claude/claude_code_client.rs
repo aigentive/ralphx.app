@@ -130,6 +130,7 @@ impl AgenticClient for ClaudeCodeClient {
 
         // Add output format for streaming
         args.extend(["--output-format".to_string(), "stream-json".to_string()]);
+        args.push("--verbose".to_string()); // Required for stream-json with -p
 
         // Add plugin directory for agent/skill discovery
         if let Some(plugin_dir) = &config.plugin_dir {
@@ -282,6 +283,7 @@ impl ClaudeCodeClient {
 
         // Output format for streaming
         args.extend(["--output-format".to_string(), "stream-json".to_string()]);
+        args.push("--verbose".to_string()); // Required for stream-json with -p
 
         // Plugin directory for agent/skill discovery
         if let Some(plugin_dir) = &config.plugin_dir {

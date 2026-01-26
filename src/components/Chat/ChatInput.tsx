@@ -153,28 +153,27 @@ export function ChatInput({
     const trimmedValue = value.trim();
     if (!trimmedValue || isSending) return;
 
-    try {
-      // If agent is running, queue the message instead of sending
-      if (isAgentRunning && onQueue) {
-        onQueue(trimmedValue);
-        // Clear input after queueing
-        if (isControlled) {
-          onChangeProp?.("");
-        } else {
-          setInternalValue("");
-        }
+    // Clear input immediately (optimistic UI)
+    const clearInput = () => {
+      if (isControlled) {
+        onChangeProp?.("");
       } else {
-        // Normal send flow
-        await onSend(trimmedValue);
-        // Clear input only on successful send
-        if (isControlled) {
-          onChangeProp?.("");
-        } else {
-          setInternalValue("");
-        }
+        setInternalValue("");
       }
-    } catch {
-      // Don't clear on error - let user retry
+    };
+
+    // If agent is running, queue the message instead of sending
+    if (isAgentRunning && onQueue) {
+      onQueue(trimmedValue);
+      clearInput();
+    } else {
+      // Normal send flow - clear immediately, don't wait for response
+      clearInput();
+      try {
+        await onSend(trimmedValue);
+      } catch {
+        // Message was already cleared - error will be shown elsewhere
+      }
     }
   }, [
     value,

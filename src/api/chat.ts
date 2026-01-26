@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import type { ChatContext } from "../types/chat";
+import { SendContextMessageResponseSchema } from "../types/chat-conversation";
 
 // ============================================================================
 // Response Schemas (matching Rust backend serialization with snake_case)
@@ -445,17 +446,33 @@ function transformAgentRun(raw: RawAgentRun): AgentRun {
 }
 
 /**
+ * Response from sendContextMessage with orchestrator result
+ */
+export interface SendContextMessageResult {
+  responseText: string;
+  toolCalls: Array<{
+    id: string | null;
+    name: string;
+    arguments: unknown;
+    result: unknown | null;
+  }>;
+  claudeSessionId: string | null;
+  conversationId: string | null;
+}
+
+/**
  * Send a context-aware message (uses conversation and --resume)
- * @param contextType The context type (ideation, task, project)
+ * This spawns Claude CLI with the appropriate agent and streams the response.
+ * @param contextType The context type (ideation, task, project, task_execution)
  * @param contextId The context ID (session_id, task_id, project_id)
  * @param content The message content
- * @returns The created message
+ * @returns The orchestrator result with response text and tool calls
  */
 export async function sendContextMessage(
   contextType: ContextType,
   contextId: string,
   content: string
-): Promise<ChatMessageResponse> {
+): Promise<SendContextMessageResult> {
   const raw = await typedInvoke(
     "send_context_message",
     {
@@ -465,9 +482,19 @@ export async function sendContextMessage(
         content,
       },
     },
-    ChatMessageResponseSchema
+    SendContextMessageResponseSchema
   );
-  return transformMessage(raw);
+  return {
+    responseText: raw.response_text,
+    toolCalls: raw.tool_calls.map((tc) => ({
+      id: tc.id,
+      name: tc.name,
+      arguments: tc.arguments,
+      result: tc.result,
+    })),
+    claudeSessionId: raw.claude_session_id,
+    conversationId: raw.conversation_id,
+  };
 }
 
 /**
@@ -483,8 +510,8 @@ export async function listConversations(
   const raw = await typedInvoke(
     "list_conversations",
     {
-      context_type: contextType,
-      context_id: contextId,
+      contextType,
+      contextId,
     },
     z.array(ChatConversationResponseSchema)
   );
@@ -501,7 +528,7 @@ export async function getConversation(
 ): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] }> {
   const raw = await typedInvoke(
     "get_conversation",
-    { conversation_id: conversationId },
+    { conversationId },
     z.object({
       conversation: ChatConversationResponseSchema,
       messages: z.array(ChatMessageResponseSchema),
@@ -527,8 +554,10 @@ export async function createConversation(
   const raw = await typedInvoke(
     "create_conversation",
     {
-      context_type: contextType,
-      context_id: contextId,
+      input: {
+        context_type: contextType,
+        context_id: contextId,
+      },
     },
     ChatConversationResponseSchema
   );
@@ -545,7 +574,7 @@ export async function getAgentRunStatus(
 ): Promise<AgentRun | null> {
   const raw = await typedInvoke(
     "get_agent_run_status",
-    { conversation_id: conversationId },
+    { conversationId },
     AgentRunResponseSchema.nullable()
   );
   return raw ? transformAgentRun(raw) : null;

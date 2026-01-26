@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use crate::application::{AppState, CreateProposalOptions, PermissionDecision, UpdateProposalOptions};
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactId, ArtifactType, ArtifactSummary, IdeationSessionId, Priority, TaskCategory,
-    TaskContext, TaskId, TaskProposal, TaskProposalId,
+    Artifact, ArtifactContent, ArtifactId, ArtifactType, ArtifactSummary, IdeationSessionId, InternalStatus,
+    Priority, ProjectId, Task, TaskCategory, TaskContext, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::error::{AppError, AppResult};
 
@@ -80,6 +80,22 @@ pub struct CompleteReviewRequest {
     pub task_id: String,
     pub decision: String, // "approved" | "needs_changes" | "escalate"
     pub comments: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListTasksRequest {
+    pub project_id: String,
+    pub status: Option<String>,
+    pub category: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SuggestTaskRequest {
+    pub project_id: String,
+    pub title: String,
+    pub description: String,
+    pub category: String,
+    pub priority: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -239,6 +255,9 @@ pub async fn start_http_server(state: Arc<AppState>) {
         .route("/api/update_task", post(update_task))
         .route("/api/add_task_note", post(add_task_note))
         .route("/api/get_task_details", post(get_task_details))
+        // Project tools (chat-project agent)
+        .route("/api/list_tasks", post(list_tasks))
+        .route("/api/suggest_task", post(suggest_task))
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
         // Worker context tools (worker agent)
@@ -698,6 +717,86 @@ async fn get_task_details(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(task_to_response(&task)))
+}
+
+// ============================================================================
+// Handlers - Project Tools (chat-project agent)
+// ============================================================================
+
+async fn list_tasks(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ListTasksRequest>,
+) -> Result<Json<Vec<TaskResponse>>, StatusCode> {
+    let project_id = ProjectId::from_string(req.project_id);
+
+    let tasks = state
+        .task_repo
+        .get_by_project(&project_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Apply filters
+    let filtered: Vec<Task> = tasks
+        .into_iter()
+        .filter(|task| {
+            // Filter by status if provided
+            if let Some(ref status) = req.status {
+                let task_status = match task.internal_status {
+                    InternalStatus::Backlog => "backlog",
+                    InternalStatus::Ready => "ready",
+                    InternalStatus::Executing | InternalStatus::ExecutionDone => "in_progress",
+                    InternalStatus::Blocked | InternalStatus::Failed => "blocked",
+                    InternalStatus::PendingReview | InternalStatus::QaRefining | InternalStatus::QaTesting | InternalStatus::QaPassed | InternalStatus::QaFailed => "review",
+                    InternalStatus::Approved => "done",
+                    InternalStatus::Cancelled => "cancelled",
+                    InternalStatus::RevisionNeeded => "in_progress",
+                };
+                if task_status != status.to_lowercase() {
+                    return false;
+                }
+            }
+            // Filter by category if provided
+            if let Some(ref category) = req.category {
+                if task.category.to_lowercase() != category.to_lowercase() {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    let responses: Vec<TaskResponse> = filtered.iter().map(task_to_response).collect();
+    Ok(Json(responses))
+}
+
+async fn suggest_task(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SuggestTaskRequest>,
+) -> Result<Json<TaskResponse>, StatusCode> {
+    let project_id = ProjectId::from_string(req.project_id);
+
+    // Create a new task from the suggestion
+    let mut task = Task::new_with_category(project_id, req.title, req.category.to_lowercase());
+    task.description = Some(req.description);
+
+    // Parse priority if provided
+    if let Some(priority_str) = req.priority {
+        task.priority = match priority_str.to_lowercase().as_str() {
+            "critical" => 100,
+            "high" => 75,
+            "medium" => 50,
+            "low" => 25,
+            _ => 50, // default to medium
+        };
+    }
+
+    let created_task = state
+        .task_repo
+        .create(task)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(task_to_response(&created_task)))
 }
 
 // ============================================================================

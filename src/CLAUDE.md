@@ -206,6 +206,63 @@ export const api = {
 };
 ```
 
+#### CRITICAL: Tauri Command Parameter Conventions
+
+**This is a common source of bugs.** When calling Tauri commands from the frontend, there are TWO different behaviors:
+
+1. **Direct parameters: Use camelCase** - Tauri automatically converts camelCase (JS) to snake_case (Rust):
+
+   ```typescript
+   // ✅ CORRECT - Tauri auto-converts contextType → context_type
+   typedInvoke("list_conversations", { contextType: "ideation", contextId: "123" }, ...)
+
+   // ❌ WRONG - snake_case won't match after Tauri's conversion
+   typedInvoke("list_conversations", { context_type: "ideation", context_id: "123" }, ...)
+   ```
+
+2. **Struct parameter fields: Use snake_case** - Struct fields are deserialized by serde with exact name matching:
+
+   ```typescript
+   // ✅ CORRECT - "input" wrapper (Tauri param) + snake_case fields (serde)
+   typedInvoke("create_conversation", {
+     input: {
+       context_type: "ideation",  // snake_case - serde exact match
+       context_id: "123"
+     }
+   }, ...)
+
+   // ❌ WRONG - missing wrapper
+   typedInvoke("create_conversation", { context_type: "ideation", context_id: "123" }, ...)
+
+   // ❌ WRONG - camelCase struct fields won't match serde
+   typedInvoke("create_conversation", { input: { contextType: "ideation", contextId: "123" } }, ...)
+   ```
+
+3. **How to identify which pattern to use** - Check the Rust command signature:
+
+   ```rust
+   // DIRECT PARAMETERS - use camelCase in JS
+   pub async fn list_conversations(
+       context_type: String,      // JS: contextType (Tauri converts)
+       context_id: String,        // JS: contextId (Tauri converts)
+       state: State<'_, AppState>,
+   )
+   // JS: { contextType: "...", contextId: "..." }
+
+   // STRUCT PARAMETER - use wrapper + snake_case fields
+   pub async fn create_conversation(
+       input: CreateConversationInput,  // JS: { input: { ... } }
+       state: State<'_, AppState>,
+   )
+   // where CreateConversationInput has: context_type, context_id
+   // JS: { input: { context_type: "...", context_id: "..." } }
+   ```
+
+**Common error messages:**
+- `missing required key contextType` → You used snake_case for a direct parameter (use camelCase)
+- `missing required key input` → You forgot the struct wrapper
+- Struct fields silently ignored → You used camelCase for struct fields (use snake_case)
+
 ### 4. Types with Zod Schemas
 
 Types are defined using Zod schemas for runtime validation:

@@ -25,8 +25,8 @@ export interface ToolCall {
   id: string;
   /** Name of the tool that was called */
   name: string;
-  /** Input arguments passed to the tool (can be any JSON value) */
-  input: unknown;
+  /** Arguments passed to the tool (can be any JSON value) */
+  arguments: unknown;
   /** Result returned from the tool (can be any JSON value) */
   result?: unknown;
   /** Error message if tool call failed */
@@ -48,28 +48,28 @@ interface ToolCallIndicatorProps {
  * Create a brief summary of the tool call for collapsed view
  */
 function createSummary(toolCall: ToolCall): string {
-  const { name, input, result } = toolCall;
+  const { name, arguments: args, result } = toolCall;
 
   // Special formatting for common tools
   switch (name) {
     case "bash":
-      return `Ran command: ${truncate(String((input as { command?: string })?.command || ""), 60)}`;
+      return `Ran command: ${truncate(String((args as { command?: string })?.command || ""), 60)}`;
     case "read":
-      return `Read file: ${(input as { file_path?: string })?.file_path || "unknown"}`;
+      return `Read file: ${(args as { file_path?: string })?.file_path || "unknown"}`;
     case "write":
-      return `Wrote file: ${(input as { file_path?: string })?.file_path || "unknown"}`;
+      return `Wrote file: ${(args as { file_path?: string })?.file_path || "unknown"}`;
     case "edit":
-      return `Edited file: ${(input as { file_path?: string })?.file_path || "unknown"}`;
+      return `Edited file: ${(args as { file_path?: string })?.file_path || "unknown"}`;
     case "create_task_proposal":
-      return `Created proposal: ${(input as { title?: string })?.title || "untitled"}`;
+      return `Created proposal: ${(args as { title?: string })?.title || "untitled"}`;
     case "update_task_proposal":
-      return `Updated proposal: ${(input as { proposal_id?: string })?.proposal_id || "unknown"}`;
+      return `Updated proposal: ${(args as { proposal_id?: string })?.proposal_id || "unknown"}`;
     case "delete_task_proposal":
-      return `Deleted proposal: ${(input as { proposal_id?: string })?.proposal_id || "unknown"}`;
+      return `Deleted proposal: ${(args as { proposal_id?: string })?.proposal_id || "unknown"}`;
     case "update_task":
-      return `Updated task: ${(input as { task_id?: string })?.task_id || "unknown"}`;
+      return `Updated task: ${(args as { task_id?: string })?.task_id || "unknown"}`;
     case "add_task_note":
-      return `Added note to task: ${(input as { task_id?: string })?.task_id || "unknown"}`;
+      return `Added note to task: ${(args as { task_id?: string })?.task_id || "unknown"}`;
     case "get_task_context": {
       // Extract task context from result
       const taskContext = result as TaskContext | undefined;
@@ -87,11 +87,11 @@ function createSummary(toolCall: ToolCall): string {
       return `Fetched artifact`;
     }
     case "get_artifact_version":
-      return `Fetched artifact version: ${(input as { version?: number })?.version || "unknown"}`;
+      return `Fetched artifact version: ${(args as { version?: number })?.version || "unknown"}`;
     case "get_related_artifacts":
       return `Fetched related artifacts`;
     case "search_project_artifacts": {
-      const query = (input as { query?: string })?.query;
+      const query = (args as { query?: string })?.query;
       return query ? `Searched artifacts: "${query}"` : `Searched artifacts`;
     }
     default:
@@ -347,7 +347,7 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
   return (
     <div
       data-testid="tool-call-indicator"
-      className={`rounded-md border ${className}`}
+      className={`rounded-md border overflow-hidden max-w-full ${className}`}
       style={{
         backgroundColor: hasError ? "var(--status-error)" : "var(--bg-elevated)",
         borderColor: hasError
@@ -441,7 +441,7 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
                   Tool
                 </div>
                 <code
-                  className="text-xs px-2 py-1 rounded block"
+                  className="text-xs px-2 py-1 rounded block overflow-hidden text-ellipsis"
                   style={{
                     backgroundColor: "var(--bg-base)",
                     color: "var(--text-primary)",
@@ -461,19 +461,21 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
                   Arguments
                 </div>
                 <pre
-                  className="text-xs px-2 py-1 rounded overflow-x-auto"
+                  className="text-xs px-2 py-1 rounded overflow-x-auto max-w-full"
                   style={{
                     backgroundColor: "var(--bg-base)",
                     color: "var(--text-primary)",
                     fontFamily: "var(--font-mono)",
+                    wordBreak: "break-word",
+                    whiteSpace: "pre-wrap",
                   }}
                 >
-                  {formatJSON(toolCall.input)}
+                  {formatJSON(toolCall.arguments)}
                 </pre>
               </div>
 
-              {/* Result (if present) */}
-              {toolCall.result !== undefined && !hasError && (
+              {/* Result (if present and not null) */}
+              {toolCall.result != null && !hasError && (
                 <div>
                   <div
                     className="text-xs font-medium mb-1"
@@ -482,11 +484,13 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
                     Result
                   </div>
                   <pre
-                    className="text-xs px-2 py-1 rounded overflow-x-auto"
+                    className="text-xs px-2 py-1 rounded overflow-x-auto max-w-full"
                     style={{
                       backgroundColor: "var(--bg-base)",
                       color: "var(--text-primary)",
                       fontFamily: "var(--font-mono)",
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-wrap",
                     }}
                   >
                     {formatJSON(toolCall.result)}

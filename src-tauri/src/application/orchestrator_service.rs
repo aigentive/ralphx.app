@@ -20,84 +20,19 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use crate::domain::entities::{
     AgentRun, ChatConversation, ChatConversationId, ChatContextType, ChatMessage,
-    IdeationSessionId,
+    IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    IdeationSessionRepository, ProjectRepository, TaskRepository,
+};
+use crate::infrastructure::agents::claude::{
+    build_base_cli_command, add_prompt_args, configure_spawn,
+    StreamProcessor, StreamEvent as ProcessorStreamEvent,
 };
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/// Tool call from the orchestrator agent (observed from stream-json)
-/// Note: Actual tool execution is handled by MCP server, we only track for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCall {
-    pub id: Option<String>,
-    pub name: String,
-    pub arguments: serde_json::Value,
-    pub result: Option<serde_json::Value>,
-}
-
-/// Parsed stream-json message from Claude CLI
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum StreamMessage {
-    #[serde(rename = "content_block_start")]
-    ContentBlockStart {
-        index: Option<i32>,
-        content_block: ContentBlock,
-    },
-    #[serde(rename = "content_block_delta")]
-    ContentBlockDelta { index: Option<i32>, delta: ContentDelta },
-    #[serde(rename = "content_block_stop")]
-    ContentBlockStop { index: Option<i32> },
-    #[serde(rename = "message_start")]
-    MessageStart {
-        message: Option<serde_json::Value>,
-    },
-    #[serde(rename = "message_delta")]
-    MessageDelta {
-        delta: Option<serde_json::Value>,
-        usage: Option<serde_json::Value>,
-    },
-    #[serde(rename = "message_stop")]
-    MessageStop,
-    /// Result event containing session_id for --resume support
-    #[serde(rename = "result")]
-    Result {
-        result: Option<String>,
-        session_id: Option<String>,
-        #[serde(default)]
-        is_error: bool,
-        #[serde(default)]
-        cost_usd: f64,
-    },
-    /// System event (e.g., init messages)
-    #[serde(rename = "system")]
-    System { message: Option<String> },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContentBlock {
-    #[serde(rename = "type")]
-    pub block_type: String,
-    pub id: Option<String>,
-    pub text: Option<String>,
-    pub name: Option<String>,
-    pub input: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContentDelta {
-    #[serde(rename = "type")]
-    pub delta_type: String,
-    pub text: Option<String>,
-    pub partial_json: Option<String>,
-}
+// Re-export stream types for use by other modules
+pub use crate::infrastructure::agents::claude::{StreamMessage, ToolCall};
 
 /// Result from orchestrator processing
 #[derive(Debug, Clone)]
@@ -225,6 +160,15 @@ pub trait OrchestratorService: Send + Sync {
         user_message: &str,
     ) -> Result<OrchestratorResult, OrchestratorError>;
 
+    /// Send a message for any context type (ideation, task, project)
+    /// This is the generalized API for context-aware chat.
+    async fn send_context_message(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        user_message: &str,
+    ) -> Result<OrchestratorResult, OrchestratorError>;
+
     /// Send a message with event streaming via mpsc channel
     /// Returns a receiver for OrchestratorEvent updates
     fn send_message_streaming(
@@ -303,10 +247,13 @@ fn get_agent_name(context_type: &ChatContextType) -> &'static str {
 pub struct ClaudeOrchestratorService<R: Runtime = tauri::Wry> {
     cli_path: PathBuf,
     plugin_dir: PathBuf,
-    working_directory: PathBuf,
+    default_working_directory: PathBuf,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     app_handle: Option<AppHandle<R>>,
     model: String,
 }
@@ -316,18 +263,29 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        task_repo: Arc<dyn TaskRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     ) -> Self {
         let cli_path = which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
-        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let plugin_dir = working_directory.join("ralphx-plugin");
+        // Default working directory (fallback if project lookup fails)
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let default_working_directory = cwd
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or(cwd);
+        let plugin_dir = default_working_directory.join("ralphx-plugin");
 
         Self {
             cli_path,
             plugin_dir,
-            working_directory,
+            default_working_directory,
             chat_message_repo,
             conversation_repo,
             agent_run_repo,
+            project_repo,
+            task_repo,
+            ideation_session_repo,
             app_handle: None,
             model: "sonnet".to_string(),
         }
@@ -344,8 +302,53 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
     }
 
     pub fn with_working_directory(mut self, path: impl Into<PathBuf>) -> Self {
-        self.working_directory = path.into();
+        self.default_working_directory = path.into();
         self
+    }
+
+    /// Resolve the project's working directory from a context
+    async fn resolve_project_working_directory(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+    ) -> PathBuf {
+        let project_id = match context_type {
+            ChatContextType::Project => Some(ProjectId::from_string(context_id.to_string())),
+            ChatContextType::Task | ChatContextType::TaskExecution => {
+                // Get project_id from task
+                if let Ok(Some(task)) = self
+                    .task_repo
+                    .get_by_id(&TaskId::from_string(context_id.to_string()))
+                    .await
+                {
+                    Some(task.project_id)
+                } else {
+                    None
+                }
+            }
+            ChatContextType::Ideation => {
+                // Get project_id from ideation session
+                if let Ok(Some(session)) = self
+                    .ideation_session_repo
+                    .get_by_id(&IdeationSessionId::from_string(context_id.to_string()))
+                    .await
+                {
+                    Some(session.project_id)
+                } else {
+                    None
+                }
+            }
+        };
+
+        // Look up the project's working directory
+        if let Some(pid) = project_id {
+            if let Ok(Some(project)) = self.project_repo.get_by_id(&pid).await {
+                return PathBuf::from(&project.working_directory);
+            }
+        }
+
+        // Fallback to default
+        self.default_working_directory.clone()
     }
 
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
@@ -356,11 +359,6 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle);
         self
-    }
-
-    /// Parse a stream-json line from Claude CLI output
-    fn parse_stream_line(line: &str) -> Option<StreamMessage> {
-        serde_json::from_str(line).ok()
     }
 
     /// Emit a Tauri event if app_handle is available
@@ -375,8 +373,17 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
         &self,
         session_id: &IdeationSessionId,
     ) -> Result<ChatConversation, OrchestratorError> {
-        let context_type = ChatContextType::Ideation;
-        let context_id = session_id.as_str();
+        self.get_or_create_conversation_for_context(ChatContextType::Ideation, session_id.as_str())
+            .await
+    }
+
+    /// Get or create a conversation for any context type
+    async fn get_or_create_conversation_for_context(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+    ) -> Result<ChatConversation, OrchestratorError> {
+        use crate::domain::entities::{ProjectId, TaskId};
 
         // Try to get existing active conversation
         if let Some(conv) = self
@@ -388,22 +395,67 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
             return Ok(conv);
         }
 
-        // Create new conversation
-        let conv = ChatConversation::new_ideation(session_id.clone());
+        // Create new conversation based on context type
+        let conv = match context_type {
+            ChatContextType::Ideation => {
+                ChatConversation::new_ideation(IdeationSessionId::from_string(context_id))
+            }
+            ChatContextType::Task => {
+                ChatConversation::new_task(TaskId::from_string(context_id.to_string()))
+            }
+            ChatContextType::Project => {
+                ChatConversation::new_project(ProjectId::from_string(context_id.to_string()))
+            }
+            ChatContextType::TaskExecution => {
+                ChatConversation::new_task_execution(TaskId::from_string(context_id.to_string()))
+            }
+        };
+
         self.conversation_repo
             .create(conv.clone())
             .await
             .map_err(|e| OrchestratorError::RepositoryError(e.to_string()))
     }
 
-    /// Build the initial prompt with context (only for first message in conversation)
-    fn build_initial_prompt(session_id: &IdeationSessionId, user_message: &str) -> String {
-        format!(
-            "RalphX Ideation Session ID: {}\n\n\
-             User's message: {}",
-            session_id.as_str(),
-            user_message
-        )
+    /// Build the initial prompt for any context type
+    fn build_context_initial_prompt(
+        context_type: ChatContextType,
+        context_id: &str,
+        user_message: &str,
+    ) -> String {
+        match context_type {
+            ChatContextType::Ideation => {
+                format!(
+                    "RalphX Ideation Session ID: {}\n\n\
+                     User's message: {}",
+                    context_id, user_message
+                )
+            }
+            ChatContextType::Task => {
+                format!(
+                    "RalphX Task ID: {}\n\n\
+                     You are helping the user with questions about this specific task.\n\n\
+                     User's message: {}",
+                    context_id, user_message
+                )
+            }
+            ChatContextType::Project => {
+                format!(
+                    "RalphX Project ID: {}\n\n\
+                     You are helping the user with project-level questions and suggestions.\n\n\
+                     User's message: {}",
+                    context_id, user_message
+                )
+            }
+            ChatContextType::TaskExecution => {
+                // TaskExecution uses the worker agent, which has different context needs
+                format!(
+                    "RalphX Task Execution - Task ID: {}\n\n\
+                     User's message: {}",
+                    context_id, user_message
+                )
+            }
+        }
     }
 
     /// Create a Claude CLI command with appropriate flags
@@ -412,33 +464,49 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
         conversation: &ChatConversation,
         user_message: &str,
         session_id: &IdeationSessionId,
+        working_directory: &PathBuf,
     ) -> Command {
-        let mut cmd = Command::new(&self.cli_path);
+        self.build_command_for_context(conversation, user_message, session_id.as_str(), working_directory)
+    }
 
-        // Common args
-        cmd.args(["--plugin-dir", self.plugin_dir.to_str().unwrap_or("./ralphx-plugin")]);
-        cmd.args(["--output-format", "stream-json"]);
+    /// Create a Claude CLI command for any context type
+    fn build_command_for_context(
+        &self,
+        conversation: &ChatConversation,
+        user_message: &str,
+        context_id: &str,
+        working_directory: &PathBuf,
+    ) -> Command {
+        // Build base command with common args
+        let mut cmd = build_base_cli_command(&self.cli_path, &self.plugin_dir);
 
         // Pass agent type for MCP tool scoping
         let agent_name = get_agent_name(&conversation.context_type);
         cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
         // First message vs follow-up
-        if let Some(ref claude_session_id) = conversation.claude_session_id {
-            // FOLLOW-UP: Resume existing Claude session
-            // Claude remembers the full conversation - just send new message
-            cmd.args(["--resume", claude_session_id]);
-            cmd.args(["-p", user_message]);
+        let (prompt, resume_session, agent) = if let Some(ref claude_session_id) = conversation.claude_session_id {
+            println!(
+                "[DEBUG] Building Claude CLI command with --resume: cli={:?}, agent={}, session={}",
+                self.cli_path, agent_name, claude_session_id
+            );
+            (user_message.to_string(), Some(claude_session_id.as_str()), None)
         } else {
-            // FIRST MESSAGE: Start new session with agent and initial context
-            let initial_prompt = Self::build_initial_prompt(session_id, user_message);
-            cmd.args(["--agent", agent_name]);
-            cmd.args(["-p", &initial_prompt]);
-        }
+            let initial_prompt = Self::build_context_initial_prompt(
+                conversation.context_type,
+                context_id,
+                user_message,
+            );
+            println!(
+                "[DEBUG] Building Claude CLI command with --agent: cli={:?}, plugin_dir={:?}, working_dir={:?}, agent={}",
+                self.cli_path, self.plugin_dir, working_directory, agent_name
+            );
+            println!("[DEBUG] Initial prompt (first 200 chars): {}", &initial_prompt[..initial_prompt.len().min(200)]);
+            (initial_prompt, None, Some(agent_name))
+        };
 
-        cmd.current_dir(&self.working_directory);
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
+        add_prompt_args(&mut cmd, &prompt, agent, resume_session);
+        configure_spawn(&mut cmd, working_directory);
 
         cmd
     }
@@ -457,102 +525,90 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
 
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
-
-        let mut response_text = String::new();
-        let mut tool_calls: Vec<ToolCall> = Vec::new();
-        let mut claude_session_id: Option<String> = None;
-        let mut current_tool_name = String::new();
-        let mut current_tool_id: Option<String> = None;
-        let mut current_tool_input = String::new();
+        let mut processor = StreamProcessor::new();
 
         let conversation_id_str = conversation_id.as_str();
+        let mut line_count = 0;
 
         while let Some(line) = lines
             .next_line()
             .await
             .map_err(|e| OrchestratorError::CommunicationFailed(e.to_string()))?
         {
-            if let Some(msg) = Self::parse_stream_line(&line) {
-                match msg {
-                    StreamMessage::ContentBlockStart { content_block, .. } => {
-                        if content_block.block_type == "tool_use" {
-                            current_tool_name = content_block.name.unwrap_or_default();
-                            current_tool_id = content_block.id;
-                            current_tool_input.clear();
+            line_count += 1;
+            tracing::debug!("Stream line {}: {}", line_count, &line[..line.len().min(100)]);
 
-                            // Emit tool call detected event
+            if let Some(msg) = StreamProcessor::parse_line(&line) {
+                let events = processor.process_message(msg);
+
+                // Emit Tauri events based on processor events
+                for event in events {
+                    match event {
+                        ProcessorStreamEvent::TextChunk(text) => {
+                            self.emit_event(
+                                "chat:chunk",
+                                ChatChunkPayload {
+                                    text,
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
+                        }
+                        ProcessorStreamEvent::ToolCallStarted { name, id } => {
                             self.emit_event(
                                 "chat:tool_call",
                                 ChatToolCallPayload {
-                                    tool_name: current_tool_name.clone(),
-                                    tool_id: current_tool_id.clone(),
+                                    tool_name: name,
+                                    tool_id: id,
                                     arguments: serde_json::Value::Null,
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
                             );
                         }
-                    }
-                    StreamMessage::ContentBlockDelta { delta, .. } => {
-                        if delta.delta_type == "text_delta" {
-                            if let Some(text) = delta.text {
-                                response_text.push_str(&text);
-
-                                // Emit text chunk event
-                                self.emit_event(
-                                    "chat:chunk",
-                                    ChatChunkPayload {
-                                        text,
-                                        conversation_id: conversation_id_str.to_string(),
-                                    },
-                                );
-                            }
-                        } else if delta.delta_type == "input_json_delta" {
-                            if let Some(json) = delta.partial_json {
-                                current_tool_input.push_str(&json);
-                            }
-                        }
-                    }
-                    StreamMessage::ContentBlockStop { .. } => {
-                        if !current_tool_name.is_empty() {
-                            // Parse tool arguments
-                            let args: serde_json::Value =
-                                serde_json::from_str(&current_tool_input).unwrap_or_default();
-
-                            // Store tool call (we observe but don't execute - MCP handles execution)
-                            let tool_call = ToolCall {
-                                id: current_tool_id.clone(),
-                                name: current_tool_name.clone(),
-                                arguments: args.clone(),
-                                result: None, // We may capture result from tool_result event if present
-                            };
-                            tool_calls.push(tool_call);
-
-                            // Emit tool call completed event
+                        ProcessorStreamEvent::ToolCallCompleted(tool_call) => {
                             self.emit_event(
                                 "chat:tool_call",
                                 ChatToolCallPayload {
-                                    tool_name: current_tool_name.clone(),
-                                    tool_id: current_tool_id.clone(),
-                                    arguments: args,
+                                    tool_name: tool_call.name.clone(),
+                                    tool_id: tool_call.id.clone(),
+                                    arguments: tool_call.arguments.clone(),
                                     result: None,
                                     conversation_id: conversation_id_str.to_string(),
                                 },
                             );
-
-                            current_tool_name.clear();
-                            current_tool_id = None;
-                            current_tool_input.clear();
+                        }
+                        ProcessorStreamEvent::SessionId(_) => {
+                            // Session ID is captured in processor.finish()
+                        }
+                        ProcessorStreamEvent::ToolResultReceived {
+                            tool_use_id,
+                            result,
+                        } => {
+                            // Re-emit tool call with result
+                            self.emit_event(
+                                "chat:tool_call",
+                                ChatToolCallPayload {
+                                    tool_name: format!("result:{}", tool_use_id),
+                                    tool_id: Some(tool_use_id),
+                                    arguments: serde_json::Value::Null,
+                                    result: Some(result),
+                                    conversation_id: conversation_id_str.to_string(),
+                                },
+                            );
                         }
                     }
-                    StreamMessage::Result { session_id, .. } => {
-                        // Capture Claude's session_id for future --resume calls
-                        claude_session_id = session_id;
-                    }
-                    _ => {}
                 }
             }
         }
+
+        let result = processor.finish();
+        println!(
+            "[DEBUG] Stream loop complete: {} lines, response_len={}, tool_calls={}",
+            line_count, result.response_text.len(), result.tool_calls.len()
+        );
+
+        // Capture stderr for error reporting
+        let stderr = child.stderr.take();
 
         // Wait for process to complete
         let status = child
@@ -560,13 +616,33 @@ impl<R: Runtime> ClaudeOrchestratorService<R> {
             .await
             .map_err(|e| OrchestratorError::CommunicationFailed(e.to_string()))?;
 
-        if !status.success() && response_text.is_empty() {
-            return Err(OrchestratorError::AgentRunFailed(
-                "Agent exited with non-zero status".to_string(),
-            ));
+        println!("[DEBUG] Process exit status: {:?}", status);
+
+        // Always try to read stderr for debugging
+        let stderr_content = if let Some(mut stderr) = stderr {
+            use tokio::io::AsyncReadExt;
+            let mut buf = String::new();
+            let _ = stderr.read_to_string(&mut buf).await;
+            buf
+        } else {
+            String::new()
+        };
+
+        if !stderr_content.is_empty() {
+            println!("[DEBUG] stderr output: {}", stderr_content);
         }
 
-        Ok((response_text, tool_calls, claude_session_id))
+        if !status.success() && result.response_text.is_empty() {
+            let error_msg = if stderr_content.is_empty() {
+                "Agent exited with non-zero status".to_string()
+            } else {
+                format!("Agent failed: {}", stderr_content.trim())
+            };
+
+            return Err(OrchestratorError::AgentRunFailed(error_msg));
+        }
+
+        Ok((result.response_text, result.tool_calls, result.session_id))
     }
 }
 
@@ -619,13 +695,18 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
             },
         );
 
-        // 4. Build and spawn Claude CLI command
-        let mut cmd = self.build_command(&conversation, user_message, session_id);
+        // 4. Resolve project's working directory
+        let working_directory = self
+            .resolve_project_working_directory(ChatContextType::Ideation, session_id.as_str())
+            .await;
+
+        // 5. Build and spawn Claude CLI command
+        let mut cmd = self.build_command(&conversation, user_message, session_id, &working_directory);
         let child = cmd
             .spawn()
             .map_err(|e| OrchestratorError::SpawnFailed(e.to_string()))?;
 
-        // 5. Process streaming output
+        // 6. Process streaming output
         let result = self.process_stream(child, &conversation_id).await;
 
         // Handle result (complete or fail the agent run)
@@ -714,6 +795,208 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
         }
     }
 
+    async fn send_context_message(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        user_message: &str,
+    ) -> Result<OrchestratorResult, OrchestratorError> {
+        use crate::domain::entities::{MessageRole, ProjectId, TaskId};
+
+        // 1. Get or create conversation for this context
+        let conversation = self
+            .get_or_create_conversation_for_context(context_type, context_id)
+            .await?;
+        let conversation_id = conversation.id;
+        let conversation_id_str = conversation_id.as_str();
+
+        // 2. Create agent run record (status: running)
+        let agent_run = AgentRun::new(conversation_id);
+        let agent_run_id = agent_run.id;
+        self.agent_run_repo
+            .create(agent_run)
+            .await
+            .map_err(|e| OrchestratorError::RepositoryError(e.to_string()))?;
+
+        // Emit run started event
+        self.emit_event(
+            "chat:run_started",
+            serde_json::json!({
+                "run_id": agent_run_id.as_str(),
+                "conversation_id": conversation_id_str,
+            }),
+        );
+
+        // 3. Store user message immediately (with conversation_id)
+        // Create message based on context type
+        let mut user_msg = match context_type {
+            ChatContextType::Ideation => {
+                ChatMessage::user_in_session(
+                    IdeationSessionId::from_string(context_id),
+                    user_message,
+                )
+            }
+            ChatContextType::Task | ChatContextType::TaskExecution => {
+                ChatMessage::user_about_task(
+                    TaskId::from_string(context_id.to_string()),
+                    user_message,
+                )
+            }
+            ChatContextType::Project => {
+                ChatMessage::user_in_project(
+                    ProjectId::from_string(context_id.to_string()),
+                    user_message,
+                )
+            }
+        };
+        user_msg.conversation_id = Some(conversation_id);
+        let user_msg_id = user_msg.id.as_str().to_string();
+        self.chat_message_repo
+            .create(user_msg)
+            .await
+            .map_err(|e| OrchestratorError::RepositoryError(e.to_string()))?;
+
+        // Emit message created event
+        self.emit_event(
+            "chat:message_created",
+            ChatMessageCreatedPayload {
+                message_id: user_msg_id,
+                conversation_id: conversation_id_str.to_string(),
+                role: "user".to_string(),
+                content: user_message.to_string(),
+            },
+        );
+
+        // 4. Resolve project's working directory
+        let working_directory = self
+            .resolve_project_working_directory(context_type, context_id)
+            .await;
+
+        // 5. Build and spawn Claude CLI command
+        let mut cmd = self.build_command_for_context(&conversation, user_message, context_id, &working_directory);
+        println!("[DEBUG] Spawning Claude CLI...");
+        println!("[DEBUG] CLI path: {:?}", self.cli_path);
+        println!("[DEBUG] Plugin dir: {:?}", self.plugin_dir);
+        println!("[DEBUG] Working dir: {:?}", working_directory);
+        let child = cmd
+            .spawn()
+            .map_err(|e| {
+                println!("[ERROR] Failed to spawn Claude CLI: {}", e);
+                OrchestratorError::SpawnFailed(e.to_string())
+            })?;
+        println!("[DEBUG] Claude CLI spawned successfully, processing stream...");
+
+        // 6. Process streaming output
+        let result = self.process_stream(child, &conversation_id).await;
+        tracing::info!("Stream processing complete: success={}", result.is_ok());
+
+        // Handle result (complete or fail the agent run)
+        match result {
+            Ok((response_text, tool_calls, claude_session_id)) => {
+                // 6. If this was a new session, store Claude's session_id
+                if conversation.claude_session_id.is_none() {
+                    if let Some(ref sess_id) = claude_session_id {
+                        self.conversation_repo
+                            .update_claude_session_id(&conversation_id, sess_id)
+                            .await
+                            .map_err(|e| OrchestratorError::RepositoryError(e.to_string()))?;
+                    }
+                }
+
+                // 7. Store assistant message with tool_calls (for UI display)
+                if !response_text.is_empty() || !tool_calls.is_empty() {
+                    // Create assistant message based on context type
+                    let mut assistant_msg = match context_type {
+                        ChatContextType::Ideation => ChatMessage::orchestrator_in_session(
+                            IdeationSessionId::from_string(context_id),
+                            &response_text,
+                        ),
+                        ChatContextType::Task | ChatContextType::TaskExecution => {
+                            let mut msg = ChatMessage::user_about_task(
+                                TaskId::from_string(context_id.to_string()),
+                                &response_text,
+                            );
+                            msg.role = MessageRole::Orchestrator;
+                            msg
+                        }
+                        ChatContextType::Project => {
+                            let mut msg = ChatMessage::user_in_project(
+                                ProjectId::from_string(context_id.to_string()),
+                                &response_text,
+                            );
+                            msg.role = MessageRole::Orchestrator;
+                            msg
+                        }
+                    };
+                    assistant_msg.conversation_id = Some(conversation_id);
+
+                    // Serialize tool_calls to JSON
+                    if !tool_calls.is_empty() {
+                        assistant_msg.tool_calls =
+                            Some(serde_json::to_string(&tool_calls).unwrap_or_default());
+                    }
+
+                    let assistant_msg_id = assistant_msg.id.as_str().to_string();
+                    self.chat_message_repo
+                        .create(assistant_msg)
+                        .await
+                        .map_err(|e| OrchestratorError::RepositoryError(e.to_string()))?;
+
+                    // Emit message created event for assistant message
+                    self.emit_event(
+                        "chat:message_created",
+                        ChatMessageCreatedPayload {
+                            message_id: assistant_msg_id,
+                            conversation_id: conversation_id_str.to_string(),
+                            role: "orchestrator".to_string(),
+                            content: response_text.clone(),
+                        },
+                    );
+                }
+
+                // 8. Complete agent run
+                self.agent_run_repo
+                    .complete(&agent_run_id)
+                    .await
+                    .map_err(|e| OrchestratorError::RepositoryError(e.to_string()))?;
+
+                // Emit run completed event
+                self.emit_event(
+                    "chat:run_completed",
+                    ChatRunCompletedPayload {
+                        conversation_id: conversation_id_str.to_string(),
+                        claude_session_id: claude_session_id.clone(),
+                    },
+                );
+
+                Ok(OrchestratorResult {
+                    response_text,
+                    tool_calls,
+                    claude_session_id,
+                    conversation_id: Some(conversation_id),
+                })
+            }
+            Err(e) => {
+                // Fail the agent run
+                self.agent_run_repo
+                    .fail(&agent_run_id, &e.to_string())
+                    .await
+                    .map_err(|err| OrchestratorError::RepositoryError(err.to_string()))?;
+
+                // Emit error event
+                self.emit_event(
+                    "chat:error",
+                    serde_json::json!({
+                        "conversation_id": conversation_id_str,
+                        "error": e.to_string(),
+                    }),
+                );
+
+                Err(e)
+            }
+        }
+    }
+
     fn send_message_streaming(
         &self,
         session_id: IdeationSessionId,
@@ -723,7 +1006,7 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
 
         let cli_path = self.cli_path.clone();
         let plugin_dir = self.plugin_dir.clone();
-        let working_directory = self.working_directory.clone();
+        let working_directory = self.default_working_directory.clone();
         let chat_repo = Arc::clone(&self.chat_message_repo);
         let conversation_repo = Arc::clone(&self.conversation_repo);
         let agent_run_repo = Arc::clone(&self.agent_run_repo);
@@ -808,30 +1091,25 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
                 })
                 .await;
 
-            // Build command
-            let mut cmd = Command::new(&cli_path);
-            cmd.args(["--plugin-dir", plugin_dir.to_str().unwrap_or("./ralphx-plugin")]);
-            cmd.args(["--output-format", "stream-json"]);
+            // Build command using shared helpers
+            let mut cmd = build_base_cli_command(&cli_path, &plugin_dir);
 
             let agent_name = get_agent_name(&conversation.context_type);
             cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
-            if let Some(ref claude_session_id) = conversation.claude_session_id {
-                cmd.args(["--resume", claude_session_id]);
-                cmd.args(["-p", &user_message]);
+            let (prompt, resume_session, agent) = if let Some(ref claude_session_id) = conversation.claude_session_id {
+                (user_message.clone(), Some(claude_session_id.as_str()), None)
             } else {
                 let initial_prompt = format!(
                     "RalphX Ideation Session ID: {}\n\nUser's message: {}",
                     session_id.as_str(),
                     &user_message
                 );
-                cmd.args(["--agent", agent_name]);
-                cmd.args(["-p", &initial_prompt]);
-            }
+                (initial_prompt, None, Some(agent_name))
+            };
 
-            cmd.current_dir(&working_directory);
-            cmd.stdout(std::process::Stdio::piped());
-            cmd.stderr(std::process::Stdio::piped());
+            add_prompt_args(&mut cmd, &prompt, agent, resume_session);
+            configure_spawn(&mut cmd, &working_directory);
 
             let mut child = match cmd.spawn() {
                 Ok(c) => c,
@@ -865,92 +1143,71 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
 
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
-
-            let mut response_text = String::new();
-            let mut tool_calls: Vec<ToolCall> = Vec::new();
-            let mut claude_session_id: Option<String> = None;
-            let mut current_tool_name = String::new();
-            let mut current_tool_id: Option<String> = None;
-            let mut current_tool_input = String::new();
+            let mut processor = StreamProcessor::new();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                if let Some(msg) = ClaudeOrchestratorService::<tauri::Wry>::parse_stream_line(&line)
-                {
-                    match msg {
-                        StreamMessage::ContentBlockStart { content_block, .. } => {
-                            if content_block.block_type == "tool_use" {
-                                current_tool_name = content_block.name.unwrap_or_default();
-                                current_tool_id = content_block.id;
-                                current_tool_input.clear();
+                if let Some(msg) = StreamProcessor::parse_line(&line) {
+                    let events = processor.process_message(msg);
 
+                    for event in events {
+                        match event {
+                            ProcessorStreamEvent::TextChunk(text) => {
+                                let _ = tx
+                                    .send(OrchestratorEvent::TextChunk {
+                                        text,
+                                        conversation_id: conversation_id_str.to_string(),
+                                    })
+                                    .await;
+                            }
+                            ProcessorStreamEvent::ToolCallStarted { name, id } => {
                                 let _ = tx
                                     .send(OrchestratorEvent::ToolCallDetected {
-                                        tool_name: current_tool_name.clone(),
-                                        tool_id: current_tool_id.clone(),
+                                        tool_name: name,
+                                        tool_id: id,
                                         arguments: serde_json::Value::Null,
                                         conversation_id: conversation_id_str.to_string(),
                                     })
                                     .await;
                             }
-                        }
-                        StreamMessage::ContentBlockDelta { delta, .. } => {
-                            if delta.delta_type == "text_delta" {
-                                if let Some(text) = delta.text {
-                                    response_text.push_str(&text);
-                                    let _ = tx
-                                        .send(OrchestratorEvent::TextChunk {
-                                            text,
-                                            conversation_id: conversation_id_str.to_string(),
-                                        })
-                                        .await;
-                                }
-                            } else if delta.delta_type == "input_json_delta" {
-                                if let Some(json) = delta.partial_json {
-                                    current_tool_input.push_str(&json);
-                                }
-                            }
-                        }
-                        StreamMessage::ContentBlockStop { .. } => {
-                            if !current_tool_name.is_empty() {
-                                let args: serde_json::Value =
-                                    serde_json::from_str(&current_tool_input).unwrap_or_default();
-
-                                let tool_call = ToolCall {
-                                    id: current_tool_id.clone(),
-                                    name: current_tool_name.clone(),
-                                    arguments: args.clone(),
-                                    result: None,
-                                };
-                                tool_calls.push(tool_call);
-
+                            ProcessorStreamEvent::ToolCallCompleted(tool_call) => {
                                 let _ = tx
                                     .send(OrchestratorEvent::ToolCallCompleted {
-                                        tool_name: current_tool_name.clone(),
-                                        tool_id: current_tool_id.clone(),
+                                        tool_name: tool_call.name,
+                                        tool_id: tool_call.id,
                                         result: None,
                                         conversation_id: conversation_id_str.to_string(),
                                     })
                                     .await;
-
-                                current_tool_name.clear();
-                                current_tool_id = None;
-                                current_tool_input.clear();
+                            }
+                            ProcessorStreamEvent::SessionId(_) => {
+                                // Session ID captured in processor.finish()
+                            }
+                            ProcessorStreamEvent::ToolResultReceived {
+                                tool_use_id,
+                                result,
+                            } => {
+                                let _ = tx
+                                    .send(OrchestratorEvent::ToolCallCompleted {
+                                        tool_name: format!("result:{}", tool_use_id),
+                                        tool_id: Some(tool_use_id),
+                                        result: Some(result),
+                                        conversation_id: conversation_id_str.to_string(),
+                                    })
+                                    .await;
                             }
                         }
-                        StreamMessage::Result { session_id, .. } => {
-                            claude_session_id = session_id;
-                        }
-                        _ => {}
                     }
                 }
             }
+
+            let result = processor.finish();
 
             // Wait for process
             let _ = child.wait().await;
 
             // Update conversation with claude_session_id if new
             if conversation.claude_session_id.is_none() {
-                if let Some(ref sess_id) = claude_session_id {
+                if let Some(ref sess_id) = result.session_id {
                     let _ = conversation_repo
                         .update_claude_session_id(&conversation_id, sess_id)
                         .await;
@@ -958,13 +1215,13 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
             }
 
             // Store response
-            if !response_text.is_empty() || !tool_calls.is_empty() {
+            if !result.response_text.is_empty() || !result.tool_calls.is_empty() {
                 let mut assistant_msg =
-                    ChatMessage::orchestrator_in_session(session_id.clone(), &response_text);
+                    ChatMessage::orchestrator_in_session(session_id.clone(), &result.response_text);
                 assistant_msg.conversation_id = Some(conversation_id);
-                if !tool_calls.is_empty() {
+                if !result.tool_calls.is_empty() {
                     assistant_msg.tool_calls =
-                        Some(serde_json::to_string(&tool_calls).unwrap_or_default());
+                        Some(serde_json::to_string(&result.tool_calls).unwrap_or_default());
                 }
                 let _ = chat_repo.create(assistant_msg).await;
             }
@@ -975,8 +1232,8 @@ impl<R: Runtime> OrchestratorService for ClaudeOrchestratorService<R> {
             let _ = tx
                 .send(OrchestratorEvent::RunCompleted {
                     conversation_id: conversation_id_str.to_string(),
-                    claude_session_id,
-                    response_text,
+                    claude_session_id: result.session_id,
+                    response_text: result.response_text,
                 })
                 .await;
         });
@@ -1080,6 +1337,36 @@ impl OrchestratorService for MockOrchestratorService {
         } else {
             Ok(OrchestratorResult {
                 response_text: "I'm here to help with your ideation session.".to_string(),
+                tool_calls: Vec::new(),
+                claude_session_id: None,
+                conversation_id: None,
+            })
+        }
+    }
+
+    async fn send_context_message(
+        &self,
+        _context_type: ChatContextType,
+        _context_id: &str,
+        _user_message: &str,
+    ) -> Result<OrchestratorResult, OrchestratorError> {
+        if !*self.is_available.lock().await {
+            return Err(OrchestratorError::AgentNotAvailable(
+                "Mock agent not available".to_string(),
+            ));
+        }
+
+        let mut responses = self.responses.lock().await;
+        if let Some(response) = responses.pop() {
+            Ok(OrchestratorResult {
+                response_text: response.text,
+                tool_calls: response.tool_calls,
+                claude_session_id: response.claude_session_id,
+                conversation_id: None,
+            })
+        } else {
+            Ok(OrchestratorResult {
+                response_text: "I'm here to help.".to_string(),
                 tool_calls: Vec::new(),
                 claude_session_id: None,
                 conversation_id: None,
@@ -1245,43 +1532,8 @@ mod tests {
         assert_eq!(run.unwrap().id, agent_run.id);
     }
 
-    #[test]
-    fn test_parse_stream_line_text_delta() {
-        let line = r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}"#;
-        let msg = ClaudeOrchestratorService::<tauri::Wry>::parse_stream_line(line);
-
-        assert!(msg.is_some());
-        if let Some(StreamMessage::ContentBlockDelta { delta, .. }) = msg {
-            assert_eq!(delta.delta_type, "text_delta");
-            assert_eq!(delta.text, Some("Hello".to_string()));
-        }
-    }
-
-    #[test]
-    fn test_parse_stream_line_tool_use() {
-        let line = r#"{"type":"content_block_start","content_block":{"type":"tool_use","name":"create_task_proposal"}}"#;
-        let msg = ClaudeOrchestratorService::<tauri::Wry>::parse_stream_line(line);
-
-        assert!(msg.is_some());
-        if let Some(StreamMessage::ContentBlockStart { content_block, .. }) = msg {
-            assert_eq!(content_block.block_type, "tool_use");
-            assert_eq!(content_block.name, Some("create_task_proposal".to_string()));
-        }
-    }
-
-    #[test]
-    fn test_parse_stream_line_result() {
-        let line = r#"{"type":"result","session_id":"550e8400-e29b-41d4-a716-446655440000","result":"Done","is_error":false,"cost_usd":0.05}"#;
-        let msg = ClaudeOrchestratorService::<tauri::Wry>::parse_stream_line(line);
-
-        assert!(msg.is_some());
-        if let Some(StreamMessage::Result { session_id, .. }) = msg {
-            assert_eq!(
-                session_id,
-                Some("550e8400-e29b-41d4-a716-446655440000".to_string())
-            );
-        }
-    }
+    // Stream parsing tests moved to infrastructure::agents::claude::stream_processor
+    // See stream_processor.rs for comprehensive parsing tests
 
     #[test]
     fn test_tool_call_with_id() {

@@ -5,12 +5,28 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::{AppError, AppResult};
+
+/// Parse datetime string handling both RFC3339 and SQLite's CURRENT_TIMESTAMP formats
+fn parse_datetime(s: &str) -> DateTime<Utc> {
+    // Try RFC3339 first (e.g., "2026-01-26T06:42:37.662598+00:00")
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return dt.with_timezone(&Utc);
+    }
+
+    // Try SQLite's CURRENT_TIMESTAMP format (e.g., "2026-01-26 07:06:32")
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Utc.from_utc_datetime(&ndt);
+    }
+
+    // Fallback to now
+    Utc::now()
+}
 
 /// SQLite implementation of ChatConversationRepository
 pub struct SqliteChatConversationRepository {
@@ -69,6 +85,10 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                 let created_at_str: String = row.get("created_at")?;
                 let updated_at_str: String = row.get("updated_at")?;
 
+                // Parse datetimes with fallback (handles both RFC3339 and SQLite formats)
+                let created_at = parse_datetime(&created_at_str);
+                let updated_at = parse_datetime(&updated_at_str);
+
                 Ok(ChatConversation {
                     id: ChatConversationId::from_string(row.get::<_, String>("id")?),
                     context_type: context_type_str.parse().unwrap_or(ChatContextType::Ideation),
@@ -77,8 +97,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     title: row.get("title")?,
                     message_count: row.get("message_count")?,
                     last_message_at: last_message_at_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
-                    created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str).unwrap().with_timezone(&Utc),
-                    updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at_str).unwrap().with_timezone(&Utc),
+                    created_at,
+                    updated_at,
                 })
             },
         );
@@ -111,6 +131,10 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                 let created_at_str: String = row.get("created_at")?;
                 let updated_at_str: String = row.get("updated_at")?;
 
+                // Parse datetimes with fallback (handles both RFC3339 and SQLite formats)
+                let created_at = parse_datetime(&created_at_str);
+                let updated_at = parse_datetime(&updated_at_str);
+
                 Ok(ChatConversation {
                     id: ChatConversationId::from_string(row.get::<_, String>("id")?),
                     context_type: context_type_str.parse().unwrap_or(ChatContextType::Ideation),
@@ -119,8 +143,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     title: row.get("title")?,
                     message_count: row.get("message_count")?,
                     last_message_at: last_message_at_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
-                    created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str).unwrap().with_timezone(&Utc),
-                    updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at_str).unwrap().with_timezone(&Utc),
+                    created_at,
+                    updated_at,
                 })
             })
             .map_err(|e| AppError::Database(e.to_string()))?
@@ -147,6 +171,10 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                 let created_at_str: String = row.get("created_at")?;
                 let updated_at_str: String = row.get("updated_at")?;
 
+                // Parse datetimes with fallback (handles both RFC3339 and SQLite formats)
+                let created_at = parse_datetime(&created_at_str);
+                let updated_at = parse_datetime(&updated_at_str);
+
                 Ok(ChatConversation {
                     id: ChatConversationId::from_string(row.get::<_, String>("id")?),
                     context_type: context_type_str.parse().unwrap_or(ChatContextType::Ideation),
@@ -155,8 +183,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     title: row.get("title")?,
                     message_count: row.get("message_count")?,
                     last_message_at: last_message_at_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
-                    created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str).unwrap().with_timezone(&Utc),
-                    updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at_str).unwrap().with_timezone(&Utc),
+                    created_at,
+                    updated_at,
                 })
             },
         );

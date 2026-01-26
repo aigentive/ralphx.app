@@ -277,6 +277,51 @@ Command categories:
 - **Review commands** - Code review operations
 - **Execution commands** - Pause/resume/stop execution
 
+### Command Parameter Conventions (IMPORTANT)
+
+Tauri has different serialization behavior for direct parameters vs struct fields:
+
+1. **Direct parameters: Tauri auto-converts camelCase ↔ snake_case**
+
+   ```rust
+   // Rust uses snake_case
+   pub async fn list_conversations(
+       context_type: String,   // Frontend passes: { contextType: "..." }
+       context_id: String,     // Frontend passes: { contextId: "..." }
+       state: State<'_, AppState>,
+   )
+   // Tauri automatically converts JS camelCase to Rust snake_case
+   ```
+
+2. **Struct parameters: serde uses exact field name matching**
+
+   ```rust
+   pub async fn create_conversation(
+       input: CreateConversationInput,  // Frontend wraps: { input: { ... } }
+       state: State<'_, AppState>,
+   )
+
+   #[derive(Deserialize)]
+   pub struct CreateConversationInput {
+       pub context_type: String,  // Frontend must use exact: context_type
+       pub context_id: String,    // Frontend must use exact: context_id
+   }
+   // Struct fields use serde's default exact-match deserialization
+   ```
+
+3. **To use camelCase in struct fields** - Add serde rename attribute:
+
+   ```rust
+   #[derive(Deserialize)]
+   #[serde(rename_all = "camelCase")]  // Now frontend can use camelCase
+   pub struct CreateConversationInput {
+       pub context_type: String,  // Frontend: contextType
+       pub context_id: String,    // Frontend: contextId
+   }
+   ```
+
+**Frontend impact:** See `src/CLAUDE.md` for the corresponding frontend conventions.
+
 ---
 
 ## Error Handling

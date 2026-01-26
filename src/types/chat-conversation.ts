@@ -85,7 +85,7 @@ export type AgentRun = z.infer<typeof AgentRunSchema>;
  */
 export const ToolCallSchema = z.object({
   name: z.string().min(1),
-  input: z.unknown(),
+  arguments: z.unknown(),
   result: z.unknown().nullable(),
   error: z.string().nullable(),
 });
@@ -151,3 +151,33 @@ export type AgentRunList = z.infer<typeof AgentRunListSchema>;
 
 export const ToolCallListSchema = z.array(ToolCallSchema);
 export type ToolCallList = z.infer<typeof ToolCallListSchema>;
+
+// ============================================================================
+// SendContextMessage Response
+// ============================================================================
+
+/**
+ * Tool call in the response from send_context_message
+ */
+export const ToolCallResponseSchema = z.object({
+  id: z.string().nullable(),
+  name: z.string().min(1),
+  arguments: z.unknown(),
+  result: z.unknown().nullable(),
+});
+
+export type ToolCallResponse = z.infer<typeof ToolCallResponseSchema>;
+
+/**
+ * Response from send_context_message Tauri command
+ */
+export const SendContextMessageResponseSchema = z.object({
+  response_text: z.string(),
+  tool_calls: z.array(ToolCallResponseSchema),
+  claude_session_id: z.string().nullable(),
+  conversation_id: z.string().nullable(),
+});
+
+export type SendContextMessageResponse = z.infer<
+  typeof SendContextMessageResponseSchema
+>;

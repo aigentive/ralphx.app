@@ -327,12 +327,14 @@ describe("useChat", () => {
   });
 
   it("should send context-aware message", async () => {
-    const newMessage: ChatMessageResponse = {
-      ...mockMessage1,
-      id: "new-message",
-      content: "New message content",
+    // sendContextMessage now returns SendContextMessageResult
+    const mockResult = {
+      responseText: "AI response",
+      toolCalls: [],
+      claudeSessionId: "claude-session-123",
+      conversationId: "conv-1",
     };
-    vi.mocked(chatApi.sendContextMessage).mockResolvedValueOnce(newMessage);
+    vi.mocked(chatApi.sendContextMessage).mockResolvedValueOnce(mockResult);
     vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
 
@@ -352,13 +354,14 @@ describe("useChat", () => {
   });
 
   it("should send message in task context", async () => {
-    const newMessage: ChatMessageResponse = {
-      ...mockMessage1,
-      id: "new-message",
-      taskId: "task-1",
-      sessionId: null,
+    // sendContextMessage now returns SendContextMessageResult
+    const mockResult = {
+      responseText: "AI response for task",
+      toolCalls: [],
+      claudeSessionId: "claude-session-456",
+      conversationId: "conv-2",
     };
-    vi.mocked(chatApi.sendContextMessage).mockResolvedValueOnce(newMessage);
+    vi.mocked(chatApi.sendContextMessage).mockResolvedValueOnce(mockResult);
     vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
 

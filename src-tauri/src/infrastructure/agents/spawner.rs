@@ -26,9 +26,16 @@ pub struct AgenticClientSpawner {
 impl AgenticClientSpawner {
     /// Create a new spawner with the given client
     pub fn new(client: Arc<dyn AgenticClient>) -> Self {
+        // Working directory should be project root (parent of src-tauri), not src-tauri itself
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let working_directory = cwd
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or(cwd);
+
         Self {
             client,
-            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            working_directory,
             event_bus: None,
         }
     }
@@ -97,11 +104,14 @@ impl AgentSpawner for AgenticClientSpawner {
 
         let role = Self::role_from_string(agent_type);
 
+        // Plugin dir is relative to working directory (which is now project root)
+        let plugin_dir = self.working_directory.join("ralphx-plugin");
+
         let config = AgentConfig {
             role,
             prompt: format!("Execute task {}", task_id),
             working_directory: self.working_directory.clone(),
-            plugin_dir: Some(std::path::PathBuf::from("./ralphx-plugin")),
+            plugin_dir: Some(plugin_dir),
             agent: Some(agent_type.to_string()),
             model: None,
             max_tokens: None,
