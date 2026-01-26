@@ -32,6 +32,7 @@ export const TaskSchema = z.object({
   updatedAt: z.string().datetime({ offset: true }),
   startedAt: z.string().datetime({ offset: true }).nullable(),
   completedAt: z.string().datetime({ offset: true }).nullable(),
+  archivedAt: z.string().datetime({ offset: true }).nullable(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;
@@ -85,3 +86,23 @@ export type UpdateTask = z.infer<typeof UpdateTaskSchema>;
  */
 export const TaskListSchema = z.array(TaskSchema);
 export type TaskList = z.infer<typeof TaskListSchema>;
+
+/**
+ * Schema for paginated task list response
+ */
+export const TaskListResponseSchema = z.object({
+  tasks: z.array(TaskSchema),
+  total: z.number(),
+  hasMore: z.boolean(),
+  offset: z.number(),
+});
+export type TaskListResponse = z.infer<typeof TaskListResponseSchema>;
+
+/**
+ * Schema for status transition option
+ */
+export const StatusTransitionSchema = z.object({
+  status: z.string(),
+  label: z.string(),
+});
+export type StatusTransition = z.infer<typeof StatusTransitionSchema>;
