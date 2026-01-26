@@ -75,3 +75,53 @@ export async function callTauri(
     );
   }
 }
+
+/**
+ * Call a Tauri backend endpoint via HTTP GET
+ * @param endpoint - Endpoint path (e.g., "task_context/task-123")
+ * @returns Response data
+ * @throws TauriClientError on HTTP errors
+ */
+export async function callTauriGet(endpoint: string): Promise<unknown> {
+  const url = `${TAURI_API_URL}/api/${endpoint}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Tauri API error: ${response.statusText}`;
+      let details: string | undefined;
+
+      try {
+        const errorData = (await response.json()) as TauriApiError;
+        if (errorData.error) {
+          errorMessage = errorData.error;
+          details = errorData.details;
+        }
+      } catch {
+        // Failed to parse error response, use status text
+      }
+
+      throw new TauriClientError(errorMessage, response.status, details);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof TauriClientError) {
+      throw error;
+    }
+
+    // Network or other fetch errors
+    throw new TauriClientError(
+      `Failed to connect to Tauri backend at ${url}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      0
+    );
+  }
+}

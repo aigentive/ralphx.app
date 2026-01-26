@@ -19,7 +19,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { callTauri, TauriClientError } from "./tauri-client.js";
+import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
 import {
   getFilteredTools,
   isToolAllowed,
@@ -108,10 +108,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       JSON.stringify(args)
     );
 
-    const result = await callTauri(
-      name,
-      (args as Record<string, unknown>) || {}
-    );
+    let result: unknown;
+
+    // Special handling for GET endpoints with path parameters
+    if (name === "get_task_context") {
+      const { task_id } = args as { task_id: string };
+      result = await callTauriGet(`task_context/${task_id}`);
+    } else if (name === "get_artifact") {
+      const { artifact_id } = args as { artifact_id: string };
+      result = await callTauriGet(`artifact/${artifact_id}`);
+    } else if (name === "get_artifact_version") {
+      const { artifact_id, version } = args as {
+        artifact_id: string;
+        version: number;
+      };
+      result = await callTauriGet(`artifact/${artifact_id}/version/${version}`);
+    } else if (name === "get_related_artifacts") {
+      const { artifact_id } = args as { artifact_id: string };
+      result = await callTauriGet(`artifact/${artifact_id}/related`);
+    } else if (name === "get_plan_artifact") {
+      // Also handle get_plan_artifact as GET
+      const { artifact_id } = args as { artifact_id: string };
+      result = await callTauriGet(`get_plan_artifact/${artifact_id}`);
+    } else if (name === "get_session_plan") {
+      // Also handle get_session_plan as GET
+      const { session_id } = args as { session_id: string };
+      result = await callTauriGet(`get_session_plan/${session_id}`);
+    } else {
+      // Default: POST request
+      result = await callTauri(name, (args as Record<string, unknown>) || {});
+    }
 
     console.error(`[RalphX MCP] Success: ${name}`);
 

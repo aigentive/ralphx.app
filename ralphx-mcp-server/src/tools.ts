@@ -5,6 +5,7 @@
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PLAN_TOOLS } from "./plan-tools.js";
+import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 
 /**
  * All available MCP tools
@@ -335,6 +336,11 @@ export const ALL_TOOLS: Tool[] = [
   // PLAN ARTIFACT TOOLS (orchestrator-ideation agent)
   // ========================================================================
   ...PLAN_TOOLS,
+
+  // ========================================================================
+  // WORKER CONTEXT TOOLS (worker agent)
+  // ========================================================================
+  ...WORKER_CONTEXT_TOOLS,
 ];
 
 /**
@@ -356,8 +362,14 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],
   "reviewer": ["complete_review"],
+  worker: [
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+  ],
   // These agents have NO MCP tools - they use filesystem tools only
-  worker: [],
   supervisor: [],
   "qa-prep": [],
   "qa-tester": [],
