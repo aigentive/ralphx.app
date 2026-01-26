@@ -58,20 +58,6 @@ function SendIcon() {
   );
 }
 
-function AttachIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M13.5 7.5L8 13C6.067 14.933 3.067 14.933 1.5 13C-0.067 11.067 -0.067 8.067 1.5 6.5L7 1C8.381 -0.381 10.619 -0.381 12 1C13.381 2.381 13.381 4.619 12 6L6.5 11.5C5.672 12.328 4.328 12.328 3.5 11.5C2.672 10.672 2.672 9.328 3.5 8.5L9 3"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function LoadingSpinner() {
   return (
     <svg
@@ -163,7 +149,8 @@ export function ChatInput({
   // Handle sending or queueing message
   const handleSend = useCallback(async () => {
     const trimmedValue = value.trim();
-    if (!trimmedValue || isSending) return;
+    // Block if no content, or if sending and agent not running (can't queue)
+    if (!trimmedValue || (isSending && !isAgentRunning)) return;
 
     // Clear input immediately (optimistic UI)
     const clearInput = () => {
@@ -212,28 +199,13 @@ export function ChatInput({
     [handleSend, value, hasQueuedMessages, onEditLastQueued]
   );
 
-  const isDisabled = isSending;
-  const canSend = value.trim().length > 0 && !isSending;
+  // Allow typing and queueing when agent is running
+  const isDisabled = isSending && !isAgentRunning;
+  const canSend = value.trim().length > 0 && (!isSending || isAgentRunning);
 
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Attach Button (placeholder for future) */}
-        <button
-          data-testid="chat-input-attach"
-          type="button"
-          disabled
-          title="Attach files (coming soon)"
-          aria-label="Attach file"
-          className="p-2 rounded-lg transition-colors disabled:opacity-50 shrink-0 h-10 flex items-center justify-center"
-          style={{
-            backgroundColor: "var(--bg-elevated)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <AttachIcon />
-        </button>
-
         {/* Textarea */}
         <textarea
           ref={textareaRef}
@@ -278,7 +250,7 @@ export function ChatInput({
       {/* Helper Text */}
       {showHelperText && (
         <p
-          className="text-xs mt-1 ml-12"
+          className="text-xs mt-1"
           style={{ color: "var(--text-muted)" }}
         >
           {hasQueuedMessages

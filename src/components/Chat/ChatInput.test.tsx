@@ -38,11 +38,6 @@ describe("ChatInput", () => {
       expect(screen.getByTestId("chat-input-send")).toBeInTheDocument();
     });
 
-    it("renders the attach button placeholder", () => {
-      render(<ChatInput {...defaultProps} />);
-      expect(screen.getByTestId("chat-input-attach")).toBeInTheDocument();
-    });
-
     it("renders with placeholder text", () => {
       render(<ChatInput {...defaultProps} placeholder="Type a message..." />);
       expect(screen.getByPlaceholderText("Type a message...")).toBeInTheDocument();
@@ -248,33 +243,6 @@ describe("ChatInput", () => {
   });
 
   // ============================================================================
-  // Attach Button Tests
-  // ============================================================================
-
-  describe("attach button", () => {
-    it("renders attach button", () => {
-      render(<ChatInput {...defaultProps} />);
-      expect(screen.getByTestId("chat-input-attach")).toBeInTheDocument();
-    });
-
-    it("attach button has accessible label", () => {
-      render(<ChatInput {...defaultProps} />);
-      expect(screen.getByLabelText("Attach file")).toBeInTheDocument();
-    });
-
-    it("attach button is disabled by default (placeholder)", () => {
-      render(<ChatInput {...defaultProps} />);
-      expect(screen.getByTestId("chat-input-attach")).toBeDisabled();
-    });
-
-    it("shows tooltip hint on attach button", () => {
-      render(<ChatInput {...defaultProps} />);
-      const attachButton = screen.getByTestId("chat-input-attach");
-      expect(attachButton).toHaveAttribute("title", "Attach files (coming soon)");
-    });
-  });
-
-  // ============================================================================
   // Accessibility Tests
   // ============================================================================
 
@@ -358,7 +326,7 @@ describe("ChatInput", () => {
   // ============================================================================
 
   describe("error handling", () => {
-    it("does not clear textarea if onSend throws an error", async () => {
+    it("clears textarea immediately (optimistic UI) even if onSend throws an error", async () => {
       const user = userEvent.setup();
       const onSend = vi.fn().mockRejectedValue(new Error("Send failed"));
       render(<ChatInput onSend={onSend} />);
@@ -367,9 +335,11 @@ describe("ChatInput", () => {
       await user.type(textarea, "Hello");
       await user.click(screen.getByTestId("chat-input-send"));
 
+      // Textarea is cleared immediately (optimistic UI)
       await waitFor(() => {
-        expect(textarea).toHaveValue("Hello");
+        expect(textarea).toHaveValue("");
       });
+      expect(onSend).toHaveBeenCalledWith("Hello");
     });
   });
 

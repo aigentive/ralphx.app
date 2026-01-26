@@ -170,6 +170,8 @@ export function useChat(context: ChatContext) {
   // Send message mutation
   const sendMessage = useMutation<SendContextMessageResult, Error, string>({
     mutationFn: async (content: string) => {
+      // Set agent running immediately so subsequent messages get queued
+      setAgentRunning(true);
       return chatApi.sendContextMessage(contextType, contextId, content);
     },
     onSuccess: () => {
@@ -191,6 +193,10 @@ export function useChat(context: ChatContext) {
           queryKey: ideationKeys.sessionWithData(context.ideationSessionId),
         });
       }
+    },
+    onError: () => {
+      // Reset agent running state on error
+      setAgentRunning(false);
     },
   });
 
