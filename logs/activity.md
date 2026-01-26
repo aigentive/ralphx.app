@@ -1,15 +1,51 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 19:22:00
+**Last Updated:** 2026-01-26 19:24:16
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 27 / 30
-**Current Task:** Wrap TaskCard with context menu and add handlers
+**Tasks Completed:** 28 / 30
+**Current Task:** Add isDraggable logic to TaskCard
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 19:24:16 - Wrap TaskCard with context menu and add handlers (Task 29)
+
+**What was done:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Imported TaskCardContextMenu, useTaskMutation, useUiStore, AlertDialog components, and useState
+  - Added mutations from useTaskMutation: archiveMutation, restoreMutation, permanentlyDeleteMutation, moveMutation
+  - Added openModal from useUiStore for modal navigation
+  - Added showDeleteConfirm state for permanent delete confirmation dialog
+  - Created context menu handlers:
+    - handleViewDetails: Opens task-detail modal with taskId
+    - handleEdit: Opens task-detail modal with taskId and startInEditMode flag
+    - handleArchive: Calls archiveMutation.mutate(task.id)
+    - handleRestore: Calls restoreMutation.mutate(task.id)
+    - handlePermanentDelete: Shows confirmation dialog
+    - confirmPermanentDelete: Executes permanentlyDeleteMutation and closes dialog
+    - handleStatusChange: Calls moveMutation with taskId and newStatus
+  - Wrapped entire card content with TaskCardContextMenu component
+  - Passed all handlers to TaskCardContextMenu props
+  - Added AlertDialog component for permanent delete confirmation:
+    - Shows destructive action warning with task title
+    - Cancel button to dismiss
+    - Delete Permanently button with destructive styling
+- All handlers integrate with existing mutation hooks and UI state management
+- Permanent delete requires confirmation to prevent accidental data loss
+
+**Commands:**
+- `npm run typecheck` - Passed (fixed useUIStore -> useUiStore import)
+- `npm run lint` - Passed (pre-existing warnings only)
+
+**Progress:**
+- Task 29/30 complete
+- Right-click context menu now functional on all task cards
+- Edit mode accessible via context menu
+- Archive/restore/delete operations accessible via context menu
+- Status transitions (Cancel, Block, Unblock) accessible via context menu
 
 ### 2026-01-26 19:22:00 - Create TaskCardContextMenu component (Task 28)
 

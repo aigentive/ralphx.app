@@ -12,6 +12,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { GripVertical, FileText, Lightbulb, Archive } from "lucide-react";
+import { useState } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
@@ -24,6 +25,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { TaskCardContextMenu } from "@/components/tasks/TaskCardContextMenu";
+import { useTaskMutation } from "@/hooks/useTaskMutation";
+import { useUiStore } from "@/stores/uiStore";
 
 interface TaskCardProps {
   task: Task;
@@ -94,6 +108,20 @@ export function TaskCard({
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging: isBeingDragged } = useDraggable({ id: task.id });
 
+  // UI Store
+  const openModal = useUiStore((state) => state.openModal);
+
+  // Mutations
+  const {
+    archiveMutation,
+    restoreMutation,
+    permanentlyDeleteMutation,
+    moveMutation,
+  } = useTaskMutation(task.projectId);
+
+  // Confirmation dialog state for permanent delete
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   // Check if task is archived
   const isArchived = task.archivedAt !== null;
 
@@ -145,17 +173,57 @@ export function TaskCard({
     return baseStyles;
   };
 
+  // Context menu handlers
+  const handleViewDetails = () => {
+    openModal("task-detail", { taskId: task.id });
+  };
+
+  const handleEdit = () => {
+    openModal("task-detail", { taskId: task.id, startInEditMode: true });
+  };
+
+  const handleArchive = () => {
+    archiveMutation.mutate(task.id);
+  };
+
+  const handleRestore = () => {
+    restoreMutation.mutate(task.id);
+  };
+
+  const handlePermanentDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmPermanentDelete = () => {
+    permanentlyDeleteMutation.mutate(task.id);
+    setShowDeleteConfirm(false);
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    moveMutation.mutate({ taskId: task.id, toStatus: newStatus });
+  };
+
   return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      data-testid={`task-card-${task.id}`}
-      onClick={() => onSelect?.(task.id)}
-      className={`group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${isArchived ? "opacity-60" : ""}`}
-      style={{ ...getCardStyles(), ...dragStyle }}
-      tabIndex={0}
-    >
+    <>
+      <TaskCardContextMenu
+        task={task}
+        onViewDetails={handleViewDetails}
+        onEdit={handleEdit}
+        onArchive={handleArchive}
+        onRestore={handleRestore}
+        onPermanentDelete={handlePermanentDelete}
+        onStatusChange={handleStatusChange}
+      >
+        <div
+          ref={setNodeRef}
+          {...attributes}
+          {...listeners}
+          data-testid={`task-card-${task.id}`}
+          onClick={() => onSelect?.(task.id)}
+          className={`group relative p-3 bg-bg-elevated rounded-lg shadow-sm hover:translate-y-[-2px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${isArchived ? "opacity-60" : ""}`}
+          style={{ ...getCardStyles(), ...dragStyle }}
+          tabIndex={0}
+        >
       {/* Archive badge overlay - only shown for archived tasks */}
       {isArchived && (
         <div className="absolute top-2 right-2 bg-neutral-200 rounded-full p-1" data-testid="archive-badge">
@@ -250,5 +318,28 @@ export function TaskCard({
         </div>
       </div>
     </div>
+      </TaskCardContextMenu>
+
+      {/* Confirmation dialog for permanent delete */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete task permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The task "{task.title}" will be permanently removed from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPermanentDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
