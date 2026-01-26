@@ -1,15 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 20:50:00
+**Last Updated:** 2026-01-26 20:53:05
 **Phase:** Task Execution Experience
-**Tasks Completed:** 17 / 42
-**Current Task:** Create useStepMutations hook
+**Tasks Completed:** 18 / 42
+**Current Task:** Create useStepEvents hook for real-time updates
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:53:05 - Create useStepMutations hook
+
+**What was done:**
+- Created `src/hooks/useStepMutations.ts` with mutation hooks:
+  - Implemented `useStepMutations(taskId)` hook returning mutations:
+    - `create` - Creates new step with toast notifications
+    - `update` - Updates existing step with toast notifications
+    - `delete` - Deletes step with toast notifications
+    - `reorder` - Reorders steps with toast notifications
+  - All mutations invalidate `stepKeys.byTask(taskId)` and `stepKeys.progress(taskId)`
+  - Exposed pending states: `isCreating`, `isUpdating`, `isDeleting`, `isReordering`
+- Created `src/hooks/useStepMutations.test.tsx` with comprehensive tests:
+  - Tests for all four mutations (create, update, delete, reorder)
+  - Tests for query invalidation on success
+  - Tests for error handling
+  - Tests for pending state exposure
+  - All 11 tests passing
+- Verified code quality:
+  - `npm run lint` - Passing (no new warnings)
+  - `npm run typecheck` - Passing
+  - `npm run test` - All tests passing (11/11)
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test -- src/hooks/useStepMutations.test.tsx`
 
 ### 2026-01-26 20:50:00 - Create useTaskSteps hook
 
