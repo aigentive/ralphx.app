@@ -1,14 +1,44 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:27:30
+**Last Updated:** 2026-01-26 02:31:26
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 16 / 26
-**Current Task:** Create ToolCallIndicator component
+**Tasks Completed:** 17 / 26
+**Current Task:** Update ChatMessage to display tool calls
 
 ---
 
 ## Session Log
+
+### 2026-01-26 02:31:26 - Created ToolCallIndicator Component
+
+**What was done:**
+- Created `src/components/Chat/ToolCallIndicator.tsx`:
+  - Collapsible component for displaying tool calls (collapsed by default)
+  - Shows tool name, wrench icon, and brief summary in collapsed state
+  - Expands to show full arguments and result when clicked
+  - Smart summary generation for common tools (bash, read, write, edit, create_task_proposal, etc.)
+  - Error handling with distinct visual styling
+  - Design system integration (uses CSS variables for colors, shadows, typography)
+  - Accessibility: proper ARIA labels, keyboard navigation support
+  - ChevronDown/ChevronRight icons to indicate expand/collapse state
+
+- Created `src/components/Chat/ToolCallIndicator.test.tsx`:
+  - Comprehensive test coverage (27 tests, all passing)
+  - Tests for rendering, interaction, summary generation, expanded details
+  - Tests for error handling and accessibility
+  - Tests for all common tool types
+
+**Commands run:**
+- `npm run test -- src/components/Chat/ToolCallIndicator.test.tsx` (27 tests passed)
+- `npm run lint && npm run typecheck` (all passed)
+
+**Design notes:**
+- Uses Lucide `Wrench` icon for tool indicator
+- Follows DESIGN.md color tokens (--bg-elevated, --accent-primary, --text-secondary, etc.)
+- Collapsible pattern matches existing RalphX UI patterns
+- Error state uses --status-error with reduced opacity
+- Monospace font (--font-mono) for JSON and code display
 
 ### 2026-01-26 02:23:27 - Updated Frontend Types and Chat API
 
