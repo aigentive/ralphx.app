@@ -1,15 +1,53 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 18:44:15
+**Last Updated:** 2026-01-26 18:48:49
 **Phase:** Task CRUD, Archive & Search
-**Tasks Completed:** 16 / 30
-**Current Task:** Add infinite scroll orchestration to TaskBoard
+**Tasks Completed:** 17 / 30
+**Current Task:** Add infinite scroll to Column component
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 18:48:49 - Add infinite scroll orchestration to TaskBoard (Task 18)
+
+**What was done:**
+- Refactored `src/components/tasks/TaskBoard/hooks.ts` to use infinite scroll queries per column
+  - Replaced single `useQuery` for all tasks with per-column `useInfiniteTasksQuery` calls
+  - Each column now has its own infinite query based on its `mapsTo` status
+  - Added `showArchived` state from `uiStore` to filter queries
+  - Created `columnQueries` Map to store infinite query results per column ID
+  - Updated `BoardColumn` interface to include pagination props:
+    - `fetchNextPage?: () => void`
+    - `hasNextPage?: boolean`
+    - `isFetchingNextPage?: boolean`
+    - `isLoading?: boolean`
+- Updated optimistic updates in `moveMutation` for infinite queries:
+  - Properly typed with `InfiniteData<TaskListResponse>` from TanStack Query
+  - Cancels all column queries before optimistic update
+  - Removes task from source column's cache
+  - Adds updated task to target column's first page
+  - Stores snapshots for rollback on error
+  - Invalidates all column queries on settled
+- Updated loading and error state logic:
+  - Loading is true if workflow is loading OR any column's initial load is in progress
+  - Error state checks workflow error first, then any column query error
+- Updated `onDragEnd` to find task across all columns (since tasks are now distributed)
+- Fixed TypeScript errors by importing `InfiniteData` type and `TaskListResponse`
+- Applied proper typing to `setQueryData` updater functions
+
+**Commands run:**
+- `npm run lint` - Passed (0 errors, 11 pre-existing warnings)
+- `npm run typecheck` - Passed with no errors
+
+**Verification:**
+- ✅ Each column now uses its own infinite query with proper status filtering
+- ✅ Pagination props (fetchNextPage, hasNextPage, etc.) are passed to columns
+- ✅ Optimistic updates work correctly across infinite query caches
+- ✅ Loading and error states properly aggregate across all column queries
+- ✅ Type safety maintained with proper TanStack Query types
 
 ### 2026-01-26 18:44:15 - Create useTaskSearch hook (Task 17)
 
