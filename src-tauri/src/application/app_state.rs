@@ -13,27 +13,28 @@ use crate::domain::services::ExecutionMessageQueue;
 use crate::domain::repositories::{
     AgentProfileRepository, AgentRunRepository, ArtifactBucketRepository, ArtifactFlowRepository,
     ArtifactRepository, ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MethodologyRepository, ProcessRepository, ProjectRepository, ProposalDependencyRepository,
-    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
-    TaskRepository, WorkflowRepository,
+    IdeationSettingsRepository, MethodologyRepository, ProcessRepository, ProjectRepository,
+    ProposalDependencyRepository, ReviewRepository, TaskDependencyRepository, TaskProposalRepository,
+    TaskQARepository, TaskRepository, WorkflowRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
     MemoryAgentProfileRepository, MemoryAgentRunRepository, MemoryArtifactBucketRepository,
     MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatConversationRepository,
-    MemoryChatMessageRepository, MemoryIdeationSessionRepository, MemoryMethodologyRepository,
-    MemoryProcessRepository, MemoryProjectRepository, MemoryProposalDependencyRepository,
-    MemoryReviewRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
-    MemoryTaskQARepository, MemoryTaskRepository, MemoryWorkflowRepository,
+    MemoryChatMessageRepository, MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository,
+    MemoryMethodologyRepository, MemoryProcessRepository, MemoryProjectRepository,
+    MemoryProposalDependencyRepository, MemoryReviewRepository, MemoryTaskDependencyRepository,
+    MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
+    MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
     get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
     SqliteAgentRunRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
     SqliteArtifactRepository, SqliteChatConversationRepository, SqliteChatMessageRepository,
-    SqliteIdeationSessionRepository, SqliteMethodologyRepository, SqliteProcessRepository,
-    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteReviewRepository,
-    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
-    SqliteTaskRepository, SqliteWorkflowRepository,
+    SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository, SqliteMethodologyRepository,
+    SqliteProcessRepository, SqliteProjectRepository, SqliteProposalDependencyRepository,
+    SqliteReviewRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -56,6 +57,8 @@ pub struct AppState {
     pub qa_settings: Arc<tokio::sync::RwLock<QASettings>>,
     /// Ideation session repository
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    /// Ideation settings repository
+    pub ideation_settings_repo: Arc<dyn IdeationSettingsRepository>,
     /// Task proposal repository
     pub task_proposal_repo: Arc<dyn TaskProposalRepository>,
     /// Proposal dependency repository
@@ -113,6 +116,9 @@ impl AppState {
             agent_client: Arc::new(ClaudeCodeClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
             task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
@@ -179,6 +185,9 @@ impl AppState {
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -232,6 +241,7 @@ impl AppState {
             agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
+            ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
             task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
@@ -266,6 +276,7 @@ impl AppState {
             agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
+            ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
             task_proposal_repo: Arc::new(MemoryTaskProposalRepository::new()),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),

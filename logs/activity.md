@@ -1,15 +1,63 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 04:52:13
+**Last Updated:** 2026-01-26 04:59:58
 **Phase:** Phase 16 (Ideation Plan Artifacts)
-**Tasks Completed:** 1 / 24
-**Current Task:** Create IdeationSettings entity and repository
+**Tasks Completed:** 2 / 24
+**Current Task:** Add plan_artifact_id fields to IdeationSession and TaskProposal entities
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 04:59:58 - IdeationSettings Entity and Repository (Phase 16)
+
+**What was done:**
+- Created `IdeationSettings` entity and `IdeationPlanMode` enum in `domain/ideation/config.rs`:
+  - `IdeationPlanMode` enum: Required, Optional (default), Parallel
+  - `IdeationSettings` struct with 4 fields (all with defaults)
+  - Serde serialization with snake_case for JSON/HTTP compatibility
+- Created `IdeationSettingsRepository` trait in `domain/repositories/`
+- Implemented `SqliteIdeationSettingsRepository` for production:
+  - Uses rusqlite with async tokio::Mutex wrapper
+  - `get_settings()` returns defaults if no row exists
+  - `update_settings()` updates single row (id=1)
+- Implemented `MemoryIdeationSettingsRepository` for testing:
+  - Uses RwLock for thread-safe in-memory storage
+  - Constructor with custom settings for test scenarios
+- Added `ideation_settings_repo` to `AppState`:
+  - Production: SqliteIdeationSettingsRepository
+  - Testing: MemoryIdeationSettingsRepository
+- Comprehensive unit tests for all implementations
+
+**Architecture:**
+- Settings persisted to SQLite (unlike QASettings which is in-memory)
+- Single-row pattern (id=1) ensures only one settings record
+- Default mode: Optional (plan suggested for complex features)
+- Separate from QA settings for cleaner module organization
+
+**Commands run:**
+- `cargo test --lib domain::ideation` - 4 tests passed ✓
+- `cargo test --lib infrastructure::sqlite::sqlite_ideation_settings_repo` - 3 tests passed ✓
+- `cargo test --lib infrastructure::memory::memory_ideation_settings_repo` - 3 tests passed ✓
+- `cargo test` - All tests passed (3044 total) ✓
+
+**Files created:**
+- `src-tauri/src/domain/ideation/config.rs`
+- `src-tauri/src/domain/ideation/mod.rs`
+- `src-tauri/src/domain/repositories/ideation_settings_repository.rs`
+- `src-tauri/src/infrastructure/sqlite/sqlite_ideation_settings_repo.rs`
+- `src-tauri/src/infrastructure/memory/memory_ideation_settings_repo.rs`
+
+**Files modified:**
+- `src-tauri/src/domain/mod.rs`
+- `src-tauri/src/domain/repositories/mod.rs`
+- `src-tauri/src/infrastructure/sqlite/mod.rs`
+- `src-tauri/src/infrastructure/memory/mod.rs`
+- `src-tauri/src/application/app_state.rs`
+- `specs/phases/prd_phase_16_ideation_plan_artifacts.md`
+- `logs/activity.md`
 
 ### 2026-01-26 04:52:13 - Database Migration for Plan Artifacts (Phase 16)
 

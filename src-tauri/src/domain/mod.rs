@@ -3,6 +3,7 @@
 
 pub mod agents;
 pub mod entities;
+pub mod ideation;
 pub mod qa;
 pub mod repositories;
 pub mod review;
