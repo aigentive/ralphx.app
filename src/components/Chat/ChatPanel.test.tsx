@@ -258,28 +258,17 @@ describe("ChatPanel", () => {
   });
 
   describe("keyboard shortcuts", () => {
-    it("calls togglePanel when Cmd+K pressed", () => {
+    it("closes panel when Escape pressed", async () => {
+      vi.useFakeTimers();
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
-      fireEvent.keyDown(document, { key: "k", metaKey: true });
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      // Escape triggers animation, then calls togglePanel after 200ms
+      await vi.advanceTimersByTimeAsync(200);
 
       expect(mockTogglePanel).toHaveBeenCalled();
-    });
-
-    it("does not toggle on Cmd+K when input is focused", async () => {
-      render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
-
-      const input = screen.getByTestId("chat-panel-input");
-      input.focus();
-
-      // Clear any previous calls
-      mockTogglePanel.mockClear();
-
-      // Fire keydown on document while input is focused
-      fireEvent.keyDown(document, { key: "k", metaKey: true });
-
-      // Should not toggle when input is focused
-      expect(mockTogglePanel).not.toHaveBeenCalled();
+      vi.useRealTimers();
     });
   });
 

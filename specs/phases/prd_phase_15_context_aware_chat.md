@@ -368,7 +368,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck && npm run test",
       "Commit: feat(store): add conversation and queue state to chat store"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

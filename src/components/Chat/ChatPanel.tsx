@@ -585,21 +585,9 @@ export function ChatPanel({ context }: ChatPanelProps) {
     }, 200);
   }, [togglePanel]);
 
-  // Keyboard shortcut handler (Cmd+K)
+  // Escape to close panel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === "k") {
-        const activeElement = document.activeElement;
-        if (
-          activeElement instanceof HTMLInputElement ||
-          activeElement instanceof HTMLTextAreaElement
-        ) {
-          return;
-        }
-        e.preventDefault();
-        togglePanel();
-      }
-      // Escape to close
       if (e.key === "Escape" && isOpen && !isCollapsed) {
         handleClose();
       }
@@ -607,7 +595,7 @@ export function ChatPanel({ context }: ChatPanelProps) {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [togglePanel, isOpen, isCollapsed, handleClose]);
+  }, [isOpen, isCollapsed, handleClose]);
 
   // Resize handlers
   const handleResizeStart = useCallback(

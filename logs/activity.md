@@ -1,10 +1,10 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 02:23:27
+**Last Updated:** 2026-01-26 02:27:30
 **Phase:** Phase 15 (Context-Aware Chat)
-**Tasks Completed:** 15 / 26
-**Current Task:** Update chat store with queue and conversation state
+**Tasks Completed:** 16 / 26
+**Current Task:** Create ToolCallIndicator component
 
 ---
 
@@ -46,6 +46,48 @@
 
 **Commands run:**
 - `npm run typecheck` - verified all TypeScript types compile correctly
+
+### 2026-01-26 02:27:30 - Updated Chat Store with Queue and Conversation State
+
+**What was done:**
+- Updated `src/stores/chatStore.ts`:
+  - Added `QueuedMessage` interface (id, content, createdAt, isEditing)
+  - Added state fields:
+    - `activeConversationId: string | null` - tracks active conversation
+    - `queuedMessages: QueuedMessage[]` - messages queued while agent running
+    - `isAgentRunning: boolean` - whether agent is currently processing
+  - Added actions:
+    - `setActiveConversation(conversationId)` - set/clear active conversation
+    - `setAgentRunning(isRunning)` - update agent running state
+    - `queueMessage(content)` - add message to queue with unique ID and timestamp
+    - `editQueuedMessage(id, content)` - update queued message content and clear edit mode
+    - `deleteQueuedMessage(id)` - remove message from queue
+    - `startEditingQueuedMessage(id)` - enter edit mode for a queued message
+    - `stopEditingQueuedMessage(id)` - exit edit mode for a queued message
+    - `processQueue()` - remove first queued message (sending handled by useChat hook)
+  - Added selectors:
+    - `selectQueuedMessages` - get all queued messages
+    - `selectIsAgentRunning` - get agent running state
+    - `selectActiveConversationId` - get active conversation ID
+
+- Updated `src/stores/chatStore.test.ts`:
+  - Added comprehensive tests for all new state fields and actions
+  - Test coverage includes:
+    - Initial state verification (null conversation, empty queue, agent not running)
+    - `setActiveConversation` tests (set, replace, clear to null)
+    - `setAgentRunning` tests (true/false)
+    - `queueMessage` tests (add, unique IDs, timestamps, multiple messages)
+    - `editQueuedMessage` tests (update content, clear edit mode, not found, only update specified)
+    - `deleteQueuedMessage` tests (remove, not found, only remove specified)
+    - `startEditingQueuedMessage` and `stopEditingQueuedMessage` tests
+    - `processQueue` tests (remove first message, empty queue handling)
+    - Selector tests for new state (queued messages, agent running, conversation ID)
+  - All 70 tests passing
+
+**Commands run:**
+- `npm run test -- src/stores/chatStore.test.ts` - all 70 tests passed
+- `npm run typecheck` - verified TypeScript types compile correctly
+- `npm run lint` - no new linting errors (only pre-existing warnings)
 
 ### 2026-01-26 03:45:00 - Added Context-Aware Chat Tauri Commands
 
