@@ -1,15 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 23:58:45
+**Last Updated:** 2026-01-26 20:50:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 16 / 42
-**Current Task:** Create useTaskSteps hook
+**Tasks Completed:** 17 / 42
+**Current Task:** Create useStepMutations hook
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 20:50:00 - Create useTaskSteps hook
+
+**What was done:**
+- Created `src/hooks/useTaskSteps.ts` with query hooks:
+  - Exported `stepKeys` query key factory with:
+    - `all` - Base key for all step queries
+    - `byTask(taskId)` - Key for fetching steps by task
+    - `progress(taskId)` - Key for fetching progress summary
+  - Implemented `useTaskSteps(taskId)` hook:
+    - Uses `useQuery` with `api.steps.getByTask`
+    - staleTime: 30,000ms (30 seconds)
+    - Returns `TaskStep[]` data
+  - Implemented `useStepProgress(taskId)` hook:
+    - Uses `useQuery` with `api.steps.getProgress`
+    - staleTime: 5,000ms (5 seconds)
+    - Auto-polls every 5 seconds when `inProgress > 0`
+    - Returns `StepProgressSummary` data
+- Created `src/hooks/useTaskSteps.test.tsx` with comprehensive tests:
+  - Tests for `stepKeys` query key factory
+  - Tests for `useTaskSteps` hook (fetch, empty taskId, errors)
+  - Tests for `useStepProgress` hook (fetch, empty taskId, errors, polling behavior)
+  - All 9 tests passing
+- Verified code quality:
+  - `npm run lint` - Passing (no new warnings)
+  - `npm run typecheck` - Passing
+  - `npm run test` - All tests passing (9/9)
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test -- src/hooks/useTaskSteps.test.tsx`
 
 ### 2026-01-26 23:58:45 - Add step API bindings
 
