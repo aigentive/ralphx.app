@@ -1,15 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-26 21:41:41
+**Last Updated:** 2026-01-26 21:44:00
 **Phase:** Task Execution Experience
-**Tasks Completed:** 33 / 42
-**Current Task:** Add step editor to TaskCreationForm
+**Tasks Completed:** 34 / 42
+**Current Task:** Add step editor to TaskEditForm
 
 ---
 
 
 ## Session Log
+
+### 2026-01-26 21:44:00 - Add step editor to TaskCreationForm
+
+**What was done:**
+- Updated `src/components/tasks/TaskCreationForm.tsx`:
+  - Added steps: string[] state (default empty)
+  - Added 'Steps' section with:
+    - List of step inputs with delete buttons
+    - Up/down arrow buttons for reordering (simple implementation without dnd-kit)
+    - 'Add Step' button at bottom
+  - On form submit, includes steps array in creation data (filtered to remove empty strings)
+  - Form reset clears steps state
+  - Added handlers: handleAddStep, handleRemoveStep, handleUpdateStep, handleMoveStepUp, handleMoveStepDown
+- Updated `src/types/task.ts`:
+  - Added steps: z.array(z.string()).optional() to CreateTaskSchema
+- Imported Lucide icons: Plus, X, ChevronUp, ChevronDown
+- Steps UI uses numbered list with step number prefix
+- All inputs properly disabled when form is submitting
+- Ran npm run typecheck - passing (0 errors)
+- Ran npm run lint - passing (0 errors, 13 pre-existing warnings)
+- Task complete
+
+**Commands:**
+- `npm run typecheck`
+- `npm run lint`
 
 ### 2026-01-26 21:41:41 - Open TaskFullView from TaskCard click
 
