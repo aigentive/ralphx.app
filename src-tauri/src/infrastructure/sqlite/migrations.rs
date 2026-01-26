@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 22;
+pub const SCHEMA_VERSION: i32 = 23;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -125,6 +125,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 22 {
         migrate_v22(conn)?;
         set_schema_version(conn, 22)?;
+    }
+
+    if current_version < 23 {
+        migrate_v23(conn)?;
+        set_schema_version(conn, 23)?;
     }
 
     Ok(())
@@ -1175,7 +1180,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 22);
+        assert_eq!(SCHEMA_VERSION, 23);
     }
 
     #[test]
@@ -1301,7 +1306,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
     }
 
     #[test]
@@ -1314,7 +1319,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
     }
 
     #[test]
@@ -5355,7 +5360,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
     }
 
     #[test]
@@ -5488,7 +5493,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
     }
 
     #[test]
@@ -5578,6 +5583,50 @@ fn migrate_v22(conn: &Connection) -> AppResult<()> {
     // Create index for archived tasks lookup
     conn.execute(
         "CREATE INDEX idx_tasks_archived ON tasks(project_id, archived_at)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v23(conn: &Connection) -> AppResult<()> {
+    // ============================================================================
+    // Phase 19: Task Execution Experience
+    // Add task_steps table for deterministic progress tracking
+    // ============================================================================
+
+    // Create task_steps table
+    conn.execute(
+        "CREATE TABLE task_steps (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            depends_on TEXT REFERENCES task_steps(id) ON DELETE SET NULL,
+            created_by TEXT NOT NULL DEFAULT 'user',
+            completion_note TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Create index for task lookup
+    conn.execute(
+        "CREATE INDEX idx_task_steps_task_id ON task_steps(task_id)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Create composite index for ordered retrieval
+    conn.execute(
+        "CREATE INDEX idx_task_steps_task_order ON task_steps(task_id, sort_order)",
         [],
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
