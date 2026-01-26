@@ -19,8 +19,18 @@ import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import type { Task, InternalStatus } from "@/types/task";
-import { X, Bot, User, Wrench, Loader2, FileText, Pencil } from "lucide-react";
+import { X, Bot, User, Wrench, Loader2, FileText, Pencil, Archive, RotateCcw, Trash } from "lucide-react";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -230,13 +240,23 @@ export function TaskDetailModal({
 }: TaskDetailModalProps) {
   const [showContext, setShowContext] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(
     task?.id ?? ""
   );
   useTaskStateHistory(task?.id ?? "");
 
   // Get mutations - use task's projectId if available
-  const { updateMutation, moveMutation } = useTaskMutation(task?.projectId ?? "");
+  const {
+    updateMutation,
+    moveMutation,
+    archiveMutation,
+    restoreMutation,
+    permanentlyDeleteMutation,
+    isArchiving,
+    isRestoring,
+    isPermanentlyDeleting,
+  } = useTaskMutation(task?.projectId ?? "");
 
   if (!task) return null;
 
@@ -278,6 +298,34 @@ export function TaskDetailModal({
     moveMutation.mutate({ taskId: task.id, toStatus: newStatus });
   };
 
+  // Handle archive
+  const handleArchive = () => {
+    archiveMutation.mutate(task.id, {
+      onSuccess: () => {
+        onClose();
+      },
+    });
+  };
+
+  // Handle restore
+  const handleRestore = () => {
+    restoreMutation.mutate(task.id, {
+      onSuccess: () => {
+        onClose();
+      },
+    });
+  };
+
+  // Handle permanent delete
+  const handlePermanentDelete = () => {
+    permanentlyDeleteMutation.mutate(task.id, {
+      onSuccess: () => {
+        setShowDeleteDialog(false);
+        onClose();
+      },
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogPortal>
@@ -306,6 +354,20 @@ export function TaskDetailModal({
             className="px-6 pt-6 pb-4"
             style={{ borderBottom: "1px solid var(--border-subtle)" }}
           >
+            {/* Archived Badge */}
+            {isArchived && (
+              <div
+                data-testid="archived-badge"
+                className="mb-4 px-3 py-2 rounded-lg flex items-center gap-2"
+                style={{
+                  backgroundColor: "rgba(255, 107, 53, 0.15)",
+                  color: "var(--accent-primary)",
+                }}
+              >
+                <Archive className="w-4 h-4" />
+                <span className="text-sm font-medium">Archived</span>
+              </div>
+            )}
             <div className="flex items-start gap-3 pr-32">
               <PriorityBadge priority={task.priority} />
               <div className="flex-1 min-w-0">
@@ -336,7 +398,7 @@ export function TaskDetailModal({
                 </div>
               </div>
             </div>
-            {/* Action buttons (status dropdown, edit, close) */}
+            {/* Action buttons (status dropdown, edit, archive/restore, close) */}
             <div className="absolute top-4 right-4 flex items-center gap-2">
               {/* StatusDropdown - only for user-controlled statuses */}
               {canEdit && (
@@ -368,6 +430,94 @@ export function TaskDetailModal({
                   title={isEditing ? "Cancel editing" : "Edit task"}
                 >
                   <Pencil className="w-4 h-4" />
+                </button>
+              )}
+              {/* Archive button - only for non-archived tasks */}
+              {!isArchived && (
+                <button
+                  onClick={handleArchive}
+                  disabled={isArchiving}
+                  data-testid="task-detail-archive-button"
+                  className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
+                  style={{
+                    color: "var(--text-muted)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isArchiving) {
+                      e.currentTarget.style.backgroundColor = "var(--bg-hover)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                  }}
+                  aria-label="Archive task"
+                  title="Archive task"
+                >
+                  {isArchiving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Archive className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+              {/* Restore button - only for archived tasks */}
+              {isArchived && (
+                <button
+                  onClick={handleRestore}
+                  disabled={isRestoring}
+                  data-testid="task-detail-restore-button"
+                  className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
+                  style={{
+                    color: "var(--text-muted)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isRestoring) {
+                      e.currentTarget.style.backgroundColor = "var(--bg-hover)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                  }}
+                  aria-label="Restore task"
+                  title="Restore task"
+                >
+                  {isRestoring ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+              {/* Delete permanently button - only for archived tasks */}
+              {isArchived && (
+                <button
+                  onClick={() => setShowDeleteDialog(true)}
+                  disabled={isPermanentlyDeleting}
+                  data-testid="task-detail-delete-permanently-button"
+                  className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
+                  style={{
+                    color: "var(--status-error)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isPermanentlyDeleting) {
+                      e.currentTarget.style.backgroundColor = "var(--bg-hover)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                  aria-label="Delete permanently"
+                  title="Delete permanently"
+                >
+                  {isPermanentlyDeleting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash className="w-4 h-4" />
+                  )}
                 </button>
               )}
               {/* Close button */}
@@ -497,6 +647,36 @@ export function TaskDetailModal({
           </ScrollArea>
         </div>
       </DialogPortal>
+
+      {/* Permanent Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{task.title}". This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePermanentDelete}
+              disabled={isPermanentlyDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isPermanentlyDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Permanently"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
