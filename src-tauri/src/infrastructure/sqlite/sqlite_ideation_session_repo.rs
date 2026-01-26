@@ -154,6 +154,19 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(())
     }
 
+    async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now();
+
+        conn.execute(
+            "UPDATE ideation_sessions SET plan_artifact_id = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![id.as_str(), plan_artifact_id, now.to_rfc3339(),],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn delete(&self, id: &IdeationSessionId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
