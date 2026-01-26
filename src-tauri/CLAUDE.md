@@ -1,145 +1,57 @@
-# src-tauri Backend CLAUDE.md
+# src-tauri/CLAUDE.md (COMPACT) — Backend
 
-This file provides guidance for working with the RalphX Tauri/Rust backend.
+## Stack
+Rust 2021 | Tauri 2.0 | rusqlite 0.32 | statig 0.3 (async state machine)
+tokio 1.x | serde 1.x | chrono 0.4 | thiserror 1.x | async-trait 0.1 | tracing 0.1 | uuid 1.x
 
----
-
-## Tech Stack
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **Rust** | 2021 edition | Primary language |
-| **Tauri** | 2.0 | Desktop app framework, IPC bridge |
-| **SQLite** | rusqlite 0.32 | Persistent storage |
-| **statig** | 0.3 | State machine library (async) |
-| **tokio** | 1.x | Async runtime |
-| **serde** | 1.x | Serialization (JSON) |
-| **chrono** | 0.4 | Date/time handling |
-| **thiserror** | 1.x | Error types |
-| **async-trait** | 0.1 | Async trait support |
-| **tracing** | 0.1 | Structured logging |
-| **uuid** | 1.x | ID generation (v4) |
-
----
-
-## Directory Structure
-
+## Structure
 ```
 src-tauri/
-├── Cargo.toml              # Dependencies and crate config
-├── tauri.conf.json         # Tauri app configuration
-├── build.rs                # Build script
-├── ralphx.db               # SQLite database (dev)
-│
-├── src/
-│   ├── main.rs             # Entry point (calls lib.rs run())
-│   ├── lib.rs              # App setup, Tauri command registration
-│   ├── error.rs            # AppError enum, AppResult type alias
-│   │
-│   ├── domain/             # Business logic (no infrastructure deps)
-│   │   ├── entities/       # Core data types (Task, Project, TaskContext - Phase 17, etc.)
-│   │   ├── repositories/   # Repository traits (interfaces)
-│   │   ├── state_machine/  # Task lifecycle state machine
-│   │   ├── agents/         # Agent abstraction (AgenticClient trait)
-│   │   ├── supervisor/     # Supervisor events and patterns
-│   │   ├── qa/             # QA settings and criteria
-│   │   ├── review/         # Review configuration
-│   │   ├── ideation/       # Ideation domain (IdeationSettings config - Phase 16)
-│   │   ├── services/       # Domain services (ExecutionMessageQueue, etc.)
-│   │   └── tools/          # Tool definitions for agents
-│   │
-│   ├── application/        # Application services and state
-│   │   ├── app_state.rs    # AppState (DI container)
-│   │   ├── qa_service.rs   # QA orchestration
-│   │   ├── review_service.rs
-│   │   ├── supervisor_service.rs
-│   │   ├── ideation_service.rs
-│   │   ├── dependency_service.rs
-│   │   ├── priority_service.rs
-│   │   ├── apply_service.rs
-│   │   ├── orchestrator_service.rs  # Context-aware chat with --resume support
-│   │   ├── execution_chat_service.rs # Task execution chat with persistence (Phase 15B)
-│   │   ├── task_context_service.rs  # Task context aggregation (Phase 17)
-│   │   ├── permission_state.rs      # Permission bridge for UI-based tool approval
-│   │   └── http_server.rs           # HTTP server (port 3847) for MCP proxy
-│   │
-│   ├── commands/           # Tauri commands (thin IPC layer)
-│   │   ├── task_commands.rs
-│   │   ├── task_context_commands.rs  # Task context commands (Phase 17)
-│   │   ├── project_commands.rs
-│   │   ├── ideation_commands.rs
-│   │   ├── context_chat_commands.rs  # Context-aware chat commands (Phase 15A)
-│   │   ├── execution_chat_commands.rs # Execution chat commands (Phase 15B)
-│   │   ├── permission_commands.rs    # Permission resolution commands
-│   │   ├── workflow_commands.rs
-│   │   ├── artifact_commands.rs
-│   │   ├── research_commands.rs
-│   │   ├── methodology_commands.rs
-│   │   └── ...
-│   │
-│   ├── infrastructure/     # External implementations
-│   │   ├── sqlite/         # SQLite repositories
-│   │   │   ├── connection.rs
-│   │   │   ├── migrations.rs
-│   │   │   └── sqlite_*.rs
-│   │   ├── memory/         # In-memory repos (testing)
-│   │   │   └── memory_*.rs
-│   │   ├── agents/         # Agent client implementations
-│   │   │   ├── claude/     # Claude Code CLI client
-│   │   │   └── mock/       # Mock client for tests
-│   │   └── supervisor/     # Event bus implementation
-│   │
-│   └── testing/            # Test utilities and helpers
-│
-└── tests/                  # Integration tests
-    ├── state_machine_flows.rs
-    ├── repository_swapping.rs
-    ├── agentic_client_flows.rs
-    ├── supervisor_integration.rs
-    ├── qa_system_flows.rs
-    ├── review_flows.rs
-    └── execution_control_flows.rs
+├─ src/
+│  ├─ main.rs, lib.rs         # Entry, app setup, command registration
+│  ├─ error.rs                # AppError enum, AppResult<T>
+│  ├─ domain/
+│  │  ├─ entities/            # Task, TaskContext(Ph17), Project, InternalStatus(14), TaskQA, Review,
+│  │  │                       # IdeationSession, TaskProposal, ChatMessage, ChatConversation(Ph15),
+│  │  │                       # AgentRun(Ph15), WorkflowSchema, Artifact, ResearchProcess, MethodologyExtension
+│  │  ├─ repositories/        # Traits (interfaces)
+│  │  ├─ state_machine/       # machine.rs, transition_handler.rs, context.rs, events.rs, types.rs
+│  │  ├─ agents/              # AgenticClient trait
+│  │  ├─ supervisor/          # Events, patterns
+│  │  ├─ qa/, review/         # QA settings, review config
+│  │  ├─ ideation/            # IdeationSettings (Ph16)
+│  │  ├─ services/            # ExecutionMessageQueue
+│  │  └─ tools/               # Tool definitions
+│  ├─ application/
+│  │  ├─ app_state.rs         # DI container (16+ repos)
+│  │  ├─ *_service.rs         # qa, review, supervisor, ideation, dependency, priority, apply,
+│  │  │                       # orchestrator (--resume), execution_chat (Ph15B), task_context (Ph17)
+│  │  ├─ permission_state.rs  # UI tool approval bridge
+│  │  └─ http_server.rs       # Axum :3847 for MCP proxy
+│  ├─ commands/               # Thin Tauri IPC: task, task_context(Ph17), project, ideation,
+│  │                          # context_chat(Ph15A), execution_chat(Ph15B), permission, workflow,
+│  │                          # artifact, research, methodology, qa, review, execution
+│  └─ infrastructure/
+│     ├─ sqlite/              # sqlite_*.rs repos + migrations.rs
+│     ├─ memory/              # memory_*.rs (test repos)
+│     ├─ agents/claude/       # ClaudeCodeClient
+│     └─ supervisor/          # Event bus impl
+└─ tests/                     # state_machine_flows, repository_swapping, agentic_client_flows,
+                              # supervisor_integration, qa_system_flows, review_flows, execution_control_flows
 ```
 
----
-
-## Architecture Patterns
-
-### Clean Architecture / Hexagonal Architecture
-
-The codebase follows clean architecture principles:
-
+## Architecture: Clean/Hexagonal
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Commands (Tauri IPC)                    │
-├─────────────────────────────────────────────────────────────┤
-│                   Application Services                       │
-├─────────────────────────────────────────────────────────────┤
-│                      Domain Layer                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │
-│  │  Entities   │  │ Repository  │  │   State Machine      │ │
-│  │  (Task,     │  │  Traits     │  │   (TaskStateMachine) │ │
-│  │   Project)  │  │ (TaskRepo,  │  │                      │ │
-│  │             │  │  ProjectR.) │  │                      │ │
-│  └─────────────┘  └─────────────┘  └──────────────────────┘ │
-├─────────────────────────────────────────────────────────────┤
-│                   Infrastructure Layer                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │
-│  │   SQLite    │  │   Memory    │  │   Claude Code CLI    │ │
-│  │   Repos     │  │   Repos     │  │   Client             │ │
-│  └─────────────┘  └─────────────┘  └──────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+Commands (Tauri IPC)
+    ↓
+Application Services
+    ↓
+Domain Layer (Entities, Repo Traits, State Machine) ← NO INFRA DEPS
+    ↓
+Infrastructure (SQLite, Memory, Claude CLI)
 ```
 
-**Key principle:** Domain layer has NO dependencies on infrastructure.
-
-### Repository Pattern
-
-Repository traits are defined in `domain/repositories/` and implemented in:
-- `infrastructure/sqlite/` - Production (SQLite)
-- `infrastructure/memory/` - Testing (in-memory)
-
-Example:
+## Repository Pattern
 ```rust
 // domain/repositories/task_repository.rs
 #[async_trait]
@@ -147,562 +59,111 @@ pub trait TaskRepository: Send + Sync {
     async fn create(&self, task: Task) -> AppResult<Task>;
     async fn get_by_id(&self, id: &TaskId) -> AppResult<Option<Task>>;
     async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<Task>>;
-    // ...
 }
-
-// infrastructure/sqlite/sqlite_task_repo.rs
-impl TaskRepository for SqliteTaskRepository { ... }
-
-// infrastructure/memory/memory_task_repo.rs
-impl TaskRepository for MemoryTaskRepository { ... }
+// Impls: infrastructure/sqlite/sqlite_task_repo.rs | infrastructure/memory/memory_task_repo.rs
 ```
 
-### Newtype Pattern (Type-Safe IDs)
-
-All entity IDs use the newtype pattern to prevent accidental mixing:
-
+## Newtype Pattern (Type-Safe IDs)
 ```rust
-// domain/entities/types.rs
 pub struct TaskId(pub String);
 pub struct ProjectId(pub String);
-pub struct IdeationSessionId(pub String);
-// ... etc
-
-impl TaskId {
-    pub fn new() -> Self { Self(uuid::Uuid::new_v4().to_string()) }
-    pub fn from_string(s: String) -> Self { Self(s) }
-    pub fn as_str(&self) -> &str { &self.0 }
-}
+impl TaskId { fn new()->Self{Self(Uuid::new_v4().to_string())} fn from_string(s)->Self{Self(s)} fn as_str(&self)->&str{&self.0} }
+// Compile-time safety: can't pass TaskId where ProjectId expected
 ```
 
-This ensures compile-time safety - you cannot pass a `TaskId` where a `ProjectId` is expected.
-
-### Dependency Injection via AppState
-
-`AppState` is the DI container, holding all repository trait objects:
-
+## DI via AppState
 ```rust
-// application/app_state.rs
 pub struct AppState {
     pub task_repo: Arc<dyn TaskRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
     pub agent_client: Arc<dyn AgenticClient>,
-    // ... 16+ repositories
+    // ... 16+ repos
 }
-
 impl AppState {
-    pub fn new_production() -> AppResult<Self> { ... }  // SQLite repos
-    pub fn new_test() -> Self { ... }                   // Memory repos
-    pub fn with_repos(...) -> Self { ... }              // Custom repos
+    fn new_production() -> AppResult<Self> {...}  // SQLite
+    fn new_test() -> Self {...}                   // Memory
 }
 ```
 
-### State Machine Architecture (CRITICAL)
+## ⚠️ STATE MACHINE (CRITICAL)
+14 states: Backlog→Ready→Executing→ExecutionDone→QaRefining→QaTesting→QaPassed→PendingReview→Approved
+Failures: Executing→Failed|Blocked | QaTesting→QaFailed→RevisionNeeded→Executing | PendingReview→RevisionNeeded→Executing
 
-Task lifecycle uses a 14-state machine defined in `domain/state_machine/`. **This is the authoritative way to handle task status transitions.**
-
-#### State Flow
-
-```
-Backlog → Ready → Executing → ExecutionDone → QaRefining → QaTesting →
-QaPassed → PendingReview → Approved
-
-With failure paths:
-- Executing → Failed / Blocked
-- QaTesting → QaFailed → RevisionNeeded → Executing
-- PendingReview → RevisionNeeded → Executing
-```
-
-#### Key Components
-
-| Component | File | Purpose |
-|-----------|------|---------|
-| `TaskStateMachine` | `machine.rs` | State handlers and event dispatch |
-| `TransitionHandler` | `transition_handler.rs` | **Orchestrates transitions with entry/exit actions** |
-| `TaskContext` | `context.rs` | Shared data (task_id, project_id, qa_enabled, services) |
-| `TaskServices` | `context.rs` | Service dependencies (spawner, emitter, notifier, etc.) |
-| `TaskEvent` | `events.rs` | Events that trigger transitions |
-| State types | `types.rs` | State-local data (FailedData, QaFailedData) |
-
-#### How to Handle Status Transitions
-
-**⚠️ NEVER update task status directly in the database. Always use the TransitionHandler.**
-
+**NEVER update status directly. ALWAYS use TransitionHandler:**
 ```rust
-// ❌ WRONG - Bypasses entry actions, no side effects triggered
+// ❌ WRONG
 task.internal_status = InternalStatus::Executing;
 task_repo.update(&task).await?;
 
-// ✅ CORRECT - Uses TransitionHandler with proper entry actions
-use crate::domain::state_machine::{
-    context::{TaskContext, TaskServices},
-    machine::TaskStateMachine,
-    transition_handler::TransitionHandler,
-    events::TaskEvent,
-};
-
-// 1. Build TaskServices with required dependencies
-let services = TaskServices::new(
-    agent_spawner,           // Arc<dyn AgentSpawner>
-    event_emitter,           // Arc<dyn EventEmitter>
-    notifier,                // Arc<dyn Notifier>
-    dependency_manager,      // Arc<dyn DependencyManager>
-    review_starter,          // Arc<dyn ReviewStarter>
-    execution_chat_service,  // Arc<dyn ExecutionChatService>
-);
-
-// 2. Create TaskContext with services
+// ✅ CORRECT
+let services = TaskServices::new(agent_spawner, event_emitter, notifier, dependency_manager, review_starter, execution_chat_service);
 let context = TaskContext::new(&task_id, &project_id, services);
-
-// 3. Create state machine and handler
 let mut machine = TaskStateMachine::new(context);
 let mut handler = TransitionHandler::new(&mut machine);
-
-// 4. Handle transition - this triggers entry actions!
-let result = handler
-    .handle_transition(&current_state, &TaskEvent::Schedule)
-    .await;
+let result = handler.handle_transition(&current_state, &TaskEvent::Schedule).await;
 ```
 
-#### Entry Actions (Triggered Automatically)
+### Entry Actions (on_enter)
+| State | Action |
+|-------|--------|
+| Ready | Spawn QA prep (if enabled) |
+| Executing | **Spawn worker via ExecutionChatService.spawn_with_persistence()** |
+| QaRefining | Spawn QA refiner |
+| QaTesting | Spawn QA tester |
+| QaPassed | Emit qa_passed |
+| QaFailed | Emit qa_failed, notify user |
+| PendingReview | Start AI review, spawn reviewer |
+| Approved | Emit task_completed, unblock dependents |
+| Failed | Emit task_failed |
 
-The `TransitionHandler::on_enter()` method triggers side effects when entering states:
+### Auto-Transitions
+ExecutionDone→QaRefining (QA on) | ExecutionDone→PendingReview (QA off)
+QaPassed→PendingReview | RevisionNeeded→Executing (retry)
 
-| State | Entry Action |
-|-------|--------------|
-| `Ready` | Spawn QA prep agent (if QA enabled) |
-| `Executing` | **Spawn worker via `ExecutionChatService.spawn_with_persistence()`** |
-| `QaRefining` | Wait for QA prep, spawn QA refiner agent |
-| `QaTesting` | Spawn QA tester agent |
-| `QaPassed` | Emit `qa_passed` event |
-| `QaFailed` | Emit `qa_failed` event, notify user |
-| `PendingReview` | Start AI review via `ReviewStarter`, spawn reviewer agent |
-| `Approved` | Emit `task_completed` event, unblock dependent tasks |
-| `Failed` | Emit `task_failed` event |
-
-#### Auto-Transitions
-
-Some states automatically transition to the next state:
-
-| From State | Auto-Transitions To | Condition |
-|------------|---------------------|-----------|
-| `ExecutionDone` | `QaRefining` | QA enabled |
-| `ExecutionDone` | `PendingReview` | QA disabled (default) |
-| `QaPassed` | `PendingReview` | Always |
-| `RevisionNeeded` | `Executing` | Always (retry) |
-
-#### TaskServices Dependencies
-
-`TaskServices` requires these trait implementations:
-
+### TaskServices Dependencies
 ```rust
-pub struct TaskServices {
-    pub agent_spawner: Arc<dyn AgentSpawner>,           // Spawn agents
-    pub event_emitter: Arc<dyn EventEmitter>,           // Emit Tauri events
-    pub notifier: Arc<dyn Notifier>,                    // User notifications
-    pub dependency_manager: Arc<dyn DependencyManager>, // Task dependencies
-    pub review_starter: Arc<dyn ReviewStarter>,         // Start AI reviews
-    pub execution_chat_service: Arc<dyn ExecutionChatService>, // Worker execution
+struct TaskServices {
+    agent_spawner: Arc<dyn AgentSpawner>,           // Spawn agents
+    event_emitter: Arc<dyn EventEmitter>,           // Tauri events
+    notifier: Arc<dyn Notifier>,                    // User notifications
+    dependency_manager: Arc<dyn DependencyManager>, // Task deps
+    review_starter: Arc<dyn ReviewStarter>,         // AI reviews
+    execution_chat_service: Arc<dyn ExecutionChatService>, // Worker exec
 }
+// Prod: TauriEventEmitter, AgenticClientSpawner, ClaudeExecutionChatService
+// Test: LoggingNotifier, NoOpDependencyManager, NoOpReviewStarter
 ```
-
-Production implementations:
-- `TauriEventEmitter` - Emits to Tauri app handle
-- `AgenticClientSpawner` - Spawns Claude CLI agents
-- `ClaudeExecutionChatService` - Worker execution with persistence
-
-No-op implementations (for testing or when not fully wired):
-- `LoggingNotifier` - Logs notifications
-- `NoOpDependencyManager` - Placeholder for task dependencies
-- `NoOpReviewStarter` - Placeholder for review system
-
-#### Example: Handling Kanban Drag-Drop
-
-When a user drags a task to a new column (e.g., "In Progress"):
-
-```rust
-// In task_commands.rs move_task handler
-pub async fn move_task(task_id: String, to_status: String, ...) {
-    // 1. Parse status
-    let new_status: InternalStatus = to_status.parse()?;
-
-    // 2. Get current task state
-    let task = task_repo.get_by_id(&task_id).await?;
-    let current_state = State::from_str(task.internal_status.as_str())?;
-
-    // 3. Build services and context
-    let services = build_task_services(...);
-    let context = TaskContext::new(&task_id, &project_id, services);
-
-    // 4. Create machine and handler
-    let mut machine = TaskStateMachine::new(context);
-    let mut handler = TransitionHandler::new(&mut machine);
-
-    // 5. Determine the event for this transition
-    let event = match new_status {
-        InternalStatus::Ready => TaskEvent::Schedule,
-        InternalStatus::Executing => TaskEvent::StartExecution,
-        // ... map other statuses to events
-    };
-
-    // 6. Handle transition - entry actions fire automatically!
-    let result = handler.handle_transition(&current_state, &event).await;
-
-    // 7. Persist the new state
-    if let Some(new_state) = result.state() {
-        task.internal_status = InternalStatus::from_str(new_state.as_str())?;
-        task_repo.update(&task).await?;
-    }
-}
-```
-
-This ensures that when a task moves to "In Progress" (Executing), the worker agent is automatically spawned via the entry action.
-
----
-
-## Key Entities
-
-| Entity | File | Description |
-|--------|------|-------------|
-| `Task` | `entities/task.rs` | Work item with status, priority, timestamps |
-| `TaskContext` | `entities/task_context.rs` | Task context aggregation (Phase 17) |
-| `TaskProposalSummary` | `entities/task_context.rs` | Proposal summary for worker context (Phase 17) |
-| `ArtifactSummary` | `entities/task_context.rs` | Artifact summary with 500-char preview (Phase 17) |
-| `Project` | `entities/project.rs` | Project container with path and git mode |
-| `InternalStatus` | `entities/status.rs` | 14-state enum with transition rules |
-| `TaskQA` | `entities/task_qa.rs` | QA test criteria and results |
-| `Review` | `entities/review.rs` | Code review records |
-| `IdeationSession` | `entities/ideation.rs` | Chat-based ideation session |
-| `TaskProposal` | `entities/ideation.rs` | Proposed task from ideation (includes planArtifactId - Phase 16) |
-| `ChatMessage` | `entities/ideation.rs` | Chat messages (with tool_calls field) |
-| `ChatConversation` | `entities/chat_conversation.rs` | Chat conversation with Claude session tracking (Phase 15) |
-| `AgentRun` | `entities/agent_run.rs` | Agent execution status tracking (Phase 15) |
-| `IdeationSettings` | `domain/ideation/config.rs` | Ideation plan mode configuration (Phase 16) |
-| `WorkflowSchema` | `entities/workflow.rs` | Kanban column configuration |
-| `Artifact` | `entities/artifact.rs` | Generated artifacts (PRD, etc.) |
-| `ResearchProcess` | `entities/research.rs` | Research task tracking |
-| `MethodologyExtension` | `entities/methodology.rs` | BMAD/GSD methodology support |
-
----
 
 ## Commands (Tauri IPC)
-
-Commands are thin wrappers that delegate to repositories/services:
-
 ```rust
-// commands/task_commands.rs
 #[tauri::command]
-pub async fn list_tasks(
-    project_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<Task>, AppError> {
-    let project_id = ProjectId::from_string(project_id);
-    state.task_repo.get_by_project(&project_id).await
+pub async fn list_tasks(project_id: String, state: State<'_, AppState>) -> Result<Vec<Task>, AppError> {
+    state.task_repo.get_by_project(&ProjectId::from_string(project_id)).await
 }
 ```
 
-Command categories:
-- **Task commands** - CRUD, status changes, blocking
-- **Task context commands** - Task context aggregation, artifact fetching (Phase 17)
-- **Project commands** - Project management
-- **Ideation commands** - Sessions, proposals, chat, orchestrator
-- **Context chat commands** - Context-aware chat with conversations, agent runs (Phase 15A)
-- **Execution chat commands** - Task execution chat with persistence, queue management (Phase 15B)
-- **Permission commands** - Permission resolution for UI-based tool approval (Phase 15A)
-- **Workflow commands** - Custom workflow schemas
-- **Artifact commands** - Artifact and bucket management
-- **Research commands** - Research process control
-- **Methodology commands** - Methodology activation
-- **QA commands** - QA settings and results
-- **Review commands** - Code review operations
-- **Execution commands** - Pause/resume/stop execution
-
-### Command Parameter Conventions (IMPORTANT)
-
-Tauri has different serialization behavior for direct parameters vs struct fields:
-
-1. **Direct parameters: Tauri auto-converts camelCase ↔ snake_case**
-
-   ```rust
-   // Rust uses snake_case
-   pub async fn list_conversations(
-       context_type: String,   // Frontend passes: { contextType: "..." }
-       context_id: String,     // Frontend passes: { contextId: "..." }
-       state: State<'_, AppState>,
-   )
-   // Tauri automatically converts JS camelCase to Rust snake_case
-   ```
-
-2. **Struct parameters: serde uses exact field name matching**
-
-   ```rust
-   pub async fn create_conversation(
-       input: CreateConversationInput,  // Frontend wraps: { input: { ... } }
-       state: State<'_, AppState>,
-   )
-
-   #[derive(Deserialize)]
-   pub struct CreateConversationInput {
-       pub context_type: String,  // Frontend must use exact: context_type
-       pub context_id: String,    // Frontend must use exact: context_id
-   }
-   // Struct fields use serde's default exact-match deserialization
-   ```
-
-3. **To use camelCase in struct fields** - Add serde rename attribute:
-
-   ```rust
-   #[derive(Deserialize)]
-   #[serde(rename_all = "camelCase")]  // Now frontend can use camelCase
-   pub struct CreateConversationInput {
-       pub context_type: String,  // Frontend: contextType
-       pub context_id: String,    // Frontend: contextId
-   }
-   ```
-
-**Frontend impact:** See `src/CLAUDE.md` for the corresponding frontend conventions.
-
----
+### ⚠️ Param Conventions
+| Type | Rust | JS |
+|------|------|---|
+| Direct | `context_type: String` | `{ contextType }` (Tauri converts) |
+| Struct | `input: CreateInput` | `{ input: { context_type } }` (serde exact-match) |
+| Struct+rename | `#[serde(rename_all="camelCase")]` | `{ input: { contextType } }` |
 
 ## Error Handling
-
-Unified error type in `error.rs`:
-
 ```rust
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Database error: {0}")]
-    Database(String),
-
-    #[error("Task not found: {0}")]
-    TaskNotFound(String),
-
-    #[error("Invalid status transition: {from} -> {to}")]
-    InvalidTransition { from: String, to: String },
-
-    #[error("Validation error: {0}")]
-    Validation(String),
-
-    #[error("Agent error: {0}")]
-    Agent(String),
-
-    #[error("Not found: {0}")]
-    NotFound(String),
+    #[error("Database error: {0}")] Database(String),
+    #[error("Task not found: {0}")] TaskNotFound(String),
+    #[error("Invalid transition: {from} -> {to}")] InvalidTransition{from:String,to:String},
+    #[error("Validation error: {0}")] Validation(String),
+    #[error("Agent error: {0}")] Agent(String),
+    #[error("Not found: {0}")] NotFound(String),
 }
-
 pub type AppResult<T> = Result<T, AppError>;
 ```
 
-Errors implement `Serialize` for Tauri IPC.
-
----
-
-## Testing Approach
-
-### Unit Tests
-
-Every module has inline unit tests in `#[cfg(test)]` blocks:
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn task_new_creates_with_defaults() { ... }
-
-    #[tokio::test]
-    async fn test_repository_create() { ... }
-}
-```
-
-### Integration Tests
-
-Located in `tests/` directory:
-- `state_machine_flows.rs` - Full task lifecycle flows
-- `repository_swapping.rs` - Verify DI works
-- `agentic_client_flows.rs` - Agent spawning/communication
-- `supervisor_integration.rs` - Event bus and supervision
-- `qa_system_flows.rs` - QA preparation and testing
-- `review_flows.rs` - Review and approval flows
-- `execution_control_flows.rs` - Pause/resume/stop
-
-### Running Tests
-
-```bash
-# Run all tests
-cargo test
-
-# Run with output
-cargo test -- --nocapture
-
-# Run specific test
-cargo test test_task_new
-
-# Run integration tests only
-cargo test --test state_machine_flows
-```
-
----
-
-## Build & Run
-
-### Development
-
-```bash
-# From project root (not src-tauri)
-npm run tauri dev
-
-# Or from src-tauri
-cargo build
-cargo run
-```
-
-### Production Build
-
-```bash
-npm run tauri build
-```
-
-### Linting
-
-**IMPORTANT: Always run linting before committing code.**
-
-```bash
-# Run clippy with strict warnings (required for all commits)
-cargo clippy --all-targets --all-features -- -D warnings
-
-# Format check (does not modify files)
-cargo fmt --check
-
-# Auto-format code
-cargo fmt
-
-# Type check without building
-cargo check
-```
-
-**Linting Standards:**
-- All library code (`cargo clippy --lib`) must pass with `-D warnings` enabled
-- Test code may have non-critical style warnings (acceptable)
-- Common patterns have crate-level `#[allow(clippy::...)]` directives in `lib.rs`
-- Format code with `cargo fmt` before committing
-
-**Allowed Clippy Lints:**
-
-The following clippy lints are allowed at the crate level for common patterns:
-- `derivable_impls` - Manual Default implementations for clarity
-- `redundant_closure` - Closures used for readability
-- `too_many_arguments` - Some functions naturally need many params
-- `type_complexity` - Complex types with type aliases
-- `unnecessary_literal_unwrap` - Explicit unwrap in tests
-- `bool_comparison`, `while_let_loop` - Readability preferences
-- `useless_vec`, `let_and_return`, `unwrap_or_default` - Non-critical style
-- `unnecessary_map_or` - Preference for map_or pattern
-
----
-
-## Database
-
-SQLite database at `ralphx.db` (dev) or app data directory (production).
-
-### Migrations
-
-All migrations in `infrastructure/sqlite/migrations.rs`:
-- Migrations run automatically on startup via `run_migrations()`
-- Version tracked in `schema_version` table
-- Add new migrations to `MIGRATIONS` array
-
-### Tables
-
-Key tables:
-- `tasks` - Task records with status, timestamps
-- `projects` - Project records
-- `status_transitions` - Audit log for state changes
-- `task_qa` - QA criteria and results
-- `reviews` - Code review records
-- `ideation_sessions` - Ideation sessions
-- `task_proposals` - Task proposals
-- `proposal_dependencies` - Proposal DAG
-- `chat_messages` - Chat history (with tool_calls JSON field)
-- `chat_conversations` - Chat conversations with Claude session IDs (Phase 15)
-- `agent_runs` - Agent execution tracking (Phase 15)
-- `ideation_settings` - Ideation plan mode configuration (single-row, Phase 16)
-- `task_dependencies` - Task blockers
-- `workflows` - Workflow schemas
-- `artifacts` / `artifact_buckets` - Artifact system
-- `research_processes` - Research tracking
-- `methodologies` - Methodology extensions
-
----
-
-## Conventions
-
-### Naming
-
-- **Types**: PascalCase (`TaskId`, `InternalStatus`)
-- **Functions/methods**: snake_case (`get_by_id`, `create_task`)
-- **Files**: snake_case (`task_repository.rs`)
-- **Modules**: snake_case (`state_machine`)
-
-### Serialization
-
-- All API types use `#[serde(rename_all = "snake_case")]` for enums
-- JSON field names are snake_case
-- Dates are RFC3339 format
-
-### Async
-
-- All repository methods are `async`
-- Use `#[async_trait]` for async traits
-- Tokio runtime for async execution
-
-### Error Handling
-
-- Return `AppResult<T>` from all fallible functions
-- Use `?` for error propagation
-- Convert infrastructure errors to `AppError`
-
-### Testing
-
-- TDD is mandatory - write tests first
-- Every public function should have tests
-- Use in-memory repos for unit tests
-- Use `tempfile` for integration tests needing files
-
-### Linting
-
-- **ALWAYS run `cargo clippy --all-targets --all-features -- -D warnings` before committing**
-- All library code must pass clippy with strict warnings enabled
-- Format code with `cargo fmt` before committing
-- Test code may have non-critical style warnings (acceptable)
-- See the "Linting" section under "Build & Run" for full command reference
-
----
-
-## Important Files Quick Reference
-
-| Purpose | File |
-|---------|------|
-| App entry | `lib.rs` |
-| DI container | `application/app_state.rs` |
-| Error types | `error.rs` |
-| Task entity | `domain/entities/task.rs` |
-| Status enum | `domain/entities/status.rs` |
-| Task repo trait | `domain/repositories/task_repository.rs` |
-| SQLite task repo | `infrastructure/sqlite/sqlite_task_repo.rs` |
-| State machine | `domain/state_machine/machine.rs` |
-| Agent trait | `domain/agents/agentic_client.rs` |
-| Migrations | `infrastructure/sqlite/migrations.rs` |
-
----
-
-## Agent System
-
-### AgenticClient Trait
-
-Abstraction for AI agents (Claude Code, future: Codex, Gemini):
-
+## AgenticClient Trait
 ```rust
 #[async_trait]
 pub trait AgenticClient: Send + Sync {
@@ -710,476 +171,139 @@ pub trait AgenticClient: Send + Sync {
     async fn stop_agent(&self, handle: &AgentHandle) -> AgentResult<()>;
     async fn wait_for_completion(&self, handle: &AgentHandle) -> AgentResult<AgentOutput>;
     async fn send_prompt(&self, handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse>;
-    fn stream_response(&self, handle: &AgentHandle, prompt: &str)
-        -> Pin<Box<dyn Stream<Item = AgentResult<ResponseChunk>> + Send>>;
+    fn stream_response(&self, handle: &AgentHandle, prompt: &str) -> Pin<Box<dyn Stream<Item=AgentResult<ResponseChunk>>+Send>>;
     fn capabilities(&self) -> &ClientCapabilities;
     async fn is_available(&self) -> AgentResult<bool>;
 }
+// Impls: ClaudeCodeClient (prod), MockAgenticClient (test)
+// Roles: Worker, Reviewer, Supervisor, QA, Orchestrator, chat-task, chat-project
 ```
 
-### Implementations
-
-- `ClaudeCodeClient` - Production (spawns `claude` CLI)
-- `MockAgenticClient` - Testing (returns canned responses)
-
-### Agent Roles
-
-- `Worker` - Executes tasks
-- `Reviewer` - Reviews implementations
-- `Supervisor` - Oversees execution
-- `QA` - Runs QA tests
-- `Orchestrator` - Handles ideation chat (with MCP tools)
-- `chat-task` - Task-focused chat (with MCP tools)
-- `chat-project` - Project-focused chat (with MCP tools)
-
----
-
-## Context-Aware Chat System (Phase 15A & 15B)
-
-### Architecture Overview
-
-The context-aware chat system enables multi-conversation chat with full MCP tool integration:
-
+## Context-Aware Chat (Ph15A/15B)
 ```
-Frontend (React)
-    ↓ Tauri IPC
-Backend (Rust)
-    ├─→ HTTP Server (port 3847) ─→ MCP Server (TypeScript proxy)
-    │                                      ↓
-    │                              RalphX business logic via HTTP
-    └─→ Claude CLI (--agent flag, --resume for continuation)
-           ├─→ RALPHX_AGENT_TYPE env var passed to MCP
-           └─→ MCP Server returns scoped tools per agent type
+Frontend → Tauri IPC → Backend
+  ├→ HTTP :3847 → MCP Server (TS proxy) → RalphX logic via HTTP
+  └→ Claude CLI (--agent, --resume for continuation)
+       └→ RALPHX_AGENT_TYPE env → MCP returns scoped tools
 ```
 
-### Key Components
-
-**Backend:**
-- `http_server.rs` - Axum HTTP server (port 3847) exposing RalphX operations to MCP server
-- `orchestrator_service.rs` - Spawns Claude CLI with `--agent` and `--resume` flags, captures session IDs (Phase 15A)
-- `execution_chat_service.rs` - Spawns worker with persistence, processes message queue (Phase 15B)
-- `execution_message_queue.rs` - In-memory per-task message queue (Phase 15B)
-- `permission_state.rs` - Long-polling permission bridge for UI-based tool approval
-- `context_chat_commands.rs` - Tauri commands for sending messages, managing conversations (Phase 15A)
-- `execution_chat_commands.rs` - Tauri commands for execution conversations, queue management (Phase 15B)
-- `permission_commands.rs` - Tauri commands for resolving permission requests
-- `chat_conversation_repository.rs` - Manages conversations with Claude session ID tracking
-- `agent_run_repository.rs` - Tracks agent execution status (running/completed/failed)
-
-**MCP Server (ralphx-mcp-server/):**
-- TypeScript proxy that exposes RalphX tools to Claude via MCP protocol
-- Reads `RALPHX_AGENT_TYPE` env var to scope tools per agent
-- Forwards all tool calls to Tauri backend via HTTP (no business logic in MCP)
-- Implements `permission_request` MCP tool for UI-based approval
-
-**Tool Scoping:**
-| Agent Type | Allowed MCP Tools |
-|------------|------------------|
-| `orchestrator-ideation` | create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency, create_plan_artifact, update_plan_artifact, get_plan_artifact, link_proposals_to_plan, get_session_plan |
-| `chat-task` | update_task, add_task_note, get_task_details |
-| `chat-project` | suggest_task, list_tasks |
-| `reviewer` | complete_review (submit review decision) |
-| `worker` | get_task_context, get_artifact, get_artifact_version, get_related_artifacts, search_project_artifacts (Phase 17) |
-| `supervisor`, `qa-prep`, `qa-tester` | None (no MCP tools) |
+### Tool Scoping
+| Agent | MCP Tools |
+|-------|-----------|
+| orchestrator-ideation | create/update/delete_task_proposal, add_proposal_dependency, *_plan_artifact |
+| chat-task | update_task, add_task_note, get_task_details |
+| chat-project | suggest_task, list_tasks |
+| reviewer | complete_review |
+| worker | get_task_context, get_artifact*, search_project_artifacts (Ph17) |
+| supervisor/qa-* | None |
 
 ### Session Management
+- RalphX Context ID: our IDs (ideation session, task, project)
+- Claude Session ID: for `--resume` flag, stored in `chat_conversations.claude_session_id`
 
-**Two types of IDs:**
-1. **RalphX Context ID** - Our internal IDs (ideation session, task, project)
-2. **Claude Session ID** - Claude's session ID for `--resume` flag
+### Execution Chat (Ph15B)
+```rust
+// ExecutionChatService
+spawn_with_persistence(agent, task_id)  // Creates conversation, spawns, persists
+persist_stream_event(conv_id, event)    // Saves chunks/tool_calls
+complete_execution(conv_id, session_id) // Processes queue via --resume
 
-**Flow:**
-1. User sends first message → Claude CLI spawned with `--agent orchestrator-ideation`
-2. Claude returns `session_id` in stream-json output → stored in `chat_conversations.claude_session_id`
-3. User sends follow-up → Claude CLI spawned with `--resume <session_id>` → Claude remembers full context
-
-### Task Execution Chat (Phase 15B)
-
-**Worker output persistence:**
-- Worker execution creates `task_execution` conversation automatically
-- All output (text chunks, tool calls) persisted to database
-- User can view execution as chat in ChatPanel
-- Past execution attempts accessible via ConversationSelector
-
-**Message queue:**
-- Messages sent during worker execution are queued (in-memory)
-- When worker completes, queue is processed via `--resume`
-- Queue is per-task, isolated from other tasks
-
-**Dual event emission:**
-Both Activity Stream and ChatPanel receive worker output:
-- **ChatPanel**: `execution:chunk`, `execution:tool_call`, `execution:run_completed` (persisted)
-- **Activity Stream**: `agent:message` (memory only)
-
-**ExecutionChatService:**
-Key service for worker execution with persistence:
-- `spawn_with_persistence(agent, task_id)` - Creates conversation, spawns worker, persists output
-- `persist_stream_event(conversation_id, event)` - Saves chunks/tool calls to database
-- `complete_execution(conversation_id, claude_session_id)` - Processes queued messages via --resume
-
-**ExecutionMessageQueue:**
-In-memory queue for per-task messages:
-- `queue(task_id, message)` - Add message to queue
-- `pop(task_id)` - Get next queued message
-- `get_queued(task_id)` - View all queued messages
-- `clear(task_id)` - Clear queue for task
+// ExecutionMessageQueue (in-memory, per-task)
+queue(task_id, message)
+pop(task_id) → Option<Message>
+get_queued(task_id) → Vec<Message>
+clear(task_id)
+```
+Events: `execution:chunk|tool_call|run_completed` (ChatPanel) | `agent:message` (Activity Stream)
 
 ### Permission Bridge
-
-Enables UI-based approval for non-pre-approved tools:
-
 1. Agent calls `permission_request` MCP tool
-2. MCP server POSTs to `/api/permission/request` → returns `request_id`
-3. Tauri backend emits `permission:request` event → PermissionDialog appears
-4. MCP server long-polls `/api/permission/await/:request_id` (5 min timeout)
-5. User clicks Allow/Deny → calls `resolve_permission_request` Tauri command
-6. Backend signals waiting MCP request → MCP returns decision to Claude CLI
-7. Claude CLI continues or stops based on decision
+2. MCP POSTs `/api/permission/request` → returns request_id
+3. Backend emits `permission:request` → PermissionDialog
+4. MCP long-polls `/api/permission/await/:id` (5min timeout)
+5. User Allow/Deny → `resolve_permission_request` command
+6. Backend signals MCP → returns decision to Claude
 
-### Events
-
-**Context-aware chat (Phase 15A):**
-- `chat:message_created` - New message saved
-- `chat:chunk` - Streaming response chunk
-- `chat:tool_call` - Tool call detected in stream
-- `chat:run_completed` - Agent finished (triggers queue processing)
-
-**Execution chat (Phase 15B):**
-- `execution:chunk` - Worker text output (persisted to ChatPanel)
-- `execution:tool_call` - Worker tool call (persisted to ChatPanel)
-- `execution:run_completed` - Worker finished (triggers queue processing)
-- `agent:message` - Worker output (sent to Activity Stream)
-
-**Plan artifacts (Phase 16):**
-- `plan:proposals_may_need_update` - Plan updated, proposals may need revision (proactive sync)
-
----
-
-## Ideation Plan Artifacts (Phase 16)
-
-### Overview
-
-The ideation system supports implementation plans as artifacts before task proposal creation. Users can configure workflow modes (Required, Optional, Parallel), and the orchestrator creates `Specification` artifacts that serve as implementation plans linked to proposals.
-
-### IdeationSettings Entity
-
-**Location:** `domain/ideation/config.rs`
-
+## Ideation Plans (Ph16)
 ```rust
-pub enum IdeationPlanMode {
-    Required,   // Plan must be created before proposals
-    Optional,   // Plan suggested for complex features (default)
-    Parallel,   // Plan and proposals created together
-}
+pub enum IdeationPlanMode { Required, Optional, Parallel }
+pub struct IdeationSettings { plan_mode, require_plan_approval, suggest_plans_for_complex, auto_link_to_session_plan }
+// Single-row pattern in ideation_settings table
 
-pub struct IdeationSettings {
-    pub plan_mode: IdeationPlanMode,
-    pub require_plan_approval: bool,      // Require explicit approval in Required mode
-    pub suggest_plans_for_complex: bool,  // Suggest plans in Optional mode
-    pub auto_link_to_session_plan: bool,  // Auto-link proposals to plan
-}
+// Data model additions
+IdeationSession { plan_artifact_id: Option<ArtifactId> }
+TaskProposal { plan_artifact_id, plan_version_at_creation }
+Task { source_proposal_id, plan_artifact_id }
 ```
 
-**Repository:**
-- Trait: `domain/repositories/ideation_settings_repository.rs`
-- Implementation: `infrastructure/sqlite/sqlite_ideation_settings_repo.rs`
-- Single-row pattern (only one settings record)
-- Default: Optional mode, no approval required, suggest plans enabled
+### HTTP Endpoints (:3847)
+POST /api/create_plan_artifact | POST /api/update_plan_artifact | GET /api/get_plan_artifact/:id
+POST /api/link_proposals_to_plan | GET /api/get_session_plan/:id
+GET /api/get_ideation_settings | POST /api/update_ideation_settings
 
-### Data Model Changes
+### Proactive Sync
+Flow `plan_updated_sync`: artifact_updated(Specification) → find_linked_proposals → emit `plan:proposals_may_need_update`
 
-**IdeationSession entity (`entities/ideation.rs`):**
+## Worker Artifact Context (Ph17)
 ```rust
-pub struct IdeationSession {
-    pub id: IdeationSessionId,
-    pub plan_artifact_id: Option<ArtifactId>, // Link to implementation plan
-    // ... other fields
-}
+pub struct TaskContext { task, source_proposal: Option<TaskProposalSummary>, plan_artifact: Option<ArtifactSummary>, related_artifacts: Vec<ArtifactSummary>, context_hints: Vec<String> }
+pub struct ArtifactSummary { id, title, artifact_type, current_version, content_preview } // 500-char
+
+// TaskContextService aggregates from task_repo, proposal_repo, artifact_repo
 ```
 
-**TaskProposal entity (`entities/ideation.rs`):**
-```rust
-pub struct TaskProposal {
-    pub id: TaskProposalId,
-    pub plan_artifact_id: Option<ArtifactId>,       // Link to implementation plan
-    pub plan_version_at_creation: Option<u32>,      // Plan version when proposal created
-    // ... other fields
-}
+### HTTP Endpoints (:3847)
+GET /api/task_context/:id | GET /api/artifact/:id | GET /api/artifact/:id/version/:v
+GET /api/artifact/:id/related | POST /api/artifacts/search
+
+### MCP Tools (worker)
+get_task_context(task_id) → TaskContext
+get_artifact(artifact_id) → Artifact
+get_artifact_version(artifact_id, version) → Artifact
+get_related_artifacts(artifact_id) → ArtifactRelation[]
+search_project_artifacts(project_id, query, types?) → ArtifactSummary[]
+
+### Worker Instructions
+1. get_task_context first | 2. get_artifact(planArtifact) if present | 3. get_related_artifacts optional | 4. implement
+
+## Database (SQLite)
+`ralphx.db` (dev) | app data dir (prod)
+Migrations: `infrastructure/sqlite/migrations.rs`, auto-run on startup, version in `schema_version`
+
+### Key Tables
+tasks, projects, status_transitions, task_qa, reviews, ideation_sessions, task_proposals,
+proposal_dependencies, chat_messages, chat_conversations(Ph15), agent_runs(Ph15),
+ideation_settings(Ph16, single-row), task_dependencies, workflows, artifacts, artifact_buckets,
+research_processes, methodologies
+
+## Build & Run
+```bash
+npm run tauri dev   # from root
+cargo build|run     # from src-tauri
+npm run tauri build # prod
 ```
 
-**Task entity (`entities/task.rs`):**
-```rust
-pub struct Task {
-    pub id: TaskId,
-    pub source_proposal_id: Option<TaskProposalId>, // Traceability to proposal
-    pub plan_artifact_id: Option<ArtifactId>,       // Traceability to plan
-    // ... other fields
-}
+## Linting (ALWAYS before commit)
+```bash
+cargo clippy --all-targets --all-features -- -D warnings  # REQUIRED
+cargo fmt --check  # verify
+cargo fmt          # auto-format
+cargo check        # type check
 ```
+Allowed clippy: derivable_impls, redundant_closure, too_many_arguments, type_complexity,
+unnecessary_literal_unwrap, bool_comparison, while_let_loop, useless_vec, let_and_return,
+unwrap_or_default, unnecessary_map_or
 
-### HTTP Endpoints for MCP Proxy
-
-**Location:** `application/http_server.rs`
-
-All plan artifact endpoints are exposed on port 3847 for the MCP server to proxy:
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/create_plan_artifact` | POST | Create new plan artifact (Specification type, prd-library bucket) |
-| `/api/update_plan_artifact` | POST | Update plan content (creates new version with previous_version_id) |
-| `/api/get_plan_artifact/:id` | GET | Fetch plan artifact by ID |
-| `/api/link_proposals_to_plan` | POST | Link proposal IDs to plan artifact |
-| `/api/get_session_plan/:session_id` | GET | Get current session's plan artifact |
-| `/api/get_ideation_settings` | GET | Get ideation settings |
-| `/api/update_ideation_settings` | POST | Update ideation settings |
-
-### MCP Tools
-
-The MCP server (ralphx-mcp-server) exposes plan tools to `orchestrator-ideation` agent:
-
-- `create_plan_artifact(session_id, title, content)` - Creates Specification artifact in prd-library bucket
-- `update_plan_artifact(artifact_id, content)` - Updates plan, increments version
-- `get_plan_artifact(artifact_id)` - Retrieves plan content
-- `link_proposals_to_plan(proposal_ids, artifact_id)` - Links proposals to plan
-- `get_session_plan(session_id)` - Gets session's current plan
-
-### Proactive Sync ArtifactFlow
-
-**Flow name:** `plan_updated_sync`
-**Trigger:** `artifact_updated` event on `Specification` type
-
-**Steps:**
-1. `find_linked_proposals` - Query proposals with matching `plan_artifact_id`
-2. Emit `plan:proposals_may_need_update` event with:
-   - `artifact_id` - Updated plan ID
-   - `proposal_ids` - Array of affected proposal IDs
-
-**Frontend handling:**
-- Subscribe to `plan:proposals_may_need_update` event
-- Show notification: "Plan updated. N proposals may need revision. [Review]"
-- Highlight affected proposals
-- Provide [Undo] button to revert auto-updates
-
-### Methodology Integration
-
-**Infrastructure (no specific configs yet):**
-
-The system provides generic infrastructure for methodologies to define plan configurations:
-
-```rust
-// domain/entities/methodology.rs
-pub struct MethodologyPlanArtifactConfig {
-    pub artifact_type: String,  // e.g., "Specification", "TechnicalDesign"
-    pub bucket_id: String,       // e.g., "prd-library", "design-docs"
-}
-
-pub struct MethodologyPlanTemplate {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub template_content: String,
-}
-
-pub struct MethodologyExtension {
-    pub plan_artifact_config: Option<MethodologyPlanArtifactConfig>,
-    pub plan_templates: Vec<MethodologyPlanTemplate>,
-    // ... other fields
-}
+## Testing
+```bash
+cargo test
+cargo test -- --nocapture
+cargo test test_name
+cargo test --test state_machine_flows
 ```
+TDD mandatory | Use in-memory repos for unit tests | Use tempfile for integration tests
 
-**Default behavior:**
-- When no methodology active: use `Specification` type, `prd-library` bucket
-- When methodology active: use methodology's config if provided, else default
-- Template selector only shown when methodology provides templates
-
-### Task Traceability
-
-When a proposal is applied to create a task:
-
-```rust
-// application/apply_service.rs
-pub async fn apply_proposal(&self, proposal_id: &TaskProposalId) -> AppResult<Task> {
-    let proposal = self.proposal_repo.get_by_id(proposal_id).await?;
-
-    let task = Task {
-        source_proposal_id: Some(proposal.id.clone()),           // Trace to proposal
-        plan_artifact_id: proposal.plan_artifact_id.clone(),     // Trace to plan
-        // ... other fields
-    };
-
-    self.task_repo.create(task).await
-}
-```
-
-This enables workers to fetch plan context during task execution (Phase 17).
-
-### Database Migration
-
-**Location:** `infrastructure/sqlite/migrations.rs`
-
-```sql
--- Add plan fields to ideation entities
-ALTER TABLE ideation_sessions ADD COLUMN plan_artifact_id TEXT;
-ALTER TABLE task_proposals ADD COLUMN plan_artifact_id TEXT;
-ALTER TABLE task_proposals ADD COLUMN plan_version_at_creation INTEGER;
-
--- Add traceability fields to tasks
-ALTER TABLE tasks ADD COLUMN source_proposal_id TEXT;
-ALTER TABLE tasks ADD COLUMN plan_artifact_id TEXT;
-
--- Create ideation_settings table (single-row pattern)
-CREATE TABLE IF NOT EXISTS ideation_settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    plan_mode TEXT NOT NULL DEFAULT 'optional',
-    require_plan_approval INTEGER NOT NULL DEFAULT 0,
-    suggest_plans_for_complex INTEGER NOT NULL DEFAULT 1,
-    auto_link_to_session_plan INTEGER NOT NULL DEFAULT 1
-);
-
--- Insert default settings
-INSERT OR IGNORE INTO ideation_settings (id, plan_mode) VALUES (1, 'optional');
-```
-
----
-
-## Worker Artifact Context System (Phase 17)
-
-### Overview
-
-Workers can dynamically fetch and use artifacts linked to the task being executed. This provides implementation plans, research documents, and related artifacts as context before beginning work.
-
-### TaskContext Entities
-
-**Location:** `domain/entities/task_context.rs`
-
-```rust
-pub struct TaskContext {
-    pub task: Task,
-    pub source_proposal: Option<TaskProposalSummary>,
-    pub plan_artifact: Option<ArtifactSummary>,
-    pub related_artifacts: Vec<ArtifactSummary>,
-    pub context_hints: Vec<String>,
-}
-
-pub struct TaskProposalSummary {
-    pub id: TaskProposalId,
-    pub title: String,
-    pub description: Option<String>,
-    pub acceptance_criteria: Vec<String>,
-    pub implementation_notes: Option<String>,
-    pub plan_version_at_creation: Option<u32>,
-}
-
-pub struct ArtifactSummary {
-    pub id: ArtifactId,
-    pub title: String,
-    pub artifact_type: String,
-    pub current_version: u32,
-    pub content_preview: String, // 500-char preview
-}
-```
-
-### TaskContextService
-
-**Location:** `application/task_context_service.rs`
-
-Aggregates task context by:
-1. Fetching task by ID
-2. If `source_proposal_id` present, fetch proposal and create summary
-3. If `plan_artifact_id` present, fetch artifact and create summary with 500-char preview
-4. Fetch related artifacts via `ArtifactRelation`
-5. Generate context hints based on available context
-6. Return `TaskContext`
-
-```rust
-pub struct TaskContextService {
-    task_repo: Arc<dyn TaskRepository>,
-    proposal_repo: Arc<dyn TaskProposalRepository>,
-    artifact_repo: Arc<dyn ArtifactRepository>,
-}
-
-impl TaskContextService {
-    pub async fn get_task_context(&self, task_id: &TaskId) -> AppResult<TaskContext> {
-        // Aggregates context from multiple repositories
-    }
-}
-```
-
-### HTTP Endpoints for MCP Proxy
-
-**Location:** `application/http_server.rs`
-
-Exposed on port 3847 for MCP server:
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/task_context/:task_id` | GET | Get full task context (TaskContext) |
-| `/api/artifact/:artifact_id` | GET | Get full artifact content by ID |
-| `/api/artifact/:artifact_id/version/:version` | GET | Get specific version of artifact |
-| `/api/artifact/:artifact_id/related` | GET | Get related artifacts (ArtifactRelation[]) |
-| `/api/artifacts/search` | POST | Search artifacts by query and type |
-
-### MCP Tools for Workers
-
-**Location:** `ralphx-mcp-server/src/tools/worker-context-tools.ts`
-
-5 tools scoped to `worker` agent type:
-
-| Tool | Parameters | Returns |
-|------|-----------|---------|
-| `get_task_context` | task_id | TaskContext (task, proposal summary, plan preview, related artifacts) |
-| `get_artifact` | artifact_id | Artifact (full content) |
-| `get_artifact_version` | artifact_id, version | Artifact (specific version) |
-| `get_related_artifacts` | artifact_id, relation_types? | ArtifactRelation[] |
-| `search_project_artifacts` | project_id, query, artifact_types? | ArtifactSummary[] |
-
-### Tauri Commands
-
-**Location:** `commands/task_context_commands.rs`
-
-Frontend-facing commands:
-
-```rust
-#[tauri::command]
-pub async fn get_task_context(task_id: String, state: State<'_, AppState>) -> Result<TaskContext, AppError>;
-
-#[tauri::command]
-pub async fn get_artifact_full(artifact_id: String, state: State<'_, AppState>) -> Result<Artifact, AppError>;
-
-#[tauri::command]
-pub async fn get_artifact_version(artifact_id: String, version: u32, state: State<'_, AppState>) -> Result<Artifact, AppError>;
-
-#[tauri::command]
-pub async fn get_related_artifacts(artifact_id: String, state: State<'_, AppState>) -> Result<Vec<ArtifactRelation>, AppError>;
-
-#[tauri::command]
-pub async fn search_artifacts(
-    project_id: String,
-    query: String,
-    artifact_types: Option<Vec<String>>,
-    state: State<'_, AppState>
-) -> Result<Vec<ArtifactSummary>, AppError>;
-```
-
-### Worker Agent Integration
-
-**Location:** `ralphx-plugin/agents/worker.md`
-
-Worker prompt instructs:
-
-1. **Step 1: Get Task Context** - Always call `get_task_context` first
-2. **Step 2: Read Implementation Plan** - If `plan_artifact` exists, fetch with `get_artifact`
-3. **Step 3: Fetch Related Artifacts** - Optional for complex tasks
-4. **Step 4: Begin Implementation** - Start with full context
-
-### Key Architecture Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **Manual context fetch** | Workers have agency to decide relevance; keeps initial prompt lean |
-| **500-char preview** | Prevents context bloat; full content requires explicit `get_artifact` call |
-| **No caching for MVP** | Keep implementation simple; fetches infrequent; can add later |
-| **5 MCP tools** | Covers all context needs without overwhelming worker |
-| **Worker calls first** | Prompt enforces `get_task_context` as first step |
-
----
+## Conventions
+- Types: PascalCase | Functions: snake_case | Files: snake_case | Modules: snake_case
+- Enums: `#[serde(rename_all="snake_case")]` | JSON: snake_case | Dates: RFC3339
+- All repos: async | Use `#[async_trait]` | Return `AppResult<T>` | `?` for propagation
