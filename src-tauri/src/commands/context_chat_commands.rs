@@ -6,9 +6,12 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
+    AgentRun, ChatContextType, ChatConversation, ChatConversationId,
     IdeationSessionId, ProjectId, TaskId,
 };
+
+// Use shared ChatMessageResponse
+pub use super::chat_responses::ChatMessageResponse;
 
 /// Input for sending a message in a context-aware conversation
 #[derive(Debug, Deserialize)]
@@ -79,23 +82,6 @@ impl From<AgentRun> for AgentRunResponse {
     }
 }
 
-/// Response for ChatMessage
-#[derive(Debug, Serialize)]
-pub struct ChatMessageResponse {
-    pub id: String,
-    pub session_id: Option<String>,
-    pub project_id: Option<String>,
-    pub task_id: Option<String>,
-    pub conversation_id: Option<String>,
-    pub role: String,
-    pub content: String,
-    pub metadata: Option<String>,
-    pub parent_message_id: Option<String>,
-    pub tool_calls: Option<String>,
-    pub content_blocks: Option<String>,
-    pub created_at: String,
-}
-
 /// Response for send_context_message
 #[derive(Debug, Serialize)]
 pub struct SendContextMessageResponse {
@@ -112,25 +98,6 @@ pub struct ToolCallResponse {
     pub name: String,
     pub arguments: serde_json::Value,
     pub result: Option<serde_json::Value>,
-}
-
-impl From<ChatMessage> for ChatMessageResponse {
-    fn from(message: ChatMessage) -> Self {
-        Self {
-            id: message.id.as_str().to_string(),
-            session_id: message.session_id.map(|id| id.as_str().to_string()),
-            project_id: message.project_id.map(|id| id.as_str().to_string()),
-            task_id: message.task_id.map(|id| id.as_str().to_string()),
-            conversation_id: message.conversation_id.map(|id| id.as_str().to_string()),
-            role: message.role.to_string(),
-            content: message.content,
-            metadata: message.metadata,
-            parent_message_id: message.parent_message_id.map(|id| id.as_str().to_string()),
-            tool_calls: message.tool_calls,
-            content_blocks: message.content_blocks,
-            created_at: message.created_at.to_rfc3339(),
-        }
-    }
 }
 
 /// Response for conversation with messages
