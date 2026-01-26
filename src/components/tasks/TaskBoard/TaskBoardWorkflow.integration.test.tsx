@@ -151,7 +151,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       vi.mocked(api.workflows.get).mockImplementation(async (id) =>
         workflowsWithDefault.find((w) => w.id === id) || null
       );
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -176,7 +176,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
     it("default badge shows for default workflow", async () => {
       vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([defaultRalphXWorkflow]);
       vi.mocked(api.workflows.get).mockResolvedValue(defaultRalphXWorkflow);
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -194,7 +194,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
     it("renders 7 columns for RalphX Default workflow", async () => {
       vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([defaultRalphXWorkflow]);
       vi.mocked(api.workflows.get).mockResolvedValue(defaultRalphXWorkflow);
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -215,7 +215,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       const customAsDefault = { ...custom5ColumnWorkflow, is_default: true };
       vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([customAsDefault]);
       vi.mocked(api.workflows.get).mockResolvedValue(customAsDefault);
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -235,7 +235,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       vi.mocked(api.workflows.get).mockImplementation(async (id) =>
         workflows.find((w) => w.id === id) || null
       );
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -270,7 +270,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       vi.mocked(api.workflows.get).mockImplementation(async (id) =>
         workflows.find((w) => w.id === id) || null
       );
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -288,7 +288,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       // Only default workflow remains after deletion
       vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([defaultRalphXWorkflow]);
       vi.mocked(api.workflows.get).mockResolvedValue(defaultRalphXWorkflow);
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -313,7 +313,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       const workflows = [defaultRalphXWorkflow, custom5ColumnWorkflow];
       vi.mocked(workflowsApi.getWorkflows).mockResolvedValue(workflows);
       vi.mocked(api.workflows.get).mockResolvedValue(defaultRalphXWorkflow);
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 
@@ -336,7 +336,7 @@ describe("Workflow CRUD and Column Rendering Integration", () => {
       vi.mocked(api.workflows.get).mockImplementation(async (id) =>
         workflows.find((w) => w.id === id) || null
       );
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 

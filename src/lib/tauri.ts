@@ -5,6 +5,8 @@ import { z } from "zod";
 import {
   TaskSchema,
   TaskListSchema,
+  TaskListResponseSchema,
+  StatusTransitionSchema,
   type CreateTask,
   type UpdateTask,
 } from "@/types/task";
@@ -341,12 +343,36 @@ export const api = {
 
   tasks: {
     /**
-     * List all tasks for a project
-     * @param projectId The project ID
-     * @returns Array of tasks
+     * List all tasks for a project with optional pagination and filtering
+     * @param params Parameters for listing tasks
+     * @param params.projectId The project ID
+     * @param params.status Optional status filter
+     * @param params.offset Optional pagination offset (default 0)
+     * @param params.limit Optional pagination limit (default 20)
+     * @param params.includeArchived Optional flag to include archived tasks (default false)
+     * @returns Paginated task list response
      */
-    list: (projectId: string) =>
-      typedInvoke("list_tasks", { projectId }, TaskListSchema),
+    list: (params: {
+      projectId: string;
+      status?: string;
+      offset?: number;
+      limit?: number;
+      includeArchived?: boolean;
+    }) => typedInvoke("list_tasks", params, TaskListResponseSchema),
+
+    /**
+     * Search tasks by query string
+     * @param projectId The project ID
+     * @param query The search query (searches title and description)
+     * @param includeArchived Optional flag to include archived tasks (default false)
+     * @returns Array of matching tasks
+     */
+    search: (projectId: string, query: string, includeArchived?: boolean) =>
+      typedInvoke(
+        "search_tasks",
+        { projectId, query, includeArchived },
+        TaskListSchema
+      ),
 
     /**
      * Get a single task by ID
@@ -379,6 +405,50 @@ export const api = {
      */
     delete: (taskId: string) =>
       typedInvoke("delete_task", { taskId }, z.boolean()),
+
+    /**
+     * Archive a task (soft delete)
+     * @param taskId The task ID
+     * @returns The archived task
+     */
+    archive: (taskId: string) =>
+      typedInvoke("archive_task", { taskId }, TaskSchema),
+
+    /**
+     * Restore an archived task
+     * @param taskId The task ID
+     * @returns The restored task
+     */
+    restore: (taskId: string) =>
+      typedInvoke("restore_task", { taskId }, TaskSchema),
+
+    /**
+     * Permanently delete a task (only works on archived tasks)
+     * @param taskId The task ID
+     * @returns void on success
+     */
+    permanentlyDelete: (taskId: string) =>
+      typedInvoke("permanently_delete_task", { taskId }, z.void()),
+
+    /**
+     * Get count of archived tasks for a project
+     * @param projectId The project ID
+     * @returns Count of archived tasks
+     */
+    getArchivedCount: (projectId: string) =>
+      typedInvoke("get_archived_count", { projectId }, z.number()),
+
+    /**
+     * Get valid status transitions for a task
+     * @param taskId The task ID
+     * @returns Array of valid status transitions
+     */
+    getValidTransitions: (taskId: string) =>
+      typedInvoke(
+        "get_valid_transitions",
+        { taskId },
+        z.array(StatusTransitionSchema)
+      ),
 
     /**
      * Move a task to a new status

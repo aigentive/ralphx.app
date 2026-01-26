@@ -55,7 +55,12 @@ describe("useTasks", () => {
       createMockTask({ id: "task-1", title: "Task 1" }),
       createMockTask({ id: "task-2", title: "Task 2" }),
     ];
-    vi.mocked(api.tasks.list).mockResolvedValue(mockTasks);
+    vi.mocked(api.tasks.list).mockResolvedValue({
+      tasks: mockTasks,
+      total: 2,
+      hasMore: false,
+      offset: 0,
+    });
 
     const { result } = renderHook(() => useTasks("project-123"), { wrapper });
 
@@ -66,15 +71,15 @@ describe("useTasks", () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(api.tasks.list).toHaveBeenCalledWith("project-123");
+    expect(api.tasks.list).toHaveBeenCalledWith({ projectId: "project-123" });
     expect(result.current.data).toEqual(mockTasks);
     expect(result.current.data).toHaveLength(2);
   });
 
   it("should handle loading state", async () => {
     // Create a promise that we can control
-    let resolvePromise: (value: Task[]) => void;
-    const pendingPromise = new Promise<Task[]>((resolve) => {
+    let resolvePromise: (value: { tasks: Task[]; total: number; hasMore: boolean; offset: number }) => void;
+    const pendingPromise = new Promise<{ tasks: Task[]; total: number; hasMore: boolean; offset: number }>((resolve) => {
       resolvePromise = resolve;
     });
     vi.mocked(api.tasks.list).mockReturnValue(pendingPromise);
@@ -86,7 +91,7 @@ describe("useTasks", () => {
     expect(result.current.data).toBeUndefined();
 
     // Resolve the promise
-    resolvePromise!([createMockTask()]);
+    resolvePromise!({ tasks: [createMockTask()], total: 1, hasMore: false, offset: 0 });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -109,7 +114,7 @@ describe("useTasks", () => {
   });
 
   it("should use projectId in queryKey", async () => {
-    vi.mocked(api.tasks.list).mockResolvedValue([]);
+    vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
     const { result: result1 } = renderHook(() => useTasks("project-a"), {
       wrapper,
@@ -124,13 +129,13 @@ describe("useTasks", () => {
     });
 
     // Both projects should be fetched separately
-    expect(api.tasks.list).toHaveBeenCalledWith("project-a");
-    expect(api.tasks.list).toHaveBeenCalledWith("project-b");
+    expect(api.tasks.list).toHaveBeenCalledWith({ projectId: "project-a" });
+    expect(api.tasks.list).toHaveBeenCalledWith({ projectId: "project-b" });
     expect(api.tasks.list).toHaveBeenCalledTimes(2);
   });
 
   it("should return empty array when no tasks exist", async () => {
-    vi.mocked(api.tasks.list).mockResolvedValue([]);
+    vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
 
     const { result } = renderHook(() => useTasks("empty-project"), { wrapper });
 
@@ -143,7 +148,7 @@ describe("useTasks", () => {
 
   it("should not refetch on every render", async () => {
     const mockTasks = [createMockTask()];
-    vi.mocked(api.tasks.list).mockResolvedValue(mockTasks);
+    vi.mocked(api.tasks.list).mockResolvedValue({ tasks: mockTasks, total: 1, hasMore: false, offset: 0 });
 
     const { result, rerender } = renderHook(() => useTasks("project-1"), {
       wrapper,

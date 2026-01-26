@@ -156,30 +156,42 @@ describe("api.tasks", () => {
   });
 
   describe("list", () => {
-    it("should call list_tasks with projectId", async () => {
-      mockInvoke.mockResolvedValue([createMockTask()]);
+    it("should call list_tasks with params object", async () => {
+      mockInvoke.mockResolvedValue({
+        tasks: [createMockTask()],
+        total: 1,
+        hasMore: false,
+        offset: 0,
+      });
 
-      await api.tasks.list("project-1");
+      await api.tasks.list({ projectId: "project-1" });
 
       expect(mockInvoke).toHaveBeenCalledWith("list_tasks", {
         projectId: "project-1",
       });
     });
 
-    it("should return array of tasks", async () => {
+    it("should return paginated task response", async () => {
       const tasks = [createMockTask({ id: "t1" }), createMockTask({ id: "t2" })];
-      mockInvoke.mockResolvedValue(tasks);
+      mockInvoke.mockResolvedValue({
+        tasks,
+        total: 2,
+        hasMore: false,
+        offset: 0,
+      });
 
-      const result = await api.tasks.list("project-1");
+      const result = await api.tasks.list({ projectId: "project-1" });
 
-      expect(result).toHaveLength(2);
-      expect(result[0]?.id).toBe("t1");
+      expect(result.tasks).toHaveLength(2);
+      expect(result.tasks[0]?.id).toBe("t1");
+      expect(result.total).toBe(2);
+      expect(result.hasMore).toBe(false);
     });
 
-    it("should validate task schema", async () => {
-      mockInvoke.mockResolvedValue([{ invalid: "task" }]);
+    it("should validate task list response schema", async () => {
+      mockInvoke.mockResolvedValue({ invalid: "response" });
 
-      await expect(api.tasks.list("project-1")).rejects.toThrow();
+      await expect(api.tasks.list({ projectId: "project-1" })).rejects.toThrow();
     });
   });
 

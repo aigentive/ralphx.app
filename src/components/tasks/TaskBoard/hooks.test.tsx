@@ -60,7 +60,7 @@ describe("useTaskBoard", () => {
     });
 
     it("should return isLoading false when data is loaded", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       const { result } = renderHook(
@@ -76,7 +76,7 @@ describe("useTaskBoard", () => {
 
   describe("columns computation", () => {
     it("should return 7 columns from default workflow", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       const { result } = renderHook(
@@ -95,7 +95,7 @@ describe("useTaskBoard", () => {
         createMockTask({ id: "t2", internalStatus: "ready" }),
         createMockTask({ id: "t3", internalStatus: "executing" }),
       ];
-      vi.mocked(api.tasks.list).mockResolvedValue(tasks);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       const { result } = renderHook(
@@ -128,7 +128,7 @@ describe("useTaskBoard", () => {
         createMockTask({ id: "t2", internalStatus: "backlog", priority: 0 }),
         createMockTask({ id: "t3", internalStatus: "backlog", priority: 1 }),
       ];
-      vi.mocked(api.tasks.list).mockResolvedValue(tasks);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       const { result } = renderHook(
@@ -152,7 +152,7 @@ describe("useTaskBoard", () => {
 
   describe("onDragEnd", () => {
     it("should provide onDragEnd callback", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       const { result } = renderHook(
@@ -169,7 +169,7 @@ describe("useTaskBoard", () => {
 
     it("should not call move when dropped on same column", async () => {
       const tasks = [createMockTask({ id: "t1", internalStatus: "backlog" })];
-      vi.mocked(api.tasks.list).mockResolvedValue(tasks);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
       vi.mocked(api.tasks.move).mockResolvedValue(tasks[0]!);
 
@@ -198,7 +198,7 @@ describe("useTaskBoard", () => {
 
     it("should call move mutation when dropped on different column", async () => {
       const tasks = [createMockTask({ id: "t1", internalStatus: "backlog" })];
-      vi.mocked(api.tasks.list).mockResolvedValue(tasks);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks, total: tasks.length, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
       vi.mocked(api.tasks.move).mockResolvedValue({
         ...tasks[0]!,
@@ -230,7 +230,7 @@ describe("useTaskBoard", () => {
     });
 
     it("should not call move when over is null", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockResolvedValue(defaultWorkflow);
 
       const { result } = renderHook(
@@ -272,7 +272,7 @@ describe("useTaskBoard", () => {
     });
 
     it("should return error when workflow fetch fails", async () => {
-      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.tasks.list).mockResolvedValue({ tasks: [], total: 0, hasMore: false, offset: 0 });
       vi.mocked(api.workflows.get).mockRejectedValue(
         new Error("Workflow not found")
       );

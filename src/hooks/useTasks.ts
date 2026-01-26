@@ -40,6 +40,9 @@ export const taskKeys = {
 export function useTasks(projectId: string) {
   return useQuery<Task[], Error>({
     queryKey: taskKeys.list(projectId),
-    queryFn: () => api.tasks.list(projectId),
+    queryFn: async () => {
+      const response = await api.tasks.list({ projectId });
+      return response.tasks;
+    },
   });
 }
