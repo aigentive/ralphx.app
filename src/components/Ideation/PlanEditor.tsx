@@ -10,6 +10,7 @@
 import { useState, useCallback } from "react";
 import { Save, X, Eye, Edit2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -104,6 +105,37 @@ const markdownComponents = {
     <h3 className="text-lg font-semibold mb-2 mt-3" {...props}>
       {children}
     </h3>
+  ),
+  // Table support (GFM)
+  table: ({ children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
+    <div className="my-3 overflow-x-auto rounded-lg border border-white/[0.06]">
+      <table className="w-full text-sm border-collapse" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <thead className="bg-white/[0.02]" {...props}>
+      {children}
+    </thead>
+  ),
+  tbody: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <tbody {...props}>{children}</tbody>
+  ),
+  tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
+    <tr className="border-b border-white/[0.06] last:border-b-0" {...props}>
+      {children}
+    </tr>
+  ),
+  th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+    <th className="px-3 py-2 text-left text-xs font-medium text-[var(--text-primary)] uppercase tracking-wider" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+    <td className="px-3 py-2 text-[var(--text-secondary)]" {...props}>
+      {children}
+    </td>
   ),
 };
 
@@ -274,7 +306,7 @@ export function PlanEditor({ plan, onSave, onCancel, isNewPlan = false }: PlanEd
           // Preview mode
           <div className="prose prose-sm max-w-none text-[var(--text-primary)] min-h-[400px]">
             {content ? (
-              <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{content}</ReactMarkdown>
             ) : (
               <p className="text-[var(--text-tertiary)] italic">No content to preview</p>
             )}
