@@ -1,8 +1,11 @@
 export { ApplyModal } from "./ApplyModal";
 export { DependencyVisualization } from "./DependencyVisualization";
+export { ConversationEmptyState, ProposalsEmptyState } from "./EmptyStates";
 export { IdeationView } from "./IdeationView";
 export { PriorityBadge } from "./PriorityBadge";
 export { ProposalCard } from "./ProposalCard";
 export { ProposalEditModal } from "./ProposalEditModal";
 export { ProposalList } from "./ProposalList";
+export { ProposalsToolbar } from "./ProposalsToolbar";
+export { SessionBrowser } from "./SessionBrowser";
 export { SessionSelector } from "./SessionSelector";

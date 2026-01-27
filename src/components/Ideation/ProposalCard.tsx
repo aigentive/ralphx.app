@@ -1,119 +1,65 @@
 /**
- * ProposalCard - Task proposal card for the ideation view
+ * ProposalCard - Card displaying a task proposal
  *
  * Features:
- * - Checkbox for selection
- * - Title and description preview
- * - Priority badge (Critical=red, High=orange, Medium=yellow, Low=gray)
- * - Category badge
- * - Dependency info (depends on X, blocks Y)
- * - Edit and Remove action buttons
- * - Selected state (orange border)
- * - Modified indicator
+ * - Selection checkbox with orange accent
+ * - Priority gradient background
+ * - Edit/Remove actions on hover
+ * - Category and modification badges
+ * - Historical plan link when applicable
  */
 
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { FileEdit, Trash2, Eye } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { TaskProposal, Priority } from "@/types/ideation";
+
+// ============================================================================
+// Priority Config
+// ============================================================================
+
+const PRIORITY_CONFIG: Record<Priority, { gradient: string; glow: string; label: string }> = {
+  critical: {
+    gradient: "from-red-500/20 to-red-600/10",
+    glow: "shadow-[0_0_12px_rgba(239,68,68,0.1)]",
+    label: "Critical"
+  },
+  high: {
+    gradient: "from-[#ff6b35]/20 to-[#ff6b35]/10",
+    glow: "shadow-[0_0_12px_rgba(255,107,53,0.1)]",
+    label: "High"
+  },
+  medium: {
+    gradient: "from-amber-500/15 to-amber-600/5",
+    glow: "",
+    label: "Medium"
+  },
+  low: {
+    gradient: "from-slate-500/10 to-slate-600/5",
+    glow: "",
+    label: "Low"
+  },
+};
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface ProposalCardProps {
-  /** The proposal to display */
   proposal: TaskProposal;
-  /** Callback when checkbox is toggled */
   onSelect: (proposalId: string) => void;
-  /** Callback when edit button is clicked */
   onEdit: (proposalId: string) => void;
-  /** Callback when remove button is clicked */
   onRemove: (proposalId: string) => void;
-  /** Number of proposals this depends on */
-  dependsOnCount?: number;
-  /** Number of proposals this blocks */
-  blocksCount?: number;
-  /** Show complexity indicator */
-  showComplexity?: boolean;
-  /** Current version of the linked plan artifact (if any) */
+  isHighlighted?: boolean;
   currentPlanVersion?: number;
-  /** Callback when "View plan as of creation" link is clicked */
   onViewHistoricalPlan?: (artifactId: string, version: number) => void;
-}
-
-// ============================================================================
-// Priority Configuration
-// ============================================================================
-
-const PRIORITY_COLORS: Record<Priority, string> = {
-  critical: "#ef4444",
-  high: "#ff6b35",
-  medium: "#ffa94d",
-  low: "#6b7280",
-};
-
-const PRIORITY_LABELS: Record<Priority, string> = {
-  critical: "Critical",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-};
-
-// ============================================================================
-// Icons
-// ============================================================================
-
-function EditIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M10.5 1.5L12.5 3.5L4.5 11.5L1.5 12.5L2.5 9.5L10.5 1.5Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RemoveIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path
-        d="M11 3L3 11M3 3L11 11"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function DependencyIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path
-        d="M6 2V10M6 2L3 5M6 2L9 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function BlocksIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path
-        d="M6 10V2M6 10L3 7M6 10L9 7"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 // ============================================================================
@@ -125,211 +71,137 @@ export function ProposalCard({
   onSelect,
   onEdit,
   onRemove,
-  dependsOnCount,
-  blocksCount,
-  showComplexity = false,
+  isHighlighted = false,
   currentPlanVersion,
   onViewHistoricalPlan,
 }: ProposalCardProps) {
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
   const isSelected = proposal.selected;
-  const showDependencyInfo =
-    (dependsOnCount !== undefined && dependsOnCount > 0) ||
-    (blocksCount !== undefined && blocksCount > 0);
+  const config = PRIORITY_CONFIG[effectivePriority];
 
-  // Check if we should show the historical plan link
   const showHistoricalPlanLink =
     proposal.planArtifactId &&
     proposal.planVersionAtCreation &&
     currentPlanVersion &&
     proposal.planVersionAtCreation !== currentPlanVersion;
 
-  const handleCheckboxChange = () => {
-    onSelect(proposal.id);
-  };
-
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onEdit(proposal.id);
-  };
-
-  const handleRemove = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onRemove(proposal.id);
-  };
-
-  const handleViewHistoricalPlan = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleViewHistoricalPlan = () => {
     if (proposal.planArtifactId && proposal.planVersionAtCreation && onViewHistoricalPlan) {
       onViewHistoricalPlan(proposal.planArtifactId, proposal.planVersionAtCreation);
     }
   };
 
   return (
-    <article
+    <div
       data-testid={`proposal-card-${proposal.id}`}
-      role="article"
-      aria-labelledby={`proposal-title-${proposal.id}`}
-      className="group relative p-3 rounded-lg border transition-all"
-      style={{
-        backgroundColor: "var(--bg-elevated)",
-        borderColor: isSelected ? "#ff6b35" : "var(--border-subtle)",
-        borderWidth: isSelected ? "2px" : "1px",
-      }}
+      className={cn(
+        "group relative p-3 rounded-lg transition-all duration-200 cursor-pointer",
+        "bg-gradient-to-br",
+        config.gradient,
+        "border",
+        isHighlighted
+          ? "border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.15)]"
+          : isSelected
+            ? "border-[#ff6b35]/40 shadow-[0_0_20px_rgba(255,107,53,0.1)]"
+            : "border-white/[0.06] hover:border-white/[0.1] hover:shadow-md hover:shadow-black/15",
+        config.glow
+      )}
+      onClick={() => onSelect(proposal.id)}
     >
-      <div className="flex items-start gap-3">
+      {/* Selection indicator bar */}
+      <div className={cn(
+        "absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-all duration-200",
+        isSelected ? "bg-[#ff6b35]" : "bg-transparent"
+      )} />
+
+      <div className="flex items-start gap-2 pl-1.5">
         {/* Checkbox */}
-        <div className="pt-0.5">
-          <input
-            type="checkbox"
-            data-testid="proposal-checkbox"
+        <div className="pt-px">
+          <Checkbox
             checked={isSelected}
-            onChange={handleCheckboxChange}
+            onCheckedChange={() => onSelect(proposal.id)}
             aria-label={`Select ${proposal.title}`}
-            className="w-4 h-4 rounded border cursor-pointer"
-            style={{
-              accentColor: "#ff6b35",
-            }}
+            className="h-3.5 w-3.5 data-[state=checked]:bg-[#ff6b35] data-[state=checked]:border-[#ff6b35] border-white/20"
           />
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Title row */}
-          <div className="flex items-start justify-between gap-2">
-            <h3
-              id={`proposal-title-${proposal.id}`}
-              data-testid="proposal-title"
-              className="font-medium leading-tight"
-              style={{ color: "var(--text-primary)" }}
-            >
+          <div className="flex items-start justify-between gap-1.5">
+            <h3 className="text-xs font-medium text-[var(--text-primary)] leading-snug">
               {proposal.title}
             </h3>
 
-            {/* Action buttons (visible on hover) */}
-            <div
-              data-testid="proposal-actions"
-              className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <button
-                data-testid="proposal-edit"
-                onClick={handleEdit}
-                aria-label="Edit proposal"
-                className="p-1 rounded hover:bg-white/10 transition-colors"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                <EditIcon />
-              </button>
-              <button
-                data-testid="proposal-remove"
-                onClick={handleRemove}
-                aria-label="Remove proposal"
-                className="p-1 rounded hover:bg-white/10 transition-colors"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                <RemoveIcon />
-              </button>
+            {/* Actions */}
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 hover:bg-white/[0.06]"
+                      onClick={(e) => { e.stopPropagation(); onEdit(proposal.id); }}
+                    >
+                      <FileEdit className="w-3 h-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 hover:bg-red-500/10 hover:text-red-400"
+                      onClick={(e) => { e.stopPropagation(); onRemove(proposal.id); }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Remove</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
 
-          {/* Description */}
-          <p
-            data-testid="proposal-description"
-            className="text-sm mt-1 line-clamp-2"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <p className="text-[11px] text-[var(--text-secondary)] mt-1 line-clamp-2 leading-relaxed">
             {proposal.description || "No description"}
           </p>
 
-          {/* Badges row */}
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            {/* Priority badge */}
-            <span
-              data-testid="priority-badge"
-              className="px-2 py-0.5 rounded text-xs font-medium"
-              style={{
-                backgroundColor: PRIORITY_COLORS[effectivePriority],
-                color: "white",
-              }}
-            >
-              {PRIORITY_LABELS[effectivePriority]}
+          {/* Tags */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            <span className={cn(
+              "px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wider",
+              effectivePriority === "critical" && "bg-red-500/20 text-red-400",
+              effectivePriority === "high" && "bg-[#ff6b35]/20 text-[#ff6b35]",
+              effectivePriority === "medium" && "bg-amber-500/20 text-amber-400",
+              effectivePriority === "low" && "bg-slate-500/20 text-slate-400"
+            )}>
+              {config.label}
             </span>
-
-            {/* Category badge */}
-            <span
-              data-testid="category-badge"
-              className="px-2 py-0.5 rounded text-xs"
-              style={{
-                backgroundColor: "var(--bg-hover)",
-                color: "var(--text-secondary)",
-              }}
-            >
+            <span className="px-1.5 py-px rounded text-[9px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
               {proposal.category}
             </span>
-
-            {/* Complexity indicator */}
-            {showComplexity && (
-              <span
-                data-testid="complexity-indicator"
-                className="text-xs"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {proposal.estimatedComplexity}
-              </span>
-            )}
-
-            {/* Modified indicator */}
             {proposal.userModified && (
-              <span
-                data-testid="modified-indicator"
-                className="px-1.5 py-0.5 rounded text-xs italic"
-                style={{
-                  backgroundColor: "var(--bg-surface)",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <span className="px-1.5 py-px rounded text-[9px] font-medium bg-purple-500/20 text-purple-400 italic">
                 Modified
               </span>
             )}
           </div>
 
-          {/* Dependency info */}
-          {showDependencyInfo && (
-            <div
-              data-testid="dependency-info"
-              className="flex items-center gap-3 mt-2 text-xs"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {dependsOnCount !== undefined && dependsOnCount > 0 && (
-                <span className="flex items-center gap-1">
-                  <DependencyIcon />
-                  Depends on {dependsOnCount}
-                </span>
-              )}
-              {blocksCount !== undefined && blocksCount > 0 && (
-                <span className="flex items-center gap-1">
-                  <BlocksIcon />
-                  Blocks {blocksCount}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Historical plan link */}
           {showHistoricalPlanLink && (
-            <div className="mt-2">
-              <button
-                data-testid="view-historical-plan"
-                onClick={handleViewHistoricalPlan}
-                className="text-xs underline hover:no-underline transition-all"
-                style={{ color: "#ff6b35" }}
-              >
-                View plan as of proposal creation (v{proposal.planVersionAtCreation})
-              </button>
-            </div>
+            <button
+              data-testid="view-historical-plan"
+              onClick={(e) => { e.stopPropagation(); handleViewHistoricalPlan(); }}
+              className="mt-3 text-xs text-[#ff6b35] hover:text-[#ff8050] flex items-center gap-1.5 transition-colors"
+            >
+              <Eye className="w-3 h-3" />
+              View plan as of proposal creation (v{proposal.planVersionAtCreation})
+            </button>
           )}
         </div>
       </div>
-    </article>
+    </div>
   );
 }
