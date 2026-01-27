@@ -9,6 +9,7 @@ use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
 
 /// Input for creating a new task
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateTaskInput {
     pub project_id: String,
     pub title: String,
@@ -20,6 +21,7 @@ pub struct CreateTaskInput {
 
 /// Input for updating a task
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateTaskInput {
     pub title: Option<String>,
     pub description: Option<String>,
