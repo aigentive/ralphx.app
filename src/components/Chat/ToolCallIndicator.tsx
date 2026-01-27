@@ -398,7 +398,8 @@ function ToolIcon({ name, hasError }: { name: string; hasError: boolean }) {
 }
 
 export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicatorProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Bash tool calls are expanded by default for that terminal feel
+  const [isExpanded, setIsExpanded] = useState(toolCall.name.toLowerCase() === "bash");
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
   const hasError = Boolean(toolCall.error);
 
