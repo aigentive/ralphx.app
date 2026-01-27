@@ -3,6 +3,11 @@
 // These tests verify complete task lifecycle flows through the state machine,
 // including happy path, QA flows, and human override scenarios.
 
+#![allow(clippy::useless_vec)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+
 use ralphx_lib::domain::entities::TaskId;
 use ralphx_lib::domain::state_machine::{
     FailedData, QaFailedData, State, StateData, TaskContext, TaskEvent, TaskStateMachine,

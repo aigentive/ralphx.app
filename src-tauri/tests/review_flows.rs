@@ -7,6 +7,8 @@
 // - Fix task rejection and retry workflow
 // - Human review flow
 
+#![allow(clippy::unnecessary_map_or)]
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
