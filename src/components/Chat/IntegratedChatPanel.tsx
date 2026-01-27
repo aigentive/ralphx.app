@@ -23,6 +23,7 @@ import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import {
   MessageSquare,
   CheckSquare,
@@ -795,7 +796,13 @@ export function IntegratedChatPanel({
           className="flex-1"
           data-testid="integrated-chat-messages"
         >
-          <div className="p-3 w-full" style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}>
+          <div
+            className={cn(
+              "p-3 w-full",
+              isEmpty && !isLoading && "h-full flex items-center justify-center"
+            )}
+            style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
+          >
             {/* Show failed run banner if last run failed */}
             {showFailedBanner && failedRun?.errorMessage && (
               <FailedRunBanner
