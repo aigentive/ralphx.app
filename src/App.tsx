@@ -248,7 +248,10 @@ function AppContent() {
             break;
           case "k":
           case "K": {
-            // Cmd+K to toggle chat panel (skip if in input/textarea)
+            // Cmd+K to toggle chat panel (skip if in input/textarea or on ideation)
+            if (currentView === "ideation") {
+              return; // Ideation has built-in chat, no toggle needed
+            }
             const activeElement = document.activeElement;
             if (
               activeElement instanceof HTMLInputElement ||
@@ -593,8 +596,8 @@ function AppContent() {
             <div className="mr-2">
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
             </div>
-            {/* Chat Panel Toggle */}
-            {(() => {
+            {/* Chat Panel Toggle - hidden on ideation (has built-in chat) */}
+            {currentView !== "ideation" && (() => {
               // For kanban view, chat is always visible but can be collapsed
               // For other views, chat panel can be completely closed
               const isExpanded = currentView === "kanban" ? !chatCollapsed : chatIsOpen;
@@ -808,8 +811,8 @@ function AppContent() {
             </div>
           )}
 
-          {/* ChatPanel - resizable side panel with Cmd+K toggle (non-kanban views only) */}
-          {currentView !== "kanban" && <ChatPanel context={chatContext} />}
+          {/* ChatPanel - resizable side panel with Cmd+K toggle (not on kanban or ideation) */}
+          {currentView !== "kanban" && currentView !== "ideation" && <ChatPanel context={chatContext} />}
         </div>
       )}
 
