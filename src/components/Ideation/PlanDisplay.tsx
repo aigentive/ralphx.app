@@ -10,6 +10,7 @@
 import { useState, useCallback } from "react";
 import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -124,6 +125,49 @@ const markdownComponents = {
   ),
   hr: ({ ...props }: React.HTMLAttributes<HTMLHRElement>) => (
     <hr className="my-6 border-white/[0.06]" {...props} />
+  ),
+  // Table support (GFM)
+  table: ({ children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
+    <div className="my-3 overflow-x-auto rounded-lg border border-white/[0.06]">
+      <table
+        className="w-full text-sm border-collapse"
+        {...props}
+      >
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <thead className="bg-white/[0.02]" {...props}>
+      {children}
+    </thead>
+  ),
+  tbody: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <tbody {...props}>{children}</tbody>
+  ),
+  tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
+    <tr
+      className="border-b border-white/[0.06] last:border-b-0"
+      {...props}
+    >
+      {children}
+    </tr>
+  ),
+  th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+    <th
+      className="px-3 py-2 text-left text-xs font-medium text-text-primary uppercase tracking-wider"
+      {...props}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+    <td
+      className="px-3 py-2 text-text-secondary"
+      {...props}
+    >
+      {children}
+    </td>
   ),
 };
 
@@ -247,7 +291,7 @@ export function PlanDisplay({
           >
             {planContent ? (
               <div className="text-sm">
-                <ReactMarkdown components={markdownComponents}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {planContent}
                 </ReactMarkdown>
               </div>
