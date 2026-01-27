@@ -30,7 +30,7 @@ import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
 import type { ChatContext, ViewType } from "@/types/chat";
-import type { ChatMessage as ChatMessageType, ApplyProposalsInput, TaskProposal } from "@/types/ideation";
+import type { ApplyProposalsInput, TaskProposal } from "@/types/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
@@ -43,7 +43,6 @@ import {
 } from "@/hooks/useIdeation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
-import { useOrchestratorMessage } from "@/hooks/useOrchestrator";
 import { api, getGitBranches } from "@/lib/tauri";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
@@ -85,17 +84,6 @@ const NAV_ITEMS: {
   { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘4" },
   { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘5" },
 ];
-
-// Transform API messages to component-compatible format
-function transformMessages(messages: Array<{ role: string; id: string; content: string; createdAt: string; sessionId: string | null; projectId: string | null; taskId: string | null; metadata: string | null; parentMessageId: string | null; conversationId?: string | null; toolCalls?: string | null; contentBlocks?: string | null }>): ChatMessageType[] {
-  return messages.map((msg) => ({
-    ...msg,
-    role: (["user", "orchestrator", "system"].includes(msg.role) ? msg.role : "system") as "user" | "orchestrator" | "system",
-    conversationId: msg.conversationId ?? null,
-    toolCalls: msg.toolCalls ?? null,
-    contentBlocks: msg.contentBlocks ?? null,
-  }));
-}
 
 function AppContent() {
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
@@ -171,13 +159,12 @@ function AppContent() {
   const { data: tasks = [] } = useTasks(currentProjectId);
 
   // Ideation hooks
-  const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
+  const { data: sessionData } = useIdeationSession(activeSession?.id ?? "");
   const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
   const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
   const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
-  const orchestratorMessage = useOrchestratorMessage(activeSession?.id ?? "");
 
   // Sync proposals from sessionData to the store
   useEffect(() => {
@@ -405,15 +392,6 @@ function AppContent() {
       setActiveSession(sessionId);
     }
   }, [allSessions, addSession, setActiveSession]);
-
-  const handleSendIdeationMessage = useCallback(async (content: string) => {
-    if (!activeSession) return;
-    try {
-      await orchestratorMessage.mutateAsync(content);
-    } catch (error) {
-      console.error("Failed to send orchestrator message:", error);
-    }
-  }, [activeSession, orchestratorMessage]);
 
   const handleSelectProposal = useCallback((proposalId: string) => {
     toggleSelection.mutate(proposalId);
@@ -765,9 +743,7 @@ function AppContent() {
                 <IdeationView
                   session={sessionData?.session ?? activeSession}
                   sessions={allSessions}
-                  messages={transformMessages(sessionData?.messages ?? [])}
                   proposals={proposals}
-                  onSendMessage={handleSendIdeationMessage}
                   onNewSession={handleNewSession}
                   onSelectSession={handleSelectSession}
                   onArchiveSession={handleArchiveSession}
@@ -776,7 +752,6 @@ function AppContent() {
                   onRemoveProposal={handleRemoveProposal}
                   onReorderProposals={handleReorderProposals}
                   onApply={handleApplyProposals}
-                  isLoading={isSessionLoading || createSession.isPending || archiveSession.isPending || applyProposalsMutation.isPending || orchestratorMessage.isPending}
                 />
               )}
               {currentView === "extensibility" && <ExtensibilityView />}
