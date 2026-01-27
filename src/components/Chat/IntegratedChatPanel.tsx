@@ -305,10 +305,31 @@ function CollapsedPanel({ onExpand, hasUnread }: CollapsedPanelProps) {
 // ============================================================================
 
 interface IntegratedChatPanelProps {
+  /** Project ID for context */
   projectId: string;
+  /** Optional ideation session ID - when set, uses ideation context */
+  ideationSessionId?: string;
+  /** Custom empty state component */
+  emptyState?: React.ReactNode;
+  /** Always show helper text under input */
+  showHelperTextAlways?: boolean;
+  /** Custom class for input container */
+  inputContainerClassName?: string;
+  /** Whether to show the collapse button (default: true) */
+  showCollapseButton?: boolean;
+  /** Custom header content to replace default context indicator */
+  headerContent?: React.ReactNode;
 }
 
-export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
+export function IntegratedChatPanel({
+  projectId,
+  ideationSessionId,
+  emptyState,
+  showHelperTextAlways = false,
+  inputContainerClassName,
+  showCollapseButton = true,
+  headerContent,
+}: IntegratedChatPanelProps) {
   const queryClient = useQueryClient();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const chatCollapsed = useUiStore((s) => s.chatCollapsed);
@@ -334,8 +355,15 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
-  // Build chat context based on selected task
+  // Build chat context based on selected task or ideation session
   const chatContext: ChatContext = useMemo(() => {
+    if (ideationSessionId) {
+      return {
+        view: "ideation",
+        projectId,
+        ideationSessionId,
+      };
+    }
     if (selectedTaskId) {
       return {
         view: isExecutionMode ? "task_detail" : "task_detail",
@@ -347,27 +375,31 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
       view: "kanban",
       projectId,
     };
-  }, [selectedTaskId, isExecutionMode, projectId]);
+  }, [selectedTaskId, isExecutionMode, projectId, ideationSessionId]);
 
   // Streaming tool calls - accumulated during agent execution (defined early for context change effect)
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
 
   // Reset active conversation when context changes
   // This ensures we load the correct conversations for the new context
-  const contextKey = selectedTaskId
-    ? `${isExecutionMode ? "execution" : "task"}:${selectedTaskId}`
-    : `project:${projectId}`;
+  const contextKey = ideationSessionId
+    ? `ideation:${ideationSessionId}`
+    : selectedTaskId
+      ? `${isExecutionMode ? "execution" : "task"}:${selectedTaskId}`
+      : `project:${projectId}`;
   const prevContextKeyRef = useRef(contextKey);
   const prevContextTypeRef = useRef<{ type: string; id: string } | null>(null);
 
   // Track the previous context type and id for cache invalidation
   useEffect(() => {
-    const currentContextType = selectedTaskId
-      ? (isExecutionMode ? "task_execution" : "task")
-      : "project";
-    const currentContextId = selectedTaskId || projectId;
+    const currentContextType = ideationSessionId
+      ? "ideation"
+      : selectedTaskId
+        ? (isExecutionMode ? "task_execution" : "task")
+        : "project";
+    const currentContextId = ideationSessionId || selectedTaskId || projectId;
     prevContextTypeRef.current = { type: currentContextType, id: currentContextId };
-  }, [selectedTaskId, isExecutionMode, projectId]);
+  }, [selectedTaskId, isExecutionMode, projectId, ideationSessionId]);
 
   useEffect(() => {
     if (prevContextKeyRef.current !== contextKey) {
@@ -670,7 +702,7 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
             background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
           }}
         >
-          <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} />
+          {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} />}
 
           {/* Active agent badge */}
           {(isSending || isAgentRunning || isExecutionMode) && (
@@ -684,28 +716,32 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
             {/* Conversation Selector */}
             <ConversationSelector
               contextType={
-                isExecutionMode
-                  ? "task_execution"
-                  : selectedTaskId
-                    ? "task"
-                    : "project"
+                ideationSessionId
+                  ? "ideation"
+                  : isExecutionMode
+                    ? "task_execution"
+                    : selectedTaskId
+                      ? "task"
+                      : "project"
               }
-              contextId={selectedTaskId || projectId}
+              contextId={ideationSessionId || selectedTaskId || projectId}
               conversations={conversations.data ?? []}
               activeConversationId={activeConversationId}
               onSelectConversation={handleSelectConversation}
               onNewConversation={handleNewConversation}
               isLoading={conversations.isLoading}
             />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setChatCollapsed(true)}
-              aria-label="Collapse chat panel"
-              className="hover:bg-white/5"
-            >
-              <PanelRightClose className="w-[18px] h-[18px]" />
-            </Button>
+            {showCollapseButton && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setChatCollapsed(true)}
+                aria-label="Collapse chat panel"
+                className="hover:bg-white/5"
+              >
+                <PanelRightClose className="w-[18px] h-[18px]" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -730,7 +766,7 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
             {isLoading ? (
               <LoadingState />
             ) : isEmpty ? (
-              <EmptyState />
+              emptyState ?? <EmptyState />
             ) : (
               <>
                 {sortedMessages.map((msg) => (
@@ -758,7 +794,10 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
         </ScrollArea>
 
         {/* Input Area */}
-        <div className="border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+        <div
+          className={inputContainerClassName ?? "border-t shrink-0"}
+          style={inputContainerClassName ? undefined : { borderColor: "var(--border-subtle)" }}
+        >
           {/* Queued Messages */}
           {(() => {
             const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
@@ -787,13 +826,15 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
               hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
               onEditLastQueued={handleEditLastQueued}
               placeholder={
-                isExecutionMode
-                  ? "Message worker... (will be sent when current response completes)"
-                  : selectedTaskId
-                    ? "Ask about this task..."
-                    : "Send a message..."
+                ideationSessionId
+                  ? "Send a message..."
+                  : isExecutionMode
+                    ? "Message worker... (will be sent when current response completes)"
+                    : selectedTaskId
+                      ? "Ask about this task..."
+                      : "Send a message..."
               }
-              showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+              showHelperText={showHelperTextAlways || (isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
               autoFocus
             />
           </div>
