@@ -487,10 +487,28 @@ export function IntegratedChatPanel({
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
+  // Determine current context type and ID for validation
+  const currentContextType: ContextType = ideationSessionId
+    ? "ideation"
+    : selectedTaskId
+      ? (isExecutionMode ? "task_execution" : "task")
+      : "project";
+  const currentContextId = ideationSessionId || selectedTaskId || projectId;
+
   // Extract messages array from active conversation
-  // Only show messages if we have an active conversation ID to prevent showing stale data
-  // from a previous context when switching to a session with no conversations
-  const messagesData = activeConversationId ? (activeConversation.data?.messages ?? []) : [];
+  // Only show messages if:
+  // 1. We have an active conversation ID
+  // 2. The conversation belongs to the CURRENT context (not stale from previous context)
+  // This prevents showing messages from a previous session when switching contexts
+  const conversationContext = activeConversation.data?.conversation;
+  const isConversationInCurrentContext =
+    conversationContext?.contextType === currentContextType &&
+    conversationContext?.contextId === currentContextId;
+
+  const messagesData =
+    activeConversationId && isConversationInCurrentContext
+      ? (activeConversation.data?.messages ?? [])
+      : [];
 
   // Track unread messages when collapsed
   useEffect(() => {
