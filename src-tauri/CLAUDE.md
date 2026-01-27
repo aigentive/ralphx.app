@@ -434,3 +434,107 @@ TDD mandatory | Use in-memory repos for unit tests | Use tempfile for integratio
 - Types: PascalCase | Functions: snake_case | Files: snake_case | Modules: snake_case
 - Enums: `#[serde(rename_all="snake_case")]` | JSON: snake_case | Dates: RFC3339
 - All repos: async | Use `#[async_trait]` | Return `AppResult<T>` | `?` for propagation
+
+## Code Quality Rules
+
+### File Size (STRICT)
+**Maximum 500 lines per file** — no exceptions for new code, refactor existing violations.
+
+| Threshold | Action |
+|-----------|--------|
+| 400 lines | Plan extraction before hitting limit |
+| 500 lines | MUST refactor before merge |
+
+### When to Extract
+| Condition | Action |
+|-----------|--------|
+| Helper functions > 100 lines total | Extract to `{module}_helpers.rs` |
+| Multiple type definitions (>5 structs/enums) | Extract to `{module}_types.rs` |
+| Enum with >10 variants + impl blocks | Separate file |
+| Service method > 50 lines | Extract to helper function |
+| Validation logic > 30 lines | Extract to `{module}_validation.rs` |
+
+**Example: Splitting a large service**
+```
+application/
+├── chat_service.rs           # 400 lines - main impl, public API
+├── chat_service_helpers.rs   # Parsing, formatting, internal logic
+└── chat_service_types.rs     # Internal DTOs (not re-exported)
+```
+
+### Command Handlers (THIN)
+Commands in `commands/*.rs` must be **thin IPC wrappers** — extract, delegate, return:
+```rust
+// ✅ CORRECT: 5-10 lines max
+#[tauri::command]
+async fn create_task(state: State<'_, AppState>, input: CreateTaskInput) -> Result<Task, AppError> {
+    state.task_service.create(input).await
+}
+
+// ❌ WRONG: Business logic in command handler
+#[tauri::command]
+async fn create_task(...) -> Result<Task, AppError> {
+    // 50+ lines of validation, transformation, side effects
+    // This belongs in a service!
+}
+```
+
+### Entity Organization
+Split entities when they have multiple concerns:
+```
+domain/entities/
+├── task.rs              # Core Task struct + TaskBuilder
+├── task_status.rs       # InternalStatus enum + transitions
+├── task_types.rs        # Priority, Category, supporting types
+└── task_validation.rs   # Validation helpers
+```
+
+### Documentation (MANDATORY for public API)
+```rust
+/// Brief description (one line)
+///
+/// Detailed explanation if non-obvious behavior exists.
+///
+/// # Errors
+/// - `AppError::NotFound` if task doesn't exist
+/// - `AppError::InvalidTransition` if status change not allowed
+///
+/// # Panics
+/// Panics if `project_id` is empty (document only if applicable).
+pub async fn transition_task(&self, task_id: &TaskId, event: TaskEvent) -> AppResult<Task>
+```
+
+### Error Handling
+```rust
+// ✅ PREFER: Domain-specific error variants
+#[derive(Error, Debug)]
+pub enum IdeationError {
+    #[error("Session not found: {0}")]
+    SessionNotFound(String),
+    #[error("Circular dependency: {path:?}")]
+    CircularDependency { path: Vec<TaskProposalId> },
+}
+
+// ❌ AVOID: Generic string errors scattered throughout
+Err(AppError::Validation("something went wrong".to_string()))
+```
+
+### Files Needing Refactoring (Priority)
+| File | Lines | Refactor Strategy |
+|------|-------|-------------------|
+| `ideation_commands.rs` | 2,580 | Extract validation → `ideation_validation.rs`, split by operation |
+| `chat_service.rs` | 2,039 | Extract parsing → `chat_parsing.rs`, stream handling → `chat_stream.rs` |
+| `ideation.rs` | 3,979 | Split: core entity, status enum, settings, builder |
+| `task_commands.rs` | 1,865 | Move business logic to services, thin down handlers |
+| `apply_service.rs` | 1,833 | Extract cycle detection, dependency copying |
+| `http_server.rs` | 1,793 | Extract route handlers to `handlers/` submodule |
+
+### Pre-Commit Quality Check
+```bash
+# Add to your workflow before committing:
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Check no file exceeds 500 lines (warning)
+find src -name "*.rs" -exec wc -l {} + | awk '$1 > 500 {print "⚠️  OVER 500:", $2, "("$1" lines)"}'
+```
