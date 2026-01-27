@@ -4,7 +4,7 @@
 use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter};
 use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter};
 use super::types::Blocker;
-use crate::application::ExecutionChatService;
+use crate::application::ChatService;
 use std::sync::Arc;
 
 /// Container for all services used by the state machine.
@@ -27,9 +27,9 @@ pub struct TaskServices {
     /// Service for starting reviews on tasks
     pub review_starter: Arc<dyn ReviewStarter>,
 
-    /// Service for persistent worker execution (Phase 15B).
+    /// Unified chat service for worker execution (handles TaskExecution context).
     /// Worker spawning uses this service to persist output to database.
-    pub execution_chat_service: Arc<dyn ExecutionChatService>,
+    pub chat_service: Arc<dyn ChatService>,
 }
 
 impl TaskServices {
@@ -40,7 +40,7 @@ impl TaskServices {
         notifier: Arc<dyn Notifier>,
         dependency_manager: Arc<dyn DependencyManager>,
         review_starter: Arc<dyn ReviewStarter>,
-        execution_chat_service: Arc<dyn ExecutionChatService>,
+        chat_service: Arc<dyn ChatService>,
     ) -> Self {
         Self {
             agent_spawner,
@@ -48,13 +48,13 @@ impl TaskServices {
             notifier,
             dependency_manager,
             review_starter,
-            execution_chat_service,
+            chat_service,
         }
     }
 
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
-        use crate::application::MockExecutionChatService;
+        use crate::application::MockChatService;
 
         Self {
             agent_spawner: Arc::new(MockAgentSpawner::new()),
@@ -62,7 +62,7 @@ impl TaskServices {
             notifier: Arc::new(MockNotifier::new()),
             dependency_manager: Arc::new(MockDependencyManager::new()),
             review_starter: Arc::new(MockReviewStarter::new()),
-            execution_chat_service: Arc::new(MockExecutionChatService::new()),
+            chat_service: Arc::new(MockChatService::new()),
         }
     }
 }
@@ -75,146 +75,122 @@ impl std::fmt::Debug for TaskServices {
             .field("notifier", &"<Notifier>")
             .field("dependency_manager", &"<DependencyManager>")
             .field("review_starter", &"<ReviewStarter>")
-            .field("execution_chat_service", &"<ExecutionChatService>")
+            .field("chat_service", &"<ChatService>")
             .finish()
     }
 }
 
-/// Context passed to the state machine during transitions.
+// ============================================================================
+// TaskContext - Container for task-specific state machine context
+// ============================================================================
+
+/// Runtime context for a specific task's state machine.
 ///
-/// Contains all the information needed to make transition decisions
-/// and execute side effects.
-#[derive(Debug)]
+/// Each task has its own TaskContext that holds:
+/// - The task's ID and project ID for database operations
+/// - Shared services for performing actions
+/// - Task-specific state like blockers
 pub struct TaskContext {
-    /// The ID of the task being processed
+    /// ID of the task being processed
     pub task_id: String,
 
-    /// The ID of the project the task belongs to
+    /// ID of the project this task belongs to
     pub project_id: String,
 
-    /// Whether QA is enabled for this task
-    pub qa_enabled: bool,
+    /// Shared services for state machine actions
+    pub services: TaskServices,
 
-    /// Whether QA prep has completed
-    pub qa_prep_complete: bool,
-
-    /// Current blockers for this task
+    /// Current blockers preventing task progress
     pub blockers: Vec<Blocker>,
 
-    /// Feedback from the last review, if any
+    /// Whether QA is enabled for this task's workflow
+    pub qa_enabled: bool,
+
+    /// Whether QA prep has completed (used to skip wait_for in QaRefining)
+    pub qa_prep_complete: bool,
+
+    /// Feedback from review (used when transitioning to RevisionNeeded)
     pub review_feedback: Option<String>,
 
-    /// Error message if in Failed state
+    /// Error message from failed execution or QA
     pub error: Option<String>,
-
-    /// Services for executing side effects
-    pub services: TaskServices,
 }
 
 impl TaskContext {
-    /// Creates a new TaskContext with the given task and project IDs
-    pub fn new(
-        task_id: impl Into<String>,
-        project_id: impl Into<String>,
-        services: TaskServices,
-    ) -> Self {
+    /// Creates a new TaskContext for a task
+    pub fn new(task_id: &str, project_id: &str, services: TaskServices) -> Self {
         Self {
-            task_id: task_id.into(),
-            project_id: project_id.into(),
+            task_id: task_id.to_string(),
+            project_id: project_id.to_string(),
+            services,
+            blockers: Vec::new(),
             qa_enabled: false,
             qa_prep_complete: false,
-            blockers: Vec::new(),
             review_feedback: None,
             error: None,
-            services,
         }
     }
 
     /// Creates a TaskContext with mock services for testing
-    pub fn new_test(task_id: impl Into<String>, project_id: impl Into<String>) -> Self {
+    pub fn new_test(task_id: &str, project_id: &str) -> Self {
         Self::new(task_id, project_id, TaskServices::new_mock())
     }
 
-    /// Enables QA for this task
+    /// Enable QA for this context (builder pattern for tests)
     pub fn with_qa_enabled(mut self) -> Self {
         self.qa_enabled = true;
         self
     }
 
-    /// Sets the QA prep complete flag
+    /// Mark QA prep as complete (builder pattern for tests)
     pub fn with_qa_prep_complete(mut self) -> Self {
         self.qa_prep_complete = true;
         self
     }
 
-    /// Adds blockers to this context
-    pub fn with_blockers(mut self, blockers: Vec<Blocker>) -> Self {
-        self.blockers = blockers;
-        self
-    }
-
-    /// Sets review feedback
-    pub fn with_review_feedback(mut self, feedback: impl Into<String>) -> Self {
-        self.review_feedback = Some(feedback.into());
-        self
-    }
-
-    /// Sets the error message
-    pub fn with_error(mut self, error: impl Into<String>) -> Self {
-        self.error = Some(error.into());
-        self
-    }
-
-    /// Returns true if this task has any unresolved blockers
-    pub fn has_unresolved_blockers(&self) -> bool {
-        self.blockers.iter().any(|b| !b.resolved)
-    }
-
-    /// Returns the count of unresolved blockers
-    pub fn unresolved_blocker_count(&self) -> usize {
-        self.blockers.iter().filter(|b| !b.resolved).count()
-    }
-
-    /// Adds a blocker to this task
+    /// Add a blocker to this context
     pub fn add_blocker(&mut self, blocker: Blocker) {
         self.blockers.push(blocker);
     }
 
-    /// Resolves a blocker by ID
-    pub fn resolve_blocker(&mut self, blocker_id: &str) {
-        for blocker in &mut self.blockers {
-            if blocker.id == blocker_id {
-                blocker.resolved = true;
-            }
-        }
+    /// Clear all blockers
+    pub fn clear_blockers(&mut self) {
+        self.blockers.clear();
     }
 
-    /// Resolves all blockers
+    /// Resolve all blockers (alias for clear_blockers)
     pub fn resolve_all_blockers(&mut self) {
-        for blocker in &mut self.blockers {
-            blocker.resolved = true;
-        }
+        self.blockers.clear();
     }
 
-    /// Clears the error message
-    pub fn clear_error(&mut self) {
-        self.error = None;
+    /// Check if there are any blockers
+    pub fn has_blockers(&self) -> bool {
+        !self.blockers.is_empty()
     }
 
-    /// Clears review feedback
+    /// Clear the review feedback
     pub fn clear_review_feedback(&mut self) {
         self.review_feedback = None;
     }
 
-    /// Returns true if the task can proceed to execution
-    /// (no unresolved blockers and not in error state)
-    pub fn can_execute(&self) -> bool {
-        !self.has_unresolved_blockers() && self.error.is_none()
+    /// Clear the error message
+    pub fn clear_error(&mut self) {
+        self.error = None;
     }
+}
 
-    /// Returns true if QA should be run after execution
-    pub fn should_run_qa(&self) -> bool {
-        self.qa_enabled && self.qa_prep_complete
+impl std::fmt::Debug for TaskContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TaskContext")
+            .field("task_id", &self.task_id)
+            .field("project_id", &self.project_id)
+            .field("services", &self.services)
+            .field("blockers", &self.blockers)
+            .field("qa_enabled", &self.qa_enabled)
+            .field("qa_prep_complete", &self.qa_prep_complete)
+            .field("review_feedback", &self.review_feedback)
+            .field("error", &self.error)
+            .finish()
     }
 }
 
@@ -222,219 +198,31 @@ impl TaskContext {
 mod tests {
     use super::*;
 
-    // ==================
-    // TaskServices tests
-    // ==================
-
     #[test]
-    fn test_task_services_new_mock() {
-        let services = TaskServices::new_mock();
-        // Just verify it creates without error
-        let debug_str = format!("{:?}", services);
-        assert!(debug_str.contains("TaskServices"));
-    }
-
-    #[test]
-    fn test_task_services_debug() {
-        let services = TaskServices::new_mock();
-        let debug_str = format!("{:?}", services);
-        assert!(debug_str.contains("agent_spawner"));
-        assert!(debug_str.contains("event_emitter"));
-        assert!(debug_str.contains("notifier"));
-        assert!(debug_str.contains("dependency_manager"));
-        assert!(debug_str.contains("review_starter"));
-        assert!(debug_str.contains("execution_chat_service"));
-    }
-
-    // ==================
-    // TaskContext tests
-    // ==================
-
-    #[test]
-    fn test_task_context_new() {
-        let ctx = TaskContext::new_test("task-123", "project-456");
-        assert_eq!(ctx.task_id, "task-123");
-        assert_eq!(ctx.project_id, "project-456");
-        assert!(!ctx.qa_enabled);
-        assert!(!ctx.qa_prep_complete);
-        assert!(ctx.blockers.is_empty());
-        assert!(ctx.review_feedback.is_none());
-        assert!(ctx.error.is_none());
-    }
-
-    #[test]
-    fn test_task_context_with_qa_enabled() {
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_qa_enabled();
-        assert!(ctx.qa_enabled);
-    }
-
-    #[test]
-    fn test_task_context_with_qa_prep_complete() {
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_qa_prep_complete();
-        assert!(ctx.qa_prep_complete);
-    }
-
-    #[test]
-    fn test_task_context_with_blockers() {
-        let blockers = vec![Blocker::new("task-2"), Blocker::new("task-3")];
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert_eq!(ctx.blockers.len(), 2);
-    }
-
-    #[test]
-    fn test_task_context_with_review_feedback() {
-        let ctx =
-            TaskContext::new_test("task-1", "proj-1").with_review_feedback("Needs more tests");
-        assert_eq!(ctx.review_feedback, Some("Needs more tests".to_string()));
-    }
-
-    #[test]
-    fn test_task_context_with_error() {
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_error("Build failed");
-        assert_eq!(ctx.error, Some("Build failed".to_string()));
-    }
-
-    #[test]
-    fn test_task_context_has_unresolved_blockers_false_when_empty() {
+    fn test_task_context_creation() {
         let ctx = TaskContext::new_test("task-1", "proj-1");
-        assert!(!ctx.has_unresolved_blockers());
+        assert_eq!(ctx.task_id, "task-1");
+        assert_eq!(ctx.project_id, "proj-1");
+        assert!(!ctx.has_blockers());
     }
 
     #[test]
-    fn test_task_context_has_unresolved_blockers_true_when_present() {
-        let blockers = vec![Blocker::new("task-2")];
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert!(ctx.has_unresolved_blockers());
-    }
-
-    #[test]
-    fn test_task_context_has_unresolved_blockers_false_when_all_resolved() {
-        let blockers = vec![Blocker::new("task-2").as_resolved()];
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert!(!ctx.has_unresolved_blockers());
-    }
-
-    #[test]
-    fn test_task_context_unresolved_blocker_count() {
-        let blockers = vec![
-            Blocker::new("task-2"),
-            Blocker::new("task-3").as_resolved(),
-            Blocker::new("task-4"),
-        ];
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert_eq!(ctx.unresolved_blocker_count(), 2);
-    }
-
-    #[test]
-    fn test_task_context_add_blocker() {
+    fn test_task_context_blockers() {
         let mut ctx = TaskContext::new_test("task-1", "proj-1");
-        assert_eq!(ctx.blockers.len(), 0);
+        assert!(!ctx.has_blockers());
+
         ctx.add_blocker(Blocker::new("task-2"));
+        assert!(ctx.has_blockers());
         assert_eq!(ctx.blockers.len(), 1);
+
+        ctx.clear_blockers();
+        assert!(!ctx.has_blockers());
     }
 
     #[test]
-    fn test_task_context_resolve_blocker() {
-        let blockers = vec![Blocker::new("task-2"), Blocker::new("task-3")];
-        let mut ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert_eq!(ctx.unresolved_blocker_count(), 2);
-
-        ctx.resolve_blocker("task-2");
-        assert_eq!(ctx.unresolved_blocker_count(), 1);
-        assert!(ctx.blockers[0].resolved);
-    }
-
-    #[test]
-    fn test_task_context_resolve_all_blockers() {
-        let blockers = vec![Blocker::new("task-2"), Blocker::new("task-3")];
-        let mut ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert_eq!(ctx.unresolved_blocker_count(), 2);
-
-        ctx.resolve_all_blockers();
-        assert_eq!(ctx.unresolved_blocker_count(), 0);
-    }
-
-    #[test]
-    fn test_task_context_clear_error() {
-        let mut ctx = TaskContext::new_test("task-1", "proj-1").with_error("Error");
-        assert!(ctx.error.is_some());
-        ctx.clear_error();
-        assert!(ctx.error.is_none());
-    }
-
-    #[test]
-    fn test_task_context_clear_review_feedback() {
-        let mut ctx = TaskContext::new_test("task-1", "proj-1").with_review_feedback("Feedback");
-        assert!(ctx.review_feedback.is_some());
-        ctx.clear_review_feedback();
-        assert!(ctx.review_feedback.is_none());
-    }
-
-    #[test]
-    fn test_task_context_can_execute() {
-        let ctx = TaskContext::new_test("task-1", "proj-1");
-        assert!(ctx.can_execute());
-    }
-
-    #[test]
-    fn test_task_context_can_execute_false_with_blockers() {
-        let blockers = vec![Blocker::new("task-2")];
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_blockers(blockers);
-        assert!(!ctx.can_execute());
-    }
-
-    #[test]
-    fn test_task_context_can_execute_false_with_error() {
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_error("Error");
-        assert!(!ctx.can_execute());
-    }
-
-    #[test]
-    fn test_task_context_should_run_qa() {
-        let ctx = TaskContext::new_test("task-1", "proj-1")
-            .with_qa_enabled()
-            .with_qa_prep_complete();
-        assert!(ctx.should_run_qa());
-    }
-
-    #[test]
-    fn test_task_context_should_run_qa_false_without_qa_enabled() {
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_qa_prep_complete();
-        assert!(!ctx.should_run_qa());
-    }
-
-    #[test]
-    fn test_task_context_should_run_qa_false_without_prep_complete() {
-        let ctx = TaskContext::new_test("task-1", "proj-1").with_qa_enabled();
-        assert!(!ctx.should_run_qa());
-    }
-
-    #[test]
-    fn test_task_context_debug() {
-        let ctx = TaskContext::new_test("task-1", "proj-1");
-        let debug_str = format!("{:?}", ctx);
-        assert!(debug_str.contains("TaskContext"));
-        assert!(debug_str.contains("task-1"));
-    }
-
-    // ==================
-    // Builder pattern chain tests
-    // ==================
-
-    #[test]
-    fn test_task_context_builder_chain() {
-        let blockers = vec![Blocker::new("dep-1")];
-        let ctx = TaskContext::new_test("task-1", "proj-1")
-            .with_qa_enabled()
-            .with_qa_prep_complete()
-            .with_blockers(blockers)
-            .with_review_feedback("LGTM")
-            .with_error("Test error");
-
-        assert!(ctx.qa_enabled);
-        assert!(ctx.qa_prep_complete);
-        assert_eq!(ctx.blockers.len(), 1);
-        assert_eq!(ctx.review_feedback, Some("LGTM".to_string()));
-        assert_eq!(ctx.error, Some("Test error".to_string()));
+    fn test_task_services_mock() {
+        let services = TaskServices::new_mock();
+        // Just verify it creates without panicking
+        let _ = format!("{:?}", services);
     }
 }

@@ -1568,6 +1568,7 @@ pub struct MockChatService {
     conversations: Mutex<Vec<ChatConversation>>,
     active_run: Mutex<Option<AgentRun>>,
     message_queue: Arc<MessageQueue>,
+    call_count: std::sync::atomic::AtomicU32,
 }
 
 pub struct MockChatResponse {
@@ -1584,6 +1585,7 @@ impl MockChatService {
             conversations: Mutex::new(Vec::new()),
             active_run: Mutex::new(None),
             message_queue: Arc::new(MessageQueue::new()),
+            call_count: std::sync::atomic::AtomicU32::new(0),
         }
     }
 
@@ -1594,7 +1596,12 @@ impl MockChatService {
             conversations: Mutex::new(Vec::new()),
             active_run: Mutex::new(None),
             message_queue,
+            call_count: std::sync::atomic::AtomicU32::new(0),
         }
+    }
+
+    pub fn call_count(&self) -> u32 {
+        self.call_count.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub async fn set_available(&self, available: bool) {
@@ -1637,6 +1644,8 @@ impl ChatService for MockChatService {
         context_id: &str,
         _message: &str,
     ) -> Result<SendResult, ChatServiceError> {
+        self.call_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         if !*self.is_available.lock().await {
             return Err(ChatServiceError::AgentNotAvailable(
                 "Mock agent not available".to_string(),

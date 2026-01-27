@@ -2,8 +2,6 @@
 // This module wraps the state machine and handles entry/exit actions,
 // especially for QA-related transitions.
 
-use crate::domain::entities::TaskId;
-
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
 
@@ -104,11 +102,11 @@ impl<'a> TransitionHandler<'a> {
                 }
             }
             State::Executing => {
-                // Use ExecutionChatService for persistent worker execution (Phase 15B)
-                let task_id = TaskId::from_string(self.machine.context.task_id.clone());
-                let prompt = format!("Execute task: {}", self.machine.context.task_id);
+                // Use ChatService for persistent worker execution (Phase 15B)
+                let task_id = &self.machine.context.task_id;
+                let prompt = format!("Execute task: {}", task_id);
 
-                // spawn_with_persistence handles:
+                // send_message handles:
                 // 1. Creating chat_conversation (context_type: 'task_execution')
                 // 2. Creating agent_run (status: 'running')
                 // 3. Spawning Claude CLI with --agent worker
@@ -118,8 +116,12 @@ impl<'a> TransitionHandler<'a> {
                     .machine
                     .context
                     .services
-                    .execution_chat_service
-                    .spawn_with_persistence(&task_id, &prompt)
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::TaskExecution,
+                        task_id,
+                        &prompt,
+                    )
                     .await;
             }
             State::QaRefining => {
@@ -343,14 +345,14 @@ mod tests {
         Arc<MockReviewStarter>,
         TaskServices,
     ) {
-        use crate::application::{ExecutionChatService, MockExecutionChatService};
+        use crate::application::{ChatService, MockChatService};
 
         let spawner = Arc::new(MockAgentSpawner::new());
         let emitter = Arc::new(MockEventEmitter::new());
         let notifier = Arc::new(MockNotifier::new());
         let dep_manager = Arc::new(MockDependencyManager::new());
         let review_starter = Arc::new(MockReviewStarter::new());
-        let execution_chat_service = Arc::new(MockExecutionChatService::new());
+        let chat_service = Arc::new(MockChatService::new());
 
         let services = TaskServices::new(
             Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
@@ -358,7 +360,7 @@ mod tests {
             Arc::clone(&notifier) as Arc<dyn Notifier>,
             Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
             Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
-            Arc::clone(&execution_chat_service) as Arc<dyn ExecutionChatService>,
+            Arc::clone(&chat_service) as Arc<dyn ChatService>,
         );
 
         (spawner, emitter, notifier, dep_manager, review_starter, services)
@@ -766,14 +768,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_entering_pending_review_with_disabled_ai_review() {
-        use crate::application::{ExecutionChatService, MockExecutionChatService};
+        use crate::application::{ChatService, MockChatService};
 
         let spawner = Arc::new(MockAgentSpawner::new());
         let emitter = Arc::new(MockEventEmitter::new());
         let notifier = Arc::new(MockNotifier::new());
         let dep_manager = Arc::new(MockDependencyManager::new());
         let review_starter = Arc::new(MockReviewStarter::disabled());
-        let execution_chat_service = Arc::new(MockExecutionChatService::new());
+        let chat_service = Arc::new(MockChatService::new());
 
         let services = TaskServices::new(
             Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
@@ -781,7 +783,7 @@ mod tests {
             Arc::clone(&notifier) as Arc<dyn Notifier>,
             Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
             Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
-            Arc::clone(&execution_chat_service) as Arc<dyn ExecutionChatService>,
+            Arc::clone(&chat_service) as Arc<dyn ChatService>,
         );
 
         let context = create_context_with_services("task-1", "proj-1", services);
@@ -805,14 +807,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_entering_pending_review_with_error_notifies_user() {
-        use crate::application::{ExecutionChatService, MockExecutionChatService};
+        use crate::application::{ChatService, MockChatService};
 
         let spawner = Arc::new(MockAgentSpawner::new());
         let emitter = Arc::new(MockEventEmitter::new());
         let notifier = Arc::new(MockNotifier::new());
         let dep_manager = Arc::new(MockDependencyManager::new());
         let review_starter = Arc::new(MockReviewStarter::with_error("Database connection failed"));
-        let execution_chat_service = Arc::new(MockExecutionChatService::new());
+        let chat_service = Arc::new(MockChatService::new());
 
         let services = TaskServices::new(
             Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
@@ -820,7 +822,7 @@ mod tests {
             Arc::clone(&notifier) as Arc<dyn Notifier>,
             Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
             Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
-            Arc::clone(&execution_chat_service) as Arc<dyn ExecutionChatService>,
+            Arc::clone(&chat_service) as Arc<dyn ChatService>,
         );
 
         let context = create_context_with_services("task-1", "proj-1", services);
@@ -923,15 +925,15 @@ mod tests {
     // ==================
 
     #[tokio::test]
-    async fn test_entering_executing_uses_execution_chat_service_when_available() {
-        use crate::application::{ExecutionChatService, MockExecutionChatService};
+    async fn test_entering_executing_uses_chat_service() {
+        use crate::application::{ChatService, MockChatService};
 
         let spawner = Arc::new(MockAgentSpawner::new());
         let emitter = Arc::new(MockEventEmitter::new());
         let notifier = Arc::new(MockNotifier::new());
         let dep_manager = Arc::new(MockDependencyManager::new());
         let review_starter = Arc::new(MockReviewStarter::new());
-        let execution_chat_service = Arc::new(MockExecutionChatService::new());
+        let chat_service = Arc::new(MockChatService::new());
 
         let services = TaskServices::new(
             Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
@@ -939,7 +941,7 @@ mod tests {
             Arc::clone(&notifier) as Arc<dyn Notifier>,
             Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
             Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
-            execution_chat_service.clone() as Arc<dyn ExecutionChatService>,
+            chat_service.clone() as Arc<dyn ChatService>,
         );
 
         let context = create_context_with_services("task-1", "proj-1", services);
@@ -948,34 +950,30 @@ mod tests {
         let handler = TransitionHandler::new(&mut machine);
         handler.on_enter(&State::Executing).await;
 
-        // ExecutionChatService should have been called (creates a conversation)
-        let executions = execution_chat_service
-            .list_task_executions(&TaskId::from_string("task-1".to_string()))
-            .await
-            .unwrap();
-        assert_eq!(executions.len(), 1, "ExecutionChatService should have been called");
+        // ChatService should have been called (check call count)
+        assert!(chat_service.call_count() > 0, "ChatService should have been called");
 
-        // Agent spawner should NOT have been called (we used ExecutionChatService instead)
+        // Agent spawner should NOT have been called (we used ChatService instead)
         let spawner_calls = spawner.get_calls();
         assert!(
             !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "worker"),
-            "Agent spawner should not be called when ExecutionChatService is available"
+            "Agent spawner should not be called when ChatService is available"
         );
     }
 
     #[tokio::test]
-    async fn test_execution_chat_service_unavailable_falls_back_gracefully() {
-        use crate::application::{ExecutionChatService, MockExecutionChatService};
+    async fn test_chat_service_unavailable_falls_back_gracefully() {
+        use crate::application::{ChatService, MockChatService};
 
         let spawner = Arc::new(MockAgentSpawner::new());
         let emitter = Arc::new(MockEventEmitter::new());
         let notifier = Arc::new(MockNotifier::new());
         let dep_manager = Arc::new(MockDependencyManager::new());
         let review_starter = Arc::new(MockReviewStarter::new());
-        let execution_chat_service = Arc::new(MockExecutionChatService::new());
+        let chat_service = Arc::new(MockChatService::new());
 
         // Mark the service as unavailable
-        execution_chat_service.set_available(false).await;
+        chat_service.set_available(false).await;
 
         let services = TaskServices::new(
             Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
@@ -983,7 +981,7 @@ mod tests {
             Arc::clone(&notifier) as Arc<dyn Notifier>,
             Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
             Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
-            execution_chat_service.clone() as Arc<dyn ExecutionChatService>,
+            chat_service.clone() as Arc<dyn ChatService>,
         );
 
         let context = create_context_with_services("task-1", "proj-1", services);
@@ -992,17 +990,9 @@ mod tests {
         let handler = TransitionHandler::new(&mut machine);
         handler.on_enter(&State::Executing).await;
 
-        // The service is present but unavailable - spawn_with_persistence returns error
+        // The service is present but unavailable - send_message returns error
         // The current implementation still tries to use it (graceful degradation)
         // We verify that calling on_enter doesn't panic
-
-        // ExecutionChatService was called even though unavailable (returns error)
         // The key is that the system doesn't crash
-        let executions = execution_chat_service
-            .list_task_executions(&TaskId::from_string("task-1".to_string()))
-            .await
-            .unwrap();
-        // When unavailable, spawn_with_persistence returns error and no conversation is created
-        assert_eq!(executions.len(), 0, "No conversation created when service unavailable");
     }
 }

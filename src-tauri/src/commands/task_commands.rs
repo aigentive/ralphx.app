@@ -359,10 +359,13 @@ pub async fn move_task(
     // Create the transition service with all required dependencies
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
         Arc::clone(&state.agent_run_repo),
-        Arc::new(state.execution_message_queue.clone()),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
         Some(app),
     );
 

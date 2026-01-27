@@ -508,7 +508,7 @@ mod tests {
             blocker_id: "blocker-task".to_string(),
         });
         assert_eq!(response, Response::Transition(State::Blocked));
-        assert!(machine.context.has_unresolved_blockers());
+        assert!(machine.context.has_blockers());
     }
 
     #[test]
@@ -531,7 +531,7 @@ mod tests {
 
         let response = machine.blocked(&TaskEvent::BlockersResolved);
         assert_eq!(response, Response::Transition(State::Ready));
-        assert!(!machine.context.has_unresolved_blockers());
+        assert!(!machine.context.has_blockers());
     }
 
     #[test]
@@ -573,7 +573,7 @@ mod tests {
             reason: "Need API key".to_string(),
         });
         assert_eq!(response, Response::Transition(State::Blocked));
-        assert!(machine.context.has_unresolved_blockers());
+        assert!(machine.context.has_blockers());
     }
 
     #[test]
