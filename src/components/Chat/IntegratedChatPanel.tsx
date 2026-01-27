@@ -387,7 +387,9 @@ export function IntegratedChatPanel({
     : selectedTaskId
       ? `${isExecutionMode ? "execution" : "task"}:${selectedTaskId}`
       : `project:${projectId}`;
-  const prevContextKeyRef = useRef(contextKey);
+  // Initialize with empty string to ensure cleanup runs on first mount
+  // This prevents showing conversations from a different context
+  const prevContextKeyRef = useRef("");
   const prevContextTypeRef = useRef<{ type: string; id: string } | null>(null);
 
   // Track the previous context type and id for cache invalidation
@@ -517,6 +519,28 @@ export function IntegratedChatPanel({
       messagesEndRef.current.scrollIntoView({ behavior: "instant" });
     }
   }, [chatCollapsed]);
+
+  // Auto-scroll during streaming (tool calls and agent running)
+  // Use requestAnimationFrame to debounce rapid updates
+  const scrollRAFRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (isAgentRunning && messagesEndRef.current) {
+      // Cancel any pending scroll
+      if (scrollRAFRef.current) {
+        cancelAnimationFrame(scrollRAFRef.current);
+      }
+      // Schedule scroll on next frame
+      scrollRAFRef.current = requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        scrollRAFRef.current = null;
+      });
+    }
+    return () => {
+      if (scrollRAFRef.current) {
+        cancelAnimationFrame(scrollRAFRef.current);
+      }
+    };
+  }, [isAgentRunning, streamingToolCalls.length]);
 
   // Send message handler
   const handleSend = useCallback(
