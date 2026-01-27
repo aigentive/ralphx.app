@@ -331,9 +331,25 @@ For tasks in `revision_needed` state:
 
 ### Task Metadata
 
-Track on each task:
-- `revision_count: number` - how many times task has been sent back for revision
-- `revision_feedback: string[]` - array of feedback from each revision request
+~~Track on each task:~~
+~~- `revision_count: number` - how many times task has been sent back for revision~~
+~~- `revision_feedback: string[]` - array of feedback from each revision request~~
+
+**Decision:** No additional task metadata needed. Derive from existing `review_notes` table:
+
+| Data | How to Derive |
+|------|---------------|
+| Revision count | `COUNT(review_notes) WHERE outcome = 'changes_requested' AND task_id = ?` |
+| Revision feedback | `SELECT notes FROM review_notes WHERE task_id = ? ORDER BY created_at` |
+
+**Frontend access:**
+- `useTaskStateHistory(taskId)` hook
+- `get_task_state_history` command
+
+**Worker agent access (NEW MCP tool):**
+- `get_review_notes(task_id)` - Dedicated tool for workers to fetch revision feedback
+- Worker must call this before starting re-execution work
+- See "MCP Tool: get_review_notes" section below
 
 ---
 
@@ -347,8 +363,9 @@ Add to the Review settings card:
 |---------|------|---------|-------------|
 | `maxRevisionCycles` | number | 5 | Maximum revision attempts before task is escalated/failed |
 
-When `revision_count >= maxRevisionCycles`:
-- Task transitions to `failed` state
+When revision count >= `maxRevisionCycles`:
+- Query: `COUNT(review_notes) WHERE outcome = 'changes_requested' AND task_id = ?`
+- If exceeded: Task transitions to `failed` state
 - Notification sent to user
 - Task shows "Max revisions exceeded" indicator
 
@@ -731,6 +748,132 @@ Please correct your tool call and try again.
 | `src-tauri/src/infrastructure/agents/claude/` | Pass `RALPHX_TASK_ID` env var when spawning |
 | `src-tauri/src/application/execution_chat_service.rs` | Include task_id in spawn config |
 
+---
+
+## MCP Tool: `get_review_notes`
+
+### Purpose
+
+Dedicated tool for worker agents to fetch previous review feedback before starting re-execution work. Separate from `get_task_context` to keep concerns clean.
+
+### Tool Definition
+
+**File:** `ralphx-mcp-server/src/tools.ts`
+
+```typescript
+{
+  name: "get_review_notes",
+  description: "Get all review feedback for a task. Call this before re-executing a task to understand what needs to be fixed.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      task_id: {
+        type: "string",
+        description: "The task ID to get review notes for"
+      }
+    },
+    required: ["task_id"]
+  }
+}
+```
+
+### Response Schema
+
+```typescript
+{
+  task_id: string,
+  revision_count: number,              // Derived count
+  max_revisions: number,               // From settings
+  reviews: [
+    {
+      id: string,
+      reviewer: "ai" | "human",
+      outcome: "approved" | "changes_requested" | "rejected",
+      notes: string | null,
+      created_at: string               // ISO datetime
+    }
+  ]
+}
+```
+
+### Tool Scoping
+
+Add to worker allowlist:
+
+```typescript
+TOOL_ALLOWLIST = {
+  worker: [
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+    "get_review_notes",    // NEW
+    // ... step tools
+  ],
+  // ...
+}
+```
+
+### Worker Agent Instructions Update
+
+**File:** `ralphx-plugin/agents/worker.md`
+
+Add to worker instructions:
+
+```markdown
+## Before Starting Re-Execution Work
+
+If this task is a revision (check `RALPHX_TASK_STATE` env var equals `re_executing`):
+
+1. **MUST** call `get_task_context(task_id)` - understand the task
+2. **MUST** call `get_review_notes(task_id)` - understand what to fix
+3. Read all previous feedback carefully
+4. Address each issue mentioned in the review notes
+5. Do not repeat the same mistakes
+```
+
+### HTTP Endpoint
+
+**File:** `src-tauri/src/application/http_server.rs`
+
+```rust
+// Route
+.route("/api/review_notes/:task_id", get(get_review_notes))
+
+// Handler
+async fn get_review_notes(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> Result<Json<ReviewNotesResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id);
+
+    // Get all review notes for task
+    let notes = state.review_repo
+        .get_notes_by_task(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Get settings for max_revisions
+    let settings = state.review_settings_repo
+        .get()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Count revisions (changes_requested outcomes)
+    let revision_count = notes.iter()
+        .filter(|n| n.outcome == ReviewOutcome::ChangesRequested)
+        .count();
+
+    Ok(Json(ReviewNotesResponse {
+        task_id: task_id.to_string(),
+        revision_count: revision_count as u32,
+        max_revisions: settings.max_revision_cycles,
+        reviews: notes.into_iter().map(|n| n.into()).collect(),
+    }))
+}
+```
+
 ### Tauri Commands (Human Actions)
 
 **File:** `src-tauri/src/commands/review_commands.rs`
@@ -971,106 +1114,622 @@ Modify workflow configuration to support multi-state columns:
 
 ---
 
-## UI Design Decision: Review Experience
+## UI Design Decision: Hybrid Approach ✓
 
-### Option A: Keep Floating Panel + Modal
+**Decision:** Keep floating panel for list, open large modal for detailed review.
 
-**Current approach** - ReviewsPanel is a slide-in sidebar, detail opens in same panel or modal.
-
-```
-┌───────────────────────────────────────┐
-│ Main Content        │ ReviewsPanel    │
-│ (stays visible)     │ (w-96 sidebar)  │
-│                     │                 │
-│                     │ List → Detail   │
-│                     │ via panel swap  │
-└───────────────────────────────────────┘
-```
-
-**Pros:**
-- Accessible from any page (Kanban, Tasks, etc.)
-- Doesn't interrupt current work
-- Quick glance at pending reviews
-
-**Cons:**
-- Limited width for diff viewing
-- Can feel cramped for detailed review
-
-### Option B: Full-Page Review Layout
-
-**New approach** - Dedicated review page with split-pane layout (like chat).
+### User Flow
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│ Header: Review Task "Fix auth bug"              [Back] [Done] │
-├─────────────────────────────────┬─────────────────────────────┤
-│ Review List / Context           │ Diff Viewer                 │
-│ ┌─────────────────────────────┐ │ ┌─────────────────────────┐ │
-│ │ Task Details               │ │ │ Files Changed           │ │
-│ │ - Description              │ │ │ ├─ src/auth.ts (M)      │ │
-│ │ - Steps completed          │ │ │ ├─ src/login.tsx (M)    │ │
-│ │ - Previous reviews         │ │ │ └─ tests/auth.test.ts (A)│
-│ └─────────────────────────────┘ │ ├─────────────────────────┤ │
-│ ┌─────────────────────────────┐ │ │                         │ │
-│ │ AI Review Summary          │ │ │ Unified Diff            │ │
-│ │ ✓ Passed - Confidence 0.92 │ │ │ @@ -10,6 +10,12 @@      │ │
-│ │ Notes: "Implementation..." │ │ │ + new code              │ │
-│ └─────────────────────────────┘ │ │ - old code              │ │
-│ ┌─────────────────────────────┐ │ │                         │ │
-│ │ Your Decision              │ │ │                         │ │
-│ │ [Approve ✓]  [Request ↩]   │ │ │                         │ │
-│ └─────────────────────────────┘ │ └─────────────────────────┘ │
-└─────────────────────────────────┴─────────────────────────────┘
+1. Click "Reviews" button     2. See pending list         3. Click "Review" on card
+   in header toolbar             in floating panel           to open detail modal
+        │                              │                            │
+        ▼                              ▼                            ▼
+┌──────────────────┐         ┌──────────────────┐         ┌────────────────────────┐
+│ [Reviews ⓷]     │         │ ReviewsPanel     │         │ ReviewDetailModal      │
+│                  │   →     │ ┌──────────────┐ │   →     │ (90% viewport)         │
+│                  │         │ │ ReviewCard   │ │         │                        │
+│                  │         │ │ [Review]     │ │         │ Context | DiffViewer   │
+│                  │         │ └──────────────┘ │         │ [Approve] [Request ↩]  │
+└──────────────────┘         └──────────────────┘         └────────────────────────┘
 ```
 
-**Pros:**
-- Full screen for detailed review
-- Better diff viewing experience
-- Room for context (task details, AI notes, history)
-
-**Cons:**
-- Requires navigation away from current page
-- More complex routing
-
-### Option C: Hybrid - Floating List + Large Modal Detail
-
-**Recommended** - Keep floating panel for list, open large modal for actual review.
+### ReviewDetailModal Layout
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│                            Large Modal (90% viewport)                  │
-│  ┌─────────────────────────────────────────────────────────────────┐  │
-│  │ Review: Fix authentication bug                           [X]    │  │
-│  ├────────────────────────────────┬────────────────────────────────┤  │
-│  │ Context                        │ Changes                        │  │
-│  │ ┌────────────────────────────┐ │ ┌────────────────────────────┐ │  │
-│  │ │ Task Details              │ │ │ File Tree    │ Diff View   │ │  │
-│  │ │ AI Review: ✓ Passed       │ │ │ ├─ auth.ts   │ @@ ...      │ │  │
-│  │ │ Attempt: 1/5              │ │ │ └─ login.tsx │ + new       │ │  │
-│  │ └────────────────────────────┘ │ │             │ - old       │ │  │
-│  │ ┌────────────────────────────┐ │ └────────────────────────────┘ │  │
-│  │ │ Review History            │ │                                 │  │
-│  │ │ • AI approved 5m ago     │ │                                 │  │
-│  │ └────────────────────────────┘ │                                 │  │
-│  ├────────────────────────────────┴────────────────────────────────┤  │
-│  │ [Approve]                                    [Request Changes]  │  │
-│  └─────────────────────────────────────────────────────────────────┘  │
+│ Review: Fix authentication bug                                  [X]   │
+├────────────────────────────────┬──────────────────────────────────────┤
+│ Context (300px fixed)          │ Changes (flex-1)                     │
+│ ┌────────────────────────────┐ │ ┌──────────────────────────────────┐ │
+│ │ Task Details               │ │ │ [Changes] [History]              │ │
+│ │ ┌────────────────────────┐ │ │ ├──────────────────────────────────┤ │
+│ │ │ Description            │ │ │ │ File Tree    │ Diff View        │ │
+│ │ │ Priority: High         │ │ │ │ ├─ auth.ts   │ @@ -10,6 +10,12  │ │
+│ │ │ Category: Feature      │ │ │ │ ├─ login.tsx │ + new code       │ │
+│ │ └────────────────────────┘ │ │ │ └─ test.ts   │ - old code       │ │
+│ └────────────────────────────┘ │ │              │                   │ │
+│ ┌────────────────────────────┐ │ │              │ [Open in IDE]     │ │
+│ │ AI Review                  │ │ └──────────────────────────────────┘ │
+│ │ ✓ Passed                   │ │                                      │
+│ │ Confidence: 92%            │ │                                      │
+│ │ "Implementation looks..."  │ │                                      │
+│ └────────────────────────────┘ │                                      │
+│ ┌────────────────────────────┐ │                                      │
+│ │ Review History             │ │                                      │
+│ │ • AI approved 5m ago       │ │                                      │
+│ │ • Worker submitted 10m ago │ │                                      │
+│ └────────────────────────────┘ │                                      │
+│ ┌────────────────────────────┐ │                                      │
+│ │ Revision: Attempt 1/5      │ │                                      │
+│ └────────────────────────────┘ │                                      │
+├────────────────────────────────┴──────────────────────────────────────┤
+│                        [Approve ✓]          [Request Changes ↩]       │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-**Flow:**
-1. User clicks "Reviews" button → floating ReviewsPanel opens
-2. User sees list of pending reviews with quick info
-3. User clicks "Review" button on a card → Large modal opens
-4. Modal shows full context + diff viewer + actions
-5. User approves or requests changes → Modal closes, list updates
+### Benefits
 
-**Pros:**
-- Best of both worlds
-- Quick access via floating panel
-- Full context in modal
-- Works from any page
+- Quick access via floating panel from any page
+- Full context and diff space in modal
 - No routing changes needed
+- Reuses existing DiffViewer component
+- Clear action buttons in modal footer
+
+---
+
+## Specialized Task Detail Views by State
+
+When a user clicks a task card in the Kanban, the detail view should be tailored to the task's internal state. Different states need different information and actions.
+
+### Layout Architecture
+
+The app already has a split layout:
+
+```
+┌────────────────────────────────────┬────────────────────────────────┐
+│  LEFT PANE (resizable)             │  RIGHT PANE                    │
+│                                    │                                │
+│  Kanban Board                      │  Chat Component                │
+│       ↓ (on task click)            │  (already exists with          │
+│  Task Detail View                  │   context switching)           │
+│  (state-specific)                  │                                │
+└────────────────────────────────────┴────────────────────────────────┘
+```
+
+- **Left pane**: Shows Kanban OR Task Detail View (not both)
+- **Right pane**: Chat component with context switching (execution/review/task/etc.)
+- Task detail views should NOT include chat - that's handled by the right pane
+
+### State → View Mapping
+
+| Internal State | Column | Detail View (Left) | Chat Context (Right) | Chat Mode |
+|----------------|--------|--------------------|-----------------------|-----------|
+| `backlog` | Draft | Description, steps, priority | `task` | Live |
+| `ready` | Ready | Description, steps, ready indicator | `task` | Live |
+| `revision_needed` | Ready | Description, steps, **review feedback** | `task` | Live |
+| `executing` | In Progress | Step tracker, progress bar | `execution` | **Live** |
+| `re_executing` | In Progress | Step tracker, **previous feedback** | `execution` | **Live** |
+| `pending_review` | In Review | Work summary, waiting indicator | `execution` | Historical |
+| `reviewing` | In Review | Review progress indicator | `review` | **Live** |
+| `review_passed` | In Review | AI summary, **Approve/Revise buttons** | `review` | Historical |
+| `approved` | Done | Final summary, history | `review` or `execution` | Historical |
+
+### View Components (Left Pane Only)
+
+These components render in the LEFT pane when a task is clicked. The RIGHT pane shows the Chat component with appropriate context.
+
+#### BasicTaskDetail (backlog, ready)
+```
+┌─────────────────────────────────────┐
+│ Task Title                    [Edit]│
+├─────────────────────────────────────┤
+│ Status: Ready    Priority: High     │
+│ Category: Feature                   │
+├─────────────────────────────────────┤
+│ Description                         │
+│ Lorem ipsum dolor sit amet...       │
+├─────────────────────────────────────┤
+│ Steps                               │
+│ ☐ Step 1                           │
+│ ☐ Step 2                           │
+│ ☐ Step 3                           │
+└─────────────────────────────────────┘
+```
+Chat context: `task` | Mode: Live
+
+#### RevisionTaskDetail (revision_needed)
+```
+┌─────────────────────────────────────┐
+│ Task Title              [Attempt 2] │
+├─────────────────────────────────────┤
+│ ⚠️ REVISION NEEDED                  │
+├─────────────────────────────────────┤
+│ Review Feedback to Address          │
+│ ┌─────────────────────────────────┐ │
+│ │ 🤖 AI Review - 5m ago           │ │
+│ │ "Missing error handling in..."  │ │
+│ │                                 │ │
+│ │ Issues:                         │ │
+│ │ • auth.ts:42 - null check       │ │
+│ │ • login.tsx - validation        │ │
+│ └─────────────────────────────────┘ │
+├─────────────────────────────────────┤
+│ Description                         │
+│ Lorem ipsum...                      │
+├─────────────────────────────────────┤
+│ Steps                               │
+│ ✓ Step 1 (completed)               │
+│ ☐ Step 2 (needs revision)          │
+│ ☐ Step 3                           │
+└─────────────────────────────────────┘
+```
+Chat context: `task` | Mode: Live
+
+#### ExecutionTaskDetail (executing, re_executing)
+```
+┌─────────────────────────────────────┐
+│ Task Title                 [Live 🔴]│
+├─────────────────────────────────────┤
+│ Progress: Step 2 of 4               │
+│ ████████████░░░░░░░░ 50%           │
+├─────────────────────────────────────┤
+│ (if re_executing)                   │
+│ ⚠️ Addressing Review Feedback       │
+│ ┌─────────────────────────────────┐ │
+│ │ "Missing error handling..."     │ │
+│ └─────────────────────────────────┘ │
+├─────────────────────────────────────┤
+│ Steps                               │
+│ ✓ Step 1                           │
+│ ▶ Step 2 (in progress)             │
+│ ☐ Step 3                           │
+│ ☐ Step 4                           │
+├─────────────────────────────────────┤
+│ Description                         │
+│ Lorem ipsum...                      │
+└─────────────────────────────────────┘
+```
+Chat context: `execution` | Mode: **Live** (agent streams here)
+
+#### ReviewingTaskDetail (reviewing)
+```
+┌─────────────────────────────────────┐
+│ Task Title            [Reviewing 🔄]│
+├─────────────────────────────────────┤
+│ 🤖 AI REVIEW IN PROGRESS            │
+├─────────────────────────────────────┤
+│ Review Steps                        │
+│ ✓ Gathering context                 │
+│ ▶ Examining changes                 │
+│ ☐ Running checks                    │
+│ ☐ Generating feedback               │
+├─────────────────────────────────────┤
+│ Files Under Review                  │
+│ • src/auth.ts                       │
+│ • src/login.tsx                     │
+│ • tests/auth.test.ts                │
+├─────────────────────────────────────┤
+│ Description                         │
+│ Lorem ipsum...                      │
+└─────────────────────────────────────┘
+```
+Chat context: `review` | Mode: **Live** (can interact with reviewer)
+
+#### HumanReviewTaskDetail (review_passed)
+```
+┌─────────────────────────────────────┐
+│ Task Title            [Ready ✓]     │
+├─────────────────────────────────────┤
+│ ✅ AI REVIEW PASSED                 │
+│ Awaiting your approval              │
+├─────────────────────────────────────┤
+│ AI Review Summary                   │
+│ ┌─────────────────────────────────┐ │
+│ │ 🤖 Confidence: 94%              │ │
+│ │ "Implementation looks good..."  │ │
+│ │                                 │ │
+│ │ ✓ Tests passing                 │ │
+│ │ ✓ No linting errors             │ │
+│ │ ✓ Code follows patterns         │ │
+│ └─────────────────────────────────┘ │
+├─────────────────────────────────────┤
+│ Changes Made                        │
+│ [View Diff →]                       │
+├─────────────────────────────────────┤
+│ Previous Attempts (if any)          │
+│ • Attempt 1: Changes requested      │
+├─────────────────────────────────────┤
+│ [Approve ✓]      [Request Changes ↩]│
+└─────────────────────────────────────┘
+```
+Chat context: `review` | Mode: Historical (read-only log of review)
+
+#### WaitingTaskDetail (pending_review)
+```
+┌─────────────────────────────────────┐
+│ Task Title         [Pending Review] │
+├─────────────────────────────────────┤
+│ ⏳ WAITING FOR AI REVIEWER          │
+├─────────────────────────────────────┤
+│ Work Completed                      │
+│ ┌─────────────────────────────────┐ │
+│ │ Submitted 2m ago                │ │
+│ │ 4 files changed                 │ │
+│ │ All steps completed             │ │
+│ └─────────────────────────────────┘ │
+├─────────────────────────────────────┤
+│ Steps                               │
+│ ✓ Step 1                           │
+│ ✓ Step 2                           │
+│ ✓ Step 3                           │
+├─────────────────────────────────────┤
+│ Description                         │
+│ Lorem ipsum...                      │
+└─────────────────────────────────────┘
+```
+Chat context: `execution` | Mode: Historical (read-only log of execution)
+
+#### CompletedTaskDetail (approved)
+```
+┌─────────────────────────────────────┐
+│ Task Title              [Done ✓]    │
+├─────────────────────────────────────┤
+│ ✅ COMPLETED                        │
+│ Approved 2h ago by Human            │
+├─────────────────────────────────────┤
+│ Final Summary                       │
+│ Lorem ipsum...                      │
+├─────────────────────────────────────┤
+│ Review History                      │
+│ ┌─────────────────────────────────┐ │
+│ │ ✓ Human approved - 2h ago      │ │
+│ │ ✓ AI approved - 2h ago         │ │
+│ │ ↩ AI changes requested - 5h ago│ │
+│ └─────────────────────────────────┘ │
+├─────────────────────────────────────┤
+│ [View Final Diff]  [Reopen Task]    │
+└─────────────────────────────────────┘
+```
+Chat context: `review` | Mode: Historical
+
+### Implementation Approach: View Registry Pattern ✓
+
+```tsx
+const TASK_DETAIL_VIEWS: Record<InternalStatus, React.ComponentType<TaskDetailProps>> = {
+  backlog: BasicTaskDetail,
+  ready: BasicTaskDetail,
+  blocked: BasicTaskDetail,
+  revision_needed: RevisionTaskDetail,
+  executing: ExecutionTaskDetail,
+  re_executing: ExecutionTaskDetail,
+  pending_review: WaitingTaskDetail,
+  reviewing: ReviewingTaskDetail,
+  review_passed: HumanReviewTaskDetail,
+  qa_refining: QATaskDetail,
+  qa_testing: QATaskDetail,
+  qa_passed: QATaskDetail,
+  qa_failed: QATaskDetail,
+  approved: CompletedTaskDetail,
+  failed: FailedTaskDetail,
+  cancelled: CancelledTaskDetail,
+};
+
+function TaskDetailPanel({ task }: { task: Task }) {
+  const ViewComponent = TASK_DETAIL_VIEWS[task.internalStatus] ?? BasicTaskDetail;
+  return <ViewComponent task={task} />;
+}
+```
+
+**Benefits:**
+- Easy to add new views for new states
+- Clear mapping, easy to reason about
+- Each view component is self-contained
+- Fallback to BasicTaskDetail for unmapped states
+
+### Data Requirements by View
+
+| View | Hooks/Data Needed |
+|------|-------------------|
+| BasicTaskDetail | `useTask`, `useTaskSteps` |
+| RevisionTaskDetail | `useTask`, `useTaskSteps`, **`useTaskStateHistory`** |
+| ExecutionTaskDetail | `useTask`, `useTaskSteps`, `useExecutionStream`, **`useTaskStateHistory`** (if re_executing) |
+| HumanReviewTaskDetail | `useTask`, `useReviewsByTaskId`, `useGitDiff` |
+| CompletedTaskDetail | `useTask`, `useTaskStateHistory`, `useGitDiff` |
+
+### Integration Points
+
+1. **TaskCard click** → Opens appropriate detail view based on `task.internalStatus`
+2. **State transitions** → Detail view updates reactively via TanStack Query invalidation
+3. **ReviewsPanel "Review" button** → Opens `HumanReviewTaskDetail` (or ReviewDetailModal)
+4. **Column grouping** → Groups show tasks with matching views
+
+---
+
+## Live Chat with AI Reviewer
+
+### Concept
+
+When a task is in `reviewing` state, the human can interact with the AI reviewer in real-time via the chat panel. This allows:
+- Asking questions about the review in progress
+- Providing additional context the AI might need
+- Guiding the review focus ("pay attention to X")
+- Intervening if the AI is going down the wrong path
+
+### Chat Context Types
+
+The chat system already supports multiple context types. Add `review` context:
+
+| Context Type | Agent | Use Case |
+|--------------|-------|----------|
+| `execution` | worker | Human ↔ Worker during task execution |
+| `review` | reviewer | Human ↔ AI Reviewer during review |
+| `task` | chat-task | General task discussion |
+| `project` | chat-project | Project-level queries |
+| `ideation` | orchestrator-ideation | Ideation session |
+
+### Full Layout: Task Detail + Chat
+
+The existing split layout handles this. When viewing a task in `reviewing` state:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Header                                                                  │
+├────────────────────────────────────┬────────────────────────────────────┤
+│ LEFT PANE                          │ RIGHT PANE                         │
+│ ReviewingTaskDetail component      │ Chat component (context: review)   │
+│ ┌────────────────────────────────┐ │ ┌────────────────────────────────┐ │
+│ │ Task Title       [Reviewing 🔄]│ │ │ 🤖 Starting review...          │ │
+│ │                                │ │ │                                │ │
+│ │ 🤖 AI REVIEW IN PROGRESS       │ │ │ 🤖 Examining git diff...       │ │
+│ │                                │ │ │                                │ │
+│ │ Review Steps                   │ │ │ 🤖 Found 3 files changed.      │ │
+│ │ ✓ Gathering context            │ │ │    Running tests now...        │ │
+│ │ ▶ Examining changes            │ │ │                                │ │
+│ │ ☐ Running checks               │ │ │ 👤 Check error handling in     │ │
+│ │ ☐ Generating feedback          │ │ │    auth.ts please              │ │
+│ │                                │ │ │                                │ │
+│ │ Files Under Review             │ │ │ 🤖 Good point, I'll pay extra  │ │
+│ │ • src/auth.ts                  │ │ │    attention to error cases... │ │
+│ │ • src/login.tsx                │ │ │                                │ │
+│ │                                │ │ ├────────────────────────────────┤ │
+│ │ Description                    │ │ │ Type a message...         [↵]  │ │
+│ └────────────────────────────────┘ │ └────────────────────────────────┘ │
+└────────────────────────────────────┴────────────────────────────────────┘
+  ← resizable →
+```
+
+- **Left pane**: `ReviewingTaskDetail` component (state-specific view)
+- **Right pane**: Existing `Chat` component with `context: review`, mode: live
+
+### Implementation
+
+**1. Add Review Context to Chat Types**
+
+**File:** `src/types/chat.ts`
+
+```typescript
+export type ChatContextType =
+  | 'execution'
+  | 'review'      // NEW
+  | 'task'
+  | 'project'
+  | 'ideation';
+
+export interface ReviewChatContext {
+  type: 'review';
+  taskId: string;
+  reviewId: string;
+}
+```
+
+**2. Update ExecutionChatService for Review**
+
+**File:** `src-tauri/src/application/execution_chat_service.rs`
+
+Add support for spawning/resuming review agent conversations:
+- `spawn_reviewer_with_persistence(task_id, review_id)`
+- `queue_message_to_reviewer(review_id, message)`
+- Reuse existing message queue infrastructure
+
+**3. Task Detail Views (Left Pane)**
+
+Task detail components render in the left pane only. They don't include chat - the existing layout handles that.
+
+```tsx
+// ReviewingTaskDetail renders in LEFT pane
+function ReviewingTaskDetail({ task }: { task: Task }) {
+  const review = useActiveReview(task.id);
+
+  return (
+    <div className="p-4 space-y-4">
+      <TaskHeader task={task} badge="Reviewing 🔄" />
+      <ReviewProgressIndicator review={review} />
+      <FilesUnderReview files={review.files} />
+      <TaskDescription description={task.description} />
+    </div>
+  );
+}
+
+// ExecutionTaskDetail renders in LEFT pane
+function ExecutionTaskDetail({ task }: { task: Task }) {
+  const { steps, progress } = useTaskSteps(task.id);
+  const reviewNotes = useTaskStateHistory(task.id); // For re_executing
+
+  return (
+    <div className="p-4 space-y-4">
+      <TaskHeader task={task} badge={task.internalStatus === 're_executing' ? 'Revising 🔁' : 'Live 🔴'} />
+      <ProgressBar progress={progress} />
+      {task.internalStatus === 're_executing' && (
+        <RevisionFeedbackBanner notes={reviewNotes} />
+      )}
+      <StepsList steps={steps} />
+      <TaskDescription description={task.description} />
+    </div>
+  );
+}
+```
+
+**4. Chat Context Switching (Right Pane)**
+
+The existing chat component needs to switch context based on task state:
+
+```tsx
+// In the layout component that manages both panes
+function TaskLayout({ task }: { task: Task }) {
+  const chatContext = useMemo(() => {
+    switch (task.internalStatus) {
+      case 'executing':
+      case 're_executing':
+        return { type: 'execution', id: task.id };
+      case 'reviewing':
+        return { type: 'review', id: task.id };
+      default:
+        return { type: 'task', id: task.id };
+    }
+  }, [task.internalStatus, task.id]);
+
+  const chatMode = useMemo(() => {
+    const liveStates = ['executing', 're_executing', 'reviewing'];
+    return liveStates.includes(task.internalStatus) ? 'live' : 'historical';
+  }, [task.internalStatus]);
+
+  return (
+    <SplitPane>
+      <LeftPane>
+        <TaskDetailView task={task} />
+      </LeftPane>
+      <RightPane>
+        <ChatComponent context={chatContext} mode={chatMode} />
+      </RightPane>
+    </SplitPane>
+  );
+}
+```
+
+### Message Flow
+
+```
+Human types message in ChatPanel
+    ↓
+Frontend calls queueMessageToAgent(contextType, contextId, message)
+    ↓
+Backend adds to ExecutionMessageQueue
+    ↓
+Agent (via --resume) picks up queued message
+    ↓
+Agent responds, streams back
+    ↓
+Frontend receives via execution:chunk events
+    ↓
+ChatPanel displays response
+```
+
+### Benefits
+
+- Human can guide AI reviewer in real-time
+- Catch issues early before review completes
+- Provide context AI might not have
+- Collaborative human-AI review process
+- Same UX pattern as execution chat (consistency)
+
+### Chat as Live Interaction + Historical Log
+
+The chat panel serves dual purposes:
+
+**During Process (Live)**
+- Human can send messages
+- Agent streams responses
+- Real-time collaboration
+
+**After Process Completes (Read-Only Log)**
+- Chat input disabled
+- Full conversation history preserved
+- User can scroll through to see what happened
+- Serves as audit trail / detailed log
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ Review Completed ✓                                                 │
+├────────────────────────────────────────────────────────────────────┤
+│ 🤖 Starting review of task-123...                                  │
+│                                                                    │
+│ 🤖 Examining git diff... Found 3 files changed.                    │
+│                                                                    │
+│ 👤 Make sure to check the error handling in auth.ts                │
+│                                                                    │
+│ 🤖 Good point. I'll pay extra attention to error handling.         │
+│    Checking auth.ts now...                                         │
+│                                                                    │
+│ 🤖 Running tests... All 24 tests passing.                          │
+│                                                                    │
+│ 🤖 Review complete. Decision: APPROVED                             │
+│    - Code follows project patterns                                 │
+│    - Error handling is adequate                                    │
+│    - Tests cover the changes                                       │
+├────────────────────────────────────────────────────────────────────┤
+│ [Chat ended - Review completed]                     (input disabled)│
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### State-Based Chat Behavior
+
+| Task State | Chat Mode | Input | Purpose |
+|------------|-----------|-------|---------|
+| `executing` | Live | Enabled | Collaborate with worker |
+| `re_executing` | Live | Enabled | Collaborate with worker |
+| `reviewing` | Live | Enabled | Collaborate with reviewer |
+| `pending_review` | Historical | Disabled | View execution log |
+| `review_passed` | Historical | Disabled | View review log |
+| `revision_needed` | Historical | Disabled | View review feedback log |
+| `approved` | Historical | Disabled | View full history |
+
+### Implementation: Chat Mode Detection
+
+```tsx
+function ChatPanel({ contextType, contextId, taskId }: ChatPanelProps) {
+  const task = useTask(taskId);
+
+  const isLive = useMemo(() => {
+    if (contextType === 'execution') {
+      return task.internalStatus === 'executing' || task.internalStatus === 're_executing';
+    }
+    if (contextType === 'review') {
+      return task.internalStatus === 'reviewing';
+    }
+    return false;
+  }, [contextType, task.internalStatus]);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Message history - always visible */}
+      <ScrollArea className="flex-1">
+        <MessageList messages={messages} />
+      </ScrollArea>
+
+      {/* Input - conditional */}
+      {isLive ? (
+        <ChatInput onSend={handleSend} />
+      ) : (
+        <div className="p-3 text-center text-muted border-t">
+          Chat ended - {contextType === 'review' ? 'Review' : 'Execution'} completed
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Note: Execution Chat May Need Same Treatment
+
+This pattern (live → historical) should be verified/implemented for execution chat as well:
+- `executing` / `re_executing` → Live chat with worker
+- After completion → Read-only log of what happened
+
+**Files to check:**
+- `src/components/chat/ChatPanel.tsx` - Does it handle read-only mode?
+- `src/components/tasks/ExecutionTaskDetail.tsx` - Does it show historical chat?
+- Conversation persistence - Are execution conversations saved for later viewing?
 
 ---
 
