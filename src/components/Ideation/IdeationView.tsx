@@ -671,9 +671,12 @@ interface ProposalsToolbarProps {
   onDeselectAll: () => void;
   onSortByPriority: () => void;
   onClearAll: () => void;
+  onApply: (targetColumn: string) => void;
 }
 
-function ProposalsToolbar({ selectedCount, totalCount, onSelectAll, onDeselectAll, onSortByPriority, onClearAll }: ProposalsToolbarProps) {
+function ProposalsToolbar({ selectedCount, totalCount, onSelectAll, onDeselectAll, onSortByPriority, onClearAll, onApply }: ProposalsToolbarProps) {
+  const canApply = selectedCount > 0;
+
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-black/20">
       <span className="text-[10px] text-[var(--text-muted)]">
@@ -720,6 +723,39 @@ function ProposalsToolbar({ selectedCount, totalCount, onSelectAll, onDeselectAl
             <TooltipContent>Clear all</TooltipContent>
           </Tooltip>
         </TooltipProvider>
+
+        <div className="w-px h-3 bg-white/[0.1] mx-0.5" />
+
+        {/* Apply to dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!canApply}
+              className={cn(
+                "h-6 px-2 text-[10px] gap-1",
+                canApply
+                  ? "text-[#ff6b35] hover:bg-[#ff6b35]/10"
+                  : "text-[var(--text-muted)]"
+              )}
+            >
+              Apply
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="bg-[#1a1a1a] border-white/[0.1]">
+            <DropdownMenuItem onClick={() => onApply("draft")} className="hover:bg-white/[0.06]">
+              <FileEdit className="w-4 h-4 mr-2" /> Draft
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onApply("backlog")} className="hover:bg-white/[0.06]">
+              <Inbox className="w-4 h-4 mr-2" /> Backlog
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onApply("todo")} className="hover:bg-white/[0.06]">
+              <ListTodo className="w-4 h-4 mr-2" /> Todo
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
@@ -825,25 +861,40 @@ export function IdeationView({
     });
   }, [session, proposals, onApply]);
 
+  const [highlightedProposalIds, setHighlightedProposalIds] = useState<Set<string>>(new Set());
+  const [planHistoryDialog, setPlanHistoryDialog] = useState<{ isOpen: boolean; artifactId: string; version: number } | null>(null);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
+
+  // Collapse plan when interacting with proposals
+  const collapsePlan = useCallback(() => {
+    setIsPlanExpanded(false);
+  }, []);
+
   const handleSelectAll = useCallback(() => {
+    collapsePlan();
     proposals.forEach((p) => { if (!p.selected) onSelectProposal(p.id); });
-  }, [proposals, onSelectProposal]);
+  }, [proposals, onSelectProposal, collapsePlan]);
 
   const handleDeselectAll = useCallback(() => {
+    collapsePlan();
     proposals.forEach((p) => { if (p.selected) onSelectProposal(p.id); });
-  }, [proposals, onSelectProposal]);
+  }, [proposals, onSelectProposal, collapsePlan]);
 
   const handleSortByPriority = useCallback(() => {
+    collapsePlan();
     const sorted = [...proposals].sort((a, b) => b.priorityScore - a.priorityScore);
     onReorderProposals(sorted.map((p) => p.id));
-  }, [proposals, onReorderProposals]);
+  }, [proposals, onReorderProposals, collapsePlan]);
+
+  // Wrap onSelectProposal to also collapse plan
+  const handleSelectProposal = useCallback((proposalId: string) => {
+    collapsePlan();
+    onSelectProposal(proposalId);
+  }, [onSelectProposal, collapsePlan]);
 
   const handleClearAll = useCallback(() => {
     proposals.forEach((p) => onRemoveProposal(p.id));
   }, [proposals, onRemoveProposal]);
-
-  const [highlightedProposalIds, setHighlightedProposalIds] = useState<Set<string>>(new Set());
-  const [planHistoryDialog, setPlanHistoryDialog] = useState<{ isOpen: boolean; artifactId: string; version: number } | null>(null);
 
   const handleViewHistoricalPlan = useCallback((artifactId: string, version: number) => {
     setPlanHistoryDialog({ isOpen: true, artifactId, version });
@@ -908,7 +959,6 @@ export function IdeationView({
   }, [session, fetchPlanArtifact]);
 
   const selectedCount = proposals.filter((p) => p.selected).length;
-  const canApply = selectedCount > 0;
 
   const sortedProposals = useMemo(() => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder), [proposals]);
 
@@ -1001,6 +1051,7 @@ export function IdeationView({
                     onDeselectAll={handleDeselectAll}
                     onSortByPriority={handleSortByPriority}
                     onClearAll={handleClearAll}
+                    onApply={handleApply}
                   />
                 )}
 
@@ -1043,6 +1094,8 @@ export function IdeationView({
                         showApprove={ideationSettings?.requirePlanApproval ?? false}
                         linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
                         onEdit={() => console.log("Edit plan:", planArtifact.id)}
+                        isExpanded={isPlanExpanded}
+                        onExpandedChange={setIsPlanExpanded}
                       />
                     </div>
                   )}
@@ -1068,7 +1121,7 @@ export function IdeationView({
                         <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
                           <ProposalCard
                             proposal={proposal}
-                            onSelect={onSelectProposal}
+                            onSelect={handleSelectProposal}
                             onEdit={onEditProposal}
                             onRemove={onRemoveProposal}
                             isHighlighted={highlightedProposalIds.has(proposal.id)}
@@ -1081,44 +1134,6 @@ export function IdeationView({
                   )}
                 </div>
 
-                {/* Apply Section - only show when there are proposals */}
-                {proposals.length > 0 && (
-                  <div
-                    data-testid="apply-section"
-                    className="flex items-center justify-between px-4 py-3"
-                  >
-                    <span className="text-sm text-[var(--text-muted)]">
-                      <span className="text-[var(--text-primary)] font-medium">{selectedCount}</span> selected
-                    </span>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          disabled={!canApply}
-                          className={cn(
-                            "gap-2",
-                            canApply && "bg-[#ff6b35] hover:bg-[#ff7a4d]"
-                          )}
-                          style={canApply ? { boxShadow: "0 1px 3px rgba(0,0,0,0.15)" } : undefined}
-                        >
-                          Apply to
-                          <ChevronDown className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-[#1a1a1a] border-white/[0.1]">
-                        <DropdownMenuItem onClick={() => handleApply("draft")} className="hover:bg-white/[0.06]">
-                          <FileEdit className="w-4 h-4 mr-2" /> Draft
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleApply("backlog")} className="hover:bg-white/[0.06]">
-                          <Inbox className="w-4 h-4 mr-2" /> Backlog
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleApply("todo")} className="hover:bg-white/[0.06]">
-                          <ListTodo className="w-4 h-4 mr-2" /> Todo
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                )}
               </div>
 
               {/* Resize Handle */}

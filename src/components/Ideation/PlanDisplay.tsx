@@ -32,6 +32,10 @@ export interface PlanDisplayProps {
   onExport?: () => void;
   onApprove?: () => void;
   isApproved?: boolean;
+  /** Controlled expanded state - if provided, component is controlled */
+  isExpanded?: boolean;
+  /** Callback when expanded state changes */
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 // ============================================================================
@@ -183,8 +187,14 @@ export function PlanDisplay({
   onExport,
   onApprove,
   isApproved = false,
+  isExpanded,
+  onExpandedChange,
 }: PlanDisplayProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  // Use controlled state if isExpanded prop is provided, otherwise use internal state
+  // Default to collapsed (false) for initial render
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
+  const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
   const planContent = plan.content.type === "inline" ? plan.content.text : "";
 
