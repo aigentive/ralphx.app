@@ -15,7 +15,6 @@ import {
   Plus,
   Archive,
   Lightbulb,
-  MessageSquareText,
   Loader2,
   ChevronDown,
   FileEdit,
@@ -28,7 +27,6 @@ import {
   Undo2,
   Eye,
   Upload,
-  Bot,
   Clock,
   Sparkles,
   ArrowRight,
@@ -39,7 +37,6 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   IdeationSession,
   TaskProposal,
-  ChatMessage as ChatMessageType,
   ApplyProposalsInput,
 } from "@/types/ideation";
 import { Button } from "@/components/ui/button";
@@ -56,14 +53,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
-import ReactMarkdown from "react-markdown";
 import type { Priority } from "@/types/ideation";
 import { PlanDisplay } from "./PlanDisplay";
 import { PlanHistoryDialog } from "./PlanHistoryDialog";
 import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
-import { ChatInput } from "@/components/Chat/ChatInput";
-import { ToolCallIndicator, type ToolCall } from "@/components/Chat/ToolCallIndicator";
+import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { cn } from "@/lib/utils";
+import { ConversationEmptyState } from "./EmptyStates";
 
 // ============================================================================
 // Types
@@ -72,9 +68,7 @@ import { cn } from "@/lib/utils";
 interface IdeationViewProps {
   session: IdeationSession | null;
   sessions: IdeationSession[];
-  messages: ChatMessageType[];
   proposals: TaskProposal[];
-  onSendMessage: (content: string) => void;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
@@ -83,7 +77,6 @@ interface IdeationViewProps {
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
   onApply: (options: ApplyProposalsInput) => void;
-  isLoading?: boolean;
 }
 
 // ============================================================================
@@ -180,316 +173,8 @@ const animationStyles = `
 `;
 
 // ============================================================================
-// Markdown Components
-// ============================================================================
-
-const markdownComponents = {
-  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-[#ff6b35] hover:text-[#ff8050] underline decoration-[#ff6b35]/30 hover:decoration-[#ff6b35]/60 transition-colors"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
-  code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) => {
-    const isBlock = className?.includes("language-");
-    if (isBlock) {
-      return (
-        <code
-          className={cn(
-            "block p-4 rounded-lg text-[13px] leading-relaxed overflow-x-auto",
-            "bg-black/40 border border-white/5",
-            "font-mono",
-            className
-          )}
-          {...props}
-        >
-          {children}
-        </code>
-      );
-    }
-    return (
-      <code
-        className="px-1.5 py-0.5 rounded text-[13px] bg-white/5 border border-white/5 font-mono text-[#ffa94d]"
-        {...props}
-      >
-        {children}
-      </code>
-    );
-  },
-  pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
-    <pre className="my-3 rounded-lg overflow-hidden" {...props}>
-      {children}
-    </pre>
-  ),
-  p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p className="mb-2.5 last:mb-0 leading-relaxed" {...props}>
-      {children}
-    </p>
-  ),
-  ul: ({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) => (
-    <ul className="list-none space-y-1.5 mb-3" {...props}>
-      {children}
-    </ul>
-  ),
-  ol: ({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) => (
-    <ol className="list-decimal list-inside mb-3 space-y-1" {...props}>
-      {children}
-    </ol>
-  ),
-  li: ({ children, ...props }: React.LiHTMLAttributes<HTMLLIElement>) => (
-    <li className="flex items-start gap-2" {...props}>
-      <span className="w-1.5 h-1.5 rounded-full bg-[#ff6b35]/60 mt-2 flex-shrink-0" />
-      <span>{children}</span>
-    </li>
-  ),
-};
-
-// ============================================================================
-// Typing Indicator (Premium)
-// ============================================================================
-
-function TypingIndicator() {
-  return (
-    <div data-testid="typing-indicator" className="flex items-start gap-2 mb-3">
-      <div
-        className="w-6 h-6 rounded-full flex items-center justify-center"
-        style={{
-          background: "rgba(255,107,53,0.1)",
-          border: "1px solid rgba(255,107,53,0.2)",
-        }}
-      >
-        <Bot className="w-3 h-3 text-[#ff6b35]" />
-      </div>
-      <div
-        className="px-3 py-2"
-        style={{
-          borderRadius: "16px 16px 16px 4px",
-          background: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div className="flex items-center gap-1">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Message Bubble (Premium)
-// ============================================================================
-
-interface MessageItemProps {
-  role: string;
-  content: string;
-  createdAt: string;
-  toolCalls?: string | null;
-  isFirstInGroup?: boolean;
-  isLastInGroup?: boolean;
-}
-
-function MessageItem({
-  role,
-  content,
-  createdAt,
-  toolCalls,
-  isFirstInGroup = true,
-  isLastInGroup = true,
-}: MessageItemProps) {
-  const isUser = role === "user";
-
-  const timestamp = useMemo(() => {
-    const date = new Date(createdAt);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  }, [createdAt]);
-
-  const parsedToolCalls = useMemo((): ToolCall[] => {
-    if (!toolCalls) return [];
-    try {
-      const parsed = JSON.parse(toolCalls);
-      if (Array.isArray(parsed)) {
-        return parsed.map((tc, idx) => ({
-          id: tc.id ?? `tool-${idx}`,
-          name: tc.name ?? "unknown",
-          arguments: tc.arguments ?? {},
-          result: tc.result,
-          error: tc.error,
-        }));
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  }, [toolCalls]);
-
-  return (
-    <div
-      className={cn(
-        "flex session-card-enter",
-        isUser ? "justify-end" : "justify-start",
-        isLastInGroup ? "mb-3" : "mb-1"
-      )}
-    >
-      {/* Agent avatar */}
-      {!isUser && isFirstInGroup && (
-        <div
-          className="w-6 h-6 rounded-full flex items-center justify-center mr-2 flex-shrink-0"
-          style={{
-            background: "rgba(255,107,53,0.1)",
-            border: "1px solid rgba(255,107,53,0.2)",
-          }}
-        >
-          <Bot className="w-3 h-3 text-[#ff6b35]" />
-        </div>
-      )}
-      {!isUser && !isFirstInGroup && <div className="w-6 mr-2 flex-shrink-0" />}
-
-      <div className="flex flex-col max-w-[80%]">
-        {/* Tool calls */}
-        {!isUser && parsedToolCalls.length > 0 && (
-          <div className="space-y-1.5 mb-1.5">
-            {parsedToolCalls.map((tc) => (
-              <ToolCallIndicator key={tc.id} toolCall={tc} />
-            ))}
-          </div>
-        )}
-
-        {/* Message bubble - Tahoe flat style */}
-        <div
-          className="px-3 py-2 text-[13px] leading-relaxed"
-          style={isUser
-            ? {
-                borderRadius: "16px 16px 4px 16px",
-                background: "#ff6b35",
-                color: "white",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-              }
-            : {
-                borderRadius: "16px 16px 16px 4px",
-                background: "rgba(255,255,255,0.04)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-              }
-          }
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{content}</p>
-          ) : (
-            <div className="prose prose-sm prose-invert max-w-none text-[var(--text-primary)]">
-              <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
-            </div>
-          )}
-        </div>
-
-        {isLastInGroup && (
-          <span className={cn("text-[10px] mt-1 px-0.5 text-[var(--text-muted)]", isUser ? "text-right" : "text-left")}>
-            {timestamp}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // Empty States (Premium)
 // ============================================================================
-
-function ConversationEmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center h-full p-6">
-      {/* Minimal, flowing design for conversation */}
-      <div className="text-center max-w-[280px]">
-        {/* Animated message bubbles */}
-        <div className="flex items-end justify-center gap-2 mb-6">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-              border: "1px solid rgba(255,255,255,0.06)",
-            }}
-          />
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-          />
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.05) 100%)",
-              border: "1px solid rgba(255,107,53,0.25)",
-              boxShadow: "0 0 30px rgba(255,107,53,0.1)",
-            }}
-          >
-            <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
-          </div>
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-          />
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-              border: "1px solid rgba(255,255,255,0.06)",
-            }}
-          />
-        </div>
-
-        <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
-          Start the conversation
-        </h3>
-        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-          Describe your ideas and I'll help create task proposals
-        </p>
-
-        {/* Hint arrow pointing down to input */}
-        <div className="mt-6 flex justify-center">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center animate-bounce"
-            style={{
-              background: "rgba(255,107,53,0.1)",
-              border: "1px solid rgba(255,107,53,0.2)",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#ff6b35]">
-              <path d="M7 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ProposalsEmptyState() {
   return (
@@ -1047,9 +732,7 @@ function ProposalsToolbar({ selectedCount, totalCount, onSelectAll, onDeselectAl
 export function IdeationView({
   session,
   sessions,
-  messages,
   proposals,
-  onSendMessage,
   onNewSession,
   onSelectSession,
   onArchiveSession,
@@ -1058,12 +741,10 @@ export function IdeationView({
   onRemoveProposal,
   onReorderProposals,
   onApply,
-  isLoading = false,
 }: IdeationViewProps) {
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // 60/40 split like Kanban
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
@@ -1102,12 +783,6 @@ export function IdeationView({
     setupListener();
     return () => { if (unlisten) unlisten(); };
   }, [proposals, showSyncNotification]);
-
-  useEffect(() => {
-    if (messagesEndRef.current?.scrollIntoView) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -1233,17 +908,9 @@ export function IdeationView({
   }, [session, fetchPlanArtifact]);
 
   const selectedCount = proposals.filter((p) => p.selected).length;
-  const canApply = selectedCount > 0 && !isLoading;
+  const canApply = selectedCount > 0;
 
   const sortedProposals = useMemo(() => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder), [proposals]);
-
-  const groupedMessages = useMemo(() => {
-    return messages.map((msg, index) => {
-      const prevMsg = messages[index - 1];
-      const nextMsg = messages[index + 1];
-      return { ...msg, isFirstInGroup: !prevMsg || prevMsg.role !== msg.role, isLastInGroup: !nextMsg || nextMsg.role !== msg.role };
-    });
-  }, [messages]);
 
   const activeSessions = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
 
@@ -1295,7 +962,7 @@ export function IdeationView({
                     {session.title || "New Session"}
                   </h1>
                   <p className="text-[10px] text-[var(--text-muted)]">
-                    {messages.length} messages · {proposals.length} proposals
+                    {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}
                   </p>
                 </div>
               </div>
@@ -1468,51 +1135,26 @@ export function IdeationView({
                 )} />
               </div>
 
-              {/* Conversation Panel (Right) */}
+              {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
               <div
                 data-testid="conversation-panel"
-                className="flex flex-col flex-1 bg-gradient-to-b from-black/20 to-transparent"
+                className="flex flex-col flex-1"
                 style={{ minWidth: "320px" }}
               >
-                {/* Panel Header */}
-                <div className="flex items-center gap-2 px-4 h-10 border-b border-white/[0.06] bg-black/20">
-                  <MessageSquare className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                  <h2 className="text-[13px] font-medium text-[var(--text-primary)]">Conversation</h2>
-                </div>
-
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-3">
-                  {messages.length === 0 ? (
-                    <ConversationEmptyState />
-                  ) : (
-                    <>
-                      {groupedMessages.map((msg) => (
-                        <MessageItem
-                          key={msg.id}
-                          role={msg.role}
-                          content={msg.content}
-                          createdAt={msg.createdAt}
-                          toolCalls={msg.toolCalls}
-                          isFirstInGroup={msg.isFirstInGroup}
-                          isLastInGroup={msg.isLastInGroup}
-                        />
-                      ))}
-                      {isLoading && <TypingIndicator />}
-                      <div ref={messagesEndRef} />
-                    </>
-                  )}
-                </div>
-
-                {/* Chat Input */}
-                <div className="border-t border-white/[0.06] bg-black/30 p-4">
-                  <ChatInput
-                    onSend={onSendMessage}
-                    isSending={isLoading}
-                    placeholder="Send a message..."
-                    showHelperText={true}
-                    autoFocus={false}
-                  />
-                </div>
+                <IntegratedChatPanel
+                  projectId={session.projectId}
+                  ideationSessionId={session.id}
+                  emptyState={<ConversationEmptyState />}
+                  showHelperTextAlways={true}
+                  inputContainerClassName="border-t border-white/[0.06] bg-black/30"
+                  showCollapseButton={false}
+                  headerContent={
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
+                      <span className="text-[13px] font-medium text-[var(--text-primary)]">Conversation</span>
+                    </div>
+                  }
+                />
               </div>
             </div>
           </div>
