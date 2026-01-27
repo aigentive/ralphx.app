@@ -32,7 +32,7 @@ const mockCreateTask = vi.fn();
 describe("InlineTaskAdd", () => {
   let queryClient: QueryClient;
   const mockOnCreated = vi.fn();
-  const mockOpenModal = vi.fn();
+  const mockOpenTaskCreation = vi.fn();
 
   beforeEach(() => {
     queryClient = new QueryClient({
@@ -45,13 +45,13 @@ describe("InlineTaskAdd", () => {
     // Reset mocks
     mockCreateTask.mockReset();
     mockOnCreated.mockReset();
-    mockOpenModal.mockReset();
+    mockOpenTaskCreation.mockReset();
 
     // Setup API mock
     (tauri.api.tasks.create as ReturnType<typeof vi.fn>).mockImplementation(mockCreateTask);
 
     // Setup store mock
-    useUiStore.setState({ openModal: mockOpenModal });
+    useUiStore.setState({ openTaskCreation: mockOpenTaskCreation });
   });
 
   const renderComponent = (props = {}) => {
@@ -231,7 +231,7 @@ describe("InlineTaskAdd", () => {
       expect(mockCreateTask).not.toHaveBeenCalled();
     });
 
-    it("opens modal with pre-filled data when More options clicked", () => {
+    it("opens task creation overlay with pre-filled data when More options clicked", () => {
       renderComponent();
 
       fireEvent.click(screen.getByTestId("inline-task-add-collapsed"));
@@ -240,13 +240,9 @@ describe("InlineTaskAdd", () => {
       fireEvent.change(input, { target: { value: "My task" } });
       fireEvent.click(screen.getByTestId("inline-task-add-more-options"));
 
-      expect(mockOpenModal).toHaveBeenCalledWith("task-create", {
-        projectId: "project-1",
-        defaultTitle: "My task",
-        defaultStatus: "backlog",
-      });
+      expect(mockOpenTaskCreation).toHaveBeenCalledWith("project-1", "My task");
 
-      // Should collapse after opening modal
+      // Should collapse after opening overlay
       expect(screen.queryByTestId("inline-task-add-expanded")).not.toBeInTheDocument();
     });
 

@@ -75,6 +75,7 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [isInlineAddExpanded, setIsInlineAddExpanded] = useState(false);
   const { active } = useDndContext();
   const isDragging = active !== null;
 
@@ -154,8 +155,9 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
   };
 
   // Determine if this column should show InlineTaskAdd
+  // Show when hovering OR when the inline add form is expanded (to preserve state)
   const showInlineAdd =
-    isHovered &&
+    (isHovered || isInlineAddExpanded) &&
     !isDragging &&
     (column.id === "draft" || column.id === "backlog");
 
@@ -238,7 +240,11 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
 
         {/* Inline task add - appears on hover (only in draft/backlog columns, not during drag) */}
         {showInlineAdd && (
-          <InlineTaskAdd projectId={projectId} columnId={column.id} />
+          <InlineTaskAdd
+            projectId={projectId}
+            columnId={column.id}
+            onExpandedChange={setIsInlineAddExpanded}
+          />
         )}
       </div>
     </div>

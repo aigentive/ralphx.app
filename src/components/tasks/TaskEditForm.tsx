@@ -1,23 +1,31 @@
 /**
  * TaskEditForm - Form for editing existing tasks
  *
+ * Uses shared TaskFormFields for consistent Refined Studio styling.
+ *
  * Features:
  * - Edit title, category, description, and priority
  * - Pre-populated with existing task data
  * - Form validation with Zod schema
  * - onSave callback for parent to handle mutation
+ * - Step management section
  *
  * Design spec: specs/design/refined-studio-patterns.md
- * - Refined Studio aesthetic with consistent form controls
- * - Glass effect styling on inputs
  */
 
-import { useState, useCallback, useId, type FormEvent } from "react";
-import { TASK_CATEGORIES, UpdateTaskSchema, type Task, type UpdateTask } from "@/types/task";
+import { useState, useCallback, type FormEvent } from "react";
+import { UpdateTaskSchema, type Task, type UpdateTask } from "@/types/task";
 import { ACTIVE_STATUSES } from "@/types/status";
-import { Loader2, Plus, AlertCircle } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { StepList } from "./StepList";
 import { useStepMutations } from "@/hooks/useStepMutations";
+import {
+  TaskFormFields,
+  TaskFormActions,
+  inputBaseStyles,
+  buttonPrimaryStyles,
+  labelStyles,
+} from "./TaskFormFields";
 
 // ============================================================================
 // Types
@@ -35,65 +43,6 @@ export interface TaskEditFormProps {
 }
 
 // ============================================================================
-// Shared Styles
-// ============================================================================
-
-const inputBaseStyles = `
-  w-full h-10 px-3 rounded-lg text-[13px]
-  bg-white/[0.03] border border-white/[0.08]
-  text-white/90 placeholder:text-white/30
-  transition-all duration-150
-  focus:outline-none focus:border-[#ff6b35]/50 focus:bg-white/[0.05]
-  focus:shadow-[0_0_0_3px_rgba(255,107,53,0.1)]
-  disabled:opacity-50 disabled:cursor-not-allowed
-`.replace(/\n/g, ' ').trim();
-
-const selectBaseStyles = `
-  w-full h-10 px-3 rounded-lg text-[13px]
-  bg-white/[0.03] border border-white/[0.08]
-  text-white/90 cursor-pointer
-  transition-all duration-150
-  focus:outline-none focus:border-[#ff6b35]/50 focus:bg-white/[0.05]
-  focus:shadow-[0_0_0_3px_rgba(255,107,53,0.1)]
-  disabled:opacity-50 disabled:cursor-not-allowed
-  appearance-none
-  bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C255%2C255%2C0.4)%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22M6%209l6%206%206-6%22%2F%3E%3C%2Fsvg%3E')]
-  bg-[length:16px_16px] bg-[right_12px_center] bg-no-repeat
-  pr-10
-`.replace(/\n/g, ' ').trim();
-
-const textareaBaseStyles = `
-  w-full px-3 py-2.5 rounded-lg text-[13px] leading-relaxed
-  bg-white/[0.03] border border-white/[0.08]
-  text-white/90 placeholder:text-white/30
-  transition-all duration-150 resize-none
-  focus:outline-none focus:border-[#ff6b35]/50 focus:bg-white/[0.05]
-  focus:shadow-[0_0_0_3px_rgba(255,107,53,0.1)]
-  disabled:opacity-50 disabled:cursor-not-allowed
-`.replace(/\n/g, ' ').trim();
-
-const labelStyles = "block text-[12px] font-medium text-white/50 uppercase tracking-wide mb-2";
-
-const buttonPrimaryStyles = `
-  h-10 px-4 rounded-lg text-[13px] font-medium
-  bg-[#ff6b35] text-white
-  transition-all duration-150
-  hover:bg-[#ff8050] hover:shadow-[0_4px_12px_rgba(255,107,53,0.3)]
-  focus:outline-none focus:shadow-[0_0_0_3px_rgba(255,107,53,0.3)]
-  disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none
-  flex items-center justify-center gap-2
-`.replace(/\n/g, ' ').trim();
-
-const buttonSecondaryStyles = `
-  h-10 px-4 rounded-lg text-[13px] font-medium
-  bg-transparent border border-white/[0.1] text-white/70
-  transition-all duration-150
-  hover:bg-white/[0.05] hover:border-white/[0.15] hover:text-white/90
-  focus:outline-none focus:shadow-[0_0_0_3px_rgba(255,255,255,0.05)]
-  disabled:opacity-50 disabled:cursor-not-allowed
-`.replace(/\n/g, ' ').trim();
-
-// ============================================================================
 // Component
 // ============================================================================
 
@@ -103,8 +52,6 @@ export function TaskEditForm({
   onCancel,
   isSaving,
 }: TaskEditFormProps) {
-  const baseId = useId();
-
   // Form state - pre-populate with task data
   const [title, setTitle] = useState(task.title);
   const [category, setCategory] = useState(task.category);
@@ -186,98 +133,22 @@ export function TaskEditForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col flex-1">
       {/* Form Fields */}
-      <div className="space-y-5">
-        {/* Title Field */}
-        <div>
-          <label htmlFor={`${baseId}-title`} className={labelStyles}>
-            Title
-          </label>
-          <input
-            type="text"
-            id={`${baseId}-title`}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={isSaving}
-            placeholder="Enter task title"
-            className={inputBaseStyles}
-          />
-        </div>
-
-        {/* Category & Priority Row */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Category Field */}
-        <div>
-          <label htmlFor={`${baseId}-category`} className={labelStyles}>
-            Category
-          </label>
-          <select
-            id={`${baseId}-category`}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            disabled={isSaving}
-            className={selectBaseStyles}
-          >
-            {TASK_CATEGORIES.map((cat) => (
-              <option key={cat} value={cat} className="bg-[#1a1a1a] text-white">
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Priority Field */}
-        <div>
-          <label htmlFor={`${baseId}-priority`} className={labelStyles}>
-            Priority
-          </label>
-          <select
-            id={`${baseId}-priority`}
-            value={priority}
-            onChange={(e) => setPriority(Number(e.target.value))}
-            disabled={isSaving}
-            className={selectBaseStyles}
-          >
-            <option value={1} className="bg-[#1a1a1a] text-white">P1 - Critical</option>
-            <option value={2} className="bg-[#1a1a1a] text-white">P2 - High</option>
-            <option value={3} className="bg-[#1a1a1a] text-white">P3 - Medium</option>
-            <option value={4} className="bg-[#1a1a1a] text-white">P4 - Low</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Description Field */}
-      <div>
-        <label htmlFor={`${baseId}-description`} className={labelStyles}>
-          Description
-        </label>
-        <textarea
-          id={`${baseId}-description`}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={isSaving}
-          rows={4}
-          placeholder="Enter task description (optional)"
-          className={textareaBaseStyles}
-        />
-      </div>
-
-      {/* Error Display */}
-      {validationError && (
-        <div
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-lg text-[13px]"
-          style={{
-            background: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.05) 100%)",
-            border: "1px solid rgba(239,68,68,0.25)",
-          }}
-        >
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          <span className="text-red-300">{validationError}</span>
-        </div>
-      )}
+      <TaskFormFields
+        title={title}
+        setTitle={setTitle}
+        category={category}
+        setCategory={setCategory}
+        description={description}
+        setDescription={setDescription}
+        priority={priority}
+        setPriority={setPriority}
+        disabled={isSaving}
+        validationError={validationError}
+      />
 
       {/* Steps Section */}
       <div
-        className="rounded-lg p-4"
+        className="rounded-lg p-4 mt-5"
         style={{
           background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)",
           border: "1px solid rgba(255,255,255,0.06)",
@@ -331,31 +202,16 @@ export function TaskEditForm({
             </button>
           </div>
         )}
-        </div>
       </div>
 
-      {/* Form Actions - Bottom aligned */}
-      <div
-        className="flex justify-end gap-3 pt-4 mt-auto border-t"
-        style={{ borderColor: "rgba(255,255,255,0.06)" }}
-      >
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSaving}
-          className={buttonSecondaryStyles}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isSaving || !title.trim() || !hasChanges}
-          className={buttonPrimaryStyles}
-        >
-          {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-          {isSaving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
+      {/* Form Actions */}
+      <TaskFormActions
+        onCancel={onCancel}
+        submitLabel="Save Changes"
+        submitLoadingLabel="Saving..."
+        isSubmitting={isSaving}
+        isDisabled={!title.trim() || !hasChanges}
+      />
     </form>
   );
 }

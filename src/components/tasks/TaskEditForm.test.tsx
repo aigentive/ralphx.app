@@ -1,7 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TaskEditForm } from "./TaskEditForm";
 import type { Task } from "@/types/task";
+
+// Helper to render with QueryClientProvider
+const renderWithProvider = (ui: React.ReactElement) => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+};
 
 describe("TaskEditForm", () => {
   const mockTask: Task = {
@@ -30,7 +44,7 @@ describe("TaskEditForm", () => {
   });
 
   it("renders with pre-populated task data", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -51,7 +65,7 @@ describe("TaskEditForm", () => {
   });
 
   it("calls onSave with changed fields when form is submitted", async () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -77,7 +91,7 @@ describe("TaskEditForm", () => {
   });
 
   it("calls onCancel when no fields are changed", async () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -95,7 +109,7 @@ describe("TaskEditForm", () => {
   });
 
   it("trims whitespace from title and description", async () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -122,7 +136,7 @@ describe("TaskEditForm", () => {
 
   it("converts empty description to null", async () => {
     const taskWithDesc: Task = { ...mockTask, description: "Has description" };
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={taskWithDesc}
         onSave={mockOnSave}
@@ -144,7 +158,7 @@ describe("TaskEditForm", () => {
   });
 
   it("disables form controls when isSaving is true", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -162,7 +176,7 @@ describe("TaskEditForm", () => {
   });
 
   it("shows loading spinner when isSaving is true", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -175,7 +189,7 @@ describe("TaskEditForm", () => {
   });
 
   it("calls onCancel when Cancel button is clicked", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -190,7 +204,7 @@ describe("TaskEditForm", () => {
   });
 
   it("disables Save button when no changes are made", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -204,7 +218,7 @@ describe("TaskEditForm", () => {
   });
 
   it("enables Save button when changes are made", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -221,7 +235,7 @@ describe("TaskEditForm", () => {
   });
 
   it("updates all editable fields", async () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -256,7 +270,7 @@ describe("TaskEditForm", () => {
   });
 
   it("does not submit when title is empty", () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}
@@ -274,7 +288,7 @@ describe("TaskEditForm", () => {
 
   it("handles task with null description", () => {
     const taskWithoutDesc: Task = { ...mockTask, description: null };
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={taskWithoutDesc}
         onSave={mockOnSave}
@@ -288,7 +302,7 @@ describe("TaskEditForm", () => {
   });
 
   it("handles priority changes correctly", async () => {
-    render(
+    renderWithProvider(
       <TaskEditForm
         task={mockTask}
         onSave={mockOnSave}

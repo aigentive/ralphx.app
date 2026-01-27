@@ -10,7 +10,7 @@
  * - "More options" link opens full TaskCreationForm modal
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Plus } from "lucide-react";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
@@ -23,6 +23,8 @@ interface InlineTaskAddProps {
   columnId: string;
   /** Optional callback when task is created */
   onCreated?: (task: Task) => void;
+  /** Callback to notify parent when expanded state changes */
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 /**
@@ -32,13 +34,19 @@ interface InlineTaskAddProps {
  * 1. Collapsed (ghost card): dashed border, "+ Add task" text
  * 2. Expanded (form): input field with Enter to create, Escape to cancel, "More options" link
  */
-export function InlineTaskAdd({ projectId, columnId, onCreated }: InlineTaskAddProps) {
+export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExpandedChange }: InlineTaskAddProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const openModal = useUiStore((state) => state.openModal);
+  const openTaskCreation = useUiStore((state) => state.openTaskCreation);
 
   const { createMutation } = useTaskMutation(projectId);
+
+  // Notify parent of expanded state changes
+  const setExpanded = useCallback((expanded: boolean) => {
+    setIsExpanded(expanded);
+    onExpandedChange?.(expanded);
+  }, [onExpandedChange]);
 
   // Auto-focus input when expanded
   useEffect(() => {
@@ -48,11 +56,11 @@ export function InlineTaskAdd({ projectId, columnId, onCreated }: InlineTaskAddP
   }, [isExpanded]);
 
   const handleExpand = () => {
-    setIsExpanded(true);
+    setExpanded(true);
   };
 
   const handleCollapse = () => {
-    setIsExpanded(false);
+    setExpanded(false);
     setTitle("");
   };
 
@@ -89,11 +97,7 @@ export function InlineTaskAdd({ projectId, columnId, onCreated }: InlineTaskAddP
   };
 
   const handleMoreOptions = () => {
-    openModal("task-create", {
-      projectId,
-      defaultTitle: title,
-      defaultStatus: columnId,
-    });
+    openTaskCreation(projectId, title);
     handleCollapse();
   };
 
@@ -140,27 +144,41 @@ export function InlineTaskAdd({ projectId, columnId, onCreated }: InlineTaskAddP
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={handleKeyDown}
+        onBlur={(e) => {
+          // Don't collapse if clicking on more options or cancel buttons
+          const relatedTarget = e.relatedTarget as HTMLElement | null;
+          if (relatedTarget?.closest('[data-testid="inline-task-add-expanded"]')) {
+            return;
+          }
+          // Only collapse if empty, otherwise keep the state
+          if (!title.trim()) {
+            handleCollapse();
+          }
+        }}
         placeholder="Task title..."
         disabled={createMutation.isPending}
-        className="w-full text-sm bg-transparent outline-none"
+        className="w-full text-sm bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
         style={{
           color: "var(--text-primary)",
-          border: "none",
+          boxShadow: "none",
+          outline: "none",
         }}
       />
       <div className="flex items-center justify-between mt-2 text-xs">
         <button
           data-testid="inline-task-add-more-options"
           onClick={handleMoreOptions}
+          onMouseDown={(e) => e.preventDefault()}
           disabled={createMutation.isPending}
           className="hover:underline"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--accent-primary)" }}
         >
           More options
         </button>
         <button
           data-testid="inline-task-add-cancel"
           onClick={handleCollapse}
+          onMouseDown={(e) => e.preventDefault()}
           disabled={createMutation.isPending}
           className="hover:underline"
           style={{ color: "var(--text-muted)" }}

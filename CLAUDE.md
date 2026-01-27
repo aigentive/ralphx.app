@@ -90,6 +90,16 @@ Entries: `### YYYY-MM-DD HH:MM:SS - Title\n**What:**\n- ...\n**Commands:**\n- \`
 - 5% accent rule | Use shadcn/ui + Lucide icons
 - **INVOKE `/tailwind-v4-shadcn` skill before UI work** (v4 ≠ v3)
 
+### Removing Input Outlines (IMPORTANT)
+Browser default focus outlines require BOTH Tailwind classes AND inline styles to fully remove:
+```tsx
+// Tailwind classes (all required):
+className="outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
+// Inline styles (also required):
+style={{ boxShadow: "none", outline: "none" }}
+```
+Reference: `src/components/Chat/ChatInput.tsx` textarea styling
+
 ## Git Conventions
 - NO: git init, push, remotes
 - Commit msgs: `docs:` (PRD) | `feat:` | `fix:` | `chore:` (phase transition)
