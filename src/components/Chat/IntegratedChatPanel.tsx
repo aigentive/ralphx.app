@@ -337,7 +337,6 @@ export function IntegratedChatPanel({
 
   const {
     queueMessage,
-    editQueuedMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
     queueExecutionMessage,
@@ -644,6 +643,69 @@ export function IntegratedChatPanel({
     startEditingQueuedMessage(storeContextKey, lastMessage.id);
   }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, storeContextKey]);
 
+  // Delete queued message handler - syncs with backend
+  const handleDeleteQueuedMessage = useCallback(
+    async (messageId: string) => {
+      const { ctxType, ctxId } = getQueueContext();
+
+      // Delete from local store immediately (optimistic)
+      if (isExecutionMode && selectedTaskId) {
+        deleteExecutionQueuedMessage(selectedTaskId, messageId);
+      } else {
+        deleteQueuedMessage(storeContextKey, messageId);
+      }
+
+      // Delete from backend using the same ID
+      try {
+        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
+        console.debug(`[queue] Deleted message ${messageId} from backend`);
+      } catch (error) {
+        console.error("Failed to delete queued message from backend:", error);
+      }
+    },
+    [isExecutionMode, selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, storeContextKey]
+  );
+
+  // Edit queued message handler - delete old and queue new (syncs with backend)
+  const handleEditQueuedMessage = useCallback(
+    async (messageId: string, newContent: string) => {
+      const { ctxType, ctxId } = getQueueContext();
+
+      // Delete old message from backend
+      try {
+        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
+      } catch (error) {
+        console.error("Failed to delete old queued message:", error);
+      }
+
+      // Delete from local store
+      if (isExecutionMode && selectedTaskId) {
+        deleteExecutionQueuedMessage(selectedTaskId, messageId);
+      } else {
+        deleteQueuedMessage(storeContextKey, messageId);
+      }
+
+      // Generate new ID and queue the edited content
+      const newMessageId = generateQueuedMessageId();
+
+      // Add to local store first (optimistic)
+      if (isExecutionMode && selectedTaskId) {
+        queueExecutionMessage(selectedTaskId, newContent, newMessageId);
+      } else {
+        queueMessage(storeContextKey, newContent, newMessageId);
+      }
+
+      // Queue to backend with same ID
+      try {
+        await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
+        console.debug(`[queue] Edited message, new ID ${newMessageId} for ${ctxType}/${ctxId}`);
+      } catch (error) {
+        console.error("Failed to queue edited message to backend:", error);
+      }
+    },
+    [isExecutionMode, selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, storeContextKey]
+  );
+
   // Stop the running agent
   const handleStopAgent = useCallback(async () => {
     const ctxType = isExecutionMode
@@ -917,19 +979,13 @@ export function IntegratedChatPanel({
           {/* Queued Messages */}
           {(() => {
             const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
-            const deleteHandler = isExecutionMode && selectedTaskId
-              ? (id: string) => deleteExecutionQueuedMessage(selectedTaskId, id)
-              : (id: string) => deleteQueuedMessage(storeContextKey, id);
-
-            // Edit handler always needs context key
-            const editHandler = (id: string, content: string) => editQueuedMessage(storeContextKey, id, content);
 
             return messagesToDisplay.length > 0 && (
               <div className="p-3 pb-0">
                 <QueuedMessageList
                   messages={messagesToDisplay}
-                  onEdit={editHandler}
-                  onDelete={deleteHandler}
+                  onEdit={handleEditQueuedMessage}
+                  onDelete={handleDeleteQueuedMessage}
                 />
               </div>
             );
