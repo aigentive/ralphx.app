@@ -579,6 +579,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .await?;
         let conversation_id = conversation.id;
         let is_new_conversation = conversation.claude_session_id.is_none();
+        let stored_session_id = conversation.claude_session_id.clone();
 
         // 2. Create agent run record
         let agent_run = AgentRun::new(conversation_id);
@@ -692,6 +693,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let cli_path = self.cli_path.clone();
         let plugin_dir = self.plugin_dir.clone();
         let working_directory_clone = working_directory;
+        let stored_session_id_clone = stored_session_id;
 
         // 9. Process stream in background
         tokio::spawn(async move {
@@ -813,9 +815,17 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Check if there are queued messages to process
                     // If yes, DON'T emit run_completed yet - emit it after queue processing
+                    // Use the stream's session_id if available, otherwise fall back to stored session_id
+                    let effective_session_id = claude_session_id.clone().or_else(|| stored_session_id_clone.clone());
                     let initial_queue_count = message_queue.get_queued(context_type_clone, &context_id_clone).len();
-                    let has_session_for_queue = claude_session_id.is_some();
+                    let has_session_for_queue = effective_session_id.is_some();
                     let will_process_queue = initial_queue_count > 0 && has_session_for_queue;
+
+                    if initial_queue_count > 0 && claude_session_id.is_none() && stored_session_id_clone.is_some() {
+                        tracing::info!(
+                            "[QUEUE] Stream had no session_id, using stored session_id from conversation for queue processing"
+                        );
+                    }
 
                     // Only emit run_completed if there's no queue to process
                     // If there IS a queue, we'll emit run_completed after all queue messages are processed
@@ -827,7 +837,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                     conversation_id: conversation_id_clone.as_str().to_string(),
                                     context_type: context_type_clone.to_string(),
                                     context_id: context_id_clone.clone(),
-                                    claude_session_id: claude_session_id.clone(),
+                                    claude_session_id: effective_session_id.clone(),
                                 },
                             );
 
@@ -840,7 +850,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                 },
                                 serde_json::json!({
                                     "conversation_id": conversation_id_clone.as_str(),
-                                    "claude_session_id": claude_session_id,
+                                    "claude_session_id": effective_session_id,
                                 }),
                             );
                         }
@@ -853,7 +863,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Process queued messages with retry loop to handle race conditions
                     // Messages can be queued while we're processing, so we keep checking until empty
-                    if let Some(ref sess_id) = claude_session_id {
+                    if let Some(ref sess_id) = effective_session_id {
                         let mut total_processed = 0u32;
 
                         // Outer loop: keep processing until queue is stable-empty
@@ -1065,11 +1075,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             }
                         }
                     } else {
-                        // claude_session_id is None - check if there are queued messages we're skipping
+                        // effective_session_id is None - no session ID from stream OR stored conversation
                         let queue_count = message_queue.get_queued(context_type_clone, &context_id_clone).len();
                         if queue_count > 0 {
                             tracing::warn!(
-                                "[QUEUE] SKIPPING {} queued messages because claude_session_id is None!",
+                                "[QUEUE] SKIPPING {} queued messages because no session_id available (neither from stream nor stored)!",
                                 queue_count
                             );
                         }

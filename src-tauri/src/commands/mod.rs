@@ -4,8 +4,6 @@
 pub mod chat_responses;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
-pub mod context_chat_commands;
-pub mod execution_chat_commands;
 pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
@@ -90,25 +88,17 @@ pub use permission_commands::{
     get_pending_permissions, resolve_permission_request, ResolvePermissionArgs,
     ResolvePermissionResponse,
 };
-pub use context_chat_commands::{
-    create_conversation, get_agent_run_status, get_conversation, list_conversations,
-    send_context_message, AgentRunResponse, ChatConversationResponse,
-    ConversationWithMessagesResponse, CreateConversationInput, SendContextMessageInput,
-};
-pub use execution_chat_commands::{
-    delete_queued_execution_message, get_execution_conversation, get_queued_execution_messages,
-    list_task_executions, queue_execution_message, QueuedMessageResponse,
-};
 pub use task_context_commands::{
     get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,
     search_artifacts, ArtifactSearchResult, SearchArtifactsInput,
 };
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{
-    delete_queued_agent_message, get_agent_conversation, get_agent_run_status_unified,
-    get_queued_agent_messages, is_chat_service_available, list_agent_conversations,
-    queue_agent_message, send_agent_message, AgentConversationResponse,
-    AgentConversationWithMessagesResponse, AgentMessageResponse, AgentRunStatusResponse,
+    create_agent_conversation, delete_queued_agent_message, get_agent_conversation,
+    get_agent_run_status_unified, get_queued_agent_messages, is_agent_running,
+    is_chat_service_available, list_agent_conversations, queue_agent_message, send_agent_message,
+    stop_agent, AgentConversationResponse, AgentConversationWithMessagesResponse,
+    AgentMessageResponse, AgentRunStatusResponse, CreateAgentConversationInput,
     QueueAgentMessageInput, QueuedMessageResponse as UnifiedQueuedMessageResponse,
     SendAgentMessageInput, SendAgentMessageResponse,
 };

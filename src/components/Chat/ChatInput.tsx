@@ -37,6 +37,8 @@ export interface ChatInputProps {
   hasQueuedMessages?: boolean;
   /** Callback to edit the last queued message */
   onEditLastQueued?: () => void;
+  /** Callback to stop the running agent */
+  onStop?: () => void;
 }
 
 // ============================================================================
@@ -84,6 +86,14 @@ function LoadingSpinner() {
   );
 }
 
+function StopIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <rect x="3" y="3" width="10" height="10" rx="1" />
+    </svg>
+  );
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -100,6 +110,7 @@ export function ChatInput({
   onQueue,
   hasQueuedMessages = false,
   onEditLastQueued,
+  onStop,
 }: ChatInputProps) {
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
@@ -229,25 +240,42 @@ export function ChatInput({
           }}
         />
 
-        {/* Send Button - Refined Studio gradient */}
-        <button
-          data-testid="chat-input-send"
-          type="button"
-          onClick={handleSend}
-          disabled={!canSend}
-          aria-label="Send message"
-          aria-busy={isSending}
-          className="px-3 py-2 rounded-lg transition-all disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
-          style={{
-            background: canSend
-              ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
-              : "rgba(255,107,53,0.3)",
-            color: "white",
-            boxShadow: canSend ? "0 2px 8px rgba(255,107,53,0.3)" : "none",
-          }}
-        >
-          {isSending ? <LoadingSpinner /> : <SendIcon />}
-        </button>
+        {/* Send/Stop Button - Refined Studio gradient */}
+        {isAgentRunning && onStop ? (
+          <button
+            data-testid="chat-input-stop"
+            type="button"
+            onClick={onStop}
+            aria-label="Stop agent"
+            className="px-3 py-2 rounded-lg transition-all shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+            style={{
+              background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+              color: "white",
+              boxShadow: "0 2px 8px rgba(239,68,68,0.3)",
+            }}
+          >
+            <StopIcon />
+          </button>
+        ) : (
+          <button
+            data-testid="chat-input-send"
+            type="button"
+            onClick={handleSend}
+            disabled={!canSend}
+            aria-label="Send message"
+            aria-busy={isSending}
+            className="px-3 py-2 rounded-lg transition-all disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+            style={{
+              background: canSend
+                ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
+                : "rgba(255,107,53,0.3)",
+              color: "white",
+              boxShadow: canSend ? "0 2px 8px rgba(255,107,53,0.3)" : "none",
+            }}
+          >
+            {isSending ? <LoadingSpinner /> : <SendIcon />}
+          </button>
+        )}
       </div>
 
       {/* Helper Text */}

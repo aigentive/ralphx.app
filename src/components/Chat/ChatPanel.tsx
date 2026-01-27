@@ -33,7 +33,6 @@ import {
   Loader2,
   Hammer,
   Activity,
-  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConversationSelector } from "./ConversationSelector";
@@ -903,24 +902,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />
 
-          {/* Active agent badge with stop button */}
+          {/* Active agent badge */}
           {(isSending || isAgentRunning || isExecutionMode) && (
-            <div className="flex items-center gap-1 shrink-0 mr-2">
-              <Badge variant="secondary" className="shrink-0">
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleStopAgent}
-                className="text-red-400 bg-red-500/10 hover:bg-red-500/30 hover:text-red-300"
-                aria-label="Stop agent"
-                title="Stop agent"
-              >
-                <Square className="w-3 h-3" fill="currentColor" />
-              </Button>
-            </div>
+            <Badge variant="secondary" className="shrink-0 mr-2">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
+            </Badge>
           )}
 
           <div className="flex items-center gap-1 shrink-0">
@@ -1036,6 +1023,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             <ChatInput
               onSend={handleSend}
               onQueue={handleQueue}
+              onStop={handleStopAgent}
               isAgentRunning={isExecutionMode || isAgentRunning}
               isSending={isSending}
               hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}

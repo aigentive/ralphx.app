@@ -8,7 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useCallback, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { chatApi, type ChatMessageResponse, type SendContextMessageResult } from "@/api/chat";
+import { chatApi, type ChatMessageResponse, type SendAgentMessageResult } from "@/api/chat";
 import type { ChatContext } from "@/types/chat";
 import type { ChatConversation, AgentRun, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
@@ -212,11 +212,11 @@ export function useChat(context: ChatContext) {
   }, [isFailed, errorMessage, agentRunStatus.data?.id]);
 
   // Send message mutation
-  const sendMessage = useMutation<SendContextMessageResult, Error, string>({
+  const sendMessage = useMutation<SendAgentMessageResult, Error, string>({
     mutationFn: async (content: string) => {
       // Set agent running immediately so subsequent messages get queued
       setAgentRunning(contextKey, true);
-      return chatApi.sendContextMessage(contextType, contextId, content);
+      return chatApi.sendAgentMessage(contextType, contextId, content);
     },
     onSuccess: () => {
       // Invalidate active conversation to refetch messages
@@ -410,11 +410,16 @@ export function useChat(context: ChatContext) {
       }>("agent:queue_sent", (event) => {
         const { message_id, context_type, context_id: eventContextId } = event.payload;
 
-        // Build context key from the event payload
-        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
-
-        // Remove from frontend optimistic queue by exact ID match
-        deleteQueuedMessage(eventContextKey, message_id);
+        // Execution mode uses a separate queue (executionQueuedMessages keyed by taskId)
+        if (context_type === "task_execution") {
+          // Use direct store access for execution queue
+          useChatStore.getState().deleteExecutionQueuedMessage(eventContextId, message_id);
+        } else {
+          // Build context key from the event payload for regular chat queue
+          const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+          // Remove from frontend optimistic queue by exact ID match
+          deleteQueuedMessage(eventContextKey, message_id);
+        }
 
         // Log for debugging
         console.debug(`[agent:queue_sent] message=${message_id}, context=${context_type}/${eventContextId}`);

@@ -272,18 +272,6 @@ pub fn run() {
             // Permission commands
             commands::permission_commands::resolve_permission_request,
             commands::permission_commands::get_pending_permissions,
-            // Context-aware chat commands
-            commands::context_chat_commands::send_context_message,
-            commands::context_chat_commands::list_conversations,
-            commands::context_chat_commands::get_conversation,
-            commands::context_chat_commands::create_conversation,
-            commands::context_chat_commands::get_agent_run_status,
-            // Execution chat commands
-            commands::execution_chat_commands::get_execution_conversation,
-            commands::execution_chat_commands::list_task_executions,
-            commands::execution_chat_commands::queue_execution_message,
-            commands::execution_chat_commands::get_queued_execution_messages,
-            commands::execution_chat_commands::delete_queued_execution_message,
             // Task context commands
             commands::task_context_commands::get_task_context,
             commands::task_context_commands::get_artifact_full,
@@ -297,6 +285,7 @@ pub fn run() {
             commands::unified_chat_commands::delete_queued_agent_message,
             commands::unified_chat_commands::list_agent_conversations,
             commands::unified_chat_commands::get_agent_conversation,
+            commands::unified_chat_commands::create_agent_conversation,
             commands::unified_chat_commands::get_agent_run_status_unified,
             commands::unified_chat_commands::is_chat_service_available,
             commands::unified_chat_commands::stop_agent,
