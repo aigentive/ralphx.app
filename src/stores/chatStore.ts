@@ -25,9 +25,13 @@ const DEFAULT_WIDTH = 384; // Matches ReviewsPanel (w-96)
 
 /**
  * A queued message that will be sent when the agent finishes
+ *
+ * The ID is shared between frontend and backend for reliable sync.
+ * Frontend generates the ID and sends it to the backend, ensuring
+ * both sides can reference the same message by ID.
  */
 export interface QueuedMessage {
-  /** Local ID for tracking */
+  /** Message ID (shared between frontend and backend) */
   id: string;
   /** Message content */
   content: string;
@@ -54,12 +58,12 @@ interface ChatState {
   isLoading: boolean;
   /** Active conversation ID for the current context */
   activeConversationId: string | null;
-  /** Messages queued to send when agent finishes (for ideation/task/project chat) */
-  queuedMessages: QueuedMessage[];
+  /** Messages queued to send when agent finishes, keyed by context key */
+  queuedMessages: Record<string, QueuedMessage[]>;
   /** Messages queued to send when worker finishes (for task_execution context) */
   executionQueuedMessages: Record<string, QueuedMessage[]>;
-  /** Whether an agent is currently running */
-  isAgentRunning: boolean;
+  /** Whether an agent is currently running, keyed by context key */
+  isAgentRunning: Record<string, boolean>;
 }
 
 // ============================================================================
@@ -85,22 +89,22 @@ interface ChatActions {
   setLoading: (isLoading: boolean) => void;
   /** Set the active conversation ID */
   setActiveConversation: (conversationId: string | null) => void;
-  /** Set whether an agent is currently running */
-  setAgentRunning: (isRunning: boolean) => void;
+  /** Set whether an agent is currently running for a context */
+  setAgentRunning: (contextKey: string, isRunning: boolean) => void;
   /** Queue a message to be sent when the agent finishes */
-  queueMessage: (content: string) => void;
+  queueMessage: (contextKey: string, content: string, clientId?: string) => void;
   /** Edit a queued message */
-  editQueuedMessage: (id: string, content: string) => void;
+  editQueuedMessage: (contextKey: string, id: string, content: string) => void;
   /** Delete a queued message */
-  deleteQueuedMessage: (id: string) => void;
+  deleteQueuedMessage: (contextKey: string, id: string) => void;
   /** Process the queue (send first message and remove from queue) */
-  processQueue: () => Promise<void>;
+  processQueue: (contextKey: string) => Promise<void>;
   /** Start editing a queued message */
-  startEditingQueuedMessage: (id: string) => void;
+  startEditingQueuedMessage: (contextKey: string, id: string) => void;
   /** Stop editing a queued message */
-  stopEditingQueuedMessage: (id: string) => void;
+  stopEditingQueuedMessage: (contextKey: string, id: string) => void;
   /** Queue a message to be sent to the worker when it finishes */
-  queueExecutionMessage: (taskId: string, content: string) => void;
+  queueExecutionMessage: (taskId: string, content: string, clientId?: string) => void;
   /** Delete a queued execution message */
   deleteExecutionQueuedMessage: (taskId: string, messageId: string) => void;
 }
@@ -118,9 +122,9 @@ export const useChatStore = create<ChatState & ChatActions>()(
     width: DEFAULT_WIDTH,
     isLoading: false,
     activeConversationId: null,
-    queuedMessages: [],
+    queuedMessages: {},
     executionQueuedMessages: {},
-    isAgentRunning: false,
+    isAgentRunning: {},
 
     // Actions
     setContext: (context) =>
@@ -171,77 +175,99 @@ export const useChatStore = create<ChatState & ChatActions>()(
         state.activeConversationId = conversationId;
       }),
 
-    setAgentRunning: (isRunning) =>
+    setAgentRunning: (contextKey, isRunning) =>
       set((state) => {
-        state.isAgentRunning = isRunning;
+        if (isRunning) {
+          state.isAgentRunning[contextKey] = true;
+        } else {
+          delete state.isAgentRunning[contextKey];
+        }
       }),
 
-    queueMessage: (content) =>
+    queueMessage: (contextKey, content, clientId) =>
       set((state) => {
         const queuedMessage: QueuedMessage = {
-          id: `queued-${Date.now()}-${Math.random()}`,
+          id: clientId ?? `queued-${Date.now()}-${Math.random()}`,
           content,
           createdAt: new Date().toISOString(),
           isEditing: false,
         };
-        state.queuedMessages.push(queuedMessage);
+        if (!state.queuedMessages[contextKey]) {
+          state.queuedMessages[contextKey] = [];
+        }
+        state.queuedMessages[contextKey].push(queuedMessage);
       }),
 
-    editQueuedMessage: (id, content) =>
+    editQueuedMessage: (contextKey, id, content) =>
       set((state) => {
-        const message = state.queuedMessages.find((m) => m.id === id);
-        if (message) {
-          message.content = content;
-          message.isEditing = false;
+        const messages = state.queuedMessages[contextKey];
+        if (messages) {
+          const message = messages.find((m) => m.id === id);
+          if (message) {
+            message.content = content;
+            message.isEditing = false;
+          }
         }
       }),
 
-    deleteQueuedMessage: (id) =>
+    deleteQueuedMessage: (contextKey, id) =>
       set((state) => {
-        state.queuedMessages = state.queuedMessages.filter((m) => m.id !== id);
-      }),
+        if (state.queuedMessages[contextKey]) {
+          state.queuedMessages[contextKey] = state.queuedMessages[
+            contextKey
+          ].filter((m) => m.id !== id);
 
-    startEditingQueuedMessage: (id) =>
-      set((state) => {
-        const message = state.queuedMessages.find((m) => m.id === id);
-        if (message) {
-          message.isEditing = true;
+          // Clean up empty arrays
+          if (state.queuedMessages[contextKey].length === 0) {
+            delete state.queuedMessages[contextKey];
+          }
         }
       }),
 
-    stopEditingQueuedMessage: (id) =>
+    startEditingQueuedMessage: (contextKey, id) =>
       set((state) => {
-        const message = state.queuedMessages.find((m) => m.id === id);
-        if (message) {
-          message.isEditing = false;
+        const messages = state.queuedMessages[contextKey];
+        if (messages) {
+          const message = messages.find((m) => m.id === id);
+          if (message) {
+            message.isEditing = true;
+          }
         }
       }),
 
-    processQueue: async () => {
+    stopEditingQueuedMessage: (contextKey, id) =>
+      set((state) => {
+        const messages = state.queuedMessages[contextKey];
+        if (messages) {
+          const message = messages.find((m) => m.id === id);
+          if (message) {
+            message.isEditing = false;
+          }
+        }
+      }),
+
+    processQueue: async (contextKey) => {
       const state = get();
-      if (state.queuedMessages.length === 0) {
+      const messages = state.queuedMessages[contextKey];
+      if (!messages || messages.length === 0) {
         return;
       }
 
       // Remove the first message from the queue
       set((draft) => {
-        draft.queuedMessages.shift();
+        if (draft.queuedMessages[contextKey]) {
+          draft.queuedMessages[contextKey].shift();
+          if (draft.queuedMessages[contextKey].length === 0) {
+            delete draft.queuedMessages[contextKey];
+          }
+        }
       });
-
-      // The actual sending logic will be handled by the useChat hook
-      // This function just manages the queue state
-      // The useChat hook will:
-      // 1. Subscribe to chat:run_completed events
-      // 2. Get the first queued message BEFORE calling processQueue
-      // 3. Call processQueue to remove it from the queue
-      // 4. Send the message via the API
-      // 5. Handle the response
     },
 
-    queueExecutionMessage: (taskId, content) =>
+    queueExecutionMessage: (taskId, content, clientId) =>
       set((state) => {
         const queuedMessage: QueuedMessage = {
-          id: `queued-exec-${Date.now()}-${Math.random()}`,
+          id: clientId ?? `queued-exec-${Date.now()}-${Math.random()}`,
           content,
           createdAt: new Date().toISOString(),
           isEditing: false,
@@ -314,20 +340,24 @@ export const selectMessageCount =
     state.messages[contextKey]?.length ?? 0;
 
 /**
- * Select queued messages
+ * Select queued messages for a specific context
+ * @param contextKey - The context key to get queued messages for
  * @returns Selector function returning queued messages array
  */
-export const selectQueuedMessages = (
-  state: ChatState & ChatActions
-): QueuedMessage[] => state.queuedMessages;
+export const selectQueuedMessages =
+  (contextKey: string) =>
+  (state: ChatState): QueuedMessage[] =>
+    state.queuedMessages[contextKey] ?? EMPTY_QUEUED_MESSAGES;
 
 /**
- * Select whether an agent is currently running
+ * Select whether an agent is currently running for a context
+ * @param contextKey - The context key to check
  * @returns Selector function returning agent running state
  */
-export const selectIsAgentRunning = (
-  state: ChatState & ChatActions
-): boolean => state.isAgentRunning;
+export const selectIsAgentRunning =
+  (contextKey: string) =>
+  (state: ChatState): boolean =>
+    state.isAgentRunning[contextKey] ?? false;
 
 /**
  * Select active conversation ID

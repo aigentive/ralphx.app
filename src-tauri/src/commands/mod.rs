@@ -19,6 +19,7 @@ pub mod task_commands;
 pub mod task_context_commands;
 pub mod task_step_commands;
 pub mod test_data_commands;
+pub mod unified_chat_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
@@ -101,4 +102,13 @@ pub use execution_chat_commands::{
 pub use task_context_commands::{
     get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,
     search_artifacts, ArtifactSearchResult, SearchArtifactsInput,
+};
+// Unified chat commands (consolidates context_chat + execution_chat)
+pub use unified_chat_commands::{
+    delete_queued_agent_message, get_agent_conversation, get_agent_run_status_unified,
+    get_queued_agent_messages, is_chat_service_available, list_agent_conversations,
+    queue_agent_message, send_agent_message, AgentConversationResponse,
+    AgentConversationWithMessagesResponse, AgentMessageResponse, AgentRunStatusResponse,
+    QueueAgentMessageInput, QueuedMessageResponse as UnifiedQueuedMessageResponse,
+    SendAgentMessageInput, SendAgentMessageResponse,
 };

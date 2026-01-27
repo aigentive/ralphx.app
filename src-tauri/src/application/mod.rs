@@ -3,6 +3,7 @@
 
 pub mod app_state;
 pub mod apply_service;
+pub mod chat_service;
 pub mod dependency_service;
 pub mod execution_chat_service;
 pub mod ideation_service;
@@ -41,3 +42,9 @@ pub use execution_chat_service::{
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
 pub use task_context_service::TaskContextService;
 pub use task_transition_service::TaskTransitionService;
+// Unified chat service (consolidates OrchestratorService + ExecutionChatService)
+pub use chat_service::{
+    AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
+    AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload, ChatConversationWithMessages,
+    ChatService, ChatServiceError, ClaudeChatService, MockChatService, MockChatResponse, SendResult,
+};

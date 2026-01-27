@@ -13,12 +13,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatApi } from "@/api/chat";
+import { chatApi, stopAgent } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +33,7 @@ import {
   Loader2,
   Hammer,
   Activity,
+  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConversationSelector } from "./ConversationSelector";
@@ -380,15 +381,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     togglePanel,
     setWidth,
     queueMessage,
-    editQueuedMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
     queueExecutionMessage,
     deleteExecutionQueuedMessage,
   } = useChatStore();
-  const queuedMessages = useChatStore(selectQueuedMessages);
-  const isAgentRunning = useChatStore(selectIsAgentRunning);
   const activeConversationId = useChatStore(selectActiveConversationId);
+
+  // Compute context key for queue/agent state operations
+  const contextKey = useMemo(() => getContextKey(context), [context]);
+
+  // Use context-aware selectors
+  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
+  const queuedMessages = useChatStore(queuedMessagesSelector);
+  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
+  const isAgentRunning = useChatStore(isAgentRunningSelector);
+
+  // Debug: log context key and agent running state changes
+  useEffect(() => {
+    console.log(`[ChatPanel] contextKey=${contextKey}, isAgentRunning=${isAgentRunning}`);
+  }, [contextKey, isAgentRunning]);
 
   // Detect execution mode: if task is executing, switch to task_execution context
   const selectedTask = useTaskStore((state) =>
@@ -493,6 +505,28 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }, 200);
   }, [togglePanel]);
 
+  // Stop the running agent
+  const handleStopAgent = useCallback(async () => {
+    const ctxType = isExecutionMode
+      ? "task_execution"
+      : context.view === "ideation"
+        ? "ideation"
+        : context.view === "task_detail"
+          ? "task"
+          : "project";
+    const ctxId = context.view === "ideation" && context.ideationSessionId
+      ? context.ideationSessionId
+      : context.selectedTaskId || context.projectId;
+
+    try {
+      await stopAgent(ctxType, ctxId);
+      // Clear streaming tool calls when agent is stopped
+      setStreamingToolCalls([]);
+    } catch (error) {
+      console.error("Failed to stop agent:", error);
+    }
+  }, [isExecutionMode, context]);
+
   // Escape to close panel (only runs when panel is open via wrapper)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -550,18 +584,122 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     [sendMessage]
   );
 
+  // Get current context type and ID for queue operations
+  const getQueueContext = useCallback(() => {
+    const ctxType = isExecutionMode
+      ? "task_execution"
+      : context.view === "ideation"
+        ? "ideation"
+        : context.view === "task_detail"
+          ? "task"
+          : "project";
+    const ctxId = context.view === "ideation" && context.ideationSessionId
+      ? context.ideationSessionId
+      : context.selectedTaskId || context.projectId;
+    return { ctxType, ctxId } as const;
+  }, [isExecutionMode, context]);
+
+  // Generate a unique ID for queued messages
+  const generateQueuedMessageId = useCallback(() => {
+    return `queued-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }, []);
+
   // Queue message handler (when agent is running)
+  // Uses backend queue API for ALL contexts so messages are properly processed
   const handleQueue = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (!content.trim()) return;
-      // Use execution queue if in execution mode
+
+      const { ctxType, ctxId } = getQueueContext();
+
+      // Generate ID FIRST - this ID will be used by both frontend and backend
+      const messageId = generateQueuedMessageId();
+
+      // Add to local store immediately for optimistic UI (using the same ID)
       if (isExecutionMode && context.selectedTaskId) {
-        queueExecutionMessage(context.selectedTaskId, content);
+        queueExecutionMessage(context.selectedTaskId, content, messageId);
       } else {
-        queueMessage(content);
+        queueMessage(contextKey, content, messageId);
+      }
+
+      try {
+        // Queue via backend API with the same ID
+        await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
+        console.debug(`[queue] Queued message ${messageId} for ${ctxType}/${ctxId}`);
+      } catch (error) {
+        console.error("Failed to queue message to backend:", error);
+        // Message is already in local store, which is fine - it just won't be processed by backend
+        // User can delete and re-queue if needed
       }
     },
-    [isExecutionMode, context.selectedTaskId, queueMessage, queueExecutionMessage]
+    [isExecutionMode, context.selectedTaskId, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey]
+  );
+
+  // Delete queued message handler - syncs with backend
+  // Both frontend and backend use the same ID, so we can delete directly by ID
+  const handleDeleteQueuedMessage = useCallback(
+    async (messageId: string) => {
+      const { ctxType, ctxId } = getQueueContext();
+
+      // Delete from local store immediately (optimistic)
+      if (isExecutionMode && context.selectedTaskId) {
+        deleteExecutionQueuedMessage(context.selectedTaskId, messageId);
+      } else {
+        deleteQueuedMessage(contextKey, messageId);
+      }
+
+      // Delete from backend using the same ID
+      try {
+        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
+        console.debug(`[queue] Deleted message ${messageId} from backend`);
+      } catch (error) {
+        console.error("Failed to delete queued message from backend:", error);
+        // Message already removed from local store, which is fine
+      }
+    },
+    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, contextKey]
+  );
+
+  // Edit queued message handler - delete old and queue new
+  // Both frontend and backend use the same ID, so we can operate directly by ID
+  const handleEditQueuedMessage = useCallback(
+    async (messageId: string, newContent: string) => {
+      const { ctxType, ctxId } = getQueueContext();
+
+      // Delete old message from backend
+      try {
+        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
+      } catch (error) {
+        console.error("Failed to delete old queued message:", error);
+      }
+
+      // Delete from local store
+      if (isExecutionMode && context.selectedTaskId) {
+        deleteExecutionQueuedMessage(context.selectedTaskId, messageId);
+      } else {
+        deleteQueuedMessage(contextKey, messageId);
+      }
+
+      // Generate new ID and queue the edited content
+      const newMessageId = generateQueuedMessageId();
+
+      // Add to local store first (optimistic)
+      if (isExecutionMode && context.selectedTaskId) {
+        queueExecutionMessage(context.selectedTaskId, newContent, newMessageId);
+      } else {
+        queueMessage(contextKey, newContent, newMessageId);
+      }
+
+      // Queue to backend with same ID
+      try {
+        await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
+        console.debug(`[queue] Edited message: old=${messageId}, new=${newMessageId}`);
+      } catch (error) {
+        console.error("Failed to queue edited message to backend:", error);
+        // Message is already in local store
+      }
+    },
+    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey]
   );
 
   // Edit last queued message
@@ -569,22 +707,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
     const lastMessage = messagesToUse[messagesToUse.length - 1];
     if (!lastMessage) return;
-    startEditingQueuedMessage(lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage]);
+    startEditingQueuedMessage(contextKey, lastMessage.id);
+  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, contextKey]);
 
   // Subscribe to Tauri events for real-time updates (only on mount)
+  // Using unified agent:* events (Phase 5-6 consolidation)
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
 
     (async () => {
       // Listen for tool calls - accumulate for streaming display and invalidate cache
+      // Unified event: agent:tool_call (replaces chat:tool_call and execution:tool_call)
       const toolCallUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
+        conversation_id: string;
         tool_name: string;
         arguments: unknown;
         result: unknown;
-        conversation_id: string;
-      }>("chat:tool_call", (event) => {
-        const { tool_name, arguments: args, result, conversation_id } = event.payload;
+      }>("agent:tool_call", (event) => {
+        const { tool_name, arguments: args, result, conversation_id, context_type } = event.payload;
         // Only show for active conversation
         if (conversation_id === activeConversationIdRef.current) {
           setStreamingToolCalls((prev) => [
@@ -601,15 +743,21 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
+        // Log for debugging
+        console.debug(`[agent:tool_call] context=${context_type}, tool=${tool_name}`);
       });
       unlisteners.push(toolCallUnlisten);
 
-      // Listen for chat run completion - clear streaming state and refresh
+      // Listen for run completion - clear streaming state and refresh
+      // Unified event: agent:run_completed (replaces chat:run_completed and execution:run_completed)
       const runCompletedUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
         conversation_id: string;
-      }>("chat:run_completed", (event) => {
-        console.log("Chat run completed:", event.payload);
-        const { conversation_id } = event.payload;
+        status: string;
+      }>("agent:run_completed", (event) => {
+        const { conversation_id, context_type } = event.payload;
+        console.log(`Agent run completed: context=${context_type}, conversation=${conversation_id}`);
         // Clear streaming tool calls
         setStreamingToolCalls([]);
         // Invalidate cache to get final messages
@@ -627,54 +775,72 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       });
       unlisteners.push(runCompletedUnlisten);
 
-      // Execution-specific events (Phase 15B)
-      // Listen for execution tool calls
-      const execToolCallUnlisten = await listen<{
+      // Listen for agent errors - clear streaming state
+      // Unified event: agent:error
+      const errorUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
         conversation_id: string;
-        tool_name: string;
-        arguments: unknown;
-      }>("execution:tool_call", (event) => {
-        const { tool_name, arguments: args, conversation_id } = event.payload;
-        // Only show for active conversation
-        if (conversation_id === activeConversationIdRef.current) {
-          setStreamingToolCalls((prev) => [
-            ...prev,
-            {
-              id: `streaming-exec-${Date.now()}-${prev.length}`,
-              name: tool_name,
-              arguments: args,
-            },
-          ]);
-          // Invalidate cache to pick up any new messages from backend
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-      });
-      unlisteners.push(execToolCallUnlisten);
-
-      // Listen for execution completion - clear streaming state and refresh
-      const execCompletedUnlisten = await listen<{
-        conversation_id: string;
-      }>("execution:run_completed", (event) => {
-        console.log("Worker execution completed:", event.payload);
-        const { conversation_id } = event.payload;
-        // Clear streaming tool calls
+        error: string;
+      }>("agent:error", (event) => {
+        const { conversation_id, error, context_type } = event.payload;
+        console.error(`Agent error: context=${context_type}, conversation=${conversation_id}:`, error);
+        // Clear streaming tool calls on error
         setStreamingToolCalls([]);
-        // Invalidate cache to get final messages
+        // Invalidate cache
         if (conversation_id) {
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-        // Scroll to bottom
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
       });
-      unlisteners.push(execCompletedUnlisten);
+      unlisteners.push(errorUnlisten);
+
+      // Listen for run started - for progress tracking
+      // Unified event: agent:run_started
+      const runStartedUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
+        conversation_id: string;
+        agent_run_id: string;
+      }>("agent:run_started", (event) => {
+        const { conversation_id, context_type, agent_run_id } = event.payload;
+        console.debug(`[agent:run_started] context=${context_type}, conversation=${conversation_id}, run=${agent_run_id}`);
+        // Invalidate agent run status to pick up new run
+        if (conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.agentRun(conversation_id),
+          });
+        }
+      });
+      unlisteners.push(runStartedUnlisten);
+
+      // Listen for queue_sent - backend notifies when it sends a queued message
+      // This updates the optimistic UI for execution queued messages
+      // Since frontend and backend use the same ID, we can match exactly by ID
+      const queueSentUnlisten = await listen<{
+        message_id: string;
+        conversation_id: string;
+        context_type: string;
+        context_id: string;
+      }>("agent:queue_sent", (event) => {
+        const { message_id, context_type, context_id } = event.payload;
+        console.debug(`[agent:queue_sent] message=${message_id}, context=${context_type}/${context_id}`);
+
+        // For task_execution context, remove from execution queue by exact ID
+        if (context_type === "task_execution") {
+          useChatStore.getState().deleteExecutionQueuedMessage(context_id, message_id);
+        } else {
+          // For other contexts, build context key and remove from queue
+          const eventContextKey = context_type === "ideation"
+            ? `session:${context_id}`
+            : context_type === "task"
+              ? `task:${context_id}`
+              : `project:${context_id}`;
+          useChatStore.getState().deleteQueuedMessage(eventContextKey, message_id);
+        }
+      });
+      unlisteners.push(queueSentUnlisten);
     })();
 
     return () => {
@@ -737,12 +903,24 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />
 
-          {/* Active agent badge */}
+          {/* Active agent badge with stop button */}
           {(isSending || isAgentRunning || isExecutionMode) && (
-            <Badge variant="secondary" className="shrink-0 mr-2">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
-            </Badge>
+            <div className="flex items-center gap-1 shrink-0 mr-2">
+              <Badge variant="secondary" className="shrink-0">
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleStopAgent}
+                className="text-red-400 bg-red-500/10 hover:bg-red-500/30 hover:text-red-300"
+                aria-label="Stop agent"
+                title="Stop agent"
+              >
+                <Square className="w-3 h-3" fill="currentColor" />
+              </Button>
+            </div>
           )}
 
           <div className="flex items-center gap-1 shrink-0">
@@ -841,16 +1019,13 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           {/* Queued Messages - use execution queue in execution mode */}
           {(() => {
             const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
-            const deleteHandler = isExecutionMode && context.selectedTaskId
-              ? (id: string) => deleteExecutionQueuedMessage(context.selectedTaskId!, id)
-              : deleteQueuedMessage;
 
             return messagesToDisplay.length > 0 && (
               <div className="p-3 pb-0">
                 <QueuedMessageList
                   messages={messagesToDisplay}
-                  onEdit={editQueuedMessage}
-                  onDelete={deleteHandler}
+                  onEdit={handleEditQueuedMessage}
+                  onDelete={handleDeleteQueuedMessage}
                 />
               </div>
             );

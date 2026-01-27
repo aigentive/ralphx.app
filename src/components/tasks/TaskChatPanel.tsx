@@ -8,7 +8,7 @@
 import { useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
@@ -169,8 +169,6 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
     queueExecutionMessage,
     deleteExecutionQueuedMessage,
   } = useChatStore();
-  const queuedMessages = useChatStore(selectQueuedMessages);
-  const isAgentRunning = useChatStore(selectIsAgentRunning);
   const activeConversationId = useChatStore(selectActiveConversationId);
 
   const isExecutionMode = contextType === "task_execution";
@@ -188,6 +186,15 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
     projectId: "", // Will be populated by useChat
     selectedTaskId: taskId,
   }), [taskId]);
+
+  // Compute store context key for queue/agent state operations
+  const storeContextKey = useMemo(() => getContextKey(context), [context]);
+
+  // Use context-aware selectors
+  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
+  const queuedMessages = useChatStore(queuedMessagesSelector);
+  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
+  const isAgentRunning = useChatStore(isAgentRunningSelector);
 
   // For execution mode, fetch execution conversations directly
   // For regular chat, use the standard useChat hook
@@ -254,10 +261,10 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
       if (isExecutionMode) {
         queueExecutionMessage(taskId, content);
       } else {
-        queueMessage(content);
+        queueMessage(storeContextKey, content);
       }
     },
-    [isExecutionMode, taskId, queueMessage, queueExecutionMessage]
+    [isExecutionMode, taskId, queueMessage, queueExecutionMessage, storeContextKey]
   );
 
   // Edit last queued message
@@ -265,8 +272,8 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
     const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
     const lastMessage = messagesToUse[messagesToUse.length - 1];
     if (!lastMessage) return;
-    startEditingQueuedMessage(lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage]);
+    startEditingQueuedMessage(storeContextKey, lastMessage.id);
+  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, storeContextKey]);
 
   // Subscribe to Tauri events for real-time updates (only on mount)
   useEffect(() => {
@@ -452,13 +459,15 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
             const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
             const deleteHandler = isExecutionMode
               ? (id: string) => deleteExecutionQueuedMessage(taskId, id)
-              : deleteQueuedMessage;
+              : (id: string) => deleteQueuedMessage(storeContextKey, id);
+            // Edit handler always needs context key
+            const editHandler = (id: string, content: string) => editQueuedMessage(storeContextKey, id, content);
 
             return messagesToDisplay.length > 0 && (
               <div className="p-3 pb-0">
                 <QueuedMessageList
                   messages={messagesToDisplay}
-                  onEdit={editQueuedMessage}
+                  onEdit={editHandler}
                   onDelete={deleteHandler}
                 />
               </div>

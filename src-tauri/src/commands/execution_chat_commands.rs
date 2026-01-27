@@ -6,7 +6,8 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, TaskId};
-use crate::domain::services::QueuedMessage;
+// Use the legacy queue types for backwards compatibility with existing AppState
+use crate::domain::services::execution_message_queue::QueuedMessage;
 
 /// Response for QueuedMessage
 #[derive(Debug, Serialize)]

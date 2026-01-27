@@ -13,7 +13,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import type { ChatContext } from "@/types/chat";
@@ -343,8 +343,6 @@ export function IntegratedChatPanel({
     queueExecutionMessage,
     deleteExecutionQueuedMessage,
   } = useChatStore();
-  const queuedMessages = useChatStore(selectQueuedMessages);
-  const isAgentRunning = useChatStore(selectIsAgentRunning);
   const activeConversationId = useChatStore(selectActiveConversationId);
 
   // Detect execution mode based on selected task status
@@ -376,6 +374,20 @@ export function IntegratedChatPanel({
       projectId,
     };
   }, [selectedTaskId, isExecutionMode, projectId, ideationSessionId]);
+
+  // Compute store context key for queue/agent state operations
+  const storeContextKey = useMemo(() => getContextKey(chatContext), [chatContext]);
+
+  // Use context-aware selectors
+  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
+  const queuedMessages = useChatStore(queuedMessagesSelector);
+  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
+  const isAgentRunning = useChatStore(isAgentRunningSelector);
+
+  // Debug: log context key and agent running state changes
+  useEffect(() => {
+    console.log(`[IntegratedChatPanel] storeContextKey=${storeContextKey}, isAgentRunning=${isAgentRunning}`);
+  }, [storeContextKey, isAgentRunning]);
 
   // Streaming tool calls - accumulated during agent execution (defined early for context change effect)
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
@@ -583,10 +595,10 @@ export function IntegratedChatPanel({
       if (isExecutionMode && selectedTaskId) {
         queueExecutionMessage(selectedTaskId, content);
       } else {
-        queueMessage(content);
+        queueMessage(storeContextKey, content);
       }
     },
-    [isExecutionMode, selectedTaskId, queueMessage, queueExecutionMessage]
+    [isExecutionMode, selectedTaskId, queueMessage, queueExecutionMessage, storeContextKey]
   );
 
   // Edit last queued message
@@ -594,8 +606,8 @@ export function IntegratedChatPanel({
     const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
     const lastMessage = messagesToUse[messagesToUse.length - 1];
     if (!lastMessage) return;
-    startEditingQueuedMessage(lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage]);
+    startEditingQueuedMessage(storeContextKey, lastMessage.id);
+  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, storeContextKey]);
 
   // Subscribe to Tauri events for real-time updates
   useEffect(() => {
@@ -852,13 +864,16 @@ export function IntegratedChatPanel({
             const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
             const deleteHandler = isExecutionMode && selectedTaskId
               ? (id: string) => deleteExecutionQueuedMessage(selectedTaskId, id)
-              : deleteQueuedMessage;
+              : (id: string) => deleteQueuedMessage(storeContextKey, id);
+
+            // Edit handler always needs context key
+            const editHandler = (id: string, content: string) => editQueuedMessage(storeContextKey, id, content);
 
             return messagesToDisplay.length > 0 && (
               <div className="p-3 pb-0">
                 <QueuedMessageList
                   messages={messagesToDisplay}
-                  onEdit={editQueuedMessage}
+                  onEdit={editHandler}
                   onDelete={deleteHandler}
                 />
               </div>

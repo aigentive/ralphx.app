@@ -6,15 +6,22 @@
 pub mod artifact_flow_service;
 pub mod artifact_service;
 pub mod execution_message_queue;
+pub mod message_queue;
 pub mod methodology_service;
 pub mod research_service;
+pub mod running_agent_registry;
 pub mod workflow_service;
 
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
 pub use artifact_service::ArtifactService;
-pub use execution_message_queue::{ExecutionMessageQueue, QueuedMessage};
+// Legacy queue - kept for backwards compatibility, prefer MessageQueue
+pub use execution_message_queue::{ExecutionMessageQueue, QueuedMessage as LegacyQueuedMessage};
+// Unified queue - use this for new code
+pub use message_queue::{MessageQueue, QueuedMessage, QueueKey};
 pub use methodology_service::{MethodologyActivationResult, MethodologyService};
 pub use research_service::ResearchService;
+// Running agent registry for tracking and stopping agents
+pub use running_agent_registry::{RunningAgentInfo, RunningAgentKey, RunningAgentRegistry};
 pub use workflow_service::{
     AppliedColumn, AppliedWorkflow, ColumnMappingError, ValidationResult, WorkflowService,
 };
