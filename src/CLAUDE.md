@@ -382,3 +382,150 @@ pnpm tauri
 4. Hook: TanStack Query in hooks/
 5. Component: with co-located test
 6. **Tests FIRST (TDD mandatory)**
+
+## Code Quality Rules
+
+### File Size (STRICT)
+| File Type | Max Lines | Action at Threshold |
+|-----------|-----------|---------------------|
+| Component (.tsx) | 500 | Extract sub-components or hooks |
+| Custom Hook | 300 | Split into focused pieces |
+| Presentational Component | 200 | Pure display only |
+
+**Refactoring trigger at 400 lines** — plan extraction before hitting limit.
+
+### Extraction Triggers
+| Signal | Action |
+|--------|--------|
+| >3 useState/useCallback/useMemo in component | Extract custom hook |
+| >4 props on component | Consider composition pattern |
+| >3 conditional render branches | Extract sub-components |
+| JSX nesting >3 levels | Extract middle layer component |
+| Handler function >10 lines | Extract to hook or helper |
+| Component >400 lines | Mandatory extraction before merge |
+
+### Single Responsibility
+A component does **ONE** of:
+- **Display UI** (presentational — props only, no hooks)
+- **Manage State** (container — holds useState/store access)
+- **Coordinate** (composition — orchestrates children)
+
+NOT multiple. Avoid god components.
+
+### Composition Over Props
+```tsx
+// ❌ WRONG: Prop explosion
+<TaskModal task={task} showChat showHistory showContext chatContext={ctx} />
+
+// ✅ CORRECT: Composition
+<TaskModal task={task}>
+  <TaskModal.Context />
+  <TaskModal.History />
+  <TaskModal.Chat context={ctx} />
+</TaskModal>
+```
+
+### Custom Hooks Pattern
+Extract logic from components into hooks:
+```tsx
+// ❌ WRONG: Logic mixed with rendering
+function ChatPanel() {
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  // 50+ lines of message handling, event listeners, queue logic...
+  return <div>...</div>;
+}
+
+// ✅ CORRECT: Hook extracts logic
+function ChatPanel() {
+  const { messages, isLoading, sendMessage } = useChatMessages(contextId);
+  return <div>...</div>;  // Just rendering
+}
+```
+
+### Event Handlers
+- Always use `useCallback` for handlers passed to children
+- Never inline complex handlers (>3 lines) in JSX
+- Extract to custom hook if handler needs multiple state updates
+
+```tsx
+// ✅ CORRECT: Memoized, passed to child
+const handleSubmit = useCallback(() => {
+  validate();
+  submit();
+}, [validate, submit]);
+<Form onSubmit={handleSubmit} />
+
+// ❌ WRONG: Inline complex handler
+<Form onSubmit={() => {
+  validate();
+  submit();
+  clearForm();
+  showToast();
+}} />
+```
+
+### Documentation (MANDATORY for exports)
+```tsx
+/**
+ * TaskCard - Draggable card for Kanban board
+ *
+ * Shows task summary with status badge, priority stripe.
+ * Pulsing border animation when task is executing.
+ *
+ * @prop task - Task data to display
+ * @prop onSelect - Called when card is clicked
+ * @prop isDraggable - Whether drag is enabled (false during execution)
+ */
+export function TaskCard({ task, onSelect, isDraggable }: TaskCardProps) {}
+```
+
+### Import Organization (strict order)
+```typescript
+// 1. React & framework
+import { useState, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
+
+// 2. Third-party (alphabetical)
+import { useQuery } from "@tanstack/react-query";
+import { create } from "zustand";
+
+// 3. Internal utilities (@/)
+import { api } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
+
+// 4. Stores
+import { useChatStore } from "@/stores/chatStore";
+
+// 5. Types (use `import type`)
+import type { Task } from "@/types/task";
+
+// 6. Components (general → specific)
+import { Button } from "@/components/ui/button";
+import { TaskCard } from "./TaskCard";
+
+// 7. Local files (relative, last)
+import { useLocalHook } from "./hooks";
+```
+
+### Files Needing Refactoring (Priority)
+| File | Lines | Refactor Strategy |
+|------|-------|-------------------|
+| `ExtensibilityView.tsx` | 1,239 | Split into WorkflowsTab, ArtifactsTab, ResearchTab, MethodologiesTab |
+| `IdeationView.tsx` | 1,198 | Extract ProposalPanel, SessionSelector, PlanDisplayContainer |
+| `ChatPanel.tsx` | 1,044 | Extract ResizeHandler, MessageList, QueueManager hooks |
+| `IntegratedChatPanel.tsx` | 1,021 | Extract handlers to useIntegratedChat hook |
+| `App.tsx` | 845 | Extract NavigationSidebar, ModalRegistry, ContextProviders |
+| `DiffViewer.tsx` | 966 | Split rendering, highlighting, caching logic |
+| `SettingsView.tsx` | 827 | Extract each settings panel to separate component |
+| `TaskDetailModal.tsx` | 678 | Split Header, Content, Footer regions |
+
+### Pre-Commit Quality Check
+```bash
+# Add to your workflow before committing:
+npm run lint
+npm run typecheck
+
+# Check no component exceeds 500 lines (warning)
+find src/components -name "*.tsx" -exec wc -l {} + | awk '$1 > 500 {print "⚠️  OVER 500:", $2, "("$1" lines)"}'
+```
