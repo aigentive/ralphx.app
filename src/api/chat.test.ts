@@ -27,6 +27,9 @@ const createMockMessageRaw = (overrides = {}) => ({
   content: "Hello",
   metadata: null,
   parent_message_id: null,
+  conversation_id: null,
+  tool_calls: null,
+  content_blocks: null,
   created_at: "2026-01-24T12:00:00Z",
   ...overrides,
 });
@@ -561,11 +564,21 @@ describe("chatApi namespace", () => {
     expect(chatApi.deleteMessage).toBe(deleteChatMessage);
     expect(chatApi.deleteSessionMessages).toBe(deleteSessionMessages);
     expect(chatApi.countSessionMessages).toBe(countSessionMessages);
-    expect(chatApi.sendOrchestratorMessage).toBeDefined();
-    expect(chatApi.isOrchestratorAvailable).toBeDefined();
+    // Context-aware chat functions
+    expect(chatApi.sendContextMessage).toBeDefined();
+    expect(chatApi.listConversations).toBeDefined();
+    expect(chatApi.getConversation).toBeDefined();
+    expect(chatApi.createConversation).toBeDefined();
+    expect(chatApi.getAgentRunStatus).toBeDefined();
+    // Task execution chat functions
+    expect(chatApi.getExecutionConversation).toBeDefined();
+    expect(chatApi.listTaskExecutions).toBeDefined();
+    expect(chatApi.queueExecutionMessage).toBeDefined();
+    expect(chatApi.getQueuedExecutionMessages).toBeDefined();
+    expect(chatApi.deleteQueuedExecutionMessage).toBeDefined();
   });
 
-  it("should have 11 functions", () => {
-    expect(Object.keys(chatApi)).toHaveLength(11);
+  it("should have 19 functions", () => {
+    expect(Object.keys(chatApi)).toHaveLength(19);
   });
 });
