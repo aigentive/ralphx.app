@@ -488,7 +488,9 @@ export function IntegratedChatPanel({
   }, [activeConversationId]);
 
   // Extract messages array from active conversation
-  const messagesData = activeConversation.data?.messages ?? [];
+  // Only show messages if we have an active conversation ID to prevent showing stale data
+  // from a previous context when switching to a session with no conversations
+  const messagesData = activeConversationId ? (activeConversation.data?.messages ?? []) : [];
 
   // Track unread messages when collapsed
   useEffect(() => {
