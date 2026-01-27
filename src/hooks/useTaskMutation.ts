@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import type { CreateTask, UpdateTask } from "@/types/task";
 import { taskKeys } from "./useTasks";
+import { infiniteTaskKeys } from "./useInfiniteTasksQuery";
 
 /**
  * Hook for task mutation operations
@@ -40,7 +41,9 @@ export function useTaskMutation(projectId: string) {
   const createMutation = useMutation({
     mutationFn: (input: CreateTask) => api.tasks.create(input),
     onSuccess: () => {
+      // Invalidate both regular and infinite task queries
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
     },
   });
 
@@ -49,6 +52,7 @@ export function useTaskMutation(projectId: string) {
       api.tasks.update(taskId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
     },
   });
 
@@ -56,6 +60,7 @@ export function useTaskMutation(projectId: string) {
     mutationFn: (taskId: string) => api.tasks.delete(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
     },
   });
 
@@ -64,6 +69,7 @@ export function useTaskMutation(projectId: string) {
       api.tasks.move(taskId, toStatus),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
     },
   });
 
@@ -71,6 +77,7 @@ export function useTaskMutation(projectId: string) {
     mutationFn: (taskId: string) => api.tasks.archive(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
       queryClient.invalidateQueries({ queryKey: ["archived-count"] });
       toast.success("Task archived");
     },
@@ -83,6 +90,7 @@ export function useTaskMutation(projectId: string) {
     mutationFn: (taskId: string) => api.tasks.restore(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
       queryClient.invalidateQueries({ queryKey: ["archived-count"] });
       toast.success("Task restored");
     },
@@ -95,6 +103,7 @@ export function useTaskMutation(projectId: string) {
     mutationFn: (taskId: string) => api.tasks.permanentlyDelete(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
       queryClient.invalidateQueries({ queryKey: ["archived-count"] });
       toast.success("Task permanently deleted");
     },

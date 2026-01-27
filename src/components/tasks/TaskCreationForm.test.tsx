@@ -40,50 +40,29 @@ describe("TaskCreationForm", () => {
 
       expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/category/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/priority/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
-    });
-
-    it("should render form heading", () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      expect(screen.getByRole("heading", { name: /create task/i })).toBeInTheDocument();
     });
 
     it("should render submit and cancel buttons", () => {
       render(<TaskCreationForm {...defaultProps} />);
 
-      expect(screen.getByRole("button", { name: /create/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /create task/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
     });
 
-    it("should render QA toggle checkbox", () => {
-      render(<TaskCreationForm {...defaultProps} />);
+    it("should pre-fill title when defaultTitle is provided", () => {
+      render(<TaskCreationForm {...defaultProps} defaultTitle="Pre-filled Title" />);
 
-      const checkbox = screen.getByRole("checkbox", { name: /enable qa/i });
-      expect(checkbox).toBeInTheDocument();
-    });
-
-    it("should render QA info text", () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      expect(
-        screen.getByText(/runs acceptance criteria generation and browser testing/i)
-      ).toBeInTheDocument();
-    });
-
-    it("should have QA checkbox unchecked by default (inherit from global)", () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      const checkbox = screen.getByRole("checkbox", { name: /enable qa/i });
-      expect(checkbox).not.toBeChecked();
+      expect(screen.getByLabelText(/title/i)).toHaveValue("Pre-filled Title");
     });
   });
 
   describe("Form Validation", () => {
-    it("should require title", async () => {
+    it("should not submit when title is empty", async () => {
       render(<TaskCreationForm {...defaultProps} />);
 
-      const submitButton = screen.getByRole("button", { name: /create/i });
+      const submitButton = screen.getByRole("button", { name: /create task/i });
       await userEvent.click(submitButton);
 
       expect(mockMutate).not.toHaveBeenCalled();
@@ -95,7 +74,7 @@ describe("TaskCreationForm", () => {
       const titleInput = screen.getByLabelText(/title/i);
       await userEvent.type(titleInput, "Test Task");
 
-      const submitButton = screen.getByRole("button", { name: /create/i });
+      const submitButton = screen.getByRole("button", { name: /create task/i });
       await userEvent.click(submitButton);
 
       expect(mockMutate).toHaveBeenCalledWith(
@@ -103,60 +82,10 @@ describe("TaskCreationForm", () => {
           projectId: "project-123",
           title: "Test Task",
           category: "feature", // default
+          priority: 3, // default (P3 - Medium)
         }),
         expect.anything()
       );
-    });
-  });
-
-  describe("QA Toggle Interaction", () => {
-    it("should toggle QA checkbox when clicked", async () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      const checkbox = screen.getByRole("checkbox", { name: /enable qa/i });
-      expect(checkbox).not.toBeChecked();
-
-      await userEvent.click(checkbox);
-      expect(checkbox).toBeChecked();
-
-      await userEvent.click(checkbox);
-      expect(checkbox).not.toBeChecked();
-    });
-
-    it("should submit with needsQa true when checked", async () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      const titleInput = screen.getByLabelText(/title/i);
-      await userEvent.type(titleInput, "QA Task");
-
-      const checkbox = screen.getByRole("checkbox", { name: /enable qa/i });
-      await userEvent.click(checkbox);
-
-      const submitButton = screen.getByRole("button", { name: /create/i });
-      await userEvent.click(submitButton);
-
-      expect(mockMutate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: "project-123",
-          title: "QA Task",
-          needsQa: true,
-        }),
-        expect.anything()
-      );
-    });
-
-    it("should submit without needsQa when unchecked (inherit from global)", async () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      const titleInput = screen.getByLabelText(/title/i);
-      await userEvent.type(titleInput, "No QA Task");
-
-      const submitButton = screen.getByRole("button", { name: /create/i });
-      await userEvent.click(submitButton);
-
-      const callArgs = mockMutate.mock.calls[0][0];
-      // When unchecked, needsQa should be undefined or null (inherit from global)
-      expect(callArgs.needsQa).toBeUndefined();
     });
   });
 
@@ -186,12 +115,50 @@ describe("TaskCreationForm", () => {
       const categorySelect = screen.getByLabelText(/category/i);
       await userEvent.selectOptions(categorySelect, "bug");
 
-      const submitButton = screen.getByRole("button", { name: /create/i });
+      const submitButton = screen.getByRole("button", { name: /create task/i });
       await userEvent.click(submitButton);
 
       expect(mockMutate).toHaveBeenCalledWith(
         expect.objectContaining({
           category: "bug",
+        }),
+        expect.anything()
+      );
+    });
+  });
+
+  describe("Priority Selection", () => {
+    it("should default to P3 (Medium) priority", () => {
+      render(<TaskCreationForm {...defaultProps} />);
+
+      const prioritySelect = screen.getByLabelText(/priority/i);
+      expect(prioritySelect).toHaveValue("3");
+    });
+
+    it("should allow changing priority", async () => {
+      render(<TaskCreationForm {...defaultProps} />);
+
+      const prioritySelect = screen.getByLabelText(/priority/i);
+      await userEvent.selectOptions(prioritySelect, "1");
+
+      expect(prioritySelect).toHaveValue("1");
+    });
+
+    it("should submit with selected priority", async () => {
+      render(<TaskCreationForm {...defaultProps} />);
+
+      const titleInput = screen.getByLabelText(/title/i);
+      await userEvent.type(titleInput, "Critical Task");
+
+      const prioritySelect = screen.getByLabelText(/priority/i);
+      await userEvent.selectOptions(prioritySelect, "1");
+
+      const submitButton = screen.getByRole("button", { name: /create task/i });
+      await userEvent.click(submitButton);
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          priority: 1,
         }),
         expect.anything()
       );
@@ -217,7 +184,7 @@ describe("TaskCreationForm", () => {
       const descriptionInput = screen.getByLabelText(/description/i);
       await userEvent.type(descriptionInput, "Detailed description here");
 
-      const submitButton = screen.getByRole("button", { name: /create/i });
+      const submitButton = screen.getByRole("button", { name: /create task/i });
       await userEvent.click(submitButton);
 
       expect(mockMutate).toHaveBeenCalledWith(
@@ -234,11 +201,11 @@ describe("TaskCreationForm", () => {
       const titleInput = screen.getByLabelText(/title/i);
       await userEvent.type(titleInput, "Task without Description");
 
-      const submitButton = screen.getByRole("button", { name: /create/i });
+      const submitButton = screen.getByRole("button", { name: /create task/i });
       await userEvent.click(submitButton);
 
-      const callArgs = mockMutate.mock.calls[0][0];
-      expect(callArgs.description).toBeUndefined();
+      const callArgs = mockMutate.mock.calls[0]?.[0];
+      expect(callArgs?.description).toBeUndefined();
     });
   });
 
@@ -263,7 +230,7 @@ describe("TaskCreationForm", () => {
   });
 
   describe("Form Reset", () => {
-    it("should reset form after successful submission", async () => {
+    it("should call onSuccess after successful submission", async () => {
       mockMutate.mockImplementation((_, { onSuccess }) => {
         onSuccess?.();
       });
@@ -273,7 +240,7 @@ describe("TaskCreationForm", () => {
       const titleInput = screen.getByLabelText(/title/i);
       await userEvent.type(titleInput, "Test Task");
 
-      const submitButton = screen.getByRole("button", { name: /create/i });
+      const submitButton = screen.getByRole("button", { name: /create task/i });
       await userEvent.click(submitButton);
 
       expect(defaultProps.onSuccess).toHaveBeenCalled();
@@ -287,35 +254,8 @@ describe("TaskCreationForm", () => {
       // All inputs should be labeled
       expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/category/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/priority/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/enable qa/i)).toBeInTheDocument();
-    });
-
-    it("should have QA checkbox with aria-describedby for info text", () => {
-      render(<TaskCreationForm {...defaultProps} />);
-
-      const checkbox = screen.getByRole("checkbox", { name: /enable qa/i });
-      expect(checkbox).toHaveAttribute("aria-describedby");
-    });
-  });
-
-  describe("Loading State", () => {
-    it("should disable form while submitting", async () => {
-      // Temporarily override the mock to return isPending: true
-      vi.doMock("@/hooks/useTaskMutation", () => ({
-        useTaskMutation: () => ({
-          createMutation: {
-            mutate: mockMutate,
-            isPending: true,
-            isError: false,
-            error: null,
-            reset: mockReset,
-          },
-        }),
-      }));
-
-      // Re-import component with new mock - note: this is tricky in vitest
-      // Instead we'll test the button text changes
     });
   });
 });

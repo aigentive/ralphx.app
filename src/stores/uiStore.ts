@@ -82,6 +82,8 @@ interface UiState {
   taskFullViewId: string | null;
   /** ID of selected task for split-screen overlay (kanban view only) */
   selectedTaskId: string | null;
+  /** Task creation overlay context, or null if closed */
+  taskCreationContext: { projectId: string; defaultTitle?: string } | null;
   /** Whether the integrated chat panel is collapsed (thin bar) */
   chatCollapsed: boolean;
   /** Width of the integrated chat panel in pixels */
@@ -143,6 +145,10 @@ interface UiActions {
   closeTaskFullView: () => void;
   /** Set selected task ID for split-screen overlay */
   setSelectedTaskId: (taskId: string | null) => void;
+  /** Open task creation overlay */
+  openTaskCreation: (projectId: string, defaultTitle?: string) => void;
+  /** Close task creation overlay */
+  closeTaskCreation: () => void;
   /** Set whether the integrated chat panel is collapsed */
   setChatCollapsed: (collapsed: boolean) => void;
   /** Toggle chat panel collapsed state */
@@ -179,6 +185,7 @@ export const useUiStore = create<UiState & UiActions>()(
     isSearching: false,
     taskFullViewId: null,
     selectedTaskId: null,
+    taskCreationContext: null,
     chatCollapsed: false,
     chatPanelWidth: 600,
 
@@ -308,6 +315,19 @@ export const useUiStore = create<UiState & UiActions>()(
     setSelectedTaskId: (taskId) =>
       set((state) => {
         state.selectedTaskId = taskId;
+      }),
+
+    openTaskCreation: (projectId, defaultTitle) =>
+      set((state) => {
+        state.taskCreationContext = {
+          projectId,
+          ...(defaultTitle !== undefined && { defaultTitle }),
+        };
+      }),
+
+    closeTaskCreation: () =>
+      set((state) => {
+        state.taskCreationContext = null;
       }),
 
     setChatCollapsed: (collapsed) =>

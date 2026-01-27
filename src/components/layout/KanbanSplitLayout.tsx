@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUiStore } from "@/stores/uiStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
+import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
 import { cn } from "@/lib/utils";
 
 // ============================================================================
@@ -41,6 +42,7 @@ interface KanbanSplitLayoutProps {
 export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLayoutProps) {
   const chatCollapsed = useUiStore((s) => s.chatCollapsed);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const taskCreationContext = useUiStore((s) => s.taskCreationContext);
 
   // Percentage-based width for left panel (like IdeationView)
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
@@ -120,6 +122,9 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
 
         {/* Task Detail Overlay - renders when a task is selected */}
         {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}
+
+        {/* Task Creation Overlay - renders when creating a new task */}
+        {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
       {/* Resize Handle (only when chat is not collapsed) */}
