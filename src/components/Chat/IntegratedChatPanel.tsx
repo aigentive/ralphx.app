@@ -17,6 +17,7 @@ import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveC
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import type { ChatContext } from "@/types/chat";
+import type { ContextType } from "@/types/chat-conversation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
@@ -348,20 +349,56 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
     };
   }, [selectedTaskId, isExecutionMode, projectId]);
 
+  // Streaming tool calls - accumulated during agent execution (defined early for context change effect)
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
+
   // Reset active conversation when context changes
   // This ensures we load the correct conversations for the new context
   const contextKey = selectedTaskId
     ? `${isExecutionMode ? "execution" : "task"}:${selectedTaskId}`
     : `project:${projectId}`;
   const prevContextKeyRef = useRef(contextKey);
+  const prevContextTypeRef = useRef<{ type: string; id: string } | null>(null);
+
+  // Track the previous context type and id for cache invalidation
+  useEffect(() => {
+    const currentContextType = selectedTaskId
+      ? (isExecutionMode ? "task_execution" : "task")
+      : "project";
+    const currentContextId = selectedTaskId || projectId;
+    prevContextTypeRef.current = { type: currentContextType, id: currentContextId };
+  }, [selectedTaskId, isExecutionMode, projectId]);
 
   useEffect(() => {
     if (prevContextKeyRef.current !== contextKey) {
-      // Context changed, reset active conversation
+      // Context changed - get the current conversation ID and context before clearing
+      const currentConversationId = useChatStore.getState().activeConversationId;
+      const oldContext = prevContextTypeRef.current;
+
+      // Clear the active conversation immediately
       setActiveConversation(null);
+
+      // Clear streaming tool calls
+      setStreamingToolCalls([]);
+
+      // Clear the query cache for the old conversation to prevent stale data
+      if (currentConversationId) {
+        queryClient.removeQueries({
+          queryKey: chatKeys.conversation(currentConversationId),
+        });
+      }
+
+      // Also clear the old context's conversation list to prevent initialization
+      // from picking up stale conversations
+      if (oldContext) {
+        queryClient.removeQueries({
+          queryKey: chatKeys.conversationList(oldContext.type as ContextType, oldContext.id),
+        });
+      }
+
       prevContextKeyRef.current = contextKey;
     }
-  }, [contextKey, setActiveConversation]);
+  }, [contextKey, setActiveConversation, queryClient]);
 
   // Memoize the selector for execution queued messages
   const taskIdForQueue = selectedTaskId ?? "";
@@ -407,8 +444,6 @@ export function IntegratedChatPanel({ projectId }: IntegratedChatPanelProps) {
   } = regularChatData;
 
   const [hasUnread, setHasUnread] = useState(false);
-  // Streaming tool calls - accumulated during agent execution
-  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);

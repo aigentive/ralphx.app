@@ -421,30 +421,71 @@ function MessageItem({
 function ConversationEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6">
-      <div
-        className="px-8 py-6 rounded-xl text-center"
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div
-          className="w-12 h-12 mx-auto mb-4 rounded-lg flex items-center justify-center"
-          style={{
-            background: "rgba(255,107,53,0.1)",
-            border: "1px solid rgba(255,107,53,0.2)",
-          }}
-        >
-          <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
+      {/* Minimal, flowing design for conversation */}
+      <div className="text-center max-w-[280px]">
+        {/* Animated message bubbles */}
+        <div className="flex items-end justify-center gap-2 mb-6">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
+            style={{
+              background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          />
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
+            style={{
+              background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          />
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center"
+            style={{
+              background: "linear-gradient(135deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.05) 100%)",
+              border: "1px solid rgba(255,107,53,0.25)",
+              boxShadow: "0 0 30px rgba(255,107,53,0.1)",
+            }}
+          >
+            <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
+          </div>
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
+            style={{
+              background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          />
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
+            style={{
+              background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          />
         </div>
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
+
+        <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
           Start the conversation
         </h3>
-        <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
           Describe your ideas and I'll help create task proposals
         </p>
+
+        {/* Hint arrow pointing down to input */}
+        <div className="mt-6 flex justify-center">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center animate-bounce"
+            style={{
+              background: "rgba(255,107,53,0.1)",
+              border: "1px solid rgba(255,107,53,0.2)",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#ff6b35]">
+              <path d="M7 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -452,31 +493,75 @@ function ConversationEmptyState() {
 
 function ProposalsEmptyState() {
   return (
-    <div data-testid="proposals-empty-state" className="flex flex-col items-center justify-center h-full p-6">
-      <div
-        className="px-8 py-6 rounded-xl text-center"
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div
-          className="w-12 h-12 mx-auto mb-4 rounded-lg flex items-center justify-center"
-          style={{
-            background: "rgba(251,191,36,0.1)",
-            border: "1px solid rgba(251,191,36,0.2)",
-          }}
-        >
-          <Lightbulb className="w-6 h-6 text-amber-400" />
+    <div data-testid="proposals-empty-state" className="flex flex-col items-center pt-[20%] h-full p-6">
+      {/* Structured, task-list oriented design for proposals */}
+      <div className="w-full max-w-[280px]">
+        {/* Mock task cards with dashed borders - suggests awaiting content */}
+        <div className="space-y-2 mb-5">
+          {[0.4, 0.25, 0.15].map((opacity, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 p-3 rounded-lg"
+              style={{
+                opacity,
+                border: "1.5px dashed rgba(255,107,53,0.25)",
+                background: "rgba(255,107,53,0.02)",
+              }}
+            >
+              <div
+                className="w-4 h-4 rounded border-[1.5px] border-dashed flex-shrink-0"
+                style={{ borderColor: "rgba(255,107,53,0.4)" }}
+              />
+              <div
+                className="h-2 rounded-full flex-1"
+                style={{
+                  background: "linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+                  maxWidth: `${70 - i * 15}%`,
+                }}
+              />
+            </div>
+          ))}
         </div>
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
-          No proposals yet
-        </h3>
-        <p className="text-xs text-[var(--text-secondary)] max-w-[220px] leading-relaxed">
-          Chat with the orchestrator to generate task proposals
-        </p>
+
+        {/* Central icon with glow */}
+        <div className="flex justify-center mb-4">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center relative"
+            style={{
+              background: "linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)",
+              border: "1px solid rgba(251,191,36,0.25)",
+              boxShadow: "0 0 24px rgba(251,191,36,0.1)",
+            }}
+          >
+            <Lightbulb className="w-5 h-5 text-amber-400" />
+          </div>
+        </div>
+
+        {/* Text content */}
+        <div className="text-center">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
+            No proposals yet
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Ideas from the conversation will appear here as task proposals
+          </p>
+        </div>
+
+        {/* Visual connection hint - arrow pointing left to chat */}
+        <div className="flex justify-center mt-5">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[var(--text-muted)]">
+              <path d="M12 7H2m0 0l3-3m-3 3l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">From chat</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -975,7 +1060,7 @@ export function IdeationView({
   onApply,
   isLoading = false,
 }: IdeationViewProps) {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(60); // 60/40 split like Kanban
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1220,84 +1305,25 @@ export function IdeationView({
               </Button>
             </header>
 
-            {/* Split Layout */}
+            {/* Split Layout - Proposals left, Conversation right (matching Kanban pattern) */}
             <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
-              {/* Conversation Panel */}
-              <div
-                data-testid="conversation-panel"
-                className="flex flex-col border-r border-white/[0.06] bg-gradient-to-b from-black/20 to-transparent"
-                style={{ width: `${leftPanelWidth}%`, minWidth: "320px" }}
-              >
-                {/* Panel Header */}
-                <div className="flex items-center gap-1.5 px-3 py-2 h-9 border-b border-white/[0.06] bg-black/20">
-                  <MessageSquare className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                  <h2 className="text-xs font-medium text-[var(--text-primary)]">Conversation</h2>
-                </div>
-
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-3">
-                  {messages.length === 0 ? (
-                    <ConversationEmptyState />
-                  ) : (
-                    <>
-                      {groupedMessages.map((msg) => (
-                        <MessageItem
-                          key={msg.id}
-                          role={msg.role}
-                          content={msg.content}
-                          createdAt={msg.createdAt}
-                          toolCalls={msg.toolCalls}
-                          isFirstInGroup={msg.isFirstInGroup}
-                          isLastInGroup={msg.isLastInGroup}
-                        />
-                      ))}
-                      {isLoading && <TypingIndicator />}
-                      <div ref={messagesEndRef} />
-                    </>
-                  )}
-                </div>
-
-                {/* Chat Input */}
-                <div className="border-t border-white/[0.06] bg-black/30 p-4">
-                  <ChatInput
-                    onSend={onSendMessage}
-                    isSending={isLoading}
-                    placeholder="Send a message..."
-                    showHelperText={true}
-                    autoFocus={false}
-                  />
-                </div>
-              </div>
-
-              {/* Resize Handle */}
-              <div
-                data-testid="resize-handle"
-                className={cn("w-1 cursor-ew-resize relative group", isResizing && "bg-[#ff6b35]/50")}
-                onMouseDown={handleResizeStart}
-              >
-                <div className={cn(
-                  "absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all duration-150",
-                  isResizing
-                    ? "bg-[#ff6b35] shadow-[0_0_12px_rgba(255,107,53,0.5)]"
-                    : "bg-white/[0.06] group-hover:bg-[#ff6b35]/60 group-hover:shadow-[0_0_8px_rgba(255,107,53,0.3)]"
-                )} />
-              </div>
-
-              {/* Proposals Panel */}
+              {/* Proposals Panel (Left) */}
               <div
                 data-testid="proposals-panel"
-                className="flex flex-col flex-1 bg-gradient-to-b from-black/10 to-transparent"
-                style={{ minWidth: "360px" }}
+                className="flex flex-col border-r border-white/[0.06] bg-gradient-to-b from-black/10 to-transparent"
+                style={{ width: `${leftPanelWidth}%`, minWidth: "360px" }}
               >
                 {/* Panel Header */}
-                <div className="flex items-center justify-between px-5 py-3 h-12 border-b border-white/[0.06] bg-black/20">
+                <div className="flex items-center justify-between px-4 h-10 border-b border-white/[0.06] bg-black/20">
                   <div className="flex items-center gap-2">
-                    <ListTodo className="w-4 h-4 text-[var(--text-muted)]" />
-                    <h2 className="text-sm font-medium text-[var(--text-primary)]">Task Proposals</h2>
+                    <ListTodo className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    <h2 className="text-[13px] font-medium text-[var(--text-primary)]">Proposals</h2>
                   </div>
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
-                    {proposals.length}
-                  </span>
+                  {proposals.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
+                      {proposals.length}
+                    </span>
+                  )}
                 </div>
 
                 {proposals.length > 0 && (
@@ -1388,41 +1414,104 @@ export function IdeationView({
                   )}
                 </div>
 
-                {/* Apply Section */}
-                <div
-                  data-testid="apply-section"
-                  className="flex items-center justify-between px-5 py-4 border-t border-white/[0.06] bg-black/30"
-                >
-                  <span className="text-sm text-[var(--text-muted)]">
-                    <span className="text-[var(--text-primary)] font-medium">{selectedCount}</span> selected
-                  </span>
+                {/* Apply Section - only show when there are proposals */}
+                {proposals.length > 0 && (
+                  <div
+                    data-testid="apply-section"
+                    className="flex items-center justify-between px-4 py-3"
+                  >
+                    <span className="text-sm text-[var(--text-muted)]">
+                      <span className="text-[var(--text-primary)] font-medium">{selectedCount}</span> selected
+                    </span>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        disabled={!canApply}
-                        className={cn(
-                          "gap-2",
-                          canApply && "bg-[#ff6b35] hover:bg-[#ff7a4d]"
-                        )}
-                        style={canApply ? { boxShadow: "0 1px 3px rgba(0,0,0,0.15)" } : undefined}
-                      >
-                        Apply to
-                        <ChevronDown className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-[#1a1a1a] border-white/[0.1]">
-                      <DropdownMenuItem onClick={() => handleApply("draft")} className="hover:bg-white/[0.06]">
-                        <FileEdit className="w-4 h-4 mr-2" /> Draft
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleApply("backlog")} className="hover:bg-white/[0.06]">
-                        <Inbox className="w-4 h-4 mr-2" /> Backlog
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleApply("todo")} className="hover:bg-white/[0.06]">
-                        <ListTodo className="w-4 h-4 mr-2" /> Todo
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          disabled={!canApply}
+                          className={cn(
+                            "gap-2",
+                            canApply && "bg-[#ff6b35] hover:bg-[#ff7a4d]"
+                          )}
+                          style={canApply ? { boxShadow: "0 1px 3px rgba(0,0,0,0.15)" } : undefined}
+                        >
+                          Apply to
+                          <ChevronDown className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-[#1a1a1a] border-white/[0.1]">
+                        <DropdownMenuItem onClick={() => handleApply("draft")} className="hover:bg-white/[0.06]">
+                          <FileEdit className="w-4 h-4 mr-2" /> Draft
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleApply("backlog")} className="hover:bg-white/[0.06]">
+                          <Inbox className="w-4 h-4 mr-2" /> Backlog
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleApply("todo")} className="hover:bg-white/[0.06]">
+                          <ListTodo className="w-4 h-4 mr-2" /> Todo
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              </div>
+
+              {/* Resize Handle */}
+              <div
+                data-testid="resize-handle"
+                className={cn("w-1 cursor-ew-resize relative group shrink-0", isResizing && "bg-[#ff6b35]/50")}
+                onMouseDown={handleResizeStart}
+              >
+                <div className={cn(
+                  "absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all duration-150",
+                  isResizing
+                    ? "bg-[#ff6b35] shadow-[0_0_12px_rgba(255,107,53,0.5)]"
+                    : "bg-white/[0.06] group-hover:bg-[#ff6b35]/60 group-hover:shadow-[0_0_8px_rgba(255,107,53,0.3)]"
+                )} />
+              </div>
+
+              {/* Conversation Panel (Right) */}
+              <div
+                data-testid="conversation-panel"
+                className="flex flex-col flex-1 bg-gradient-to-b from-black/20 to-transparent"
+                style={{ minWidth: "320px" }}
+              >
+                {/* Panel Header */}
+                <div className="flex items-center gap-2 px-4 h-10 border-b border-white/[0.06] bg-black/20">
+                  <MessageSquare className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  <h2 className="text-[13px] font-medium text-[var(--text-primary)]">Conversation</h2>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-3">
+                  {messages.length === 0 ? (
+                    <ConversationEmptyState />
+                  ) : (
+                    <>
+                      {groupedMessages.map((msg) => (
+                        <MessageItem
+                          key={msg.id}
+                          role={msg.role}
+                          content={msg.content}
+                          createdAt={msg.createdAt}
+                          toolCalls={msg.toolCalls}
+                          isFirstInGroup={msg.isFirstInGroup}
+                          isLastInGroup={msg.isLastInGroup}
+                        />
+                      ))}
+                      {isLoading && <TypingIndicator />}
+                      <div ref={messagesEndRef} />
+                    </>
+                  )}
+                </div>
+
+                {/* Chat Input */}
+                <div className="border-t border-white/[0.06] bg-black/30 p-4">
+                  <ChatInput
+                    onSend={onSendMessage}
+                    isSending={isLoading}
+                    placeholder="Send a message..."
+                    showHelperText={true}
+                    autoFocus={false}
+                  />
                 </div>
               </div>
             </div>

@@ -23,6 +23,7 @@ import { useState } from "react";
 
 interface TaskDetailPanelProps {
   task: Task;
+  showHeader?: boolean;
   showContext?: boolean;
   showHistory?: boolean;
 }
@@ -202,6 +203,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function TaskDetailPanel({
   task,
+  showHeader = true,
   showContext: showContextProp = false,
   showHistory: showHistoryProp = true,
 }: TaskDetailPanelProps) {
@@ -223,38 +225,40 @@ export function TaskDetailPanel({
       data-task-id={task.id}
       className="space-y-6"
     >
-      {/* Header with priority, title, category, status */}
-      <div className="space-y-2">
-        <div className="flex items-start gap-2.5">
-          <PriorityBadge priority={task.priority} />
-          <div className="flex-1 min-w-0">
-            <h2
-              data-testid="task-detail-title"
-              className="text-base font-semibold text-white/90"
-              style={{
-                letterSpacing: "-0.02em",
-                lineHeight: "1.3",
-              }}
-            >
-              {task.title}
-            </h2>
-            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-              <span
-                data-testid="task-detail-category"
-                className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+      {/* Header with priority, title, category, status - optional */}
+      {showHeader && (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2.5">
+            <PriorityBadge priority={task.priority} />
+            <div className="flex-1 min-w-0">
+              <h2
+                data-testid="task-detail-title"
+                className="text-base font-semibold text-white/90"
                 style={{
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  color: "rgba(255,255,255,0.6)",
+                  letterSpacing: "-0.02em",
+                  lineHeight: "1.3",
                 }}
               >
-                {task.category}
-              </span>
-              <StatusBadge status={task.internalStatus} />
+                {task.title}
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <span
+                  data-testid="task-detail-category"
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "rgba(255,255,255,0.6)",
+                  }}
+                >
+                  {task.category}
+                </span>
+                <StatusBadge status={task.internalStatus} />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* View Context Button */}
       {hasContext && (

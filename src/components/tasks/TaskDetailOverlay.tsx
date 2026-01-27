@@ -479,28 +479,29 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
           </div>
 
           {/* Scrollable Content */}
-          <ScrollArea className="flex-1">
-            {isEditing ? (
-              /* Edit Mode */
-              <div className="px-6 py-4">
-                <TaskEditForm
-                  task={task}
-                  onSave={handleSave}
-                  onCancel={() => setIsEditing(false)}
-                  isSaving={updateMutation.isPending}
-                />
-              </div>
-            ) : (
-              /* Read-only View */
+          {isEditing ? (
+            /* Edit Mode - No ScrollArea, form handles its own layout */
+            <div className="flex-1 flex flex-col overflow-auto px-6 py-4">
+              <TaskEditForm
+                task={task}
+                onSave={handleSave}
+                onCancel={() => setIsEditing(false)}
+                isSaving={updateMutation.isPending}
+              />
+            </div>
+          ) : (
+            /* Read-only View */
+            <ScrollArea className="flex-1">
               <div className="px-6 py-4">
                 <TaskDetailPanel
                   task={task}
+                  showHeader={false}
                   showContext={true}
                   showHistory={true}
                 />
               </div>
-            )}
-          </ScrollArea>
+            </ScrollArea>
+          )}
         </div>
       </div>
 
