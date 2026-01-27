@@ -114,16 +114,19 @@ pub struct ConversationWithMessagesResponse {
 /// 2. Creates an agent run
 /// 3. Saves the user message
 /// 4. Spawns Claude CLI with appropriate flags (--agent or --resume)
-/// 5. Streams response and emits Tauri events
-/// 6. Saves the assistant response with tool calls
-/// 7. Returns the orchestrator result
+/// 5. Background task streams response and emits Tauri events
+/// 6. Returns immediately with conversation IDs
+///
+/// NOTE: This now uses the unified ChatService with background spawn pattern.
+/// The actual response comes via Tauri events (agent:message_created, agent:run_completed).
+/// The responseText field is returned empty for backward compatibility but is not used.
 #[tauri::command]
 pub async fn send_context_message(
     input: SendContextMessageInput,
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<SendContextMessageResponse, String> {
-    use crate::application::{ClaudeOrchestratorService, OrchestratorService};
+    use crate::application::{ChatService, ClaudeChatService};
 
     // Parse context type
     let context_type: ChatContextType = input
@@ -131,39 +134,37 @@ pub async fn send_context_message(
         .parse()
         .map_err(|e: String| format!("Invalid context type: {}", e))?;
 
-    // Create orchestrator service with required repositories and app handle for events
-    let orchestrator: ClaudeOrchestratorService<tauri::Wry> = ClaudeOrchestratorService::new(
+    // Create unified chat service with required repositories and app handle for events
+    let chat_service: ClaudeChatService<tauri::Wry> = ClaudeChatService::new(
         state.chat_message_repo.clone(),
         state.chat_conversation_repo.clone(),
         state.agent_run_repo.clone(),
         state.project_repo.clone(),
         state.task_repo.clone(),
         state.ideation_session_repo.clone(),
+        state.message_queue.clone(),
+        state.running_agent_registry.clone(),
     )
     .with_app_handle(app);
 
-    // Check if orchestrator is available
-    if !orchestrator.is_available().await {
+    // Check if service is available
+    if !chat_service.is_available().await {
         return Err("Claude CLI is not available. Please ensure 'claude' is installed and in your PATH.".to_string());
     }
 
-    // Send message and get response
-    let result = orchestrator
-        .send_context_message(context_type, &input.context_id, &input.content)
+    // Send message - returns immediately, response comes via events
+    let result = chat_service
+        .send_message(context_type, &input.context_id, &input.content)
         .await
         .map_err(|e| e.to_string())?;
 
-    // Build response
+    // Build response (responseText/toolCalls are empty - actual content comes via events)
+    // This maintains API compatibility while using the new background spawn pattern
     Ok(SendContextMessageResponse {
-        response_text: result.response_text,
-        tool_calls: result.tool_calls.into_iter().map(|tc| ToolCallResponse {
-            id: tc.id,
-            name: tc.name,
-            arguments: tc.arguments,
-            result: tc.result,
-        }).collect(),
-        claude_session_id: result.claude_session_id,
-        conversation_id: result.conversation_id.map(|id| id.as_str().to_string()),
+        response_text: String::new(),
+        tool_calls: vec![],
+        claude_session_id: None, // Will be set after agent completes, available via events
+        conversation_id: Some(result.conversation_id),
     })
 }
 

@@ -289,7 +289,18 @@ pub fn run() {
             commands::task_context_commands::get_artifact_full,
             commands::task_context_commands::get_artifact_version,
             commands::task_context_commands::get_related_artifacts,
-            commands::task_context_commands::search_artifacts
+            commands::task_context_commands::search_artifacts,
+            // Unified chat commands (new API - consolidates context_chat + execution_chat)
+            commands::unified_chat_commands::send_agent_message,
+            commands::unified_chat_commands::queue_agent_message,
+            commands::unified_chat_commands::get_queued_agent_messages,
+            commands::unified_chat_commands::delete_queued_agent_message,
+            commands::unified_chat_commands::list_agent_conversations,
+            commands::unified_chat_commands::get_agent_conversation,
+            commands::unified_chat_commands::get_agent_run_status_unified,
+            commands::unified_chat_commands::is_chat_service_available,
+            commands::unified_chat_commands::stop_agent,
+            commands::unified_chat_commands::is_agent_running
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

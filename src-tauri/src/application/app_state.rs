@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use crate::application::PermissionState;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
-use crate::domain::services::ExecutionMessageQueue;
+use crate::domain::services::{ExecutionMessageQueue, MessageQueue, RunningAgentRegistry};
 use crate::domain::repositories::{
     AgentProfileRepository, AgentRunRepository, ArtifactBucketRepository, ArtifactFlowRepository,
     ArtifactRepository, ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
@@ -89,8 +89,12 @@ pub struct AppState {
     pub methodology_repo: Arc<dyn MethodologyRepository>,
     /// Permission state for UI-based permission approval
     pub permission_state: Arc<PermissionState>,
-    /// Execution message queue for worker message queueing
+    /// Execution message queue for worker message queueing (legacy, prefer message_queue)
     pub execution_message_queue: ExecutionMessageQueue,
+    /// Unified message queue for all chat contexts
+    pub message_queue: Arc<MessageQueue>,
+    /// Registry for tracking running agent processes
+    pub running_agent_registry: Arc<RunningAgentRegistry>,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
 }
@@ -172,6 +176,8 @@ impl AppState {
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
             permission_state: Arc::new(PermissionState::new()),
             execution_message_queue: ExecutionMessageQueue::new(),
+            message_queue: Arc::new(MessageQueue::new()),
+            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             app_handle: Some(app_handle),
         })
     }
@@ -250,6 +256,8 @@ impl AppState {
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(shared_conn)),
             permission_state: Arc::new(PermissionState::new()),
             execution_message_queue: ExecutionMessageQueue::new(),
+            message_queue: Arc::new(MessageQueue::new()),
+            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             app_handle: Some(app_handle),
         })
     }
@@ -288,6 +296,8 @@ impl AppState {
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             permission_state: Arc::new(PermissionState::new()),
             execution_message_queue: ExecutionMessageQueue::new(),
+            message_queue: Arc::new(MessageQueue::new()),
+            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             app_handle: None,
         }
     }
@@ -328,6 +338,8 @@ impl AppState {
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             permission_state: Arc::new(PermissionState::new()),
             execution_message_queue: ExecutionMessageQueue::new(),
+            message_queue: Arc::new(MessageQueue::new()),
+            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             app_handle: None,
         }
     }

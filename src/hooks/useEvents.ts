@@ -378,7 +378,10 @@ export function useExecutionErrorEvents() {
         console.error("Execution error received:", event.payload);
 
         // Reset agent running state to unstick the UI
-        setAgentRunning(false);
+        // Use task context key if task_id is present
+        if (event.payload.task_id) {
+          setAgentRunning(`task:${event.payload.task_id}`, false);
+        }
 
         // Invalidate queries so UI refreshes
         queryClient.invalidateQueries({ queryKey: ["chat"] });

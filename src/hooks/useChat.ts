@@ -15,6 +15,24 @@ import { useChatStore } from "@/stores/chatStore";
 import { ideationKeys } from "./useIdeation";
 
 /**
+ * Build a context key string from context type and ID
+ * This matches the getContextKey format in chatStore
+ */
+function buildContextKey(contextType: ContextType, contextId: string): string {
+  switch (contextType) {
+    case "ideation":
+      return `session:${contextId}`;
+    case "task":
+    case "task_execution":
+      return `task:${contextId}`;
+    case "project":
+      return `project:${contextId}`;
+    default:
+      return `project:${contextId}`;
+  }
+}
+
+/**
  * Query key factory for chat
  */
 export const chatKeys = {
@@ -142,11 +160,13 @@ export function useAgentRunStatus(conversationId: string | null) {
 export function useChat(context: ChatContext) {
   const queryClient = useQueryClient();
   const { contextType, contextId } = getContextTypeAndId(context);
+  const contextKey = buildContextKey(contextType, contextId);
 
   const {
     activeConversationId,
     setActiveConversation,
     setAgentRunning,
+    deleteQueuedMessage,
   } = useChatStore();
 
   // Fetch conversations for this context
@@ -159,14 +179,19 @@ export function useChat(context: ChatContext) {
   const agentRunStatus = useAgentRunStatus(activeConversationId);
 
   // Update agent running state when status changes
-  // Only update if we have a conversation and the status actually changed
+  // NOTE: This only sets to true on initial load (when backend shows agent is running).
+  // The false state is handled by the agent:run_completed event to avoid race conditions.
   const isRunning = agentRunStatus.data?.status === "running";
   const isFailed = agentRunStatus.data?.status === "failed";
   const errorMessage = agentRunStatus.data?.errorMessage;
 
   useEffect(() => {
-    setAgentRunning(isRunning);
-  }, [isRunning, setAgentRunning]);
+    // Only set to true based on backend status (for initial load recovery)
+    // Don't set to false here - let the agent:run_completed event handle that
+    if (isRunning) {
+      setAgentRunning(contextKey, true);
+    }
+  }, [contextKey, isRunning, setAgentRunning]);
 
   // Show error toast when a failed run is detected (e.g., when user comes back)
   // Track which errors we've shown to avoid duplicate toasts
@@ -190,7 +215,7 @@ export function useChat(context: ChatContext) {
   const sendMessage = useMutation<SendContextMessageResult, Error, string>({
     mutationFn: async (content: string) => {
       // Set agent running immediately so subsequent messages get queued
-      setAgentRunning(true);
+      setAgentRunning(contextKey, true);
       return chatApi.sendContextMessage(contextType, contextId, content);
     },
     onSuccess: () => {
@@ -215,7 +240,7 @@ export function useChat(context: ChatContext) {
     },
     onError: () => {
       // Reset agent running state on error
-      setAgentRunning(false);
+      setAgentRunning(contextKey, false);
     },
   });
 
@@ -256,6 +281,7 @@ export function useChat(context: ChatContext) {
   }, [createConversationMutation]);
 
   // Subscribe to Tauri events for real-time updates
+  // Using unified agent:* events (Phase 5-6 consolidation)
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
 
@@ -265,19 +291,42 @@ export function useChat(context: ChatContext) {
       // we show a typing indicator while the agent is running and only
       // render the final message with proper content_blocks when the run completes.
       //
-      // The chat:chunk and chat:tool_call events are still emitted by the backend
+      // The agent:chunk and agent:tool_call events are still emitted by the backend
       // but we don't use them to update the UI during streaming. This avoids
       // issues with mismatched tool calls/results and partial content.
 
+      // Listen for run started - set agent running state to true
+      const runStartedUnlisten = await listen<{
+        run_id: string;
+        context_type: string;
+        context_id: string;
+        conversation_id: string;
+      }>("agent:run_started", (event) => {
+        const { context_type, context_id: eventContextId, conversation_id } = event.payload;
+
+        // Build context key from the event payload
+        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+
+        // Set agent as running for this context
+        setAgentRunning(eventContextKey, true);
+
+        console.log(`[agent:run_started] contextKey=${eventContextKey}, raw=${context_type}/${eventContextId}, conv=${conversation_id}`);
+      });
+      unlisteners.push(runStartedUnlisten);
+
       // Listen for message created - optimistically add to cache
+      // Unified event: agent:message_created (replaces chat:message_created)
       const messageCreatedUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
         conversation_id: string;
         message_id: string;
         role: string;
         content: string;
-      }>("chat:message_created", (event) => {
-        const { conversation_id, message_id, role, content } = event.payload;
+      }>("agent:message_created", (event) => {
+        const { conversation_id, message_id, role, content, context_type } = event.payload;
 
+        // Filter by context type if needed (all contexts use the same event now)
         // If this is for the active conversation, add message to cache
         if (conversation_id === activeConversationId) {
           queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
@@ -308,18 +357,27 @@ export function useChat(context: ChatContext) {
             }
           );
         }
+
+        // Log for debugging
+        console.debug(`[agent:message_created] context=${context_type}, conversation=${conversation_id}`);
       });
       unlisteners.push(messageCreatedUnlisten);
 
       // Listen for run completion
+      // Unified event: agent:run_completed (replaces chat:run_completed)
       const runCompletedUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
         conversation_id: string;
         status: string;
-      }>("chat:run_completed", async (event) => {
-        const { conversation_id } = event.payload;
+      }>("agent:run_completed", async (event) => {
+        const { conversation_id, context_type, context_id: eventContextId } = event.payload;
 
-        // Update agent running state
-        setAgentRunning(false);
+        // Build context key from the event payload
+        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+
+        // Update agent running state for the specific context
+        setAgentRunning(eventContextKey, false);
 
         // Invalidate agent run status
         if (conversation_id === activeConversationId) {
@@ -332,24 +390,67 @@ export function useChat(context: ChatContext) {
           });
         }
 
-        // Process queue: get current state directly to avoid stale closure
-        const currentQueue = useChatStore.getState().queuedMessages;
-        if (currentQueue.length > 0) {
-          const firstMessage = currentQueue[0];
-          if (firstMessage) {
-            // Remove from queue first
-            useChatStore.getState().deleteQueuedMessage(firstMessage.id);
+        // NOTE: Queue processing is now handled by the BACKEND
+        // The backend automatically processes queued messages via --resume
+        // when a run completes. We listen for agent:queue_sent to update UI.
 
-            // Send the message (note: sendMessage ref may be stale, but mutateAsync should work)
-            try {
-              await sendMessage.mutateAsync(firstMessage.content);
-            } catch (error) {
-              console.error("Failed to send queued message:", error);
-            }
-          }
-        }
+        // Log for debugging
+        console.debug(`[agent:run_completed] context=${context_type}, conversation=${conversation_id}`);
       });
       unlisteners.push(runCompletedUnlisten);
+
+      // Listen for queue_sent - backend notifies us when it sends a queued message
+      // This allows us to update the optimistic UI by removing the sent message
+      // Since frontend and backend use the same ID, we can match exactly by ID
+      const queueSentUnlisten = await listen<{
+        message_id: string;
+        conversation_id: string;
+        context_type: string;
+        context_id: string;
+      }>("agent:queue_sent", (event) => {
+        const { message_id, context_type, context_id: eventContextId } = event.payload;
+
+        // Build context key from the event payload
+        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+
+        // Remove from frontend optimistic queue by exact ID match
+        deleteQueuedMessage(eventContextKey, message_id);
+
+        // Log for debugging
+        console.debug(`[agent:queue_sent] message=${message_id}, context=${context_type}/${eventContextId}`);
+      });
+      unlisteners.push(queueSentUnlisten);
+
+      // Listen for agent errors
+      // Unified event: agent:error
+      const errorUnlisten = await listen<{
+        context_type: string;
+        context_id: string;
+        conversation_id: string;
+        error: string;
+      }>("agent:error", (event) => {
+        const { conversation_id, error, context_type, context_id: eventContextId } = event.payload;
+
+        // Build context key from the event payload
+        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+
+        // Update agent running state on error for the specific context
+        setAgentRunning(eventContextKey, false);
+
+        // Invalidate queries to refresh state
+        if (conversation_id === activeConversationId) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.agentRun(activeConversationId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(activeConversationId),
+          });
+        }
+
+        // Log error for debugging
+        console.error(`[agent:error] context=${context_type}, conversation=${conversation_id}:`, error);
+      });
+      unlisteners.push(errorUnlisten);
     })();
 
     return () => {
@@ -359,7 +460,7 @@ export function useChat(context: ChatContext) {
     activeConversationId,
     queryClient,
     setAgentRunning,
-    sendMessage,
+    deleteQueuedMessage,
   ]);
 
   // Initialize active conversation if none is set
@@ -407,5 +508,10 @@ export function useChat(context: ChatContext) {
     // Conversation management
     switchConversation,
     createConversation,
+    // Context key for queue/agent state operations
+    contextKey,
+    // Context info
+    contextType,
+    contextId,
   };
 }

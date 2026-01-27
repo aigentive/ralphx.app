@@ -66,7 +66,7 @@ impl std::str::FromStr for ChatConversationId {
 }
 
 /// Type of context a conversation is associated with
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChatContextType {
     /// Ideation session context

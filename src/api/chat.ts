@@ -623,4 +623,233 @@ export const chatApi = {
   queueExecutionMessage,
   getQueuedExecutionMessages,
   deleteQueuedExecutionMessage,
+  // Unified agent API functions (new)
+  sendAgentMessage,
+  queueAgentMessage,
+  getQueuedAgentMessages,
+  deleteQueuedAgentMessage,
+  listAgentConversations,
+  getAgentConversation,
+  getAgentRunStatusUnified,
+  isChatServiceAvailable,
+  stopAgent,
+  isAgentRunning,
 } as const;
+
+// ============================================================================
+// Unified Agent API Functions (Phase 5-6 Consolidation)
+// ============================================================================
+
+/**
+ * Response from unified send_agent_message command
+ */
+export interface SendAgentMessageResult {
+  conversationId: string;
+  agentRunId: string;
+  isNewConversation: boolean;
+}
+
+const SendAgentMessageResponseSchema = z.object({
+  conversationId: z.string(),
+  agentRunId: z.string(),
+  isNewConversation: z.boolean(),
+});
+
+/**
+ * Send a message using the unified agent API
+ * Returns immediately with conversation_id and agent_run_id.
+ * Processing happens in background with events emitted via Tauri.
+ *
+ * @param contextType The context type (ideation, task, project, task_execution)
+ * @param contextId The context ID
+ * @param content The message content
+ */
+export async function sendAgentMessage(
+  contextType: ContextType,
+  contextId: string,
+  content: string
+): Promise<SendAgentMessageResult> {
+  return typedInvoke(
+    "send_agent_message",
+    {
+      input: {
+        contextType,
+        contextId,
+        content,
+      },
+    },
+    SendAgentMessageResponseSchema
+  );
+}
+
+/**
+ * Queue a message to be sent when the current agent run completes
+ *
+ * @param contextType The context type
+ * @param contextId The context ID
+ * @param content The message content
+ * @param clientId Optional client-provided ID (allows frontend/backend to use same ID)
+ */
+export async function queueAgentMessage(
+  contextType: ContextType,
+  contextId: string,
+  content: string,
+  clientId?: string
+): Promise<QueuedMessageResponse> {
+  const raw = await typedInvoke(
+    "queue_agent_message",
+    {
+      input: {
+        contextType,
+        contextId,
+        content,
+        ...(clientId !== undefined && { clientId }),
+      },
+    },
+    QueuedMessageResponseSchema
+  );
+  return transformQueuedMessage(raw);
+}
+
+/**
+ * Get all queued messages for a context
+ *
+ * @param contextType The context type
+ * @param contextId The context ID
+ */
+export async function getQueuedAgentMessages(
+  contextType: ContextType,
+  contextId: string
+): Promise<QueuedMessageResponse[]> {
+  const raw = await typedInvoke(
+    "get_queued_agent_messages",
+    { contextType, contextId },
+    z.array(QueuedMessageResponseSchema)
+  );
+  return raw.map(transformQueuedMessage);
+}
+
+/**
+ * Delete a queued message before it's sent
+ *
+ * @param contextType The context type
+ * @param contextId The context ID
+ * @param messageId The message ID to delete
+ */
+export async function deleteQueuedAgentMessage(
+  contextType: ContextType,
+  contextId: string,
+  messageId: string
+): Promise<boolean> {
+  return typedInvoke(
+    "delete_queued_agent_message",
+    { contextType, contextId, messageId },
+    z.boolean()
+  );
+}
+
+/**
+ * List all conversations for a context using the unified API
+ *
+ * @param contextType The context type
+ * @param contextId The context ID
+ */
+export async function listAgentConversations(
+  contextType: ContextType,
+  contextId: string
+): Promise<ChatConversation[]> {
+  const raw = await typedInvoke(
+    "list_agent_conversations",
+    { contextType, contextId },
+    z.array(ChatConversationResponseSchema)
+  );
+  return raw.map(transformConversation);
+}
+
+/**
+ * Get a conversation with its messages using the unified API
+ *
+ * @param conversationId The conversation ID
+ */
+export async function getAgentConversation(
+  conversationId: string
+): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] } | null> {
+  const raw = await typedInvoke(
+    "get_agent_conversation",
+    { conversationId },
+    z.object({
+      conversation: ChatConversationResponseSchema,
+      messages: z.array(ChatMessageResponseSchema),
+    }).nullable()
+  );
+
+  if (!raw) return null;
+
+  return {
+    conversation: transformConversation(raw.conversation),
+    messages: raw.messages.map(transformMessage),
+  };
+}
+
+/**
+ * Get the active agent run status for a conversation using the unified API
+ *
+ * @param conversationId The conversation ID
+ */
+export async function getAgentRunStatusUnified(
+  conversationId: string
+): Promise<AgentRun | null> {
+  const raw = await typedInvoke(
+    "get_agent_run_status_unified",
+    { conversationId },
+    AgentRunResponseSchema.nullable()
+  );
+  return raw ? transformAgentRun(raw) : null;
+}
+
+/**
+ * Check if the chat service is available (Claude CLI installed)
+ */
+export async function isChatServiceAvailable(): Promise<boolean> {
+  return typedInvoke(
+    "is_chat_service_available",
+    {},
+    z.boolean()
+  );
+}
+
+/**
+ * Stop a running agent for a context
+ * Sends SIGTERM to the running agent process.
+ *
+ * @param contextType The context type (ideation, task, project, task_execution)
+ * @param contextId The context ID
+ * @returns True if an agent was stopped, false if no agent was running
+ */
+export async function stopAgent(
+  contextType: ContextType,
+  contextId: string
+): Promise<boolean> {
+  return typedInvoke(
+    "stop_agent",
+    { contextType, contextId },
+    z.boolean()
+  );
+}
+
+/**
+ * Check if an agent is currently running for a context
+ *
+ * @param contextType The context type
+ * @param contextId The context ID
+ */
+export async function isAgentRunning(
+  contextType: ContextType,
+  contextId: string
+): Promise<boolean> {
+  return typedInvoke(
+    "is_agent_running",
+    { contextType, contextId },
+    z.boolean()
+  );
+}
