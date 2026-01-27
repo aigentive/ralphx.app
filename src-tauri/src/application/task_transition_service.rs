@@ -14,12 +14,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tauri::{AppHandle, Emitter, Runtime};
 
-use crate::application::{ClaudeExecutionChatService, ExecutionChatService};
+use crate::application::{ChatService, ClaudeChatService};
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
-    AgentRunRepository, ChatConversationRepository, ChatMessageRepository, TaskRepository,
+    AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
-use crate::domain::services::ExecutionMessageQueue;
+use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
 };
@@ -50,6 +51,7 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
                 event_type,
                 serde_json::json!({
                     "taskId": task_id,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
                 }),
             );
         }
@@ -62,41 +64,42 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
                 serde_json::json!({
                     "taskId": task_id,
                     "payload": payload,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
                 }),
             );
         }
     }
 }
 
-/// No-op Notifier - logs notifications but doesn't send them yet
+/// LoggingNotifier - logs notifications for debugging
 pub struct LoggingNotifier;
 
 #[async_trait]
 impl Notifier for LoggingNotifier {
     async fn notify(&self, notification_type: &str, task_id: &str) {
         tracing::info!(
-            notification_type = notification_type,
             task_id = task_id,
-            "Notification triggered"
+            notification_type = notification_type,
+            "Notification"
         );
     }
 
     async fn notify_with_message(&self, notification_type: &str, task_id: &str, message: &str) {
         tracing::info!(
-            notification_type = notification_type,
             task_id = task_id,
+            notification_type = notification_type,
             message = message,
-            "Notification triggered with message"
+            "Notification with message"
         );
     }
 }
 
-/// No-op DependencyManager - placeholder until full implementation
+/// No-op DependencyManager - placeholder until dependencies are fully wired
 pub struct NoOpDependencyManager;
 
 #[async_trait]
 impl DependencyManager for NoOpDependencyManager {
-    async fn unblock_dependents(&self, _completed_task_id: &str) {
+    async fn unblock_dependents(&self, _task_id: &str) {
         // TODO: Implement when task dependencies are fully wired
     }
 
@@ -136,7 +139,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     notifier: Arc<dyn Notifier>,
     dependency_manager: Arc<dyn DependencyManager>,
     review_starter: Arc<dyn ReviewStarter>,
-    execution_chat_service: Arc<dyn ExecutionChatService>,
+    chat_service: Arc<dyn ChatService>,
     _app_handle: Option<AppHandle<R>>,
 }
 
@@ -144,10 +147,13 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Create a new TaskTransitionService with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
-        message_queue: Arc<ExecutionMessageQueue>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        message_queue: Arc<MessageQueue>,
+        running_agent_registry: Arc<RunningAgentRegistry>,
         app_handle: Option<AppHandle<R>>,
     ) -> Self {
         // Create the agent client for spawning
@@ -156,14 +162,17 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Create the agent spawner
         let agent_spawner: Arc<dyn AgentSpawner> = Arc::new(AgenticClientSpawner::new(agent_client));
 
-        // Create the execution chat service for worker spawning
-        let execution_chat_service: Arc<dyn ExecutionChatService> = {
-            let mut service = ClaudeExecutionChatService::new(
+        // Create the unified chat service for worker spawning
+        let chat_service: Arc<dyn ChatService> = {
+            let mut service = ClaudeChatService::new(
                 Arc::clone(&chat_message_repo),
                 Arc::clone(&conversation_repo),
                 Arc::clone(&agent_run_repo),
+                Arc::clone(&project_repo),
                 Arc::clone(&task_repo),
+                Arc::clone(&ideation_session_repo),
                 message_queue,
+                running_agent_registry,
             );
             if let Some(ref handle) = app_handle {
                 service = service.with_app_handle(handle.clone());
@@ -184,7 +193,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             notifier,
             dependency_manager,
             review_starter,
-            execution_chat_service,
+            chat_service,
             _app_handle: app_handle,
         }
     }
@@ -299,7 +308,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.notifier),
             Arc::clone(&self.dependency_manager),
             Arc::clone(&self.review_starter),
-            Arc::clone(&self.execution_chat_service),
+            Arc::clone(&self.chat_service),
         );
 
         // Create TaskContext

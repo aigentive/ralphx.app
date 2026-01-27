@@ -6,8 +6,7 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, TaskId};
-// Use the legacy queue types for backwards compatibility with existing AppState
-use crate::domain::services::execution_message_queue::QueuedMessage;
+use crate::domain::services::QueuedMessage;
 
 /// Response for QueuedMessage
 #[derive(Debug, Serialize)]
@@ -84,9 +83,7 @@ pub async fn queue_execution_message(
     content: String,
     state: State<'_, AppState>,
 ) -> Result<QueuedMessageResponse, String> {
-    let task_id = TaskId::from_string(task_id);
-
-    let message = state.execution_message_queue.queue(task_id, content);
+    let message = state.message_queue.queue(ChatContextType::TaskExecution, &task_id, content);
 
     Ok(QueuedMessageResponse::from(message))
 }
@@ -99,9 +96,7 @@ pub async fn get_queued_execution_messages(
     task_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<QueuedMessageResponse>, String> {
-    let task_id = TaskId::from_string(task_id);
-
-    let messages = state.execution_message_queue.get_queued(&task_id);
+    let messages = state.message_queue.get_queued(ChatContextType::TaskExecution, &task_id);
 
     Ok(messages
         .into_iter()
@@ -118,11 +113,7 @@ pub async fn delete_queued_execution_message(
     message_id: String,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let task_id = TaskId::from_string(task_id);
-
-    Ok(state
-        .execution_message_queue
-        .delete(&task_id, &message_id))
+    Ok(state.message_queue.delete(ChatContextType::TaskExecution, &task_id, &message_id))
 }
 
 #[cfg(test)]

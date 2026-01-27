@@ -5,9 +5,7 @@ pub mod app_state;
 pub mod apply_service;
 pub mod chat_service;
 pub mod dependency_service;
-pub mod execution_chat_service;
 pub mod ideation_service;
-pub mod orchestrator_service;
 pub mod permission_state;
 pub mod priority_service;
 pub mod qa_service;
@@ -29,20 +27,11 @@ pub use priority_service::PriorityService;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
-pub use orchestrator_service::{
-    ChatChunkPayload, ChatErrorPayload, ChatMessageCreatedPayload, ChatRunCompletedPayload,
-    ChatStderrPayload, ChatToolCallPayload, ClaudeOrchestratorService, MockOrchestratorService,
-    MockResponse, OrchestratorError, OrchestratorEvent, OrchestratorResult, OrchestratorService,
-    ToolCall, ToolCallResult,
-};
-pub use execution_chat_service::{
-    ClaudeExecutionChatService, ExecutionChatError, ExecutionChatService, ExecutionEvent,
-    ExecutionResult, MockExecutionChatService, MockExecutionResponse, SpawnResult,
-};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
 pub use task_context_service::TaskContextService;
 pub use task_transition_service::TaskTransitionService;
-// Unified chat service (consolidates OrchestratorService + ExecutionChatService)
+
+// Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload, ChatConversationWithMessages,
