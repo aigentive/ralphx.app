@@ -19,7 +19,7 @@ import { useTaskStore } from "@/stores/taskStore";
 import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatApi } from "@/api/chat";
+import { chatApi, stopAgent } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -588,17 +588,52 @@ export function IntegratedChatPanel({
     [sendMessage]
   );
 
+  // Get current context type and ID for queue operations
+  const getQueueContext = useCallback(() => {
+    const ctxType = isExecutionMode
+      ? "task_execution"
+      : ideationSessionId
+        ? "ideation"
+        : selectedTaskId
+          ? "task"
+          : "project";
+    const ctxId = ideationSessionId || selectedTaskId || projectId;
+    return { ctxType, ctxId } as const;
+  }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
+
+  // Generate a unique ID for queued messages
+  const generateQueuedMessageId = useCallback(() => {
+    return `queued-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }, []);
+
   // Queue message handler (when agent is running)
+  // Uses backend queue API for ALL contexts so messages are properly processed
   const handleQueue = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (!content.trim()) return;
+
+      const { ctxType, ctxId } = getQueueContext();
+
+      // Generate ID FIRST - this ID will be used by both frontend and backend
+      const messageId = generateQueuedMessageId();
+
+      // Add to local store immediately for optimistic UI (using the same ID)
       if (isExecutionMode && selectedTaskId) {
-        queueExecutionMessage(selectedTaskId, content);
+        queueExecutionMessage(selectedTaskId, content, messageId);
       } else {
-        queueMessage(storeContextKey, content);
+        queueMessage(storeContextKey, content, messageId);
+      }
+
+      // ALSO queue to backend so it gets processed when agent completes
+      try {
+        await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
+        console.debug(`[queue] Queued message ${messageId} for ${ctxType}/${ctxId}`);
+      } catch (error) {
+        console.error("Failed to queue message to backend:", error);
+        // Message is already in local store, which is fine - it just won't be processed by backend
       }
     },
-    [isExecutionMode, selectedTaskId, queueMessage, queueExecutionMessage, storeContextKey]
+    [isExecutionMode, selectedTaskId, queueMessage, queueExecutionMessage, storeContextKey, getQueueContext, generateQueuedMessageId]
   );
 
   // Edit last queued message
@@ -608,6 +643,26 @@ export function IntegratedChatPanel({
     if (!lastMessage) return;
     startEditingQueuedMessage(storeContextKey, lastMessage.id);
   }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, storeContextKey]);
+
+  // Stop the running agent
+  const handleStopAgent = useCallback(async () => {
+    const ctxType = isExecutionMode
+      ? "task_execution"
+      : ideationSessionId
+        ? "ideation"
+        : selectedTaskId
+          ? "task"
+          : "project";
+    const ctxId = ideationSessionId || selectedTaskId || projectId;
+
+    try {
+      await stopAgent(ctxType, ctxId);
+      // Clear streaming tool calls when agent is stopped
+      setStreamingToolCalls([]);
+    } catch (error) {
+      console.error("Failed to stop agent:", error);
+    }
+  }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
 
   // Subscribe to Tauri events for real-time updates
   useEffect(() => {
@@ -885,6 +940,7 @@ export function IntegratedChatPanel({
             <ChatInput
               onSend={handleSend}
               onQueue={handleQueue}
+              onStop={handleStopAgent}
               isAgentRunning={isExecutionMode || isAgentRunning}
               isSending={isSending}
               hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}

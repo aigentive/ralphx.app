@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
-use crate::domain::entities::ChatContextType;
+use crate::domain::entities::{ChatContextType, ChatConversation};
 use crate::domain::services::QueuedMessage;
 
 // ============================================================================
@@ -96,6 +96,22 @@ pub struct AgentConversationResponse {
     pub last_message_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+impl From<ChatConversation> for AgentConversationResponse {
+    fn from(c: ChatConversation) -> Self {
+        Self {
+            id: c.id.as_str(),
+            context_type: c.context_type.to_string(),
+            context_id: c.context_id,
+            claude_session_id: c.claude_session_id,
+            title: c.title,
+            message_count: c.message_count,
+            last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
+            created_at: c.created_at.to_rfc3339(),
+            updated_at: c.updated_at.to_rfc3339(),
+        }
+    }
 }
 
 /// Response for conversation with messages
@@ -422,6 +438,49 @@ pub async fn is_agent_running(
     let service = create_chat_service(&state, app);
 
     Ok(service.is_agent_running(context_type, &context_id).await)
+}
+
+/// Input for create_agent_conversation command
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAgentConversationInput {
+    pub context_type: String,
+    pub context_id: String,
+}
+
+/// Create a new conversation for a context
+#[tauri::command]
+pub async fn create_agent_conversation(
+    input: CreateAgentConversationInput,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationResponse, String> {
+    use crate::domain::entities::{
+        ChatConversation, IdeationSessionId, ProjectId, TaskId,
+    };
+
+    let context_type = parse_context_type(&input.context_type)?;
+
+    let conversation = match context_type {
+        ChatContextType::Ideation => {
+            ChatConversation::new_ideation(IdeationSessionId::from_string(&input.context_id))
+        }
+        ChatContextType::Task => {
+            ChatConversation::new_task(TaskId::from_string(input.context_id.clone()))
+        }
+        ChatContextType::Project => {
+            ChatConversation::new_project(ProjectId::from_string(input.context_id.clone()))
+        }
+        ChatContextType::TaskExecution => {
+            ChatConversation::new_task_execution(TaskId::from_string(input.context_id.clone()))
+        }
+    };
+
+    state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .map(AgentConversationResponse::from)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
