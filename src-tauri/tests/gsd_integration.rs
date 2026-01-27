@@ -212,7 +212,7 @@ async fn test_activate_gsd_methodology(state: &AppState) {
 
 /// Test 2: Create tasks with wave=1 and checkpoint_type
 async fn test_create_tasks_with_wave_and_checkpoint(state: &AppState, project_id: Option<ProjectId>) {
-    let project_id = project_id.unwrap_or_else(ProjectId::new);
+    let project_id = project_id.unwrap_or_default();
 
     // Create Wave 1 tasks (parallel execution)
     let task1 = create_gsd_task(project_id.clone(), "Setup database", 1, None);
@@ -234,7 +234,7 @@ async fn test_create_tasks_with_wave_and_checkpoint(state: &AppState, project_id
 
 /// Test 3: Query tasks by wave for parallel execution
 async fn test_query_tasks_by_wave(state: &AppState, project_id: Option<ProjectId>) {
-    let project_id = project_id.unwrap_or_else(ProjectId::new);
+    let project_id = project_id.unwrap_or_default();
 
     // Create Wave 1 tasks
     let wave1_task1 = create_gsd_task(project_id.clone(), "Wave 1 Task A", 1, None);
@@ -306,7 +306,7 @@ async fn test_checkpoint_transitions_to_blocked(state: &AppState, project_id: Op
     state.methodology_repo.activate(&gsd_id).await.unwrap();
 
     // Create a task in executing state
-    let project_id = project_id.unwrap_or_else(ProjectId::new);
+    let project_id = project_id.unwrap_or_default();
     let mut task = create_gsd_task(project_id.clone(), "Critical operation", 1, Some("human-verify"));
     task.internal_status = InternalStatus::Executing;
 
@@ -326,7 +326,7 @@ async fn test_checkpoint_transitions_to_blocked(state: &AppState, project_id: Op
 
 /// Test 5: Wave completion verification
 async fn test_wave_completion(state: &AppState, project_id: Option<ProjectId>) {
-    let project_id = project_id.unwrap_or_else(ProjectId::new);
+    let project_id = project_id.unwrap_or_default();
 
     // Create Wave 1 tasks (all should complete before Wave 2 starts)
     let mut wave1_task1 = create_gsd_task(project_id.clone(), "Wave 1 - A", 1, None);
@@ -388,7 +388,7 @@ async fn test_wave_completion(state: &AppState, project_id: Option<ProjectId>) {
 
 /// Test 6: GSD checkpoint types
 async fn test_gsd_checkpoint_types(state: &AppState, project_id: Option<ProjectId>) {
-    let project_id = project_id.unwrap_or_else(ProjectId::new);
+    let project_id = project_id.unwrap_or_default();
 
     // Create tasks with different checkpoint types
     let auto_task = create_gsd_task(project_id.clone(), "Auto checkpoint", 1, Some("auto"));
@@ -554,7 +554,7 @@ async fn test_discuss_column_blocked(state: &AppState, project_id: Option<Projec
     assert_eq!(discuss_column.maps_to, InternalStatus::Blocked);
 
     // Create a task and move to discuss (blocked)
-    let project_id = project_id.unwrap_or_else(ProjectId::new);
+    let project_id = project_id.unwrap_or_default();
     let mut task = Task::new(project_id, "Needs clarification".to_string());
     task.internal_status = InternalStatus::Blocked;
     state.task_repo.create(task.clone()).await.unwrap();

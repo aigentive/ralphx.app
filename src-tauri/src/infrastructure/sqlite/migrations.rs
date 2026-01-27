@@ -1,6 +1,9 @@
 // Database migrations for SQLite
 // Creates and updates schema as needed
 
+// Allow items after test module - migrations are defined after tests for readability
+#![allow(clippy::items_after_test_module)]
+
 use rusqlite::Connection;
 
 use crate::error::{AppError, AppResult};
