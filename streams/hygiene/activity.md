@@ -1,5 +1,27 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:10:58 - Backlog Maintenance
+
+**Archive:**
+- Moved 2 items from refactor/backlog.md to archive (IntegratedChatPanel, ideation_commands.rs)
+- Moved 3 items from polish/backlog.md to archive (3 P3 from REFILL 2026-01-29 00:00)
+- Refactor backlog: 12 → 10 completed items
+- Polish backlog: 13 → 10 completed items
+
+**Refill:**
+- Added 5 P1 items to refactor/backlog.md (http_server.rs, transition_handler.rs, sqlite_task_repo.rs, migrations/mod.rs, chat_service/mod.rs)
+- Refactor backlog: 1 → 6 active items
+
+**Validation:**
+- Checked 3 strikethrough items (all PRD-deferred):
+  - App.tsx:794 diff viewer (PRD:20 → PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1): TODO still exists
+  - TaskFullView.tsx:213 edit modal (PRD:18 → PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1): Still unimplemented
+  - useEvents.ts:88 file change handling (PRD:1:1 → PRD:1:1:1): TODO still exists
+
+**Result:** Maintenance complete - 5 archived (2 refactor + 3 polish), 5 P1 items refilled, 6 strikethroughs incremented (total 60 validated)
+
+---
+
 ### 2026-01-28 23:01:08 - Backlog Maintenance
 
 **Archive:**

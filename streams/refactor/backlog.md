@@ -21,8 +21,18 @@ _No active P1 items. Completed items moved to archive._
 - [x] Split artifact_flow.rs (1389 LOC → 434 LOC max) - extracted to artifact_flow/{mod.rs (160), types.rs (434), tests.rs (816)} - src-tauri/src/domain/entities/artifact_flow/mod.rs:1-50
 - [ ] Split methodology.rs (1363 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/methodology.rs:1-50
 
+## REFILL (Added 2026-01-29)
+
+### Backend
+
+- [ ] Split http_server.rs (2105 LOC) - extract HTTP handler routes to separate modules - src-tauri/src/http_server.rs:1
+- [ ] Split transition_handler.rs (1474 LOC) - extract QA side effects and auto-transition logic to helpers - src-tauri/src/domain/state_machine/transition_handler.rs:1
+- [ ] Split sqlite_task_repo.rs (1372 LOC) - extract query builders and mapping functions - src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs:1
+- [ ] Split migrations/mod.rs (1304 LOC) - extract migration functions to migrations_v*.rs - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
+- [ ] Split chat_service/mod.rs (1263 LOC) - extract message queue and context routing - src-tauri/src/application/chat_service/mod.rs:1
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 1 | **Completed:** 10 | **Archived:** 6
-**Last maintenance:** 2026-01-29 (archived 2 completed items)
+**Active items:** 6 | **Completed:** 10 | **Archived:** 6
+**Last maintenance:** 2026-01-29 (archived 2 completed items, refilled with 5 P1 items)
