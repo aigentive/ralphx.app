@@ -130,7 +130,7 @@
 - [x] Extract emit_step_updated helper in task_step_commands.rs (711 LOC → 689 LOC) - src-tauri/src/commands/task_step_commands.rs:16-26
 - [x] Extract Column.utils.tsx from Column.tsx (392 LOC → 350 LOC) - src/components/tasks/TaskBoard/Column.tsx
 - [x] Extract ReviewStateBadge from TaskCard.tsx (621 LOC → 531 LOC) - src/components/tasks/TaskBoard/TaskCard.tsx
-- [ ] Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs
+- [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale - file is 336 LOC, under 500 limit)
 
 ### P3 - Low Impact
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
@@ -138,7 +138,7 @@
 - [x] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs
 - [x] Add StateGroup.locked() convenience method for system-managed groups - src-tauri/src/domain/entities/workflow.rs:67
 - [x] Consolidate duplicate ExecutionState imports in spawner.rs tests - src-tauri/src/infrastructure/agents/spawner.rs:204
-- [ ] Reduce spawner.rs (529 LOC) - extract tests or helpers to separate file - src-tauri/src/infrastructure/agents/spawner.rs:1-50
+- [x] Reduce spawner.rs (529 LOC → 500 LOC) - consolidated role_from_string tests - src-tauri/src/infrastructure/agents/spawner.rs:1-50
 
 ---
 

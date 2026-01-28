@@ -329,6 +329,24 @@ impl<'a> TransitionHandler<'a> {
 
     /// Execute on-exit action for a state
     async fn on_exit(&self, from: &State, _to: &State) {
+        // Decrement running count for agent-active states
+        // This ensures ExecutionState tracks concurrency accurately
+        match from {
+            State::Executing | State::QaRefining | State::QaTesting | State::Reviewing | State::ReExecuting => {
+                if let Some(ref exec) = self.machine.context.services.execution_state {
+                    exec.decrement_running();
+                    tracing::debug!(
+                        task_id = %self.machine.context.task_id,
+                        from_state = ?from,
+                        new_count = exec.running_count(),
+                        "Decremented running count on state exit"
+                    );
+                }
+            }
+            _ => {}
+        }
+
+        // State-specific exit actions
         match from {
             State::Executing => {
                 // Stop worker agent if it's still running
@@ -1259,5 +1277,130 @@ mod tests {
 
         // Worker should be spawned via ChatService for re-execution
         assert!(chat_service.call_count() > 0, "ChatService should spawn worker for re-execution");
+    }
+
+    // ==================
+    // ExecutionState decrement on exit tests
+    // ==================
+
+    #[tokio::test]
+    async fn test_exiting_executing_decrements_running_count() {
+        use crate::commands::ExecutionState;
+
+        let execution_state = Arc::new(ExecutionState::new());
+        // Simulate task already running
+        execution_state.increment_running();
+        assert_eq!(execution_state.running_count(), 1);
+
+        let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_exit(&State::Executing, &State::PendingReview).await;
+
+        // Running count should be decremented
+        assert_eq!(execution_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_reviewing_decrements_running_count() {
+        use crate::commands::ExecutionState;
+
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.increment_running();
+        assert_eq!(execution_state.running_count(), 1);
+
+        let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_exit(&State::Reviewing, &State::ReviewPassed).await;
+
+        assert_eq!(execution_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_qa_refining_decrements_running_count() {
+        use crate::commands::ExecutionState;
+
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.increment_running();
+
+        let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_exit(&State::QaRefining, &State::QaTesting).await;
+
+        assert_eq!(execution_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_qa_testing_decrements_running_count() {
+        use crate::commands::ExecutionState;
+
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.increment_running();
+
+        let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_exit(&State::QaTesting, &State::QaPassed).await;
+
+        assert_eq!(execution_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_re_executing_decrements_running_count() {
+        use crate::commands::ExecutionState;
+
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.increment_running();
+
+        let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_exit(&State::ReExecuting, &State::PendingReview).await;
+
+        assert_eq!(execution_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_non_agent_state_does_not_decrement() {
+        use crate::commands::ExecutionState;
+
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.increment_running();
+        assert_eq!(execution_state.running_count(), 1);
+
+        let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        // Exiting Ready (not agent-active) should NOT decrement
+        handler.on_exit(&State::Ready, &State::Executing).await;
+
+        // Running count should remain unchanged
+        assert_eq!(execution_state.running_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_without_execution_state_does_not_panic() {
+        // Services without execution_state
+        let services = TaskServices::new_mock();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        // Should not panic even without execution_state
+        handler.on_exit(&State::Executing, &State::PendingReview).await;
     }
 }
