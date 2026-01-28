@@ -1111,9 +1111,13 @@ async fn get_review_notes(
         .filter(|n| n.outcome == ReviewOutcome::ChangesRequested)
         .count() as u32;
 
-    // 3. Get max_revisions from settings (default to 5 for now)
-    // TODO: Fetch from project settings once maxRevisionCycles setting is added
-    let max_revisions = 5u32;
+    // 3. Get max_revisions from review settings
+    let review_settings = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let max_revisions = review_settings.max_revision_cycles;
 
     // 4. Convert notes to response format
     let reviews: Vec<ReviewNoteResponse> = notes

@@ -88,8 +88,9 @@
 - [ ] Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs
 
 ### P3 - Low Impact
-- [ ] ~~Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs~~ (stale: TODO not found)
-- [ ] ~~Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs~~ (stale: pending future task)
+- [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
+- [~] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs (STALE: TODO not found)
+- [~] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs (STALE: Review context not yet added, pending future task)
 - [ ] Review methodology.rs entity type definitions (1363 LOC) for extraction opportunities - src-tauri/src/domain/entities/methodology.rs:1-50
 - [ ] Review artifact_flow.rs entity type definitions (1389 LOC) - src-tauri/src/domain/entities/artifact_flow.rs:1-50
 - [ ] Review research.rs entity type definitions (1398 LOC) - src-tauri/src/domain/entities/research.rs:1-50
