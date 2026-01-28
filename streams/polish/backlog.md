@@ -21,8 +21,9 @@ _No active P2 items. Completed items moved to archive._
 ### Frontend
 
 - [x] Remove debug console.log from agent:run_started handler - src/hooks/useChat.ts:321
+- [x] Remove console.log statements in TaskChatPanel event listeners - src/components/tasks/TaskChatPanel.tsx:351,366,390,405
 
-### Frontend
+### Frontend (PRD-deferred)
 
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20)
 - [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20)

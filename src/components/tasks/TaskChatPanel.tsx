@@ -348,7 +348,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         conversation_id: string;
       }>("chat:tool_call", (event) => {
         const { conversation_id } = event.payload;
-        console.log("Tool call received:", event.payload);
         // Invalidate cache to pick up any new messages from backend
         if (conversation_id === activeConversationIdRef.current) {
           queryClient.invalidateQueries({
@@ -363,7 +362,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         conversation_id: string;
       }>("chat:run_completed", (event) => {
         const { conversation_id } = event.payload;
-        console.log("Chat run completed:", event.payload);
         // Invalidate cache to get final messages
         if (conversation_id) {
           queryClient.invalidateQueries({
@@ -387,7 +385,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         arguments: unknown;
       }>("execution:tool_call", (event) => {
         const { conversation_id } = event.payload;
-        console.log("Execution tool call received:", event.payload);
         // Invalidate cache to pick up any new messages from backend
         if (conversation_id === activeConversationIdRef.current) {
           queryClient.invalidateQueries({
@@ -402,7 +399,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         conversation_id: string;
       }>("execution:run_completed", (event) => {
         const { conversation_id } = event.payload;
-        console.log("Worker execution completed:", event.payload);
         // Invalidate cache to get final messages
         if (conversation_id) {
           queryClient.invalidateQueries({
