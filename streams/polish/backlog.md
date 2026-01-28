@@ -39,10 +39,6 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Backend] Replace panic! with proper error handling - src-tauri/src/infrastructure/agents/claude/stream_processor.rs:432
-- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/error.rs:95
-- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/artifact_commands.rs:452
-- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
 - [x] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
 - [x] [P2] [Frontend] Refactor large API file (821 LOC → 473 LOC) - extracted schemas, transforms, types - src/api/ideation.ts:1
 
@@ -95,6 +91,6 @@ _No active P3 items. Completed items moved to archive._
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 17 (9 excluded, 10 deferred to PRD)
-**Completed:** 9
+**Completed:** 10
 **Validated:** 44 strikethroughs (2026-01-29 x29) - 6 archived, 1 reactivated, 37 incremented
-**Last maintenance:** 2026-01-29 00:00 (refilled 15 P2/P3 items)
+**Last maintenance:** 2026-01-29 (archived 4 completed items)
