@@ -669,4 +669,194 @@ mod tests {
         assert_eq!(state.running_count(), 0);
         assert_eq!(state.max_concurrent(), 2);
     }
+
+    // ========================================
+    // Integration Tests - Stop Execution
+    // ========================================
+
+    #[tokio::test]
+    async fn test_stop_resets_running_count() {
+        // Setup: Create tasks in agent-active states and simulate running count
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create tasks in agent-active statuses
+        let mut task1 = Task::new(project.id.clone(), "Executing Task 1".to_string());
+        task1.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(task1.clone()).await.unwrap();
+
+        let mut task2 = Task::new(project.id.clone(), "Executing Task 2".to_string());
+        task2.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(task2.clone()).await.unwrap();
+
+        let mut task3 = Task::new(project.id.clone(), "Reviewing Task".to_string());
+        task3.internal_status = InternalStatus::Reviewing;
+        app_state.task_repo.create(task3.clone()).await.unwrap();
+
+        // Simulate that running count matches agent-active tasks
+        // (In real usage, spawner increments this when starting each task)
+        execution_state.increment_running(); // task1
+        execution_state.increment_running(); // task2
+        execution_state.increment_running(); // task3
+        assert_eq!(execution_state.running_count(), 3);
+
+        // Build transition service
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Execute stop: pause and transition all agent-active tasks to Failed
+        execution_state.pause();
+
+        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        for task in tasks {
+            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                let _ = transition_service
+                    .transition_task(&task.id, InternalStatus::Failed)
+                    .await;
+            }
+        }
+
+        // Verify: Running count should be 0 after all tasks transitioned
+        // (on_exit handlers decrement for each agent-active state exit)
+        assert_eq!(
+            execution_state.running_count(),
+            0,
+            "Running count should be 0 after stop cancels all tasks"
+        );
+
+        // Verify execution is paused
+        assert!(execution_state.is_paused());
+    }
+
+    #[tokio::test]
+    async fn test_running_count_decrements_on_task_completion() {
+        // Setup: Create a task in Executing state
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a task in Executing status
+        let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+        task.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Simulate that running count was incremented when task started
+        execution_state.increment_running();
+        assert_eq!(execution_state.running_count(), 1);
+
+        // Build transition service with execution state
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Transition task from Executing to Failed (simulating task cancellation)
+        // Note: In real usage, task might go through QaRefining -> QaTesting -> QaPassed,
+        // but for testing the decrement behavior, any exit from Executing is sufficient.
+        let _ = transition_service
+            .transition_task(&task.id, InternalStatus::Failed)
+            .await;
+
+        // Verify: Running count should have decremented
+        // (on_exit handler for Executing state decrements)
+        assert_eq!(
+            execution_state.running_count(),
+            0,
+            "Running count should decrement when task exits Executing state"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_running_count_decrements_for_all_agent_active_states() {
+        // Test that decrement works for all agent-active states, not just Executing
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(10));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create tasks in different agent-active states
+        let test_cases = [
+            (InternalStatus::Executing, "Executing Task"),
+            (InternalStatus::QaRefining, "QaRefining Task"),
+            (InternalStatus::QaTesting, "QaTesting Task"),
+            (InternalStatus::Reviewing, "Reviewing Task"),
+            (InternalStatus::ReExecuting, "ReExecuting Task"),
+        ];
+
+        // Create all tasks and increment running count for each
+        let mut task_ids = Vec::new();
+        for (status, title) in &test_cases {
+            let mut task = Task::new(project.id.clone(), title.to_string());
+            task.internal_status = *status;
+            app_state.task_repo.create(task.clone()).await.unwrap();
+            task_ids.push(task.id);
+            execution_state.increment_running();
+        }
+
+        assert_eq!(execution_state.running_count(), 5);
+
+        // Build transition service
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Transition each task to Failed (all should decrement running count)
+        for task_id in &task_ids {
+            let _ = transition_service
+                .transition_task(task_id, InternalStatus::Failed)
+                .await;
+        }
+
+        // Verify: Running count should be 0 after all tasks transitioned
+        assert_eq!(
+            execution_state.running_count(),
+            0,
+            "Running count should be 0 after all agent-active tasks exit their states"
+        );
+    }
+
+    // ========================================
+    // Integration Tests - Pause Prevents Spawns
+    // ========================================
+    // Note: Detailed spawn blocking tests are in spawner.rs:
+    // - test_spawn_blocked_when_paused
+    // - test_spawn_blocked_at_max_concurrent
+    // - test_spawn_increments_running_count
+    // These tests verify the ExecutionState integration with the spawner.
 }

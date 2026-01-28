@@ -328,7 +328,12 @@ impl<'a> TransitionHandler<'a> {
     }
 
     /// Execute on-exit action for a state
-    async fn on_exit(&self, from: &State, _to: &State) {
+    ///
+    /// This method is public to allow `TaskTransitionService` to trigger exit actions
+    /// for direct status changes (e.g., stop command) without going through the
+    /// full event-based transition flow. This ensures running count is properly
+    /// decremented when tasks exit agent-active states.
+    pub async fn on_exit(&self, from: &State, _to: &State) {
         // Decrement running count for agent-active states
         // This ensures ExecutionState tracks concurrency accurately
         match from {

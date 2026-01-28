@@ -223,7 +223,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         task_id: &TaskId,
         new_status: InternalStatus,
     ) -> AppResult<Task> {
-        println!(">>> transition_task: task_id={}, new_status={}", task_id.as_str(), new_status.as_str());
+        tracing::debug!(
+            task_id = task_id.as_str(),
+            new_status = new_status.as_str(),
+            "Starting task transition"
+        );
 
         // 1. Fetch the task
         let mut task = self
@@ -233,15 +237,22 @@ impl<R: Runtime> TaskTransitionService<R> {
             .ok_or_else(|| AppError::NotFound(format!("Task not found: {}", task_id.as_str())))?;
 
         let old_status = task.internal_status;
-        println!(">>> transition_task: old_status={}", old_status.as_str());
+        tracing::debug!(
+            old_status = old_status.as_str(),
+            "Found task with current status"
+        );
 
         // 2. If status is the same, no transition needed
         if old_status == new_status {
-            println!(">>> transition_task: status unchanged, returning early");
+            tracing::debug!("Status unchanged, skipping transition");
             return Ok(task);
         }
 
-        println!(">>> transition_task: {} -> {}", old_status.as_str(), new_status.as_str());
+        tracing::debug!(
+            from = old_status.as_str(),
+            to = new_status.as_str(),
+            "Transitioning task status"
+        );
 
         // 3. Update the task status
         task.internal_status = new_status;
@@ -249,7 +260,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // 4. Persist the update first (so UI can see the change)
         self.task_repo.update(&task).await?;
-        println!(">>> transition_task: task updated in database");
+        tracing::debug!("Task status persisted to database");
 
         // 5. Emit event for UI update
         if let Some(ref handle) = self._app_handle {
@@ -263,14 +274,24 @@ impl<R: Runtime> TaskTransitionService<R> {
                     "changedBy": "user",
                 }),
             );
-            println!(">>> transition_task: emitted task:event status_changed");
+            tracing::debug!("Emitted task:event status_changed");
         }
 
-        // 6. Execute entry actions for the new status
-        println!(">>> transition_task: calling execute_entry_actions for status {}", new_status.as_str());
+        // 6. Execute exit actions for the old status (e.g., decrement running count)
+        tracing::debug!(
+            old_status = old_status.as_str(),
+            "Executing exit actions for old status"
+        );
+        self.execute_exit_actions(task_id, &task, old_status, new_status).await;
+
+        // 7. Execute entry actions for the new status
+        tracing::debug!(
+            new_status = new_status.as_str(),
+            "Executing entry actions for new status"
+        );
         self.execute_entry_actions(task_id, &task, new_status).await;
 
-        println!(">>> transition_task: entry actions complete");
+        tracing::debug!("Task transition complete");
 
         Ok(task)
     }
@@ -337,9 +358,80 @@ impl<R: Runtime> TaskTransitionService<R> {
         let handler = TransitionHandler::new(&mut machine);
 
         // Execute entry action via TransitionHandler
-        println!(">>> execute_entry_actions: calling TransitionHandler::on_enter for {:?}", state);
+        tracing::debug!(?state, "Calling TransitionHandler::on_enter");
         handler.on_enter(&state).await;
-        println!(">>> execute_entry_actions: TransitionHandler::on_enter complete");
+        tracing::debug!("TransitionHandler::on_enter complete");
+    }
+
+    /// Execute exit actions for a status transition.
+    ///
+    /// This method delegates to TransitionHandler::on_exit() to ensure we use
+    /// the canonical exit action logic defined in the state machine module.
+    /// This is critical for decrementing running count when tasks exit agent-active states.
+    async fn execute_exit_actions(
+        &self,
+        task_id: &TaskId,
+        task: &Task,
+        from_status: InternalStatus,
+        to_status: InternalStatus,
+    ) {
+        use crate::domain::state_machine::{
+            context::{TaskContext, TaskServices},
+            machine::{State, TaskStateMachine},
+            transition_handler::TransitionHandler,
+        };
+
+        // Helper to convert InternalStatus to State
+        let status_to_state = |status: InternalStatus| -> State {
+            match status {
+                InternalStatus::Backlog => State::Backlog,
+                InternalStatus::Ready => State::Ready,
+                InternalStatus::Blocked => State::Blocked,
+                InternalStatus::Executing => State::Executing,
+                InternalStatus::QaRefining => State::QaRefining,
+                InternalStatus::QaTesting => State::QaTesting,
+                InternalStatus::QaPassed => State::QaPassed,
+                InternalStatus::QaFailed => State::QaFailed(Default::default()),
+                InternalStatus::PendingReview => State::PendingReview,
+                InternalStatus::Reviewing => State::Reviewing,
+                InternalStatus::ReviewPassed => State::ReviewPassed,
+                InternalStatus::RevisionNeeded => State::RevisionNeeded,
+                InternalStatus::ReExecuting => State::ReExecuting,
+                InternalStatus::Approved => State::Approved,
+                InternalStatus::Failed => State::Failed(Default::default()),
+                InternalStatus::Cancelled => State::Cancelled,
+            }
+        };
+
+        let from_state = status_to_state(from_status);
+        let to_state = status_to_state(to_status);
+
+        // Build TaskServices from our services
+        let services = TaskServices::new(
+            Arc::clone(&self.agent_spawner),
+            Arc::clone(&self.event_emitter),
+            Arc::clone(&self.notifier),
+            Arc::clone(&self.dependency_manager),
+            Arc::clone(&self.review_starter),
+            Arc::clone(&self.chat_service),
+        )
+        .with_execution_state(Arc::clone(&self.execution_state));
+
+        // Create TaskContext
+        let context = TaskContext::new(
+            task_id.as_str(),
+            task.project_id.as_str(),
+            services,
+        );
+
+        // Create state machine and handler
+        let mut machine = TaskStateMachine::new(context);
+        let handler = TransitionHandler::new(&mut machine);
+
+        // Execute exit action via TransitionHandler
+        tracing::debug!(?from_state, ?to_state, "Calling TransitionHandler::on_exit");
+        handler.on_exit(&from_state, &to_state).await;
+        tracing::debug!("TransitionHandler::on_exit complete");
     }
 }
 
