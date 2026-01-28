@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-28 23:15:29 - Extract constants from ResizeablePanel
+**What:**
+- File: src/components/Chat/ResizeablePanel.tsx
+- Change: Extracted MIN_WIDTH and MAX_WIDTH_PERCENT constants to separate file
+  - Created: src/components/Chat/ResizeablePanel.constants.ts
+  - Removed inline constant definitions (lines 8-9)
+  - Updated imports to use new constants file
+  - Removed export statement for constants (line 138)
+- Reason: Fix Fast Refresh warning about exporting constants from component file
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (type checking passes, remaining lint warning is for hook export which is separate issue)
+
+---
+
 ### 2026-01-28 23:18:22 - Remove console.debug statements from useAgentEvents
 **What:**
 - File: src/hooks/useAgentEvents.ts
