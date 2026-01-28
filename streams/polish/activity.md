@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-28 23:53:47 - Event listener cleanup: useResizePanel needs useEffect for document listener lifecycle
+**What:**
+- File: src/components/Chat/ResizeablePanel.tsx
+- Change: Added useEffect cleanup to properly remove document event listeners on unmount
+- Added cleanupRef to store removal function for mousemove and mouseup listeners
+- Added useEffect with cleanup function that executes stored cleanup on unmount
+- Prevents memory leaks if component unmounts while dragging
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:52:08 - Error handling: App.tsx catch blocks need proper user feedback via toast
 **What:**
 - File: src/App.tsx
