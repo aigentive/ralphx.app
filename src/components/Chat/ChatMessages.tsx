@@ -7,10 +7,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { type ToolCall } from "./ToolCallIndicator";
-import { type Message } from "@/types/chat";
 import { Bot, MessageSquare, Loader2, Activity, Hammer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
+
+interface Message {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: string;
+  toolCalls: string | null | undefined;
+  contentBlocks: string | null | undefined;
+}
 
 // ============================================================================
 // Sub-components
@@ -113,7 +121,7 @@ function WorkerExecutingIndicator() {
 
 interface FailedRunBannerProps {
   errorMessage: string;
-  onDismiss?: () => void;
+  onDismiss: (() => void) | undefined;
 }
 
 function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProps) {
@@ -136,7 +144,7 @@ function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProps) {
           {errorMessage.length > 200 && "..."}
         </span>
       </div>
-      {onDismiss && (
+      {onDismiss !== undefined && (
         <Button
           variant="ghost"
           size="icon-sm"
@@ -162,10 +170,10 @@ export interface ChatMessagesProps {
   isAgentRunning: boolean;
   isExecutionMode: boolean;
   streamingToolCalls: ToolCall[];
-  failedErrorMessage?: string;
-  onDismissError?: () => void;
-  messagesEndRef: RefObject<HTMLDivElement>;
-  scrollAreaRef: RefObject<HTMLDivElement>;
+  failedErrorMessage: string | undefined;
+  onDismissError: (() => void) | undefined;
+  messagesEndRef: RefObject<HTMLDivElement | null>;
+  scrollAreaRef: RefObject<HTMLDivElement | null>;
 }
 
 export function ChatMessages({
@@ -219,8 +227,8 @@ export function ChatMessages({
                 role={msg.role}
                 content={msg.content}
                 createdAt={msg.createdAt}
-                toolCalls={msg.toolCalls}
-                contentBlocks={msg.contentBlocks}
+                toolCalls={msg.toolCalls ?? null}
+                contentBlocks={msg.contentBlocks ?? null}
               />
             ))}
             {/* Show streaming tool calls or typing indicator while agent is working */}

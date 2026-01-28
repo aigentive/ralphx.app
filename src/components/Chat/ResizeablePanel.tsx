@@ -83,10 +83,14 @@ export function useResizePanel({ initialWidth, onWidthChange }: UseResizePanelOp
     [initialWidth, onWidthChange]
   );
 
+  const ResizeHandleComponent = useCallback(() => (
+    <ResizeHandle isDragging={isDragging} onMouseDown={handleResizeStart} />
+  ), [isDragging, handleResizeStart]);
+
   return {
     isDragging,
     handleResizeStart,
-    ResizeHandle: () => <ResizeHandle isDragging={isDragging} onMouseDown={handleResizeStart} />,
+    ResizeHandle: ResizeHandleComponent,
   };
 }
 
@@ -96,7 +100,7 @@ export interface ResizeablePanelProps {
   isExiting?: boolean;
   testId?: string;
   ariaLabel?: string;
-  ResizeHandle: () => JSX.Element;
+  ResizeHandle: React.ComponentType;
 }
 
 export function ResizeablePanel({
