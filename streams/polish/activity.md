@@ -533,5 +533,18 @@
 
 **Result:** Success (all linters pass, 330 lines extracted)
 
+### 2026-01-29 00:14:10 - Consolidate ChatPanel console.error handlers
+**What:**
+- File: src/components/Chat/ChatPanel.tsx
+- Created unified error handler: logError(operation, error, showToast)
+- Replaced 6 scattered console.error calls with logError
+- Locations: stop agent (L352), queue message (L424), delete queued (L449), delete old queued (L466), queue edited (L490), agent error event (L576)
+- Added logError to dependency arrays for affected callbacks and effects
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (all linters pass, error handling consolidated)
+
 ---
 
