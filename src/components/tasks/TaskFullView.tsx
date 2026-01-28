@@ -211,23 +211,19 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
   // Handlers for action buttons (stub for now, will be implemented when integrated)
   const handleEdit = useCallback(() => {
     // TODO: Open edit modal/form
-    console.log("Edit task:", taskId);
-  }, [taskId]);
+  }, []);
 
   const handleArchive = useCallback(() => {
     // TODO: Archive task
-    console.log("Archive task:", taskId);
-  }, [taskId]);
+  }, []);
 
   const handlePause = useCallback(() => {
     // TODO: Pause execution
-    console.log("Pause execution:", taskId);
-  }, [taskId]);
+  }, []);
 
   const handleStop = useCallback(() => {
     // TODO: Stop execution
-    console.log("Stop execution:", taskId);
-  }, [taskId]);
+  }, []);
 
   if (!task) {
     return (
