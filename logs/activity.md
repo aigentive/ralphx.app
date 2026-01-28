@@ -1,10 +1,29 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:16:09
+**Last Updated:** 2026-01-28 16:24:02
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 2 / 12
-**Current Task:** Add AppHandle to AgenticClientSpawner
+**Tasks Completed:** 3 / 12
+**Current Task:** Emit event on running count increment
+
+---
+
+### 2026-01-28 16:24:02 - Emit event on running count increment
+
+**What:**
+- Added `emit_status_changed` call in `spawn()` method after `exec.increment_running()`
+- Emits `execution:status_changed` event with reason `"task_started"` when app_handle is Some
+- Wrote test: `test_spawn_with_execution_state_no_app_handle_does_not_panic` to verify graceful handling
+
+**Quality Improvement:**
+- Extracted spawner.rs tests to spawner_tests.rs (560 LOC → 220 LOC main file)
+- Used `#[path]` attribute pattern consistent with artifact_service tests
+- Updated code-quality.md: added extraction as P3 [x], incremented stale counters on deferred items
+
+**Commands:**
+- `cargo test spawner` — 29 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `npm run lint && npm run typecheck` — clean (3 warnings in excluded shadcn/ui files)
 
 ---
 

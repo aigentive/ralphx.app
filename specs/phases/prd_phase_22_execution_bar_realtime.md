@@ -103,7 +103,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(spawner): emit status_changed on task start"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
