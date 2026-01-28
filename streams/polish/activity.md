@@ -632,5 +632,18 @@
 
 **Result:** Success (all linters pass, TODO comment removed)
 
+### 2026-01-29 00:30:26 - Remove #[allow(dead_code)] suppression in ideation_service tests
+**What:**
+- File: src-tauri/src/application/ideation_service/tests.rs
+- Removed #[allow(dead_code)] suppression at line 145 and line 296
+- Deleted unused helper methods: with_proposals (MockProposalRepository), with_messages (MockMessageRepository)
+- Both methods were never called in tests, suppressions were hiding genuinely dead code
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test --lib` (passed - 3227 tests)
+
+**Result:** Success (dead code removed, all unit tests pass)
+
 ---
 
