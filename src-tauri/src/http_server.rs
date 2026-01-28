@@ -342,7 +342,7 @@ impl From<TaskStep> for StepResponse {
 // HTTP Server
 // ============================================================================
 
-pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<ExecutionState>) {
+pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<ExecutionState>) -> AppResult<()> {
     let state = HttpServerState {
         app_state,
         execution_state,
@@ -392,13 +392,15 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3847")
         .await
-        .expect("Failed to bind HTTP server to port 3847");
+        .map_err(|e| AppError::Infrastructure(format!("Failed to bind HTTP server to port 3847: {}", e)))?;
 
     tracing::info!("MCP HTTP server listening on http://127.0.0.1:3847");
 
     axum::serve(listener, app)
         .await
-        .expect("HTTP server crashed");
+        .map_err(|e| AppError::Infrastructure(format!("HTTP server crashed: {}", e)))?;
+
+    Ok(())
 }
 
 // ============================================================================

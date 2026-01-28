@@ -28,6 +28,9 @@ pub enum AppError {
 
     #[error("Not found: {0}")]
     NotFound(String),
+
+    #[error("Infrastructure error: {0}")]
+    Infrastructure(String),
 }
 
 impl From<AgentError> for AppError {

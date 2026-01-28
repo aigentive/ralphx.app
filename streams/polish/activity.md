@@ -270,3 +270,24 @@
 - `npm run typecheck`
 
 **Result:** Success
+
+---
+
+### 2026-01-28 23:20:15 - Replace .expect() with proper error handling in http_server.rs
+**What:**
+- File: src-tauri/src/http_server.rs:395
+- Change: Replaced .expect() calls with proper error handling
+  - Updated start_http_server function signature to return AppResult<()>
+  - Replaced .expect() on TcpListener::bind with .map_err() returning AppError::Infrastructure
+  - Replaced .expect() on axum::serve with .map_err() returning AppError::Infrastructure
+  - Added Ok(()) return at end of function
+  - Updated caller in src-tauri/src/lib.rs to log errors with tracing::error!
+  - Added new error variant: AppError::Infrastructure(String) in src-tauri/src/error.rs
+- Reason: Error handling improvement (P2) - .expect() causes panics instead of graceful error handling
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (all linters pass, tests pass)
