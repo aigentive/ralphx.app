@@ -9,7 +9,7 @@
 
 - [x] [Infrastructure] Orphaned Process: verify stream fswatch not killed on stop - ralph-tmux.sh:169
 - [x] [Infrastructure] Regex pattern error in fswatch cleanup: pkill pattern uses invalid regex - ralph-tmux.sh:185
-- [ ] [Infrastructure] Unquoted variable expansion in fswatch arguments - scripts/stream-watch-features.sh:35
+- [x] [Infrastructure] Unquoted variable expansion in fswatch arguments - scripts/stream-watch-features.sh:35
 - [ ] [Infrastructure] Race condition: initial cycle and fswatch startup overlap - scripts/stream-watch-features.sh:24
 - [ ] [Infrastructure] Orphaned subshells: fswatch pipes not properly managed on stop - ralph-tmux.sh:167
 - [ ] [Infrastructure] Stream wrappers missing signal trap handlers for clean shutdown - scripts/stream-watch-features.sh:1
