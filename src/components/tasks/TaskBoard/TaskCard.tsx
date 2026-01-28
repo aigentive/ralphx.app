@@ -6,6 +6,8 @@
  * - Priority stripe on left border
  * - Subtle shadows, no heavy gradients
  * - Clean hover/drag states
+ *
+ * Styling utilities extracted to TaskCard.utils.ts
  */
 
 import { useDraggable } from "@dnd-kit/core";
@@ -39,6 +41,14 @@ import { useUiStore } from "@/stores/uiStore";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { ReviewStateBadge } from "./ReviewStateBadge";
+import {
+  getCardStyles,
+  getExecutionStateClass,
+  getExecutionBorderStyles,
+  isDraggableStatus,
+  isReviewStateStatus,
+  isActivelyProcessing,
+} from "./TaskCard.utils";
 
 interface TaskCardProps {
   task: Task;
@@ -55,29 +65,6 @@ interface TaskCardProps {
   hasCheckpoint?: boolean;
   /** Number of revision attempts (for re_executing state badge) */
   revisionCount?: number;
-}
-
-/**
- * Get priority gradient for the left border stripe (Refined Studio aesthetic)
- */
-function getPriorityColor(priority: number, isArchived: boolean): string {
-  // Archived tasks always use gray
-  if (isArchived) {
-    return "#525252"; // neutral-600
-  }
-
-  switch (priority) {
-    case 1: // Critical
-      return "#ef4444"; // red-500
-    case 2: // High
-      return "#f97316"; // orange-500
-    case 3: // Medium
-      return "#ff6b35"; // accent-primary
-    case 4: // Low
-      return "#525252"; // neutral-600
-    default: // None or unknown
-      return "transparent";
-  }
 }
 
 function CheckpointIndicator() {
@@ -131,21 +118,7 @@ export function TaskCard({
   const isArchived = task.archivedAt !== null;
 
   // Determine if task is draggable based on internal status
-  const isDraggable = useMemo(() => {
-    const nonDraggableStatuses = [
-      'executing',
-      'qa_refining',
-      'qa_testing',
-      'qa_passed',
-      'qa_failed',
-      'pending_review',
-      'revision_needed',
-      'reviewing',
-      'review_passed',
-      're_executing',
-    ];
-    return !nonDraggableStatuses.includes(task.internalStatus);
-  }, [task.internalStatus]);
+  const isDraggable = useMemo(() => isDraggableStatus(task.internalStatus), [task.internalStatus]);
 
   // Hide when being dragged OR when transitioning after drop
   const shouldHide = isBeingDragged || isHidden;
@@ -164,101 +137,15 @@ export function TaskCard({
     ...(testStatus !== undefined && { testStatus }),
   };
 
-  // Card styles based on state (macOS Tahoe - Liquid Glass)
-  const getCardStyles = (): React.CSSProperties => {
-    const baseStyles: React.CSSProperties = {
-      cursor: isDragging ? "grabbing" : (isDraggable ? "grab" : "default"),
-      transition: "all 180ms ease-out",
-      background: "rgba(255,255,255,0.04)",
-      backdropFilter: "blur(20px)",
-      WebkitBackdropFilter: "blur(20px)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      // Priority stripe - must come AFTER border shorthand to override left border
-      borderLeft: `3px solid ${getPriorityColor(task.priority, isArchived)}`,
-      boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-    };
-
-    if (isDragging) {
-      return {
-        ...baseStyles,
-        transform: "scale(1.02)",
-        boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
-        background: "rgba(255,255,255,0.06)",
-        zIndex: 50,
-      };
-    }
-
-    if (isSelected) {
-      return {
-        ...baseStyles,
-        background: "rgba(255,107,53,0.08)",
-        borderColor: "rgba(255,107,53,0.25)",
-        boxShadow: "0 0 0 1px rgba(255,107,53,0.15), 0 2px 8px rgba(0,0,0,0.15)",
-      };
-    }
-
-    return baseStyles;
-  };
-
-  // Execution state class names
-  const getExecutionStateClass = (): string => {
-    if (task.internalStatus === "executing") {
-      return "task-card-executing";
-    }
-    if (task.internalStatus === "revision_needed" || task.internalStatus === "re_executing") {
-      return "task-card-revision";
-    }
-    if (task.internalStatus === "reviewing") {
-      return "task-card-reviewing";
-    }
-    if (task.internalStatus === "review_passed") {
-      return "task-card-review-passed";
-    }
-    // For QA and review states, we'll add custom borders
-    return "";
-  };
-
-  // Get execution state border styles
-  const getExecutionBorderStyles = (): React.CSSProperties => {
-    // QA states: pulsing orange border
-    if (task.internalStatus.startsWith("qa_")) {
-      return {
-        borderWidth: "2px",
-        borderColor: "var(--accent-primary)",
-        animation: "var(--animation-executing-pulse)",
-      };
-    }
-    // Pending review: static amber border
-    if (task.internalStatus === "pending_review") {
-      return {
-        borderWidth: "2px",
-        borderColor: "var(--status-warning)",
-      };
-    }
-    // Reviewing: blue pulsing border
-    if (task.internalStatus === "reviewing") {
-      return {
-        borderWidth: "2px",
-        borderColor: "var(--status-info)",
-        animation: "var(--animation-reviewing-pulse)",
-      };
-    }
-    // Review passed: green accent border
-    if (task.internalStatus === "review_passed") {
-      return {
-        borderWidth: "2px",
-        borderColor: "var(--status-success)",
-      };
-    }
-    // Revision needed / Re-executing: orange accent border
-    if (task.internalStatus === "revision_needed" || task.internalStatus === "re_executing") {
-      return {
-        borderWidth: "2px",
-        borderColor: "var(--status-warning)",
-      };
-    }
-    return {};
-  };
+  // Computed styles using extracted utilities
+  const cardStyles = useMemo(
+    () => getCardStyles(task.priority, isArchived, !!isDragging, isDraggable, !!isSelected),
+    [task.priority, isArchived, isDragging, isDraggable, isSelected]
+  );
+  const executionStateClass = getExecutionStateClass(task.internalStatus);
+  const executionBorderStyles = getExecutionBorderStyles(task.internalStatus);
+  const showReviewState = isReviewStateStatus(task.internalStatus);
+  const isActivelyProcessingTask = isActivelyProcessing(task.internalStatus);
 
   // Context menu handlers - use selectedTaskId for split layout overlay
   const handleViewDetails = () => {
@@ -310,8 +197,8 @@ export function TaskCard({
           onClick={() => {
             handleViewDetails();
           }}
-          className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${getExecutionStateClass()}`}
-          style={{ ...getCardStyles(), ...getExecutionBorderStyles(), ...dragStyle }}
+          className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${executionStateClass}`}
+          style={{ ...cardStyles, ...executionBorderStyles, ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
@@ -323,16 +210,10 @@ export function TaskCard({
       )}
 
       {/* Review state badges - shown for review-related states */}
-      {!isArchived && (
-        task.internalStatus === "revision_needed" ||
-        task.internalStatus === "pending_review" ||
-        task.internalStatus === "reviewing" ||
-        task.internalStatus === "review_passed" ||
-        task.internalStatus === "re_executing"
-      ) && (
+      {!isArchived && showReviewState && (
         <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="review-state-indicator">
           {/* Activity dots for actively processing states */}
-          {(task.internalStatus === "reviewing" || task.internalStatus === "re_executing") && (
+          {isActivelyProcessingTask && (
             <div className="flex gap-0.5">
               <span
                 className="w-1 h-1 rounded-full"
@@ -362,12 +243,7 @@ export function TaskCard({
       )}
 
       {/* Activity indicator - shown for executing/QA tasks (not review states) */}
-      {!isArchived && executionState.isActive &&
-       task.internalStatus !== "revision_needed" &&
-       task.internalStatus !== "pending_review" &&
-       task.internalStatus !== "reviewing" &&
-       task.internalStatus !== "review_passed" &&
-       task.internalStatus !== "re_executing" && (
+      {!isArchived && executionState.isActive && !showReviewState && (
         <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="activity-indicator">
           {/* Three dots with staggered bounce animation */}
           <div className="flex gap-0.5">
