@@ -255,3 +255,24 @@ Updated backlog item to reflect complexity.
 - `cargo test --lib application::ideation_service`
 
 **Result:** Success - All 29 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
+
+---
+
+### 2026-01-29 00:32:47 - Split ExtensibilityView.panels
+
+**What:**
+- Original file: src/components/ExtensibilityView.panels.tsx (906 LOC)
+- Extracted to:
+  - ExtensibilityView.utils.tsx (70 LOC) - shared helpers and types
+  - ExtensibilityView.WorkflowsPanel.tsx (192 LOC) - workflow management
+  - ExtensibilityView.ArtifactsPanel.tsx (272 LOC) - artifact browser
+  - ExtensibilityView.ResearchPanel.tsx (382 LOC) - research launcher
+  - ExtensibilityView.panels.tsx (8 LOC) - re-exports
+- New size: 382 LOC max (58% reduction in largest component)
+
+**Commands:**
+- `wc -l src/components/ExtensibilityView.*.tsx`
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success - All linters passed, all components now under 500 LOC limit
