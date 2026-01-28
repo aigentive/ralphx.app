@@ -388,14 +388,6 @@ impl<'a> TransitionHandler<'a> {
         }
     }
 }
-
-/// Trait for receiving transition notifications
-#[allow(dead_code)]
-pub trait TransitionObserver: Send + Sync {
-    /// Called when a transition occurs
-    fn on_transition(&self, from: &State, to: &State, event: &TaskEvent);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

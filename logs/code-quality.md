@@ -1,45 +1,18 @@
 # Code Quality Backlog
 
-> Auto-maintained by quality improvement loop. Explore agent populates, iterations consume.
+> Full protocol: `.claude/rules/quality-improvement.md` | LOC limits: `.claude/rules/code-quality-standards.md`
 
-## How This Works
-1. Each iteration reads this file first
-2. **P0 items ALWAYS get picked first** (gaps from phase verification)
-3. Then pick ONE item matching current task scope (small = P3, medium = P2, large = P1)
-4. **VERIFY:**
-   - Issue still exists? (read file:line)
-   - NOT in active PRD? (cross-reference with current phase task list)
-   - **LOC items: Check against `.claude/rules/code-quality-standards.md`**
-5. Valid & not in PRD? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
-6. Stale (issue genuinely FIXED)? → Strikethrough text `~~text~~ (stale)`, pick next
-   - **"Stale" = fixed, NOT "I think it's fine"**
-   - **Files over LOC limits are NOT stale — they need extraction**
-7. In PRD (planned work)? → Strikethrough text `~~text~~ (PRD)`, pick next
-8. **Scope exhausted? → ESCALATE** (P3→P2→P1, pick larger scope item)
-9. **ALL exhausted? → Launch Explore agent** to replenish, then pick ONE
-
-## NO SKIPPING
-**"Nothing to do" is NOT valid.** Escalate scope or replenish. A `refactor:` commit is MANDATORY.
-
-## TODO Tracking
-**Adding a TODO during task work?** Log it here immediately:
-`- [ ] [P2/P3] Implement TODO: [description] - file:line`
-
-## Priority Levels
-- **P0 - Critical**: Gaps found during phase verification (pick FIRST, any task size)
-- **P1 - High**: Architecture, major refactors (large tasks)
-- **P2 - Medium**: Error handling, extraction (medium tasks)
-- **P3 - Low**: Lint, naming, cleanup (small tasks)
+## Quick Reference
+- **Pick:** P0 first → then by scope (small=P3, medium=P2, large=P1)
+- **Verify:** Issue exists? Not in PRD? → Execute → `[x]` → `refactor:` commit
+- **Defer:** Fixed=`(stale)` | Planned=`(PRD:N)` | Counter: `→:1→:2→archive`
+- **Cleanup:** `[x]` > 10/section → `logs/code-quality-archive.md`
 
 ## Markers
-- `[ ]` Pending
-- `[x]` Done
-- `[ ] ~~text~~ (stale)` — Strikethrough for already fixed
-- `[ ] ~~text~~ (PRD)` — Strikethrough for PRD-planned tasks
-- `[ ] ~~text~~ (excluded)` — Strikethrough for excluded paths
+`[ ]` Pending | `[x]` Done | `(stale[:N])` Fixed | `(PRD:N[:V])` Planned | `(excluded)` Permanent
 
-## Exclusions (do NOT scan or pick)
-- `src/components/ui/*` — shadcn/ui components (upgraded externally)
+## Exclusions
+`src/components/ui/*` — shadcn/ui
 
 ---
 
@@ -82,15 +55,15 @@
 ### P3 - Low Impact
 - [x] Extract duplicate SectionTitle component to shared.tsx in detail-views - src/components/tasks/detail-views/*.tsx
 - [x] Extract MODEL_OPTIONS constant from SettingsView.shared.tsx to SettingsView.constants.ts (react-refresh lint) - src/components/settings/SettingsView.shared.tsx:30
-- [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD)
-- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD)
-- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD)
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD)
-- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD)
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD)
-- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD)
-- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts (line ~50)~~ (PRD)
+- [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20)
+- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20)
+- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21)
+- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts (line ~50)~~ (PRD:19)
 
 ---
 
@@ -122,7 +95,7 @@
 - [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs~~ (stale - TODO not found)
 - [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:1867~~ (stale - TODO not found)
 - [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs~~ (stale - TODO not found)
-- [ ] ~~Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs~~ (PRD - review states task)
+- [ ] ~~Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs~~ (PRD:20)
 - [x] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
@@ -133,6 +106,7 @@
 - [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale - file is 336 LOC, under 500 limit)
 
 ### P3 - Low Impact
+- [x] Remove unused TransitionObserver trait (dead code) - src-tauri/src/domain/state_machine/transition_handler.rs:393
 - [x] Remove broad clippy allows (dead_code, unused_imports, unused_variables) from lib.rs - src-tauri/src/lib.rs:23-25
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
 - [x] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs:138,143
