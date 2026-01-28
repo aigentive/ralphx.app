@@ -976,3 +976,16 @@
 **Result:** Success (all linters pass, 0 errors)
 
 ---
+### 2026-01-29 20:00:00 - Remove console.warn call from HumanReviewTaskDetail
+**What:**
+- File: src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+- Removed console.warn call from handleViewDiff stub handler
+- Replaced with inline comment explaining unimplemented functionality (deferred to PRD:20)
+
+**Commands:**
+- `npm run lint -- src/components/tasks/detail-views/HumanReviewTaskDetail.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass, 0 errors, 4 pre-existing warnings)
+
+---
+
