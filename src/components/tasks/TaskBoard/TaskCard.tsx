@@ -9,7 +9,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Eye, AlertCircle, Clock } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Clock } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -38,6 +38,7 @@ import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
+import { ReviewStateBadge } from "./ReviewStateBadge";
 
 interface TaskCardProps {
   task: Task;
@@ -52,6 +53,8 @@ interface TaskCardProps {
   /** Overall QA test status */
   testStatus?: QAOverallStatus;
   hasCheckpoint?: boolean;
+  /** Number of revision attempts (for re_executing state badge) */
+  revisionCount?: number;
 }
 
 /**
@@ -103,6 +106,7 @@ export function TaskCard({
   prepStatus,
   testStatus,
   hasCheckpoint,
+  revisionCount,
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging: isBeingDragged } = useDraggable({ id: task.id });
 
@@ -201,8 +205,14 @@ export function TaskCard({
     if (task.internalStatus === "executing") {
       return "task-card-executing";
     }
-    if (task.internalStatus === "revision_needed") {
-      return "task-card-attention";
+    if (task.internalStatus === "revision_needed" || task.internalStatus === "re_executing") {
+      return "task-card-revision";
+    }
+    if (task.internalStatus === "reviewing") {
+      return "task-card-reviewing";
+    }
+    if (task.internalStatus === "review_passed") {
+      return "task-card-review-passed";
     }
     // For QA and review states, we'll add custom borders
     return "";
@@ -220,6 +230,28 @@ export function TaskCard({
     }
     // Pending review: static amber border
     if (task.internalStatus === "pending_review") {
+      return {
+        borderWidth: "2px",
+        borderColor: "var(--status-warning)",
+      };
+    }
+    // Reviewing: blue pulsing border
+    if (task.internalStatus === "reviewing") {
+      return {
+        borderWidth: "2px",
+        borderColor: "var(--status-info)",
+        animation: "var(--animation-reviewing-pulse)",
+      };
+    }
+    // Review passed: green accent border
+    if (task.internalStatus === "review_passed") {
+      return {
+        borderWidth: "2px",
+        borderColor: "var(--status-success)",
+      };
+    }
+    // Revision needed / Re-executing: orange accent border
+    if (task.internalStatus === "revision_needed" || task.internalStatus === "re_executing") {
       return {
         borderWidth: "2px",
         borderColor: "var(--status-warning)",
@@ -290,8 +322,52 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Activity indicator - shown for executing tasks */}
-      {!isArchived && executionState.isActive && (
+      {/* Review state badges - shown for review-related states */}
+      {!isArchived && (
+        task.internalStatus === "revision_needed" ||
+        task.internalStatus === "pending_review" ||
+        task.internalStatus === "reviewing" ||
+        task.internalStatus === "review_passed" ||
+        task.internalStatus === "re_executing"
+      ) && (
+        <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="review-state-indicator">
+          {/* Activity dots for actively processing states */}
+          {(task.internalStatus === "reviewing" || task.internalStatus === "re_executing") && (
+            <div className="flex gap-0.5">
+              <span
+                className="w-1 h-1 rounded-full"
+                style={{
+                  backgroundColor: task.internalStatus === "reviewing" ? "var(--status-info)" : "var(--status-warning)",
+                  animation: "bounce 1.4s ease-in-out 0s infinite",
+                }}
+              />
+              <span
+                className="w-1 h-1 rounded-full"
+                style={{
+                  backgroundColor: task.internalStatus === "reviewing" ? "var(--status-info)" : "var(--status-warning)",
+                  animation: "bounce 1.4s ease-in-out 0.2s infinite",
+                }}
+              />
+              <span
+                className="w-1 h-1 rounded-full"
+                style={{
+                  backgroundColor: task.internalStatus === "reviewing" ? "var(--status-info)" : "var(--status-warning)",
+                  animation: "bounce 1.4s ease-in-out 0.4s infinite",
+                }}
+              />
+            </div>
+          )}
+          <ReviewStateBadge status={task.internalStatus} revisionCount={revisionCount} />
+        </div>
+      )}
+
+      {/* Activity indicator - shown for executing/QA tasks (not review states) */}
+      {!isArchived && executionState.isActive &&
+       task.internalStatus !== "revision_needed" &&
+       task.internalStatus !== "pending_review" &&
+       task.internalStatus !== "reviewing" &&
+       task.internalStatus !== "review_passed" &&
+       task.internalStatus !== "re_executing" && (
         <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="activity-indicator">
           {/* Three dots with staggered bounce animation */}
           <div className="flex gap-0.5">
@@ -317,7 +393,7 @@ export function TaskCard({
               }}
             />
           </div>
-          {/* Phase-specific icon */}
+          {/* Phase-specific badge for QA */}
           {executionState.phase === "qa" && (
             <Badge
               variant="secondary"
@@ -330,12 +406,6 @@ export function TaskCard({
             >
               QA
             </Badge>
-          )}
-          {executionState.phase === "review" && (
-            <Eye className="w-3 h-3" style={{ color: "var(--status-warning)" }} />
-          )}
-          {task.internalStatus === "revision_needed" && (
-            <AlertCircle className="w-3 h-3" style={{ color: "var(--status-warning)" }} />
           )}
         </div>
       )}
