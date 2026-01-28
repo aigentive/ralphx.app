@@ -34,6 +34,13 @@ If your scope tier is exhausted:
 - Other tasks or parallel agents may have already fixed the issue
 - Some issues may be planned work in the active PRD — don't duplicate effort
 
+## Exclusions
+
+**Do NOT scan or pick items from these paths:**
+- `src/components/ui/*` — shadcn/ui components (upgraded externally)
+
+If an item references an excluded path, mark it: `[ ] ~~text~~ (excluded)`
+
 ## Priority & Scope Matching
 
 | Priority | When | Pick Order |
