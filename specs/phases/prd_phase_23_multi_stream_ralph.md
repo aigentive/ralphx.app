@@ -158,7 +158,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - No backlog (maintains others)",
       "Commit: docs(rules): add hygiene stream workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
