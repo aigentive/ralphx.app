@@ -5,8 +5,13 @@
 ## How This Works
 1. Each iteration reads this file first
 2. Pick ONE item matching current task scope (small task = P3, large task = P1)
-3. Execute the fix, mark `[x]`, commit with `refactor:` prefix
-4. If all items done → Launch Explore agent to replenish
+3. **VERIFY** issue still exists (read file:line, check if problem remains)
+4. Still valid? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
+5. Stale (already fixed)? → Mark `[~]` and pick next item
+6. If all items done/stale → Launch Explore agent to replenish
+
+## Markers
+- `[ ]` Pending | `[x]` Done | `[~]` Stale (skip)
 
 ---
 
