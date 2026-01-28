@@ -14,7 +14,7 @@
 
 - [x] Split ideation_commands.rs (2595 LOC → 1660 LOC excluding tests) - extracted to 7 focused modules: types, session, proposals, dependencies, apply, chat, orchestrator - src-tauri/src/commands/ideation_commands/mod.rs:1-50
 - [x] Split task_commands.rs (1992 LOC → 496 LOC max) - extracted to task_commands/{types.rs (137), helpers.rs (78), query.rs (203), mutation.rs (496), tests.rs (1094), mod.rs (53)} - src-tauri/src/commands/task_commands/mod.rs:1-50
-- [ ] Split chat_service.rs (2109 LOC) - extract message handling and streaming logic (COMPLEX: requires multiple extractions - streaming ~365 LOC, mock ~474 LOC, helpers, then main impl) - src-tauri/src/application/chat_service.rs:1-50
+- [x] Split chat_service.rs (2109 LOC → 1263 LOC) - extracted to chat_service/{types.rs (135), helpers.rs (25), streaming.rs (255), mock.rs (259), mod.rs (1263)} - src-tauri/src/application/chat_service/mod.rs:1-50
 - [ ] Split apply_service.rs (1833 LOC) - extract proposal application handlers - src-tauri/src/application/apply_service.rs:1-50
 - [ ] Split ideation_service.rs (1666 LOC) - extract session and brainstorm logic - src-tauri/src/application/ideation_service.rs:1-50
 - [ ] Split dependency_service.rs (1434 LOC) - extract dependency resolution logic - src-tauri/src/application/dependency_service.rs:1-50
@@ -28,4 +28,4 @@
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 11 | **Completed:** 4 | **Archived:** 1
+**Active items:** 10 | **Completed:** 5 | **Archived:** 1

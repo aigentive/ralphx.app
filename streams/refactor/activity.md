@@ -180,3 +180,22 @@ Mark this item as requiring multi-iteration approach:
 Total: ~1500 LOC to extract across 4+ iterations to reach <500 LOC target
 
 Updated backlog item to reflect complexity.
+
+### 2026-01-28 23:45:00 - Split chat_service.rs
+
+**What:**
+- Original file: src-tauri/src/application/chat_service.rs (2109 LOC)
+- Extracted to:
+  - chat_service/types.rs (135 LOC) - types, event payloads, error types
+  - chat_service/helpers.rs (25 LOC) - get_agent_name, get_assistant_role
+  - chat_service/streaming.rs (255 LOC) - process_stream_background
+  - chat_service/mock.rs (259 LOC) - MockChatService + tests
+  - chat_service/mod.rs (1263 LOC) - main service implementation
+- Total: 1937 LOC across 5 files (2109 LOC → 1263 LOC main file)
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+
+**Result:** Success - All linters passed, all tests passed
