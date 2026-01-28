@@ -217,3 +217,22 @@ Updated backlog item to reflect complexity.
 - `wc -l src-tauri/src/application/apply_service/*.rs`
 
 **Result:** Verified - File already split and under 500 LOC limit, marked as complete in backlog
+
+---
+
+### 2026-01-29 00:12:25 - Split ideation_service.rs
+
+**What:**
+- Original file: src-tauri/src/application/ideation_service.rs (1666 LOC)
+- Extracted to:
+  - ideation_service/types.rs (70 LOC) - SessionStats type
+  - ideation_service/tests.rs (1198 LOC) - all unit tests
+  - ideation_service/mod.rs (423 LOC) - main service implementation
+- New size: 423 LOC (75% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/application/ideation_service/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib application::ideation_service`
+
+**Result:** Success - All 29 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
