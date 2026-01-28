@@ -205,8 +205,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   } = chatStore;
   const activeConversationId = useChatStore(selectActiveConversationId);
 
-  // Compute context key for queue/agent state operations
-  const contextKey = useMemo(() => getContextKey(context), [context]);
+  // Compute context key for queue/agent state operations (no useMemo needed - it's a cheap computation)
+  const contextKey = getContextKey(context);
 
   // Use context-aware selectors
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
