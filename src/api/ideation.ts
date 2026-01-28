@@ -80,12 +80,13 @@ export const ideationApi = {
      * Create a new ideation session
      * @param projectId The project ID
      * @param title Optional session title
+     * @param seedTaskId Optional draft task ID to seed the session
      * @returns The created session
      */
-    create: async (projectId: string, title?: string): Promise<IdeationSessionResponse> => {
+    create: async (projectId: string, title?: string, seedTaskId?: string): Promise<IdeationSessionResponse> => {
       const raw = await typedInvoke(
         "create_ideation_session",
-        { input: { project_id: projectId, title } },
+        { input: { project_id: projectId, title, seed_task_id: seedTaskId } },
         IdeationSessionResponseSchema
       );
       return transformSession(raw);

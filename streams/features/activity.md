@@ -316,6 +316,20 @@
 
 ---
 
+### 2026-01-29 10:15:00 - Phase 25 Task 2: Update ideation API to pass seedTaskId to backend
+**What:**
+- Updated src/api/ideation.ts: sessions.create now accepts seedTaskId parameter (line 85)
+- Passes seed_task_id through to invoke call input object
+- Updated src/hooks/useIdeation.ts: Added seedTaskId to CreateSessionInput interface (line 83)
+- Updated mutationFn to pass seedTaskId through to API (line 107)
+
+**Commands:**
+- `npm run typecheck` → passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:55:57 - Phase 25 Task 1: Extend IdeationSession type with seedTaskId
 **What:**
 - Activated Phase 25 in manifest.json (currentPhase: 25, status: active)
