@@ -271,7 +271,10 @@ impl<R: Runtime> TaskTransitionService<R> {
     ///
     /// This method delegates to TransitionHandler::on_enter() to ensure we use
     /// the canonical entry action logic defined in the state machine module.
-    async fn execute_entry_actions(
+    ///
+    /// Public so that StartupJobRunner can re-trigger entry actions on app restart
+    /// for tasks that were in agent-active states when the app shut down.
+    pub async fn execute_entry_actions(
         &self,
         task_id: &TaskId,
         task: &Task,

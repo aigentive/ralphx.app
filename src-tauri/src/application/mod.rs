@@ -10,6 +10,7 @@ pub mod permission_state;
 pub mod priority_service;
 pub mod qa_service;
 pub mod review_service;
+pub mod startup_jobs;
 pub mod supervisor_service;
 pub mod task_context_service;
 pub mod task_transition_service;
@@ -28,6 +29,7 @@ pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
+pub use startup_jobs::StartupJobRunner;
 pub use task_context_service::TaskContextService;
 pub use task_transition_service::TaskTransitionService;
 
