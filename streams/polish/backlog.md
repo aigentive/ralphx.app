@@ -29,7 +29,7 @@ _No active P3 items. Completed items moved to archive._
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21:1)
-- [ ] Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88 (was line ~50)
+- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1)
 
 ### Backend
 
@@ -57,7 +57,7 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 17 (3 excluded, 9 deferred to PRD)
+**Active items:** 17 (3 excluded, 10 deferred to PRD)
 **Completed:** 2
-**Validated:** 26 strikethroughs (2026-01-28 x11) - 6 archived, 1 reactivated, 19 incremented
-**Last maintenance:** 2026-01-28 (validated 3 strikethroughs, incremented 3 counters)
+**Validated:** 27 strikethroughs (2026-01-28 x12) - 6 archived, 1 reactivated, 20 incremented
+**Last maintenance:** 2026-01-28 (validated 1 strikethrough, incremented 1 counter)
