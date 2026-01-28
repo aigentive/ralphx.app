@@ -48,7 +48,6 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:1 - no console.debug present, only console.error at line 208 which is appropriate)
 - [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
 - [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
 - [ ] [P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7
@@ -58,7 +57,7 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 18 (3 excluded, 9 deferred to PRD)
-**Completed:** 0
-**Validated:** 22 strikethroughs (2026-01-28 x7) - 5 archived, 1 reactivated, 16 incremented
-**Last maintenance:** 2026-01-28 (archived 4 completed items)
+**Active items:** 17 (3 excluded, 9 deferred to PRD)
+**Completed:** 1
+**Validated:** 23 strikethroughs (2026-01-28 x8) - 6 archived, 1 reactivated, 16 incremented
+**Last maintenance:** 2026-01-28 (archived 5 completed items, validated 1 strikethrough)
