@@ -80,6 +80,7 @@ export function useIdeationSessions(projectId: string) {
 interface CreateSessionInput {
   projectId: string;
   title?: string;
+  seedTaskId?: string;
 }
 
 /**
@@ -104,7 +105,7 @@ export function useCreateIdeationSession() {
   const queryClient = useQueryClient();
 
   return useMutation<IdeationSessionResponse, Error, CreateSessionInput>({
-    mutationFn: ({ projectId, title }) => ideationApi.sessions.create(projectId, title),
+    mutationFn: ({ projectId, title, seedTaskId }) => ideationApi.sessions.create(projectId, title, seedTaskId),
     onSuccess: (newSession) => {
       // Invalidate session list for the project to trigger refetch
       queryClient.invalidateQueries({

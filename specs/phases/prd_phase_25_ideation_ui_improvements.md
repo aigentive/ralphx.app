@@ -84,7 +84,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(ideation): pass seedTaskId through API layer"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
