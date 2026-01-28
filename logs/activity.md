@@ -1,10 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 06:14:00
+**Last Updated:** 2026-01-28 06:21:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 29 / 39
-**Current Task:** Wire up ReviewsPanel approve/reject handlers (next)
+**Tasks Completed:** 30 / 39
+**Current Task:** Create ColumnGroup component (next)
+
+---
+
+### 2026-01-28 06:21:00 - Wire up ReviewsPanel approve/reject handlers
+
+**What:**
+- Imported useReviewMutations hook in App.tsx
+- Wired onApprove to approveReview.mutate({ reviewId })
+- Wired onRequestChanges to requestChangesReview.mutate({ reviewId, notes })
+  - Uses default notes "Changes requested" when no notes provided
+  - Full notes input will come with ReviewDetailModal (task 37)
+- Added isApproving/isRequestingChanges loading state props to ReviewsPanel
+- Passed loading states down to ReviewCard and ReviewDetailHeader
+- Added disabled state and loading spinners to action buttons
+- Quality improvement: Fixed react-refresh lint warnings
+  - Removed pathsToScreenshots re-export from ScreenshotGallery/index.tsx
+  - Removed useTaskBoard re-export from TaskBoard/index.tsx
+  - Reduced lint warnings from 5 to 3 (remaining are in excluded ui/ components)
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+npm run test -- src/components/tasks/TaskBoard/index.test.tsx --run
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint: 0 errors, 3 warnings (all in excluded ui/ components)
+- All tests pass
 
 ---
 
