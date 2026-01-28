@@ -2,7 +2,10 @@
  * Shared components and utilities for SettingsView
  *
  * Extracted from SettingsView.tsx to reduce file size and improve reusability.
- * Contains setting row components, section card, and constants.
+ * Contains setting row components and section card.
+ *
+ * Note: Constants are in SettingsView.constants.ts to satisfy
+ * react-refresh/only-export-components lint rule.
  */
 
 import { Card } from "@/components/ui/card";
@@ -21,29 +24,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Model } from "@/types/agent-profile";
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-export const MODEL_OPTIONS: { value: Model; label: string; description: string }[] = [
-  {
-    value: "haiku",
-    label: "Claude Haiku 4.5",
-    description: "Fastest, most cost-effective",
-  },
-  {
-    value: "sonnet",
-    label: "Claude Sonnet 4.5",
-    description: "Best balance of speed and quality",
-  },
-  {
-    value: "opus",
-    label: "Claude Opus 4.5",
-    description: "Most capable, best for complex tasks",
-  },
-];
+// Re-export constants from dedicated file
+export { MODEL_OPTIONS } from "./SettingsView.constants";
 
 // ============================================================================
 // Saving Indicator Component
