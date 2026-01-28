@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-28 22:05:00 - P0 Fix: Regex pattern precision in fswatch cleanup
+**What:**
+- Fixed pkill regex in ralph-tmux.sh:185 that could match unintended processes
+- Original: `fswatch.*(streams/|specs/)` matched `fswatch-tool`, `myfswatch`, etc.
+- New: `(^|[/ ])fswatch .*(streams/|specs/)` requires fswatch as standalone command
+- Pattern now correctly matches fswatch preceded by start, space, or path separator
+
+**Commands:**
+- `pgrep -fl "(^|[/ ])fswatch .*(streams/|specs/)"` - verified matches running processes
+- `bash -n ralph-tmux.sh` - syntax validation passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:52:00 - P0 Fix: Orphaned verify stream fswatch process
 **What:**
 - Fixed pkill pattern in ralph-tmux.sh stop_all() that missed verify stream fswatch
