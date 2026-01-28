@@ -251,7 +251,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(http): add get_review_notes endpoint"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

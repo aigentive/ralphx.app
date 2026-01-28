@@ -1,15 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 03:55:08
+**Last Updated:** 2026-01-28 18:45:00
 **Phase:** Review System
-**Tasks Completed:** 7 / 39
-**Current Task:** Add get_review_notes HTTP endpoint
+**Tasks Completed:** 8 / 39
+**Current Task:** Add maxRevisionCycles to review settings
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 18:45:00 - Add get_review_notes HTTP Endpoint
+
+**What:**
+- Implemented GET /api/review_notes/:task_id endpoint in `src-tauri/src/http_server.rs`:
+  - Added ReviewNotesResponse and ReviewNoteResponse structs
+  - Implemented handler to fetch review notes via review_repo.get_notes_by_task_id()
+  - Calculate revision_count (count of ChangesRequested outcomes)
+  - Default max_revisions to 5 (TODO: fetch from settings when added in next task)
+  - Return formatted response with task_id, revision_count, max_revisions, reviews array
+- Added route mapping: GET /api/review_notes/:task_id
+- Added comprehensive documentation explaining endpoint purpose, usage, and response structure
+- All tests pass (cargo test)
+- **Quality improvement:** Enhanced endpoint documentation, marked stale items in code-quality.md
+
+**Commands:**
+- `cargo test` - all tests passing
+- `cargo clippy --all-targets --all-features -- -D warnings` - no warnings
+
+**Results:**
+- HTTP endpoint ready for MCP tool integration (next task)
+- Worker agents can fetch review history before re-execution
+- Revision count tracking enables max revision cycle enforcement (future task)
 
 ### 2026-01-28 03:55:08 - Implement complete_review HTTP Handler
 
