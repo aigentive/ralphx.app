@@ -68,7 +68,6 @@ export function useIntegratedChatEvents({
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("chat:run_completed", (event) => {
-        console.log("Chat run completed:", event.payload);
         const { conversation_id } = event.payload;
         // Clear streaming tool calls
         setStreamingToolCalls([]);
@@ -116,7 +115,6 @@ export function useIntegratedChatEvents({
       const execCompletedUnlisten = await listen<{
         conversation_id: string;
       }>("execution:run_completed", (event) => {
-        console.log("Worker execution completed:", event.payload);
         const { conversation_id } = event.payload;
         // Clear streaming tool calls
         setStreamingToolCalls([]);
