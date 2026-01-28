@@ -424,13 +424,16 @@ mod tests {
         let line = r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}"#;
         let msg = StreamProcessor::parse_line(line);
 
-        assert!(msg.is_some());
-        if let Some(StreamMessage::ContentBlockDelta { delta, .. }) = msg {
-            assert_eq!(delta.delta_type, "text_delta");
-            assert_eq!(delta.text, Some("Hello".to_string()));
-        } else {
-            panic!("Expected ContentBlockDelta");
-        }
+        let msg = msg.expect("Expected Some(StreamMessage)");
+        assert!(
+            matches!(msg, StreamMessage::ContentBlockDelta { .. }),
+            "Expected ContentBlockDelta, got different variant"
+        );
+        let StreamMessage::ContentBlockDelta { delta, .. } = msg else {
+            unreachable!()
+        };
+        assert_eq!(delta.delta_type, "text_delta");
+        assert_eq!(delta.text, Some("Hello".to_string()));
     }
 
     #[test]
@@ -438,14 +441,17 @@ mod tests {
         let line = r#"{"type":"content_block_start","content_block":{"type":"tool_use","id":"toolu_123","name":"create_task_proposal"}}"#;
         let msg = StreamProcessor::parse_line(line);
 
-        assert!(msg.is_some());
-        if let Some(StreamMessage::ContentBlockStart { content_block, .. }) = msg {
-            assert_eq!(content_block.block_type, "tool_use");
-            assert_eq!(content_block.name, Some("create_task_proposal".to_string()));
-            assert_eq!(content_block.id, Some("toolu_123".to_string()));
-        } else {
-            panic!("Expected ContentBlockStart");
-        }
+        let msg = msg.expect("Expected Some(StreamMessage)");
+        assert!(
+            matches!(msg, StreamMessage::ContentBlockStart { .. }),
+            "Expected ContentBlockStart, got different variant"
+        );
+        let StreamMessage::ContentBlockStart { content_block, .. } = msg else {
+            unreachable!()
+        };
+        assert_eq!(content_block.block_type, "tool_use");
+        assert_eq!(content_block.name, Some("create_task_proposal".to_string()));
+        assert_eq!(content_block.id, Some("toolu_123".to_string()));
     }
 
     #[test]
@@ -453,12 +459,15 @@ mod tests {
         let line = r#"{"type":"result","session_id":"550e8400-e29b-41d4-a716-446655440000","result":"Done","is_error":false,"cost_usd":0.05}"#;
         let msg = StreamProcessor::parse_line(line);
 
-        assert!(msg.is_some());
-        if let Some(StreamMessage::Result { session_id, .. }) = msg {
-            assert_eq!(session_id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
-        } else {
-            panic!("Expected Result");
-        }
+        let msg = msg.expect("Expected Some(StreamMessage)");
+        assert!(
+            matches!(msg, StreamMessage::Result { .. }),
+            "Expected Result, got different variant"
+        );
+        let StreamMessage::Result { session_id, .. } = msg else {
+            unreachable!()
+        };
+        assert_eq!(session_id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
     }
 
     #[test]
@@ -466,18 +475,24 @@ mod tests {
         let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}],"stop_reason":"end_turn"},"session_id":"sess-123"}"#;
         let msg = StreamProcessor::parse_line(line);
 
-        assert!(msg.is_some());
-        if let Some(StreamMessage::Assistant { message, session_id }) = msg {
-            assert_eq!(session_id, Some("sess-123".to_string()));
-            assert_eq!(message.content.len(), 1);
-            if let AssistantContent::Text { text } = &message.content[0] {
-                assert_eq!(text, "Hello world");
-            } else {
-                panic!("Expected Text content");
-            }
-        } else {
-            panic!("Expected Assistant message");
-        }
+        let msg = msg.expect("Expected Some(StreamMessage)");
+        assert!(
+            matches!(msg, StreamMessage::Assistant { .. }),
+            "Expected Assistant message, got different variant"
+        );
+        let StreamMessage::Assistant { message, session_id } = msg else {
+            unreachable!()
+        };
+        assert_eq!(session_id, Some("sess-123".to_string()));
+        assert_eq!(message.content.len(), 1);
+        assert!(
+            matches!(&message.content[0], AssistantContent::Text { .. }),
+            "Expected Text content, got different variant"
+        );
+        let AssistantContent::Text { text } = &message.content[0] else {
+            unreachable!()
+        };
+        assert_eq!(text, "Hello world");
     }
 
     #[test]
