@@ -32,6 +32,7 @@ import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
+import { defaultWorkflow } from "@/types/workflow";
 import type { Task, TaskListResponse } from "@/types/task";
 
 export interface TaskBoardProps {
@@ -383,6 +384,12 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                   ? searchTasks?.length
                   : undefined;
 
+                // Look up groups from the default workflow for this column
+                const workflowColumn = defaultWorkflow.columns.find(
+                  (c) => c.id === column.id
+                );
+                const groups = workflowColumn?.groups;
+
                 return (
                   <Column
                     key={column.id}
@@ -396,6 +403,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                     hiddenTaskId={movingTaskId}
                     searchTasks={searchTasks}
                     matchCount={matchCount}
+                    {...(groups && { groups })}
                   />
                 );
               })}
