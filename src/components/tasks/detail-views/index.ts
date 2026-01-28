@@ -11,3 +11,4 @@
  */
 
 export { BasicTaskDetail } from "./BasicTaskDetail";
+export { RevisionTaskDetail } from "./RevisionTaskDetail";
