@@ -103,7 +103,7 @@ _No active P3 items. Completed items moved to archive._
 ### P3 - Low Impact
 
 - [x] [P3] [Frontend] Remove console.error call - src/App.tsx:332
-- [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:349
+- [x] [P3] [Frontend] Remove console.error call - src/App.tsx:349
 - [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:361
 - [ ] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:63
 - [ ] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
