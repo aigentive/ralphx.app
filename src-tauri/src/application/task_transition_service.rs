@@ -126,6 +126,34 @@ impl ReviewStarter for NoOpReviewStarter {
 }
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Convert InternalStatus to state machine State.
+/// Used by execute_entry_actions and execute_exit_actions.
+fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_machine::machine::State {
+    use crate::domain::state_machine::machine::State;
+    match status {
+        InternalStatus::Backlog => State::Backlog,
+        InternalStatus::Ready => State::Ready,
+        InternalStatus::Blocked => State::Blocked,
+        InternalStatus::Executing => State::Executing,
+        InternalStatus::QaRefining => State::QaRefining,
+        InternalStatus::QaTesting => State::QaTesting,
+        InternalStatus::QaPassed => State::QaPassed,
+        InternalStatus::QaFailed => State::QaFailed(Default::default()),
+        InternalStatus::PendingReview => State::PendingReview,
+        InternalStatus::Reviewing => State::Reviewing,
+        InternalStatus::ReviewPassed => State::ReviewPassed,
+        InternalStatus::RevisionNeeded => State::RevisionNeeded,
+        InternalStatus::ReExecuting => State::ReExecuting,
+        InternalStatus::Approved => State::Approved,
+        InternalStatus::Failed => State::Failed(Default::default()),
+        InternalStatus::Cancelled => State::Cancelled,
+    }
+}
+
+// ============================================================================
 // TaskTransitionService
 // ============================================================================
 
@@ -311,32 +339,14 @@ impl<R: Runtime> TaskTransitionService<R> {
     ) {
         use crate::domain::state_machine::{
             context::{TaskContext, TaskServices},
-            machine::{State, TaskStateMachine},
+            machine::TaskStateMachine,
             transition_handler::TransitionHandler,
         };
 
-        // Convert InternalStatus to State
-        let state = match status {
-            InternalStatus::Backlog => State::Backlog,
-            InternalStatus::Ready => State::Ready,
-            InternalStatus::Blocked => State::Blocked,
-            InternalStatus::Executing => State::Executing,
-            InternalStatus::QaRefining => State::QaRefining,
-            InternalStatus::QaTesting => State::QaTesting,
-            InternalStatus::QaPassed => State::QaPassed,
-            InternalStatus::QaFailed => State::QaFailed(Default::default()),
-            InternalStatus::PendingReview => State::PendingReview,
-            InternalStatus::Reviewing => State::Reviewing,
-            InternalStatus::ReviewPassed => State::ReviewPassed,
-            InternalStatus::RevisionNeeded => State::RevisionNeeded,
-            InternalStatus::ReExecuting => State::ReExecuting,
-            InternalStatus::Approved => State::Approved,
-            InternalStatus::Failed => State::Failed(Default::default()),
-            InternalStatus::Cancelled => State::Cancelled,
-        };
+        let state = internal_status_to_state(status);
 
         // Build TaskServices from our services
-        let services = TaskServices::new(
+        let mut services = TaskServices::new(
             Arc::clone(&self.agent_spawner),
             Arc::clone(&self.event_emitter),
             Arc::clone(&self.notifier),
@@ -345,6 +355,11 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.chat_service),
         )
         .with_execution_state(Arc::clone(&self.execution_state));
+
+        // Pass app_handle for event emission (uses try_with_app_handle for generic R)
+        if let Some(ref handle) = self._app_handle {
+            services = services.try_with_app_handle(handle.clone());
+        }
 
         // Create TaskContext
         let context = TaskContext::new(
@@ -377,37 +392,15 @@ impl<R: Runtime> TaskTransitionService<R> {
     ) {
         use crate::domain::state_machine::{
             context::{TaskContext, TaskServices},
-            machine::{State, TaskStateMachine},
+            machine::TaskStateMachine,
             transition_handler::TransitionHandler,
         };
 
-        // Helper to convert InternalStatus to State
-        let status_to_state = |status: InternalStatus| -> State {
-            match status {
-                InternalStatus::Backlog => State::Backlog,
-                InternalStatus::Ready => State::Ready,
-                InternalStatus::Blocked => State::Blocked,
-                InternalStatus::Executing => State::Executing,
-                InternalStatus::QaRefining => State::QaRefining,
-                InternalStatus::QaTesting => State::QaTesting,
-                InternalStatus::QaPassed => State::QaPassed,
-                InternalStatus::QaFailed => State::QaFailed(Default::default()),
-                InternalStatus::PendingReview => State::PendingReview,
-                InternalStatus::Reviewing => State::Reviewing,
-                InternalStatus::ReviewPassed => State::ReviewPassed,
-                InternalStatus::RevisionNeeded => State::RevisionNeeded,
-                InternalStatus::ReExecuting => State::ReExecuting,
-                InternalStatus::Approved => State::Approved,
-                InternalStatus::Failed => State::Failed(Default::default()),
-                InternalStatus::Cancelled => State::Cancelled,
-            }
-        };
-
-        let from_state = status_to_state(from_status);
-        let to_state = status_to_state(to_status);
+        let from_state = internal_status_to_state(from_status);
+        let to_state = internal_status_to_state(to_status);
 
         // Build TaskServices from our services
-        let services = TaskServices::new(
+        let mut services = TaskServices::new(
             Arc::clone(&self.agent_spawner),
             Arc::clone(&self.event_emitter),
             Arc::clone(&self.notifier),
@@ -416,6 +409,11 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.chat_service),
         )
         .with_execution_state(Arc::clone(&self.execution_state));
+
+        // Pass app_handle for event emission (uses try_with_app_handle for generic R)
+        if let Some(ref handle) = self._app_handle {
+            services = services.try_with_app_handle(handle.clone());
+        }
 
         // Create TaskContext
         let context = TaskContext::new(
