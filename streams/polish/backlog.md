@@ -43,13 +43,13 @@ _No active P2 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20:1:1)
-- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20:1)
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18)
-- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18)
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21)
-- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21)
+- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20:1:1:1)
+- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18:1)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18:1)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21:1)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts (line ~50)~~ (PRD:19)
 
 ### Backend
