@@ -55,7 +55,6 @@ _No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract constants from ResizeablePanel.tsx component export~~ (stale:2 - constants already extracted to ResizeablePanel.constants.ts)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract badgeVariants from Badge component - src/components/ui/badge.tsx:30~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract buttonVariants from Button component - src/components/ui/button.tsx:44~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract toggleVariants from Toggle component - src/components/ui/toggle.tsx:29~~ (excluded)
@@ -65,19 +64,13 @@ _No active P2 items. Completed items moved to archive._
 ### P2 - Medium Impact
 
 _No active P2 items. Completed items moved to archive._
-- [x] [P2] [Backend] Replace unwrap() calls with proper error handling in ideation_commands - src-tauri/src/commands/ideation_commands/mod.rs:45
-- [x] [P2] [Backend] Remove #[allow(dead_code)] suppression and verify actual usage - src-tauri/src/application/ideation_service/tests.rs:2
 
 ### P3 - Low Impact
-
-- [x] [P3] [Frontend] Remove TODO comment for diff viewer integration - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
 - [x] [P3] [Frontend] Remove TODO comments for unimplemented task actions - src/components/tasks/TaskFullView.tsx:213
 - [x] [P3] [Frontend] Remove TODO in HumanReviewTaskDetail - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
-- [ ] ~~[P3] [Frontend] Remove TODO in PlanTemplateSelector - src/components/Ideation/PlanTemplateSelector.tsx:94~~ (stale:1)
 - [x] [P3] [Frontend] Clean up console.error in PlanEditor - src/components/Ideation/PlanEditor.tsx:215
 - [x] [P3] [Backend] Remove TODO placeholder search implementation - src-tauri/src/commands/task_context_commands.rs:113
 - [x] [P3] [Backend] Remove dead code suppression and clean - src-tauri/src/application/priority_service/tests.rs:11
-- [ ] ~~[P3] [Backend] Clean up unused test fixtures in dependency_service - src-tauri/src/application/dependency_service.rs:530~~ (stale:1 - file no longer exists)
 
 ---
 
@@ -105,7 +98,7 @@ _No active P2 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 13 (9 excluded, 10 deferred to PRD)
-**Completed:** 8
-**Validated:** 51 strikethroughs (2026-01-29 x36) - 7 archived, 1 reactivated (moved to refactor as P1), 43 incremented
-**Last maintenance:** 2026-01-29 (archived 2 completed items, validated 2 strikethroughs)
+**Active items:** 6 (9 excluded, 10 deferred to PRD)
+**Completed:** 10
+**Validated:** 54 strikethroughs (2026-01-29 x39) - 10 archived, 1 reactivated (moved to refactor as P1), 43 incremented
+**Last maintenance:** 2026-01-29 (archived 3 completed items, validated 3 strikethroughs → archived 3)

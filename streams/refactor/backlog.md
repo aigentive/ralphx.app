@@ -6,7 +6,6 @@
 
 ## Frontend (src/)
 
-- [x] Reduce ChatPanel component size (1041 LOC → 774 LOC) - extracted ResizeablePanel and ChatMessages components - src/components/Chat/ChatPanel.tsx:1-100
 - [x] Reduce IntegratedChatPanel component size (1025 LOC → 498 LOC) - extracted useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents hooks and IntegratedChatPanel.components.tsx - src/components/Chat/IntegratedChatPanel.tsx:1-100
 
 ## Backend (src-tauri/)
@@ -20,12 +19,12 @@
 - [x] Split priority_service.rs (1300 LOC → 379 LOC) - extracted to priority_service/{tests.rs (924), mod.rs (379)} - src-tauri/src/application/priority_service/mod.rs:1-50
 - [x] Split migrations.rs (5694 LOC → 1304 LOC) - extracted to migrations/tests.rs (4390 LOC), migrations/mod.rs (1304 LOC) with all 25 migrations - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1-50
 - [x] Split ideation.rs (3982 LOC → 426 LOC max) - extracted to ideation/{mod.rs (234), types.rs (365), proposal.rs (201), assessment.rs (426), chat.rs (258), graph.rs (198), tests.rs (2345)} - src-tauri/src/domain/entities/ideation/mod.rs:1-50
-- [ ] Split research.rs (1398 LOC) entity - extract to focused modules - src-tauri/src/domain/entities/research.rs:1-50
+- [x] Split research.rs (1398 LOC → 351 LOC max) - extracted to research/{mod.rs (351), types.rs (324), tests.rs (740)} - src-tauri/src/domain/entities/research/mod.rs:1-50
 - [ ] Split artifact_flow.rs (1389 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/artifact_flow.rs:1-50
 - [ ] Split methodology.rs (1363 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/methodology.rs:1-50
 
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 3 | **Completed:** 11 | **Archived:** 3
+**Active items:** 3 | **Completed:** 10 | **Archived:** 4
 **Last maintenance:** 2026-01-29 (archived 1 completed item)

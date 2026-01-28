@@ -5,6 +5,26 @@
 
 ---
 
+## Archived 2026-01-29 (Third Batch)
+
+### From refactor/backlog.md (Frontend)
+
+- [x] Reduce ChatPanel component size (1041 LOC → 774 LOC) - extracted ResizeablePanel and ChatMessages components - src/components/Chat/ChatPanel.tsx:1-100
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:00)
+
+- [x] [P2] [Backend] Replace unwrap() calls with proper error handling in ideation_commands - src-tauri/src/commands/ideation_commands/mod.rs:45
+- [x] [P2] [Backend] Remove #[allow(dead_code)] suppression and verify actual usage - src-tauri/src/application/ideation_service/tests.rs:2
+- [x] [P3] [Frontend] Remove TODO comment for diff viewer integration - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
+
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract constants from ResizeablePanel.tsx component export~~ (stale:2 - constants already extracted to ResizeablePanel.constants.ts)
+- [ ] ~~[P3] [Frontend] Remove TODO in PlanTemplateSelector - src/components/Ideation/PlanTemplateSelector.tsx:94~~ (stale:2 - TODO not found at line 94)
+- [ ] ~~[P3] [Backend] Clean up unused test fixtures in dependency_service - src-tauri/src/application/dependency_service.rs:530~~ (stale:2 - file no longer exists)
+
+---
+
 ## Archived 2026-01-29 (Second Batch)
 
 ### From refactor/backlog.md (Frontend)
