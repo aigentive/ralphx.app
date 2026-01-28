@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 00:01:15 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 5/10 completed, polish: 10/10 completed)
+
+**Refill:**
+- Added 15 P2/P3 items to polish/backlog.md (6 P2, 9 P3)
+- No refill needed for refactor (10 active items)
+
+**Validation:**
+- Checked 2 strikethrough items:
+  - TaskFullView.tsx:221 Pause execution (PRD:21:1 → PRD:21:1:1): TODO still exists at line 221 → **Counter incremented**
+  - TaskFullView.tsx:225 Stop execution (PRD:21:1 → PRD:21:1:1): TODO still exists at line 225 → **Counter incremented**
+
+**Result:** Refilled polish backlog with 15 items, 2 validation counters incremented (total 44 validated)
+
+---
+
 ### 2026-01-28 23:59:09 - Backlog Maintenance
 
 **Archive:**
