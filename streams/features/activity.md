@@ -282,3 +282,20 @@
 - `bash -n scripts/stream-watch-*.sh` → all 5 syntax checks passed
 
 **Result:** Success
+
+---
+
+### 2026-01-28 23:01:40 - P0 Fix: Race condition, orphaned subshells, and missing signal handlers
+**What:**
+- Fixed race condition between initial cycle and fswatch startup in all 5 stream-watch scripts
+- Root cause: fswatch started AFTER initial cycle, so changes during initial cycle could be missed
+- Fix: Start fswatch FIRST in background, sleep 0.5s for initialization, then run initial cycle
+- Added signal trap handlers (SIGINT, SIGTERM, EXIT) to all scripts for clean shutdown
+- Track FSWATCH_PID and kill it in cleanup() function
+- This also fixes the orphaned subshells issue - fswatch pipeline is now properly tracked and cleaned up
+- Scripts fixed: stream-watch-features.sh, stream-watch-refactor.sh, stream-watch-polish.sh, stream-watch-verify.sh, stream-watch-hygiene.sh
+
+**Commands:**
+- `bash -n scripts/stream-watch-*.sh` → all 5 syntax checks passed
+
+**Result:** Success
