@@ -71,3 +71,20 @@
 - `bash -n scripts/stream-watch-features.sh` → syntax check passed
 
 **Result:** Success
+
+---
+
+### 2026-01-28 19:41:11 - Phase 24 Task 4: Create fswatch wrappers for refactor, polish, verify, hygiene
+**What:**
+- Created scripts/stream-watch-refactor.sh (MODEL='sonnet', watches: streams/refactor/backlog.md)
+- Created scripts/stream-watch-polish.sh (MODEL='sonnet', watches: streams/polish/backlog.md)
+- Created scripts/stream-watch-verify.sh (MODEL='sonnet', watches: specs/manifest.json, specs/phases)
+- Created scripts/stream-watch-hygiene.sh (MODEL='sonnet', watches: streams/refactor/backlog.md, streams/polish/backlog.md, streams/archive/completed.md)
+- All scripts follow same pattern as features wrapper: initial run, IDLE status, fswatch loop
+- Color-coded output for consistency with features wrapper
+
+**Commands:**
+- `chmod +x scripts/stream-watch-*.sh`
+- `bash -n scripts/stream-watch-*.sh` → all syntax checks passed
+
+**Result:** Success

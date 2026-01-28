@@ -146,7 +146,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test syntax for all: bash -n scripts/stream-watch-*.sh",
       "Commit: feat(tmux): add fswatch wrappers for all streams"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
