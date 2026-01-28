@@ -95,24 +95,8 @@ NO purple gradients | NO Inter font | Warm orange #ff6b35
 
 ## Code Quality
 
-### Proactive Quality Improvement (MANDATORY)
-For every task, launch an Explore agent to quickly scan a portion of the codebase for quality issues. Pick ONE improvement proportional to task size and execute it as part of the same work session.
-
-**Quality targets:**
-- Replace `any` with proper types
-- Fix naming inconsistencies
-- Add missing error handling
-- Remove dead code
-- Extract repeated logic into hooks/functions
-- Fix lint warnings
-
-**Process:**
-1. Agent scans subset of codebase (don't analyze everything)
-2. Pick ONE actionable improvement
-3. Execute the fix
-4. Commit separately with `refactor:` prefix
-
-**Scope:** small task = small improvement, large task = larger improvement. Goal: incremental quality gains without over-engineering.
+### Proactive Quality Improvement (ENFORCED BY HOOK)
+Every code task requires `refactor:` commit. See `.claude/rules/quality-improvement.md` for targets and process.
 
 ### File Size Limits
 | File Type | Max Lines | Action |
@@ -159,6 +143,9 @@ npm run typecheck  # TS check
 npm run lint       # ESLint
 ```
 Note: Dev server via `npm run tauri dev` from project root (user manages manually).
+
+## Task Management (MANDATORY)
+Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
 
 ## Adding Features
 1. Types: Zod schema in types/

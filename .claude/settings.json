@@ -1,4 +1,26 @@
 {
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '⚠️ REMINDER: Every task requires a refactor: commit. Launch Explore agent to scan for quality issues, pick ONE fix, execute it, commit with refactor: prefix.'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Verify quality improvement compliance. Check git log for a refactor: commit in this session. ALLOW if: (1) refactor: commit exists, OR (2) task was purely research/docs with no code changes. BLOCK if: code was modified but no refactor: commit exists. When blocking, instruct to launch Explore agent, find ONE quality fix, and commit with refactor: prefix."
+          }
+        ]
+      }
+    ]
+  },
   "env": {
     "XDG_CACHE_HOME": ".cache",
     "npm_config_cache": ".cache/npm",

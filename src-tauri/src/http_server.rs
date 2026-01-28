@@ -817,7 +817,7 @@ async fn list_tasks(
                 let task_status = match task.internal_status {
                     InternalStatus::Backlog => "backlog",
                     InternalStatus::Ready => "ready",
-                    InternalStatus::Executing | InternalStatus::ExecutionDone | InternalStatus::ReExecuting => "in_progress",
+                    InternalStatus::Executing | InternalStatus::ReExecuting => "in_progress",
                     InternalStatus::Blocked | InternalStatus::Failed => "blocked",
                     InternalStatus::PendingReview | InternalStatus::Reviewing | InternalStatus::ReviewPassed | InternalStatus::QaRefining | InternalStatus::QaTesting | InternalStatus::QaPassed | InternalStatus::QaFailed => "review",
                     InternalStatus::Approved => "done",

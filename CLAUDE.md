@@ -67,8 +67,9 @@ style={{ boxShadow: "none", outline: "none" }}
 6. **USE TransitionHandler for status changes** — NEVER direct DB update
 7. **Lint before commit**: `cargo clippy --all-targets --all-features -- -D warnings` + `npm run lint`
 8. **NEVER start/stop dev server** — User manages manually
-9. **Proactive quality improvement (MANDATORY)** — For every task, launch an Explore agent to quickly scan a portion of the codebase for quality issues (type safety, naming, error handling, dead code, lint warnings). Pick ONE improvement proportional to task size and execute it. Use `refactor:` commit prefix separately from the main task commit to clearly track improvements. Scope: small task = small improvement, large task = larger improvement. Goal: incremental quality gains without over-engineering
+9. **Proactive quality improvement (ENFORCED BY HOOK)** — Every code task requires `refactor:` commit. See `.claude/rules/quality-improvement.md`
 10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.
+11. **Task tools for complex work (MANDATORY)** — Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
 
 ## Git Conventions
 - NO: git init, push, remotes

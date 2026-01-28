@@ -21,8 +21,6 @@ pub enum InternalStatus {
     Blocked,
     /// Task is currently being executed by an agent
     Executing,
-    /// Agent has completed execution, awaiting QA or review
-    ExecutionDone,
     /// QA is refining test criteria based on implementation
     QaRefining,
     /// QA tests are being executed
@@ -61,8 +59,7 @@ impl InternalStatus {
             Blocked => &[Ready, Cancelled],
 
             // Execution states
-            Executing => &[ExecutionDone, Failed, Blocked],
-            ExecutionDone => &[QaRefining, PendingReview],
+            Executing => &[QaRefining, PendingReview, Failed, Blocked],
 
             // QA states
             QaRefining => &[QaTesting],
@@ -98,7 +95,6 @@ impl InternalStatus {
             Ready,
             Blocked,
             Executing,
-            ExecutionDone,
             QaRefining,
             QaTesting,
             QaPassed,
@@ -121,7 +117,6 @@ impl InternalStatus {
             InternalStatus::Ready => "ready",
             InternalStatus::Blocked => "blocked",
             InternalStatus::Executing => "executing",
-            InternalStatus::ExecutionDone => "execution_done",
             InternalStatus::QaRefining => "qa_refining",
             InternalStatus::QaTesting => "qa_testing",
             InternalStatus::QaPassed => "qa_passed",
@@ -167,7 +162,6 @@ impl FromStr for InternalStatus {
             "ready" => Ok(InternalStatus::Ready),
             "blocked" => Ok(InternalStatus::Blocked),
             "executing" => Ok(InternalStatus::Executing),
-            "execution_done" => Ok(InternalStatus::ExecutionDone),
             "qa_refining" => Ok(InternalStatus::QaRefining),
             "qa_testing" => Ok(InternalStatus::QaTesting),
             "qa_passed" => Ok(InternalStatus::QaPassed),
@@ -195,7 +189,7 @@ mod tests {
 
     #[test]
     fn internal_status_has_17_variants() {
-        assert_eq!(InternalStatus::all_variants().len(), 17);
+        assert_eq!(InternalStatus::all_variants().len(), 16);
     }
 
     #[test]
@@ -206,7 +200,6 @@ mod tests {
             Ready,
             Blocked,
             Executing,
-            ExecutionDone,
             QaRefining,
             QaTesting,
             QaPassed,
@@ -231,11 +224,6 @@ mod tests {
         assert_eq!(json, "\"backlog\"");
     }
 
-    #[test]
-    fn serializes_to_snake_case_execution_done() {
-        let json = serde_json::to_string(&InternalStatus::ExecutionDone).unwrap();
-        assert_eq!(json, "\"execution_done\"");
-    }
 
     #[test]
     fn serializes_to_snake_case_qa_refining() {
@@ -262,7 +250,6 @@ mod tests {
             ("ready", InternalStatus::Ready),
             ("blocked", InternalStatus::Blocked),
             ("executing", InternalStatus::Executing),
-            ("execution_done", InternalStatus::ExecutionDone),
             ("qa_refining", InternalStatus::QaRefining),
             ("qa_testing", InternalStatus::QaTesting),
             ("qa_passed", InternalStatus::QaPassed),
@@ -285,11 +272,6 @@ mod tests {
 
     // ===== Deserialization Tests =====
 
-    #[test]
-    fn deserializes_from_snake_case() {
-        let status: InternalStatus = serde_json::from_str("\"execution_done\"").unwrap();
-        assert_eq!(status, InternalStatus::ExecutionDone);
-    }
 
     #[test]
     fn deserializes_all_variants() {
@@ -343,7 +325,6 @@ mod tests {
 
     #[test]
     fn as_str_returns_snake_case() {
-        assert_eq!(InternalStatus::ExecutionDone.as_str(), "execution_done");
         assert_eq!(InternalStatus::QaRefining.as_str(), "qa_refining");
         assert_eq!(InternalStatus::PendingReview.as_str(), "pending_review");
     }
@@ -375,15 +356,9 @@ mod tests {
     fn executing_transitions() {
         use InternalStatus::*;
         let transitions = Executing.valid_transitions();
-        assert_eq!(transitions, &[ExecutionDone, Failed, Blocked]);
+        assert_eq!(transitions, &[QaRefining, PendingReview, Failed, Blocked]);
     }
 
-    #[test]
-    fn execution_done_transitions() {
-        use InternalStatus::*;
-        let transitions = ExecutionDone.valid_transitions();
-        assert_eq!(transitions, &[QaRefining, PendingReview]);
-    }
 
     #[test]
     fn qa_refining_transitions() {
@@ -460,11 +435,11 @@ mod tests {
         // Ready -> Executing is valid
         assert!(Ready.can_transition_to(Executing));
 
-        // Executing -> ExecutionDone is valid
-        assert!(Executing.can_transition_to(ExecutionDone));
+        // Executing -> QaRefining is valid
+        assert!(Executing.can_transition_to(QaRefining));
 
-        // ExecutionDone -> QaRefining is valid
-        assert!(ExecutionDone.can_transition_to(QaRefining));
+        // Executing -> PendingReview is valid
+        assert!(Executing.can_transition_to(PendingReview));
 
         // QaTesting -> QaPassed is valid
         assert!(QaTesting.can_transition_to(QaPassed));
@@ -535,11 +510,10 @@ mod tests {
     fn happy_path_without_qa() {
         use InternalStatus::*;
 
-        // Backlog -> Ready -> Executing -> ExecutionDone -> PendingReview -> Reviewing -> ReviewPassed -> Approved
+        // Backlog -> Ready -> Executing -> PendingReview -> Reviewing -> ReviewPassed -> Approved
         assert!(Backlog.can_transition_to(Ready));
         assert!(Ready.can_transition_to(Executing));
-        assert!(Executing.can_transition_to(ExecutionDone));
-        assert!(ExecutionDone.can_transition_to(PendingReview));
+        assert!(Executing.can_transition_to(PendingReview));
         assert!(PendingReview.can_transition_to(Reviewing));
         assert!(Reviewing.can_transition_to(ReviewPassed));
         assert!(ReviewPassed.can_transition_to(Approved));
@@ -549,12 +523,11 @@ mod tests {
     fn happy_path_with_qa() {
         use InternalStatus::*;
 
-        // Backlog -> Ready -> Executing -> ExecutionDone -> QaRefining ->
+        // Backlog -> Ready -> Executing -> QaRefining ->
         // QaTesting -> QaPassed -> PendingReview -> Reviewing -> ReviewPassed -> Approved
         assert!(Backlog.can_transition_to(Ready));
         assert!(Ready.can_transition_to(Executing));
-        assert!(Executing.can_transition_to(ExecutionDone));
-        assert!(ExecutionDone.can_transition_to(QaRefining));
+        assert!(Executing.can_transition_to(QaRefining));
         assert!(QaRefining.can_transition_to(QaTesting));
         assert!(QaTesting.can_transition_to(QaPassed));
         assert!(QaPassed.can_transition_to(PendingReview));
@@ -672,8 +645,8 @@ mod tests {
 
     #[test]
     fn debug_format_works() {
-        let debug = format!("{:?}", InternalStatus::ExecutionDone);
-        assert_eq!(debug, "ExecutionDone");
+        let debug = format!("{:?}", InternalStatus::Executing);
+        assert_eq!(debug, "Executing");
     }
 
     #[test]

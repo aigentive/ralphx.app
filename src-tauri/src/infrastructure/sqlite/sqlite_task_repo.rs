@@ -900,7 +900,7 @@ mod tests {
         repo.persist_status_change(
             &task.id,
             InternalStatus::Executing,
-            InternalStatus::ExecutionDone,
+            InternalStatus::QaRefining,
             "step3",
         )
         .await
