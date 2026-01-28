@@ -100,7 +100,9 @@ pub fn run() {
             // Clone execution_state from Tauri state for HTTP server
             let http_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             tauri::async_runtime::spawn(async move {
-                http_server::start_http_server(http_app_state, http_execution_state).await;
+                if let Err(e) = http_server::start_http_server(http_app_state, http_execution_state).await {
+                    tracing::error!("HTTP server failed: {}", e);
+                }
             });
 
             // Register RalphX MCP server with Claude Code CLI
@@ -171,20 +173,20 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::health::health_check,
-            commands::task_commands::list_tasks,
-            commands::task_commands::get_task,
-            commands::task_commands::create_task,
-            commands::task_commands::update_task,
-            commands::task_commands::delete_task,
-            commands::task_commands::answer_user_question,
-            commands::task_commands::inject_task,
-            commands::task_commands::move_task,
-            commands::task_commands::archive_task,
-            commands::task_commands::restore_task,
-            commands::task_commands::permanently_delete_task,
-            commands::task_commands::get_archived_count,
-            commands::task_commands::search_tasks,
-            commands::task_commands::get_valid_transitions,
+            commands::task_commands::query::list_tasks,
+            commands::task_commands::query::get_task,
+            commands::task_commands::mutation::create_task,
+            commands::task_commands::mutation::update_task,
+            commands::task_commands::mutation::delete_task,
+            commands::task_commands::mutation::answer_user_question,
+            commands::task_commands::mutation::inject_task,
+            commands::task_commands::mutation::move_task,
+            commands::task_commands::mutation::archive_task,
+            commands::task_commands::mutation::restore_task,
+            commands::task_commands::mutation::permanently_delete_task,
+            commands::task_commands::query::get_archived_count,
+            commands::task_commands::query::search_tasks,
+            commands::task_commands::query::get_valid_transitions,
             // Task step commands
             commands::task_step_commands::create_task_step,
             commands::task_step_commands::get_task_steps,
