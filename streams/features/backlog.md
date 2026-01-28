@@ -7,7 +7,7 @@
 
 ## From Phase 24 Verification (2026-01-28)
 
-- [ ] [Infrastructure] Orphaned Process: verify stream fswatch not killed on stop - ralph-tmux.sh:169
+- [x] [Infrastructure] Orphaned Process: verify stream fswatch not killed on stop - ralph-tmux.sh:169
 
 ---
 

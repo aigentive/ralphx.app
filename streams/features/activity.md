@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 23:52:00 - P0 Fix: Orphaned verify stream fswatch process
+**What:**
+- Fixed pkill pattern in ralph-tmux.sh stop_all() that missed verify stream fswatch
+- Verify stream watches `specs/manifest.json specs/phases` (no `streams/` path)
+- Original pattern `fswatch.*streams/` didn't match verify's watched paths
+- Updated pattern to `fswatch.*(streams/|specs/)` to catch all stream watchers
+
+**Commands:**
+- `bash -n ralph-tmux.sh` - syntax validation passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 18:45:00 - Update ralph-streams.sh for stream argument and model selection
 **What:**
 - Added STREAM argument parsing (first arg) with validation for: features, refactor, polish, verify, hygiene
