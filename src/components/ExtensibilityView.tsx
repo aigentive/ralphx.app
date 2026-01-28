@@ -606,13 +606,13 @@ function ResearchPanel() {
   const isCustom = selectedPreset === "custom";
 
   const handleLaunch = useCallback(() => {
-    const brief: ResearchBrief = {
+    const _brief: ResearchBrief = {
       question,
       constraints: [],
       ...(context && { context }),
       ...(scope && { scope }),
     };
-    const depth: ResearchDepth = isCustom
+    const _depth: ResearchDepth = isCustom
       ? {
           type: "custom",
           config: {
@@ -626,7 +626,7 @@ function ResearchPanel() {
     setIsLaunching(true);
     // Simulate launch
     setTimeout(() => setIsLaunching(false), 2000);
-    console.log("Launching research:", { brief, depth });
+    // TODO: Call actual research launch command with { _brief, _depth }
   }, [question, context, scope, isCustom, selectedPreset, customIterations, customTimeout]);
 
   // Recent sessions mock

@@ -396,11 +396,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
 
-  // Debug: log context key and agent running state changes
-  useEffect(() => {
-    console.log(`[ChatPanel] contextKey=${contextKey}, isAgentRunning=${isAgentRunning}`);
-  }, [contextKey, isAgentRunning]);
-
   // Detect execution mode: if task is executing, switch to task_execution context
   const selectedTask = useTaskStore((state) =>
     context.selectedTaskId ? state.tasks[context.selectedTaskId] : undefined
@@ -758,8 +753,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         conversation_id: string;
         status: string;
       }>("agent:run_completed", (event) => {
-        const { conversation_id, context_type } = event.payload;
-        console.log(`Agent run completed: context=${context_type}, conversation=${conversation_id}`);
+        const { conversation_id } = event.payload;
         // Clear streaming tool calls
         setStreamingToolCalls([]);
         // Invalidate cache to get final messages
