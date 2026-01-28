@@ -563,3 +563,55 @@ body {
   border-color: var(--status-warning);
   border-width: 2px;
 }
+
+/* ============================================================================
+ * Review State Animations
+ * ============================================================================ */
+
+/* Reviewing pulse - subtle blue glow effect for tasks being reviewed by AI */
+@keyframes reviewing-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsla(217 91% 60% / 0.5),
+                0 0 8px hsla(217 91% 60% / 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 4px hsla(217 91% 60% / 0),
+                0 0 12px hsla(217 91% 60% / 0.4);
+  }
+}
+
+:root {
+  --animation-reviewing-pulse: reviewing-pulse 2s ease-in-out infinite;
+}
+
+/* Task card reviewing state - blue border with pulse */
+.task-card-reviewing {
+  animation: var(--animation-reviewing-pulse);
+  border-color: var(--status-info);
+  border-width: 2px;
+}
+
+/* Task card revision state - orange/warning left border accent */
+.task-card-revision {
+  border-left: 3px solid var(--status-warning) !important;
+}
+
+/* Task card review passed state - green/success accent */
+.task-card-review-passed {
+  border-color: var(--status-success);
+  border-width: 2px;
+}
+
+/* Badge reviewing animation - subtle background pulse */
+.badge-reviewing {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    background-color: rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.35);
+  }
+}
