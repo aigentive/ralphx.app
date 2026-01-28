@@ -1,10 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 15:35:00
+**Last Updated:** 2026-01-28 16:15:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 6 / 11
-**Current Task:** Update TaskTransitionService to accept ExecutionState
+**Tasks Completed:** 8 / 11
+**Current Task:** Wire startup job runner in lib.rs setup
+
+---
+
+### 2026-01-28 16:15:00 - Wire StartupJobRunner in lib.rs Setup
+
+**What:**
+- Added imports for `StartupJobRunner`, `TaskTransitionService`, and `Duration` to lib.rs
+- Added startup job runner spawn block after HTTP server initialization:
+  - Clones all required Arc references from AppState for async task
+  - Gets execution_state from Tauri state
+  - Waits 500ms for HTTP server to be ready
+  - Creates TaskTransitionService with all dependencies
+  - Creates StartupJobRunner with transition service and execution state
+  - Calls runner.run().await to resume tasks in agent-active states
+
+**Integration points:**
+- Startup job runner respects pause state (skips if paused)
+- Respects max_concurrent limits during resumption
+- Re-executes entry actions for tasks in: Executing, QaRefining, QaTesting, Reviewing, ReExecuting
+
+**Quality Improvement:**
+- Removed unused `TransitionObserver` trait from transition_handler.rs (dead code)
+
+**Commands:**
+```bash
+cargo build
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
 
 ---
 
