@@ -123,7 +123,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test syntax: bash -n scripts/stream-watch-features.sh",
       "Commit: feat(tmux): add fswatch wrapper for features stream"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
