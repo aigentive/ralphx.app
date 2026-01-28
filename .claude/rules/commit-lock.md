@@ -24,13 +24,13 @@ Example: `features 2026-01-29T10:30:45`
    → NOT EXISTS: Create lock and proceed (step 4)
    → EXISTS: Read and save the lock content (who + when)
 
-2. Check if lock is stale (timestamp > 2 minutes old)
+2. Check if lock is stale (timestamp > 30 seconds old)
    → STALE: Delete it, log "Removed stale lock from <stream>", create your lock, proceed
    → NOT STALE: Continue to step 3
 
 3. Wait and retry loop:
-   a. Log: "Commit locked by <stream>. Waiting 5s..."
-   b. Run: sleep 5
+   a. Log: "Commit locked by <stream>. Waiting 3s..."
+   b. Run: sleep 3
    c. Check .commit-lock again:
       → NOT EXISTS: Create your lock, proceed (step 4)
       → EXISTS but DIFFERENT content: Lock changed hands, save new content, go to 3a
@@ -51,10 +51,12 @@ Example: `features 2026-01-29T10:30:45`
 
 ### Stale Lock Detection
 
-If lock file timestamp is older than **2 minutes**:
+If lock file timestamp is older than **30 seconds**:
 - Lock is considered stale (previous stream crashed)
 - Safe to delete and acquire lock
 - Log: "Removed stale commit lock from <stream>"
+
+A commit should take ~10-15 seconds max. 30 seconds gives generous buffer.
 
 ## Implementation Example
 
@@ -62,19 +64,19 @@ If lock file timestamp is older than **2 minutes**:
 ```bash
 acquire_lock() {
   local stream_name="$1"
-  local max_wait=120  # 2 minutes max
+  local max_wait=30  # 30 seconds max (commits are fast)
   local waited=0
 
   while [ -f .commit-lock ]; do
     local lock_content=$(cat .commit-lock 2>/dev/null)
     local lock_time=$(echo "$lock_content" | cut -d' ' -f2)
 
-    # Check if stale (> 2 minutes)
+    # Check if stale (> 30 seconds)
     # ... stale check logic ...
 
-    echo "Commit locked by $lock_content. Waiting 5s..."
-    sleep 5
-    waited=$((waited + 5))
+    echo "Commit locked by $lock_content. Waiting 3s..."
+    sleep 3
+    waited=$((waited + 3))
 
     if [ $waited -ge $max_wait ]; then
       echo "Lock wait timeout, removing stale lock"
@@ -97,7 +99,7 @@ rm -f .commit-lock
 1. **ALWAYS acquire lock before `git add`**
 2. **ALWAYS release lock after commit completes (success or failure)**
 3. **NEVER force-delete another stream's active lock (unless stale)**
-4. **Stale locks (>2 min) can be safely removed**
+4. **Stale locks (>30 sec) can be safely removed**
 5. **Always read lock content, not just existence** — lock may change hands while waiting
 
 ## Error Handling
