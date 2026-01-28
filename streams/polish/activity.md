@@ -935,3 +935,19 @@
 - `npm run lint -- src/components/ExtensibilityView.ResearchPanel.tsx && npm run typecheck` (passed - 0 errors, 4 pre-existing warnings)
 
 **Result:** Success
+
+---
+
+### 2026-01-29 01:43:44 - Implement task reopen functionality in CompletedTaskDetail
+**What:**
+- File: src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
+- Implemented handleReopenTask to transition task from "approved" to "ready" status
+- Added necessary imports: api, useQueryClient, taskKeys
+- Used api.tasks.move() with error handling and query invalidation
+- Changed function to async and added try-catch for error handling
+
+**Commands:**
+- `npm run lint -- src/components/tasks/detail-views/CompletedTaskDetail.tsx` (passed - 0 errors, 4 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
