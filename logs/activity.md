@@ -1,10 +1,29 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:24:02
+**Last Updated:** 2026-01-28 16:33:15
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 3 / 12
-**Current Task:** Emit event on running count increment
+**Tasks Completed:** 4 / 12
+**Current Task:** Pass AppHandle to TransitionHandler for decrement emission
+
+---
+
+### 2026-01-28 16:33:15 - Pass AppHandle to TransitionHandler for decrement emission
+
+**What:**
+- Added `app_handle: Option<AppHandle<Wry>>` field to `TaskServices` struct
+- Added `with_app_handle()` builder method for concrete Wry handles
+- Added `try_with_app_handle<R: Runtime>()` for generic runtime conversion using type-erasure
+- Updated `TaskTransitionService` to pass app_handle to TaskServices in execute_entry_actions and execute_exit_actions
+
+**Quality Improvement:**
+- Extracted duplicate `InternalStatus -> State` conversion (17-line match block x2) into `internal_status_to_state()` helper
+- Reduced task_transition_service.rs from 475 LOC to 463 LOC
+- Updated code-quality.md: added extraction as P3 [x]
+
+**Commands:**
+- `cargo test --lib` — 3234 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
 
 ---
 
