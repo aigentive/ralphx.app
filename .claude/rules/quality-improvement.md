@@ -8,9 +8,14 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
 
 ```
 1. Read logs/code-quality.md
-2. Items exist? → Pick ONE by scope → Execute → Mark [x] → Commit
-3. List empty? → Launch Explore agent → Update file → Pick ONE → Execute → Commit
+2. Items exist? → Pick ONE by scope
+3. VERIFY issue still exists (read file:line, check if problem remains)
+   ├── Still valid? → Execute → Mark [x] → Commit
+   └── Stale? → Mark [~] → Pick next item
+4. List empty/all stale? → Launch Explore agent → Update file → Pick ONE → Verify → Execute
 ```
+
+**Why verify?** Other tasks or parallel agents may have already fixed the issue. Don't waste effort on stale items.
 
 ## Scope Matching
 
