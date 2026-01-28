@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:16:47 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 4/10 completed, polish: 10/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 11 active items, polish: 11 active items)
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - App.tsx:784 Open diff viewer (PRD:20:1:1:1:1 → PRD:20:1:1:1:1:1): TODO still exists → **Counter incremented**
+  - TaskFullView.tsx:213 Edit task modal (PRD:18:1:1:1:1 → PRD:18:1:1:1:1:1): TODO still exists → **Counter incremented**
+  - CompletedTaskDetail.tsx:263 console.log stub (stale:1 → stale:2): Confirmed removed → **Archived**
+
+**Result:** 2 validation counters incremented, 1 item archived
+
+---
+
 ### 2026-01-28 23:15:00 - Backlog Maintenance
 
 **Archive:**
