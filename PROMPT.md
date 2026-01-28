@@ -71,9 +71,11 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 **Every task requires a `refactor:` commit. No exceptions.**
 
 ```
-Read logs/code-quality.md → Pick ONE by scope → VERIFY (exists + NOT in active PRD) → Execute → Mark [x]
-Stale/PRD? → Strikethrough ~~text~~ (stale|PRD), pick next | List empty? → Explore agent
+Read logs/code-quality.md → Pick ONE (P0 first, then by scope) → VERIFY (exists + NOT in PRD) → Execute → Mark [x]
+Stale/PRD? → Strikethrough, pick next | Scope exhausted? → ESCALATE (P3→P2→P1) | ALL exhausted? → Explore agent
 ```
+
+**NO SKIPPING. "Nothing to do" is NOT valid.** Escalate scope or replenish with Explore agent.
 
 **Full workflow:** `.claude/rules/quality-improvement.md`
 

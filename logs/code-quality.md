@@ -12,7 +12,11 @@
 5. Valid & not in PRD? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
 6. Stale (already fixed)? → Strikethrough text `~~text~~ (stale)`, pick next
 7. In PRD (planned work)? → Strikethrough text `~~text~~ (PRD)`, pick next
-8. If all items done/marked → Launch Explore agent to replenish
+8. **Scope exhausted? → ESCALATE** (P3→P2→P1, pick larger scope item)
+9. **ALL exhausted? → Launch Explore agent** to replenish, then pick ONE
+
+## NO SKIPPING
+**"Nothing to do" is NOT valid.** Escalate scope or replenish. A `refactor:` commit is MANDATORY.
 
 ## Priority Levels
 - **P0 - Critical**: Gaps found during phase verification (pick FIRST, any task size)
