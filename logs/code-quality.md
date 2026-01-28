@@ -33,6 +33,7 @@
 - [x] Reduce ReviewsPanel component size (605 LOC → 233 LOC) - extracted sub-components to ReviewsPanel.utils.tsx - src/components/reviews/ReviewsPanel.tsx:1-50
 
 ### P2 - Medium Impact
+- [x] Remove unnecessary step.clone() in http_server.rs step handlers (derive Clone on StepResponse, create response once) - src-tauri/src/http_server.rs:1653,1705,1757,1809
 - [x] Extract PRIORITY_CONFIG and animationStyles from IdeationView to IdeationView.constants.ts - src/components/Ideation/IdeationView.tsx
 - [x] Remove duplicate PRIORITY_CONFIG from ProposalCard, import from shared constants - src/components/Ideation/ProposalCard.tsx
 - [x] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693

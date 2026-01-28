@@ -309,7 +309,7 @@ pub struct AddStepRequest {
     pub after_step_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StepResponse {
     pub id: String,
     pub task_id: String,
@@ -1648,19 +1648,20 @@ async fn start_step_http(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let response = StepResponse::from(step);
+
     // Emit event to frontend
     if let Some(app_handle) = &state.app_state.app_handle {
-        let response = StepResponse::from(step.clone());
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
+                "step": response.clone(),
+                "task_id": &response.task_id
             }),
         );
     }
 
-    Ok(Json(StepResponse::from(step)))
+    Ok(Json(response))
 }
 
 /// POST /api/complete_step
@@ -1700,19 +1701,20 @@ async fn complete_step_http(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let response = StepResponse::from(step);
+
     // Emit event to frontend
     if let Some(app_handle) = &state.app_state.app_handle {
-        let response = StepResponse::from(step.clone());
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
+                "step": response.clone(),
+                "task_id": &response.task_id
             }),
         );
     }
 
-    Ok(Json(StepResponse::from(step)))
+    Ok(Json(response))
 }
 
 /// POST /api/skip_step
@@ -1752,19 +1754,20 @@ async fn skip_step_http(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let response = StepResponse::from(step);
+
     // Emit event to frontend
     if let Some(app_handle) = &state.app_state.app_handle {
-        let response = StepResponse::from(step.clone());
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
+                "step": response.clone(),
+                "task_id": &response.task_id
             }),
         );
     }
 
-    Ok(Json(StepResponse::from(step)))
+    Ok(Json(response))
 }
 
 /// POST /api/fail_step
@@ -1804,19 +1807,20 @@ async fn fail_step_http(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let response = StepResponse::from(step);
+
     // Emit event to frontend
     if let Some(app_handle) = &state.app_state.app_handle {
-        let response = StepResponse::from(step.clone());
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
+                "step": response.clone(),
+                "task_id": &response.task_id
             }),
         );
     }
 
-    Ok(Json(StepResponse::from(step)))
+    Ok(Json(response))
 }
 
 /// POST /api/add_step
