@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-28 22:41:10 - Remove eslint-disable comments from useChat.test.ts
+**What:**
+- File: src/hooks/useChat.test.ts
+- Change: Removed all 6 eslint-disable comments for @typescript-eslint/no-explicit-any
+- Added proper TypeScript generics for zustand store mock: `StoreMock` type and `StoreSelector<T>` helper
+- Replaced `(selector?: any)` with `<T = StoreMock>(selector?: StoreSelector<T>)`
+- Replaced `as any` casts with properly typed `as T`
+- Also marked related P2 and P3 items as stale in backlog
+
+**Commands:**
+- `npx eslint src/hooks/useChat.test.ts`
+
+**Result:** Success (no lint errors, all eslint-disable comments removed)
+
+---
+
 ### 2026-01-28 22:37:36 - Remove console.warn from App.tsx
 **What:**
 - File: src/App.tsx:283
