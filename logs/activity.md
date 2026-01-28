@@ -1,15 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:45:00
-**Phase:** Review System
-**Tasks Completed:** 8 / 39
-**Current Task:** Add maxRevisionCycles to review settings
+**Last Updated:** 2026-01-28 04:14:46
+**Phase:** Review System (Phase 20)
+**Tasks Completed:** 9 / 39
+**Current Task:** Add get_review_notes MCP tool definition
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 04:14:46 - Add maxRevisionCycles to ReviewSettings
+
+**What:**
+- Added `max_revision_cycles` field to ReviewSettings entity (default: 5)
+- Added `exceeded_max_revisions()` helper method to ReviewSettings
+- Created review_settings table with migration v25 in `src-tauri/src/infrastructure/sqlite/migrations.rs`
+- Implemented ReviewSettingsRepository trait in `src-tauri/src/domain/repositories/review_settings_repository.rs`
+- Implemented SqliteReviewSettingsRepository in `src-tauri/src/infrastructure/sqlite/sqlite_review_settings_repo.rs`
+- Implemented MemoryReviewSettingsRepository in `src-tauri/src/infrastructure/memory/memory_review_settings_repo.rs`
+- Wired review_settings_repo into AppState (production and test constructors)
+- Updated all tests to include new field (15 tests passing in config.rs)
+- **Quality improvement:** Implemented TODO in `src-tauri/src/http_server.rs:1115` - replaced hardcoded max_revisions with dynamic fetch from review_settings_repo
+
+**Commands:**
+- `cargo test --lib` - all 3205 tests passing
+- `cargo clippy --all-targets --all-features -- -D warnings` - no warnings
+- `git commit -m "feat(settings): add maxRevisionCycles to ReviewSettings"`
+- `git commit -m "refactor(http): fetch max_revision_cycles from ReviewSettings"`
 
 ### 2026-01-28 18:45:00 - Add get_review_notes HTTP Endpoint
 
