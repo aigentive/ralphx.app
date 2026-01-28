@@ -5,13 +5,16 @@
 ## How This Works
 1. Each iteration reads this file first
 2. Pick ONE item matching current task scope (small task = P3, large task = P1)
-3. **VERIFY** issue still exists (read file:line, check if problem remains)
-4. Still valid? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
-5. Stale (already fixed)? → Mark `[~]` and pick next item
-6. If all items done/stale → Launch Explore agent to replenish
+3. **VERIFY:**
+   - Issue still exists? (read file:line)
+   - NOT in active PRD? (cross-reference with current phase task list)
+4. Valid & not in PRD? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
+5. Stale (already fixed)? → Mark `[~]` and pick next
+6. In PRD (planned work)? → Mark `[P]` and pick next
+7. If all items done/marked → Launch Explore agent to replenish
 
 ## Markers
-- `[ ]` Pending | `[x]` Done | `[~]` Stale (skip)
+- `[ ]` Pending | `[x]` Done | `[~]` Stale | `[P]` PRD-planned (skip)
 
 ---
 
