@@ -103,3 +103,21 @@
 **Result:** Maintenance complete - all backlogs healthy
 
 ---
+
+### 2026-01-28 20:18:36 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from polish/backlog.md to archive (PRD:20:1:2 validation complete)
+
+**Refill:**
+- No refill needed (refactor: 14 active items, polish: 9 active items)
+
+**Validation:**
+- Checked 3 PRD-deferred items:
+  - App.tsx TODO ~line 200 (PRD:20:1:1): NOT FOUND → Incremented to PRD:20:1:2 → Archived
+  - App.tsx TODO ~line 400 (PRD:20:1): NOT FOUND → Incremented to PRD:20:1:1
+  - useEvents.ts TODO ~line 50 (PRD:19): STILL EXISTS at line 217 (file change handling) → No change
+
+**Result:** Maintenance complete
+
+---
