@@ -17,6 +17,7 @@ pub mod review_commands_types;
 pub mod task_commands;
 pub mod task_context_commands;
 pub mod task_step_commands;
+pub mod task_step_commands_types;
 pub mod test_data_commands;
 pub mod unified_chat_commands;
 pub mod workflow_commands;
