@@ -96,12 +96,20 @@ impl Notifier for LoggingNotifier {
 }
 
 /// No-op DependencyManager - placeholder until dependencies are fully wired
+///
+/// Note: Task dependency repositories exist (TaskDependencyRepository), but are not yet
+/// integrated into the state machine. This stub allows the transition system to function
+/// without blocking on dependency implementation. When ready to wire dependencies:
+/// 1. Create RepoBackedDependencyManager struct with TaskDependencyRepository + TaskRepository
+/// 2. Implement unblock_dependents to query dependencies and update dependent task states
+/// 3. Implement has_unresolved_blockers to check for blocking tasks
+/// 4. Wire into TaskTransitionService initialization
 pub struct NoOpDependencyManager;
 
 #[async_trait]
 impl DependencyManager for NoOpDependencyManager {
     async fn unblock_dependents(&self, _task_id: &str) {
-        // TODO: Implement when task dependencies are fully wired
+        // No-op: dependency resolution not yet wired to state machine
     }
 
     async fn has_unresolved_blockers(&self, _task_id: &str) -> bool {
@@ -150,6 +158,30 @@ fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_mach
         InternalStatus::Approved => State::Approved,
         InternalStatus::Failed => State::Failed(Default::default()),
         InternalStatus::Cancelled => State::Cancelled,
+    }
+}
+
+/// Convert state machine State to InternalStatus.
+/// Used for persisting auto-transitions to the database.
+fn state_to_internal_status(state: &crate::domain::state_machine::machine::State) -> InternalStatus {
+    use crate::domain::state_machine::machine::State;
+    match state {
+        State::Backlog => InternalStatus::Backlog,
+        State::Ready => InternalStatus::Ready,
+        State::Blocked => InternalStatus::Blocked,
+        State::Executing => InternalStatus::Executing,
+        State::QaRefining => InternalStatus::QaRefining,
+        State::QaTesting => InternalStatus::QaTesting,
+        State::QaPassed => InternalStatus::QaPassed,
+        State::QaFailed(_) => InternalStatus::QaFailed,
+        State::PendingReview => InternalStatus::PendingReview,
+        State::Reviewing => InternalStatus::Reviewing,
+        State::ReviewPassed => InternalStatus::ReviewPassed,
+        State::RevisionNeeded => InternalStatus::RevisionNeeded,
+        State::ReExecuting => InternalStatus::ReExecuting,
+        State::Approved => InternalStatus::Approved,
+        State::Failed(_) => InternalStatus::Failed,
+        State::Cancelled => InternalStatus::Cancelled,
     }
 }
 
@@ -324,10 +356,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         Ok(task)
     }
 
-    /// Execute entry actions for a given status.
+    /// Execute entry actions for a given status, including auto-transitions.
     ///
     /// This method delegates to TransitionHandler::on_enter() to ensure we use
     /// the canonical entry action logic defined in the state machine module.
+    /// It also handles auto-transitions (e.g., PendingReview → Reviewing).
     ///
     /// Public so that StartupJobRunner can re-trigger entry actions on app restart
     /// for tasks that were in agent-active states when the app shut down.
@@ -376,6 +409,33 @@ impl<R: Runtime> TaskTransitionService<R> {
         tracing::debug!(?state, "Calling TransitionHandler::on_enter");
         handler.on_enter(&state).await;
         tracing::debug!("TransitionHandler::on_enter complete");
+
+        // Check for auto-transitions (e.g., PendingReview → Reviewing, RevisionNeeded → ReExecuting)
+        // This is critical for states that should immediately transition to spawn an agent
+        if let Some(auto_state) = handler.check_auto_transition(&state) {
+            let auto_status = state_to_internal_status(&auto_state);
+            tracing::info!(
+                from = status.as_str(),
+                to = auto_status.as_str(),
+                "Auto-transition triggered"
+            );
+
+            // Execute on_exit for the intermediate state
+            handler.on_exit(&state, &auto_state).await;
+
+            // Persist the auto-transition to the database
+            if let Ok(Some(mut updated_task)) = self.task_repo.get_by_id(task_id).await {
+                updated_task.internal_status = auto_status;
+                updated_task.touch();
+                if let Err(e) = self.task_repo.update(&updated_task).await {
+                    tracing::error!(error = %e, "Failed to persist auto-transition");
+                }
+            }
+
+            // Execute on_enter for the auto-transition target state
+            handler.on_enter(&auto_state).await;
+            tracing::debug!(?auto_state, "Auto-transition on_enter complete");
+        }
     }
 
     /// Execute exit actions for a status transition.
