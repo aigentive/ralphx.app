@@ -330,7 +330,10 @@ pub async fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), S
 ///
 /// This is called when a task moves to or from Ready status, providing real-time
 /// queue count updates to the frontend's ExecutionControlBar.
-async fn emit_queue_changed(
+///
+/// This function is public so it can be reused by other command modules that
+/// transition tasks to/from Ready status (e.g., review_commands::approve_fix_task).
+pub async fn emit_queue_changed(
     state: &State<'_, AppState>,
     project_id: &ProjectId,
     app: &tauri::AppHandle,
@@ -523,6 +526,8 @@ pub async fn inject_task(
     );
 
     let target = if input.target == "planned" {
+        // Emit queue_changed since we're adding a task to Ready status
+        emit_queue_changed(&state, &project_id, &app).await;
         "planned".to_string()
     } else {
         "backlog".to_string()
@@ -555,6 +560,7 @@ pub async fn inject_task(
 pub async fn answer_user_question(
     input: AnswerUserQuestionInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<AnswerUserQuestionResponse, String> {
     let task_id = TaskId::from_string(input.task_id.clone());
 
@@ -575,6 +581,8 @@ pub async fn answer_user_question(
         ));
     }
 
+    let project_id = task.project_id.clone();
+
     // Transition to Ready status (per state machine: Blocked -> Ready)
     task.internal_status = InternalStatus::Ready;
     task.touch();
@@ -585,6 +593,9 @@ pub async fn answer_user_question(
         .update(&task)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Emit queue_changed since we're transitioning a task to Ready status
+    emit_queue_changed(&state, &project_id, &app).await;
 
     // TODO: In a future iteration, we could store the answer for agent context
     // For now, the answer is handled by the frontend sending it directly to the agent

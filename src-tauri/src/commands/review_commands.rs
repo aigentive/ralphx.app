@@ -198,7 +198,10 @@ use crate::domain::review::config::ReviewSettings;
 pub async fn approve_fix_task(
     input: ApproveFixTaskInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
+    use crate::commands::emit_queue_changed;
+
     let fix_task_id = TaskId::from_string(input.fix_task_id);
 
     // Get the fix task
@@ -218,13 +221,20 @@ pub async fn approve_fix_task(
         ));
     }
 
+    let project_id = fix_task.project_id.clone();
+
     // Change to Ready status
     fix_task.internal_status = InternalStatus::Ready;
     state
         .task_repo
         .update(&fix_task)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Emit queue_changed since we're transitioning a task to Ready status
+    emit_queue_changed(&state, &project_id, &app).await;
+
+    Ok(())
 }
 
 /// Reject a fix task with feedback, optionally creating a new fix proposal
@@ -233,7 +243,10 @@ pub async fn approve_fix_task(
 pub async fn reject_fix_task(
     input: RejectFixTaskInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
+    use crate::commands::emit_queue_changed;
+
     let fix_task_id = TaskId::from_string(input.fix_task_id);
     let original_task_id = TaskId::from_string(input.original_task_id);
     let settings = ReviewSettings::default();
@@ -256,6 +269,8 @@ pub async fn reject_fix_task(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Original task not found: {}", original_task_id.as_str()))?;
+
+    let project_id = original_task.project_id.clone();
 
     // Count fix attempts for original task
     let attempt_count = state
@@ -294,24 +309,31 @@ pub async fn reject_fix_task(
     );
 
     let mut new_fix_task = Task::new_with_category(
-        original_task.project_id.clone(),
+        project_id.clone(),
         format!("Fix: {}", original_task.title),
         "fix".to_string(),
     );
     new_fix_task.set_description(Some(new_fix_description));
     new_fix_task.set_priority(original_task.priority + 1);
 
-    if settings.needs_fix_approval() {
+    let should_emit_queue_changed = if settings.needs_fix_approval() {
         new_fix_task.internal_status = InternalStatus::Blocked;
+        false
     } else {
         new_fix_task.internal_status = InternalStatus::Ready;
-    }
+        true
+    };
 
     let created = state
         .task_repo
         .create(new_fix_task)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Emit queue_changed if the new fix task is in Ready status
+    if should_emit_queue_changed {
+        emit_queue_changed(&state, &project_id, &app).await;
+    }
 
     Ok(Some(created.id.as_str().to_string()))
 }
