@@ -242,21 +242,22 @@ After completing the task: update `"passes": true`, commit, and stop.
   },
   {
     "category": "verification",
-    "description": "End-to-end verification of tmux orchestration",
+    "description": "Automated verification of tmux orchestration (non-interactive checks only)",
     "plan_section": "Verification",
     "steps": [
-      "Verify tmux installed: tmux -V",
-      "Verify fswatch installed: fswatch --version",
-      "Test session creation: ./ralph-tmux.sh",
-      "Verify 6 panes created with correct layout",
-      "Verify header shows status information",
-      "Test detach: Ctrl+b d",
-      "Test reattach: ./ralph-tmux.sh attach",
-      "Test file watch: touch streams/features/backlog.md (should trigger features)",
-      "Test stop: ./ralph-tmux.sh stop (all processes terminate)",
-      "Test single restart: ./ralph-tmux.sh restart features",
-      "Document any issues in activity log",
-      "Commit: docs: complete Phase 24 verification"
+      "AUTOMATED CHECKS (Claude can verify):",
+      "  - tmux -V (check installed)",
+      "  - fswatch --version (check installed)",
+      "  - bash -n ralph-tmux.sh (syntax check)",
+      "  - bash -n ralph-tmux-status.sh (syntax check)",
+      "  - bash -n scripts/stream-watch-*.sh (syntax check all wrappers)",
+      "  - ls -la ralph-tmux.sh (verify executable)",
+      "  - ls -la scripts/stream-watch-*.sh (verify all executable)",
+      "  - ./ralph-tmux.sh status (should report NOT RUNNING)",
+      "Log all check results to streams/features/activity.md",
+      "NOTE: Interactive tests (Ctrl+b d, visual pane layout, file watch triggers)",
+      "      require human verification - documented in Verification Checklist below",
+      "Commit: docs: complete Phase 24 automated verification"
     ],
     "passes": false
   }
@@ -280,21 +281,23 @@ After completing the task: update `"passes": true`, commit, and stop.
 
 ## Verification Checklist
 
-**Manual verification after completing all tasks:**
+### Automated (Task 10 - Claude verifies)
 
-### Prerequisites
 - [ ] `tmux -V` shows version 3.x+
 - [ ] `fswatch --version` shows version
+- [ ] `ralph-tmux.sh` passes `bash -n` syntax check
+- [ ] `ralph-tmux-status.sh` passes `bash -n` syntax check
+- [ ] All `scripts/stream-watch-*.sh` pass `bash -n` syntax check
+- [ ] All scripts are executable (`ls -la` shows `x` permission)
+- [ ] `./ralph-tmux.sh status` runs without error
 
-### Scripts
-- [ ] `ralph-tmux.sh` is executable and passes syntax check
-- [ ] `ralph-tmux-status.sh` is executable and passes syntax check
-- [ ] All `scripts/stream-watch-*.sh` are executable and pass syntax check
+### Human Verification (after phase complete)
 
-### Functionality
-- [ ] `./ralph-tmux.sh` creates 6-pane tmux session
+**Interactive tests that require human to run:**
+
+- [ ] `./ralph-tmux.sh` creates 6-pane tmux session (visual check)
 - [ ] Header pane shows uptime and backlog counts
-- [ ] Each stream pane shows stream name and status
+- [ ] Each stream pane shows stream name and model
 - [ ] `Ctrl+b d` detaches without stopping streams
 - [ ] `./ralph-tmux.sh attach` reattaches to running session
 - [ ] `touch streams/features/backlog.md` triggers features stream
@@ -302,6 +305,7 @@ After completing the task: update `"passes": true`, commit, and stop.
 - [ ] `./ralph-tmux.sh restart features` restarts single stream
 
 ### Documentation
+
 - [ ] CLAUDE.md has Tmux Orchestration section
 - [ ] Daily workflow commands documented
 - [ ] Key bindings documented
