@@ -2,7 +2,7 @@
  * ResizeablePanel - Reusable panel with resize functionality
  */
 
-import { useRef, useState, useCallback, type ReactNode } from "react";
+import { useRef, useState, useCallback, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { MIN_WIDTH, MAX_WIDTH_PERCENT } from "./ResizeablePanel.constants";
 
@@ -50,6 +50,7 @@ export interface UseResizePanelOptions {
 export function useResizePanel({ initialWidth, onWidthChange }: UseResizePanelOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -73,13 +74,29 @@ export function useResizePanel({ initialWidth, onWidthChange }: UseResizePanelOp
         setIsDragging(false);
         document.removeEventListener("mousemove", handleResizeMove);
         document.removeEventListener("mouseup", handleResizeEnd);
+        cleanupRef.current = null;
       };
 
       document.addEventListener("mousemove", handleResizeMove);
       document.addEventListener("mouseup", handleResizeEnd);
+
+      // Store cleanup function for unmount scenario
+      cleanupRef.current = () => {
+        document.removeEventListener("mousemove", handleResizeMove);
+        document.removeEventListener("mouseup", handleResizeEnd);
+      };
     },
     [initialWidth, onWidthChange]
   );
+
+  // Cleanup listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+      }
+    };
+  }, []);
 
   const ResizeHandleComponent = useCallback(() => (
     <ResizeHandle isDragging={isDragging} onMouseDown={handleResizeStart} />
