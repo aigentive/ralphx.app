@@ -566,8 +566,8 @@ The existing infrastructure supports our new states:
 |-----------|--------|----------|
 | Review Commands (Tauri) | ✅ Full | `src-tauri/src/commands/review_commands.rs` |
 | Reviewer Agent | ✅ Defined | `ralphx-plugin/agents/reviewer.md` |
-| MCP Tool Definition | ✅ Full | `ralphx-mcp-server/src/tools.ts:292-334` |
-| MCP Tool Scoping | ✅ Full | `ralphx-mcp-server/src/tools.ts:356-391` |
+| MCP Tool Definition | ✅ Full | `ralphx-plugin/ralphx-mcp-server/src/tools.ts:292-334` |
+| MCP Tool Scoping | ✅ Full | `ralphx-plugin/ralphx-mcp-server/src/tools.ts:356-391` |
 | HTTP Endpoint Route | ✅ Registered | `src-tauri/src/http_server.rs:327` |
 | HTTP Handler Logic | ❌ **STUB** | `src-tauri/src/http_server.rs:879-901` |
 | Domain Entities | ✅ Full | `src-tauri/src/domain/entities/review.rs` |
@@ -603,7 +603,7 @@ skills: [code-review-checklist]
 
 ### MCP Tool: `complete_review`
 
-**Definition** (`ralphx-mcp-server/src/tools.ts:292-334`):
+**Definition** (`ralphx-plugin/ralphx-mcp-server/src/tools.ts:292-334`):
 ```typescript
 {
   name: "complete_review",
@@ -660,7 +660,7 @@ spawn_claude_agent(config, env_vars);
 
 **2. Validate in MCP Server**
 
-**File:** `ralphx-mcp-server/src/index.ts`
+**File:** `ralphx-plugin/ralphx-mcp-server/src/index.ts`
 
 ```typescript
 const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
@@ -744,9 +744,9 @@ Please correct your tool call and try again.
 
 | File | Change |
 |------|--------|
-| `ralphx-mcp-server/src/index.ts` | Add `validateTaskScope()` function and call it |
+| `ralphx-plugin/ralphx-mcp-server/src/index.ts` | Add `validateTaskScope()` function and call it |
 | `src-tauri/src/infrastructure/agents/claude/` | Pass `RALPHX_TASK_ID` env var when spawning |
-| `src-tauri/src/application/execution_chat_service.rs` | Include task_id in spawn config |
+| `src-tauri/src/application/chat_service.rs` | Include task_id in spawn config (unified service) |
 
 ---
 
@@ -758,7 +758,7 @@ Dedicated tool for worker agents to fetch previous review feedback before starti
 
 ### Tool Definition
 
-**File:** `ralphx-mcp-server/src/tools.ts`
+**File:** `ralphx-plugin/ralphx-mcp-server/src/tools.ts`
 
 ```typescript
 {
@@ -1506,16 +1506,22 @@ The existing split layout handles this. When viewing a task in `reviewing` state
 
 **1. Add Review Context to Chat Types**
 
-**File:** `src/types/chat.ts`
+**File:** `src/types/chat-conversation.ts` (ContextType enum)
 
 ```typescript
-export type ChatContextType =
-  | 'execution'
-  | 'review'      // NEW
-  | 'task'
-  | 'project'
-  | 'ideation';
+// Update CONTEXT_TYPE_VALUES
+export const CONTEXT_TYPE_VALUES = [
+  "ideation",
+  "task",
+  "project",
+  "task_execution",
+  "review",  // NEW
+] as const;
+```
 
+**File:** `src/types/chat.ts` (add ReviewChatContext)
+
+```typescript
 export interface ReviewChatContext {
   type: 'review';
   taskId: string;
@@ -1523,14 +1529,14 @@ export interface ReviewChatContext {
 }
 ```
 
-**2. Update ExecutionChatService for Review**
+**2. Update Unified ChatService for Review**
 
-**File:** `src-tauri/src/application/execution_chat_service.rs`
+**File:** `src-tauri/src/application/chat_service.rs`
 
-Add support for spawning/resuming review agent conversations:
-- `spawn_reviewer_with_persistence(task_id, review_id)`
-- `queue_message_to_reviewer(review_id, message)`
-- Reuse existing message queue infrastructure
+Add support for review context type:
+- Add `ChatContextType::Review` variant
+- Route to `"reviewer"` agent in `get_agent_name()`
+- Reuse existing message queue infrastructure (already unified)
 
 **3. Task Detail Views (Left Pane)**
 
@@ -1727,9 +1733,9 @@ This pattern (live → historical) should be verified/implemented for execution 
 - After completion → Read-only log of what happened
 
 **Files to check:**
-- `src/components/chat/ChatPanel.tsx` - Does it handle read-only mode?
-- `src/components/tasks/ExecutionTaskDetail.tsx` - Does it show historical chat?
-- Conversation persistence - Are execution conversations saved for later viewing?
+- `src/components/Chat/ChatPanel.tsx` - Does it handle read-only mode? **Status: No, always live**
+- `src/components/tasks/ExecutionTaskDetail.tsx` - **Status: DOES NOT EXIST** (see Post-Refactoring Updates section)
+- Conversation persistence - Are execution conversations saved for later viewing? **Status: Yes, via ChatService**
 
 ---
 
@@ -1779,6 +1785,261 @@ This pattern (live → historical) should be verified/implemented for execution 
 1. **Connect to new review states** (`reviewing`, `review_passed`, `revision_needed`)
 2. **Update TaskCard** to show review state badges
 3. **Add grouping UI** in columns for multi-state display
+
+---
+
+## Post-Refactoring Updates (January 2026)
+
+After the unified ChatService refactoring, several references in this plan need updating. This section documents the current state and required changes.
+
+### Backend Chat Service Changes
+
+**OLD Reference (REMOVED):**
+- `src-tauri/src/application/execution_chat_service.rs`
+
+**NEW Location:**
+- `src-tauri/src/application/chat_service.rs` (2,039 lines - unified service)
+
+**Key Structures in New Service:**
+
+```rust
+// ChatService trait (lines 177-272)
+#[async_trait]
+pub trait ChatService: Send + Sync {
+    async fn send_message(&self, context_type: ChatContextType, context_id: &str, message: &str) -> Result<SendResult, ChatServiceError>;
+    async fn queue_message(&self, context_type: ChatContextType, context_id: &str, content: &str, client_id: Option<&str>) -> Result<QueuedMessage, ChatServiceError>;
+    async fn get_or_create_conversation(&self, context_type: ChatContextType, context_id: &str) -> Result<ChatConversation, ChatServiceError>;
+    async fn stop_agent(&self, context_type: ChatContextType, context_id: &str) -> Result<bool, ChatServiceError>;
+    // ... more methods
+}
+
+// Agent routing by context type (lines 278-286)
+fn get_agent_name(context_type: &ChatContextType) -> &'static str {
+    match context_type {
+        ChatContextType::Ideation => "orchestrator-ideation",
+        ChatContextType::Task => "chat-task",
+        ChatContextType::Project => "chat-project",
+        ChatContextType::TaskExecution => "worker",
+    }
+}
+```
+
+**Supporting Services:**
+- `src-tauri/src/domain/services/message_queue.rs` - Backend message queue
+- `src-tauri/src/domain/services/running_agent_registry.rs` - Agent process tracking
+
+**⚠️ Issue Found:** Direct status update in chat_service.rs (lines 788-814) violates state machine rules. Should use TransitionHandler instead of direct DB update.
+
+---
+
+### Frontend Chat System Changes
+
+**OLD References:**
+- Separate chat services/hooks for different contexts
+
+**NEW Architecture:**
+
+| File | Purpose |
+|------|---------|
+| `src/hooks/useChat.ts` (523 lines) | Unified chat hook with context-aware routing |
+| `src/api/chat.ts` | Unified Tauri command wrappers |
+| `src/types/chat-conversation.ts` | ContextType enum definition |
+| `src/stores/chatStore.ts` | Two queues: regular + execution |
+
+**Current Context Types (from chat-conversation.ts:13-18):**
+```typescript
+export const CONTEXT_TYPE_VALUES = [
+  "ideation",
+  "task",
+  "project",
+  "task_execution",
+] as const;
+```
+
+**Context Derivation (useChat.ts:60-83):**
+```typescript
+function getContextTypeAndId(context: ChatContext): { contextType: ContextType; contextId: string } {
+  switch (context.view) {
+    case "ideation":
+      return { contextType: "ideation", contextId: context.ideationSessionId };
+    case "task_detail":
+      return { contextType: "task", contextId: context.selectedTaskId };
+    case "kanban":
+      if (context.selectedTaskId) {
+        return { contextType: "task", contextId: context.selectedTaskId };
+      }
+      return { contextType: "project", contextId: context.projectId };
+    default:
+      return { contextType: "project", contextId: context.projectId };
+  }
+}
+```
+
+**Unified Event Namespace:**
+- `agent:run_started` - Agent process started
+- `agent:message_created` - User/assistant message persisted
+- `agent:run_completed` - Agent finished
+- `agent:queue_sent` - Queued message sent to agent
+- `agent:error` - Agent failed
+
+---
+
+### Task Detail Views Status
+
+**View Registry Pattern: NOT IMPLEMENTED**
+
+The planned specialized views (`ExecutionTaskDetail`, `ReviewingTaskDetail`, etc.) do not exist yet.
+
+**Current Components:**
+
+| Component | Purpose | State-Specific? |
+|-----------|---------|-----------------|
+| `TaskDetailView.tsx` | Simple metadata display | No |
+| `TaskDetailPanel.tsx` | Reusable core (~358 lines) | No |
+| `TaskDetailModal.tsx` | Modal wrapper (~678 lines) | No |
+| `TaskDetailOverlay.tsx` | Inline overlay (~540 lines) | No |
+| `TaskFullView.tsx` | Full-screen with chat (~410 lines) | Minimal (chat context only) |
+
+**Only State-Specific Logic (TaskFullView.tsx:159-171):**
+```typescript
+const contextType = useMemo((): "task" | "task_execution" => {
+  const executingStatuses = ["executing", "qa_refining", "qa_testing", "qa_passed", "qa_failed"];
+  return executingStatuses.includes(task.internalStatus) ? "task_execution" : "task";
+}, [task.internalStatus]);
+```
+
+---
+
+### Path Corrections
+
+| Plan Reference | Correct Path |
+|----------------|--------------|
+| `src/components/chat/ChatPanel.tsx` | `src/components/Chat/ChatPanel.tsx` (capital C) |
+| `ralphx-mcp-server/src/` | `ralphx-plugin/ralphx-mcp-server/src/` |
+| `ChatContextType` type name | `ChatContext` (in chat.ts) or `ContextType` (in chat-conversation.ts) |
+
+---
+
+### Review Context Integration Gap
+
+**Current State:** No `review` context type exists.
+
+**Required Changes for Review System:**
+
+1. **Add `review` to ContextType enum** (`src/types/chat-conversation.ts`):
+   ```typescript
+   export const CONTEXT_TYPE_VALUES = [
+     "ideation",
+     "task",
+     "project",
+     "task_execution",
+     "review",  // NEW
+   ] as const;
+   ```
+
+2. **Update context derivation** (`src/hooks/useChat.ts`):
+   ```typescript
+   // In TaskFullView or similar
+   const contextType = useMemo((): "task" | "task_execution" | "review" => {
+     if (["reviewing", "review_passed"].includes(task.internalStatus)) {
+       return "review";
+     }
+     if (["executing", "re_executing", "qa_refining", "qa_testing"].includes(task.internalStatus)) {
+       return "task_execution";
+     }
+     return "task";
+   }, [task.internalStatus]);
+   ```
+
+3. **Update buildContextKey** (`src/hooks/useChat.ts:21-33`):
+   ```typescript
+   case "review":
+     return `review:${contextId}`;
+   ```
+
+4. **Add agent routing** (`src-tauri/src/application/chat_service.rs`):
+   ```rust
+   ChatContextType::Review => "reviewer",
+   ```
+
+5. **Add ReviewChatContext** (`src/types/chat.ts`):
+   ```typescript
+   export interface ReviewChatContext {
+     type: 'review';
+     taskId: string;
+     reviewId: string;
+   }
+   ```
+
+---
+
+### Live/Historical Chat Mode Status
+
+**NOT IMPLEMENTED**
+
+The plan describes live (input enabled) vs historical (read-only) modes, but this is not enforced:
+- Chat input is always enabled regardless of task state
+- No mode prop or flag exists
+- Implementation needed for review system
+
+**Required Implementation:**
+```typescript
+function ChatPanel({ contextType, contextId, taskId }: ChatPanelProps) {
+  const task = useTask(taskId);
+
+  const isLive = useMemo(() => {
+    if (contextType === 'task_execution') {
+      return task.internalStatus === 'executing' || task.internalStatus === 're_executing';
+    }
+    if (contextType === 'review') {
+      return task.internalStatus === 'reviewing';
+    }
+    return false;
+  }, [contextType, task.internalStatus]);
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScrollArea className="flex-1">
+        <MessageList messages={messages} />
+      </ScrollArea>
+      {isLive ? (
+        <ChatInput onSend={handleSend} />
+      ) : (
+        <div className="p-3 text-center text-muted border-t">
+          Chat ended - {contextType === 'review' ? 'Review' : 'Execution'} completed
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### Updated File Reference Table
+
+| Purpose | Old Reference | Current Location |
+|---------|---------------|------------------|
+| Backend chat service | `execution_chat_service.rs` | `chat_service.rs` |
+| Frontend chat hook | (scattered) | `src/hooks/useChat.ts` |
+| Frontend chat API | (in tauri.ts) | `src/api/chat.ts` |
+| Context types | `ChatContextType` | `ContextType` in `chat-conversation.ts` |
+| Message queue (backend) | (inline) | `src-tauri/src/domain/services/message_queue.rs` |
+| Agent registry | (inline) | `src-tauri/src/domain/services/running_agent_registry.rs` |
+| Chat store | (various) | `src/stores/chatStore.ts` |
+
+---
+
+### Implementation Priority After Refactoring
+
+Given the unified chat architecture, the implementation order should be:
+
+1. **Add `review` context type** - Minimal change, enables reviewer agent routing
+2. **Add `reviewing` and `review_passed` states** - State machine updates
+3. **Implement complete_review HTTP handler** - Still a stub
+4. **Add review context detection in TaskFullView** - Route to reviewer agent
+5. **Implement live/historical mode** - Disable input for completed reviews
+6. **Create specialized task detail views** - View Registry Pattern (optional enhancement)
 
 ---
 
