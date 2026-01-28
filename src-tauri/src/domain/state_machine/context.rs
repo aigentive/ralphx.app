@@ -5,6 +5,7 @@ use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, Mo
 use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter};
 use super::types::Blocker;
 use crate::application::ChatService;
+use crate::commands::ExecutionState;
 use std::sync::Arc;
 
 /// Container for all services used by the state machine.
@@ -30,6 +31,10 @@ pub struct TaskServices {
     /// Unified chat service for worker execution (handles TaskExecution context).
     /// Worker spawning uses this service to persist output to database.
     pub chat_service: Arc<dyn ChatService>,
+
+    /// Global execution state for tracking running task count.
+    /// Used by TransitionHandler to decrement running count when exiting agent-active states.
+    pub execution_state: Option<Arc<ExecutionState>>,
 }
 
 impl TaskServices {
@@ -49,7 +54,14 @@ impl TaskServices {
             dependency_manager,
             review_starter,
             chat_service,
+            execution_state: None,
         }
+    }
+
+    /// Set the execution state (builder pattern)
+    pub fn with_execution_state(mut self, state: Arc<ExecutionState>) -> Self {
+        self.execution_state = Some(state);
+        self
     }
 
     /// Creates a TaskServices with all mock implementations for testing
@@ -63,6 +75,7 @@ impl TaskServices {
             dependency_manager: Arc::new(MockDependencyManager::new()),
             review_starter: Arc::new(MockReviewStarter::new()),
             chat_service: Arc::new(MockChatService::new()),
+            execution_state: None,
         }
     }
 }
@@ -76,6 +89,7 @@ impl std::fmt::Debug for TaskServices {
             .field("dependency_manager", &"<DependencyManager>")
             .field("review_starter", &"<ReviewStarter>")
             .field("chat_service", &"<ChatService>")
+            .field("execution_state", &self.execution_state.as_ref().map(|_| "<ExecutionState>"))
             .finish()
     }
 }

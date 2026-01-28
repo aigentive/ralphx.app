@@ -1,10 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 15:32:00
+**Last Updated:** 2026-01-28 16:48:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 2 / 11
-**Current Task:** Check can_start_task() before spawning agents
+**Tasks Completed:** 3 / 11
+**Current Task:** Add ExecutionState to TransitionHandler for decrement on exit
+
+---
+
+### 2026-01-28 16:48:00 - Add ExecutionState to TransitionHandler for decrement on exit
+
+**What:**
+- Added execution_state field to TaskServices (Optional<Arc<ExecutionState>>)
+- Added with_execution_state() builder method to TaskServices for DI
+- Updated TransitionHandler::on_exit() to decrement running count for agent-active states:
+  - Executing, QaRefining, QaTesting, Reviewing, ReExecuting
+- Added 7 tests verifying decrement behavior for each agent-active state
+- Added test for non-agent state (Ready) not decrementing
+- Added test for graceful handling when ExecutionState is None
+
+**Quality Improvement:**
+- Reduced spawner.rs from 529 LOC to 500 LOC by consolidating role_from_string tests into single test
+- Marked task_qa_repo extraction as stale (336 LOC is under 500 limit)
+
+**Commands:**
+```bash
+cargo test decrement
+cargo clippy --all-targets --all-features -- -D warnings
+```
 
 ---
 

@@ -107,7 +107,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(transition): decrement running count on agent-active state exit"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
