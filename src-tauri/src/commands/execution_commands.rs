@@ -197,6 +197,11 @@ pub async fn pause_execution(
 ) -> Result<ExecutionCommandResponse, String> {
     execution_state.pause();
 
+    // Emit status_changed event for real-time UI update
+    if let Some(ref handle) = app_state.app_handle {
+        execution_state.emit_status_changed(handle, "paused");
+    }
+
     // Get current status
     let status = get_execution_status(execution_state, app_state).await?;
 
@@ -213,6 +218,11 @@ pub async fn resume_execution(
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
     execution_state.resume();
+
+    // Emit status_changed event for real-time UI update
+    if let Some(ref handle) = app_state.app_handle {
+        execution_state.emit_status_changed(handle, "resumed");
+    }
 
     // Get current status
     let status = get_execution_status(execution_state, app_state).await?;
@@ -283,6 +293,12 @@ pub async fn stop_execution(
 
     // Note: running_count is decremented by on_exit handlers in TransitionHandler
     // No manual reset needed here
+
+    // Emit status_changed event for real-time UI update
+    // This reflects the final state after all tasks have been stopped
+    if let Some(ref handle) = app_state.app_handle {
+        execution_state.emit_status_changed(handle, "stopped");
+    }
 
     // Get current status
     let status = get_execution_status(execution_state, app_state).await?;
@@ -486,24 +502,39 @@ mod tests {
 
         // Create a test project with tasks
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        project_repo.create(project.clone()).await.unwrap();
+        project_repo
+            .create(project.clone())
+            .await
+            .expect("Failed to create test project");
 
         // Create tasks in various statuses
         let mut task1 = Task::new(project.id.clone(), "Ready Task 1".to_string());
         task1.internal_status = InternalStatus::Ready;
-        task_repo.create(task1).await.unwrap();
+        task_repo
+            .create(task1)
+            .await
+            .expect("Failed to create Ready task 1");
 
         let mut task2 = Task::new(project.id.clone(), "Ready Task 2".to_string());
         task2.internal_status = InternalStatus::Ready;
-        task_repo.create(task2).await.unwrap();
+        task_repo
+            .create(task2)
+            .await
+            .expect("Failed to create Ready task 2");
 
         let mut task3 = Task::new(project.id.clone(), "Executing Task".to_string());
         task3.internal_status = InternalStatus::Executing;
-        task_repo.create(task3).await.unwrap();
+        task_repo
+            .create(task3)
+            .await
+            .expect("Failed to create Executing task");
 
         let mut task4 = Task::new(project.id.clone(), "Backlog Task".to_string());
         task4.internal_status = InternalStatus::Backlog;
-        task_repo.create(task4).await.unwrap();
+        task_repo
+            .create(task4)
+            .await
+            .expect("Failed to create Backlog task");
 
         let app_state = AppState::with_repos(task_repo, project_repo);
 
