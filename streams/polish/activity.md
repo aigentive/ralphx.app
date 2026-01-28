@@ -39,3 +39,22 @@
 **Result:** Success (all linters pass, 315 lines extracted into 4 specialized modules)
 
 ---
+
+### 2026-01-28 20:49:00 - Extract alert management from useSupervisorAlerts
+**What:**
+- File: src/hooks/useSupervisorAlerts.ts (409 LOC → 184 LOC)
+- Change: Split alert management into specialized modules
+- Extracted modules:
+  - useSupervisorAlerts.store.ts (135 LOC) - Zustand store with state and actions
+  - useSupervisorAlerts.listener.ts (103 LOC) - event listener hook for supervisor events
+- Kept in main file: useFilteredAlerts, useAlertStats, useSupervisorAlerts + re-exports
+- Updated test imports to use new store module
+
+**Commands:**
+- `wc -l src/hooks/useSupervisorAlerts*.ts`
+- `npm run lint && npm run typecheck`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+
+**Result:** Success (all linters pass, 225 lines extracted into 2 specialized modules)
+
+---
