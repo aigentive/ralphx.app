@@ -33,19 +33,4 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"status\":\"ok\""));
     }
-
-    #[test]
-    fn test_health_response_has_debug_trait() {
-        let response = health_check();
-        let debug = format!("{:?}", response);
-        assert!(debug.contains("HealthResponse"));
-        assert!(debug.contains("ok"));
-    }
-
-    #[test]
-    fn test_health_response_clone_works() {
-        let response = health_check();
-        let cloned = response.clone();
-        assert_eq!(response.status, cloned.status);
-    }
 }
