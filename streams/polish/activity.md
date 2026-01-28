@@ -989,3 +989,17 @@
 
 ---
 
+
+### 2026-01-28 23:55:17 - Remove console.warn call from ResearchPanel
+**What:**
+- File: src/components/ExtensibilityView.ResearchPanel.tsx:62
+- Removed console.warn call from handleLaunch callback
+- Replaced with inline TODO comment explaining unimplemented functionality
+
+**Commands:**
+- `npm run lint -- src/components/ExtensibilityView.ResearchPanel.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass, 0 errors, 4 pre-existing warnings)
+
+---
+
