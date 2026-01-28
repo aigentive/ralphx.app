@@ -332,7 +332,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Add example flow for revision work",
       "Commit: docs(agent): add revision instructions to worker prompt"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "agent",
