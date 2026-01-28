@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgenticClient, AgentRole};
 use crate::domain::state_machine::AgentSpawner;
 use crate::domain::supervisor::{ErrorInfo, SupervisorEvent, ToolCallInfo};
@@ -25,6 +26,8 @@ pub struct AgenticClientSpawner {
     event_bus: Option<Arc<EventBus>>,
     /// Tracks active agent handles by task_id for wait/stop operations
     handles: Arc<Mutex<HashMap<String, AgentHandle>>>,
+    /// Execution state for spawn gating (optional)
+    execution_state: Option<Arc<ExecutionState>>,
 }
 
 impl AgenticClientSpawner {
@@ -42,6 +45,7 @@ impl AgenticClientSpawner {
             working_directory,
             event_bus: None,
             handles: Arc::new(Mutex::new(HashMap::new())),
+            execution_state: None,
         }
     }
 
@@ -54,6 +58,12 @@ impl AgenticClientSpawner {
     /// Attach an event bus for supervisor events
     pub fn with_event_bus(mut self, event_bus: Arc<EventBus>) -> Self {
         self.event_bus = Some(event_bus);
+        self
+    }
+
+    /// Attach execution state for spawn gating
+    pub fn with_execution_state(mut self, state: Arc<ExecutionState>) -> Self {
+        self.execution_state = Some(state);
         self
     }
 
@@ -398,5 +408,19 @@ mod tests {
         assert_eq!(event1.task_id(), "task-1");
         assert_eq!(event2.task_id(), "task-2");
         assert_eq!(event3.task_id(), "task-3");
+    }
+
+    // ==================== Execution State Tests ====================
+
+    #[tokio::test]
+    async fn test_with_execution_state() {
+        use crate::commands::ExecutionState;
+
+        let mock = Arc::new(MockAgenticClient::new());
+        let exec_state = Arc::new(ExecutionState::new());
+        let spawner =
+            AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+
+        assert!(spawner.execution_state.is_some());
     }
 }
