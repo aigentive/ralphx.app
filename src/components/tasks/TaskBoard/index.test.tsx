@@ -9,9 +9,9 @@ import {
   Column,
   TaskCard,
   useTaskBoard,
-  workflowKeys,
   type TaskBoardProps,
 } from "./index";
+import { workflowKeys } from "@/hooks/useWorkflows";
 
 describe("TaskBoard exports", () => {
   it("should export TaskBoard component", () => {
@@ -39,10 +39,11 @@ describe("TaskBoard exports", () => {
     expect(typeof useTaskBoard).toBe("function");
   });
 
-  it("should export workflowKeys", () => {
+  it("should have workflowKeys available from useWorkflows", () => {
+    // workflowKeys is now exported from @/hooks/useWorkflows (canonical location)
     expect(workflowKeys).toBeDefined();
     expect(workflowKeys.all).toEqual(["workflows"]);
-    expect(workflowKeys.detail("test")).toEqual(["workflows", "test"]);
+    expect(workflowKeys.detail("test")).toEqual(["workflows", "detail", "test"]);
   });
 
   it("should allow type usage", () => {

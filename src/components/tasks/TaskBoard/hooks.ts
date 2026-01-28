@@ -14,6 +14,7 @@ import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { getActiveWorkflowColumns, type WorkflowColumnResponse } from "@/lib/api/workflows";
+import { workflowKeys } from "@/hooks/useWorkflows";
 import type { Task, InternalStatus, TaskListResponse } from "@/types/task";
 
 export interface UseTaskBoardResult {
@@ -22,12 +23,6 @@ export interface UseTaskBoardResult {
   isLoading: boolean;
   error: Error | null;
 }
-
-export const workflowKeys = {
-  all: ["workflows"] as const,
-  detail: (id: string) => [...workflowKeys.all, id] as const,
-  activeColumns: () => [...workflowKeys.all, "active-columns"] as const,
-};
 
 export function useTaskBoard(
   projectId: string
