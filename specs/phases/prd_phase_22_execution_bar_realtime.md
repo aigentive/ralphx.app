@@ -168,7 +168,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(tasks): emit queue_changed on Ready status changes"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
