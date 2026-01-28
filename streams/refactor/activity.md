@@ -61,3 +61,27 @@
 **Result:** Success - All linters pass, file now under 500 LOC limit
 
 ---
+### 2026-01-28 23:05:04 - Split ideation_commands.rs Module
+
+**What:**
+- Original file: src-tauri/src/commands/ideation_commands.rs (2595 LOC)
+- Extracted to 7 focused modules:
+  - ideation_commands_types.rs (295 LOC) - all input/output types and conversions
+  - ideation_commands_session.rs (141 LOC) - 6 session management commands
+  - ideation_commands_proposals.rs (341 LOC) - 10 proposal CRUD commands
+  - ideation_commands_dependencies.rs (321 LOC) - 5 dependency commands + graph analysis helpers
+  - ideation_commands_apply.rs (244 LOC) - 3 proposal-to-task conversion commands
+  - ideation_commands_chat.rs (188 LOC) - 8 chat message commands
+  - ideation_commands_orchestrator.rs (130 LOC) - orchestrator integration + settings
+  - mod.rs (1059 LOC) - module aggregator + 1027 LOC of tests
+- New size: 1660 LOC (36% reduction, excluding tests)
+- All modules under 500 LOC limit
+
+**Commands:**
+- `wc -l src/commands/ideation_commands/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test ideation_commands`
+
+**Result:** Success - All 41 tests passed, cargo clippy passed with no warnings
+
+---
