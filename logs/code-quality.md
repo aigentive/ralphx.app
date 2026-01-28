@@ -57,6 +57,7 @@
 - [ ] Reduce IntegratedChatPanel component size (1021 LOC) - extract scrolling logic and message rendering - src/components/Chat/IntegratedChatPanel.tsx:1-100
 - [ ] ~~Fix react-hooks/exhaustive-deps in ChatPanel - wrap messagesData in useMemo - src/components/Chat/ChatPanel.tsx:855~~ (stale - messagesData already wrapped in useMemo at line 473)
 - [x] Reduce TaskCard component size (531 LOC → 407 LOC) - extracted styling utilities to TaskCard.utils.ts - src/components/tasks/TaskBoard/TaskCard.tsx:1-100
+- [x] Reduce ReviewsPanel component size (605 LOC → 233 LOC) - extracted sub-components to ReviewsPanel.utils.tsx - src/components/reviews/ReviewsPanel.tsx:1-50
 
 ### P2 - Medium Impact
 - [x] Extract PRIORITY_CONFIG and animationStyles from IdeationView to IdeationView.constants.ts - src/components/Ideation/IdeationView.tsx
