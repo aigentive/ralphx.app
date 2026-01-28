@@ -42,3 +42,22 @@
 **Result:** Success - All linters pass, file now under 500 LOC limit
 
 ---
+
+### 2026-01-28 22:42:40 - Split IntegratedChatPanel Component
+
+**What:**
+- Original file: src/components/Chat/IntegratedChatPanel.tsx (1025 LOC)
+- Extracted to:
+  - src/hooks/useIntegratedChatScroll.ts (64 LOC) - auto-scroll logic with RAF debouncing
+  - src/hooks/useIntegratedChatHandlers.ts (206 LOC) - message handling (send, queue, edit, delete, stop)
+  - src/hooks/useIntegratedChatEvents.ts (143 LOC) - Tauri event subscriptions for real-time updates
+  - src/components/Chat/IntegratedChatPanel.components.tsx (260 LOC) - sub-components (TypingIndicator, EmptyState, LoadingState, WorkerExecutingIndicator, FailedRunBanner, ContextIndicator, CollapsedPanel)
+- New size: 498 LOC (51% reduction)
+
+**Commands:**
+- `wc -l src/components/Chat/IntegratedChatPanel.tsx src/components/Chat/IntegratedChatPanel.components.tsx src/hooks/useIntegratedChatScroll.ts src/hooks/useIntegratedChatHandlers.ts src/hooks/useIntegratedChatEvents.ts`
+- `npm run lint && npm run typecheck`
+
+**Result:** Success - All linters pass, file now under 500 LOC limit
+
+---

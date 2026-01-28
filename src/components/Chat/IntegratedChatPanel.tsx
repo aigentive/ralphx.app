@@ -10,8 +10,7 @@
  * Design spec: specs/design/refined-studio-patterns.md
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -19,286 +18,30 @@ import { useTaskStore } from "@/stores/taskStore";
 import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatApi, stopAgent } from "@/api/chat";
+import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  MessageSquare,
-  CheckSquare,
-  FolderKanban,
-  Bot,
-  PanelRightClose,
-  PanelRightOpen,
-  Loader2,
-  Hammer,
-  Activity,
-  X,
-} from "lucide-react";
+import { PanelRightClose, Loader2 } from "lucide-react";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { type ToolCall } from "./ToolCallIndicator";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { MessageItem } from "./MessageItem";
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const COLLAPSED_WIDTH = 48;
-
-// ============================================================================
-// CSS Animations
-// ============================================================================
-
-const animationStyles = `
-@keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-4px); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.1); }
-}
-
-.typing-dot {
-  animation: typingBounce 1.4s ease-in-out infinite;
-}
-
-.typing-dot:nth-child(2) { animation-delay: 0.15s; }
-.typing-dot:nth-child(3) { animation-delay: 0.3s; }
-
-.unread-dot {
-  animation: pulse 2s ease-in-out infinite;
-}
-`;
-
-// ============================================================================
-// Sub-components
-// ============================================================================
-
-function TypingIndicator() {
-  return (
-    <div
-      data-testid="chat-typing-indicator"
-      className="flex items-start gap-2 mb-2"
-    >
-      <Bot className="w-3.5 h-3.5 mt-2 shrink-0 text-white/40" />
-      <div
-        className="px-3 py-2 rounded-[10px_10px_10px_4px]"
-        style={{
-          background: "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div
-      data-testid="chat-panel-empty"
-      className="flex flex-col items-center justify-center h-full p-6 text-center"
-    >
-      <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
-        style={{
-          background: "linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(255,107,53,0.05) 100%)",
-          border: "1px solid rgba(255,107,53,0.15)",
-        }}
-      >
-        <MessageSquare className="w-5 h-5 text-[#ff6b35]" />
-      </div>
-      <p className="text-[13px] font-medium text-white/80">
-        Start a conversation
-      </p>
-      <p className="text-xs mt-1 text-white/40">
-        Ask questions or get help with your tasks
-      </p>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div
-      data-testid="chat-panel-loading"
-      className="flex items-center justify-center p-6"
-    >
-      <Loader2 className="w-5 h-5 animate-spin text-[#ff6b35]" />
-    </div>
-  );
-}
-
-function WorkerExecutingIndicator() {
-  const setCurrentView = useUiStore((s) => s.setCurrentView);
-
-  return (
-    <div
-      data-testid="worker-executing-indicator"
-      className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.03) 100%)",
-        border: "1px solid rgba(255,107,53,0.15)",
-      }}
-    >
-      <Hammer className="w-3.5 h-3.5 text-[#ff6b35]" />
-      <div className="flex items-center gap-2 flex-1">
-        <span className="text-[13px] font-medium text-white/80">Worker is executing...</span>
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setCurrentView("activity")}
-        className="shrink-0 h-7 px-2"
-        aria-label="View all activity"
-      >
-        <Activity className="w-3.5 h-3.5 mr-1" />
-        <span className="text-[11px]">Activity</span>
-      </Button>
-    </div>
-  );
-}
-
-interface FailedRunBannerProps {
-  errorMessage: string;
-  onDismiss?: () => void;
-}
-
-function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProps) {
-  return (
-    <div
-      data-testid="failed-run-banner"
-      className="flex items-start gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.05) 100%)",
-        border: "1px solid rgba(239,68,68,0.25)",
-      }}
-    >
-      <Activity className="w-3.5 h-3.5 mt-0.5 text-red-400 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <span className="text-[13px] font-medium text-red-300 block">
-          Agent run failed
-        </span>
-        <span className="text-[12px] text-red-300/70 block mt-0.5 break-words">
-          {errorMessage.slice(0, 200)}
-          {errorMessage.length > 200 && "..."}
-        </span>
-      </div>
-      {onDismiss && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onDismiss}
-          className="shrink-0 text-red-300/60 hover:text-red-300"
-          aria-label="Dismiss error"
-        >
-          <X className="w-3.5 h-3.5" />
-        </Button>
-      )}
-    </div>
-  );
-}
-
-interface ContextIndicatorProps {
-  context: ChatContext;
-  isExecutionMode?: boolean;
-}
-
-function ContextIndicator({ context, isExecutionMode = false }: ContextIndicatorProps) {
-  const getContextInfo = () => {
-    if (isExecutionMode) {
-      return { icon: Hammer, label: "Worker Execution" };
-    }
-
-    switch (context.view) {
-      case "ideation":
-        return { icon: MessageSquare, label: "Chat" };
-      case "kanban":
-        return context.selectedTaskId
-          ? { icon: CheckSquare, label: "Task" }
-          : { icon: FolderKanban, label: "Project" };
-      case "task_detail":
-        return { icon: CheckSquare, label: "Task" };
-      case "activity":
-        return { icon: MessageSquare, label: "Activity" };
-      case "settings":
-        return { icon: MessageSquare, label: "Settings" };
-      default:
-        return { icon: MessageSquare, label: "Chat" };
-    }
-  };
-
-  const { icon: Icon, label } = getContextInfo();
-
-  return (
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <Icon className="w-3.5 h-3.5 shrink-0 text-white/50" />
-      <span className="text-[13px] font-medium truncate text-white/80">{label}</span>
-    </div>
-  );
-}
-
-// MessageItem is now imported from "./MessageItem" - shared component
-
-// ============================================================================
-// Collapsed Panel (Thin bar with expand button)
-// ============================================================================
-
-interface CollapsedPanelProps {
-  onExpand: () => void;
-  hasUnread: boolean;
-}
-
-function CollapsedPanel({ onExpand, hasUnread }: CollapsedPanelProps) {
-  return (
-    <div
-      data-testid="integrated-chat-collapsed"
-      className="relative h-full flex flex-col items-center justify-center border-l"
-      style={{
-        width: `${COLLAPSED_WIDTH}px`,
-        backgroundColor: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
-      }}
-    >
-      {hasUnread && (
-        <div
-          className="unread-dot absolute top-4 w-2 h-2 rounded-full"
-          style={{ backgroundColor: "var(--accent-primary)" }}
-        />
-      )}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onExpand}
-        aria-label="Expand chat panel"
-        className="hover:bg-white/5"
-      >
-        <PanelRightOpen className="w-[18px] h-[18px]" />
-      </Button>
-      <span
-        className="text-[10px] mt-2 rotate-90 whitespace-nowrap"
-        style={{ color: "var(--text-muted)" }}
-      >
-        Chat
-      </span>
-    </div>
-  );
-}
+import {
+  TypingIndicator,
+  EmptyState,
+  LoadingState,
+  WorkerExecutingIndicator,
+  FailedRunBanner,
+  ContextIndicator,
+  CollapsedPanel,
+  animationStyles,
+} from "./IntegratedChatPanel.components";
+import { useIntegratedChatScroll } from "@/hooks/useIntegratedChatScroll";
+import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
+import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
 
 // ============================================================================
 // Main Component
@@ -335,13 +78,6 @@ export function IntegratedChatPanel({
   const chatCollapsed = useUiStore((s) => s.chatCollapsed);
   const setChatCollapsed = useUiStore((s) => s.setChatCollapsed);
 
-  const {
-    queueMessage,
-    deleteQueuedMessage,
-    startEditingQueuedMessage,
-    queueExecutionMessage,
-    deleteExecutionQueuedMessage,
-  } = useChatStore();
   const activeConversationId = useChatStore(selectActiveConversationId);
 
   // Detect execution mode based on selected task status
@@ -489,14 +225,8 @@ export function IntegratedChatPanel({
   } = regularChatData;
 
   const [hasUnread, setHasUnread] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
-  const activeConversationIdRef = useRef(activeConversationId);
-
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
 
   // Determine current context type and ID for validation
   const currentContextType: ContextType = ideationSessionId
@@ -525,6 +255,47 @@ export function IntegratedChatPanel({
     [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
   );
 
+  // Use custom hooks for extracted logic
+  const { messagesEndRef } = useIntegratedChatScroll({
+    messagesData,
+    chatCollapsed,
+    isAgentRunning,
+    streamingToolCallsLength: streamingToolCalls.length,
+  });
+
+  const {
+    handleSend,
+    handleQueue,
+    handleEditLastQueued,
+    handleDeleteQueuedMessage,
+    handleEditQueuedMessage,
+    handleStopAgent,
+  } = useIntegratedChatHandlers({
+    isExecutionMode,
+    selectedTaskId: selectedTaskId ?? undefined,
+    projectId,
+    ideationSessionId,
+    storeContextKey,
+    sendMessage,
+  });
+
+  // Wrapper for handleEditLastQueued that provides the queued messages
+  const handleEditLastQueuedWrapper = () => {
+    handleEditLastQueued(queuedMessages, executionQueuedMessages);
+  };
+
+  // Handle stopping agent - clear streaming tool calls
+  const handleStopAgentWrapper = async () => {
+    await handleStopAgent();
+    setStreamingToolCalls([]);
+  };
+
+  useIntegratedChatEvents({
+    activeConversationId,
+    messagesEndRef,
+    setStreamingToolCalls,
+  });
+
   // Track unread messages when collapsed
   useEffect(() => {
     const messageCount = messagesData.length;
@@ -540,304 +311,6 @@ export function IntegratedChatPanel({
       setHasUnread(false);
     }
   }, [chatCollapsed]);
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesEndRef.current && messagesData.length) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messagesData.length]);
-
-  // Scroll to bottom instantly when panel expands
-  useEffect(() => {
-    if (!chatCollapsed && messagesEndRef.current && messagesData.length) {
-      messagesEndRef.current.scrollIntoView({ behavior: "instant" });
-    }
-  }, [chatCollapsed, messagesData.length]);
-
-  // Auto-scroll during streaming (tool calls and agent running)
-  // Use requestAnimationFrame to debounce rapid updates
-  const scrollRAFRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (isAgentRunning && messagesEndRef.current) {
-      // Cancel any pending scroll
-      if (scrollRAFRef.current) {
-        cancelAnimationFrame(scrollRAFRef.current);
-      }
-      // Schedule scroll on next frame
-      scrollRAFRef.current = requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        scrollRAFRef.current = null;
-      });
-    }
-    return () => {
-      if (scrollRAFRef.current) {
-        cancelAnimationFrame(scrollRAFRef.current);
-      }
-    };
-  }, [isAgentRunning, streamingToolCalls.length]);
-
-  // Send message handler
-  const handleSend = useCallback(
-    async (content: string) => {
-      if (!content.trim() || sendMessage.isPending) return;
-
-      try {
-        await sendMessage.mutateAsync(content);
-      } catch {
-        // Error is handled by the mutation
-      }
-    },
-    [sendMessage]
-  );
-
-  // Get current context type and ID for queue operations
-  const getQueueContext = useCallback(() => {
-    const ctxType = isExecutionMode
-      ? "task_execution"
-      : ideationSessionId
-        ? "ideation"
-        : selectedTaskId
-          ? "task"
-          : "project";
-    const ctxId = ideationSessionId || selectedTaskId || projectId;
-    return { ctxType, ctxId } as const;
-  }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
-
-  // Generate a unique ID for queued messages
-  const generateQueuedMessageId = useCallback(() => {
-    return `queued-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  }, []);
-
-  // Queue message handler (when agent is running)
-  // Uses backend queue API for ALL contexts so messages are properly processed
-  const handleQueue = useCallback(
-    async (content: string) => {
-      if (!content.trim()) return;
-
-      const { ctxType, ctxId } = getQueueContext();
-
-      // Generate ID FIRST - this ID will be used by both frontend and backend
-      const messageId = generateQueuedMessageId();
-
-      // Add to local store immediately for optimistic UI (using the same ID)
-      if (isExecutionMode && selectedTaskId) {
-        queueExecutionMessage(selectedTaskId, content, messageId);
-      } else {
-        queueMessage(storeContextKey, content, messageId);
-      }
-
-      // ALSO queue to backend so it gets processed when agent completes
-      try {
-        await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
-        console.debug(`[queue] Queued message ${messageId} for ${ctxType}/${ctxId}`);
-      } catch (error) {
-        console.error("Failed to queue message to backend:", error);
-        // Message is already in local store, which is fine - it just won't be processed by backend
-      }
-    },
-    [isExecutionMode, selectedTaskId, queueMessage, queueExecutionMessage, storeContextKey, getQueueContext, generateQueuedMessageId]
-  );
-
-  // Edit last queued message
-  const handleEditLastQueued = useCallback(() => {
-    const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
-    const lastMessage = messagesToUse[messagesToUse.length - 1];
-    if (!lastMessage) return;
-    startEditingQueuedMessage(storeContextKey, lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, storeContextKey]);
-
-  // Delete queued message handler - syncs with backend
-  const handleDeleteQueuedMessage = useCallback(
-    async (messageId: string) => {
-      const { ctxType, ctxId } = getQueueContext();
-
-      // Delete from local store immediately (optimistic)
-      if (isExecutionMode && selectedTaskId) {
-        deleteExecutionQueuedMessage(selectedTaskId, messageId);
-      } else {
-        deleteQueuedMessage(storeContextKey, messageId);
-      }
-
-      // Delete from backend using the same ID
-      try {
-        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
-        console.debug(`[queue] Deleted message ${messageId} from backend`);
-      } catch (error) {
-        console.error("Failed to delete queued message from backend:", error);
-      }
-    },
-    [isExecutionMode, selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, storeContextKey]
-  );
-
-  // Edit queued message handler - delete old and queue new (syncs with backend)
-  const handleEditQueuedMessage = useCallback(
-    async (messageId: string, newContent: string) => {
-      const { ctxType, ctxId } = getQueueContext();
-
-      // Delete old message from backend
-      try {
-        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
-      } catch (error) {
-        console.error("Failed to delete old queued message:", error);
-      }
-
-      // Delete from local store
-      if (isExecutionMode && selectedTaskId) {
-        deleteExecutionQueuedMessage(selectedTaskId, messageId);
-      } else {
-        deleteQueuedMessage(storeContextKey, messageId);
-      }
-
-      // Generate new ID and queue the edited content
-      const newMessageId = generateQueuedMessageId();
-
-      // Add to local store first (optimistic)
-      if (isExecutionMode && selectedTaskId) {
-        queueExecutionMessage(selectedTaskId, newContent, newMessageId);
-      } else {
-        queueMessage(storeContextKey, newContent, newMessageId);
-      }
-
-      // Queue to backend with same ID
-      try {
-        await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
-        console.debug(`[queue] Edited message, new ID ${newMessageId} for ${ctxType}/${ctxId}`);
-      } catch (error) {
-        console.error("Failed to queue edited message to backend:", error);
-      }
-    },
-    [isExecutionMode, selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, storeContextKey]
-  );
-
-  // Stop the running agent
-  const handleStopAgent = useCallback(async () => {
-    const ctxType = isExecutionMode
-      ? "task_execution"
-      : ideationSessionId
-        ? "ideation"
-        : selectedTaskId
-          ? "task"
-          : "project";
-    const ctxId = ideationSessionId || selectedTaskId || projectId;
-
-    try {
-      await stopAgent(ctxType, ctxId);
-      // Clear streaming tool calls when agent is stopped
-      setStreamingToolCalls([]);
-    } catch (error) {
-      console.error("Failed to stop agent:", error);
-    }
-  }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
-
-  // Subscribe to Tauri events for real-time updates
-  useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
-
-    (async () => {
-      // Listen for tool calls - accumulate for streaming display and invalidate cache
-      const toolCallUnlisten = await listen<{
-        tool_name: string;
-        arguments: unknown;
-        result: unknown;
-        conversation_id: string;
-      }>("chat:tool_call", (event) => {
-        const { tool_name, arguments: args, result, conversation_id } = event.payload;
-        // Only show for active conversation
-        if (conversation_id === activeConversationIdRef.current) {
-          setStreamingToolCalls((prev) => [
-            ...prev,
-            {
-              id: `streaming-${Date.now()}-${prev.length}`,
-              name: tool_name,
-              arguments: args,
-              result,
-            },
-          ]);
-          // Invalidate cache to pick up any new messages from backend
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-      });
-      unlisteners.push(toolCallUnlisten);
-
-      // Listen for chat run completion - clear streaming state and refresh
-      const runCompletedUnlisten = await listen<{
-        conversation_id: string;
-      }>("chat:run_completed", (event) => {
-        console.log("Chat run completed:", event.payload);
-        const { conversation_id } = event.payload;
-        // Clear streaming tool calls
-        setStreamingToolCalls([]);
-        // Invalidate cache to get final messages
-        if (conversation_id) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-        // Scroll to bottom after a short delay to let messages render
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
-      });
-      unlisteners.push(runCompletedUnlisten);
-
-      // Execution-specific events
-      const execToolCallUnlisten = await listen<{
-        conversation_id: string;
-        tool_name: string;
-        arguments: unknown;
-      }>("execution:tool_call", (event) => {
-        const { tool_name, arguments: args, conversation_id } = event.payload;
-        // Only show for active conversation
-        if (conversation_id === activeConversationIdRef.current) {
-          setStreamingToolCalls((prev) => [
-            ...prev,
-            {
-              id: `streaming-exec-${Date.now()}-${prev.length}`,
-              name: tool_name,
-              arguments: args,
-            },
-          ]);
-          // Invalidate cache to pick up any new messages from backend
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-      });
-      unlisteners.push(execToolCallUnlisten);
-
-      // Listen for execution completion - clear streaming state and refresh
-      const execCompletedUnlisten = await listen<{
-        conversation_id: string;
-      }>("execution:run_completed", (event) => {
-        console.log("Worker execution completed:", event.payload);
-        const { conversation_id } = event.payload;
-        // Clear streaming tool calls
-        setStreamingToolCalls([]);
-        // Invalidate cache to get final messages
-        if (conversation_id) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-        // Scroll to bottom after a short delay to let messages render
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
-      });
-      unlisteners.push(execCompletedUnlisten);
-    })();
-
-    return () => {
-      unlisteners.forEach((unlisten) => unlisten());
-    };
-  }, [queryClient]);
 
   // Sort messages by createdAt - render in chronological order, no grouping
   const sortedMessages = useMemo(() => {
@@ -1000,11 +473,11 @@ export function IntegratedChatPanel({
             <ChatInput
               onSend={handleSend}
               onQueue={handleQueue}
-              onStop={handleStopAgent}
+              onStop={handleStopAgentWrapper}
               isAgentRunning={isExecutionMode || isAgentRunning}
               isSending={isSending}
               hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
-              onEditLastQueued={handleEditLastQueued}
+              onEditLastQueued={handleEditLastQueuedWrapper}
               placeholder={
                 ideationSessionId
                   ? "Send a message..."
