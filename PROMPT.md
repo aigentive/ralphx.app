@@ -49,28 +49,8 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 
 ---
 
-## Step 4: Execute by Category
+## Step 4: Execute Task
 
-| Category | Workflow | Pre-read |
-|----------|----------|----------|
-| `planning` | PRD Generation | `specs/plan.md` |
-| `design*` | Design Workflow | `specs/DESIGN_OVERHAUL_PLAN.md`, `specs/DESIGN.md` |
-| other | Implementation | — |
-
-### PRD Generation (planning)
-1. Read `specs/plan.md` sections for this phase
-2. Create PRD at `output` path with: Overview, Dependencies, Scope, Requirements, Tasks
-3. Preserve ALL details — don't summarize
-4. Tasks: atomic, TDD, clear acceptance criteria
-
-### Design Workflow (design, design-req, design-doc)
-1. Read `specs/DESIGN_OVERHAUL_PLAN.md` + `specs/DESIGN.md`
-2. Use `/frontend-design` skill
-3. **Anti-AI-Slop checklist:**
-   - ❌ NO purple/blue, NO Inter, NO flat surfaces
-   - ✅ Warm orange `#ff6b35`, SF Pro, layered shadows, micro-interactions
-
-### Implementation Workflow
 1. Follow task steps exactly
 2. **TDD mandatory** — tests FIRST
 3. Run: `npm run lint && npm run typecheck && cargo clippy && cargo test`
@@ -109,8 +89,7 @@ List empty? → Explore agent → Update file → Pick ONE
 - **ONE task per iteration, then STOP**
 - Always log + commit
 - NO: `git init`, remotes, push
-- Planning: preserve ALL master plan details
-- Implementation: tests FIRST
+- **TDD mandatory** — tests FIRST
 - **Document patterns inline** — New architectural pattern? Add one-liner to `src/CLAUDE.md` or `src-tauri/CLAUDE.md`
 - **Task tools for complex work** — >3 files, refactoring, >100 LOC? Use TaskCreate/TaskUpdate/TaskList
 - **Self-improving loop** — Found something mandatory? Add one-liner to this PROMPT.md file
