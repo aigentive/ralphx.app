@@ -21,6 +21,12 @@ pub enum TaskEvent {
     /// Used when dragging task to "In Progress" column in Kanban
     StartExecution,
 
+    /// System starts AI review (PendingReview → Reviewing)
+    StartReview,
+
+    /// System starts revision work (RevisionNeeded → ReExecuting)
+    StartRevision,
+
     /// User cancels task from any non-terminal state
     Cancel,
 
@@ -123,7 +129,10 @@ impl TaskEvent {
     pub fn is_system_signal(&self) -> bool {
         matches!(
             self,
-            TaskEvent::BlockersResolved | TaskEvent::BlockerDetected { .. }
+            TaskEvent::BlockersResolved
+                | TaskEvent::BlockerDetected { .. }
+                | TaskEvent::StartReview
+                | TaskEvent::StartRevision
         )
     }
 
@@ -132,6 +141,8 @@ impl TaskEvent {
         match self {
             TaskEvent::Schedule => "Schedule",
             TaskEvent::StartExecution => "StartExecution",
+            TaskEvent::StartReview => "StartReview",
+            TaskEvent::StartRevision => "StartRevision",
             TaskEvent::Cancel => "Cancel",
             TaskEvent::ForceApprove => "ForceApprove",
             TaskEvent::HumanApprove => "HumanApprove",
@@ -326,6 +337,24 @@ mod tests {
     // ==================
 
     #[test]
+    fn test_start_review_is_system_signal() {
+        let event = TaskEvent::StartReview;
+        assert!(event.is_system_signal());
+        assert!(!event.is_user_action());
+        assert!(!event.is_agent_signal());
+        assert_eq!(event.name(), "StartReview");
+    }
+
+    #[test]
+    fn test_start_revision_is_system_signal() {
+        let event = TaskEvent::StartRevision;
+        assert!(event.is_system_signal());
+        assert!(!event.is_user_action());
+        assert!(!event.is_agent_signal());
+        assert_eq!(event.name(), "StartRevision");
+    }
+
+    #[test]
     fn test_blockers_resolved_is_system_signal() {
         let event = TaskEvent::BlockersResolved;
         assert!(event.is_system_signal());
@@ -418,8 +447,15 @@ mod tests {
     fn test_task_event_roundtrip_serialization() {
         let events = vec![
             TaskEvent::Schedule,
+            TaskEvent::StartExecution,
+            TaskEvent::StartReview,
+            TaskEvent::StartRevision,
             TaskEvent::Cancel,
             TaskEvent::ForceApprove,
+            TaskEvent::HumanApprove,
+            TaskEvent::HumanRequestChanges {
+                feedback: "Needs changes".to_string(),
+            },
             TaskEvent::Retry,
             TaskEvent::SkipQa,
             TaskEvent::ExecutionComplete,
