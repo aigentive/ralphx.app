@@ -516,10 +516,14 @@ export function IntegratedChatPanel({
     conversationContext?.contextType === currentContextType &&
     conversationContext?.contextId === currentContextId;
 
-  const messagesData =
-    activeConversationId && isConversationInCurrentContext
-      ? (activeConversation.data?.messages ?? [])
-      : [];
+  // Memoize messagesData to avoid dependency chain issues in useEffect hooks
+  const messagesData = useMemo(
+    () =>
+      activeConversationId && isConversationInCurrentContext
+        ? (activeConversation.data?.messages ?? [])
+        : [],
+    [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
+  );
 
   // Track unread messages when collapsed
   useEffect(() => {
@@ -549,7 +553,7 @@ export function IntegratedChatPanel({
     if (!chatCollapsed && messagesEndRef.current && messagesData.length) {
       messagesEndRef.current.scrollIntoView({ behavior: "instant" });
     }
-  }, [chatCollapsed]);
+  }, [chatCollapsed, messagesData.length]);
 
   // Auto-scroll during streaming (tool calls and agent running)
   // Use requestAnimationFrame to debounce rapid updates

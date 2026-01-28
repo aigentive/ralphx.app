@@ -22,7 +22,15 @@
 manifest.json → active phase → PRD file → first task where passes=false
 ```
 
-**Phase complete?** (all `passes: true`) → Update manifest, log, commit: `chore: complete phase N, activate phase N+1`
+**Phase complete?** (all `passes: true`) → Run **Gap Verification** before transitioning:
+
+```
+1. Read entire PRD + its referenced plan/specs
+2. Launch Explore agent: "Verify implementation against PRD. Find gaps, missed TODOs, incomplete features"
+3. Gaps found? → Add to logs/code-quality.md as P0 (Critical) → Continue to next iteration
+4. No gaps? → Update manifest, log, commit: `chore: complete phase N, activate phase N+1`
+```
+
 **All phases complete?** → Output `<promise>COMPLETE</promise>`
 
 ---
