@@ -95,8 +95,10 @@ NO purple gradients | NO Inter font | Warm orange #ff6b35
 
 ## Code Quality
 
-### Continuous Improvement (MANDATORY)
-When modifying any file, review and fix quality issues as part of the same task:
+### Proactive Quality Improvement (MANDATORY)
+For every task, launch an Explore agent to quickly scan a portion of the codebase for quality issues. Pick ONE improvement proportional to task size and execute it as part of the same work session.
+
+**Quality targets:**
 - Replace `any` with proper types
 - Fix naming inconsistencies
 - Add missing error handling
@@ -104,7 +106,13 @@ When modifying any file, review and fix quality issues as part of the same task:
 - Extract repeated logic into hooks/functions
 - Fix lint warnings
 
-Scope: only files you're modifying, proportional to the task.
+**Process:**
+1. Agent scans subset of codebase (don't analyze everything)
+2. Pick ONE actionable improvement
+3. Execute the fix
+4. Commit separately with `refactor:` prefix
+
+**Scope:** small task = small improvement, large task = larger improvement. Goal: incremental quality gains without over-engineering.
 
 ### File Size Limits
 | File Type | Max Lines | Action |
