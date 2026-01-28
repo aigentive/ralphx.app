@@ -207,45 +207,16 @@ mod tests {
     use crate::infrastructure::MockAgenticClient;
 
     #[test]
-    fn test_role_from_string_worker() {
-        let role = AgenticClientSpawner::role_from_string("worker");
-        assert_eq!(role, AgentRole::Worker);
-    }
-
-    #[test]
-    fn test_role_from_string_qa_prep() {
-        let role = AgenticClientSpawner::role_from_string("qa-prep");
-        assert_eq!(role, AgentRole::QaPrep);
-    }
-
-    #[test]
-    fn test_role_from_string_qa_refiner() {
-        let role = AgenticClientSpawner::role_from_string("qa-refiner");
-        assert_eq!(role, AgentRole::QaRefiner);
-    }
-
-    #[test]
-    fn test_role_from_string_qa_tester() {
-        let role = AgenticClientSpawner::role_from_string("qa-tester");
-        assert_eq!(role, AgentRole::QaTester);
-    }
-
-    #[test]
-    fn test_role_from_string_reviewer() {
-        let role = AgenticClientSpawner::role_from_string("reviewer");
-        assert_eq!(role, AgentRole::Reviewer);
-    }
-
-    #[test]
-    fn test_role_from_string_supervisor() {
-        let role = AgenticClientSpawner::role_from_string("supervisor");
-        assert_eq!(role, AgentRole::Supervisor);
-    }
-
-    #[test]
-    fn test_role_from_string_custom() {
-        let role = AgenticClientSpawner::role_from_string("my-custom-agent");
-        assert_eq!(role, AgentRole::Custom("my-custom-agent".to_string()));
+    fn test_role_from_string() {
+        // Standard roles
+        assert_eq!(AgenticClientSpawner::role_from_string("worker"), AgentRole::Worker);
+        assert_eq!(AgenticClientSpawner::role_from_string("qa-prep"), AgentRole::QaPrep);
+        assert_eq!(AgenticClientSpawner::role_from_string("qa-refiner"), AgentRole::QaRefiner);
+        assert_eq!(AgenticClientSpawner::role_from_string("qa-tester"), AgentRole::QaTester);
+        assert_eq!(AgenticClientSpawner::role_from_string("reviewer"), AgentRole::Reviewer);
+        assert_eq!(AgenticClientSpawner::role_from_string("supervisor"), AgentRole::Supervisor);
+        // Custom role
+        assert_eq!(AgenticClientSpawner::role_from_string("my-custom-agent"), AgentRole::Custom("my-custom-agent".to_string()));
     }
 
     #[tokio::test]
