@@ -44,8 +44,8 @@ export function useExecutionStatus() {
       setExecutionStatus(status);
       return status;
     },
-    // Refetch periodically to keep status fresh
-    refetchInterval: 5000,
+    // Fallback poll every 30s - real-time updates come via useExecutionEvents
+    refetchInterval: 30000,
     // Also refetch on window focus
     refetchOnWindowFocus: true,
   });
