@@ -4,14 +4,21 @@
 
 ## How This Works
 1. Each iteration reads this file first
-2. Pick ONE item matching current task scope (small task = P3, large task = P1)
-3. **VERIFY:**
+2. **P0 items ALWAYS get picked first** (gaps from phase verification)
+3. Then pick ONE item matching current task scope (small = P3, medium = P2, large = P1)
+4. **VERIFY:**
    - Issue still exists? (read file:line)
    - NOT in active PRD? (cross-reference with current phase task list)
-4. Valid & not in PRD? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
-5. Stale (already fixed)? → Strikethrough text `~~text~~ (stale)`, pick next
-6. In PRD (planned work)? → Strikethrough text `~~text~~ (PRD)`, pick next
-7. If all items done/marked → Launch Explore agent to replenish
+5. Valid & not in PRD? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
+6. Stale (already fixed)? → Strikethrough text `~~text~~ (stale)`, pick next
+7. In PRD (planned work)? → Strikethrough text `~~text~~ (PRD)`, pick next
+8. If all items done/marked → Launch Explore agent to replenish
+
+## Priority Levels
+- **P0 - Critical**: Gaps found during phase verification (pick FIRST, any task size)
+- **P1 - High**: Architecture, major refactors (large tasks)
+- **P2 - Medium**: Error handling, extraction (medium tasks)
+- **P3 - Low**: Lint, naming, cleanup (small tasks)
 
 ## Markers
 - `[ ]` Pending
@@ -23,9 +30,12 @@
 
 ## Frontend (src/)
 
+### P0 - Critical (Phase Gaps)
+<!-- Gaps found during phase verification go here - pick FIRST -->
+
 ### P1 - High Impact
 - [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/ChatPanel.tsx:473
-- [ ] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/IntegratedChatPanel.tsx:519
+- [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/IntegratedChatPanel.tsx:519
 - [ ] Split ExtensibilityView (1239 LOC) - extract Workflows/Artifacts/Research/Methodologies into sub-components - src/components/ExtensibilityView.tsx:1-50
 - [ ] Split IdeationView (1198 LOC) - extract ideation session and proposal panels into sub-components - src/components/Ideation/IdeationView.tsx:1-50
 - [ ] Reduce ChatPanel component size (1044 LOC) - extract ResizeablePanel and message rendering logic - src/components/Chat/ChatPanel.tsx:1-100
@@ -63,6 +73,9 @@
 ---
 
 ## Backend (src-tauri/)
+
+### P0 - Critical (Phase Gaps)
+<!-- Gaps found during phase verification go here - pick FIRST -->
 
 ### P1 - High Impact
 - [ ] Split ideation_commands.rs (2580 LOC) - extract session management and proposal handlers - src-tauri/src/commands/ideation_commands.rs:1-50

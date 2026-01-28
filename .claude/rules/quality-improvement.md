@@ -22,13 +22,16 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
 - Other tasks or parallel agents may have already fixed the issue
 - Some issues may be planned work in the active PRD — don't duplicate effort
 
-## Scope Matching
+## Priority & Scope Matching
 
-| Task Size | Lines Changed | Pick Priority |
-|-----------|---------------|---------------|
-| Small | <50 LOC | P3 (low impact) |
-| Medium | 50-150 LOC | P2 (medium impact) |
-| Large | >150 LOC | P1 (high impact) |
+| Priority | When | Pick Order |
+|----------|------|------------|
+| **P0 - Critical** | Gaps from phase verification | **ALWAYS FIRST** (any task size) |
+| P1 - High | Architecture, major refactors | Large tasks (>150 LOC) |
+| P2 - Medium | Error handling, extraction | Medium tasks (50-150 LOC) |
+| P3 - Low | Lint, naming, cleanup | Small tasks (<50 LOC) |
+
+**P0 items are picked before any P1/P2/P3 regardless of task size.**
 
 ## Quality Targets
 
