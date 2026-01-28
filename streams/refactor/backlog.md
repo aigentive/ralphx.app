@@ -9,7 +9,6 @@
 _No active P1 items. Completed items moved to archive._
 
 ## Backend (src-tauri/)
-- [x] Split task_commands.rs (1992 LOC → 496 LOC max) - extracted to task_commands/{types.rs (137), helpers.rs (78), query.rs (203), mutation.rs (496), tests.rs (1094), mod.rs (53)} - src-tauri/src/commands/task_commands/mod.rs:1-50
 - [x] Split chat_service.rs (2109 LOC → 1263 LOC) - extracted to chat_service/{types.rs (135), helpers.rs (25), streaming.rs (255), mock.rs (259), mod.rs (1263)} - src-tauri/src/application/chat_service/mod.rs:1-50
 - [x] Split apply_service.rs (1833 LOC → 309 LOC) - extracted to apply_service/{types.rs (60), helpers.rs (107), tests.rs (1408), mod.rs (309)} - src-tauri/src/application/apply_service/mod.rs:1-50
 - [x] Split ideation_service.rs (1666 LOC → 423 LOC) - extracted to ideation_service/{types.rs (70), tests.rs (1198), mod.rs (423)} - src-tauri/src/application/ideation_service/mod.rs:1-50
@@ -34,5 +33,5 @@ _No active P1 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 6 | **Completed:** 10 | **Archived:** 6
-**Last maintenance:** 2026-01-29 (archived 2 completed items, refilled with 5 P1 items)
+**Active items:** 5 | **Completed:** 10 | **Archived:** 7
+**Last maintenance:** 2026-01-29 19:22 (archived 1 completed item)

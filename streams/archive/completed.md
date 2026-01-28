@@ -5,6 +5,27 @@
 
 ---
 
+## Archived 2026-01-29 (Seventh Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split task_commands.rs (1992 LOC → 496 LOC max) - extracted to task_commands/{types.rs (137), helpers.rs (78), query.rs (203), mutation.rs (496), tests.rs (1094), mod.rs (53)} - src-tauri/src/commands/task_commands/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:43)
+
+- [x] [P2] [Backend] Error handling: Replace `.unwrap()` calls in test assertions - src-tauri/src/domain/supervisor/patterns.rs:329
+- [x] [P2] [Backend] Error handling: Replace serde `.unwrap()` calls in tests - src-tauri/src/domain/supervisor/events.rs:361
+- [x] [P2] [Backend] Error handling: Remove dead_code allow attribute - src-tauri/src/domain/agents/mod.rs:24
+- [x] [P2] [Backend] Error handling: Remove dead_code allow attribute - src-tauri/src/application/dependency_service/mod.rs:12
+- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about database search optimization - src-tauri/src/http_server.rs:1296
+
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P2] [Backend] Error handling: Replace `.expect()` calls with proper type-safe parsing - src-tauri/src/domain/entities/ideation.rs:171~~ (stale:2 - file no longer exists, split into module)
+- [ ] ~~[P2] [Backend] Error handling: Replace `.parse().unwrap()` with Result handling - src-tauri/src/domain/entities/ideation.rs:1686~~ (stale:2 - file no longer exists, split into module)
+
+---
+
 ## Archived 2026-01-29 (Sixth Batch)
 
 ### From polish/backlog.md (REFILL - Added 2026-01-29 00:43)

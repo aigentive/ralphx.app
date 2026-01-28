@@ -24,7 +24,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:791~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1)
@@ -75,16 +75,9 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Backend] Error handling: Replace `.unwrap()` calls in test assertions - src-tauri/src/domain/supervisor/patterns.rs:329
-- [ ] ~~[P2] [Backend] Error handling: Replace `.expect()` calls with proper type-safe parsing - src-tauri/src/domain/entities/ideation.rs:171~~ (stale:1 - file no longer exists)
-- [ ] ~~[P2] [Backend] Error handling: Replace `.parse().unwrap()` with Result handling - src-tauri/src/domain/entities/ideation.rs:1686~~ (stale:1 - file no longer exists)
-- [x] [P2] [Backend] Error handling: Replace serde `.unwrap()` calls in tests - src-tauri/src/domain/supervisor/events.rs:361
-- [x] [P2] [Backend] Error handling: Remove dead_code allow attribute - src-tauri/src/domain/agents/mod.rs:24
-- [x] [P2] [Backend] Error handling: Remove dead_code allow attribute - src-tauri/src/application/dependency_service/mod.rs:12
 
 ### P3 - Low Impact
 
-- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about database search optimization - src-tauri/src/http_server.rs:1296
 - [x] [P3] [Backend] Code cleanup: Resolve TODO comment about task dependencies - src-tauri/src/application/task_transition_service.rs:104
 - [x] [P3] [Backend] Code cleanup: Resolve TODO comment about ideation sessions - src-tauri/src/commands/test_data_commands.rs:206
 - [x] [P3] [Backend] Code cleanup: Resolve TODO comment about streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
@@ -97,7 +90,7 @@ _No active P3 items. Completed items moved to archive._
 ### P2 - Medium Impact
 
 - [x] [P2] [Frontend] Unused variables with void suppression - src/components/ExtensibilityView.ResearchPanel.tsx:54-56
-- [ ] [P2] [Frontend] Remove TODOs and implement handlers - src/components/ExtensibilityView.ResearchPanel.tsx:61
+- [x] [P2] [Frontend] Remove TODOs and implement handlers - src/components/ExtensibilityView.ResearchPanel.tsx:61
 - [ ] [P2] [Frontend] Remove TODO and implement task reopen - src/components/tasks/detail-views/CompletedTaskDetail.tsx:261
 
 ### P3 - Low Impact
@@ -117,7 +110,7 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 14 (9 excluded, 10 deferred to PRD)
+**Active items:** 8 (9 excluded, 10 deferred to PRD)
 **Completed:** 10
-**Validated:** 66 strikethroughs (2026-01-29 x51) - 12 archived, 1 reactivated (moved to refactor as P1), 53 incremented
-**Last maintenance:** 2026-01-29 19:15 (archived 2 completed items, validated 3 strikethroughs)
+**Validated:** 69 strikethroughs (2026-01-29 x54) - 14 archived, 1 reactivated (moved to refactor as P1), 54 incremented
+**Last maintenance:** 2026-01-29 19:22 (archived 5 completed + 2 strikethroughs, validated 3 strikethroughs)

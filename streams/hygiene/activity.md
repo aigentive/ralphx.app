@@ -1,5 +1,27 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 19:22:00 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (task_commands.rs split)
+- Moved 5 items from polish/backlog.md to archive (4 P2 error handling, 1 P3 TODO cleanup)
+- Moved 2 strikethrough items to archive (both stale:2 - ideation.rs items, file split into module)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 15 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 5 active, polish: 8 active)
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - ideation.rs:171 `.expect()` calls (stale:1 → stale:2): File no longer exists → **Archived**
+  - ideation.rs:1686 `.parse().unwrap()` (stale:1 → stale:2): File no longer exists → **Archived**
+  - App.tsx:794 → 791 Open diff viewer (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1 → :1:1:1): TODO still exists, line corrected → **Counter incremented**
+
+**Result:** Maintenance complete - 6 archived (1 refactor + 5 polish), 2 strikethroughs archived, 1 incremented (total 69 validated)
+
+---
+
 ### 2026-01-28 23:28:51 - Backlog Maintenance
 
 **Archive:**
