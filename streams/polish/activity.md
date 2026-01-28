@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-29 00:24:55 - Remove #[allow(dead_code)] suppression from ideation_service tests
+**What:**
+- File: src-tauri/src/application/ideation_service/tests.rs
+- Change: Removed `#[allow(dead_code)]` attribute from test module (line 1)
+- Reason: Suppression was unnecessary - no dead_code warnings when removed
+- Verification: Ran cargo clippy with -D warnings, no dead_code warnings found
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (all linters pass, no dead_code warnings)
+
+---
+
 ### 2026-01-29 00:15:40 - Remove TODO comment for Tauri command integration
 **What:**
 - File: src/App.tsx:359
