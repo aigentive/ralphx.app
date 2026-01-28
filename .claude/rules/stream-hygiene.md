@@ -167,6 +167,14 @@ Output: `<promise>IDLE</promise>`
 
 This signals the fswatch wrapper to take over and wait for backlog file changes.
 
+## Signal Output Rules
+
+**CRITICAL:** Completion signals must be output as a **standalone final statement**.
+
+- Output the signal as your LAST message content
+- Do NOT quote or mention the signal syntax elsewhere in your output
+- When discussing signals in logs/activity, refer to them as "the IDLE signal" — never the actual `<promise>` tags
+
 ## Activity Log Format
 
 Log entries go in `streams/hygiene/activity.md`:

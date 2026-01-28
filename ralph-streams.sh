@@ -256,11 +256,12 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   result=$(cat $LOG_FILE 2>/dev/null || echo "")
   echo ""
 
-  # Check for completion signals - only in assistant text output (not file contents in tool results)
-  # Extract just assistant text messages and check for COMPLETE or IDLE there
-  assistant_text=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text // empty' $LOG_FILE 2>/dev/null | tr '\n' ' ')
+  # Check for completion signals - only in the LAST assistant text message
+  # This prevents false positives when Claude quotes/discusses the signal format
+  # Get the last assistant message's text content only
+  last_assistant_text=$(jq -s '[.[] | select(.type=="assistant")] | last | .message.content[]? | select(.type=="text") | .text // empty' $LOG_FILE 2>/dev/null)
 
-  if [[ "$assistant_text" == *"<promise>COMPLETE</promise>"* ]]; then
+  if [[ "$last_assistant_text" == *"<promise>COMPLETE</promise>"* ]]; then
     echo ""
     echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo -e "  ${GREEN}✓ COMPLETE${NC} ${DIM}after $i iteration(s)${NC}"
@@ -269,7 +270,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     exit 0
   fi
 
-  if [[ "$assistant_text" == *"<promise>IDLE</promise>"* ]]; then
+  if [[ "$last_assistant_text" == *"<promise>IDLE</promise>"* ]]; then
     echo ""
     echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo -e "  ${YELLOW}◆ IDLE${NC} ${DIM}no work available · watching for changes${NC}"
