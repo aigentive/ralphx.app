@@ -1,4 +1,4 @@
-@specs/manifest.json @specs/plan.md @logs/activity.md @logs/code-quality.md
+@specs/manifest.json @specs/plan.md @logs/activity.md @logs/code-quality.md @.claude/rules/quality-improvement.md
 
 # RalphX Build Loop
 
@@ -72,15 +72,15 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 **Every task requires a `refactor:` commit. No exceptions.**
 
 ```
-Read logs/code-quality.md → Pick ONE (P0 first, then by scope) → VERIFY (exists + NOT in PRD) → Execute → Mark [x]
-Stale/PRD? → Strikethrough, pick next | Scope exhausted? → ESCALATE (P3→P2→P1) | ALL exhausted? → Explore agent
+Pick ONE (P0 first, then by scope) → VERIFY (exists + NOT in PRD) → Execute → Mark [x]
+Stale/PRD? → Strikethrough, pick next | Exhausted? → ESCALATE → Deferred Validation → Explore agent
 ```
 
-**NO SKIPPING. "Nothing to do" is NOT valid.** Escalate scope or replenish with Explore agent.
+**Deferred Validation:** Before Explore, validate 2-3 strikethrough items (not `excluded`). Issue exists? → Unmark. Gone? → Increment counter `(reason:N)`, archive at `:2`.
 
-**Full workflow:** `.claude/rules/quality-improvement.md`
+**Cleanup:** `[x]` > 10/section → move oldest to `logs/code-quality-archive.md`
 
-**Skip only for:** pure docs, config-only changes
+**Full workflow:** `.claude/rules/quality-improvement.md` | **Skip for:** pure docs, config-only
 
 ---
 

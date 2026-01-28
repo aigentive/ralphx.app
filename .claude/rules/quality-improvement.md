@@ -17,8 +17,41 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
    ├── Stale (issue genuinely fixed)? → Strikethrough ~~text~~ (stale) → Pick next
    └── In PRD? → Strikethrough ~~text~~ (PRD) → Pick next
 4. No valid items at current scope? → ESCALATE to next priority tier (P3→P2→P1)
-5. ALL items exhausted/marked? → Launch Explore agent → Replenish → Pick ONE → Execute
+5. ALL items exhausted/marked? → Run DEFERRED VALIDATION (below)
+6. Still nothing? → Launch Explore agent → Replenish → Pick ONE → Execute
 ```
+
+## Deferred Validation Protocol
+
+**When:** After all active items are exhausted (step 5), before launching Explore agent.
+
+**Applies to:** All strikethrough items EXCEPT `(excluded)` which is a permanent policy decision.
+
+**Process:**
+```
+1. Pick 2-3 deferred items (oldest first, skip excluded)
+2. Read file:line to verify current state
+3. Issue still exists?
+   → YES: Unmark, make active, pick this one for current task
+   → NO:  Increment counter
+          (reason) → (reason:1) → (reason:2) → move to archive
+```
+
+**Counter progression:**
+- `(stale)` or `(PRD:N)` — first deferral
+- `(stale:1)` or `(PRD:N:1)` — validated once, still resolved
+- `(stale:2)` or `(PRD:N:2)` — validated twice, move to `logs/code-quality-archive.md`
+
+**3 total checks** (original mark + 2 revalidations) before archiving as confirmed.
+
+## Cleanup Protocol
+
+**When:** `[x]` count exceeds 10 per section.
+
+**Process:**
+1. Count completed items per section (Frontend P1/P2/P3, Backend P1/P2/P3)
+2. If count > 10, move oldest `[x]` items to `logs/code-quality-archive.md`
+3. Archive format: include date and original section
 
 ## CRITICAL: LOC Limits Verification
 
