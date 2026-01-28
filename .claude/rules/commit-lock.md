@@ -24,23 +24,22 @@ Example: `features 2026-01-29T10:30:45`
    → NOT EXISTS: Create lock and proceed (step 4)
    → EXISTS: Read and save the lock content (who + when)
 
-2. Check if lock is stale (timestamp > 30 seconds old)
-   → STALE: Delete it, log "Removed stale lock from <stream>", create your lock, proceed
-   → NOT STALE: Continue to step 3
+2. Wait and retry loop:
+   a. Save current lock content (stream + timestamp)
+   b. Log: "Commit locked by <stream>. Waiting 3s..."
+   c. Run: sleep 3
+   d. Re-read .commit-lock:
+      → NOT EXISTS: Lock released! Create your lock, proceed (step 3)
+      → DIFFERENT content: Lock changed hands (new stream). Go to 2a with new content.
+      → SAME content + timestamp > 30s: STALE (crashed). Delete, create your lock, proceed.
+      → SAME content + timestamp < 30s: Still active. Go to 2b.
 
-3. Wait and retry loop:
-   a. Log: "Commit locked by <stream>. Waiting 3s..."
-   b. Run: sleep 3
-   c. Check .commit-lock again:
-      → NOT EXISTS: Create your lock, proceed (step 4)
-      → EXISTS but DIFFERENT content: Lock changed hands, save new content, go to 3a
-      → EXISTS with SAME content: Same stream still holding, go to 3a (or check stale)
+**IMPORTANT:** "Stale" only applies to the SAME lock sitting too long. If content changed,
+it's a fresh lock from another stream - NOT stale.
 
-4. Create lock: echo "<your-stream> $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
+3. Create lock: echo "<your-stream> $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
    → Proceed to commit
 ```
-
-**Key insight:** When you wake from sleep, the lock might have been released and re-acquired by a faster stream. Always read the content to know if it's the same lock or a new one.
 
 ### After Committing (success or failure)
 
@@ -51,12 +50,13 @@ Example: `features 2026-01-29T10:30:45`
 
 ### Stale Lock Detection
 
-If lock file timestamp is older than **30 seconds**:
-- Lock is considered stale (previous stream crashed)
-- Safe to delete and acquire lock
-- Log: "Removed stale commit lock from <stream>"
+A lock is stale ONLY if:
+1. The content (stream + timestamp) is **the same** as when you first saw it, AND
+2. The timestamp is older than **30 seconds**
 
-A commit should take ~10-15 seconds max. 30 seconds gives generous buffer.
+If the content changed, it's a **new lock** from a different stream - NOT stale.
+
+A commit should take ~10-15 seconds max. 30 seconds gives generous buffer for slow operations.
 
 ## Implementation Example
 
@@ -99,7 +99,7 @@ rm -f .commit-lock
 1. **ALWAYS acquire lock before `git add`**
 2. **ALWAYS release lock after commit completes (success or failure)**
 3. **NEVER force-delete another stream's active lock (unless stale)**
-4. **Stale locks (>30 sec) can be safely removed**
+4. **Stale = SAME lock content + >30 sec old** (not just any old timestamp)
 5. **Always read lock content, not just existence** — lock may change hands while waiting
 
 ## Error Handling
