@@ -103,4 +103,13 @@ Stale/PRD? → Strikethrough, pick next | Scope exhausted? → ESCALATE (P3→P2
 - **TDD mandatory** — tests FIRST
 - **Document patterns inline** — New architectural pattern? Add one-liner to `src/CLAUDE.md` or `src-tauri/CLAUDE.md`
 - **Task tools for complex work** — >3 files, refactoring, >100 LOC? Use TaskCreate/TaskUpdate/TaskList
-- **Self-improving loop** — Found something mandatory? Add one-liner to this PROMPT.md file
+
+---
+
+## Self-Improving Rules
+
+> **Add rules here when you discover something mandatory.**
+> Found a gotcha? A required pattern? A common mistake? Add a one-liner below.
+> This section grows over time, making the loop smarter with each iteration.
+
+<!-- AGENTS: Add new rules as bullet points below this comment -->
