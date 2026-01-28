@@ -110,19 +110,9 @@ Every task requires a `refactor:` commit. No exceptions.
 **Verification:** Task NOT complete until `refactor:` commit + item marked done.
 
 ### File Size Limits
-| File Type | Max Lines | Action |
-|-----------|-----------|--------|
-| Component | 500 | Extract sub-components/hooks |
-| Custom Hook | 300 | Split into focused pieces |
-| Presentational | 200 | Pure display only |
+**See:** `.claude/rules/code-quality-standards.md` (single source of truth)
 
-Refactoring trigger at 400 lines.
-
-### Extraction Triggers
-- >3 useState/useCallback in component → extract hook
-- >4 props → composition pattern
-- >3 conditional branches → extract sub-components
-- Handler >10 lines → extract to hook
+Quick reference: Component 500 max (refactor at 400), Hook 300 max, Presentational 200 max.
 
 ### Single Responsibility
 Component does ONE of: Display UI | Manage State | Coordinate children

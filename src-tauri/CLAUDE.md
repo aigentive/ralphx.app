@@ -133,14 +133,9 @@ Every task requires a `refactor:` commit. No exceptions.
 **Verification:** Task NOT complete until `refactor:` commit + item marked done.
 
 ### File Size Limits
-**Maximum 500 lines per file** — refactor at 400 lines.
+**See:** `.claude/rules/code-quality-standards.md` (single source of truth)
 
-| Condition | Action |
-|-----------|--------|
-| Helper functions >100 lines | Extract to `{module}_helpers.rs` |
-| >5 structs/enums | Extract to `{module}_types.rs` |
-| Service method >50 lines | Extract helper |
-| Validation >30 lines | Extract to `{module}_validation.rs` |
+Quick reference: **500 lines max** — refactor at 400 lines.
 
 ### Documentation (public API)
 ```rust
