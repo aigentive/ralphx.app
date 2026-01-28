@@ -135,4 +135,12 @@
 
 ---
 
-**Total archived:** 61 items (7 P0 + 6 P1 + 17 P2 + 20 P3 + 11 stale)
+## Archived 2026-01-28 (Hygiene Cycle)
+
+### From polish/backlog.md (P2)
+
+- [x] [P2] [Frontend] Extract hook logic from useChat (528 LOC → 344 LOC) - extracted event handling to useAgentEvents - src/hooks/useChat.ts:1-528
+
+---
+
+**Total archived:** 62 items (7 P0 + 6 P1 + 18 P2 + 20 P3 + 11 stale)
