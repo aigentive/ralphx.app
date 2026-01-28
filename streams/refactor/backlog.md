@@ -24,5 +24,5 @@ _No active P1 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 2 | **Completed:** 11 | **Archived:** 4
-**Last maintenance:** 2026-01-29 (completed research.rs split)
+**Active items:** 1 | **Completed:** 10 | **Archived:** 6
+**Last maintenance:** 2026-01-29 (archived 2 completed items)
