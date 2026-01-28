@@ -1293,8 +1293,6 @@ async fn search_artifacts(
     Json(req): Json<SearchArtifactsRequest>,
 ) -> Result<Json<Vec<ArtifactSummary>>, StatusCode> {
     // For MVP, implement basic search by getting all artifacts and filtering
-    // TODO: Optimize with proper database search in future iteration
-
     // Get all artifacts (we don't have project filtering yet, so get by type)
     let all_artifacts: Vec<Artifact> = if let Some(types) = req.artifact_types {
         let mut results = Vec::new();
