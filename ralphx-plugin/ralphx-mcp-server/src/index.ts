@@ -35,6 +35,58 @@ import {
 // Agent type from environment (set by Rust backend when spawning Claude CLI)
 const AGENT_TYPE = process.env.RALPHX_AGENT_TYPE || "unknown";
 
+// Task ID from environment (for task-level scoping enforcement)
+const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
+
+/**
+ * Validate that a tool call's task_id parameter matches the assigned task
+ * @param toolName - Name of the tool being called
+ * @param args - Arguments passed to the tool
+ * @returns Error message if validation fails, null if validation passes or not applicable
+ *
+ * Test Cases:
+ * 1. Non-scoped tool (get_artifact) => returns null (no validation)
+ * 2. Scoped tool, no RALPHX_TASK_ID set => returns null (backward compat)
+ * 3. Scoped tool, matching task_id => returns null (validation passed)
+ * 4. Scoped tool, mismatched task_id => returns error message
+ */
+function validateTaskScope(
+  toolName: string,
+  args: Record<string, unknown>
+): string | null {
+  // Only validate tools that have task_id parameter
+  const taskScopedTools = [
+    "complete_review",
+    "update_task",
+    "add_task_note",
+    "get_task_details",
+    "get_task_context",
+    "get_review_notes",
+    "get_task_steps",
+    "start_step",
+    "complete_step",
+    "skip_step",
+    "fail_step",
+    "add_step",
+    "get_step_progress",
+  ];
+
+  if (!taskScopedTools.includes(toolName)) {
+    return null; // No validation needed
+  }
+
+  if (!RALPHX_TASK_ID) {
+    return null; // No task scope set, allow (backward compatibility)
+  }
+
+  const providedTaskId = args.task_id as string;
+  if (providedTaskId !== RALPHX_TASK_ID) {
+    return `ERROR: Task scope violation.\n\nYou are assigned to task "${RALPHX_TASK_ID}" but attempted to modify task "${providedTaskId}".\n\nYour assigned task details:\n- Task ID: ${RALPHX_TASK_ID}\n- You should only call ${toolName} with this task_id.\n\nPlease correct your tool call and try again.`;
+  }
+
+  return null; // Validation passed
+}
+
 /**
  * Create and configure the MCP server
  */
@@ -97,6 +149,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         {
           type: "text",
           text: `ERROR: ${errorMessage}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Task scope validation (NEW)
+  const scopeError = validateTaskScope(
+    name,
+    (args as Record<string, unknown>) || {}
+  );
+  if (scopeError) {
+    console.error(`[RalphX MCP] Task scope violation: ${name}`);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: scopeError,
         },
       ],
       isError: true,
@@ -197,6 +268,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   console.error("[RalphX MCP] Starting server...");
   console.error(`[RalphX MCP] Agent type: ${AGENT_TYPE}`);
+  if (RALPHX_TASK_ID) {
+    console.error(`[RalphX MCP] Task scope: ${RALPHX_TASK_ID}`);
+  }
   console.error(
     `[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`
   );

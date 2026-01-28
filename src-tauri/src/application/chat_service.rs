@@ -466,6 +466,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         let agent_name = get_agent_name(&conversation.context_type);
         cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
+        // Add task scope for task-related contexts
+        match conversation.context_type {
+            ChatContextType::Task | ChatContextType::TaskExecution => {
+                cmd.env("RALPHX_TASK_ID", &conversation.context_id);
+            }
+            _ => {}
+        }
+
         let (prompt, resume_session, agent) =
             if let Some(ref claude_session_id) = conversation.claude_session_id {
                 (user_message.to_string(), Some(claude_session_id.as_str()), None)
@@ -955,6 +963,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             let agent_name = get_agent_name(&context_type_clone);
                             let mut cmd = build_base_cli_command(&cli_path, &plugin_dir);
                             cmd.env("RALPHX_AGENT_TYPE", agent_name);
+
+                            // Add task scope for task-related contexts
+                            match context_type_clone {
+                                ChatContextType::Task | ChatContextType::TaskExecution => {
+                                    cmd.env("RALPHX_TASK_ID", &context_id_clone);
+                                }
+                                _ => {}
+                            }
+
                             add_prompt_args(&mut cmd, &queued_msg.content, None, Some(sess_id));
                             configure_spawn(&mut cmd, &working_directory_clone);
 
