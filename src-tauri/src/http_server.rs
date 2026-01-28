@@ -83,6 +83,23 @@ pub struct CompleteReviewRequest {
     pub comments: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ReviewNoteResponse {
+    pub id: String,
+    pub reviewer: String,
+    pub outcome: String,
+    pub notes: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewNotesResponse {
+    pub task_id: String,
+    pub revision_count: u32,
+    pub max_revisions: u32,
+    pub reviews: Vec<ReviewNoteResponse>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListTasksRequest {
     pub project_id: String,
@@ -334,6 +351,7 @@ pub async fn start_http_server(state: Arc<AppState>) {
         .route("/api/suggest_task", post(suggest_task))
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
+        .route("/api/review_notes/:task_id", get(get_review_notes))
         // Worker context tools (worker agent)
         .route("/api/task_context/:task_id", get(get_task_context))
         .route("/api/artifact/:artifact_id", get(get_artifact_full))
@@ -1055,6 +1073,66 @@ async fn complete_review(
         message: "Review submitted successfully".to_string(),
         new_status: new_status.as_str().to_string(),
         fix_task_id: fix_task_id.map(|id| id.as_str().to_string()),
+    }))
+}
+
+/// GET /api/review_notes/:task_id
+///
+/// Get all review feedback for a task. Returns revision history including
+/// AI and human review feedback to help workers understand what needs to be fixed.
+///
+/// This endpoint is used by:
+/// - Worker agents during re-execution to fetch previous review feedback
+/// - MCP get_review_notes tool (see ralphx-plugin/ralphx-mcp-server/src/tools.ts)
+///
+/// Response includes:
+/// - task_id: The task being reviewed
+/// - revision_count: Number of times changes were requested (for tracking revision cycles)
+/// - max_revisions: Maximum allowed revision cycles (default 5, configurable in future)
+/// - reviews: Array of all review notes with outcome, feedback, and timestamps
+async fn get_review_notes(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> Result<Json<ReviewNotesResponse>, (StatusCode, String)> {
+    use crate::domain::entities::ReviewOutcome;
+
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Fetch all review notes for this task
+    let notes = state
+        .review_repo
+        .get_notes_by_task_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 2. Calculate revision count (count of changes_requested outcomes)
+    let revision_count = notes
+        .iter()
+        .filter(|n| n.outcome == ReviewOutcome::ChangesRequested)
+        .count() as u32;
+
+    // 3. Get max_revisions from settings (default to 5 for now)
+    // TODO: Fetch from project settings once maxRevisionCycles setting is added
+    let max_revisions = 5u32;
+
+    // 4. Convert notes to response format
+    let reviews: Vec<ReviewNoteResponse> = notes
+        .into_iter()
+        .map(|note| ReviewNoteResponse {
+            id: note.id.as_str().to_string(),
+            reviewer: note.reviewer.to_string(),
+            outcome: note.outcome.to_string(),
+            notes: note.notes,
+            created_at: note.created_at.to_rfc3339(),
+        })
+        .collect();
+
+    // 5. Return response
+    Ok(Json(ReviewNotesResponse {
+        task_id: task_id.as_str().to_string(),
+        revision_count,
+        max_revisions,
+        reviews,
     }))
 }
 
