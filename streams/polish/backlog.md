@@ -64,7 +64,7 @@ _No active P2 items._
 - [ ] ~~[P3] [Frontend] Remove console.log stub from event handler~~ (stale - no console.log present at line 263)
 - [x] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
 - [x] [P3] [Frontend] Remove console.log statement - src/components/Ideation/useIdeationHandlers.ts:74
-- [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useIntegratedChatHandlers.ts:97,132,172
+- [x] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useIntegratedChatHandlers.ts:97,132,172
 - [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useAgentEvents.ts:123,159,186
 - [ ] [P3] [Frontend] Remove console.log statements from production code - src/hooks/useIntegratedChatEvents.ts:71,119
 - [ ] [P3] [Frontend] Fast refresh warning - Extract constant from component export - src/components/Chat/ResizeablePanel.tsx:52
