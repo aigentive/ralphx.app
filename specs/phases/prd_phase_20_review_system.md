@@ -349,7 +349,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Add escalation criteria",
       "Commit: docs(agent): update reviewer prompt for complete_review"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

@@ -1,10 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 14:30:00
+**Last Updated:** 2026-01-28 16:15:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 12 / 39
-**Current Task:** Update reviewer agent prompt for state transitions
+**Tasks Completed:** 13 / 39
+**Current Task:** Add new states to TypeScript InternalStatus (next)
+
+---
+
+### 2026-01-28 16:15:00 - Update reviewer agent prompt with complete_review tool instructions
+
+**What:**
+- Enhanced ralphx-plugin/agents/reviewer.md with comprehensive documentation on using the complete_review MCP tool
+- Added detailed guidance on when to use each decision type (approved, needs_changes, escalate)
+- Included example complete_review calls for each decision type
+- Documented feedback best practices and issues array structure
+- Marked all frontend P3 TODOs as PRD work (planned in upcoming tasks)
+
+**Commands:**
+- Built MCP server to verify changes: `npm run build` in ralphx-mcp-server
+- Updated PRD: set task "passes": true in specs/phases/prd_phase_20_review_system.md
+
+**Results:**
+- Reviewer agent now has clear instructions for completing reviews
+- Decision criteria explicitly defined for approve/needs_changes/escalate
+- Multiple example calls show proper tool usage patterns
+- Quality backlog updated: all frontend P3 items marked as PRD work
 
 ---
 

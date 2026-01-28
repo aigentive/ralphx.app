@@ -60,15 +60,15 @@
 - [ ] Fix type assertion in App.tsx (as unknown as TaskProposal[]) - src/App.tsx:1
 
 ### P3 - Low Impact
-- [ ] Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)
-- [ ] Implement TODO: Approve review modal - src/App.tsx (line ~400)
-- [ ] Implement TODO: Request changes modal - src/App.tsx (line ~410)
-- [ ] Implement TODO: Open diff viewer - src/App.tsx (line ~420)
-- [ ] Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)
-- [ ] Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)
-- [ ] Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)
-- [ ] Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)
-- [ ] Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts (line ~50)
+- [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD)
+- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD)
+- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD)
+- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts (line ~50)~~ (PRD)
 
 ---
 
