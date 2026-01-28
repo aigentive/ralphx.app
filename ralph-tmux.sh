@@ -81,32 +81,37 @@ create_session() {
     tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5"
 
     # Create the pane layout
-    # Start with pane 0 (header) at top
+    # Layout: STATUS header at top, FEATURES (60%) on left, 4 sonnet streams stacked on right
+    #
+    # ┌─────────────────────────────────────────────────────────────────┐
+    # │ [0] STATUS (5% height)                                          │
+    # ├─────────────────────────────────────┬───────────────────────────┤
+    # │                                     │ [2] REFACTOR              │
+    # │                                     ├───────────────────────────┤
+    # │ [1] FEATURES (opus)                 │ [3] POLISH                │
+    # │ 60% width                           ├───────────────────────────┤
+    # │                                     │ [4] VERIFY                │
+    # │                                     ├───────────────────────────┤
+    # │                                     │ [5] HYGIENE               │
+    # └─────────────────────────────────────┴───────────────────────────┘
 
-    # Split horizontally to create header (top) and main area (bottom)
-    # Pane 0 = header (small), Pane 1 = main
-    tmux split-window -t "$SESSION_NAME:0.0" -v -p 90
+    # Split: header (5%) on top, main area (95%) below
+    # Pane 0 = STATUS, Pane 1 = main area
+    tmux split-window -t "$SESSION_NAME:0.0" -v -p 95
 
-    # Now in main area (pane 1), split vertically for features/refactor
-    # Pane 1 = features (left), Pane 2 = refactor (right)
-    tmux split-window -t "$SESSION_NAME:0.1" -h -p 50
+    # Split main area: FEATURES (60%) left, right column (40%)
+    # Pane 1 = FEATURES, Pane 2 = right column
+    tmux split-window -t "$SESSION_NAME:0.1" -h -p 40
 
-    # Split features pane (1) horizontally to create bottom row
-    # Pane 1 = features, Pane 3 = bottom-left area
-    tmux split-window -t "$SESSION_NAME:0.1" -v -p 40
+    # Split right column into 4 equal parts for sonnet streams
+    # Pane 2 = REFACTOR (top), Pane 3 = bottom 75%
+    tmux split-window -t "$SESSION_NAME:0.2" -v -p 75
 
-    # Split refactor pane (2) horizontally for bottom-right
-    # Pane 2 = refactor, Pane 4 = bottom-right area
-    tmux split-window -t "$SESSION_NAME:0.2" -v -p 40
+    # Pane 3 = POLISH, Pane 4 = bottom 66%
+    tmux split-window -t "$SESSION_NAME:0.3" -v -p 66
 
-    # Split bottom-left (3) into polish and verify
-    # Pane 3 = polish, Pane 5 = verify
-    tmux split-window -t "$SESSION_NAME:0.3" -h -p 50
-
-    # Split bottom-right (4) - verify is already 5, need hygiene
-    # Wait, let me recalculate after splits...
-    # After all splits we should have panes: 0(header), 1(features), 2(refactor), 3(polish), 4(?), 5(?)
-    # Let's verify by setting titles
+    # Pane 4 = VERIFY, Pane 5 = HYGIENE (bottom 50%)
+    tmux split-window -t "$SESSION_NAME:0.4" -v -p 50
 
     # Set pane titles
     tmux select-pane -t "$SESSION_NAME:0.0" -T "STATUS"
@@ -134,12 +139,14 @@ create_session() {
     echo -e "${GREEN}Session created with 6 panes${NC}"
     echo ""
     echo "Pane layout:"
-    echo "  [0] STATUS  - Header with uptime and backlog counts"
-    echo "  [1] FEATURES - PRD tasks + P0 fixes (opus)"
-    echo "  [2] REFACTOR - P1 large file splits (sonnet)"
+    echo "  [0] STATUS   - Header (keybindings)"
+    echo "  [1] FEATURES - PRD + P0 fixes (opus, 60% width)"
+    echo "  [2] REFACTOR - P1 file splits (sonnet)"
     echo "  [3] POLISH   - P2/P3 cleanup (sonnet)"
     echo "  [4] VERIFY   - Gap detection (sonnet)"
     echo "  [5] HYGIENE  - Backlog maintenance (sonnet)"
+    echo ""
+    echo "Ctrl+b <0-5> to switch panes, Ctrl+b z to zoom"
     echo ""
     echo "Attaching to session..."
 
