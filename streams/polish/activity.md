@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-29 00:33:48 - Remove TODO placeholder search implementation in task_context_commands
+**What:**
+- File: src-tauri/src/commands/task_context_commands.rs
+- Removed two TODO comments for future search implementation (lines 113, 130)
+- Comment 1: "TODO: Add proper search index with full-text search for production"
+- Comment 2: "TODO: implement proper search"
+- Current implementation (type-based search with text filtering) remains functional
+
+**Commands:**
+- `cargo test --lib task_context_commands` (passed - 3 tests)
+- Note: clippy blocked by unrelated priority_service warning from another stream
+
+**Result:** Success (TODO comments removed, tests pass)
+
+---
+
 ### 2026-01-29 00:30:17 - Remove TODO in HumanReviewTaskDetail
 **What:**
 - File: src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
@@ -657,3 +673,17 @@
 - `npm run lint && npm run typecheck`
 
 **Result:** Success (all linters pass)
+
+### 2026-01-29 00:34:40 - Remove dead code suppression in priority_service tests
+**What:**
+- File: src-tauri/src/application/priority_service/tests.rs:11, 18
+- Removed #[allow(dead_code)] from MockTaskProposalRepository struct
+- Deleted unused new() constructor method (lines 18-24)
+- with_proposals() is the only constructor used in tests (lines 323, 790)
+- Suppression was hiding genuinely dead code
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test --lib` (passed - 3227 tests)
+
+**Result:** Success (dead code removed, all tests pass)

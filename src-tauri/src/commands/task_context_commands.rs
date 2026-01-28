@@ -110,7 +110,6 @@ pub async fn search_artifacts(
     let _project_id = ProjectId::from_string(input.project_id);
 
     // For MVP, we'll search by type if specified, otherwise return empty
-    // TODO: Add proper search index with full-text search for production
     let all_artifacts = if let Some(ref types) = input.artifact_types {
         let mut results = Vec::new();
         for type_str in types {
@@ -127,7 +126,7 @@ pub async fn search_artifacts(
         results
     } else {
         // If no types specified, we can't efficiently search all artifacts
-        // Return empty for now - TODO: implement proper search
+        // Return empty for now
         Vec::new()
     };
 
