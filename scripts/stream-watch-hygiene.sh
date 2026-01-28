@@ -31,7 +31,8 @@ echo -e "${BLUE}[$STREAM] Watching: $WATCH_FILES${NC}"
 echo -e "${BLUE}[$STREAM] Will auto-start when files change...${NC}"
 echo ""
 
-fswatch -o $WATCH_FILES | while read; do
+# Use latency to avoid race with commits (wait 3s after last change)
+fswatch -o -l 3 $WATCH_FILES | while read; do
     echo ""
     echo -e "${YELLOW}[$STREAM] File change detected, starting cycle...${NC}"
     ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
