@@ -59,7 +59,7 @@ export function ResearchPanel() {
     setIsLaunching(true);
     // Simulate launch
     setTimeout(() => setIsLaunching(false), 2000);
-    // TODO: Call actual research launch command with { brief, depth }
+    console.warn("Research launch not implemented - needs actual command call with brief/depth");
   }, [question, context, scope, isCustom, selectedPreset, customIterations, customTimeout]);
 
   // Recent sessions mock
