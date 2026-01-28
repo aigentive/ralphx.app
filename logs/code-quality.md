@@ -98,6 +98,7 @@
 
 ### P0 - Critical (Phase Gaps)
 <!-- Gaps found during phase verification go here - pick FIRST -->
+- [x] Fix direct status update in chat_service.rs (lines 824-830) - use TaskTransitionService instead of direct DB update - src-tauri/src/application/chat_service.rs:824
 
 ### P1 - High Impact
 - [ ] Split ideation_commands.rs (2580 LOC) - extract session management and proposal handlers - src-tauri/src/commands/ideation_commands.rs:1-50

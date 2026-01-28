@@ -19,9 +19,10 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+use crate::application::task_transition_service::TaskTransitionService;
 use crate::domain::entities::{
     AgentRun, ChatConversation, ChatConversationId, ChatContextType, ChatMessage, ChatMessageId,
-    IdeationSessionId, MessageRole, ProjectId, TaskId,
+    IdeationSessionId, InternalStatus, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -719,6 +720,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let conversation_repo = Arc::clone(&self.conversation_repo);
         let agent_run_repo = Arc::clone(&self.agent_run_repo);
         let task_repo = Arc::clone(&self.task_repo);
+        let project_repo = Arc::clone(&self.project_repo);
+        let ideation_session_repo = Arc::clone(&self.ideation_session_repo);
         let message_queue = Arc::clone(&self.message_queue);
         let running_agent_registry = Arc::clone(&self.running_agent_registry);
         let app_handle = self.app_handle.clone();
@@ -818,27 +821,30 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         .await;
 
                     // Handle task state transition (only for TaskExecution)
+                    // Use TaskTransitionService for proper entry/exit actions
                     if context_type_clone == ChatContextType::TaskExecution {
                         let task_id = TaskId::from_string(context_id_clone.clone());
-                        if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
-                            if task.internal_status
-                                == crate::domain::entities::InternalStatus::Executing
-                            {
-                                task.internal_status =
-                                    crate::domain::entities::InternalStatus::PendingReview;
-                                task.touch();
-                                let _ = task_repo.update(&task).await;
-
-                                if let Some(ref handle) = app_handle {
-                                    let _ = handle.emit(
-                                        "task:event",
-                                        serde_json::json!({
-                                            "type": "status_changed",
-                                            "taskId": context_id_clone,
-                                            "from": "executing",
-                                            "to": "pending_review",
-                                            "changedBy": "agent",
-                                        }),
+                        if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                            if task.internal_status == InternalStatus::Executing {
+                                let transition_service = TaskTransitionService::new(
+                                    Arc::clone(&task_repo),
+                                    Arc::clone(&project_repo),
+                                    Arc::clone(&chat_message_repo),
+                                    Arc::clone(&conversation_repo),
+                                    Arc::clone(&agent_run_repo),
+                                    Arc::clone(&ideation_session_repo),
+                                    Arc::clone(&message_queue),
+                                    Arc::clone(&running_agent_registry),
+                                    app_handle.clone(),
+                                );
+                                if let Err(e) = transition_service
+                                    .transition_task(&task_id, InternalStatus::PendingReview)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        "Failed to transition task {} to PendingReview: {}",
+                                        task_id.as_str(),
+                                        e
                                     );
                                 }
                             }
