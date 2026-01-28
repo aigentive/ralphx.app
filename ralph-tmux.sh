@@ -72,13 +72,13 @@ create_session() {
     # Set base index to 0 for predictable pane numbering
     tmux set-option -t "$SESSION_NAME" pane-base-index 0
 
-    # Bind Ctrl-b + number to switch panes directly (override default window switching)
-    tmux bind-key 0 select-pane -t "$SESSION_NAME:0.0"
-    tmux bind-key 1 select-pane -t "$SESSION_NAME:0.1"
-    tmux bind-key 2 select-pane -t "$SESSION_NAME:0.2"
-    tmux bind-key 3 select-pane -t "$SESSION_NAME:0.3"
-    tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4"
-    tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5"
+    # Bind Ctrl-b + number to switch panes AND zoom (select + toggle zoom)
+    tmux bind-key 0 select-pane -t "$SESSION_NAME:0.0" \; resize-pane -Z
+    tmux bind-key 1 select-pane -t "$SESSION_NAME:0.1" \; resize-pane -Z
+    tmux bind-key 2 select-pane -t "$SESSION_NAME:0.2" \; resize-pane -Z
+    tmux bind-key 3 select-pane -t "$SESSION_NAME:0.3" \; resize-pane -Z
+    tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4" \; resize-pane -Z
+    tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5" \; resize-pane -Z
 
     # Create the pane layout
     # Layout: STATUS header at top, FEATURES (60%) on left, 4 sonnet streams stacked on right
@@ -146,7 +146,7 @@ create_session() {
     echo "  [4] VERIFY   - Gap detection (sonnet)"
     echo "  [5] HYGIENE  - Backlog maintenance (sonnet)"
     echo ""
-    echo "Ctrl+b <0-5> to switch panes, Ctrl+b z to zoom"
+    echo "Ctrl+b <0-5> to switch+zoom, Ctrl+b z to unzoom"
     echo ""
     echo "Attaching to session..."
 
