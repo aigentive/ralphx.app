@@ -51,11 +51,6 @@ const STATUS_CONFIG: Record<
     bg: "rgba(255, 107, 53, 0.15)",
     text: "var(--accent-primary)",
   },
-  execution_done: {
-    label: "Execution Done",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
-  },
   qa_refining: {
     label: "QA Refining",
     bg: "rgba(255, 107, 53, 0.15)",
@@ -100,6 +95,21 @@ const STATUS_CONFIG: Record<
     label: "Cancelled",
     bg: "var(--bg-hover)",
     text: "var(--text-muted)",
+  },
+  reviewing: {
+    label: "AI Review in Progress",
+    bg: "rgba(59, 130, 246, 0.15)",
+    text: "var(--status-info)",
+  },
+  review_passed: {
+    label: "AI Review Passed",
+    bg: "rgba(16, 185, 129, 0.15)",
+    text: "var(--status-success)",
+  },
+  re_executing: {
+    label: "Re-executing",
+    bg: "rgba(255, 107, 53, 0.15)",
+    text: "var(--accent-primary)",
   },
 };
 

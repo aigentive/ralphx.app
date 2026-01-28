@@ -11,7 +11,7 @@ import type { ExecutionPhase } from "./useTaskExecutionState";
  * These would normally be internal, but we make them testable
  */
 function getExecutionPhaseForTest(status: string): ExecutionPhase {
-  if (status === "executing" || status === "execution_done") {
+  if (status === "executing") {
     return "executing";
   }
   if (status.startsWith("qa_")) {
@@ -44,7 +44,6 @@ describe("getExecutionPhase", () => {
 
   it("should return executing for executing status", () => {
     expect(getExecutionPhaseForTest("executing")).toBe("executing");
-    expect(getExecutionPhaseForTest("execution_done")).toBe("executing");
   });
 
   it("should return qa for qa_* statuses", () => {

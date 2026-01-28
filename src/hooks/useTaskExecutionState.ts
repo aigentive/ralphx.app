@@ -36,7 +36,7 @@ export interface TaskExecutionState {
  * Determine execution phase from internal status
  */
 function getExecutionPhase(status: string): ExecutionPhase {
-  if (status === "executing" || status === "execution_done") {
+  if (status === "executing") {
     return "executing";
   }
   if (status.startsWith("qa_")) {

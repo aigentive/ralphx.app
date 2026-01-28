@@ -112,7 +112,6 @@ describe("WorkflowColumnSchema", () => {
       "ready",
       "blocked",
       "executing",
-      "execution_done",
       "qa_refining",
       "qa_testing",
       "qa_passed",

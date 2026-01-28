@@ -12,13 +12,15 @@ export const InternalStatusSchema = z.enum([
   "ready",
   "blocked",
   "executing",
-  "execution_done",
   "qa_refining",
   "qa_testing",
   "qa_passed",
   "qa_failed",
   "pending_review",
+  "reviewing",
+  "review_passed",
   "revision_needed",
+  "re_executing",
   "approved",
   "failed",
   "cancelled",
@@ -45,10 +47,12 @@ export const IDLE_STATUSES: readonly InternalStatus[] = [
  */
 export const ACTIVE_STATUSES: readonly InternalStatus[] = [
   "executing",
-  "execution_done",
+  "re_executing",
   "qa_refining",
   "qa_testing",
   "pending_review",
+  "reviewing",
+  "review_passed",
   "revision_needed",
 ] as const;
 
@@ -59,6 +63,15 @@ export const TERMINAL_STATUSES: readonly InternalStatus[] = [
   "approved",
   "failed",
   "cancelled",
+] as const;
+
+/**
+ * Review statuses where tasks are in the review process
+ */
+export const REVIEW_STATUSES: readonly InternalStatus[] = [
+  "pending_review",
+  "reviewing",
+  "review_passed",
 ] as const;
 
 /**
@@ -80,4 +93,11 @@ export function isActiveStatus(status: InternalStatus): boolean {
  */
 export function isIdleStatus(status: InternalStatus): boolean {
   return (IDLE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Check if a status is a review status
+ */
+export function isReviewStatus(status: InternalStatus): boolean {
+  return (REVIEW_STATUSES as readonly string[]).includes(status);
 }
