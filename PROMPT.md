@@ -81,46 +81,14 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 
 **Every task requires a `refactor:` commit. No exceptions.**
 
-### Read First: `logs/code-quality.md`
-
-This file tracks known quality issues. Check it BEFORE launching any agent.
-
-### Workflow
-
 ```
-Read logs/code-quality.md
-  ├── Has unchecked items? → Pick ONE (by task scope) → Execute → Mark [x] → Commit
-  └── All done or empty? → Launch Explore agent → Update file → Pick ONE → Execute → Commit
+Read logs/code-quality.md → Pick ONE by scope → Execute → Mark [x] → Commit
+List empty? → Explore agent → Update file → Pick ONE
 ```
 
-### Scope Matching
+**Full workflow:** `.claude/rules/quality-improvement.md`
 
-| Task Size | Pick From |
-|-----------|-----------|
-| Small (<50 LOC) | P3 (low impact) |
-| Medium (50-150 LOC) | P2 (medium impact) |
-| Large (>150 LOC) | P1 (high impact) |
-
-### Explore Agent Prompt (when list empty)
-
-```
-Scan src/ and src-tauri/ for code quality issues. Find:
-- Type safety (any types, missing error handling)
-- Dead code, unused imports
-- Naming inconsistencies
-- Clippy/lint warnings
-- Extraction opportunities (repeated logic, large functions)
-
-Output as markdown checklist grouped by: Frontend P1/P2/P3, Backend P1/P2/P3
-```
-
-### Commit
-
-```bash
-git commit -m "refactor: [description]"
-```
-
-**Skip only for:** pure docs changes, config-only changes
+**Skip only for:** pure docs, config-only changes
 
 ---
 
