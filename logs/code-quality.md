@@ -114,17 +114,18 @@
 - [ ] Split artifact_service.rs (1140 LOC) - separate concerns - src-tauri/src/domain/services/artifact_service.rs:1-50
 
 ### P2 - Medium Impact
-- [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1951
-- [ ] Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs
-- [ ] Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs
-- [ ] Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:1867
-- [ ] Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs
-- [ ] Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs
+- [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1243
+- [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs~~ (stale - TODO found but different line)
+- [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs~~ (stale - TODO not found)
+- [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:1867~~ (stale - TODO not found)
+- [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs~~ (stale - TODO not found)
+- [ ] ~~Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs~~ (PRD - review states task)
 - [ ] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
 - [x] Reduce task_step_commands.rs size (764 LOC → 711 LOC) - extracted types to task_step_commands_types.rs - src-tauri/src/commands/task_step_commands.rs:1-50
 - [x] Extract emit_step_updated helper in task_step_commands.rs (711 LOC → 689 LOC) - src-tauri/src/commands/task_step_commands.rs:16-26
+- [x] Extract Column.utils.tsx from Column.tsx (392 LOC → 350 LOC) - src/components/tasks/TaskBoard/Column.tsx
 - [ ] Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs
 
 ### P3 - Low Impact
