@@ -85,7 +85,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         role: string;
         content: string;
       }>("agent:message_created", (event) => {
-        const { conversation_id, message_id, role, content, context_type } = event.payload;
+        const { conversation_id, message_id, role, content } = event.payload;
 
         // Filter by context type if needed (all contexts use the same event now)
         // If this is for the active conversation, add message to cache
@@ -118,9 +118,6 @@ export function useAgentEvents(activeConversationId: string | null) {
             }
           );
         }
-
-        // Log for debugging
-        console.debug(`[agent:message_created] context=${context_type}, conversation=${conversation_id}`);
       });
       unlisteners.push(messageCreatedUnlisten);
 
@@ -154,9 +151,6 @@ export function useAgentEvents(activeConversationId: string | null) {
         // NOTE: Queue processing is now handled by the BACKEND
         // The backend automatically processes queued messages via --resume
         // when a run completes. We listen for agent:queue_sent to update UI.
-
-        // Log for debugging
-        console.debug(`[agent:run_completed] context=${context_type}, conversation=${conversation_id}`);
       });
       unlisteners.push(runCompletedUnlisten);
 
@@ -181,9 +175,6 @@ export function useAgentEvents(activeConversationId: string | null) {
           // Remove from frontend optimistic queue by exact ID match
           deleteQueuedMessage(eventContextKey, message_id);
         }
-
-        // Log for debugging
-        console.debug(`[agent:queue_sent] message=${message_id}, context=${context_type}/${eventContextId}`);
       });
       unlisteners.push(queueSentUnlisten);
 

@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-28 23:18:22 - Remove console.debug statements from useAgentEvents
+**What:**
+- File: src/hooks/useAgentEvents.ts
+- Change: Removed 3 console.debug statements from production code
+  - Line 123: agent:message_created debug log
+  - Line 159: agent:run_completed debug log
+  - Line 186: agent:queue_sent debug log
+- Also removed unused context_type destructuring from line 88
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passes)
+
+---
+
 ### 2026-01-28 23:16:00 - Remove console.log statements from useIntegratedChatEvents
 **What:**
 - File: src/hooks/useIntegratedChatEvents.ts
