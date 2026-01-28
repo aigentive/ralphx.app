@@ -97,7 +97,9 @@ export function useSupervisorEventListener(options: { enabled?: boolean } = {}) 
 
     return () => {
       setConnected(false);
-      unlisteners.forEach((unlisten) => unlisten.then((fn) => fn()));
+      void Promise.all(unlisteners).then((listeners) => {
+        listeners.forEach((fn) => fn());
+      });
     };
   }, [enabled, addAlert, setConnected]);
 }
