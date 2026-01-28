@@ -189,7 +189,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test: ./ralph-tmux.sh stop cleanly terminates everything",
       "Commit: feat(tmux): wire stream wrappers into launcher"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "rules",
