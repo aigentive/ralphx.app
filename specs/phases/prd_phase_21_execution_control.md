@@ -197,7 +197,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo build",
       "Commit: feat(startup): wire StartupJobRunner in app setup"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
