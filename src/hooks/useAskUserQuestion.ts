@@ -90,8 +90,7 @@ export function useAskUserQuestion() {
         });
 
         clearActiveQuestion();
-      } catch (error) {
-        console.error("Failed to submit answer:", error);
+      } catch {
         // Don't clear question on error so user can retry
       } finally {
         setIsLoading(false);

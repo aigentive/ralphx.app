@@ -106,7 +106,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Remove console.error call - src/App.tsx:349
 - [x] [P3] [Frontend] Remove console.error call - src/App.tsx:361
 - [x] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:63
-- [ ] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
+- [x] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
 - [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:213
 - [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
 - [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221

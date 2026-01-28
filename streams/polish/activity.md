@@ -907,3 +907,18 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+
+---
+
+### 2026-01-28 23:37:24 - Remove console.error call from useAskUserQuestion catch block
+**What:**
+- File: src/hooks/useAskUserQuestion.ts:95
+- Removed console.error from answer submission failure catch block
+- Silent failure is appropriate - user can retry (question remains active)
+- Removed unused error parameter from catch block
+
+**Commands:**
+- `npm run lint -- src/hooks/useAskUserQuestion.ts` (passed - 0 errors, 4 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
