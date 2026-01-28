@@ -54,6 +54,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+DARK_GRAY='\033[90m'
 NC='\033[0m' # No Color
 
 # Valid streams
@@ -223,16 +226,17 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
         echo -e "${GREEN}$text${NC}"
       fi
 
-      # Show tool calls
-      tool=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | "\(.name): \(.input | tostring | .[0:100])"' 2>/dev/null)
-      if [[ -n "$tool" ]]; then
-        echo -e "${YELLOW}→ $tool${NC}"
+      # Show tool calls (cyan, medium visibility)
+      tool_name=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | .name // empty' 2>/dev/null)
+      if [[ -n "$tool_name" ]]; then
+        tool_input=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | .input | to_entries | map("\(.key)=\(.value | tostring | .[0:50])") | join(", ") | .[0:80]' 2>/dev/null)
+        echo -e "${CYAN}▸ ${tool_name}${DIM} ${tool_input}${NC}"
       fi
     elif [[ "$type" == "user" ]]; then
-      # Show tool results briefly
-      tool_result=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_result") | .content // empty' 2>/dev/null | head -c 200)
+      # Show tool results briefly (dark gray, subtle)
+      tool_result=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_result") | .content // empty' 2>/dev/null | head -c 100 | tr '\n' ' ')
       if [[ -n "$tool_result" ]]; then
-        echo -e "${BLUE}← ${tool_result:0:150}...${NC}"
+        echo -e "${DARK_GRAY}  ◂ ${tool_result:0:80}…${NC}"
       fi
     fi
   done || true
