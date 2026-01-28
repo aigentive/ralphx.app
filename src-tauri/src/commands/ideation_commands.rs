@@ -998,14 +998,17 @@ fn find_critical_path(
 pub async fn apply_proposals_to_kanban(
     input: ApplyProposalsInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<ApplyProposalsResultResponse, String> {
+    use crate::commands::emit_queue_changed;
+
     let session_id = IdeationSessionId::from_string(input.session_id);
 
     // Parse target column and map to internal status
-    let target_status = match input.target_column.to_lowercase().as_str() {
-        "draft" => InternalStatus::Backlog,
-        "backlog" => InternalStatus::Backlog,
-        "todo" => InternalStatus::Ready,
+    let (target_status, should_emit_queue_changed) = match input.target_column.to_lowercase().as_str() {
+        "draft" => (InternalStatus::Backlog, false),
+        "backlog" => (InternalStatus::Backlog, false),
+        "todo" => (InternalStatus::Ready, true),
         _ => return Err(format!("Invalid target column: {}", input.target_column)),
     };
 
@@ -1158,6 +1161,11 @@ pub async fn apply_proposals_to_kanban(
             .update_status(&session_id, IdeationSessionStatus::Converted)
             .await
             .map_err(|e| e.to_string())?;
+    }
+
+    // Emit queue_changed if any tasks were created with Ready status
+    if should_emit_queue_changed && !created_tasks.is_empty() {
+        emit_queue_changed(&state, &session.project_id, &app).await;
     }
 
     Ok(ApplyProposalsResultResponse {

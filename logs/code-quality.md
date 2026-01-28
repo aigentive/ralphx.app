@@ -22,6 +22,11 @@
 > **BLOCKING:** Fix ALL P0 items before touching P1/P2/P3. Cannot be deferred, marked stale, or skipped.
 
 <!-- Gaps found during phase verification go here -->
+- [x] [Backend] inject_task doesn't emit queue_changed when creating task with Ready status (target=planned) - src-tauri/src/commands/task_commands.rs:512
+- [x] [Backend] answer_user_question doesn't emit queue_changed when transitioning task Blocked→Ready - src-tauri/src/commands/task_commands.rs:557
+- [x] [Backend] approve_fix_task doesn't emit queue_changed when transitioning task Blocked→Ready - src-tauri/src/commands/review_commands.rs:198
+- [x] [Backend] apply_proposals_to_kanban doesn't emit queue_changed when creating tasks with Ready status (todo column) - src-tauri/src/commands/ideation_commands.rs:998
+- [x] [Backend] reject_fix_task doesn't emit queue_changed when creating new fix task with Ready status - src-tauri/src/commands/review_commands.rs:243
 - [x] [Frontend] Orphaned: View Registry not wired - TaskDetailOverlay/TaskFullView need `useViewRegistry={true}` - src/components/tasks/TaskDetailOverlay.tsx:508, TaskFullView.tsx:343
 - [x] [Backend] Fix direct status update in chat_service.rs (lines 824-830) - use TaskTransitionService instead of direct DB update - src-tauri/src/application/chat_service.rs:824
 

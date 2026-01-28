@@ -1,10 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:26:00
+**Last Updated:** 2026-01-28 18:15:00
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 12 / 12
-**Current Task:** Write tests for useExecutionEvents hook
+**Tasks Completed:** 12 / 12 (Gap Verification Complete)
+**Current Task:** Phase 22 Gap Verification
+
+---
+
+### 2026-01-28 18:15:00 - Phase 22 Gap Verification - P0 Fixes
+
+**What:**
+- Ran gap verification after all Phase 22 tasks passed
+- Found 4 P0 gaps: commands that transition tasks to Ready status without emitting `queue_changed`
+- Fixed all 4 gaps to ensure real-time queue count updates
+
+**P0 Gaps Fixed:**
+1. `inject_task` - Now emits queue_changed when target=planned (Ready status)
+2. `answer_user_question` - Now emits queue_changed when transitioning Blocked→Ready
+3. `approve_fix_task` - Now emits queue_changed when transitioning Blocked→Ready
+4. `reject_fix_task` - Now emits queue_changed when creating new fix task with Ready status
+5. `apply_proposals_to_kanban` - Now emits queue_changed when target_column=todo (Ready status)
+
+**Technical Changes:**
+- Made `emit_queue_changed` helper public and exported from task_commands
+- Added app handle parameter to commands that now emit events
+- Added conditional emission logic based on whether tasks enter Ready status
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests pass
+- `npm run lint` — clean (3 shadcn warnings excluded)
+- `npm run typecheck` — clean
 
 ---
 
