@@ -267,3 +267,18 @@
 - `./ralph-tmux.sh status` → reports NOT RUNNING
 
 **Result:** Success - Phase 24 complete. All 24 phases complete.
+
+---
+
+### 2026-01-28 23:58:00 - P0 Fix: Unquoted variable expansion in fswatch arguments
+**What:**
+- Fixed unquoted WATCH_FILES variable in all 5 stream-watch scripts
+- Changed from string `WATCH_FILES="a b c"` to bash array `WATCH_FILES=("a" "b" "c")`
+- Updated display output to use `${WATCH_FILES[*]}` for space-separated display
+- Updated fswatch calls to use `"${WATCH_FILES[@]}"` for proper array expansion
+- Scripts fixed: stream-watch-features.sh, stream-watch-refactor.sh, stream-watch-polish.sh, stream-watch-verify.sh, stream-watch-hygiene.sh
+
+**Commands:**
+- `bash -n scripts/stream-watch-*.sh` → all 5 syntax checks passed
+
+**Result:** Success
