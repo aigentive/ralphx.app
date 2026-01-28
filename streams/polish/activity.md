@@ -743,6 +743,23 @@
 
 **Result:** Success (error handling improved, all tests pass)
 
+### 2026-01-28 22:56:19 - Remove dead_code allow attribute from agents/mod.rs
+**What:**
+- File: src-tauri/src/domain/agents/mod.rs:24
+- Removed `#[allow(dead_code)]` attribute from dependency_tests module
+- Deleted unused TestTrait and TestImpl (lines 31-43)
+- Removed test_async_trait_available and test_futures_stream_available tests
+- Kept 4 tests that verify actual dependency functionality: which, lazy_static, tokio process, Pin<Box<Stream>>
+- Suppression was hiding genuinely dead code
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test --lib domain::agents::dependency_tests` (passed - 4 tests)
+
+**Result:** Success (dead code removed, all tests pass)
+
+---
+
 ### 2026-01-29 01:05:00 - Replace .unwrap() calls in test assertions
 **What:**
 - File: src-tauri/src/domain/supervisor/patterns.rs:329,352,377
