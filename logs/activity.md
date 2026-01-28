@@ -1,10 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:45:00
+**Last Updated:** 2026-01-28 19:15:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 35 / 39
-**Current Task:** Create ReviewDetailModal component (next)
+**Tasks Completed:** 36 / 39
+**Current Task:** Wire ReviewDetailModal in App.tsx (next)
+
+---
+
+### 2026-01-28 19:15:00 - Create ReviewDetailModal component
+
+**What:**
+- Created ReviewDetailModal component with full-width (90vw, 85vh) layout:
+  - Left pane (300px): Task context, AI review summary, review history, revision count badge
+  - Right pane (flex-1): DiffViewer integration
+  - Footer: Approve / Request Changes buttons with feedback input
+- Wired to useReviewMutations for approve/requestChanges API calls
+- Modal closes on successful action
+- Added Escape key handler
+- Exported from src/components/reviews/index.ts
+
+**Quality Improvement:**
+- Extracted TaskCard styling utilities to TaskCard.utils.ts
+  - getPriorityColor, getCardStyles, getExecutionStateClass, getExecutionBorderStyles
+  - isDraggableStatus, isReviewStateStatus, isActivelyProcessing helpers
+  - TaskCard.tsx reduced from 531 LOC to 407 LOC
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+```
 
 ---
 
