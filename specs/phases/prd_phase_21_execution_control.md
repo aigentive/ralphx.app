@@ -213,7 +213,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(repo): add get_by_status to TaskRepository"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
