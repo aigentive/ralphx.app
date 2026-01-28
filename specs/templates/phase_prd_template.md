@@ -100,3 +100,20 @@ After completing the task: update `"passes": true`, commit, and stop.
 ### Integration Testing
 - [ ] {End-to-end flow 1}
 - [ ] {End-to-end flow 2}
+
+### Wiring Verification
+
+**For each new component/feature, verify the full path from user action to code:**
+
+- [ ] Entry point identified (click handler, route, event listener)
+- [ ] New component is imported AND rendered (not behind disabled flag)
+- [ ] API wrappers call backend commands
+- [ ] State changes reflect in UI
+
+**Common failure modes to check:**
+- [ ] No optional props defaulting to `false` or disabled
+- [ ] No components imported but never rendered
+- [ ] No functions exported but never called
+- [ ] No hooks defined but not used in components
+
+See `.claude/rules/gap-verification.md` for full verification workflow.

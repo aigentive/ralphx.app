@@ -22,13 +22,11 @@
 manifest.json → active phase → PRD file → first task where passes=false
 ```
 
-**Phase complete?** (all `passes: true`) → Run **Gap Verification** before transitioning:
+**Phase complete?** (all `passes: true`) → Run **Gap Verification** (`.claude/rules/gap-verification.md`):
 
 ```
-1. Read entire PRD + its referenced plan/specs
-2. Launch Explore agent: "Verify implementation against PRD. Find gaps, missed TODOs, incomplete features"
-3. Gaps found? → Add to logs/code-quality.md as P0 (Critical) → Continue to next iteration
-4. No gaps? → Update manifest, log, commit: `chore: complete phase N, activate phase N+1`
+Gaps found? → Add to code-quality.md as P0 → Continue iterations
+No gaps? → Update manifest, commit: `chore: complete phase N, activate phase N+1`
 ```
 
 **All phases complete?** → Output `<promise>COMPLETE</promise>`
@@ -114,3 +112,4 @@ Stale/PRD? → Strikethrough, pick next | Exhausted? → ESCALATE → Deferred V
 > This section grows over time, making the loop smarter with each iteration.
 
 <!-- AGENTS: Add new rules as bullet points below this comment -->
+- **Verify wiring, not just existence** — Optional flags must be ENABLED at entry points (Phase 20: `useViewRegistry` never enabled)
