@@ -76,6 +76,7 @@
 - [x] Remove debug console.log in ChatPanel contextKey effect - src/components/Chat/ChatPanel.tsx:401
 - [x] Remove debug console.log in ChatPanel agent run completion - src/components/Chat/ChatPanel.tsx:762
 - [x] Remove debug console.log in ExtensibilityView research handler - src/components/ExtensibilityView.tsx:629
+- [x] Remove debug console.log in handleViewDiff - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:366
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20)
 - [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20)
 - [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20)
