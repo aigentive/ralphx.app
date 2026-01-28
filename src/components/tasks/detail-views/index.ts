@@ -14,3 +14,4 @@ export { BasicTaskDetail } from "./BasicTaskDetail";
 export { RevisionTaskDetail } from "./RevisionTaskDetail";
 export { ExecutionTaskDetail } from "./ExecutionTaskDetail";
 export { ReviewingTaskDetail } from "./ReviewingTaskDetail";
+export { HumanReviewTaskDetail } from "./HumanReviewTaskDetail";
