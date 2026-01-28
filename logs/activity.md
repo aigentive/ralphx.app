@@ -1,10 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 19:15:00
+**Last Updated:** 2026-01-28 20:00:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 36 / 39
-**Current Task:** Wire ReviewDetailModal in App.tsx (next)
+**Tasks Completed:** 37 / 39
+**Current Task:** Update workflow configuration (next)
+
+---
+
+### 2026-01-28 20:00:00 - Update ReviewsPanel to open ReviewDetailModal
+
+**What:**
+- Added onReview callback prop to ReviewCard with Eye icon
+- Added selectedReviewId state to ReviewsPanel for modal control
+- Wired handleReview callback to open ReviewDetailModal on Review button click
+- Derived selectedReviewTaskId from reviews for modal props
+- Modal closes on handleCloseModal callback
+
+**Quality Improvement:**
+- Extracted ReviewsPanel sub-components to ReviewsPanel.utils.tsx
+  - LoadingSpinner, EmptyState, CountBadge
+  - PanelHeader, FilterTabs components
+  - ReviewDetailHeader, ReviewDetailView components
+  - PANEL_STYLES constant and FilterTab type
+  - ReviewsPanel.tsx reduced from 605 LOC to 233 LOC
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+```
 
 ---
 
