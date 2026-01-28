@@ -51,7 +51,7 @@
 - [ ] Split IdeationView (1198 LOC) - extract ideation session and proposal panels into sub-components - src/components/Ideation/IdeationView.tsx:1-50
 - [ ] Reduce ChatPanel component size (1044 LOC) - extract ResizeablePanel and message rendering logic - src/components/Chat/ChatPanel.tsx:1-100
 - [ ] Reduce IntegratedChatPanel component size (1021 LOC) - extract scrolling logic and message rendering - src/components/Chat/IntegratedChatPanel.tsx:1-100
-- [ ] Fix react-hooks/exhaustive-deps in ChatPanel - wrap messagesData in useMemo - src/components/Chat/ChatPanel.tsx:855
+- [ ] ~~Fix react-hooks/exhaustive-deps in ChatPanel - wrap messagesData in useMemo - src/components/Chat/ChatPanel.tsx:855~~ (stale - messagesData already wrapped in useMemo at line 473)
 
 ### P2 - Medium Impact
 - [x] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693
@@ -120,7 +120,7 @@
 ### P3 - Low Impact
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
 - [~] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs (STALE: TODO not found)
-- [~] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs (STALE: Review context not yet added, pending future task)
+- [x] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs
 
 ---
 
