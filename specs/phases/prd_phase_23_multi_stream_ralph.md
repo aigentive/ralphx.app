@@ -73,7 +73,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify with ls -la streams/",
       "Commit: chore(streams): create multi-stream folder structure and copy ralph.sh"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "rules",
