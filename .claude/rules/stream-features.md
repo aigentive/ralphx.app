@@ -1,0 +1,109 @@
+# Features Stream
+
+## Overview
+
+The features stream handles **PRD tasks and P0 gap fixes**. It is the primary stream for shipping new functionality.
+
+**Focus:** Implement features from active phase PRDs and fix critical gaps (P0 items).
+
+## Rules
+
+1. **ONE task per iteration, then STOP**
+2. **P0 items BLOCK all PRD work** — fix P0 first, no exceptions
+3. **No quality improvement work** — that's other streams' job (refactor, polish)
+4. **TDD mandatory** — tests FIRST
+5. **Document patterns inline** — new architectural patterns go in src/CLAUDE.md or src-tauri/CLAUDE.md
+
+## Workflow
+
+```
+1. Check streams/features/backlog.md for P0 items
+   → P0 EXISTS? → Fix it → Mark [x] → Commit → STOP
+
+2. Read specs/manifest.json → find active phase (status: "active")
+
+3. Read the phase PRD → find first task with "passes": false
+
+4. Read FULL task (steps, acceptance_criteria, design_quality)
+
+5. Execute task following PRD steps exactly
+
+6. Run linters:
+   - npm run lint && npm run typecheck
+   - cargo clippy --all-targets --all-features -- -D warnings
+   - cargo test
+
+7. Log to streams/features/activity.md
+
+8. Update PRD: set "passes": true
+
+9. Commit: feat|fix|docs: [description]
+
+10. STOP — one task per iteration
+```
+
+## P0 Rules (CANNOT BE BYPASSED)
+
+**P0 items are phase gaps — bugs where code exists but isn't wired up.**
+
+```
+P0 EXISTS? → You MUST fix it. Period.
+- NO scope matching ("too big for my task")
+- NO stale marking ("looks fine to me")
+- NO PRD deferral (P0 comes from COMPLETED phases, not active PRD)
+- NO skipping to easier work
+```
+
+**Why so strict?** P0 items represent shipped bugs. The feature "works" in isolation but users can't access it. Every iteration that passes without fixing P0 is an iteration where the bug remains in production.
+
+## P0 Item Format
+
+Items in streams/features/backlog.md follow this format:
+
+```markdown
+- [ ] [Frontend/Backend] Description - file:line
+```
+
+When fixed:
+```markdown
+- [x] [Frontend/Backend] Description - file:line
+```
+
+## Phase Complete Detection
+
+When all PRD tasks have `"passes": true`:
+
+1. Run gap verification (see `.claude/rules/gap-verification.md`)
+2. Gaps found? → Add to streams/features/backlog.md as P0 → Continue iterations
+3. No gaps? → Update manifest.json:
+   - Set current phase `"status": "complete"`
+   - Set next phase `"status": "active"`
+   - Update `"currentPhase": N+1`
+4. Commit: `chore: complete phase N, activate phase N+1`
+
+## All Phases Complete
+
+When all phases in manifest.json have `"status": "complete"`:
+
+Output: `<promise>COMPLETE</promise>`
+
+## Activity Log Format
+
+Log entries go in `streams/features/activity.md`:
+
+```markdown
+### YYYY-MM-DD HH:MM:SS - [Task Title]
+**What:**
+- Bullet points describing work done
+
+**Commands:**
+- `relevant commands run`
+
+**Result:** Success/Failed
+```
+
+## Reference
+
+- Gap verification workflow: `.claude/rules/gap-verification.md`
+- Code quality standards: `.claude/rules/code-quality-standards.md`
+- Manifest and phases: `specs/manifest.json`
