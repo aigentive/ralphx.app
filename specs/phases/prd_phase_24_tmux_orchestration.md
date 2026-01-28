@@ -248,7 +248,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - fswatch Behavior: how file watching works, what triggers each stream",
       "Commit: docs: add streams/README.md with tmux orchestration guide"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "verification",
