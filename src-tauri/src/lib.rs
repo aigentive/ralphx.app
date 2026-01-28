@@ -35,8 +35,11 @@ pub use application::AppState;
 pub use error::{AppError, AppResult};
 
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::Manager;
 use tracing::{info, warn};
+
+use application::{StartupJobRunner, TaskTransitionService};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -116,6 +119,48 @@ pub fn run() {
             } else {
                 warn!("Could not find Claude CLI or plugin directory - MCP server not registered");
             }
+
+            // Spawn startup job runner to resume tasks in agent-active states
+            // Clone references needed for the async task
+            let startup_task_repo = Arc::clone(&app_state.task_repo);
+            let startup_project_repo = Arc::clone(&app_state.project_repo);
+            let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
+            let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
+            let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
+            let startup_ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
+            let startup_message_queue = Arc::clone(&app_state.message_queue);
+            let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
+            let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
+
+            tauri::async_runtime::spawn(async move {
+                // Wait for HTTP server to be ready
+                tokio::time::sleep(Duration::from_millis(500)).await;
+
+                info!("Starting startup job runner...");
+
+                // Create TaskTransitionService for startup resumption
+                let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+                    startup_task_repo.clone(),
+                    startup_project_repo.clone(),
+                    startup_chat_message_repo,
+                    startup_conversation_repo,
+                    startup_agent_run_repo,
+                    startup_ideation_session_repo,
+                    startup_message_queue,
+                    startup_running_agent_registry,
+                    Arc::clone(&startup_execution_state),
+                    None, // No app_handle in background task
+                );
+
+                let runner = StartupJobRunner::new(
+                    startup_task_repo,
+                    startup_project_repo,
+                    transition_service,
+                    startup_execution_state,
+                );
+
+                runner.run().await;
+            });
 
             // Register app_state with Tauri's state management
             app.manage(app_state);
