@@ -168,7 +168,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test syntax: bash -n ralph-tmux-status.sh",
       "Commit: feat(tmux): add status header display script"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
