@@ -15,6 +15,7 @@ export const CONTEXT_TYPE_VALUES = [
   "task",
   "project",
   "task_execution",
+  "review",
 ] as const;
 
 export const ContextTypeSchema = z.enum(CONTEXT_TYPE_VALUES);

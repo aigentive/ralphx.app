@@ -168,3 +168,16 @@ export function createProjectContext(
     projectId,
   };
 }
+
+// ============================================================================
+// Review Chat Context
+// ============================================================================
+
+/**
+ * Review chat context - used for live chat with AI reviewer
+ */
+export interface ReviewChatContext {
+  type: 'review';
+  taskId: string;
+  reviewId: string;
+}
