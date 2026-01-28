@@ -33,8 +33,14 @@ pub enum InternalStatus {
     QaFailed,
     /// Awaiting code review (AI or human)
     PendingReview,
+    /// AI agent is actively reviewing
+    Reviewing,
+    /// AI approved, awaiting human confirmation
+    ReviewPassed,
     /// Reviewer requested changes
     RevisionNeeded,
+    /// Worker is revising based on review feedback
+    ReExecuting,
     /// Task has been approved and is complete
     Approved,
     /// Task has permanently failed after max retries
@@ -66,7 +72,10 @@ impl InternalStatus {
 
             // Review states
             PendingReview => &[Approved, RevisionNeeded],
+            Reviewing => &[],
+            ReviewPassed => &[],
             RevisionNeeded => &[Executing, Cancelled],
+            ReExecuting => &[],
 
             // Terminal states (can be re-opened)
             Approved => &[Ready],
@@ -95,7 +104,10 @@ impl InternalStatus {
             QaPassed,
             QaFailed,
             PendingReview,
+            Reviewing,
+            ReviewPassed,
             RevisionNeeded,
+            ReExecuting,
             Approved,
             Failed,
             Cancelled,
@@ -115,7 +127,10 @@ impl InternalStatus {
             InternalStatus::QaPassed => "qa_passed",
             InternalStatus::QaFailed => "qa_failed",
             InternalStatus::PendingReview => "pending_review",
+            InternalStatus::Reviewing => "reviewing",
+            InternalStatus::ReviewPassed => "review_passed",
             InternalStatus::RevisionNeeded => "revision_needed",
+            InternalStatus::ReExecuting => "re_executing",
             InternalStatus::Approved => "approved",
             InternalStatus::Failed => "failed",
             InternalStatus::Cancelled => "cancelled",
@@ -158,7 +173,10 @@ impl FromStr for InternalStatus {
             "qa_passed" => Ok(InternalStatus::QaPassed),
             "qa_failed" => Ok(InternalStatus::QaFailed),
             "pending_review" => Ok(InternalStatus::PendingReview),
+            "reviewing" => Ok(InternalStatus::Reviewing),
+            "review_passed" => Ok(InternalStatus::ReviewPassed),
             "revision_needed" => Ok(InternalStatus::RevisionNeeded),
+            "re_executing" => Ok(InternalStatus::ReExecuting),
             "approved" => Ok(InternalStatus::Approved),
             "failed" => Ok(InternalStatus::Failed),
             "cancelled" => Ok(InternalStatus::Cancelled),
@@ -176,8 +194,8 @@ mod tests {
     // ===== All 14 Variants Exist Tests =====
 
     #[test]
-    fn internal_status_has_14_variants() {
-        assert_eq!(InternalStatus::all_variants().len(), 14);
+    fn internal_status_has_17_variants() {
+        assert_eq!(InternalStatus::all_variants().len(), 17);
     }
 
     #[test]
@@ -194,7 +212,10 @@ mod tests {
             QaPassed,
             QaFailed,
             PendingReview,
+            Reviewing,
+            ReviewPassed,
             RevisionNeeded,
+            ReExecuting,
             Approved,
             Failed,
             Cancelled,
@@ -247,7 +268,10 @@ mod tests {
             ("qa_passed", InternalStatus::QaPassed),
             ("qa_failed", InternalStatus::QaFailed),
             ("pending_review", InternalStatus::PendingReview),
+            ("reviewing", InternalStatus::Reviewing),
+            ("review_passed", InternalStatus::ReviewPassed),
             ("revision_needed", InternalStatus::RevisionNeeded),
+            ("re_executing", InternalStatus::ReExecuting),
             ("approved", InternalStatus::Approved),
             ("failed", InternalStatus::Failed),
             ("cancelled", InternalStatus::Cancelled),
