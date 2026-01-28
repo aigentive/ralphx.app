@@ -26,9 +26,9 @@ _No active P3 items. Completed items moved to archive._
 
 - [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:784~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21:1)
-- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21:1)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1)
 
 ### Backend
@@ -69,10 +69,32 @@ _No active P3 items. Completed items moved to archive._
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract buttonVariants from Button component - src/components/ui/button.tsx:44~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract toggleVariants from Toggle component - src/components/ui/toggle.tsx:29~~ (excluded)
 
+## REFILL (Added 2026-01-29 00:00)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Frontend] Extract ToolCallIndicator sub-functions - src/components/Chat/ToolCallIndicator.tsx:49-200
+- [ ] [P2] [Frontend] Consolidate ChatPanel console.error handlers into unified error handler - src/components/Chat/ChatPanel.tsx:332
+- [ ] [P2] [Frontend] Remove TODO comment for Tauri command integration - src/App.tsx:359
+- [ ] [P2] [Frontend] Extract ExtensibilityView.panels large panel components (906 LOC) - src/components/ExtensibilityView.panels.tsx:1
+- [ ] [P2] [Backend] Replace unwrap() calls with proper error handling in ideation_commands - src-tauri/src/commands/ideation_commands/mod.rs:45
+- [ ] [P2] [Backend] Remove #[allow(dead_code)] suppression and verify actual usage - src-tauri/src/application/ideation_service/tests.rs:2
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Remove TODO comment for diff viewer integration - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
+- [ ] [P3] [Frontend] Remove TODO comments for unimplemented task actions - src/components/tasks/TaskFullView.tsx:213
+- [ ] [P3] [Frontend] Remove TODO in HumanReviewTaskDetail - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+- [ ] [P3] [Frontend] Remove TODO in PlanTemplateSelector - src/components/Ideation/PlanTemplateSelector.tsx:94
+- [ ] [P3] [Frontend] Clean up console.error in PlanEditor - src/components/Ideation/PlanEditor.tsx:215
+- [ ] [P3] [Backend] Remove TODO placeholder search implementation - src-tauri/src/commands/task_context_commands.rs:113
+- [ ] [P3] [Backend] Remove dead code suppression and clean - src-tauri/src/application/priority_service.rs:378
+- [ ] [P3] [Backend] Clean up unused test fixtures in dependency_service - src-tauri/src/application/dependency_service.rs:530
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 4 (9 excluded, 10 deferred to PRD)
+**Active items:** 18 (9 excluded, 10 deferred to PRD)
 **Completed:** 8
 **Validated:** 42 strikethroughs (2026-01-28 x27) - 6 archived, 1 reactivated, 35 incremented
-**Last maintenance:** 2026-01-28 23:47 (refilled P2/P3 items, marked 3 shadcn/ui items as excluded)
+**Last maintenance:** 2026-01-29 00:00 (refilled 15 P2/P3 items)
