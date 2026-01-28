@@ -19,34 +19,8 @@ import {
 } from "@/components/ui/tooltip";
 import { FileEdit, Trash2, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { TaskProposal, Priority } from "@/types/ideation";
-
-// ============================================================================
-// Priority Config
-// ============================================================================
-
-const PRIORITY_CONFIG: Record<Priority, { gradient: string; glow: string; label: string }> = {
-  critical: {
-    gradient: "from-red-500/20 to-red-600/10",
-    glow: "shadow-[0_0_12px_rgba(239,68,68,0.1)]",
-    label: "Critical"
-  },
-  high: {
-    gradient: "from-[#ff6b35]/20 to-[#ff6b35]/10",
-    glow: "shadow-[0_0_12px_rgba(255,107,53,0.1)]",
-    label: "High"
-  },
-  medium: {
-    gradient: "from-amber-500/15 to-amber-600/5",
-    glow: "",
-    label: "Medium"
-  },
-  low: {
-    gradient: "from-slate-500/10 to-slate-600/5",
-    glow: "",
-    label: "Low"
-  },
-};
+import type { TaskProposal } from "@/types/ideation";
+import { PRIORITY_CONFIG } from "./IdeationView.constants";
 
 // ============================================================================
 // Types
