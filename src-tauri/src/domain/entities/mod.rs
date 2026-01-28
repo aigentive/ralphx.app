@@ -59,8 +59,8 @@ pub use research::{
     ResearchProcessId, ResearchProcessStatus, ResearchProgress, RESEARCH_PRESETS,
 };
 pub use methodology::{
-    MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyStatus, MethodologyTemplate,
-    ParseMethodologyStatusError,
+    MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyPlanArtifactConfig,
+    MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,
 };
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus};
