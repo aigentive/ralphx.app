@@ -1,15 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 03:25:43
+**Last Updated:** 2026-01-28 16:32:15
 **Phase:** Review System
-**Tasks Completed:** 4 / 39
-**Current Task:** Extend transition_handler.rs with review state entry actions
+**Tasks Completed:** 5 / 39
+**Current Task:** Add entry/exit actions for review states in TransitionHandler
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 16:32:15 - Add Review-Related TaskEvents
+
+**What:**
+- Added new TaskEvent variants for review state transitions in `src-tauri/src/domain/state_machine/events.rs`:
+  - `StartReview` - System triggers AI review (PendingReview → Reviewing)
+  - `StartRevision` - System starts revision work (RevisionNeeded → ReExecuting)
+- Updated helper methods:
+  - `is_system_signal()` - Includes new events as system-generated signals
+  - `name()` - Returns string names for logging
+- Added unit tests:
+  - `test_start_review_is_system_signal()`
+  - `test_start_revision_is_system_signal()`
+- Updated serialization roundtrip test to include all events
+
+**Commands:**
+- `cargo test events::tests --lib` - All 46 event tests pass
+- `cargo test` - All 3192 tests pass
 
 ### 2026-01-28 03:25:43 - Add Review State Handlers to Machine
 
