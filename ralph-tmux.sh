@@ -80,6 +80,9 @@ create_session() {
     tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4" \\; resize-pane -Z
     tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5" \\; resize-pane -Z
 
+    # Bind Ctrl-b S to graceful stop (creates stop signal file)
+    tmux bind-key S run-shell "touch $SCRIPT_DIR/.ralph-stop && tmux display-message 'Graceful stop initiated - streams will finish current tasks'"
+
     # Create the pane layout
     # Layout: STATUS header at top, FEATURES (60%) on left, 4 sonnet streams stacked on right
     #
@@ -167,10 +170,15 @@ attach_session() {
 stop_all() {
     if ! session_exists; then
         echo -e "${YELLOW}Session '$SESSION_NAME' is not running${NC}"
+        # Clean up stop signal if it exists
+        rm -f "$SCRIPT_DIR/.ralph-stop"
         exit 0
     fi
 
     echo -e "${YELLOW}Stopping RALPH multi-stream session...${NC}"
+
+    # Clean up stop signal file
+    rm -f "$SCRIPT_DIR/.ralph-stop"
 
     # Send Ctrl+C to each pane to stop running processes
     for pane in 0 1 2 3 4 5; do
@@ -277,9 +285,58 @@ show_status() {
     echo ""
     echo "Commands:"
     echo "  ./ralph-tmux.sh attach         - Attach to session"
-    echo "  ./ralph-tmux.sh stop           - Stop all streams"
+    echo "  ./ralph-tmux.sh stop           - Stop all streams immediately"
+    echo "  ./ralph-tmux.sh graceful-stop  - Stop after current tasks complete"
     echo "  ./ralph-tmux.sh restart        - Restart all streams"
     echo "  ./ralph-tmux.sh restart <name> - Restart single stream"
+    echo ""
+    echo "Keybinding: Ctrl+b S = graceful stop"
+}
+
+graceful_stop() {
+    if ! session_exists; then
+        echo -e "${YELLOW}Session '$SESSION_NAME' is not running${NC}"
+        exit 0
+    fi
+
+    echo -e "${YELLOW}Initiating graceful stop...${NC}"
+    echo -e "${DIM}Streams will stop after completing current tasks${NC}"
+    echo ""
+
+    # Create the stop signal file
+    touch "$SCRIPT_DIR/.ralph-stop"
+
+    # Wait for streams to finish (check every 5 seconds, timeout after 5 minutes)
+    local timeout=300
+    local elapsed=0
+    local interval=5
+
+    while [ $elapsed -lt $timeout ]; do
+        # Check if any stream panes are still running claude
+        local running=0
+        for pane in 1 2 3 4 5; do
+            local cmd=$(tmux display-message -t "$SESSION_NAME:0.$pane" -p '#{pane_current_command}' 2>/dev/null || echo "")
+            if [[ "$cmd" == *"claude"* ]] || [[ "$cmd" == *"ralph-streams"* ]]; then
+                running=$((running + 1))
+            fi
+        done
+
+        if [ $running -eq 0 ]; then
+            echo -e "${GREEN}All streams idle${NC}"
+            break
+        fi
+
+        echo -e "${DIM}Waiting... $running stream(s) still active${NC}"
+        sleep $interval
+        elapsed=$((elapsed + interval))
+    done
+
+    # Clean up stop signal
+    rm -f "$SCRIPT_DIR/.ralph-stop"
+
+    # Now do the full stop
+    echo ""
+    stop_all
 }
 
 #------------------------------------------------------------------------------
@@ -302,6 +359,9 @@ case "$command" in
     stop)
         stop_all
         ;;
+    graceful-stop)
+        graceful_stop
+        ;;
     restart)
         restart_all "$1"
         ;;
@@ -309,14 +369,17 @@ case "$command" in
         show_status
         ;;
     *)
-        echo "Usage: ./ralph-tmux.sh [start|attach|stop|restart|status]"
+        echo "Usage: ./ralph-tmux.sh [start|attach|stop|restart|graceful-stop|status]"
         echo ""
         echo "Commands:"
-        echo "  start   - Create tmux session with all streams (default)"
-        echo "  attach  - Attach to existing session"
-        echo "  stop    - Stop all streams and kill session"
-        echo "  restart - Restart all streams (or single stream with: restart <stream>)"
-        echo "  status  - Show session status without attaching"
+        echo "  start         - Create tmux session with all streams (default)"
+        echo "  attach        - Attach to existing session"
+        echo "  stop          - Stop all streams immediately"
+        echo "  graceful-stop - Wait for current tasks to complete, then stop"
+        echo "  restart       - Restart all streams (or: restart <stream>)"
+        echo "  status        - Show session status without attaching"
+        echo ""
+        echo "Keybinding: Ctrl+b S = graceful stop (from within tmux)"
         exit 1
         ;;
 esac
