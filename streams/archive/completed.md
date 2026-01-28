@@ -17,6 +17,8 @@
 
 - [ ] ~~Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components~~ (stale:2 - now 205 LOC)
 - [ ] ~~[P3] [Frontend] Remove console.debug statements from useChat (agent event tracing) - src/hooks/useChat.ts:368,404,431~~ (stale:2 - removed during refactor)
+- [ ] ~~[P2] [Frontend] Error handling: console.error in useChat lacks structured error reporting~~ (stale:2 - removed during refactor)
+- [ ] ~~[P2] [Frontend] Error handling: console.error in useEvents lacks structured error reporting~~ (stale:2 - removed during refactor)
 
 ### P0 - Critical (Phase Gaps)
 
@@ -115,4 +117,15 @@
 
 ---
 
-**Total archived:** 55 items (7 P0 + 6 P1 + 16 P2 + 15 P3 + 11 stale)
+## Archived 2026-01-28 (Hygiene Validation)
+
+### From polish/backlog.md (Strikethrough Validation)
+
+- [ ] ~~[P3] [Frontend] Remove eslint-disable comment from useTaskExecutionState exhaustive-deps~~ (stale:2 - disable is justified for stable helper functions, validated twice)
+- [ ] ~~[P3] [Frontend] Remove unused imports: useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents~~ (stale:2 - imports are used at lines 259, 273, 293, validated twice)
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:2 - no console.debug at those lines, validated twice) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
+- [ ] ~~[P3] [Frontend] Remove unused variable binding in test mock~~ (stale:1 - fixed with proper typing)
+
+---
+
+**Total archived:** 59 items (7 P0 + 6 P1 + 16 P2 + 19 P3 + 11 stale)

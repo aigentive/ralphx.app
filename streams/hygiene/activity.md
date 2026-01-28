@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:12:30 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 3/10 completed, polish: 7/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 12 active items, polish: 13 active items)
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - useTaskExecutionState.ts:141 eslint-disable (stale:1 → stale:2): Disable is justified for currentTime recalc pattern → **Archived**
+  - IntegratedChatPanel.tsx:42-44 unused imports (stale:1 → stale:2): All 3 imports ARE used (lines 259, 273, 293) → **Archived**
+  - IntegratedChatPanel.tsx:124 console.log (stale:1 → REACTIVATED): **Still exists**, debug statement present → Made active for polish stream
+
+**Result:** 2 items archived, 1 item reactivated and added back to active polish backlog
+
+---
+
 ### 2026-01-28 22:44:15 - Backlog Maintenance
 
 **Archive:**
