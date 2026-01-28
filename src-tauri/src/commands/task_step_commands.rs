@@ -1,69 +1,16 @@
 // Tauri commands for TaskStep CRUD operations
 // Thin layer that delegates to TaskStepRepository
 
-use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{StepProgressSummary, TaskId, TaskStep, TaskStepId};
 use crate::error::AppResult;
 
-/// Input for creating a new task step
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateTaskStepInput {
-    pub title: String,
-    pub description: Option<String>,
-    pub sort_order: Option<i32>,
-}
-
-/// Input for updating a task step
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateTaskStepInput {
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub sort_order: Option<i32>,
-}
-
-/// Response wrapper for task step operations
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TaskStepResponse {
-    pub id: String,
-    pub task_id: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub status: String,
-    pub sort_order: i32,
-    pub depends_on: Option<String>,
-    pub created_by: String,
-    pub completion_note: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub started_at: Option<String>,
-    pub completed_at: Option<String>,
-}
-
-impl From<TaskStep> for TaskStepResponse {
-    fn from(step: TaskStep) -> Self {
-        Self {
-            id: step.id.as_str().to_string(),
-            task_id: step.task_id.as_str().to_string(),
-            title: step.title,
-            description: step.description,
-            status: step.status.to_db_string().to_string(),
-            sort_order: step.sort_order,
-            depends_on: step.depends_on.map(|id| id.as_str().to_string()),
-            created_by: step.created_by,
-            completion_note: step.completion_note,
-            created_at: step.created_at.to_rfc3339(),
-            updated_at: step.updated_at.to_rfc3339(),
-            started_at: step.started_at.map(|dt| dt.to_rfc3339()),
-            completed_at: step.completed_at.map(|dt| dt.to_rfc3339()),
-        }
-    }
-}
+// Re-export types for external use
+pub use super::task_step_commands_types::{
+    CreateTaskStepInput, TaskStepResponse, UpdateTaskStepInput,
+};
 
 /// Create a new task step
 #[tauri::command]
