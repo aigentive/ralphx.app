@@ -19,3 +19,23 @@
 **Result:** Success (no new lint errors, 184 lines extracted)
 
 ---
+
+### 2026-01-28 20:20:33 - Extract event hooks from useEvents
+**What:**
+- File: src/hooks/useEvents.ts (417 LOC → 102 LOC)
+- Change: Split event hooks by event type into specialized modules
+- Extracted modules:
+  - useEvents.task.ts (74 LOC) - task event listeners (created, updated, deleted, status_changed)
+  - useEvents.review.ts (61 LOC) - review event listeners (review:update)
+  - useEvents.proposal.ts (129 LOC) - proposal event listeners (created, updated, deleted)
+  - useEvents.execution.ts (80 LOC) - execution error event listeners (execution:error, execution:stderr)
+- Kept in main file: useAgentEvents, useSupervisorAlerts, useFileChangeEvents + re-exports
+
+**Commands:**
+- `wc -l src/hooks/useEvents*.ts`
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (all linters pass, 315 lines extracted into 4 specialized modules)
+
+---
