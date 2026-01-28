@@ -159,7 +159,8 @@ mod tests {
         let qa_data = QaFailedData::single(QaFailure::new("test_foo", "assertion failed"));
         let state = State::QaFailed(qa_data.clone());
 
-        let state_data = StateData::from_state(&state).unwrap();
+        let state_data = StateData::from_state(&state)
+            .expect("Failed to extract state data for qa_failed");
         assert_eq!(state_data.state_type, "qa_failed");
         assert!(state_data.data.contains("test_foo"));
         assert!(state_data.data.contains("assertion failed"));
@@ -170,7 +171,8 @@ mod tests {
         let failed_data = FailedData::new("Build error");
         let state = State::Failed(failed_data);
 
-        let state_data = StateData::from_state(&state).unwrap();
+        let state_data = StateData::from_state(&state)
+            .expect("Failed to extract state data for failed");
         assert_eq!(state_data.state_type, "failed");
         assert!(state_data.data.contains("Build error"));
     }
@@ -178,10 +180,12 @@ mod tests {
     #[test]
     fn test_state_data_into_state_qa_failed() {
         let qa_data = QaFailedData::single(QaFailure::new("test_bar", "expected 1, got 2"));
-        let json = serde_json::to_string(&qa_data).unwrap();
+        let json = serde_json::to_string(&qa_data)
+            .expect("Failed to serialize QaFailedData");
         let state_data = StateData::new("qa_failed", json);
 
-        let state = state_data.into_state().unwrap();
+        let state = state_data.into_state()
+            .expect("Failed to deserialize qa_failed state");
         if let State::QaFailed(data) = state {
             assert!(data.has_failures());
             assert_eq!(data.first_error(), Some("expected 1, got 2"));
@@ -193,10 +197,12 @@ mod tests {
     #[test]
     fn test_state_data_into_state_failed() {
         let failed_data = FailedData::new("Timeout").with_details("Command took 60s");
-        let json = serde_json::to_string(&failed_data).unwrap();
+        let json = serde_json::to_string(&failed_data)
+            .expect("Failed to serialize FailedData");
         let state_data = StateData::new("failed", json);
 
-        let state = state_data.into_state().unwrap();
+        let state = state_data.into_state()
+            .expect("Failed to deserialize failed state");
         if let State::Failed(data) = state {
             assert_eq!(data.error, "Timeout");
             assert_eq!(data.details, Some("Command took 60s".to_string()));
@@ -222,8 +228,10 @@ mod tests {
         let original_data = QaFailedData::single(QaFailure::new("test_roundtrip", "failed"));
         let original_state = State::QaFailed(original_data.clone());
 
-        let state_data = StateData::from_state(&original_state).unwrap();
-        let restored_state = state_data.into_state().unwrap();
+        let state_data = StateData::from_state(&original_state)
+            .expect("Failed to extract state data in roundtrip");
+        let restored_state = state_data.into_state()
+            .expect("Failed to restore state from data in roundtrip");
 
         if let State::QaFailed(restored_data) = restored_state {
             assert_eq!(original_data.failures.len(), restored_data.failures.len());
@@ -238,8 +246,10 @@ mod tests {
         let original_data = FailedData::timeout("timeout error");
         let original_state = State::Failed(original_data.clone());
 
-        let state_data = StateData::from_state(&original_state).unwrap();
-        let restored_state = state_data.into_state().unwrap();
+        let state_data = StateData::from_state(&original_state)
+            .expect("Failed to extract failed state data in roundtrip");
+        let restored_state = state_data.into_state()
+            .expect("Failed to restore failed state from data in roundtrip");
 
         if let State::Failed(restored_data) = restored_state {
             assert_eq!(original_data.error, restored_data.error);
