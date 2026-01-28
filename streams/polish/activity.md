@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 23:52:08 - Error handling: App.tsx catch blocks need proper user feedback via toast
+**What:**
+- File: src/App.tsx
+- Change: Added toast.error() calls to 6 catch blocks for user-facing operations
+- Operations: handlePauseToggle, handleStop, handleQuestionSubmit, handleNewSession, handleArchiveSession, handleApplyProposals
+- Imported toast from "sonner"
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:45:15 - Mark shadcn/ui items as excluded
 **What:**
 - File: streams/polish/backlog.md
