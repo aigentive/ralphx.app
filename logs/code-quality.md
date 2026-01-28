@@ -106,6 +106,7 @@
 - [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale:1 - file is 336 LOC, under 500 limit)
 
 ### P3 - Low Impact
+- [x] Extract duplicate status-to-state conversion into internal_status_to_state helper - src-tauri/src/application/task_transition_service.rs:128-147
 - [x] Remove unused TransitionObserver trait (dead code) - src-tauri/src/domain/state_machine/transition_handler.rs:393
 - [x] Remove broad clippy allows (dead_code, unused_imports, unused_variables) from lib.rs - src-tauri/src/lib.rs:23-25
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
