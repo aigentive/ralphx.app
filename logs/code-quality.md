@@ -86,11 +86,11 @@
 - [ ] Split research.rs (1398 LOC) entity - extract to focused modules - src-tauri/src/domain/entities/research.rs:1-50
 - [ ] Split artifact_flow.rs (1389 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/artifact_flow.rs:1-50
 - [ ] Split methodology.rs (1363 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/methodology.rs:1-50
-- [ ] Split artifact_flow_service.rs (1247 LOC) - separate queries from domain logic - src-tauri/src/domain/services/artifact_flow_service.rs:1-50
+- [x] Split artifact_flow_service.rs (1247 LOC → 304 LOC) - extracted tests to artifact_flow_service_tests.rs - src-tauri/src/domain/services/artifact_flow_service.rs:1-50
 - [x] Split artifact_service.rs (1140 LOC → 266 LOC) - extracted tests to artifact_service_tests.rs - src-tauri/src/domain/services/artifact_service.rs:1-50
 
 ### P2 - Medium Impact
-- [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1243
+- [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1294
 - [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs:113~~ (stale:1 - TODO exists at different line, feature-level work)
 - [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs:206~~ (stale:1 - TODO exists, feature-level work)
 - [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:530~~ (stale:1 - TODO exists, feature-level work)
