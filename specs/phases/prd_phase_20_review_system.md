@@ -313,7 +313,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run build in ralphx-mcp-server",
       "Commit: feat(mcp): add task-level scope validation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "agent",
