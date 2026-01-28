@@ -124,6 +124,7 @@
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
 - [x] Reduce task_step_commands.rs size (764 LOC → 711 LOC) - extracted types to task_step_commands_types.rs - src-tauri/src/commands/task_step_commands.rs:1-50
+- [x] Extract emit_step_updated helper in task_step_commands.rs (711 LOC → 689 LOC) - src-tauri/src/commands/task_step_commands.rs:16-26
 - [ ] Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs
 
 ### P3 - Low Impact

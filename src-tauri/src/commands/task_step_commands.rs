@@ -12,6 +12,20 @@ pub use super::task_step_commands_types::{
     CreateTaskStepInput, TaskStepResponse, UpdateTaskStepInput,
 };
 
+/// Emit step:updated event to frontend
+fn emit_step_updated(state: &AppState, step: &TaskStep) {
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskStepResponse::from(step.clone());
+        let _ = app_handle.emit(
+            "step:updated",
+            serde_json::json!({
+                "step": response,
+                "task_id": step.task_id.as_str()
+            }),
+        );
+    }
+}
+
 /// Create a new task step
 #[tauri::command]
 pub async fn create_task_step(
@@ -163,16 +177,7 @@ pub async fn start_step(
     state.task_step_repo.update(&step).await?;
 
     // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let response = TaskStepResponse::from(step.clone());
-        let _ = app_handle.emit(
-            "step:updated",
-            serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
-            }),
-        );
-    }
+    emit_step_updated(&state, &step);
 
     Ok(TaskStepResponse::from(step))
 }
@@ -211,16 +216,7 @@ pub async fn complete_step(
     state.task_step_repo.update(&step).await?;
 
     // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let response = TaskStepResponse::from(step.clone());
-        let _ = app_handle.emit(
-            "step:updated",
-            serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
-            }),
-        );
-    }
+    emit_step_updated(&state, &step);
 
     Ok(TaskStepResponse::from(step))
 }
@@ -261,16 +257,7 @@ pub async fn skip_step(
     state.task_step_repo.update(&step).await?;
 
     // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let response = TaskStepResponse::from(step.clone());
-        let _ = app_handle.emit(
-            "step:updated",
-            serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
-            }),
-        );
-    }
+    emit_step_updated(&state, &step);
 
     Ok(TaskStepResponse::from(step))
 }
@@ -309,16 +296,7 @@ pub async fn fail_step(
     state.task_step_repo.update(&step).await?;
 
     // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let response = TaskStepResponse::from(step.clone());
-        let _ = app_handle.emit(
-            "step:updated",
-            serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
-            }),
-        );
-    }
+    emit_step_updated(&state, &step);
 
     Ok(TaskStepResponse::from(step))
 }
