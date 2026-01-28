@@ -29,6 +29,10 @@
 - `[x]` Done
 - `[ ] ~~text~~ (stale)` — Strikethrough for already fixed
 - `[ ] ~~text~~ (PRD)` — Strikethrough for PRD-planned tasks
+- `[ ] ~~text~~ (excluded)` — Strikethrough for excluded paths
+
+## Exclusions (do NOT scan or pick)
+- `src/components/ui/*` — shadcn/ui components (upgraded externally)
 
 ---
 
@@ -53,9 +57,9 @@
 - [ ] Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10
 - [ ] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
 - [ ] Extract form field constants from TaskFormFields - src/components/tasks/TaskFormFields.tsx:28-64
-- [ ] Extract constants from ui/badge - src/components/ui/badge.tsx:36
-- [ ] Extract constants from ui/button - src/components/ui/button.tsx:58
-- [ ] Extract constants from ui/toggle - src/components/ui/toggle.tsx:45
+- [ ] ~~Extract constants from ui/badge - src/components/ui/badge.tsx:36~~ (excluded)
+- [ ] ~~Extract constants from ui/button - src/components/ui/button.tsx:58~~ (excluded)
+- [ ] ~~Extract constants from ui/toggle - src/components/ui/toggle.tsx:45~~ (excluded)
 - [ ] Fix useReviews hook with multiple useMemo hooks - wrap data derivation in useMemo - src/hooks/useReviews.ts:142
 - [ ] Fix TaskChatPanel messagesData dependency issue in useMemo - src/components/tasks/TaskChatPanel.tsx:233
 - [ ] Reduce DiffViewer component size (966 LOC) - extract diff rendering logic - src/components/diff/DiffViewer.tsx:1-50
