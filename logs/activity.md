@@ -1,10 +1,29 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:42:25
+**Last Updated:** 2026-01-28 17:15:32
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 5 / 12
-**Current Task:** Emit event on running count decrement
+**Tasks Completed:** 6 / 12
+**Current Task:** Emit events on pause/resume/stop commands
+
+---
+
+### 2026-01-28 17:15:32 - Emit events on pause/resume/stop commands
+
+**What:**
+- Updated `pause_execution` command to emit `execution:status_changed` event with reason "paused"
+- Updated `resume_execution` command to emit `execution:status_changed` event with reason "resumed"
+- Updated `stop_execution` command to emit `execution:status_changed` event with reason "stopped" (after task transitions complete)
+- All events emitted via `ExecutionState::emit_status_changed()` helper, only when app_handle is available
+
+**Quality Improvement:**
+- Replaced `.unwrap()` with `.expect()` in test setup function `setup_test_state()` for better debugging
+- Added contextual error messages to 5 create operations in test helper
+
+**Commands:**
+- `cargo test --lib execution_commands` — 23 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `npm run lint && npm run typecheck` — clean (3 shadcn warnings)
 
 ---
 
