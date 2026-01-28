@@ -17,12 +17,6 @@ use std::sync::{Arc, Mutex};
     }
 
     impl MockTaskProposalRepository {
-        fn new() -> Self {
-            Self {
-                proposals: Mutex::new(Vec::new()),
-            }
-        }
-
         fn with_proposals(proposals: Vec<TaskProposal>) -> Self {
             Self {
                 proposals: Mutex::new(proposals),
@@ -151,12 +145,6 @@ use std::sync::{Arc, Mutex};
     }
 
     impl MockProposalDependencyRepository {
-        fn new() -> Self {
-            Self {
-                dependencies: Mutex::new(HashMap::new()),
-            }
-        }
-
         fn with_dependencies(deps: Vec<(TaskProposalId, TaskProposalId)>) -> Self {
             let mut map: HashMap<TaskProposalId, HashSet<TaskProposalId>> = HashMap::new();
             for (from, to) in deps {
