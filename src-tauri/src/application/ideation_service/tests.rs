@@ -141,18 +141,6 @@ use std::sync::{Arc, Mutex};
                 proposals: Mutex::new(HashMap::new()),
             }
         }
-
-        #[allow(dead_code)]
-        fn with_proposals(proposals: Vec<TaskProposal>) -> Self {
-            let repo = Self::new();
-            for p in proposals {
-                repo.proposals
-                    .lock()
-                    .unwrap()
-                    .insert(p.id.to_string(), p);
-            }
-            repo
-        }
     }
 
     #[async_trait]
@@ -291,18 +279,6 @@ use std::sync::{Arc, Mutex};
             Self {
                 messages: Mutex::new(HashMap::new()),
             }
-        }
-
-        #[allow(dead_code)]
-        fn with_messages(messages: Vec<ChatMessage>) -> Self {
-            let repo = Self::new();
-            for m in messages {
-                repo.messages
-                    .lock()
-                    .unwrap()
-                    .insert(m.id.to_string(), m);
-            }
-            repo
         }
     }
 
