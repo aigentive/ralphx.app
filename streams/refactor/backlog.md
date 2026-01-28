@@ -26,5 +26,5 @@
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 3 | **Completed:** 10 | **Archived:** 4
-**Last maintenance:** 2026-01-29 (archived 1 completed item)
+**Active items:** 2 | **Completed:** 11 | **Archived:** 4
+**Last maintenance:** 2026-01-29 (completed research.rs split)
