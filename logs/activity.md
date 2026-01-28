@@ -1,10 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:45:00
+**Last Updated:** 2026-01-28 18:15:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 33 / 39
-**Current Task:** Add review state badges to TaskCard (next)
+**Tasks Completed:** 34 / 39
+**Current Task:** Add review state animations to CSS (next)
+
+---
+
+### 2026-01-28 18:15:00 - Add review state badges to TaskCard
+
+**What:**
+- Added ReviewStateBadge component for review-related task states:
+  - revision_needed: Orange badge with RotateCcw icon
+  - pending_review: Neutral badge with Clock icon
+  - reviewing: Blue badge with animated Loader2 spinner
+  - review_passed: Green badge with CheckCircle + "AI Approved" text
+  - re_executing: Orange badge with revision count ("Attempt #N")
+- Updated TaskCard component:
+  - Added revisionCount prop for attempt tracking
+  - Added review state indicator section with activity dots for active states
+  - Updated getExecutionStateClass for review state classes
+  - Updated getExecutionBorderStyles for review state borders
+- Added CSS animations in globals.css:
+  - @keyframes reviewing-pulse for blue glow effect
+  - .task-card-reviewing, .task-card-revision, .task-card-review-passed classes
+  - .badge-reviewing animation for subtle background pulse
+- Quality improvement: Extracted ReviewStateBadge to separate file
+  - Reduced TaskCard.tsx from 621 to 531 LOC
+  - Created ReviewStateBadge.tsx (111 LOC)
+
+**Commands:**
+```bash
+npm run lint
+npm run typecheck
+```
 
 ---
 

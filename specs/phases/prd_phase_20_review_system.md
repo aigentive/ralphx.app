@@ -766,7 +766,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(card): add review state badges to TaskCard"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
