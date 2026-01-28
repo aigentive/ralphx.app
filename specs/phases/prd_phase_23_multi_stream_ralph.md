@@ -269,7 +269,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test syntax: bash -n ralph-orchestrator.sh",
       "Commit: feat(ralph): add orchestrator with per-stream model configuration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "cleanup",
