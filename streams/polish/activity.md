@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 23:44:10 - Add user feedback for agent stop failure
+**What:**
+- File: src/components/Chat/ChatPanel.tsx:342
+- Change: Added toast.error() notification in catch block when stopAgent fails
+- Added import for toast from sonner
+- Improved: Users now receive feedback when agent stopping fails instead of silent error
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:42:01 - Replace promise chain with async/await
 **What:**
 - File: src/hooks/useSupervisorAlerts.listener.ts:100
