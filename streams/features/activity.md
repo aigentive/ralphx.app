@@ -299,3 +299,17 @@
 - `bash -n scripts/stream-watch-*.sh` → all 5 syntax checks passed
 
 **Result:** Success
+
+---
+
+### 2026-01-28 23:02:30 - P0 Fix: Hygiene stream missing features backlog watch
+**What:**
+- Fixed hygiene stream not watching streams/features/backlog.md
+- Added "streams/features/backlog.md" to WATCH_FILES array in scripts/stream-watch-hygiene.sh:10
+- Hygiene stream needs to watch features backlog to archive completed P0 items (count > 10)
+- Full WATCH_FILES now: refactor/backlog.md, polish/backlog.md, features/backlog.md, archive/completed.md
+
+**Commands:**
+- `bash -n scripts/stream-watch-hygiene.sh` → syntax check passed
+
+**Result:** Success
