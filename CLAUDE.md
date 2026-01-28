@@ -70,6 +70,7 @@ style={{ boxShadow: "none", outline: "none" }}
 9. **Multi-stream workflow** — Use `./ralph-streams.sh <stream>` for focused work: features (PRD+P0), refactor (P1), polish (P2/P3), verify (gaps), hygiene (backlog maintenance). See `.claude/rules/stream-*.md`
 10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.
 11. **Task tools for complex work (MANDATORY)** — Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
+12. **Commit lock for parallel work** — Acquire `.commit-lock` before committing, release after. Stale = same content >30s. See `.claude/rules/commit-lock.md`
 
 ## Git Conventions
 - NO: git init, push, remotes
