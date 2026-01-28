@@ -1,10 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:15:00
+**Last Updated:** 2026-01-28 14:49:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 4 / 11
-**Current Task:** Fix stop_execution to use TransitionHandler
+**Tasks Completed:** 5 / 11
+**Current Task:** Create StartupJobRunner module
+
+---
+
+### 2026-01-28 14:49:00 - Create StartupJobRunner module
+
+**What:**
+- Created src-tauri/src/application/startup_jobs.rs with StartupJobRunner struct
+- Imports AGENT_ACTIVE_STATUSES from execution_commands.rs (no duplication)
+- Implements new() constructor with task_repo, project_repo, transition_service, execution_state
+- Implements run() method that:
+  - Skips if execution is paused
+  - Iterates all projects and finds tasks in agent-active states
+  - Checks can_start_task() before each resumption (respects max_concurrent)
+  - Re-executes entry actions via transition_service.execute_entry_actions()
+  - Logs resumption count on completion
+- Made execute_entry_actions public in TaskTransitionService for StartupJobRunner access
+- Added 4 tests: resumption_skipped_when_paused, handles_empty_projects, respects_max_concurrent, handles_multiple_statuses
+- Updated application/mod.rs to export startup_jobs module and StartupJobRunner
+
+**Quality Improvement:**
+- Removed overly-broad clippy allows from lib.rs (#![allow(dead_code)], #![allow(unused_imports)], #![allow(unused_variables)])
+- Fixed resulting warnings: unused import in chat_service.rs, unused variables prefixed with underscore, removed unused end variable in memory_task_repo.rs
+- Added #[allow(dead_code)] to test modules for mock constructors that may be used later
+- Marked stale P3 items in code-quality.md (contextual error messages already exist)
+
+**Commands:**
+```bash
+cargo test startup_jobs
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
 
 ---
 
