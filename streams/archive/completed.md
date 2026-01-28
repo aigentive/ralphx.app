@@ -14,6 +14,10 @@
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/artifact_commands.rs:452
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
 
+### From polish/backlog.md (REFILL - Added 2026-01-28 23:47) - Strikethrough Validation
+
+- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract constants from ResizeablePanel.tsx component export~~ (stale:2 - constants already extracted to ResizeablePanel.constants.ts)
+
 ---
 
 ## Archived 2026-01-28
