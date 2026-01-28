@@ -392,3 +392,20 @@ Updated backlog item to reflect complexity.
 **Result:** Success - All 205 tests passed, cargo clippy passed with no warnings, all modules now under 500 LOC limit
 
 ---
+
+### 2026-01-29 01:27:15 - Split artifact_flow.rs
+
+**What:**
+- Original file: src-tauri/src/domain/entities/artifact_flow.rs (1389 LOC)
+- Extracted to:
+  - artifact_flow/mod.rs (160 LOC) - ArtifactFlowEngine + helper functions
+  - artifact_flow/types.rs (434 LOC) - All types (ArtifactFlowId, ArtifactFlowEvent, ArtifactFlowFilter, ArtifactFlowTrigger, ArtifactFlowStep, ArtifactFlow, ArtifactFlowContext, ArtifactFlowEvaluation)
+  - artifact_flow/tests.rs (816 LOC) - All 70 unit tests
+- New size: 434 LOC (max module size, 69% reduction in largest module)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/entities/artifact_flow/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib domain::entities::artifact_flow`
+
+**Result:** Success - All 70 tests passed, cargo clippy passed with no warnings, all modules now under 500 LOC limit
