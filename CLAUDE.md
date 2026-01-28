@@ -67,7 +67,7 @@ style={{ boxShadow: "none", outline: "none" }}
 6. **USE TransitionHandler for status changes** — NEVER direct DB update
 7. **Lint before commit**: `cargo clippy --all-targets --all-features -- -D warnings` + `npm run lint`
 8. **NEVER start/stop dev server** — User manages manually
-9. **Proactive quality improvement (MANDATORY — NEVER SKIP)** — Every task requires `refactor:` commit. If exhausted, run deferred validation → then Explore. Archive: `logs/code-quality-archive.md`. See `.claude/rules/quality-improvement.md`
+9. **Multi-stream workflow** — Use `./ralph-streams.sh <stream>` for focused work: features (PRD+P0), refactor (P1), polish (P2/P3), verify (gaps), hygiene (backlog maintenance). See `.claude/rules/stream-*.md`
 10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.
 11. **Task tools for complex work (MANDATORY)** — Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
 

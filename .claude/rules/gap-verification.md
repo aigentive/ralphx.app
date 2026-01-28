@@ -12,7 +12,7 @@
 1. Read entire PRD + referenced specs/plans
 2. Build mental model of what was supposed to be implemented
 3. Run VERIFICATION CHECKS (below) for each feature
-4. Gaps found? → Log to code-quality.md as P0 → Continue iterations
+4. Gaps found? → Log to streams/features/backlog.md as P0 → Continue iterations
 5. No gaps? → Phase complete, update manifest
 ```
 
@@ -125,7 +125,7 @@ Report any events without complete emit→listen→UI chain.
 
 ## P0 Logging Format
 
-When gaps are found, add to `logs/code-quality.md`:
+When gaps are found, add to `streams/features/backlog.md`:
 
 ```markdown
 ### P0 - Critical (Phase Gaps)
@@ -171,12 +171,13 @@ Report as P0 items:
 | **Dead hook** | Hook defined but not used in components | Grep `use[Name]` definition vs usage |
 | **Partial chain** | Backend done, frontend missing | Grep `#[tauri::command]` vs `invoke(` |
 
-## Integration with Quality Loop
+## Integration with Multi-Stream Workflow
 
-Gap verification feeds into the quality improvement loop:
+Gap verification feeds into the features stream:
 
-1. **P0 items from gap verification take priority** over all P1/P2/P3 items
+1. **P0 items from gap verification take priority** over all PRD work
 2. Gap items are picked FIRST regardless of task size
 3. A phase is NOT complete until all P0 items are resolved
 
-See `.claude/rules/quality-improvement.md` for the full quality loop workflow.
+See `.claude/rules/stream-features.md` for the features stream workflow.
+See `.claude/rules/stream-verify.md` for the verify stream that produces P0s.
