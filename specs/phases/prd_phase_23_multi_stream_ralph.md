@@ -90,7 +90,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Reference to gap-verification.md for P0 context",
       "Commit: docs(rules): add features stream workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "rules",

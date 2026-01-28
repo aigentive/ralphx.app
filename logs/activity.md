@@ -1,10 +1,32 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:45:00
+**Last Updated:** 2026-01-28 19:15:00
 **Phase:** 23 - Multi-Stream RALPH Architecture
-**Tasks Completed:** 1 / 12
-**Current Task:** Task 1 complete - Create streams/ folder structure
+**Tasks Completed:** 2 / 12
+**Current Task:** Task 2 complete - Create .claude/rules/stream-features.md
+
+---
+
+### 2026-01-28 19:15:00 - Phase 23 Task 2: Create .claude/rules/stream-features.md
+
+**What:**
+- Created `.claude/rules/stream-features.md` with:
+  - P0 + PRD task workflow (P0 blocks all PRD work)
+  - P0 blocking rules (cannot skip, defer, or mark stale)
+  - Phase complete detection and gap verification reference
+  - Activity log format for streams/features/activity.md
+- References gap-verification.md for P0 context
+
+**Quality Improvement (P1 escalation):**
+- Extracted MethodologiesPanel from ExtensibilityView.tsx
+- New file: src/components/extensibility/MethodologiesPanel.tsx (159 LOC)
+- ExtensibilityView.tsx reduced from 1239 LOC to 1076 LOC
+- Marked two P2 TODOs as stale (intentional deferrals)
+
+**Commands:**
+- `npm run lint` — clean (3 shadcn warnings excluded)
+- `npm run typecheck` — passes (pre-existing unused vars in ResearchPanel)
 
 ---
 
