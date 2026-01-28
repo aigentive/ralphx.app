@@ -5,6 +5,14 @@
 
 ---
 
+## Archived 2026-01-29 (Fifth Batch)
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:00)
+
+- [x] [P3] [Backend] Remove dead code suppression and clean - src-tauri/src/application/priority_service/tests.rs:11
+
+---
+
 ## Archived 2026-01-29 (Fourth Batch)
 
 ### From refactor/backlog.md (Frontend + Backend)

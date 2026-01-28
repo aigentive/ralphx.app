@@ -1,5 +1,25 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:21:49 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from polish/backlog.md to archive (P3 from REFILL 2026-01-29 00:00)
+- Polish backlog: 11 → 10 completed items
+
+**Refill:**
+- Added 14 P2/P3 items to polish/backlog.md (3 P2, 11 P3 - console cleanup and TODO removal)
+- Polish backlog: 0 → 14 active items
+
+**Validation:**
+- Checked 3 strikethrough items (all PRD-deferred):
+  - App.tsx:794 diff viewer (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1 → :1:1:1): TODO still exists
+  - TaskFullView.tsx:213 edit modal (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1 → :1:1:1:1): Console.warn still exists
+  - TaskFullView.tsx:217 archive task (PRD:18:1:1:1:1:1:1:1:1:1 → :1:1): Console.warn still exists
+
+**Result:** Maintenance complete - 1 archived (polish), 14 P2/P3 items refilled, 3 strikethroughs incremented (total 63 validated)
+
+---
+
 ### 2026-01-28 23:10:58 - Backlog Maintenance
 
 **Archive:**
