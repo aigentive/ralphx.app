@@ -14,6 +14,10 @@
 - [x] [Infrastructure] Orphaned subshells: fswatch pipes not properly managed on stop - ralph-tmux.sh:167
 - [x] [Infrastructure] Stream wrappers missing signal trap handlers for clean shutdown - scripts/stream-watch-features.sh:1
 
+## From Phase 24 Re-verification (2026-01-28)
+
+- [x] [Infrastructure] Missing watch file: hygiene stream does not watch streams/features/backlog.md - scripts/stream-watch-hygiene.sh:10
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

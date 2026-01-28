@@ -147,3 +147,37 @@
    - Impact: Hanging processes on stop/restart
 
 **Result:** 5 P0 items added to features/backlog.md
+
+---
+
+### 2026-01-28 23:11:13 - Phase 24 Re-verification (File Watching)
+**Phases Checked:** 24
+
+**Checks Run:**
+- WIRING: All 6 panes and 7 scripts verified for correct invocation
+- API: IDLE/COMPLETE signal detection in ralph-streams.sh verified
+- STATE: Stream lifecycle IDLE detection in all 5 stream rules verified
+- EVENTS: fswatch file monitoring patterns verified for all 5 streams
+
+**Gaps Found:** 1
+
+**Gap Details:**
+- [Infrastructure] Missing watch file: hygiene stream does not watch streams/features/backlog.md
+  - File: scripts/stream-watch-hygiene.sh:10
+  - Issue: Hygiene stream responsible for archiving >10 completed items from ANY backlog (per .claude/rules/stream-hygiene.md:21-23, 137-141)
+  - Current: Only watches refactor/backlog.md, polish/backlog.md, archive/completed.md
+  - Missing: features/backlog.md not in WATCH_FILES array
+  - Impact: When features/backlog.md accumulates >10 completed P0 items, hygiene stream won't be triggered to archive them
+
+**Verification Summary:**
+- ✓ WIRING: ralph-tmux.sh correctly wires all 6 panes
+- ✓ WIRING: All stream-watch-*.sh scripts properly call ralph-streams.sh
+- ✓ API: ralph-streams.sh includes IDLE/COMPLETE detection with exit 0
+- ✓ STATE: All 5 stream rules have IDLE detection documented
+- ✓ EVENTS: 4/5 streams watch correct files (features, refactor, polish, verify)
+- ✗ EVENTS: Hygiene stream missing features/backlog.md from watch files
+- ✓ CLEANUP: All stream-watch scripts have proper cleanup traps
+- ✓ CLEANUP: pkill pattern correctly targets fswatch processes
+- ✓ CLEANUP: Graceful stop with .ralph-stop signal file
+
+**Result:** 1 P0 item added to features/backlog.md
