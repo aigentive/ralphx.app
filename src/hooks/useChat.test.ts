@@ -150,6 +150,10 @@ const mockStoreState = {
   processQueue: vi.fn(),
 };
 
+// Type helper for zustand store mock
+type StoreMock = typeof mockStoreState;
+type StoreSelector<T> = (state: StoreMock) => T;
+
 describe("chatKeys", () => {
   it("should generate correct key for conversations", () => {
     expect(chatKeys.conversations()).toEqual(["chat", "conversations"]);
@@ -312,13 +316,11 @@ describe("useChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Mock store state
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(useChatStore).mockImplementation((selector?: any) => {
+    vi.mocked(useChatStore).mockImplementation(<T = StoreMock>(selector?: StoreSelector<T>) => {
       if (typeof selector === "function") {
         return selector(mockStoreState);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return mockStoreState as any;
+      return mockStoreState as T;
     });
   });
 
@@ -426,13 +428,11 @@ describe("useChat", () => {
       ...mockStoreState,
       activeConversationId: "conv-1" as string | null,
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(useChatStore).mockImplementation((selector?: any) => {
+    vi.mocked(useChatStore).mockImplementation(<T = StoreMock>(selector?: StoreSelector<T>) => {
       if (typeof selector === "function") {
         return selector(storeWithConversation);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return storeWithConversation as any;
+      return storeWithConversation as T;
     });
 
     renderHook(() => useChat(ideationContext), {
@@ -483,13 +483,11 @@ describe("useChat", () => {
       ...mockStoreState,
       activeConversationId: "conv-1" as string | null,
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(useChatStore).mockImplementation((selector?: any) => {
+    vi.mocked(useChatStore).mockImplementation(<T = StoreMock>(selector?: StoreSelector<T>) => {
       if (typeof selector === "function") {
         return selector(storeWithConversation);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return storeWithConversation as any;
+      return storeWithConversation as T;
     });
 
     const { result } = renderHook(() => useChat(ideationContext), {

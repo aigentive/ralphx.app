@@ -29,10 +29,9 @@ _No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] ~~[P3] [Frontend] Remove console.debug statements from useChat (agent event tracing) - src/hooks/useChat.ts:368,404,431~~ (stale - removed during refactor)
 - [x] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
-- [ ] [P3] [Frontend] Remove eslint-disable comment from useTaskExecutionState exhaustive-deps - src/hooks/useTaskExecutionState.ts:141
-- [ ] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - src/hooks/useChat.test.ts:8,29,37,42,58,103
+- [ ] ~~[P3] [Frontend] Remove eslint-disable comment from useTaskExecutionState exhaustive-deps~~ (stale - disable is justified for stable helper functions)
+- [x] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - properly typed zustand mock - src/hooks/useChat.test.ts:8,29,37,42,58,103
 
 ## P3 - Low Impact
 
@@ -56,8 +55,33 @@ _No active P2 items. Completed items moved to archive._
 
 _No active P3 items. Completed items moved to archive._
 
+## REFILL (Added 2026-01-28)
+
+### P2 - Medium Impact
+
+- [ ] ~~[P2] [Frontend] Type safety - Replace `any` with proper types in test mocks~~ (stale - fixed in P3 item)
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Remove unused imports: useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents - src/components/Chat/IntegratedChatPanel.tsx:42-44
+- [ ] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/IntegratedChatPanel.tsx:131,506,554
+- [ ] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
+- [ ] [P3] [Frontend] Remove console.debug statements from production code - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
+- [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
+- [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
+- [ ] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
+- [ ] [P3] [Frontend] Remove console.log statement - src/components/Ideation/useIdeationHandlers.ts:74
+- [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useIntegratedChatHandlers.ts:97,132,172
+- [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useAgentEvents.ts:123,159,186
+- [ ] [P3] [Frontend] Remove console.log statements from production code - src/hooks/useIntegratedChatEvents.ts:71,119
+- [ ] [P3] [Frontend] Fast refresh warning - Extract constant from component export - src/components/Chat/ResizeablePanel.tsx:52
+- [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
+- [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
+- [ ] [P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7
+- [ ] ~~[P3] [Frontend] Remove unused variable binding in test mock~~ (stale - fixed with proper typing)
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 12 (3 excluded, 9 deferred to PRD)
+**Active items:** 27 (3 excluded, 9 deferred to PRD, 15 new)
 **Completed:** 31 (moved to archive)
