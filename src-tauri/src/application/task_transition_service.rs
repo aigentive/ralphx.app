@@ -326,10 +326,10 @@ impl<R: Runtime> TaskTransitionService<R> {
             InternalStatus::QaPassed => State::QaPassed,
             InternalStatus::QaFailed => State::QaFailed(Default::default()),
             InternalStatus::PendingReview => State::PendingReview,
-            InternalStatus::Reviewing => State::PendingReview, // TODO: Will be replaced with State::Reviewing in next task
-            InternalStatus::ReviewPassed => State::PendingReview, // TODO: Will be replaced with State::ReviewPassed in next task
+            InternalStatus::Reviewing => State::Reviewing,
+            InternalStatus::ReviewPassed => State::ReviewPassed,
             InternalStatus::RevisionNeeded => State::RevisionNeeded,
-            InternalStatus::ReExecuting => State::Executing, // TODO: Will be replaced with State::ReExecuting in next task
+            InternalStatus::ReExecuting => State::ReExecuting,
             InternalStatus::Approved => State::Approved,
             InternalStatus::Failed => State::Failed(Default::default()),
             InternalStatus::Cancelled => State::Cancelled,

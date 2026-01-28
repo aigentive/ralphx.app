@@ -106,7 +106,6 @@ impl<R: Runtime> StartupJobRunner<R> {
                     );
 
                     // Re-execute entry actions to respawn the agent
-                    // Note: execute_entry_actions is currently private, will be made public in a follow-up task
                     self.transition_service
                         .execute_entry_actions(&task.id, &task, *status)
                         .await;

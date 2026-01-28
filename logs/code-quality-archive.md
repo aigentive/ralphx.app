@@ -1,19 +1,11 @@
 # Code Quality Archive
 
-> Completed and confirmed-stale items moved from `logs/code-quality.md`.
-> Preserves history for reference. Items here are considered resolved.
-
-## Archive Format
-
-```markdown
-### YYYY-MM-DD - [Section Name]
-- [x] Description - file:line (completed)
-- [x] ~~Description~~ - file:line (confirmed stale after 3 validations)
-```
+> Completed items moved from `logs/code-quality.md` when section count exceeds 10.
 
 ---
 
-## Archived Items
+## Backend (src-tauri/) - P3 Low Impact
 
-<!-- Items will be added here during cleanup -->
-
+### Archived 2026-01-28
+- [x] Replace println! debug statements with tracing::debug! in task_transition_service.rs - src-tauri/src/application/task_transition_service.rs
+- [x] Remove redundant derive trait tests (Debug, Clone) in health.rs - src-tauri/src/commands/health.rs:37-50
