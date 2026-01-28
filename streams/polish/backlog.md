@@ -54,10 +54,25 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useSupervisorAlerts.listener.ts:100
 - [x] [P3] [Frontend] Error handling: Check empty catch blocks - src/components/Chat/ChatPanel.tsx:342
 
+## REFILL (Added 2026-01-28 23:47)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Frontend] Error handling: App.tsx catch blocks need proper user feedback via toast - src/App.tsx:330
+- [ ] [P2] [Frontend] Event listener cleanup: useResizePanel needs useEffect for document listener lifecycle - src/components/Chat/ResizeablePanel.tsx:63
+- [ ] [P2] [Frontend] Unnecessary useMemo: Multiple dependencies in ChatPanel could be optimized - src/components/Chat/ChatPanel.tsx:200
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Fast refresh warning: Extract constants from ResizeablePanel.tsx component export - src/components/Chat/ResizeablePanel.tsx:45
+- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract badgeVariants from Badge component - src/components/ui/badge.tsx:30~~ (excluded)
+- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract buttonVariants from Button component - src/components/ui/button.tsx:44~~ (excluded)
+- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract toggleVariants from Toggle component - src/components/ui/toggle.tsx:29~~ (excluded)
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 0 (6 excluded, 10 deferred to PRD)
+**Active items:** 4 (9 excluded, 10 deferred to PRD)
 **Completed:** 8
 **Validated:** 39 strikethroughs (2026-01-28 x24) - 6 archived, 1 reactivated, 32 incremented
-**Last maintenance:** 2026-01-28 (marked 3 ui/* items as excluded)
+**Last maintenance:** 2026-01-28 23:47 (refilled P2/P3 items, marked 3 shadcn/ui items as excluded)
