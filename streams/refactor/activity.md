@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-29 00:34:02 - Split priority_service.rs
+
+**What:**
+- Original file: src-tauri/src/application/priority_service.rs (1300 LOC)
+- Extracted to:
+  - priority_service/mod.rs (379 LOC) - main service implementation with priority calculation logic
+  - priority_service/tests.rs (924 LOC) - all 42 unit tests and mock repositories
+- New size: 379 LOC (71% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/application/priority_service/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib application::priority_service`
+
+**Result:** Success - All 42 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
+
+---
+
 ### 2026-01-29 00:26:21 - Split dependency_service.rs
 
 **What:**
