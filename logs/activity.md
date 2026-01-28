@@ -1,10 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:45:00
+**Last Updated:** 2026-01-28 17:04:36
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 7 / 12
-**Current Task:** Emit queue_changed event on task move affecting Ready status
+**Tasks Completed:** 8 / 12
+**Current Task:** Create useExecutionEvents hook
+
+---
+
+### 2026-01-28 17:04:36 - Create useExecutionEvents hook
+
+**What:**
+- Created `src/hooks/useExecutionEvents.ts` for real-time execution status updates
+- Hook listens for `execution:status_changed` and `execution:queue_changed` Tauri events
+- Updates uiStore.executionStatus immediately on event receipt
+- Uses proper cleanup pattern with Promise-based unlisten functions
+- Follows existing event hook patterns (useStepEvents, useQAEvents)
+
+**Quality Improvement (P0 fix):**
+- Fixed orphaned View Registry wiring in TaskDetailOverlay and TaskFullView
+- Added `useViewRegistry={true}` prop to TaskDetailPanel in both components
+- This enables state-specific review views (RevisionTaskDetail, ReviewingTaskDetail, etc.)
+
+**Commands:**
+- `npm run typecheck` — clean
+- `npm run lint` — clean (3 shadcn warnings)
 
 ---
 
