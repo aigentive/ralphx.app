@@ -289,7 +289,6 @@ impl<R: Runtime> TaskTransitionService<R> {
             InternalStatus::Ready => State::Ready,
             InternalStatus::Blocked => State::Blocked,
             InternalStatus::Executing => State::Executing,
-            InternalStatus::ExecutionDone => State::ExecutionDone,
             InternalStatus::QaRefining => State::QaRefining,
             InternalStatus::QaTesting => State::QaTesting,
             InternalStatus::QaPassed => State::QaPassed,

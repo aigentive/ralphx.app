@@ -79,7 +79,7 @@ mod tests {
         let timestamp = Utc::now();
         let transition = StatusTransition::with_timestamp(
             InternalStatus::Executing,
-            InternalStatus::ExecutionDone,
+            InternalStatus::QaRefining,
             "system",
             timestamp,
         );
@@ -133,14 +133,14 @@ mod tests {
     fn test_status_transition_deserializes_from_json() {
         let json = r#"{
             "from": "executing",
-            "to": "execution_done",
+            "to": "qa_refining",
             "trigger": "agent",
             "timestamp": "2026-01-24T12:00:00Z"
         }"#;
 
         let transition: StatusTransition = serde_json::from_str(json).unwrap();
         assert_eq!(transition.from, InternalStatus::Executing);
-        assert_eq!(transition.to, InternalStatus::ExecutionDone);
+        assert_eq!(transition.to, InternalStatus::QaRefining);
         assert_eq!(transition.trigger, "agent");
     }
 

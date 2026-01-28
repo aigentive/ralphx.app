@@ -814,7 +814,6 @@ fn status_to_label(status: InternalStatus) -> String {
         InternalStatus::Ready => "Ready for Work".to_string(),
         InternalStatus::Blocked => "Mark as Blocked".to_string(),
         InternalStatus::Executing => "Start Execution".to_string(),
-        InternalStatus::ExecutionDone => "Mark Execution Done".to_string(),
         InternalStatus::QaRefining => "QA Refining".to_string(),
         InternalStatus::QaTesting => "QA Testing".to_string(),
         InternalStatus::QaPassed => "QA Passed".to_string(),

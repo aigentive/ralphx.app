@@ -124,7 +124,6 @@ impl Task {
         matches!(
             self.internal_status,
             InternalStatus::Executing
-                | InternalStatus::ExecutionDone
                 | InternalStatus::QaRefining
                 | InternalStatus::QaTesting
                 | InternalStatus::PendingReview
@@ -340,7 +339,6 @@ mod tests {
             InternalStatus::Backlog,
             InternalStatus::Ready,
             InternalStatus::Executing,
-            InternalStatus::ExecutionDone,
             InternalStatus::QaRefining,
             InternalStatus::QaTesting,
             InternalStatus::QaPassed,
@@ -364,7 +362,6 @@ mod tests {
 
         let active_states = [
             InternalStatus::Executing,
-            InternalStatus::ExecutionDone,
             InternalStatus::QaRefining,
             InternalStatus::QaTesting,
             InternalStatus::PendingReview,
@@ -741,13 +738,15 @@ mod tests {
             "ready",
             "blocked",
             "executing",
-            "execution_done",
             "qa_refining",
             "qa_testing",
             "qa_passed",
             "qa_failed",
             "pending_review",
+            "reviewing",
+            "review_passed",
             "revision_needed",
+            "re_executing",
             "approved",
             "failed",
             "cancelled",

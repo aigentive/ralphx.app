@@ -118,23 +118,8 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 ## Code Quality
 
-### Proactive Quality Improvement (MANDATORY)
-For every task, launch an Explore agent to quickly scan a portion of the codebase for quality issues. Pick ONE improvement proportional to task size and execute it as part of the same work session.
-
-**Quality targets:**
-- Fix clippy warnings
-- Improve error handling (domain-specific variants over generic strings)
-- Fix naming inconsistencies
-- Remove dead code
-- Extract repeated logic into helpers
-
-**Process:**
-1. Agent scans subset of codebase (don't analyze everything)
-2. Pick ONE actionable improvement
-3. Execute the fix
-4. Commit separately with `refactor:` prefix
-
-**Scope:** small task = small improvement, large task = larger improvement. Goal: incremental quality gains without over-engineering.
+### Proactive Quality Improvement (ENFORCED BY HOOK)
+Every code task requires `refactor:` commit. See `.claude/rules/quality-improvement.md` for targets and process.
 
 ### File Size Limits
 **Maximum 500 lines per file** — refactor at 400 lines.
@@ -154,6 +139,9 @@ For every task, launch an Explore agent to quickly scan a portion of the codebas
 /// - `AppError::NotFound` if task doesn't exist
 pub async fn transition_task(&self, task_id: &TaskId, event: TaskEvent) -> AppResult<Task>
 ```
+
+## Task Management (MANDATORY)
+Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
 
 ## Database
 `ralphx.db` (dev) | Migrations in `infrastructure/sqlite/migrations.rs`
