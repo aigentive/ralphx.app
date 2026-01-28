@@ -33,9 +33,22 @@ Read manifest → Completed phases → For each: check WIRING, API, STATE, EVENT
 
 **NEVER use `git add .` or `git add -A`** — other streams have uncommitted changes!
 
-1. Only commit: `streams/features/backlog.md`, `streams/verify/activity.md`
-2. `git add <file1> <file2>` — only files you modified
+### Commit Lock Protocol
+```
+1. BEFORE committing: Check .commit-lock file
+   → EXISTS? Wait or skip commit this iteration
+   → NOT EXISTS? Create it: echo "verify $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
+
+2. Commit your files only: git add <file1> <file2> ... && git commit
+
+3. AFTER committing: rm -f .commit-lock
+```
+
+### Commit Steps
+1. Acquire lock (create `.commit-lock`)
+2. Only commit: `streams/features/backlog.md`, `streams/verify/activity.md`
 3. Commit with prefix: `chore(verify):`
+4. Release lock (delete `.commit-lock`)
 
 ## No gaps found?
 Output: `<promise>COMPLETE</promise>`

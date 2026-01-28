@@ -42,4 +42,5 @@ screenshots/*
 !screenshots/.gitkeep
 *.db
 .ralph-stop
+.commit-lock
 streams/hygiene/trigger
