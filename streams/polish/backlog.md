@@ -23,14 +23,11 @@ _No active P2 items. Completed items moved to archive._
 - [x] [P2] [Frontend] Extract hook logic from useChat (528 LOC → 344 LOC) - extracted event handling to useAgentEvents - src/hooks/useChat.ts:1-528
 - [x] [P2] [Frontend] Extract hook logic from useEvents (417 LOC → 102 LOC) - split by event type - src/hooks/useEvents.ts:1-417
 - [x] [P2] [Frontend] Extract hook logic from useSupervisorAlerts (409 LOC → 184 LOC) - split alert management into store and listener modules - src/hooks/useSupervisorAlerts.ts:1-409
-- [ ] ~~[P2] [Frontend] Error handling: console.error in useChat lacks structured error reporting~~ (stale:1 - removed during refactor)
-- [ ] ~~[P2] [Frontend] Error handling: console.error in useEvents lacks structured error reporting~~ (stale:1 - removed during refactor)
 - [x] [P2] [Frontend] Unused parameter: defaultStatus in TaskCreationForm prop defaults to undefined - src/components/tasks/TaskCreationForm.tsx:59
 
 ### P3 - Low Impact
 
 - [x] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
-- [ ] ~~[P3] [Frontend] Remove eslint-disable comment from useTaskExecutionState exhaustive-deps~~ (stale - disable is justified for stable helper functions)
 - [x] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - properly typed zustand mock - src/hooks/useChat.test.ts:8,29,37,42,58,103
 
 ## P3 - Low Impact
@@ -63,8 +60,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] ~~[P3] [Frontend] Remove unused imports: useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents~~ (stale:1 - imports are used at lines 259, 273, 293)
-- [ ] ~~[P3] [Frontend] Remove console.log statements from production code~~ (stale:1 - lines 506,554 don't exist, only one at 124) - src/components/Chat/IntegratedChatPanel.tsx:124
+- [ ] [P3] [Frontend] Remove console.log from IntegratedChatPanel debug statement - src/components/Chat/IntegratedChatPanel.tsx:124
 - [ ] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
 - [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:1 - no console.debug at those lines) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
@@ -78,11 +74,10 @@ _No active P3 items. Completed items moved to archive._
 - [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
 - [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
 - [ ] [P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7
-- [ ] ~~[P3] [Frontend] Remove unused variable binding in test mock~~ (stale - fixed with proper typing)
 
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 24 (3 excluded, 9 deferred to PRD, 12 active)
-**Completed:** 31 (moved to archive)
-**Validated:** 3 strikethroughs marked stale:1 (2026-01-28)
+**Active items:** 13 (3 excluded, 9 deferred to PRD, 1 reactivated from validation)
+**Completed:** 7
+**Validated:** 3 strikethroughs (2026-01-28) - 2 archived, 1 reactivated
