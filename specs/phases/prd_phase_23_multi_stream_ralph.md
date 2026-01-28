@@ -124,7 +124,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Backlog empty signal: <promise>COMPLETE</promise>",
       "Commit: docs(rules): add polish stream workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "rules",
