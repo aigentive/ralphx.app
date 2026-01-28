@@ -35,6 +35,66 @@ Add tmux integration to run all 5 RALPH streams simultaneously in split terminal
 - Detach/reattach without stopping work
 - Easy restart of individual crashed streams
 - Clear visual separation between streams
+- **Zero wasted API calls** - streams only run when work exists (fswatch)
+
+---
+
+## File Watcher Architecture (fswatch)
+
+Instead of polling or exponential backoff, streams use `fswatch` to detect when new work is available. **Zero API calls when idle.**
+
+### How It Works
+
+Each stream watches specific files. When those files change, the stream runs one cycle:
+
+```bash
+# Example: features stream wrapper
+fswatch -o streams/features/backlog.md specs/manifest.json | while read; do
+    ANTHROPIC_MODEL=opus ./ralph-streams.sh features 50
+done
+```
+
+### Watch Files Per Stream
+
+| Stream | Watches | Triggers When |
+|--------|---------|---------------|
+| **features** | `streams/features/backlog.md`, `specs/manifest.json` | P0 added by verify, new phase activated |
+| **refactor** | `streams/refactor/backlog.md` | Items added by hygiene |
+| **polish** | `streams/polish/backlog.md` | Items added by hygiene |
+| **verify** | `specs/manifest.json`, `specs/phases/*.md` | Phase completed, PRD updated |
+| **hygiene** | `streams/*/backlog.md`, `streams/archive/completed.md` | Any backlog changes |
+
+### Stream Lifecycle
+
+```
+1. Stream starts → runs initial cycle
+2. Work found → executes task → commits → loops
+3. No work (IDLE) → exits ralph-streams.sh
+4. fswatch waits for file change
+5. File changes → runs new cycle → goto 2
+```
+
+### Idle State Display
+
+When a stream is idle (waiting for file changes):
+```
+┌─────────────────────────────────────────┐
+│ [1] FEATURES (opus)                     │
+│ ─────────────────────────────────────── │
+│ Status: IDLE - waiting for work         │
+│ Watching: backlog.md, manifest.json     │
+│ Last run: 2 minutes ago                 │
+│                                         │
+│ Will auto-start when files change...    │
+└─────────────────────────────────────────┘
+```
+
+### Prerequisites
+
+```bash
+# Already installed
+brew install fswatch
+```
 
 ---
 
@@ -118,33 +178,72 @@ That's it! tmux works with iTerm and ZSH out of the box.
 ### Task 1: Create ralph-tmux.sh launcher
 Create main script that:
 - Creates tmux session with 6 panes (header + 5 streams)
-- Starts each stream with correct model (opus/sonnet)
+- Starts each stream via its fswatch wrapper
 - Supports: start, attach, stop, restart, status commands
 
 **File:** `ralph-tmux.sh`
 
-### Task 2: Create ralph-tmux-status.sh header
+### Task 2: Create stream wrapper scripts with fswatch
+Create wrapper for each stream that:
+- Runs initial cycle on start
+- Uses fswatch to wait for file changes
+- Restarts stream when watched files change
+- Shows idle status when waiting
+
+**Files:** `scripts/stream-watch-features.sh`, `scripts/stream-watch-refactor.sh`, etc.
+
+**Example structure:**
+```bash
+#!/bin/bash
+# scripts/stream-watch-features.sh
+STREAM="features"
+MODEL="opus"
+WATCH_FILES="streams/features/backlog.md specs/manifest.json"
+
+echo "[$STREAM] Starting with fswatch..."
+
+# Initial run
+ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50
+
+# Watch for changes and re-run
+echo "[$STREAM] IDLE - watching for file changes..."
+fswatch -o $WATCH_FILES | while read; do
+    echo "[$STREAM] File change detected, starting cycle..."
+    ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50
+    echo "[$STREAM] IDLE - watching for file changes..."
+done
+```
+
+### Task 3: Create ralph-tmux-status.sh header
 Create status display script for header pane:
 - Shows uptime, total iterations
 - Shows backlog counts (P0/P1/P2-P3)
+- Shows which streams are RUNNING vs IDLE
 - Shows quick-reference commands
 - Auto-refreshes every 5 seconds
 
 **File:** `ralph-tmux-status.sh`
 
-### Task 3: Add stream visual differentiation
+### Task 4: Add stream visual differentiation
 - Set pane titles (stream name + model)
 - Add stream identification to ralph-streams.sh output
 - Configure tmux pane borders
+- Show IDLE/RUNNING status clearly
 
-### Task 4: Add error handling
-- Graceful shutdown (Ctrl+C to each pane)
+### Task 5: Add error handling
+- Graceful shutdown (kill fswatch + ralph-streams.sh)
 - Individual stream restart capability
 - Exit status preservation in panes
 
-### Task 5: Create user documentation
+### Task 6: Update ralph-streams.sh for idle detection
+- Add `<promise>IDLE</promise>` output when no work available
+- Exit cleanly so fswatch wrapper can take over
+- Add stream name prefix to all output lines
+
+### Task 7: Create user documentation
 - Add tmux quick-reference to README or CLAUDE.md
 - Document daily workflow commands
+- Document fswatch behavior
 
 ---
 
@@ -154,13 +253,19 @@ Create status display script for header pane:
 |------|---------|
 | `ralph-tmux.sh` | Main launcher script |
 | `ralph-tmux-status.sh` | Header status display |
+| `scripts/stream-watch-features.sh` | fswatch wrapper for features stream |
+| `scripts/stream-watch-refactor.sh` | fswatch wrapper for refactor stream |
+| `scripts/stream-watch-polish.sh` | fswatch wrapper for polish stream |
+| `scripts/stream-watch-verify.sh` | fswatch wrapper for verify stream |
+| `scripts/stream-watch-hygiene.sh` | fswatch wrapper for hygiene stream |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `ralph-streams.sh` | Add pane title setting, stream identification in output |
+| `ralph-streams.sh` | Add IDLE detection, stream name prefix, exit cleanly when no work |
 | `CLAUDE.md` | Add tmux usage section |
+| Stream PROMPT.md files | Add IDLE output instruction when no work available |
 
 ---
 
@@ -191,12 +296,20 @@ Create status display script for header pane:
 ## Verification
 
 1. **tmux installed:** `tmux -V` shows version
-2. **Session creates:** `./ralph-tmux.sh` creates 6-pane layout
-3. **Streams run:** Each pane shows stream output
-4. **Detach works:** `Ctrl+b d` returns to normal terminal
-5. **Reattach works:** `./ralph-tmux.sh attach` shows streams still running
-6. **Stop works:** `./ralph-tmux.sh stop` gracefully terminates all
-7. **Restart works:** `./ralph-tmux.sh restart features` restarts single stream
+2. **fswatch installed:** `fswatch --version` shows version
+3. **Session creates:** `./ralph-tmux.sh` creates 6-pane layout
+4. **Streams run:** Each pane shows stream output
+5. **Idle detection:** Stream with no work shows "IDLE - watching for file changes"
+6. **File watch works:** Touch a backlog file → stream wakes up and runs
+   ```bash
+   # In another terminal:
+   touch streams/features/backlog.md
+   # Features pane should show "File change detected, starting cycle..."
+   ```
+7. **Detach works:** `Ctrl+b d` returns to normal terminal, streams keep watching
+8. **Reattach works:** `./ralph-tmux.sh attach` shows streams (running or idle)
+9. **Stop works:** `./ralph-tmux.sh stop` gracefully terminates all (including fswatch)
+10. **Restart works:** `./ralph-tmux.sh restart features` restarts single stream
 
 ---
 
