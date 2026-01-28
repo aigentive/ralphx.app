@@ -8,7 +8,7 @@
 |------|--------|
 | 1 | Read `specs/manifest.json` → find `"status": "active"` phase → read its PRD |
 | 2 | Find first task with `"passes": false` |
-| 3 | **READ FULL TASK** (Grep -C=50) — list steps, acceptance_criteria, design_quality |
+| 3 | **READ FULL TASK** (Grep -C=50) — list steps |
 | 4 | Execute task using appropriate workflow |
 | 5 | Quality improvement: Explore agent → pick ONE fix → `refactor:` commit |
 | 6 | Log to `activity.md`, set `"passes": true`, commit |
