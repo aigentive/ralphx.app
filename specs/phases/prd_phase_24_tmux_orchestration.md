@@ -101,7 +101,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test syntax: bash -n ralph-tmux.sh",
       "Commit: feat(tmux): create ralph-tmux.sh launcher with pane layout"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
