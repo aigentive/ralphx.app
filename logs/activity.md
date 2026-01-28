@@ -1,10 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 15:15:00
+**Last Updated:** 2026-01-28 17:45:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 32 / 39
-**Current Task:** Update Column component for grouping (next)
+**Tasks Completed:** 33 / 39
+**Current Task:** Add review state badges to TaskCard (next)
+
+---
+
+### 2026-01-28 17:45:00 - Implement column grouping in TaskBoard
+
+**What:**
+- Updated Column component to support StateGroup rendering:
+  - Added groups prop to ColumnProps interface
+  - Group tasks by internalStatus when groups are defined
+  - Render ColumnGroup components with collapsible headers
+  - Track collapsed state in localStorage per column-group
+- Updated TaskBoard to pass groups from defaultWorkflow to Column
+- Added group-level drag-drop validation in validation.ts:
+  - findGroupForTask() - Find group by task status
+  - canDragFromGroup() - Check group.canDragFrom property
+  - canDropToGroup() - Check group.canDropTo property
+  - validateDropWithGroups() - Combined column + group validation
+- Quality improvement: Extracted Column.utils.tsx from Column.tsx
+  - getCollapsedGroups, saveCollapsedGroups, getGroupIcon utilities
+  - Reduced Column.tsx from 392 to 350 LOC
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+cargo clippy --all-targets --all-features -- -D warnings
+```
 
 ---
 
