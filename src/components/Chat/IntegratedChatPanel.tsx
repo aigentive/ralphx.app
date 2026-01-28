@@ -119,10 +119,6 @@ export function IntegratedChatPanel({
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
 
-  // Debug: log context key and agent running state changes
-  useEffect(() => {
-    console.log(`[IntegratedChatPanel] storeContextKey=${storeContextKey}, isAgentRunning=${isAgentRunning}`);
-  }, [storeContextKey, isAgentRunning]);
 
   // Streaming tool calls - accumulated during agent execution (defined early for context change effect)
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
