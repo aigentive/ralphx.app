@@ -13,6 +13,23 @@ The features stream handles **PRD tasks and P0 gap fixes**. It is the primary st
 3. **No quality improvement work** — that's other streams' job (refactor, polish)
 4. **TDD mandatory** — tests FIRST
 5. **Document patterns inline** — new architectural patterns go in src/CLAUDE.md or src-tauri/CLAUDE.md
+6. **Only recover YOUR work** — see Recovery Check below
+
+## Recovery Check (ALWAYS FIRST)
+
+Before starting normal workflow, check for incomplete work from a previous iteration:
+
+```
+1. Run: git status --porcelain streams/features/ specs/phases/
+2. Check streams/features/activity.md for last entry (task name, files)
+3. Uncommitted changes exist AND activity log shows incomplete features work?
+   → YES: Verify changes MATCH the logged task (PRD task or P0 item)
+          Changes match? → Complete if needed, commit, proceed
+          Changes DON'T match? → SKIP (other stream's work) → proceed
+   → NO: Proceed to normal workflow
+```
+
+**CRITICAL:** Do NOT touch uncommitted changes in `src/` or `src-tauri/` unless they are clearly attributable to a PRD task or P0 item logged in YOUR activity file. Other streams may have uncommitted work there. If you cannot correlate changes to your own logged work, leave them alone.
 
 ## Workflow
 
