@@ -411,20 +411,23 @@ mod tests {
     fn test_detect_poor_task_definition_found() {
         let result = detect_poor_task_definition(3);
         assert!(result.is_some());
-        let result = result.unwrap();
-        assert_eq!(result.pattern, Pattern::PoorTaskDefinition);
+        if let Some(result) = result {
+            assert_eq!(result.pattern, Pattern::PoorTaskDefinition);
+        }
     }
 
     #[test]
     fn test_pattern_serialize() {
-        let json = serde_json::to_string(&Pattern::InfiniteLoop).unwrap();
+        let json = serde_json::to_string(&Pattern::InfiniteLoop)
+            .expect("Pattern serialization should not fail");
         assert_eq!(json, "\"infinite_loop\"");
     }
 
     #[test]
     fn test_detection_result_serialize() {
         let result = DetectionResult::new(Pattern::Stuck, 80, "Test", 5);
-        let json = serde_json::to_string(&result).unwrap();
+        let json = serde_json::to_string(&result)
+            .expect("DetectionResult serialization should not fail");
         assert!(json.contains("\"pattern\":\"stuck\""));
         assert!(json.contains("\"confidence\":80"));
     }
