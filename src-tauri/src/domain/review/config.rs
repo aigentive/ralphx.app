@@ -33,6 +33,10 @@ pub struct ReviewSettings {
     /// Maximum fix attempts before giving up and moving to backlog
     /// Default: 3
     pub max_fix_attempts: u32,
+
+    /// Maximum revision cycles (review → changes requested → re-execution) before failing
+    /// Default: 5
+    pub max_revision_cycles: u32,
 }
 
 impl Default for ReviewSettings {
@@ -43,6 +47,7 @@ impl Default for ReviewSettings {
             require_fix_approval: false,
             require_human_review: false,
             max_fix_attempts: 3,
+            max_revision_cycles: 5,
         }
     }
 }
@@ -104,6 +109,11 @@ impl ReviewSettings {
     pub fn exceeded_max_attempts(&self, attempts: u32) -> bool {
         attempts >= self.max_fix_attempts
     }
+
+    /// Check if we've exceeded the max revision cycles
+    pub fn exceeded_max_revisions(&self, revision_count: u32) -> bool {
+        revision_count >= self.max_revision_cycles
+    }
 }
 
 #[cfg(test)]
@@ -118,6 +128,7 @@ mod tests {
         assert!(!settings.require_fix_approval);
         assert!(!settings.require_human_review);
         assert_eq!(settings.max_fix_attempts, 3);
+        assert_eq!(settings.max_revision_cycles, 5);
     }
 
     #[test]
@@ -220,7 +231,8 @@ mod tests {
             "ai_review_auto_fix": false,
             "require_fix_approval": true,
             "require_human_review": true,
-            "max_fix_attempts": 5
+            "max_fix_attempts": 5,
+            "max_revision_cycles": 8
         }"#;
         let settings: ReviewSettings = serde_json::from_str(json).unwrap();
         assert!(!settings.ai_review_enabled);
@@ -228,6 +240,7 @@ mod tests {
         assert!(settings.require_fix_approval);
         assert!(settings.require_human_review);
         assert_eq!(settings.max_fix_attempts, 5);
+        assert_eq!(settings.max_revision_cycles, 8);
     }
 
     #[test]
@@ -238,6 +251,7 @@ mod tests {
             require_fix_approval: true,
             require_human_review: false,
             max_fix_attempts: 7,
+            max_revision_cycles: 8,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: ReviewSettings = serde_json::from_str(&json).unwrap();
@@ -252,9 +266,28 @@ mod tests {
             "ai_review_auto_fix": true,
             "require_fix_approval": false,
             "require_human_review": false,
-            "max_fix_attempts": 3
+            "max_fix_attempts": 3,
+            "max_revision_cycles": 5
         }"#;
         let settings: ReviewSettings = serde_json::from_str(json).unwrap();
         assert_eq!(settings, ReviewSettings::default());
+    }
+
+    #[test]
+    fn test_exceeded_max_revisions() {
+        let settings = ReviewSettings::default();
+        assert!(!settings.exceeded_max_revisions(0));
+        assert!(!settings.exceeded_max_revisions(1));
+        assert!(!settings.exceeded_max_revisions(4));
+        assert!(settings.exceeded_max_revisions(5));
+        assert!(settings.exceeded_max_revisions(10));
+
+        let settings = ReviewSettings {
+            max_revision_cycles: 2,
+            ..Default::default()
+        };
+        assert!(!settings.exceeded_max_revisions(0));
+        assert!(!settings.exceeded_max_revisions(1));
+        assert!(settings.exceeded_max_revisions(2));
     }
 }

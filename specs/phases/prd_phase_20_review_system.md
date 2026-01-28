@@ -271,7 +271,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(settings): add maxRevisionCycles setting"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",

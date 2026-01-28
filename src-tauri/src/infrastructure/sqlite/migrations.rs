@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 24;
+pub const SCHEMA_VERSION: i32 = 25;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -138,6 +138,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 24 {
         migrate_v24(conn)?;
         set_schema_version(conn, 24)?;
+    }
+
+    if current_version < 25 {
+        migrate_v25(conn)?;
+        set_schema_version(conn, 25)?;
     }
 
     Ok(())
@@ -1196,6 +1201,37 @@ fn migrate_v24(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// Migration v25: Add review_settings table
+///
+/// Review settings control the review system behavior including max revision cycles.
+/// Single-row table (id=1) following the pattern of ideation_settings.
+fn migrate_v25(conn: &Connection) -> AppResult<()> {
+    // Create review_settings table
+    conn.execute(
+        r#"CREATE TABLE IF NOT EXISTS review_settings (
+            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            ai_review_enabled INTEGER NOT NULL DEFAULT 1,
+            ai_review_auto_fix INTEGER NOT NULL DEFAULT 1,
+            require_fix_approval INTEGER NOT NULL DEFAULT 0,
+            require_human_review INTEGER NOT NULL DEFAULT 0,
+            max_fix_attempts INTEGER NOT NULL DEFAULT 3,
+            max_revision_cycles INTEGER NOT NULL DEFAULT 5,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )"#,
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Seed default settings row
+    conn.execute(
+        "INSERT OR IGNORE INTO review_settings (id, updated_at) VALUES (1, datetime('now'))",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1203,7 +1239,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_constant() {
-        assert_eq!(SCHEMA_VERSION, 24);
+        assert_eq!(SCHEMA_VERSION, 25);
     }
 
     #[test]
@@ -1329,7 +1365,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
     }
 
     #[test]
@@ -1342,7 +1378,7 @@ mod tests {
 
         // Should still work and have correct version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
     }
 
     #[test]
@@ -5383,7 +5419,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
     }
 
     #[test]
@@ -5516,7 +5552,7 @@ mod tests {
 
         // Verify schema version
         let version = get_schema_version(&conn).unwrap();
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
     }
 
     #[test]
