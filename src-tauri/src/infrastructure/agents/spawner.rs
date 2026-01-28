@@ -8,6 +8,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 
+use tauri::{AppHandle, Wry};
+
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgenticClient, AgentRole};
 use crate::domain::state_machine::AgentSpawner;
@@ -29,6 +31,8 @@ pub struct AgenticClientSpawner {
     handles: Arc<Mutex<HashMap<String, AgentHandle>>>,
     /// Execution state for spawn gating (optional)
     execution_state: Option<Arc<ExecutionState>>,
+    /// Tauri app handle for emitting events to frontend (optional)
+    app_handle: Option<AppHandle<Wry>>,
 }
 
 impl AgenticClientSpawner {
@@ -47,6 +51,7 @@ impl AgenticClientSpawner {
             event_bus: None,
             handles: Arc::new(Mutex::new(HashMap::new())),
             execution_state: None,
+            app_handle: None,
         }
     }
 
@@ -65,6 +70,12 @@ impl AgenticClientSpawner {
     /// Attach execution state for spawn gating
     pub fn with_execution_state(mut self, state: Arc<ExecutionState>) -> Self {
         self.execution_state = Some(state);
+        self
+    }
+
+    /// Attach Tauri app handle for event emission
+    pub fn with_app_handle(mut self, handle: AppHandle<Wry>) -> Self {
+        self.app_handle = Some(handle);
         self
     }
 
@@ -496,5 +507,28 @@ mod tests {
 
         let calls = mock.get_spawn_calls().await;
         assert_eq!(calls.len(), 1);
+    }
+
+    // ==================== App Handle Tests ====================
+
+    #[test]
+    fn test_app_handle_defaults_to_none() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let spawner = AgenticClientSpawner::new(mock.clone());
+
+        // By default, app_handle should be None
+        assert!(spawner.app_handle.is_none());
+    }
+
+    #[test]
+    fn test_app_handle_field_accessible() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let spawner = AgenticClientSpawner::new(mock.clone());
+
+        // Verify app_handle can be accessed (compile-time check + runtime assertion)
+        // Note: with_app_handle() requires a real AppHandle<Wry> which is not available in tests,
+        // but we verify the field exists and defaults correctly.
+        let _handle: &Option<AppHandle<Wry>> = &spawner.app_handle;
+        assert!(spawner.app_handle.is_none());
     }
 }
