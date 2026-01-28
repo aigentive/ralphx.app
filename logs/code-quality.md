@@ -67,6 +67,10 @@
 - [x] Extract MODEL_OPTIONS constant from SettingsView.shared.tsx to SettingsView.constants.ts (react-refresh lint) - src/components/settings/SettingsView.shared.tsx:30
 - [x] Remove console.log debug statements from TaskFullView action handlers - src/components/tasks/TaskFullView.tsx:214,219,224,229
 - [x] Remove debug console.log from handleQuestionSubmit - src/App.tsx:352
+- [x] Remove debug console.log from handleEditProposal and onViewDiff - src/App.tsx:404,785
+- [ ] Remove debug console.log in ChatPanel contextKey effect - src/components/Chat/ChatPanel.tsx:401
+- [ ] Remove debug console.log in ChatPanel agent run completion - src/components/Chat/ChatPanel.tsx:762
+- [ ] Remove debug console.log in ExtensibilityView research handler - src/components/ExtensibilityView.tsx:629
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20)
 - [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20)
 - [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20)
@@ -100,10 +104,10 @@
 ### P2 - Medium Impact
 - [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1294
 - [x] Extract emit_task_lifecycle_event helper for consistent task event emission - src-tauri/src/commands/task_commands.rs:359-369
-- [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs:113~~ (stale:1 - TODO exists at different line, feature-level work)
-- [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs:206~~ (stale:1 - TODO exists, feature-level work)
-- [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:530~~ (stale:1 - TODO exists, feature-level work)
-- [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs:104~~ (stale:1 - TODO exists, feature-level work)
+- [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs:113~~ (stale:2 - TODO not found, ARCHIVED)
+- [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs:206~~ (stale:2 - TODO not found, ARCHIVED)
+- [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:530~~ (stale:2 - TODO not found, ARCHIVED)
+- [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs:104~~ (stale:2 - TODO not found, ARCHIVED)
 - [x] Fix incorrect InternalStatus→State mapping in execute_entry_actions (Reviewing→PendingReview, ReExecuting→Executing) - src-tauri/src/application/task_transition_service.rs:329-332
 - [x] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
@@ -135,7 +139,7 @@
 ---
 
 ## Last Explored
-**Date:** 2026-01-28 14:00:00
-**Areas:** src-tauri/src/commands/, src-tauri/src/application/
-**Agent:** a98d79f
+**Date:** 2026-01-28 17:25:00
+**Areas:** src/, src-tauri/
+**Agent:** a83fe50
 **Total Issues:** 74 (P1: 23 | P2: 32 | P3: 19)

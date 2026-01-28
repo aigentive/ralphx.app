@@ -399,9 +399,8 @@ function AppContent() {
     toggleSelection.mutate(proposalId);
   }, [toggleSelection]);
 
-  const handleEditProposal = useCallback((proposalId: string) => {
-    // Open edit modal for proposal
-    console.log("Edit proposal:", proposalId);
+  const handleEditProposal = useCallback((_proposalId: string) => {
+    // TODO: Open edit modal for proposal
   }, []);
 
   const handleRemoveProposal = useCallback((proposalId: string) => {
@@ -781,8 +780,7 @@ function AppContent() {
                   const reviewNotes = notes || "Changes requested";
                   requestChangesReview.mutate({ reviewId, notes: reviewNotes });
                 }}
-                onViewDiff={(reviewId) => {
-                  console.log("View diff for review:", reviewId);
+                onViewDiff={(_reviewId) => {
                   // TODO: Open diff viewer (task in PRD - ColumnGroup component)
                 }}
                 isApproving={isApproving}
