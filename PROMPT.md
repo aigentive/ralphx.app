@@ -54,6 +54,7 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 1. Follow task steps exactly
 2. **TDD mandatory** — tests FIRST
 3. Run: `npm run lint && npm run typecheck && cargo clippy && cargo test`
+4. **UI tasks?** → Read `specs/DESIGN.md`, use `/frontend-design` skill
 
 ---
 
