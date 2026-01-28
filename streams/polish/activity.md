@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-28 22:55:55 - Remove console.log statements from ChatPanel.tsx
+**What:**
+- File: src/components/Chat/ChatPanel.tsx
+- Change: Removed 6 console.debug statements from production code
+  - Line 414: Queue message debug log
+  - Line 440: Delete message debug log
+  - Line 482: Edit message debug log
+  - Line 533: agent:tool_call debug log
+  - Line 593: agent:run_started debug log
+  - Line 613: agent:queue_sent debug log
+- Also removed unused `context_type` and `agent_run_id` variables from event payload destructuring
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passes)
+
+---
+
 ### 2026-01-28 22:41:10 - Remove eslint-disable comments from useChat.test.ts
 **What:**
 - File: src/hooks/useChat.test.ts

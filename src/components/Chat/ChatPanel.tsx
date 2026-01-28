@@ -411,7 +411,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       try {
         // Queue via backend API with the same ID
         await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
-        console.debug(`[queue] Queued message ${messageId} for ${ctxType}/${ctxId}`);
       } catch (error) {
         console.error("Failed to queue message to backend:", error);
         // Message is already in local store, which is fine - it just won't be processed by backend
@@ -437,7 +436,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       // Delete from backend using the same ID
       try {
         await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
-        console.debug(`[queue] Deleted message ${messageId} from backend`);
       } catch (error) {
         console.error("Failed to delete queued message from backend:", error);
         // Message already removed from local store, which is fine
@@ -479,7 +477,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       // Queue to backend with same ID
       try {
         await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
-        console.debug(`[queue] Edited message: old=${messageId}, new=${newMessageId}`);
       } catch (error) {
         console.error("Failed to queue edited message to backend:", error);
         // Message is already in local store
@@ -512,7 +509,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         arguments: unknown;
         result: unknown;
       }>("agent:tool_call", (event) => {
-        const { tool_name, arguments: args, result, conversation_id, context_type } = event.payload;
+        const { tool_name, arguments: args, result, conversation_id } = event.payload;
         // Only show for active conversation
         if (conversation_id === activeConversationIdRef.current) {
           setStreamingToolCalls((prev) => [
@@ -529,8 +526,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-        // Log for debugging
-        console.debug(`[agent:tool_call] context=${context_type}, tool=${tool_name}`);
       });
       unlisteners.push(toolCallUnlisten);
 
@@ -589,8 +584,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         conversation_id: string;
         agent_run_id: string;
       }>("agent:run_started", (event) => {
-        const { conversation_id, context_type, agent_run_id } = event.payload;
-        console.debug(`[agent:run_started] context=${context_type}, conversation=${conversation_id}, run=${agent_run_id}`);
+        const { conversation_id } = event.payload;
         // Invalidate agent run status to pick up new run
         if (conversation_id) {
           queryClient.invalidateQueries({
@@ -610,7 +604,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         context_id: string;
       }>("agent:queue_sent", (event) => {
         const { message_id, context_type, context_id } = event.payload;
-        console.debug(`[agent:queue_sent] message=${message_id}, context=${context_type}/${context_id}`);
 
         // For task_execution context, remove from execution queue by exact ID
         if (context_type === "task_execution") {
