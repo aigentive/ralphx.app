@@ -96,25 +96,18 @@ NO purple gradients | NO Inter font | Warm orange #ff6b35
 ## Code Quality
 
 ### Proactive Quality Improvement (MANDATORY — NEVER SKIP)
-Every task MUST include a quality improvement. No exceptions.
+Every task requires a `refactor:` commit. No exceptions.
 
-**Process:**
-1. Launch Explore agent to scan codebase subset for issues
-2. Pick ONE actionable improvement
-3. Execute the fix
-4. Commit with `refactor:` prefix (BEFORE or AFTER main task commit)
+**Workflow:**
+1. Read `logs/code-quality.md`
+2. Items exist? → Pick ONE by task scope → Execute → Mark `[x]`
+3. List empty? → Launch Explore agent → Update file → Pick ONE
 
-**Quality targets:**
-- Replace `any` with proper types
-- Fix naming inconsistencies
-- Add missing error handling
-- Remove dead code
-- Extract repeated logic into hooks/functions
-- Fix lint warnings
+**Scope:** Small task = P3, Medium = P2, Large = P1
 
-**Verification:** Task is NOT complete until `refactor:` commit exists.
+**Targets:** `any` types, naming, error handling, dead code, repeated logic, lint
 
-**Scope:** small task = small improvement, large task = larger improvement.
+**Verification:** Task NOT complete until `refactor:` commit + item marked done.
 
 ### File Size Limits
 | File Type | Max Lines | Action |
