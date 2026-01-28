@@ -16,6 +16,7 @@
 ### Stale Items (Verified Fixed - Archived 2026-01-28)
 
 - [ ] ~~Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components~~ (stale:2 - now 205 LOC)
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from useChat (agent event tracing) - src/hooks/useChat.ts:368,404,431~~ (stale:2 - removed during refactor)
 
 ### P0 - Critical (Phase Gaps)
 

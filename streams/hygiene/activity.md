@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 22:40:54 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 2/10 completed, polish: 6/10 completed)
+
+**Refill:**
+- Added 15 P2/P3 items to polish/backlog.md (1 P2, 14 P3)
+- Backlog grew from 2 active items to 17 active items
+
+**Validation:**
+- Checked 2 strikethrough items:
+  - useChat console.debug (stale → stale:2): Confirmed removed during refactor → Ready for archive
+  - useTaskExecutionState exhaustive-deps (stale): Still has eslint-disable (justified) - no increment
+
+**Result:** Maintenance complete - polish backlog refilled with fresh P2/P3 items
+
+---
+
 ### 2026-01-28 22:37:16 - Backlog Maintenance
 
 **Archive:**
