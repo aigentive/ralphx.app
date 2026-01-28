@@ -1,0 +1,1 @@
+export { MethodologiesPanel } from "./MethodologiesPanel";
