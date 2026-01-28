@@ -91,11 +91,13 @@ pub fn run() {
 
             // Start HTTP server for MCP proxy on port 3847
             // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
-            let http_state = Arc::new(
+            let http_app_state = Arc::new(
                 AppState::new_production(app_handle).expect("Failed to initialize AppState for HTTP server"),
             );
+            // Clone execution_state from Tauri state for HTTP server
+            let http_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             tauri::async_runtime::spawn(async move {
-                http_server::start_http_server(http_state).await;
+                http_server::start_http_server(http_app_state, http_execution_state).await;
             });
 
             // Register RalphX MCP server with Claude Code CLI

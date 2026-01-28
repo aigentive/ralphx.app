@@ -116,6 +116,8 @@ async fn create_task(state: State<'_, AppState>, input: CreateTaskInput) -> Resu
 When introducing a new architectural pattern, add a one-liner here. Pattern name + rule only.
 Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands just delegate"
 
+**ExecutionState Propagation:** `Arc<ExecutionState>` must be passed to `TaskTransitionService::new()` and `AgenticClientSpawner::with_execution_state()` for spawn gating and running count tracking.
+
 ## Code Quality
 
 ### Proactive Quality Improvement (MANDATORY — NEVER SKIP)

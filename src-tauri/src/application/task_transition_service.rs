@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::application::{ChatService, ClaudeChatService};
+use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -140,6 +141,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     dependency_manager: Arc<dyn DependencyManager>,
     review_starter: Arc<dyn ReviewStarter>,
     chat_service: Arc<dyn ChatService>,
+    execution_state: Arc<ExecutionState>,
     _app_handle: Option<AppHandle<R>>,
 }
 
@@ -154,13 +156,17 @@ impl<R: Runtime> TaskTransitionService<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<RunningAgentRegistry>,
+        execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
     ) -> Self {
         // Create the agent client for spawning
         let agent_client = Arc::new(ClaudeCodeClient::new());
 
-        // Create the agent spawner
-        let agent_spawner: Arc<dyn AgentSpawner> = Arc::new(AgenticClientSpawner::new(agent_client));
+        // Create the agent spawner with execution state for spawn gating
+        let agent_spawner: Arc<dyn AgentSpawner> = Arc::new(
+            AgenticClientSpawner::new(agent_client)
+                .with_execution_state(Arc::clone(&execution_state)),
+        );
 
         // Create the unified chat service for worker spawning
         let chat_service: Arc<dyn ChatService> = {
@@ -173,7 +179,8 @@ impl<R: Runtime> TaskTransitionService<R> {
                 Arc::clone(&ideation_session_repo),
                 message_queue,
                 running_agent_registry,
-            );
+            )
+            .with_execution_state(Arc::clone(&execution_state));
             if let Some(ref handle) = app_handle {
                 service = service.with_app_handle(handle.clone());
             }
@@ -194,6 +201,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             dependency_manager,
             review_starter,
             chat_service,
+            execution_state,
             _app_handle: app_handle,
         }
     }
@@ -314,7 +322,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.dependency_manager),
             Arc::clone(&self.review_starter),
             Arc::clone(&self.chat_service),
-        );
+        )
+        .with_execution_state(Arc::clone(&self.execution_state));
 
         // Create TaskContext
         let context = TaskContext::new(
