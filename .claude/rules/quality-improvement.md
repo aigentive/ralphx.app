@@ -126,6 +126,26 @@ Group by: Frontend P1, P2, P3 then Backend P1, P2, P3
 **Areas:** src/, src-tauri/
 ```
 
+## TODO Tracking (During Task Execution)
+
+**When you add a TODO comment during task work, log it immediately.**
+
+If you write any of these patterns:
+- `// TODO:` or `/* TODO: */`
+- `// FIXME:` or `/* FIXME: */`
+- `# TODO:` (in scripts/config)
+
+**Immediately add to `logs/code-quality.md`:**
+```markdown
+- [ ] [P2/P3] Implement TODO: [description] - file:line
+```
+
+**Priority assignment:**
+- P2: Functional gaps (missing error handling, incomplete implementation)
+- P3: Cleanup/optimization (refactoring, naming, performance)
+
+**Why?** TODOs added during development are easily forgotten. Logging them ensures they're tracked and eventually addressed.
+
 ## Skip Conditions
 
 Quality improvement NOT required for:

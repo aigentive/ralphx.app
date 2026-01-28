@@ -21,6 +21,10 @@
 ## NO SKIPPING
 **"Nothing to do" is NOT valid.** Escalate scope or replenish. A `refactor:` commit is MANDATORY.
 
+## TODO Tracking
+**Adding a TODO during task work?** Log it here immediately:
+`- [ ] [P2/P3] Implement TODO: [description] - file:line`
+
 ## Priority Levels
 - **P0 - Critical**: Gaps found during phase verification (pick FIRST, any task size)
 - **P1 - High**: Architecture, major refactors (large tasks)
