@@ -170,6 +170,13 @@
       "prd": "specs/phases/prd_phase_22_execution_bar_realtime.md",
       "status": "complete",
       "description": "Real-time UI updates for execution status via Tauri events"
+    },
+    {
+      "phase": 23,
+      "name": "Multi-Stream RALPH Architecture",
+      "prd": "specs/phases/prd_phase_23_multi_stream_ralph.md",
+      "status": "pending",
+      "description": "Split RALPH into focused streams: features, refactor, polish, verify, hygiene"
     }
   ]
 }
