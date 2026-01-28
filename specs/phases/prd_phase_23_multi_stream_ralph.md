@@ -186,7 +186,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - @.claude/rules/stream-hygiene.md",
       "Commit: docs(streams): add PROMPT.md wrappers for all streams"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
