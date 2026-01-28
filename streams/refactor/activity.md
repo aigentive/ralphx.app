@@ -468,3 +468,19 @@ This P1 item requires a more careful, multi-step approach:
 - `cargo test --lib methodology`
 
 **Result:** Success - All 181 tests passed (69 methodology + 112 dependent), cargo clippy passed with no warnings, file now under 500 LOC limit (664 LOC)
+
+### 2026-01-29 01:40:00 - Split http_server.rs
+
+**What:**
+- Original file: src-tauri/src/http_server.rs (2105 LOC)
+- Extracted to:
+  - http_server/types.rs (348 LOC) - Request/Response types + HttpServerState
+  - http_server/helpers.rs (333 LOC) - Helper functions (parsing, conversions, proposal impl, task context)
+  - http_server/mod.rs (1515 LOC) - Server setup + all route handlers
+- New size: 1515 LOC (28% reduction in main module)
+
+**Commands:**
+- `wc -l src-tauri/src/http_server/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+
+**Result:** Success - All linters passed, file now under 2000 LOC, types and helpers extracted to separate modules
