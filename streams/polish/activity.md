@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-28 23:57:05 - Fast refresh warning: Extract constants from ResizeablePanel.tsx
+**What:**
+- File: src/components/Chat/ResizeablePanel.tsx:45
+- Change: Issue already resolved - constants (MIN_WIDTH, MAX_WIDTH_PERCENT) already extracted to ResizeablePanel.constants.ts
+- Marked item as stale in backlog
+
+**Commands:**
+- None required (verification only)
+
+**Result:** Success - Issue already fixed, backlog updated
+
+---
+
 ### 2026-01-28 23:56:09 - Unnecessary useMemo: Multiple dependencies in ChatPanel could be optimized
 **What:**
 - File: src/components/Chat/ChatPanel.tsx
