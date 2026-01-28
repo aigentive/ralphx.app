@@ -240,7 +240,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test syntax: bash -n ralph-streams.sh",
       "Commit: feat(ralph): add stream argument and model selection to ralph-streams.sh"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
