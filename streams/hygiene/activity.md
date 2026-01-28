@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:24:01 - Backlog Maintenance
+
+**Archive:**
+- Moved 4 completed items from polish/backlog.md to archive (2 from original P3 section, 2 from REFILL P2)
+- Moved 1 strikethrough item to archive (stale:2 validation complete)
+- Polish backlog: 13 → 9 completed items
+
+**Refill:**
+- No refill needed (refactor: 10 active items, polish: 12 active items)
+
+**Validation:**
+- Checked 1 strikethrough item:
+  - useIntegratedChatHandlers.ts console.debug (stale:1 → stale:2): No console.debug present, only appropriate console.error → **Archived**
+
+**Result:** 5 items archived (4 completed + 1 validated stale:2)
+
+---
+
 ### 2026-01-28 23:20:49 - Backlog Maintenance
 
 **Archive:**

@@ -159,4 +159,22 @@
 
 ---
 
-**Total archived:** 67 items (7 P0 + 6 P1 + 21 P2 + 22 P3 + 11 stale)
+## Archived 2026-01-28 (Hygiene Cycle)
+
+### From polish/backlog.md (P3)
+
+- [x] Remove debug console.log from agent:run_started handler - src/hooks/useChat.ts:321
+- [x] Remove console.log statements in TaskChatPanel event listeners - src/components/tasks/TaskChatPanel.tsx:351,366,390,405
+
+### From polish/backlog.md (REFILL - P2)
+
+- [x] [P2] [Backend] Replace .expect() with error handling - src-tauri/src/http_server.rs:395
+- [x] [P2] [Frontend] Type safety: Replace z.any() with specific type - src/types/task-context.ts:56
+
+### From polish/backlog.md (Strikethrough Validation - 2026-01-28)
+
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:2 - no console.debug present, only console.error which is appropriate) - src/hooks/useIntegratedChatHandlers.ts:97,132,172
+
+---
+
+**Total archived:** 72 items (7 P0 + 6 P1 + 23 P2 + 24 P3 + 12 stale)
