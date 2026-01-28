@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-29 00:28:50 - Remove TODO comments for unimplemented task actions
+**What:**
+- File: src/components/tasks/TaskFullView.tsx
+- Change: Replaced 4 TODO comments with console.warn statements for unimplemented functionality
+  - Line 213: Edit task modal → console.warn
+  - Line 217: Archive task → console.warn
+  - Line 221: Pause execution → console.warn
+  - Line 225: Stop execution → console.warn
+- Reason: Comment cleanup (P3) - replaced placeholder TODOs with runtime warnings
+
+**Commands:**
+- `npm run lint -- src/components/tasks/TaskFullView.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass)
+
+---
+
 ### 2026-01-29 00:27:02 - Replace unwrap() calls with proper error handling in ideation_commands
 **What:**
 - Files: src-tauri/src/commands/ideation_commands/mod.rs, ideation_commands_dependencies.rs
