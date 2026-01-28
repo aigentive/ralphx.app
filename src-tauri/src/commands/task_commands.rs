@@ -348,8 +348,6 @@ pub async fn move_task(
 ) -> Result<TaskResponse, String> {
     use crate::application::TaskTransitionService;
 
-    // Debug log to verify command is being called
-    println!(">>> move_task called: taskId={}, toStatus={}", taskId, toStatus);
     tracing::info!(taskId = %taskId, toStatus = %toStatus, "move_task command invoked");
 
     let task_id = TaskId::from_string(taskId);
