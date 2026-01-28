@@ -133,8 +133,9 @@
 
 ### P3 - Low Impact
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
-- [~] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs (STALE: TODO not found)
+- [ ] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs:138,143 (TODOs exist, not stale)
 - [x] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs
+- [x] Add StateGroup.locked() convenience method for system-managed groups - src-tauri/src/domain/entities/workflow.rs:67
 
 ---
 
