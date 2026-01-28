@@ -241,13 +241,20 @@ impl<'a> TransitionHandler<'a> {
                 }
             }
             State::Reviewing => {
-                // TODO: Once ChatContextType::Review is added (Task 16), update this to use Review context
-                // For now, spawn reviewer agent via agent_spawner (fallback until Review context exists)
-                self.machine
+                // Spawn reviewer agent via ChatService with Review context
+                let task_id = &self.machine.context.task_id;
+                let prompt = format!("Review task: {}", task_id);
+
+                let _ = self
+                    .machine
                     .context
                     .services
-                    .agent_spawner
-                    .spawn("reviewer", &self.machine.context.task_id)
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::Review,
+                        task_id,
+                        &prompt,
+                    )
                     .await;
             }
             State::ReviewPassed => {
@@ -1056,17 +1063,40 @@ mod tests {
     // ==================
 
     #[tokio::test]
-    async fn test_entering_reviewing_spawns_reviewer() {
-        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    async fn test_entering_reviewing_uses_chat_service() {
+        use crate::application::{ChatService, MockChatService};
+
+        let spawner = Arc::new(MockAgentSpawner::new());
+        let emitter = Arc::new(MockEventEmitter::new());
+        let notifier = Arc::new(MockNotifier::new());
+        let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::new());
+        let chat_service = Arc::new(MockChatService::new());
+
+        let services = TaskServices::new(
+            Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
+            Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+            Arc::clone(&notifier) as Arc<dyn Notifier>,
+            Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
+            chat_service.clone() as Arc<dyn ChatService>,
+        );
+
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
 
         let handler = TransitionHandler::new(&mut machine);
         handler.on_enter(&State::Reviewing).await;
 
-        // Should spawn reviewer agent
-        let calls = spawner.get_calls();
-        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+        // ChatService should have been called for reviewer with Review context
+        assert!(chat_service.call_count() > 0, "ChatService should have been called");
+
+        // Agent spawner should NOT have been called (we used ChatService instead)
+        let spawner_calls = spawner.get_calls();
+        assert!(
+            !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"),
+            "Agent spawner should not be called when ChatService is available"
+        );
     }
 
     #[tokio::test]
@@ -1137,7 +1167,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_auto_transition_pending_review_to_reviewing() {
-        let (spawner, _emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        use crate::application::{ChatService, MockChatService};
+
+        let spawner = Arc::new(MockAgentSpawner::new());
+        let emitter = Arc::new(MockEventEmitter::new());
+        let notifier = Arc::new(MockNotifier::new());
+        let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::new());
+        let chat_service = Arc::new(MockChatService::new());
+
+        let services = TaskServices::new(
+            Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
+            Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+            Arc::clone(&notifier) as Arc<dyn Notifier>,
+            Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
+            chat_service.clone() as Arc<dyn ChatService>,
+        );
+
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -1157,9 +1204,15 @@ mod tests {
         // Review should be started
         assert!(review_starter.has_review_for_task("task-1"));
 
-        // Reviewer agent should be spawned
-        let calls = spawner.get_calls();
-        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+        // ChatService should have been called for reviewer with Review context
+        assert!(chat_service.call_count() > 0, "ChatService should have been called");
+
+        // Agent spawner should NOT have been called (we used ChatService instead)
+        let spawner_calls = spawner.get_calls();
+        assert!(
+            !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"),
+            "Agent spawner should not be called when ChatService is available"
+        );
     }
 
     #[tokio::test]
