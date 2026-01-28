@@ -112,13 +112,13 @@ create_session() {
     tmux set-option -t "$SESSION_NAME" pane-border-status top
     tmux set-option -t "$SESSION_NAME" pane-border-format " #{pane_title} "
 
-    # Start commands in each pane (placeholder for now - will be wired in later task)
-    tmux send-keys -t "$SESSION_NAME:0.0" "echo 'STATUS: Header pane (ralph-tmux-status.sh will go here)'" C-m
-    tmux send-keys -t "$SESSION_NAME:0.1" "echo '[FEATURES] Pane ready (stream-watch-features.sh will go here)'" C-m
-    tmux send-keys -t "$SESSION_NAME:0.2" "echo '[REFACTOR] Pane ready (stream-watch-refactor.sh will go here)'" C-m
-    tmux send-keys -t "$SESSION_NAME:0.3" "echo '[POLISH] Pane ready (stream-watch-polish.sh will go here)'" C-m
-    tmux send-keys -t "$SESSION_NAME:0.4" "echo '[VERIFY] Pane ready (stream-watch-verify.sh will go here)'" C-m
-    tmux send-keys -t "$SESSION_NAME:0.5" "echo '[HYGIENE] Pane ready (stream-watch-hygiene.sh will go here)'" C-m
+    # Start commands in each pane
+    tmux send-keys -t "$SESSION_NAME:0.0" "./ralph-tmux-status.sh" C-m
+    tmux send-keys -t "$SESSION_NAME:0.1" "./scripts/stream-watch-features.sh" C-m
+    tmux send-keys -t "$SESSION_NAME:0.2" "./scripts/stream-watch-refactor.sh" C-m
+    tmux send-keys -t "$SESSION_NAME:0.3" "./scripts/stream-watch-polish.sh" C-m
+    tmux send-keys -t "$SESSION_NAME:0.4" "./scripts/stream-watch-verify.sh" C-m
+    tmux send-keys -t "$SESSION_NAME:0.5" "./scripts/stream-watch-hygiene.sh" C-m
 
     # Select features pane as default
     tmux select-pane -t "$SESSION_NAME:0.1"

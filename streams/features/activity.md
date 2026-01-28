@@ -107,3 +107,26 @@
 - `chmod +x ralph-tmux-status.sh` → executable
 
 **Result:** Success
+
+---
+
+### 2026-01-28 19:50:00 - Phase 24 Task 6: Wire stream wrappers into ralph-tmux.sh
+**What:**
+- Updated create_session() to run actual scripts instead of placeholder echo commands
+- Pane 0 now runs: ./ralph-tmux-status.sh
+- Pane 1 now runs: ./scripts/stream-watch-features.sh
+- Pane 2 now runs: ./scripts/stream-watch-refactor.sh
+- Pane 3 now runs: ./scripts/stream-watch-polish.sh
+- Pane 4 now runs: ./scripts/stream-watch-verify.sh
+- Pane 5 now runs: ./scripts/stream-watch-hygiene.sh
+- Verified stop_all() already kills fswatch processes (pkill -f "fswatch.*streams/")
+- Verified restart_stream() function already exists and handles individual stream restarts
+
+**Commands:**
+- `bash -n ralph-tmux.sh` → syntax check passed
+- `./ralph-tmux.sh status` → reports NOT RUNNING (correct when no session active)
+- `npm run lint && npm run typecheck` → passed
+- `cargo clippy --all-targets --all-features -- -D warnings` → passed
+- `cargo test` → 14 passed
+
+**Result:** Success
