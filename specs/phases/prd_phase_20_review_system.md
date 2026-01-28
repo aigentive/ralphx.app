@@ -417,7 +417,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(hooks): add review context routing to useChat"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
