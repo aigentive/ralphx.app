@@ -520,3 +520,18 @@
 - Changes verified syntactically correct via grep and Read tools
 
 **Result:** Success (changes are valid, build issues unrelated to this file)
+### 2026-01-29 00:06:42 - Extract ToolCallIndicator sub-functions
+**What:**
+- File: src/components/Chat/ToolCallIndicator.tsx (575 LOC → 245 LOC)
+- Created: src/components/Chat/ToolCallIndicator.helpers.tsx (334 LOC)
+- Extracted helper functions: createSummary, truncate, formatValue, isArtifactContextTool, renderArtifactPreview
+- Reduced main component by 330 lines (now under 500 LOC limit)
+- Updated imports to use extracted helpers
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (all linters pass, 330 lines extracted)
+
+---
+
