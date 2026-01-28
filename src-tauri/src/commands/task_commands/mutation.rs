@@ -350,8 +350,9 @@ pub async fn answer_user_question(
     // Emit queue_changed since we're transitioning a task to Ready status
     emit_queue_changed(&state, &project_id, &app).await;
 
-    // TODO: In a future iteration, we could store the answer for agent context
-    // For now, the answer is handled by the frontend sending it directly to the agent
+    // Note: The answer data (selected_options, custom_response) is not persisted to the database.
+    // The frontend passes answers directly to the agent via the MCP protocol when resuming execution.
+    // This keeps the backend stateless and avoids coupling task state to agent communication details.
 
     Ok(AnswerUserQuestionResponse {
         task_id: input.task_id,

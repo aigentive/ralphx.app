@@ -830,3 +830,15 @@
 - (Pre-existing compilation errors prevented full build/test, but changes are syntactically correct)
 
 **Result:** Success - replaced unwrap calls with better error messages
+
+### 2026-01-29 01:17:30 - Resolve TODO comment about agent context
+**What:**
+- File: src-tauri/src/commands/task_commands/mutation.rs:353
+- Converted TODO comment to proper documentation explaining architectural decision
+- Clarified that answer data is not persisted; frontend passes it directly to agent via MCP
+- Removed implication of unfinished work; this is intentional design
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+
+**Result:** Success
