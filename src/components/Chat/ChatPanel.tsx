@@ -20,6 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi, stopAgent } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   MessageSquare,
   CheckSquare,
@@ -341,6 +342,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       setStreamingToolCalls([]);
     } catch (error) {
       console.error("Failed to stop agent:", error);
+      toast.error("Failed to stop agent. Please try again.");
     }
   }, [isExecutionMode, context]);
 
