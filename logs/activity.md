@@ -1,10 +1,29 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:15:00
+**Last Updated:** 2026-01-28 18:45:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 34 / 39
-**Current Task:** Add review state animations to CSS (next)
+**Tasks Completed:** 35 / 39
+**Current Task:** Create ReviewDetailModal component (next)
+
+---
+
+### 2026-01-28 18:45:00 - Mark review state animations complete + quality improvement
+
+**What:**
+- Verified task 35 (review state animations) was already completed in prior commit 925b227
+- Updated PRD to mark task as passes: true
+- Quality improvement: Implemented agent duration tracking
+  - Added start time tracking to PROCESSES map in claude_code_client.rs
+  - Calculate and return duration_ms in wait_for_completion()
+  - Resolves TODO at line 215
+
+**Commands:**
+```bash
+npm run lint
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
 
 ---
 

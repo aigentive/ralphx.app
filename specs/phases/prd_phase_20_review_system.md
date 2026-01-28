@@ -782,7 +782,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint",
       "Commit: feat(styles): add review state animations"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

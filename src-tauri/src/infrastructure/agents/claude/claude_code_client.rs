@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Stdio;
+use std::time::Instant;
 use tokio::process::Child;
 use tokio::sync::Mutex;
 
@@ -71,8 +72,8 @@ pub struct StreamingSpawnResult {
 }
 
 lazy_static! {
-    /// Global tracker for spawned child processes
-    static ref PROCESSES: Mutex<HashMap<String, Child>> = Mutex::new(HashMap::new());
+    /// Global tracker for spawned child processes with their start time
+    static ref PROCESSES: Mutex<HashMap<String, (Child, Instant)>> = Mutex::new(HashMap::new());
 }
 
 /// Client for Claude Code CLI
@@ -172,22 +173,26 @@ impl AgenticClient for ClaudeCodeClient {
             cmd.env(key, value);
         }
 
-        // Spawn the process
+        // Spawn the process and record start time for duration tracking
+        let start_time = Instant::now();
         let child = cmd
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 
         let handle = AgentHandle::new(ClientType::ClaudeCode, config.role);
 
-        // Store the child process
-        PROCESSES.lock().await.insert(handle.id.clone(), child);
+        // Store the child process with its start time
+        PROCESSES
+            .lock()
+            .await
+            .insert(handle.id.clone(), (child, start_time));
 
         Ok(handle)
     }
 
     async fn stop_agent(&self, handle: &AgentHandle) -> AgentResult<()> {
         let mut processes = PROCESSES.lock().await;
-        if let Some(mut child) = processes.remove(&handle.id) {
+        if let Some((mut child, _start_time)) = processes.remove(&handle.id) {
             child
                 .kill()
                 .await
@@ -199,7 +204,7 @@ impl AgenticClient for ClaudeCodeClient {
 
     async fn wait_for_completion(&self, handle: &AgentHandle) -> AgentResult<AgentOutput> {
         let mut processes = PROCESSES.lock().await;
-        let child = processes
+        let (child, start_time) = processes
             .remove(&handle.id)
             .ok_or_else(|| AgentError::NotFound(handle.id.clone()))?;
 
@@ -208,11 +213,13 @@ impl AgenticClient for ClaudeCodeClient {
             .await
             .map_err(|e| AgentError::CommunicationFailed(e.to_string()))?;
 
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+
         Ok(AgentOutput {
             success: output.status.success(),
             content: String::from_utf8_lossy(&output.stdout).to_string(),
             exit_code: output.status.code(),
-            duration_ms: None, // TODO: Track start time for duration
+            duration_ms: Some(duration_ms),
         })
     }
 
