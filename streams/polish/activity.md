@@ -922,3 +922,16 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+
+---
+
+### 2026-01-29 01:39:38 - Remove TODO comment in ExtensibilityView.ResearchPanel
+**What:**
+- File: src/components/ExtensibilityView.ResearchPanel.tsx:62
+- Removed TODO comment about calling actual research launch command
+- Replaced with console.warn statement for unimplemented functionality
+
+**Commands:**
+- `npm run lint -- src/components/ExtensibilityView.ResearchPanel.tsx && npm run typecheck` (passed - 0 errors, 4 pre-existing warnings)
+
+**Result:** Success
