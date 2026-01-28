@@ -1,10 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 20:00:00
+**Last Updated:** 2026-01-28 20:45:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 37 / 39
-**Current Task:** Update workflow configuration (next)
+**Tasks Completed:** 38 / 39
+**Current Task:** Phase 20 complete (pending gap verification)
+
+---
+
+### 2026-01-28 20:45:00 - Update workflow configuration for new review states
+
+**What:**
+- Added StateGroup struct to backend workflow entities for multi-state columns
+  - id, label, statuses, icon, accent_color, can_drag_from, can_drop_to fields
+  - Builder methods: with_icon(), with_accent_color(), with_can_drag_from(), with_can_drop_to(), locked()
+- Added groups field to WorkflowColumn for optional state grouping
+- Updated default_ralphx() workflow with group definitions matching frontend:
+  - Ready column: Fresh Tasks (ready), Needs Revision (revision_needed)
+  - In Progress column: First Attempt (executing), Revising (re_executing)
+  - In Review column: Waiting for AI (pending_review), AI Reviewing (reviewing), Ready for Approval (review_passed)
+- Added comprehensive tests for StateGroup and workflow groups
+
+**Quality Improvement:**
+- Added StateGroup.locked() convenience method to simplify system-managed state groups
+- Refactored default workflow to use locked() for 5 system-managed groups
+
+**Commands:**
+```bash
+cargo test workflow
+cargo clippy --all-targets --all-features -- -D warnings
+```
 
 ---
 
