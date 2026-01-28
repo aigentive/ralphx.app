@@ -4,6 +4,18 @@
 
 ---
 
+### 2026-01-28 23:09:02 - Remove console.log from CompletedTaskDetail
+**What:**
+- File: src/components/tasks/detail-views/CompletedTaskDetail.tsx:262
+- Change: Removed console.log stub from handleReopenTask event handler
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passes)
+
+---
+
 ### 2026-01-28 22:57:04 - Remove console.log from IntegratedChatPanel
 **What:**
 - File: src/components/Chat/IntegratedChatPanel.tsx:124
