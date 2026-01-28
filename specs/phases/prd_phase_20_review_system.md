@@ -559,7 +559,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(components): add HumanReviewTaskDetail component"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

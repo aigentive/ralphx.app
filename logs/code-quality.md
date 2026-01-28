@@ -70,7 +70,7 @@
 - [x] Fix useReviews hook with multiple useMemo hooks - wrap data derivation in useMemo - src/hooks/useReviews.ts:142
 - [x] Fix TaskChatPanel messagesData dependency issue in useMemo - src/components/tasks/TaskChatPanel.tsx:233
 - [x] Reduce DiffViewer component size (966 LOC) - extract types/utils to DiffViewer.types.tsx (now 740 LOC) - src/components/diff/DiffViewer.tsx:1-50
-- [ ] Reduce SettingsView size (827 LOC) - extract settings sections into sub-components - src/components/settings/SettingsView.tsx:1-50
+- [x] Reduce SettingsView size (827 LOC → 449 LOC) - extracted shared components to SettingsView.shared.tsx - src/components/settings/SettingsView.tsx:1-50
 - [x] Replace type assertions (as unknown) in test files with proper types - src/test/setup.ts
 - [x] Fix type assertion in App.tsx (as unknown as TaskProposal[]) - src/App.tsx:1
 
