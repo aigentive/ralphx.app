@@ -26,7 +26,7 @@ pub enum State {
 
     // Execution states
     Executing,
-    ExecutionDone,
+    ReExecuting,
 
     // QA states
     QaRefining,
@@ -36,6 +36,8 @@ pub enum State {
 
     // Review states
     PendingReview,
+    Reviewing,
+    ReviewPassed,
     RevisionNeeded,
 
     // Terminal states
@@ -124,10 +126,17 @@ impl TaskStateMachine {
     // Execution States
     // ==================
 
-    /// Executing state - worker agent is actively running
+    /// Executing state - worker agent is actively running (first attempt)
     pub fn executing(&mut self, event: &TaskEvent) -> Response {
         match event {
-            TaskEvent::ExecutionComplete => Response::Transition(State::ExecutionDone),
+            TaskEvent::ExecutionComplete => {
+                // Check qa_enabled directly instead of going to ExecutionDone
+                if self.context.qa_enabled {
+                    Response::Transition(State::QaRefining)
+                } else {
+                    Response::Transition(State::PendingReview)
+                }
+            }
             TaskEvent::ExecutionFailed { error } => {
                 Response::Transition(State::Failed(FailedData::new(error.clone())))
             }
@@ -141,11 +150,24 @@ impl TaskStateMachine {
         }
     }
 
-    /// ExecutionDone state - worker finished, deciding next step
-    pub fn execution_done(&mut self, event: &TaskEvent) -> Response {
+    /// ReExecuting state - worker revising after failed review
+    pub fn re_executing(&mut self, event: &TaskEvent) -> Response {
         match event {
+            TaskEvent::ExecutionComplete => {
+                // Check qa_enabled to decide next step
+                if self.context.qa_enabled {
+                    Response::Transition(State::QaRefining)
+                } else {
+                    Response::Transition(State::PendingReview)
+                }
+            }
+            TaskEvent::ExecutionFailed { error } => {
+                Response::Transition(State::Failed(FailedData::new(error.clone())))
+            }
+            TaskEvent::BlockerDetected { blocker_id: _ } => {
+                Response::Transition(State::Blocked)
+            }
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
-            // Auto-transitions based on qa_enabled are handled separately
             _ => Response::NotHandled,
         }
     }
@@ -201,8 +223,17 @@ impl TaskStateMachine {
     // Review States
     // ==================
 
-    /// PendingReview state - awaiting AI reviewer
+    /// PendingReview state - awaiting AI reviewer to pick up
     pub fn pending_review(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
+            // Transition to Reviewing happens via entry action (spawns reviewer)
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// Reviewing state - AI agent is actively reviewing
+    pub fn reviewing(&mut self, event: &TaskEvent) -> Response {
         match event {
             TaskEvent::ReviewComplete {
                 approved: true,
@@ -211,7 +242,7 @@ impl TaskStateMachine {
                 if let Some(fb) = feedback {
                     self.context.review_feedback = Some(fb.clone());
                 }
-                Response::Transition(State::Approved)
+                Response::Transition(State::ReviewPassed)
             }
             TaskEvent::ReviewComplete {
                 approved: false,
@@ -222,17 +253,29 @@ impl TaskStateMachine {
                 }
                 Response::Transition(State::RevisionNeeded)
             }
-            TaskEvent::ForceApprove => Response::Transition(State::Approved),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
     }
 
-    /// RevisionNeeded state - review found issues
+    /// ReviewPassed state - AI approved, awaiting human confirmation
+    pub fn review_passed(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::HumanApprove => Response::Transition(State::Approved),
+            TaskEvent::HumanRequestChanges { feedback } => {
+                self.context.review_feedback = Some(feedback.clone());
+                Response::Transition(State::RevisionNeeded)
+            }
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// RevisionNeeded state - review found issues, ready for re-execution
     pub fn revision_needed(&mut self, event: &TaskEvent) -> Response {
         match event {
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
-            // Auto-transition to Executing happens via entry action
+            // Auto-transition to ReExecuting happens via entry action
             _ => Response::NotHandled,
         }
     }
@@ -285,12 +328,14 @@ impl TaskStateMachine {
             State::Ready => self.ready(event),
             State::Blocked => self.blocked(event),
             State::Executing => self.executing(event),
-            State::ExecutionDone => self.execution_done(event),
+            State::ReExecuting => self.re_executing(event),
             State::QaRefining => self.qa_refining(event),
             State::QaTesting => self.qa_testing(event),
             State::QaPassed => self.qa_passed(event),
             State::QaFailed(data) => self.qa_failed(event, data),
             State::PendingReview => self.pending_review(event),
+            State::Reviewing => self.reviewing(event),
+            State::ReviewPassed => self.review_passed(event),
             State::RevisionNeeded => self.revision_needed(event),
             State::Approved => self.approved(event),
             State::Failed(data) => self.failed(event, data),
@@ -341,12 +386,14 @@ impl State {
             State::Ready => "Ready",
             State::Blocked => "Blocked",
             State::Executing => "Executing",
-            State::ExecutionDone => "ExecutionDone",
+            State::ReExecuting => "ReExecuting",
             State::QaRefining => "QaRefining",
             State::QaTesting => "QaTesting",
             State::QaPassed => "QaPassed",
             State::QaFailed(_) => "QaFailed",
             State::PendingReview => "PendingReview",
+            State::Reviewing => "Reviewing",
+            State::ReviewPassed => "ReviewPassed",
             State::RevisionNeeded => "RevisionNeeded",
             State::Approved => "Approved",
             State::Failed(_) => "Failed",
@@ -364,12 +411,14 @@ impl State {
             State::Ready => "ready",
             State::Blocked => "blocked",
             State::Executing => "executing",
-            State::ExecutionDone => "execution_done",
+            State::ReExecuting => "re_executing",
             State::QaRefining => "qa_refining",
             State::QaTesting => "qa_testing",
             State::QaPassed => "qa_passed",
             State::QaFailed(_) => "qa_failed",
             State::PendingReview => "pending_review",
+            State::Reviewing => "reviewing",
+            State::ReviewPassed => "review_passed",
             State::RevisionNeeded => "revision_needed",
             State::Approved => "approved",
             State::Failed(_) => "failed",
@@ -411,12 +460,14 @@ impl FromStr for State {
             "ready" => Ok(State::Ready),
             "blocked" => Ok(State::Blocked),
             "executing" => Ok(State::Executing),
-            "execution_done" => Ok(State::ExecutionDone),
+            "re_executing" => Ok(State::ReExecuting),
             "qa_refining" => Ok(State::QaRefining),
             "qa_testing" => Ok(State::QaTesting),
             "qa_passed" => Ok(State::QaPassed),
             "qa_failed" => Ok(State::QaFailed(QaFailedData::default())),
             "pending_review" => Ok(State::PendingReview),
+            "reviewing" => Ok(State::Reviewing),
+            "review_passed" => Ok(State::ReviewPassed),
             "revision_needed" => Ok(State::RevisionNeeded),
             "approved" => Ok(State::Approved),
             "failed" => Ok(State::Failed(FailedData::default())),
@@ -464,9 +515,11 @@ mod tests {
     #[test]
     fn test_state_is_active() {
         assert!(State::Executing.is_active());
-        assert!(State::ExecutionDone.is_active());
+        assert!(State::ReExecuting.is_active());
         assert!(State::QaRefining.is_active());
         assert!(State::PendingReview.is_active());
+        assert!(State::Reviewing.is_active());
+        assert!(State::ReviewPassed.is_active());
 
         assert!(!State::Backlog.is_active());
         assert!(!State::Approved.is_active());
@@ -546,10 +599,19 @@ mod tests {
     // ==================
 
     #[test]
-    fn test_executing_complete_transitions_to_execution_done() {
+    fn test_executing_complete_transitions_to_pending_review_without_qa() {
         let mut machine = create_machine();
+        machine.context.qa_enabled = false;
         let response = machine.executing(&TaskEvent::ExecutionComplete);
-        assert_eq!(response, Response::Transition(State::ExecutionDone));
+        assert_eq!(response, Response::Transition(State::PendingReview));
+    }
+
+    #[test]
+    fn test_executing_complete_transitions_to_qa_refining_with_qa() {
+        let mut machine = create_machine();
+        machine.context.qa_enabled = true;
+        let response = machine.executing(&TaskEvent::ExecutionComplete);
+        assert_eq!(response, Response::Transition(State::QaRefining));
     }
 
     #[test]
@@ -632,20 +694,20 @@ mod tests {
     // ==================
 
     #[test]
-    fn test_pending_review_approved_transitions_to_approved() {
+    fn test_reviewing_approved_transitions_to_review_passed() {
         let mut machine = create_machine();
-        let response = machine.pending_review(&TaskEvent::ReviewComplete {
+        let response = machine.reviewing(&TaskEvent::ReviewComplete {
             approved: true,
             feedback: Some("LGTM".to_string()),
         });
-        assert_eq!(response, Response::Transition(State::Approved));
+        assert_eq!(response, Response::Transition(State::ReviewPassed));
         assert_eq!(machine.context.review_feedback, Some("LGTM".to_string()));
     }
 
     #[test]
-    fn test_pending_review_rejected_transitions_to_revision_needed() {
+    fn test_reviewing_rejected_transitions_to_revision_needed() {
         let mut machine = create_machine();
-        let response = machine.pending_review(&TaskEvent::ReviewComplete {
+        let response = machine.reviewing(&TaskEvent::ReviewComplete {
             approved: false,
             feedback: Some("Needs tests".to_string()),
         });
@@ -653,10 +715,36 @@ mod tests {
     }
 
     #[test]
-    fn test_pending_review_force_approve_transitions_to_approved() {
+    fn test_review_passed_human_approve_transitions_to_approved() {
         let mut machine = create_machine();
-        let response = machine.pending_review(&TaskEvent::ForceApprove);
+        let response = machine.review_passed(&TaskEvent::HumanApprove);
         assert_eq!(response, Response::Transition(State::Approved));
+    }
+
+    #[test]
+    fn test_review_passed_human_request_changes_transitions_to_revision_needed() {
+        let mut machine = create_machine();
+        let response = machine.review_passed(&TaskEvent::HumanRequestChanges {
+            feedback: "Please add tests".to_string(),
+        });
+        assert_eq!(response, Response::Transition(State::RevisionNeeded));
+        assert_eq!(machine.context.review_feedback, Some("Please add tests".to_string()));
+    }
+
+    #[test]
+    fn test_re_executing_complete_transitions_to_pending_review_without_qa() {
+        let mut machine = create_machine();
+        machine.context.qa_enabled = false;
+        let response = machine.re_executing(&TaskEvent::ExecutionComplete);
+        assert_eq!(response, Response::Transition(State::PendingReview));
+    }
+
+    #[test]
+    fn test_re_executing_complete_transitions_to_qa_refining_with_qa() {
+        let mut machine = create_machine();
+        machine.context.qa_enabled = true;
+        let response = machine.re_executing(&TaskEvent::ExecutionComplete);
+        assert_eq!(response, Response::Transition(State::QaRefining));
     }
 
     // ==================
@@ -741,12 +829,14 @@ mod tests {
         assert_eq!(State::Ready.name(), "Ready");
         assert_eq!(State::Blocked.name(), "Blocked");
         assert_eq!(State::Executing.name(), "Executing");
-        assert_eq!(State::ExecutionDone.name(), "ExecutionDone");
+        assert_eq!(State::ReExecuting.name(), "ReExecuting");
         assert_eq!(State::QaRefining.name(), "QaRefining");
         assert_eq!(State::QaTesting.name(), "QaTesting");
         assert_eq!(State::QaPassed.name(), "QaPassed");
         assert_eq!(State::QaFailed(QaFailedData::default()).name(), "QaFailed");
         assert_eq!(State::PendingReview.name(), "PendingReview");
+        assert_eq!(State::Reviewing.name(), "Reviewing");
+        assert_eq!(State::ReviewPassed.name(), "ReviewPassed");
         assert_eq!(State::RevisionNeeded.name(), "RevisionNeeded");
         assert_eq!(State::Approved.name(), "Approved");
         assert_eq!(State::Failed(FailedData::default()).name(), "Failed");
@@ -819,12 +909,14 @@ mod tests {
         assert_eq!(State::Ready.as_str(), "ready");
         assert_eq!(State::Blocked.as_str(), "blocked");
         assert_eq!(State::Executing.as_str(), "executing");
-        assert_eq!(State::ExecutionDone.as_str(), "execution_done");
+        assert_eq!(State::ReExecuting.as_str(), "re_executing");
         assert_eq!(State::QaRefining.as_str(), "qa_refining");
         assert_eq!(State::QaTesting.as_str(), "qa_testing");
         assert_eq!(State::QaPassed.as_str(), "qa_passed");
         assert_eq!(State::QaFailed(QaFailedData::default()).as_str(), "qa_failed");
         assert_eq!(State::PendingReview.as_str(), "pending_review");
+        assert_eq!(State::Reviewing.as_str(), "reviewing");
+        assert_eq!(State::ReviewPassed.as_str(), "review_passed");
         assert_eq!(State::RevisionNeeded.as_str(), "revision_needed");
         assert_eq!(State::Approved.as_str(), "approved");
         assert_eq!(State::Failed(FailedData::default()).as_str(), "failed");
@@ -839,24 +931,26 @@ mod tests {
     fn test_state_display_uses_snake_case() {
         assert_eq!(format!("{}", State::Backlog), "backlog");
         assert_eq!(format!("{}", State::Ready), "ready");
-        assert_eq!(format!("{}", State::ExecutionDone), "execution_done");
+        assert_eq!(format!("{}", State::ReExecuting), "re_executing");
         assert_eq!(format!("{}", State::QaFailed(QaFailedData::default())), "qa_failed");
         assert_eq!(format!("{}", State::Failed(FailedData::default())), "failed");
     }
 
     #[test]
-    fn test_state_display_all_14_states() {
+    fn test_state_display_all_states() {
         let states = [
             (State::Backlog, "backlog"),
             (State::Ready, "ready"),
             (State::Blocked, "blocked"),
             (State::Executing, "executing"),
-            (State::ExecutionDone, "execution_done"),
+            (State::ReExecuting, "re_executing"),
             (State::QaRefining, "qa_refining"),
             (State::QaTesting, "qa_testing"),
             (State::QaPassed, "qa_passed"),
             (State::QaFailed(QaFailedData::default()), "qa_failed"),
             (State::PendingReview, "pending_review"),
+            (State::Reviewing, "reviewing"),
+            (State::ReviewPassed, "review_passed"),
             (State::RevisionNeeded, "revision_needed"),
             (State::Approved, "approved"),
             (State::Failed(FailedData::default()), "failed"),
@@ -873,12 +967,12 @@ mod tests {
     // ==================
 
     #[test]
-    fn test_state_from_str_parses_all_14_states() {
+    fn test_state_from_str_parses_all_states() {
         assert_eq!("backlog".parse::<State>().unwrap(), State::Backlog);
         assert_eq!("ready".parse::<State>().unwrap(), State::Ready);
         assert_eq!("blocked".parse::<State>().unwrap(), State::Blocked);
         assert_eq!("executing".parse::<State>().unwrap(), State::Executing);
-        assert_eq!("execution_done".parse::<State>().unwrap(), State::ExecutionDone);
+        assert_eq!("re_executing".parse::<State>().unwrap(), State::ReExecuting);
         assert_eq!("qa_refining".parse::<State>().unwrap(), State::QaRefining);
         assert_eq!("qa_testing".parse::<State>().unwrap(), State::QaTesting);
         assert_eq!("qa_passed".parse::<State>().unwrap(), State::QaPassed);
@@ -889,6 +983,8 @@ mod tests {
             panic!("Expected QaFailed");
         }
         assert_eq!("pending_review".parse::<State>().unwrap(), State::PendingReview);
+        assert_eq!("reviewing".parse::<State>().unwrap(), State::Reviewing);
+        assert_eq!("review_passed".parse::<State>().unwrap(), State::ReviewPassed);
         assert_eq!("revision_needed".parse::<State>().unwrap(), State::RevisionNeeded);
         assert_eq!("approved".parse::<State>().unwrap(), State::Approved);
         if let State::Failed(data) = "failed".parse::<State>().unwrap() {
@@ -936,12 +1032,14 @@ mod tests {
             State::Ready,
             State::Blocked,
             State::Executing,
-            State::ExecutionDone,
+            State::ReExecuting,
             State::QaRefining,
             State::QaTesting,
             State::QaPassed,
             State::QaFailed(QaFailedData::default()),
             State::PendingReview,
+            State::Reviewing,
+            State::ReviewPassed,
             State::RevisionNeeded,
             State::Approved,
             State::Failed(FailedData::default()),

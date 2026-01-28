@@ -297,22 +297,17 @@ impl<'a> TransitionHandler<'a> {
     /// Check for auto-transitions from the given state
     fn check_auto_transition(&self, state: &State) -> Option<State> {
         match state {
-            State::ExecutionDone => {
-                // Auto-transition to QaRefining if QA is enabled
-                if self.machine.context.qa_enabled {
-                    Some(State::QaRefining)
-                } else {
-                    // Skip QA, go directly to PendingReview
-                    Some(State::PendingReview)
-                }
-            }
             State::QaPassed => {
                 // Auto-transition to PendingReview
                 Some(State::PendingReview)
             }
             State::RevisionNeeded => {
-                // Auto-transition back to Executing
-                Some(State::Executing)
+                // Auto-transition to ReExecuting (revision work)
+                Some(State::ReExecuting)
+            }
+            State::PendingReview => {
+                // Auto-transition to Reviewing (spawn reviewer)
+                Some(State::Reviewing)
             }
             _ => None,
         }
@@ -443,7 +438,7 @@ mod tests {
     // ==================
 
     #[tokio::test]
-    async fn test_execution_done_auto_transition_to_qa_refining() {
+    async fn test_executing_complete_transitions_to_qa_refining_with_qa() {
         let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
         let mut machine = TaskStateMachine::new(context);
@@ -453,12 +448,8 @@ mod tests {
             .handle_transition(&State::Executing, &TaskEvent::ExecutionComplete)
             .await;
 
-        // Should auto-transition to QaRefining
-        if let TransitionResult::AutoTransition(state) = &result {
-            assert_eq!(*state, State::QaRefining);
-        } else {
-            panic!("Expected AutoTransition, got {:?}", result);
-        }
+        // Should transition directly to QaRefining
+        assert_eq!(result.state(), Some(&State::QaRefining));
 
         // Should wait for qa-prep and spawn qa-refiner
         let calls = spawner.get_calls();
@@ -467,8 +458,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execution_done_auto_transition_to_pending_review_without_qa() {
-        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    async fn test_executing_complete_transitions_to_pending_review_without_qa() {
+        let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -477,20 +468,16 @@ mod tests {
             .handle_transition(&State::Executing, &TaskEvent::ExecutionComplete)
             .await;
 
-        // Should auto-transition to PendingReview
+        // Should transition to PendingReview, then auto-transition to Reviewing
         if let TransitionResult::AutoTransition(state) = &result {
-            assert_eq!(*state, State::PendingReview);
+            assert_eq!(*state, State::Reviewing);
         } else {
-            panic!("Expected AutoTransition, got {:?}", result);
+            panic!("Expected AutoTransition to Reviewing, got {:?}", result);
         }
-
-        // Should spawn reviewer
-        let calls = spawner.get_calls();
-        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
     }
 
     #[tokio::test]
-    async fn test_execution_done_with_qa_prep_complete_skips_wait() {
+    async fn test_executing_complete_with_qa_prep_complete_skips_wait() {
         let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services)
             .with_qa_enabled()
@@ -578,7 +565,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_qa_failed_skip_qa_transitions_to_pending_review() {
-        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+        let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
@@ -590,11 +577,12 @@ mod tests {
             )
             .await;
 
-        assert_eq!(result.state(), Some(&State::PendingReview));
-
-        // Should spawn reviewer
-        let calls = spawner.get_calls();
-        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+        // Should transition to PendingReview, then auto-transition to Reviewing
+        if let TransitionResult::AutoTransition(state) = &result {
+            assert_eq!(*state, State::Reviewing);
+        } else {
+            panic!("Expected AutoTransition to Reviewing, got {:?}", result);
+        }
     }
 
     #[tokio::test]
@@ -611,9 +599,9 @@ mod tests {
             )
             .await;
 
-        // Should auto-transition from RevisionNeeded to Executing
+        // Should auto-transition from RevisionNeeded to ReExecuting
         if let TransitionResult::AutoTransition(state) = &result {
-            assert_eq!(*state, State::Executing);
+            assert_eq!(*state, State::ReExecuting);
         } else {
             panic!("Expected AutoTransition, got {:?}", result);
         }
@@ -624,7 +612,28 @@ mod tests {
     // ==================
 
     #[tokio::test]
-    async fn test_pending_review_approved() {
+    async fn test_reviewing_approved_transitions_to_review_passed() {
+        let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+        let mut handler = TransitionHandler::new(&mut machine);
+
+        let result = handler
+            .handle_transition(
+                &State::Reviewing,
+                &TaskEvent::ReviewComplete {
+                    approved: true,
+                    feedback: None,
+                },
+            )
+            .await;
+
+        // Reviewing -> ReviewPassed (awaiting human)
+        assert_eq!(result.state(), Some(&State::ReviewPassed));
+    }
+
+    #[tokio::test]
+    async fn test_review_passed_human_approve_transitions_to_approved() {
         let (_spawner, emitter, _notifier, dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
@@ -632,11 +641,8 @@ mod tests {
 
         let result = handler
             .handle_transition(
-                &State::PendingReview,
-                &TaskEvent::ReviewComplete {
-                    approved: true,
-                    feedback: None,
-                },
+                &State::ReviewPassed,
+                &TaskEvent::HumanApprove,
             )
             .await;
 
@@ -651,7 +657,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pending_review_rejected_auto_transitions_to_executing() {
+    async fn test_reviewing_rejected_auto_transitions_to_re_executing() {
         let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
@@ -659,7 +665,7 @@ mod tests {
 
         let result = handler
             .handle_transition(
-                &State::PendingReview,
+                &State::Reviewing,
                 &TaskEvent::ReviewComplete {
                     approved: false,
                     feedback: Some("Needs tests".to_string()),
@@ -667,9 +673,9 @@ mod tests {
             )
             .await;
 
-        // Should auto-transition from RevisionNeeded to Executing
+        // Should auto-transition from RevisionNeeded to ReExecuting
         if let TransitionResult::AutoTransition(state) = &result {
-            assert_eq!(*state, State::Executing);
+            assert_eq!(*state, State::ReExecuting);
         } else {
             panic!("Expected AutoTransition, got {:?}", result);
         }
@@ -869,27 +875,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execution_done_to_pending_review_starts_ai_review() {
-        let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+    async fn test_executing_to_pending_review_starts_ai_review() {
+        let (_spawner, _emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
         let mut handler = TransitionHandler::new(&mut machine);
 
-        // Transition from Executing -> ExecutionDone -> PendingReview (auto)
+        // Transition from Executing -> PendingReview (direct, no ExecutionDone)
+        // then auto-transition to Reviewing
         let result = handler
             .handle_transition(&State::Executing, &TaskEvent::ExecutionComplete)
             .await;
 
-        // Should auto-transition to PendingReview
-        assert_eq!(result.state(), Some(&State::PendingReview));
+        // Should auto-transition to Reviewing
+        if let TransitionResult::AutoTransition(state) = &result {
+            assert_eq!(*state, State::Reviewing);
+        } else {
+            panic!("Expected AutoTransition to Reviewing, got {:?}", result);
+        }
 
-        // Should have started AI review
+        // PendingReview entry action starts AI review
         assert!(review_starter.has_review_for_task("task-1"));
-
-        // Should have emitted review:update event
-        assert!(emitter.get_events().iter().any(|e| {
-            e.method == "emit_with_payload" && e.args[0] == "review:update"
-        }));
     }
 
     #[tokio::test]

@@ -63,7 +63,7 @@ fn record_transitions(
 // Happy Path Tests
 // ==================
 
-/// Test: Backlog → Ready → Executing → ExecutionDone → PendingReview → Approved
+/// Test: Backlog → Ready → Executing → PendingReview → Reviewing → ReviewPassed → Approved
 ///
 /// This is the simplest complete task lifecycle without QA.
 #[test]
@@ -86,16 +86,15 @@ fn test_happy_path_without_qa() {
     repo.persist_state(&task_id, &State::Executing).unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Executing);
 
-    // ExecutionComplete: Executing -> ExecutionDone
+    // ExecutionComplete: Executing -> PendingReview (direct, no ExecutionDone)
     let state = repo.process_event(&task_id, &TaskEvent::ExecutionComplete).unwrap();
-    assert_eq!(state, State::ExecutionDone);
+    assert_eq!(state, State::PendingReview);
 
-    // Since qa_enabled is false by default in ExecutionDone, process moves to review
-    // Simulate the transition to PendingReview (normally done by state machine action)
-    repo.persist_state(&task_id, &State::PendingReview).unwrap();
-    assert_eq!(repo.load_state(&task_id).unwrap(), State::PendingReview);
+    // PendingReview auto-transitions to Reviewing (normally done by state machine)
+    repo.persist_state(&task_id, &State::Reviewing).unwrap();
+    assert_eq!(repo.load_state(&task_id).unwrap(), State::Reviewing);
 
-    // ReviewComplete with approved=true: PendingReview -> Approved
+    // ReviewComplete with approved=true: Reviewing -> ReviewPassed
     let state = repo
         .process_event(
             &task_id,
@@ -105,6 +104,10 @@ fn test_happy_path_without_qa() {
             },
         )
         .unwrap();
+    assert_eq!(state, State::ReviewPassed);
+
+    // Human approves: ReviewPassed -> Approved
+    let state = repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
     assert_eq!(state, State::Approved);
 
     // Verify final state is terminal
@@ -141,12 +144,12 @@ fn test_happy_path_tracks_transitions() {
             Ok(())
         })
         .unwrap();
-    assert_eq!(new_state, State::ExecutionDone);
+    assert_eq!(new_state, State::PendingReview);
 
     // Verify transitions were recorded
     assert_eq!(transition_log.len(), 2);
     assert_eq!(transition_log[0], (State::Backlog, State::Ready));
-    assert_eq!(transition_log[1], (State::Executing, State::ExecutionDone));
+    assert_eq!(transition_log[1], (State::Executing, State::PendingReview));
 }
 
 /// Test that terminal state Approved prevents further transitions
@@ -169,13 +172,17 @@ fn test_approved_is_terminal() {
 // QA Flow Tests
 // ==================
 
-/// Test: ExecutionDone → QaRefining → QaTesting → QaPassed → PendingReview
+/// Test: Executing (with QA) → QaRefining → QaTesting → QaPassed → PendingReview
 #[test]
 fn test_qa_flow_success() {
     let (repo, task_id) = setup_test();
 
-    // Start in ExecutionDone state
-    repo.persist_state(&task_id, &State::ExecutionDone).unwrap();
+    // Start in Executing state, then execute completion triggers QA flow
+    repo.persist_state(&task_id, &State::Executing).unwrap();
+
+    // ExecutionComplete with QA enabled would go to QaRefining
+    // Simulate this transition
+    repo.persist_state(&task_id, &State::QaRefining).unwrap();
 
     // Simulate QA being enabled and moving to QaRefining
     // (In real app, entry action would check context.qa_enabled)
@@ -256,24 +263,25 @@ fn test_revision_needed_to_executing_loop() {
     let state = repo
         .process_event(&task_id, &TaskEvent::ExecutionComplete)
         .unwrap();
-    assert_eq!(state, State::ExecutionDone);
+    // With QA disabled (default), goes to PendingReview
+    assert_eq!(state, State::PendingReview);
 }
 
 // ==================
 // Human Override Tests
 // ==================
 
-/// Test: ForceApprove from PendingReview bypasses normal approval
+/// Test: HumanApprove from ReviewPassed completes task
 #[test]
-fn test_force_approve_from_pending_review() {
+fn test_human_approve_from_review_passed() {
     let (repo, task_id) = setup_test();
 
-    // Set up PendingReview state
-    repo.persist_state(&task_id, &State::PendingReview).unwrap();
+    // Set up ReviewPassed state (AI approved, awaiting human)
+    repo.persist_state(&task_id, &State::ReviewPassed).unwrap();
 
-    // ForceApprove: PendingReview -> Approved
+    // HumanApprove: ReviewPassed -> Approved
     let state = repo
-        .process_event(&task_id, &TaskEvent::ForceApprove)
+        .process_event(&task_id, &TaskEvent::HumanApprove)
         .unwrap();
     assert_eq!(state, State::Approved);
 }
@@ -480,10 +488,10 @@ fn test_execution_failed_stores_error() {
 fn test_review_rejection_to_revision_needed() {
     let (repo, task_id) = setup_test();
 
-    // Set up PendingReview state
-    repo.persist_state(&task_id, &State::PendingReview).unwrap();
+    // Set up Reviewing state (AI is reviewing)
+    repo.persist_state(&task_id, &State::Reviewing).unwrap();
 
-    // ReviewComplete with approved=false: PendingReview -> RevisionNeeded
+    // ReviewComplete with approved=false: Reviewing -> RevisionNeeded
     let state = repo
         .process_event(
             &task_id,
@@ -501,10 +509,10 @@ fn test_review_rejection_to_revision_needed() {
 fn test_full_review_cycle() {
     let (repo, task_id) = setup_test();
 
-    // Start in PendingReview
-    repo.persist_state(&task_id, &State::PendingReview).unwrap();
+    // Start in Reviewing (AI is reviewing)
+    repo.persist_state(&task_id, &State::Reviewing).unwrap();
 
-    // Reject
+    // Reject: Reviewing -> RevisionNeeded
     repo.process_event(
         &task_id,
         &TaskEvent::ReviewComplete {
@@ -515,15 +523,15 @@ fn test_full_review_cycle() {
     .unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::RevisionNeeded);
 
-    // Re-execute
-    repo.persist_state(&task_id, &State::Executing).unwrap();
+    // Re-execute: RevisionNeeded auto-transitions to ReExecuting
+    repo.persist_state(&task_id, &State::ReExecuting).unwrap();
     repo.process_event(&task_id, &TaskEvent::ExecutionComplete)
         .unwrap();
 
-    // Skip QA, go to PendingReview
-    repo.persist_state(&task_id, &State::PendingReview).unwrap();
+    // Skip QA, go to PendingReview then Reviewing
+    repo.persist_state(&task_id, &State::Reviewing).unwrap();
 
-    // Approve
+    // Approve: Reviewing -> ReviewPassed
     repo.process_event(
         &task_id,
         &TaskEvent::ReviewComplete {
@@ -532,5 +540,9 @@ fn test_full_review_cycle() {
         },
     )
     .unwrap();
+    assert_eq!(repo.load_state(&task_id).unwrap(), State::ReviewPassed);
+
+    // Human approves: ReviewPassed -> Approved
+    repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Approved);
 }

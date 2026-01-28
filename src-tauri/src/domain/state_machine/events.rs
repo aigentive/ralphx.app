@@ -27,6 +27,15 @@ pub enum TaskEvent {
     /// Human override to approve task regardless of review state
     ForceApprove,
 
+    /// Human approves task after AI review (ReviewPassed → Approved)
+    HumanApprove,
+
+    /// Human requests changes after AI review (ReviewPassed → RevisionNeeded)
+    HumanRequestChanges {
+        /// Feedback from human reviewer
+        feedback: String,
+    },
+
     /// Retry task from Failed, Cancelled, or Approved state
     Retry,
 
@@ -90,6 +99,8 @@ impl TaskEvent {
                 | TaskEvent::StartExecution
                 | TaskEvent::Cancel
                 | TaskEvent::ForceApprove
+                | TaskEvent::HumanApprove
+                | TaskEvent::HumanRequestChanges { .. }
                 | TaskEvent::Retry
                 | TaskEvent::SkipQa
         )
@@ -123,6 +134,8 @@ impl TaskEvent {
             TaskEvent::StartExecution => "StartExecution",
             TaskEvent::Cancel => "Cancel",
             TaskEvent::ForceApprove => "ForceApprove",
+            TaskEvent::HumanApprove => "HumanApprove",
+            TaskEvent::HumanRequestChanges { .. } => "HumanRequestChanges",
             TaskEvent::Retry => "Retry",
             TaskEvent::SkipQa => "SkipQa",
             TaskEvent::ExecutionComplete => "ExecutionComplete",

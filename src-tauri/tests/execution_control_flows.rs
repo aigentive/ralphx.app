@@ -238,7 +238,8 @@ fn test_pause_does_not_affect_executing_tasks() {
     let state = repo
         .process_event(task3_id, &TaskEvent::ExecutionComplete)
         .unwrap();
-    assert_eq!(state, State::ExecutionDone);
+    // With QA disabled (default), goes to PendingReview
+    assert_eq!(state, State::PendingReview);
 }
 
 /// Test: Ready tasks can still be scheduled (pause is handled at orchestrator level)
@@ -371,15 +372,15 @@ fn test_complete_lifecycle_with_question() {
     // Ready -> Executing (resumed)
     repo.persist_state(&task_id, &State::Executing).unwrap();
 
-    // Executing -> ExecutionDone
+    // Executing -> PendingReview (direct, no QA)
     repo.process_event(&task_id, &TaskEvent::ExecutionComplete)
         .unwrap();
-    assert_eq!(repo.load_state(&task_id).unwrap(), State::ExecutionDone);
+    assert_eq!(repo.load_state(&task_id).unwrap(), State::PendingReview);
 
-    // ExecutionDone -> PendingReview (skip QA for this test)
-    repo.persist_state(&task_id, &State::PendingReview).unwrap();
+    // PendingReview -> Reviewing (auto-transition)
+    repo.persist_state(&task_id, &State::Reviewing).unwrap();
 
-    // PendingReview -> Approved
+    // Reviewing -> ReviewPassed
     repo.process_event(
         &task_id,
         &TaskEvent::ReviewComplete {
@@ -388,6 +389,10 @@ fn test_complete_lifecycle_with_question() {
         },
     )
     .unwrap();
+    assert_eq!(repo.load_state(&task_id).unwrap(), State::ReviewPassed);
+
+    // ReviewPassed -> Approved (human approval)
+    repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Approved);
 }
 

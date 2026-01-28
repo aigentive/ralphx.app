@@ -14,8 +14,9 @@
       {
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Verify quality improvement compliance. Check git log for a refactor: commit in this session. ALLOW if: (1) refactor: commit exists, OR (2) task was purely research/docs with no code changes. BLOCK if: code was modified but no refactor: commit exists. When blocking, instruct to launch Explore agent, find ONE quality fix, and commit with refactor: prefix."
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/verify-refactor-commit.sh",
+            "timeout": 10
           }
         ]
       }

@@ -148,13 +148,16 @@ async fn test_ai_review_approve_state_machine_transition() {
     // Start in PendingReview
     assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
 
+    // PendingReview auto-transitions to Reviewing
+    sm_repo.persist_state(&task_id, &State::Reviewing).unwrap();
+
     // Conduct AI review
     let service = ReviewService::new(review_repo, task_repo);
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
     let input = CompleteReviewInput::approved("LGTM");
     service.process_review_result(&mut review, &input).await.unwrap();
 
-    // Transition state machine: PendingReview -> Approved
+    // Transition state machine: Reviewing -> ReviewPassed
     let new_state = sm_repo
         .process_event(
             &task_id,
@@ -165,6 +168,10 @@ async fn test_ai_review_approve_state_machine_transition() {
         )
         .unwrap();
 
+    assert_eq!(new_state, State::ReviewPassed);
+
+    // Human approval: ReviewPassed -> Approved
+    let new_state = sm_repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
     assert_eq!(new_state, State::Approved);
 }
 
@@ -490,13 +497,16 @@ async fn test_ai_review_needs_changes_state_machine_transition() {
     // Start in PendingReview
     assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
 
+    // PendingReview auto-transitions to Reviewing
+    sm_repo.persist_state(&task_id, &State::Reviewing).unwrap();
+
     // Conduct AI review with NEEDS_CHANGES
     let service = ReviewService::new(review_repo, task_repo);
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
     let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
     service.process_review_result(&mut review, &input).await.unwrap();
 
-    // Transition state machine: PendingReview -> RevisionNeeded
+    // Transition state machine: Reviewing -> RevisionNeeded
     let new_state = sm_repo
         .process_event(
             &task_id,
