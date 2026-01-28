@@ -41,8 +41,8 @@ No P0? → Manifest → Active phase PRD → First failing task → Execute → 
 ```
 1. Check .commit-lock:
    → NOT EXISTS? Create: echo "features $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
-   → EXISTS? Read content, check if stale (>2min). If stale, delete and acquire.
-            If not stale: sleep 5, re-read content (lock may change hands), loop.
+   → EXISTS? Read content, check if stale (>30s). If stale, delete and acquire.
+            If not stale: sleep 3, re-read content (lock may change hands), loop.
 
 2. Commit your files: git add <file1> <file2> ... && git commit
 
