@@ -24,8 +24,8 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:784~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1)
@@ -92,5 +92,5 @@ _No active P3 items. Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 17 (9 excluded, 10 deferred to PRD)
 **Completed:** 10
-**Validated:** 44 strikethroughs (2026-01-29 x29) - 6 archived, 1 reactivated, 37 incremented
+**Validated:** 46 strikethroughs (2026-01-29 x31) - 6 archived, 1 reactivated, 39 incremented
 **Last maintenance:** 2026-01-29 (archived 4 completed items)
