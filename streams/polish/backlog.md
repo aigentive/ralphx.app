@@ -24,8 +24,8 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1)
@@ -39,24 +39,19 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
-- [x] [P2] [Frontend] Refactor large API file (821 LOC → 473 LOC) - extracted schemas, transforms, types - src/api/ideation.ts:1
+_No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
 - [ ] ~~[P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7~~ (excluded)
-- [x] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useSupervisorAlerts.listener.ts:100
-- [x] [P3] [Frontend] Error handling: Check empty catch blocks - src/components/Chat/ChatPanel.tsx:342
 
 ## REFILL (Added 2026-01-28 23:47)
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Frontend] Error handling: App.tsx catch blocks need proper user feedback via toast - src/App.tsx:330
-- [x] [P2] [Frontend] Event listener cleanup: useResizePanel needs useEffect for document listener lifecycle - src/components/Chat/ResizeablePanel.tsx:63
-- [x] [P2] [Frontend] Unnecessary useMemo: Multiple dependencies in ChatPanel could be optimized - src/components/Chat/ChatPanel.tsx:200
+_No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
@@ -69,7 +64,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Frontend] Extract ToolCallIndicator sub-functions - src/components/Chat/ToolCallIndicator.tsx:49-200
+_No active P2 items. Completed items moved to archive._
 - [x] [P2] [Frontend] Consolidate ChatPanel console.error handlers into unified error handler - src/components/Chat/ChatPanel.tsx:332
 - [x] [P2] [Frontend] Remove TODO comment for Tauri command integration - src/App.tsx:359
 - [x] [P2] [Backend] Replace unwrap() calls with proper error handling in ideation_commands - src-tauri/src/commands/ideation_commands/mod.rs:45
@@ -88,8 +83,31 @@ _No active P3 items. Completed items moved to archive._
 
 ---
 
+## REFILL (Added 2026-01-29 00:43)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Backend] Error handling: Replace `.unwrap()` with proper error handling - src-tauri/src/domain/supervisor/patterns.rs:146
+- [ ] [P2] [Backend] Error handling: Replace `.unwrap()` with proper error handling in serialization tests - src-tauri/src/domain/supervisor/patterns.rs:417
+- [ ] [P2] [Backend] Error handling: Replace `.unwrap()` calls in test assertions - src-tauri/src/domain/supervisor/patterns.rs:329
+- [ ] [P2] [Backend] Error handling: Replace `.expect()` calls with proper type-safe parsing - src-tauri/src/domain/entities/ideation.rs:171
+- [ ] [P2] [Backend] Error handling: Replace `.parse().unwrap()` with Result handling - src-tauri/src/domain/entities/ideation.rs:1686
+- [ ] [P2] [Backend] Error handling: Replace serde `.unwrap()` calls in tests - src-tauri/src/domain/supervisor/events.rs:361
+- [ ] [P2] [Backend] Error handling: Remove dead_code allow attribute - src-tauri/src/domain/agents/mod.rs:24
+- [ ] [P2] [Backend] Error handling: Remove dead_code allow attribute - src-tauri/src/application/dependency_service/mod.rs:12
+
+### P3 - Low Impact
+
+- [ ] [P3] [Backend] Code cleanup: Resolve TODO comment about database search optimization - src-tauri/src/http_server.rs:1296
+- [ ] [P3] [Backend] Code cleanup: Resolve TODO comment about task dependencies - src-tauri/src/application/task_transition_service.rs:104
+- [ ] [P3] [Backend] Code cleanup: Resolve TODO comment about ideation sessions - src-tauri/src/commands/test_data_commands.rs:206
+- [ ] [P3] [Backend] Code cleanup: Resolve TODO comment about streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
+- [ ] [P3] [Backend] Code cleanup: Resolve TODO comment about agent context - src-tauri/src/commands/task_commands/mutation.rs:353
+
+---
+
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 8 (9 excluded, 10 deferred to PRD)
+**Active items:** 13 (9 excluded, 10 deferred to PRD)
 **Completed:** 10
-**Validated:** 47 strikethroughs (2026-01-29 x32) - 7 archived, 1 reactivated (moved to refactor as P1), 39 incremented
-**Last maintenance:** 2026-01-29 (strikethrough validation: 1 archived, 1 reactivated to refactor)
+**Validated:** 49 strikethroughs (2026-01-29 x34) - 7 archived, 1 reactivated (moved to refactor as P1), 41 incremented
+**Last maintenance:** 2026-01-29 (archived 8 completed items, refilled with 13 items, validated 2 strikethroughs)
