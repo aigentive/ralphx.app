@@ -119,7 +119,7 @@
 - [ ] Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs
 - [ ] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
-- [ ] Reduce review_commands.rs size (790 LOC) - extract review handlers - src-tauri/src/commands/review_commands.rs:1-50
+- [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
 - [ ] Reduce task_step_commands.rs size (764 LOC) - extract step handlers - src-tauri/src/commands/task_step_commands.rs:1-50
 - [ ] Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs
 
