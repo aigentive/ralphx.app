@@ -310,15 +310,13 @@ export function useChat(context: ChatContext) {
         context_id: string;
         conversation_id: string;
       }>("agent:run_started", (event) => {
-        const { context_type, context_id: eventContextId, conversation_id } = event.payload;
+        const { context_type, context_id: eventContextId } = event.payload;
 
         // Build context key from the event payload
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
 
         // Set agent as running for this context
         setAgentRunning(eventContextKey, true);
-
-        console.log(`[agent:run_started] contextKey=${eventContextKey}, raw=${context_type}/${eventContextId}, conv=${conversation_id}`);
       });
       unlisteners.push(runStartedUnlisten);
 
