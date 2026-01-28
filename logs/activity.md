@@ -1,10 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 22:30:00
+**Last Updated:** 2026-01-29 06:10:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 27 / 39
-**Current Task:** Add useReviewMutations hook (next)
+**Tasks Completed:** 28 / 39
+**Current Task:** Add review API wrappers (next)
+
+---
+
+### 2026-01-29 06:10:00 - Add useReviewMutations hook
+
+**What:**
+- Created `useReviewMutations.ts` hook in `src/hooks/` with:
+  - `approve` mutation: Calls api.reviews.approve with reviewId and optional notes
+  - `requestChanges` mutation: Calls api.reviews.requestChanges with reviewId, notes, and optional fixDescription
+  - Returns `isApproving` and `isRequestingChanges` loading states
+- Both mutations invalidate `reviewKeys.all` and `taskKeys.all` on success
+- Fixed exactOptionalPropertyTypes TypeScript errors with proper spread patterns
+- Quality improvement: Removed duplicate workflowKeys from TaskBoard/hooks.ts
+  - Consolidated to use canonical export from @/hooks/useWorkflows
+  - Updated TaskBoard/index.tsx to not re-export workflowKeys
+  - Updated TaskBoard/index.test.tsx to import from useWorkflows
+  - Reduced lint warnings from 6 to 5
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+npm run test -- src/components/tasks/TaskBoard/index.test.tsx
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint passes with 0 errors (5 pre-existing warnings)
+- TaskBoard index tests pass (7 tests)
 
 ---
 

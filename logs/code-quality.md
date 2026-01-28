@@ -61,7 +61,7 @@
 - [x] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693
 - [ ] ~~Extract constants from ScreenshotGallery/index into separate file - src/components/qa/ScreenshotGallery/index.tsx:3~~ (stale - just a re-export barrel file, no constants)
 - [x] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
-- [ ] ~~Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10~~ (stale - just a re-export barrel file)
+- [x] Remove duplicate workflowKeys from TaskBoard/hooks.ts, use canonical @/hooks/useWorkflows instead - src/components/tasks/TaskBoard/hooks.ts:26
 - [x] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
 - [x] Remove backward-compat re-exports from TaskFormFields.tsx (react-refresh lint) - updated imports in TaskCreationForm.tsx and TaskEditForm.tsx
 - [ ] ~~Extract constants from ui/badge - src/components/ui/badge.tsx:36~~ (excluded)
