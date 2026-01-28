@@ -5,6 +5,21 @@
 
 ---
 
+## Archived 2026-01-29 (Fourth Batch)
+
+### From refactor/backlog.md (Frontend + Backend)
+
+- [x] Reduce IntegratedChatPanel component size (1025 LOC → 498 LOC) - extracted useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents hooks and IntegratedChatPanel.components.tsx - src/components/Chat/IntegratedChatPanel.tsx:1-100
+- [x] Split ideation_commands.rs (2595 LOC → 1660 LOC excluding tests) - extracted to 7 focused modules: types, session, proposals, dependencies, apply, chat, orchestrator - src-tauri/src/commands/ideation_commands/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:00)
+
+- [x] [P3] [Frontend] Remove TODO comments for unimplemented task actions - src/components/tasks/TaskFullView.tsx:213
+- [x] [P3] [Frontend] Remove TODO in HumanReviewTaskDetail - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+- [x] [P3] [Backend] Remove TODO placeholder search implementation - src-tauri/src/commands/task_context_commands.rs:113
+
+---
+
 ## Archived 2026-01-29 (Third Batch)
 
 ### From refactor/backlog.md (Frontend)
