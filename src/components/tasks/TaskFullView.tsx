@@ -340,7 +340,7 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
           }}
         >
           <div className="p-6">
-            <TaskDetailPanel task={task} showHistory={true} />
+            <TaskDetailPanel task={task} showHistory={true} useViewRegistry={true} />
           </div>
         </div>
 
