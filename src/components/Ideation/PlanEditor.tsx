@@ -212,7 +212,6 @@ export function PlanEditor({ plan, onSave, onCancel, isNewPlan = false }: PlanEd
       onSave(updatedPlan);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save plan");
-      console.error("Error saving plan:", err);
     } finally {
       setIsSaving(false);
     }
