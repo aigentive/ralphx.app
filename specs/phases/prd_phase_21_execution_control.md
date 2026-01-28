@@ -245,7 +245,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: test(startup): add integration tests for task resumption"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

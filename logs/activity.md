@@ -1,10 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:30:00
+**Last Updated:** 2026-01-28 18:15:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 10 / 11
-**Current Task:** Write integration tests for execution control
+**Tasks Completed:** 11 / 11
+**Current Task:** Phase 21 complete
+
+---
+
+### 2026-01-28 18:15:00 - Add Integration Tests for Startup Resumption
+
+**What:**
+- Added 5 integration tests for StartupJobRunner in startup_jobs.rs:
+  - `test_resumption_skipped_when_paused` - verifies no entry actions fire when paused (enhanced with conversation assertion)
+  - `test_resumption_spawns_agents` - **NEW** verifies entry actions are called by checking ChatConversation creation
+  - `test_resumption_handles_empty_projects` - verifies no panic with empty project list
+  - `test_resumption_respects_max_concurrent` - verifies early exit at max_concurrent limit
+  - `test_resumption_handles_multiple_statuses` - enhanced with conversation/skip assertions for Executing vs Ready tasks
+- Extracted `build_runner()` helper to reduce boilerplate across all 5 tests
+
+**Quality Improvement:**
+- Fixed incorrect InternalStatus→State mapping in execute_entry_actions:
+  - `Reviewing` was mapped to `PendingReview` instead of `Reviewing`
+  - `ReviewPassed` was mapped to `PendingReview` instead of `ReviewPassed`
+  - `ReExecuting` was mapped to `Executing` instead of `ReExecuting`
+  - This prevented correct entry actions from firing during startup task resumption
+- Removed stale comment about execute_entry_actions visibility
+- Validated 4 deferred items (stale:1), created code-quality-archive.md
+
+**Commands:**
+- `cargo test --lib startup_jobs::tests` — 5 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `npm run lint` — 0 errors
+- `npm run typecheck` — clean
+- `cargo test` — all passed
 
 ---
 
