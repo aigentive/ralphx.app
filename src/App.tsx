@@ -344,8 +344,7 @@ function AppContent() {
     try {
       const response = await api.execution.stop();
       setExecutionStatus(response.status);
-    } catch (error) {
-      console.error("Failed to stop execution:", error);
+    } catch {
       toast.error("Failed to stop execution");
     } finally {
       setIsExecutionLoading(false);
