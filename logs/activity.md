@@ -1,10 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-29 06:10:00
+**Last Updated:** 2026-01-28 06:14:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 28 / 39
-**Current Task:** Add review API wrappers (next)
+**Tasks Completed:** 29 / 39
+**Current Task:** Wire up ReviewsPanel approve/reject handlers (next)
+
+---
+
+### 2026-01-28 06:14:00 - Verify review API wrappers already exist
+
+**What:**
+- Verified that api.reviews.approve and api.reviews.requestChanges already exist in src/lib/tauri.ts (lines 643-652)
+- Confirmed input types ApproveReviewInput and RequestChangesInput are properly defined (lines 238-252)
+- Typecheck passes - implementation is complete
+- Quality improvement: Extracted shared constants from IdeationView
+  - Created IdeationView.constants.ts with PRIORITY_CONFIG and animationStyles
+  - Updated ProposalCard.tsx to import from shared constants (removed duplicate)
+  - Reduced IdeationView from 1198 LOC to 1105 LOC
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint passes with 0 errors (5 pre-existing warnings)
 
 ---
 
