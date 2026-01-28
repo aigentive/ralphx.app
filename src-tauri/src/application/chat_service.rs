@@ -282,6 +282,7 @@ fn get_agent_name(context_type: &ChatContextType) -> &'static str {
         ChatContextType::Task => "chat-task",
         ChatContextType::Project => "chat-project",
         ChatContextType::TaskExecution => "worker",
+        ChatContextType::Review => "reviewer",
     }
 }
 
@@ -289,6 +290,7 @@ fn get_agent_name(context_type: &ChatContextType) -> &'static str {
 fn get_assistant_role(context_type: &ChatContextType) -> MessageRole {
     match context_type {
         ChatContextType::TaskExecution => MessageRole::Worker,
+        ChatContextType::Review => MessageRole::Reviewer,
         _ => MessageRole::Orchestrator,
     }
 }
@@ -383,7 +385,7 @@ impl<R: Runtime> ClaudeChatService<R> {
     ) -> PathBuf {
         let project_id = match context_type {
             ChatContextType::Project => Some(ProjectId::from_string(context_id.to_string())),
-            ChatContextType::Task | ChatContextType::TaskExecution => {
+            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
                 if let Ok(Some(task)) = self
                     .task_repo
                     .get_by_id(&TaskId::from_string(context_id.to_string()))
@@ -451,6 +453,14 @@ impl<R: Runtime> ClaudeChatService<R> {
                     context_id, user_message
                 )
             }
+            ChatContextType::Review => {
+                format!(
+                    "RalphX Review Session. Task ID: {}.\n\n\
+                     You are reviewing this task. Examine the work, provide feedback, and determine if it meets quality standards.\n\n\
+                     User's message: {}",
+                    context_id, user_message
+                )
+            }
         }
     }
 
@@ -468,7 +478,7 @@ impl<R: Runtime> ClaudeChatService<R> {
 
         // Add task scope for task-related contexts
         match conversation.context_type {
-            ChatContextType::Task | ChatContextType::TaskExecution => {
+            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
                 cmd.env("RALPHX_TASK_ID", &conversation.context_id);
             }
             _ => {}
@@ -503,7 +513,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             ChatContextType::Ideation => {
                 ChatMessage::user_in_session(IdeationSessionId::from_string(context_id), content)
             }
-            ChatContextType::Task | ChatContextType::TaskExecution => {
+            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
                 ChatMessage::user_about_task(TaskId::from_string(context_id.to_string()), content)
             }
             ChatContextType::Project => {
@@ -551,6 +561,20 @@ impl<R: Runtime> ClaudeChatService<R> {
                 task_id: Some(TaskId::from_string(context_id.to_string())),
                 conversation_id: Some(conversation_id),
                 role: MessageRole::Worker,
+                content: content.to_string(),
+                metadata: None,
+                parent_message_id: None,
+                tool_calls: None,
+                content_blocks: None,
+                created_at: chrono::Utc::now(),
+            },
+            ChatContextType::Review => ChatMessage {
+                id: ChatMessageId::new(),
+                session_id: None,
+                project_id: None,
+                task_id: Some(TaskId::from_string(context_id.to_string())),
+                conversation_id: Some(conversation_id),
+                role: MessageRole::Reviewer,
                 content: content.to_string(),
                 metadata: None,
                 parent_message_id: None,
@@ -1217,6 +1241,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             ChatContextType::TaskExecution => {
                 ChatConversation::new_task_execution(TaskId::from_string(context_id.to_string()))
             }
+            ChatContextType::Review => {
+                ChatConversation::new_review(TaskId::from_string(context_id.to_string()))
+            }
         };
 
         self.conversation_repo
@@ -1757,6 +1784,9 @@ impl ChatService for MockChatService {
             }
             ChatContextType::TaskExecution => {
                 ChatConversation::new_task_execution(TaskId::from_string(context_id.to_string()))
+            }
+            ChatContextType::Review => {
+                ChatConversation::new_review(TaskId::from_string(context_id.to_string()))
             }
         };
 

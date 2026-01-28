@@ -78,6 +78,8 @@ pub enum ChatContextType {
     /// Task execution context (worker output)
     #[serde(rename = "task_execution")]
     TaskExecution,
+    /// Task review context (AI reviewer)
+    Review,
 }
 
 impl fmt::Display for ChatContextType {
@@ -87,6 +89,7 @@ impl fmt::Display for ChatContextType {
             ChatContextType::Task => write!(f, "task"),
             ChatContextType::Project => write!(f, "project"),
             ChatContextType::TaskExecution => write!(f, "task_execution"),
+            ChatContextType::Review => write!(f, "review"),
         }
     }
 }
@@ -100,6 +103,7 @@ impl std::str::FromStr for ChatContextType {
             "task" => Ok(ChatContextType::Task),
             "project" => Ok(ChatContextType::Project),
             "task_execution" => Ok(ChatContextType::TaskExecution),
+            "review" => Ok(ChatContextType::Review),
             _ => Err(format!("Invalid context type: {}", s)),
         }
     }
@@ -197,6 +201,22 @@ impl ChatConversation {
         }
     }
 
+    /// Create a new conversation for task review (reviewer agent)
+    pub fn new_review(task_id: TaskId) -> Self {
+        let now = Utc::now();
+        Self {
+            id: ChatConversationId::new(),
+            context_type: ChatContextType::Review,
+            context_id: task_id.as_str().to_string(),
+            claude_session_id: None,
+            title: None,
+            message_count: 0,
+            last_message_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     /// Update the Claude session ID (after first message in conversation)
     pub fn set_claude_session_id(&mut self, session_id: impl Into<String>) {
         self.claude_session_id = Some(session_id.into());
@@ -247,6 +267,7 @@ mod tests {
         assert_eq!(ChatContextType::Task.to_string(), "task");
         assert_eq!(ChatContextType::Project.to_string(), "project");
         assert_eq!(ChatContextType::TaskExecution.to_string(), "task_execution");
+        assert_eq!(ChatContextType::Review.to_string(), "review");
     }
 
     #[test]
@@ -255,6 +276,7 @@ mod tests {
         assert_eq!("task".parse::<ChatContextType>().unwrap(), ChatContextType::Task);
         assert_eq!("project".parse::<ChatContextType>().unwrap(), ChatContextType::Project);
         assert_eq!("task_execution".parse::<ChatContextType>().unwrap(), ChatContextType::TaskExecution);
+        assert_eq!("review".parse::<ChatContextType>().unwrap(), ChatContextType::Review);
         assert!("invalid".parse::<ChatContextType>().is_err());
     }
 
@@ -304,6 +326,19 @@ mod tests {
         let conv = ChatConversation::new_task_execution(task_id);
 
         assert_eq!(conv.context_type, ChatContextType::TaskExecution);
+        assert_eq!(conv.context_id, expected_context_id);
+        assert_eq!(conv.claude_session_id, None);
+        assert_eq!(conv.message_count, 0);
+        assert!(!conv.has_claude_session());
+    }
+
+    #[test]
+    fn test_new_review_conversation() {
+        let task_id = TaskId::new();
+        let expected_context_id = task_id.as_str().to_string();
+        let conv = ChatConversation::new_review(task_id);
+
+        assert_eq!(conv.context_type, ChatContextType::Review);
         assert_eq!(conv.context_id, expected_context_id);
         assert_eq!(conv.claude_session_id, None);
         assert_eq!(conv.message_count, 0);
