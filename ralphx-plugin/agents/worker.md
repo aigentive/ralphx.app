@@ -78,6 +78,63 @@ Now that you have full context, proceed with implementation following:
 2. The architectural decisions from the plan
 3. Any patterns or constraints documented
 
+## Before Starting Re-Execution Work
+
+If this task is a revision (check `RALPHX_TASK_STATE` environment variable equals `re_executing`):
+
+### MANDATORY: Fetch Review Feedback
+
+You MUST perform these steps BEFORE writing any code:
+
+1. **MUST** call `get_task_context(task_id)` to understand the task
+2. **MUST** call `get_review_notes(task_id)` to understand what needs to be fixed
+3. Read all previous feedback carefully
+4. Address each issue mentioned in the review notes
+5. Do not repeat the same mistakes
+
+### Example Re-Execution Flow
+
+```
+User assigns revision task (RALPHX_TASK_STATE = "re_executing")
+
+1. get_task_context("task-123")
+   → Returns task details and context
+
+2. get_review_notes("task-123")
+   → Returns:
+     {
+       task_id: "task-123",
+       revision_count: 1,
+       max_revisions: 5,
+       reviews: [
+         {
+           id: "review-1",
+           reviewer: "ai",
+           outcome: "changes_requested",
+           notes: "Missing error handling in WebSocket connection logic",
+           created_at: "2026-01-28T10:00:00Z"
+         }
+       ]
+     }
+
+3. Understand the feedback:
+   - AI reviewer found missing error handling
+   - Need to add proper error handling to WebSocket logic
+   - This is revision attempt 1 of 5 max
+
+4. Implement fixes addressing each issue mentioned
+5. Verify fixes with tests
+6. Complete the task
+```
+
+### Key Points for Revisions
+
+- **Read ALL feedback**: Previous reviewers (AI or human) identified specific issues
+- **Address EVERY issue**: Don't skip any feedback points
+- **Don't repeat mistakes**: If tests were requested, add them this time
+- **Track revision count**: You can see how many attempts remain (revision_count vs max_revisions)
+- **Test your fixes**: Run all tests to ensure your changes work
+
 ## Step Progress Tracking
 
 When executing a task, you MUST track progress using steps:
@@ -118,6 +175,7 @@ Break down the task into 3-8 discrete, verifiable steps.
 | Tool | When to Use |
 |------|------------|
 | `get_task_context` | ALWAYS first - get task + linked artifacts |
+| `get_review_notes` | MANDATORY for re-execution - get all review feedback |
 | `get_artifact` | Read full artifact content |
 | `get_artifact_version` | Read specific historical version |
 | `get_related_artifacts` | Find linked documents |
@@ -148,17 +206,19 @@ User assigns task: "Implement WebSocket server"
 
 ## Workflow
 
-1. **Fetch Context First**: Call `get_task_context` to understand the full scope
-2. **Check Steps**: Call `get_task_steps` to see the execution plan
-3. **Read Plan**: If implementation plan exists, read it thoroughly
-4. **Read Code**: Understand existing code before modifying
-5. **Execute Steps**: For each step:
+1. **Check Task Type**: If `RALPHX_TASK_STATE` is `re_executing`, this is a revision - fetch review feedback first
+2. **Fetch Context First**: Call `get_task_context` to understand the full scope
+3. **Fetch Review Feedback**: If re-executing, call `get_review_notes` to see what needs fixing
+4. **Check Steps**: Call `get_task_steps` to see the execution plan
+5. **Read Plan**: If implementation plan exists, read it thoroughly
+6. **Read Code**: Understand existing code before modifying
+7. **Execute Steps**: For each step:
    - Call `start_step` before beginning work
    - Write tests before implementation (TDD)
    - Implement to make tests pass
    - Call `complete_step` when done (or `skip_step`/`fail_step`)
-6. **Verify**: Run test suite and linting
-7. **Commit**: Create atomic commits with clear messages
+8. **Verify**: Run test suite and linting
+9. **Commit**: Create atomic commits with clear messages
 
 ## Constraints
 
