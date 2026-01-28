@@ -724,7 +724,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(types): add group configuration to workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

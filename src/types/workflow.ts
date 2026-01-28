@@ -89,6 +89,33 @@ export const ExternalSyncConfigSchema = z.object({
 export type ExternalSyncConfig = z.infer<typeof ExternalSyncConfigSchema>;
 
 // ============================================
+// State Grouping Types (Multi-State Columns)
+// ============================================
+
+/**
+ * State group within a column
+ * Allows multiple internal statuses to be grouped and displayed within a single column
+ */
+export const StateGroupSchema = z.object({
+  /** Unique group identifier within the column */
+  id: z.string(),
+  /** Display label for the group header (e.g., "Fresh Tasks", "Needs Revision") */
+  label: z.string(),
+  /** Internal statuses that belong to this group */
+  statuses: z.array(InternalStatusSchema),
+  /** Optional Lucide icon name for the group */
+  icon: z.string().optional(),
+  /** Optional accent color for the group (CSS color value) */
+  accentColor: z.string().optional(),
+  /** Whether tasks can be dragged FROM this group (default: true) */
+  canDragFrom: z.boolean().optional(),
+  /** Whether tasks can be dropped TO this group (default: true) */
+  canDropTo: z.boolean().optional(),
+});
+
+export type StateGroup = z.infer<typeof StateGroupSchema>;
+
+// ============================================
 // Column Behavior and Workflow Types
 // ============================================
 
@@ -118,10 +145,12 @@ export const WorkflowColumnSchema = z.object({
   color: z.string().optional(),
   /** Optional icon name for the column */
   icon: z.string().optional(),
-  /** Internal status this column maps to */
+  /** Internal status this column maps to (primary status for single-state columns) */
   mapsTo: InternalStatusSchema,
   /** Optional behavior configuration */
   behavior: ColumnBehaviorSchema.optional(),
+  /** Optional state groups for multi-state columns */
+  groups: z.array(StateGroupSchema).optional(),
 });
 
 export type WorkflowColumn = z.infer<typeof WorkflowColumnSchema>;
@@ -162,6 +191,7 @@ export type WorkflowSchema = z.infer<typeof WorkflowSchemaZ>;
 /**
  * Default RalphX workflow with 5 columns
  * Maps to the standard kanban board structure
+ * Multi-state columns use groups to provide visibility into task state
  */
 export const defaultWorkflow: WorkflowSchema = {
   id: "ralphx-default",
@@ -169,9 +199,85 @@ export const defaultWorkflow: WorkflowSchema = {
   description: "Standard kanban workflow for AI-driven development",
   columns: [
     { id: "draft", name: "Draft", mapsTo: "backlog" },
-    { id: "ready", name: "Ready", mapsTo: "ready" },
-    { id: "in_progress", name: "In Progress", mapsTo: "executing" },
-    { id: "in_review", name: "In Review", mapsTo: "pending_review" },
+    {
+      id: "ready",
+      name: "Ready",
+      mapsTo: "ready",
+      groups: [
+        {
+          id: "fresh",
+          label: "Fresh Tasks",
+          statuses: ["ready"],
+          canDragFrom: true,
+          canDropTo: true,
+        },
+        {
+          id: "needs_revision",
+          label: "Needs Revision",
+          statuses: ["revision_needed"],
+          icon: "RotateCcw",
+          accentColor: "hsl(var(--warning))",
+          canDragFrom: true,
+          canDropTo: false, // Only review process can add here
+        },
+      ],
+    },
+    {
+      id: "in_progress",
+      name: "In Progress",
+      mapsTo: "executing",
+      groups: [
+        {
+          id: "first_attempt",
+          label: "First Attempt",
+          statuses: ["executing"],
+          canDragFrom: false, // System-managed (agent working)
+          canDropTo: false,
+        },
+        {
+          id: "revising",
+          label: "Revising",
+          statuses: ["re_executing"],
+          icon: "RefreshCw",
+          accentColor: "hsl(var(--warning))",
+          canDragFrom: false, // System-managed (agent revising)
+          canDropTo: false,
+        },
+      ],
+    },
+    {
+      id: "in_review",
+      name: "In Review",
+      mapsTo: "pending_review",
+      groups: [
+        {
+          id: "waiting_ai",
+          label: "Waiting for AI",
+          statuses: ["pending_review"],
+          icon: "Clock",
+          canDragFrom: false, // System-managed
+          canDropTo: false,
+        },
+        {
+          id: "ai_reviewing",
+          label: "AI Reviewing",
+          statuses: ["reviewing"],
+          icon: "Bot",
+          accentColor: "hsl(var(--primary))",
+          canDragFrom: false, // System-managed (AI working)
+          canDropTo: false,
+        },
+        {
+          id: "ready_approval",
+          label: "Ready for Approval",
+          statuses: ["review_passed"],
+          icon: "CheckCircle",
+          accentColor: "hsl(var(--success))",
+          canDragFrom: false, // User interacts via Approve/Revise buttons
+          canDropTo: false,
+        },
+      ],
+    },
     { id: "done", name: "Done", mapsTo: "approved" },
   ],
   isDefault: true,
