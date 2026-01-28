@@ -98,7 +98,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] [P2] [Frontend] Unused variables with void suppression - src/components/ExtensibilityView.ResearchPanel.tsx:54-56
+- [x] [P2] [Frontend] Unused variables with void suppression - src/components/ExtensibilityView.ResearchPanel.tsx:54-56
 - [ ] [P2] [Frontend] Remove TODOs and implement handlers - src/components/ExtensibilityView.ResearchPanel.tsx:61
 - [ ] [P2] [Frontend] Remove TODO and implement task reopen - src/components/tasks/detail-views/CompletedTaskDetail.tsx:261
 
