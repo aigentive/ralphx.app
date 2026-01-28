@@ -230,6 +230,7 @@ pub async fn stop_execution(
         Arc::clone(&app_state.ideation_session_repo),
         Arc::clone(&app_state.message_queue),
         Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&execution_state),
         app_state.app_handle.clone(),
     );
 
@@ -608,6 +609,7 @@ mod tests {
             Arc::clone(&app_state.ideation_session_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
             None,
         );
 

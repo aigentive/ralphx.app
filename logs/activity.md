@@ -1,10 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 14:49:00
+**Last Updated:** 2026-01-28 15:35:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 5 / 11
-**Current Task:** Create StartupJobRunner module
+**Tasks Completed:** 6 / 11
+**Current Task:** Update TaskTransitionService to accept ExecutionState
+
+---
+
+### 2026-01-28 15:35:00 - Wire ExecutionState to TaskTransitionService
+
+**What:**
+- Added `execution_state: Arc<ExecutionState>` parameter to `TaskTransitionService::new()`
+- Pass execution_state to `AgenticClientSpawner::with_execution_state()` for spawn gating
+- Pass execution_state to `TaskServices::with_execution_state()` for TransitionHandler access
+- Added `execution_state` field to `ClaudeChatService` with `with_execution_state()` builder
+- Updated all call sites of `TaskTransitionService::new()`:
+  - `move_task` in task_commands.rs - pulls from Tauri state
+  - `stop_execution` in execution_commands.rs - uses cloned Arc
+  - `complete_review` in http_server.rs - via new HttpServerState
+  - `chat_service.rs` async completion handler - via optional field
+  - Tests in startup_jobs.rs and execution_commands.rs
+- Created `HttpServerState` struct to combine AppState and ExecutionState for HTTP handlers
+- Updated `start_http_server` signature to accept both states
+- Updated lib.rs to pass execution_state to HTTP server via Tauri state lookup
+- Added ExecutionState propagation pattern to src-tauri/CLAUDE.md
+
+**Quality Improvement:**
+- Documented ExecutionState Propagation pattern in src-tauri/CLAUDE.md for future reference
+
+**Commands:**
+```bash
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+npm run lint
+```
 
 ---
 

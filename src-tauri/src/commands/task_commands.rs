@@ -2,9 +2,11 @@
 // Thin layer that delegates to TaskRepository
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tauri::{Emitter, State};
 
 use crate::application::AppState;
+use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
 
 /// Input for creating a new task
@@ -341,10 +343,10 @@ pub async fn move_task(
     taskId: String,
     toStatus: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
     use crate::application::TaskTransitionService;
-    use std::sync::Arc;
 
     // Debug log to verify command is being called
     println!(">>> move_task called: taskId={}, toStatus={}", taskId, toStatus);
@@ -367,6 +369,7 @@ pub async fn move_task(
         Arc::clone(&state.ideation_session_repo),
         Arc::clone(&state.message_queue),
         Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
         Some(app),
     );
 

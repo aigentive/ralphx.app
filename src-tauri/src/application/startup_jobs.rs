@@ -158,6 +158,7 @@ mod tests {
             Arc::clone(&app_state.ideation_session_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
             None,
         );
 
@@ -189,6 +190,7 @@ mod tests {
             Arc::clone(&app_state.ideation_session_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
             None,
         );
 
@@ -233,6 +235,7 @@ mod tests {
             Arc::clone(&app_state.ideation_session_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
             None,
         );
 
@@ -291,6 +294,7 @@ mod tests {
             Arc::clone(&app_state.ideation_session_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
             None,
         );
 

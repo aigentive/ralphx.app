@@ -310,6 +310,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     app_handle: Option<AppHandle<R>>,
+    execution_state: Option<Arc<crate::commands::ExecutionState>>,
     model: String,
 }
 
@@ -342,8 +343,14 @@ impl<R: Runtime> ClaudeChatService<R> {
             message_queue,
             running_agent_registry,
             app_handle: None,
+            execution_state: None,
             model: "sonnet".to_string(),
         }
+    }
+
+    pub fn with_execution_state(mut self, state: Arc<crate::commands::ExecutionState>) -> Self {
+        self.execution_state = Some(state);
+        self
     }
 
     pub fn with_cli_path(mut self, path: impl Into<PathBuf>) -> Self {
@@ -724,6 +731,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let ideation_session_repo = Arc::clone(&self.ideation_session_repo);
         let message_queue = Arc::clone(&self.message_queue);
         let running_agent_registry = Arc::clone(&self.running_agent_registry);
+        let execution_state = self.execution_state.clone();
         let app_handle = self.app_handle.clone();
         let cli_path = self.cli_path.clone();
         let plugin_dir = self.plugin_dir.clone();
@@ -822,32 +830,41 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Handle task state transition (only for TaskExecution)
                     // Use TaskTransitionService for proper entry/exit actions
+                    // Requires execution_state for proper running count tracking
                     if context_type_clone == ChatContextType::TaskExecution {
-                        let task_id = TaskId::from_string(context_id_clone.clone());
-                        if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                            if task.internal_status == InternalStatus::Executing {
-                                let transition_service = TaskTransitionService::new(
-                                    Arc::clone(&task_repo),
-                                    Arc::clone(&project_repo),
-                                    Arc::clone(&chat_message_repo),
-                                    Arc::clone(&conversation_repo),
-                                    Arc::clone(&agent_run_repo),
-                                    Arc::clone(&ideation_session_repo),
-                                    Arc::clone(&message_queue),
-                                    Arc::clone(&running_agent_registry),
-                                    app_handle.clone(),
-                                );
-                                if let Err(e) = transition_service
-                                    .transition_task(&task_id, InternalStatus::PendingReview)
-                                    .await
-                                {
-                                    tracing::error!(
-                                        "Failed to transition task {} to PendingReview: {}",
-                                        task_id.as_str(),
-                                        e
+                        if let Some(ref exec_state) = execution_state {
+                            let task_id = TaskId::from_string(context_id_clone.clone());
+                            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                                if task.internal_status == InternalStatus::Executing {
+                                    let transition_service = TaskTransitionService::new(
+                                        Arc::clone(&task_repo),
+                                        Arc::clone(&project_repo),
+                                        Arc::clone(&chat_message_repo),
+                                        Arc::clone(&conversation_repo),
+                                        Arc::clone(&agent_run_repo),
+                                        Arc::clone(&ideation_session_repo),
+                                        Arc::clone(&message_queue),
+                                        Arc::clone(&running_agent_registry),
+                                        Arc::clone(exec_state),
+                                        app_handle.clone(),
                                     );
+                                    if let Err(e) = transition_service
+                                        .transition_task(&task_id, InternalStatus::PendingReview)
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            "Failed to transition task {} to PendingReview: {}",
+                                            task_id.as_str(),
+                                            e
+                                        );
+                                    }
                                 }
                             }
+                        } else {
+                            tracing::warn!(
+                                "Cannot transition task {} - no execution_state available",
+                                context_id_clone
+                            );
                         }
                     }
 

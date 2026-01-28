@@ -178,7 +178,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(transition): wire ExecutionState to TaskTransitionService"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
