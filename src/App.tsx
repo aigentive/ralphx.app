@@ -356,7 +356,6 @@ function AppContent() {
   const handleQuestionSubmit = async (_response: AskUserQuestionResponse) => {
     setIsQuestionLoading(true);
     try {
-      // TODO: Call Tauri command to submit answer and trigger BlockersResolved event
       clearActiveQuestion();
     } catch (error) {
       console.error("Failed to submit answer:", error);

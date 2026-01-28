@@ -75,7 +75,7 @@ _No active P3 items. Completed items moved to archive._
 
 - [x] [P2] [Frontend] Extract ToolCallIndicator sub-functions - src/components/Chat/ToolCallIndicator.tsx:49-200
 - [x] [P2] [Frontend] Consolidate ChatPanel console.error handlers into unified error handler - src/components/Chat/ChatPanel.tsx:332
-- [ ] [P2] [Frontend] Remove TODO comment for Tauri command integration - src/App.tsx:359
+- [x] [P2] [Frontend] Remove TODO comment for Tauri command integration - src/App.tsx:359
 - [ ] [P2] [Frontend] Extract ExtensibilityView.panels large panel components (906 LOC) - src/components/ExtensibilityView.panels.tsx:1
 - [ ] [P2] [Backend] Replace unwrap() calls with proper error handling in ideation_commands - src-tauri/src/commands/ideation_commands/mod.rs:45
 - [ ] [P2] [Backend] Remove #[allow(dead_code)] suppression and verify actual usage - src-tauri/src/application/ideation_service/tests.rs:2
