@@ -6,6 +6,7 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { toast } from "sonner";
 import { getQueryClient } from "@/lib/queryClient";
 import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
@@ -329,6 +330,11 @@ function AppContent() {
       setExecutionStatus(response.status);
     } catch (error) {
       console.error("Failed to toggle pause:", error);
+      toast.error(
+        executionStatus.isPaused
+          ? "Failed to resume execution"
+          : "Failed to pause execution"
+      );
     } finally {
       setIsExecutionLoading(false);
     }
@@ -341,6 +347,7 @@ function AppContent() {
       setExecutionStatus(response.status);
     } catch (error) {
       console.error("Failed to stop execution:", error);
+      toast.error("Failed to stop execution");
     } finally {
       setIsExecutionLoading(false);
     }
@@ -353,6 +360,7 @@ function AppContent() {
       clearActiveQuestion();
     } catch (error) {
       console.error("Failed to submit answer:", error);
+      toast.error("Failed to submit answer");
     } finally {
       setIsQuestionLoading(false);
     }
@@ -369,11 +377,12 @@ function AppContent() {
       const session = await createSession.mutateAsync({
         projectId: currentProjectId,
       });
-      // Add session to store immediately (don't wait for refetch)
+      // Add session to store immediate (don't wait for refetch)
       addSession(session);
       setActiveSession(session.id);
     } catch (error) {
       console.error("Failed to create session:", error);
+      toast.error("Failed to create new session");
     }
   }, [createSession, addSession, setActiveSession, currentProjectId]);
 
@@ -383,6 +392,7 @@ function AppContent() {
       setActiveSession(null);
     } catch (error) {
       console.error("Failed to archive session:", error);
+      toast.error("Failed to archive session");
     }
   }, [archiveSession, setActiveSession]);
 
@@ -418,6 +428,7 @@ function AppContent() {
       await applyProposalsMutation.mutateAsync(options);
     } catch (error) {
       console.error("Failed to apply proposals:", error);
+      toast.error("Failed to apply proposals");
     }
   }, [applyProposalsMutation]);
 
