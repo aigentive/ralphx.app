@@ -1,19 +1,13 @@
 #!/bin/bash
 # stream-watch-hygiene.sh - fswatch wrapper for hygiene stream
 #
-# Runs hygiene once on startup, then only on manual trigger.
-# Hygiene is a maintenance task - it doesn't need to react to every backlog change.
-#
-# To trigger manually: touch streams/hygiene/trigger
+# Watches backlog files with a 10-minute delay to batch changes.
+# This prevents hygiene from running after every single commit while still
+# reacting to accumulated changes automatically.
 
 STREAM="hygiene"
 MODEL="sonnet"
-TRIGGER_FILE="streams/hygiene/trigger"
-
-# Create trigger file if it doesn't exist
-touch "$TRIGGER_FILE"
-
-WATCH_FILES=("$TRIGGER_FILE")
+WATCH_FILES=("streams/refactor/backlog.md" "streams/polish/backlog.md" "streams/features/backlog.md" "streams/archive/completed.md")
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -42,8 +36,8 @@ echo -e "${BLUE}[$STREAM] Watching: ${WATCH_FILES[*]}${NC}"
 echo ""
 
 # Start fswatch FIRST to avoid race condition with initial cycle
-# Use latency to debounce rapid changes (wait 3s after last change)
-fswatch -o -l 3 "${WATCH_FILES[@]}" | while read; do
+# Use 10-minute latency to batch changes and prevent excessive runs
+fswatch -o -l 600 "${WATCH_FILES[@]}" | while read; do
     echo ""
     echo -e "${YELLOW}[$STREAM] File change detected, starting cycle...${NC}"
     ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
