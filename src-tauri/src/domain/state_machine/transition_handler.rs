@@ -211,14 +211,6 @@ impl<'a> TransitionHandler<'a> {
                                 &format!(r#"{{"type":"started","reviewId":"{}"}}"#, review_id),
                             )
                             .await;
-
-                        // Spawn reviewer agent
-                        self.machine
-                            .context
-                            .services
-                            .agent_spawner
-                            .spawn("reviewer", &self.machine.context.task_id)
-                            .await;
                     }
                     super::services::ReviewStartResult::Disabled => {
                         // AI review disabled, emit event but don't spawn agent
@@ -248,8 +240,56 @@ impl<'a> TransitionHandler<'a> {
                     }
                 }
             }
+            State::Reviewing => {
+                // TODO: Once ChatContextType::Review is added (Task 16), update this to use Review context
+                // For now, spawn reviewer agent via agent_spawner (fallback until Review context exists)
+                self.machine
+                    .context
+                    .services
+                    .agent_spawner
+                    .spawn("reviewer", &self.machine.context.task_id)
+                    .await;
+            }
+            State::ReviewPassed => {
+                // Emit 'review:ai_approved' event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("review:ai_approved", &self.machine.context.task_id)
+                    .await;
+
+                // Notify user that review passed and awaits approval
+                self.machine
+                    .context
+                    .services
+                    .notifier
+                    .notify_with_message(
+                        "review:ai_approved",
+                        &self.machine.context.task_id,
+                        "AI review passed. Please review and approve.",
+                    )
+                    .await;
+            }
+            State::ReExecuting => {
+                // Spawn worker agent with revision context via ChatService
+                let task_id = &self.machine.context.task_id;
+                let prompt = format!("Re-execute task (revision): {}", task_id);
+
+                let _ = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::TaskExecution,
+                        task_id,
+                        &prompt,
+                    )
+                    .await;
+            }
             State::RevisionNeeded => {
-                // Auto-transition to Executing will be handled by check_auto_transition
+                // Auto-transition to ReExecuting will be handled by check_auto_transition
             }
             State::Approved => {
                 // Emit task completed event
@@ -289,6 +329,16 @@ impl<'a> TransitionHandler<'a> {
             }
             State::QaTesting => {
                 // Stop QA tester if transitioning away
+            }
+            State::Reviewing => {
+                // Log review duration (could add timing metrics here)
+                // For now, just emit an event that review exited
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("review:state_exited", &self.machine.context.task_id)
+                    .await;
             }
             _ => {}
         }
@@ -750,7 +800,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_entering_pending_review_starts_ai_review() {
-        let (spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
 
@@ -767,9 +817,9 @@ mod tests {
             e.method == "emit_with_payload" && e.args[0] == "review:update"
         }));
 
-        // Should have spawned reviewer agent
-        let calls = spawner.get_calls();
-        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+        // NOTE: Reviewer is no longer spawned in PendingReview.
+        // It's spawned in Reviewing state (via auto-transition).
+        // See test_auto_transition_pending_review_to_reviewing for full flow.
     }
 
     #[tokio::test]
@@ -847,7 +897,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_entering_pending_review_emits_started_event_with_review_id() {
-        let (spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
 
@@ -863,9 +913,8 @@ mod tests {
         assert!(review_event.args[2].contains("started"));
         assert!(review_event.args[2].contains("review-"));
 
-        // Verify reviewer spawned after review started
-        let calls = spawner.get_calls();
-        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+        // NOTE: Reviewer is no longer spawned in PendingReview.
+        // It's spawned in Reviewing state (via auto-transition).
 
         // Verify review_starter was called with correct arguments
         let review_calls = review_starter.get_calls();
@@ -1000,5 +1049,162 @@ mod tests {
         // The current implementation still tries to use it (graceful degradation)
         // We verify that calling on_enter doesn't panic
         // The key is that the system doesn't crash
+    }
+
+    // ==================
+    // New review state entry action tests
+    // ==================
+
+    #[tokio::test]
+    async fn test_entering_reviewing_spawns_reviewer() {
+        let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::Reviewing).await;
+
+        // Should spawn reviewer agent
+        let calls = spawner.get_calls();
+        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+    }
+
+    #[tokio::test]
+    async fn test_entering_review_passed_emits_event_and_notifies() {
+        let (_spawner, emitter, notifier, _dep_manager, _review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::ReviewPassed).await;
+
+        // Should emit review:ai_approved event
+        assert!(emitter.has_event("review:ai_approved"));
+
+        // Should notify user
+        assert!(notifier.has_notification("review:ai_approved"));
+    }
+
+    #[tokio::test]
+    async fn test_entering_re_executing_uses_chat_service() {
+        use crate::application::{ChatService, MockChatService};
+
+        let spawner = Arc::new(MockAgentSpawner::new());
+        let emitter = Arc::new(MockEventEmitter::new());
+        let notifier = Arc::new(MockNotifier::new());
+        let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::new());
+        let chat_service = Arc::new(MockChatService::new());
+
+        let services = TaskServices::new(
+            Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
+            Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+            Arc::clone(&notifier) as Arc<dyn Notifier>,
+            Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
+            chat_service.clone() as Arc<dyn ChatService>,
+        );
+
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_enter(&State::ReExecuting).await;
+
+        // ChatService should have been called for worker with revision context
+        assert!(chat_service.call_count() > 0, "ChatService should have been called");
+
+        // Agent spawner should NOT have been called (we used ChatService instead)
+        let spawner_calls = spawner.get_calls();
+        assert!(
+            !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "worker"),
+            "Agent spawner should not be called when ChatService is available"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_exiting_reviewing_emits_event() {
+        let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+
+        let handler = TransitionHandler::new(&mut machine);
+        handler.on_exit(&State::Reviewing, &State::ReviewPassed).await;
+
+        // Should emit review:state_exited event
+        assert!(emitter.has_event("review:state_exited"));
+    }
+
+    #[tokio::test]
+    async fn test_auto_transition_pending_review_to_reviewing() {
+        let (spawner, _emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+        let mut handler = TransitionHandler::new(&mut machine);
+
+        // Manually transition to PendingReview (simulating ExecutionComplete)
+        let result = handler
+            .handle_transition(&State::Executing, &TaskEvent::ExecutionComplete)
+            .await;
+
+        // Should auto-transition to Reviewing
+        if let TransitionResult::AutoTransition(state) = &result {
+            assert_eq!(*state, State::Reviewing);
+        } else {
+            panic!("Expected AutoTransition to Reviewing, got {:?}", result);
+        }
+
+        // Review should be started
+        assert!(review_starter.has_review_for_task("task-1"));
+
+        // Reviewer agent should be spawned
+        let calls = spawner.get_calls();
+        assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+    }
+
+    #[tokio::test]
+    async fn test_auto_transition_revision_needed_to_re_executing() {
+        use crate::application::{ChatService, MockChatService};
+
+        let spawner = Arc::new(MockAgentSpawner::new());
+        let emitter = Arc::new(MockEventEmitter::new());
+        let notifier = Arc::new(MockNotifier::new());
+        let dep_manager = Arc::new(MockDependencyManager::new());
+        let review_starter = Arc::new(MockReviewStarter::new());
+        let chat_service = Arc::new(MockChatService::new());
+
+        let services = TaskServices::new(
+            Arc::clone(&spawner) as Arc<dyn AgentSpawner>,
+            Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+            Arc::clone(&notifier) as Arc<dyn Notifier>,
+            Arc::clone(&dep_manager) as Arc<dyn super::super::services::DependencyManager>,
+            Arc::clone(&review_starter) as Arc<dyn ReviewStarter>,
+            chat_service.clone() as Arc<dyn ChatService>,
+        );
+
+        let context = create_context_with_services("task-1", "proj-1", services);
+        let mut machine = TaskStateMachine::new(context);
+        let mut handler = TransitionHandler::new(&mut machine);
+
+        // Transition from Reviewing to RevisionNeeded (AI requested changes)
+        let result = handler
+            .handle_transition(
+                &State::Reviewing,
+                &TaskEvent::ReviewComplete {
+                    approved: false,
+                    feedback: Some("Needs more tests".to_string()),
+                },
+            )
+            .await;
+
+        // Should auto-transition to ReExecuting
+        if let TransitionResult::AutoTransition(state) = &result {
+            assert_eq!(*state, State::ReExecuting);
+        } else {
+            panic!("Expected AutoTransition to ReExecuting, got {:?}", result);
+        }
+
+        // Worker should be spawned via ChatService for re-execution
+        assert!(chat_service.call_count() > 0, "ChatService should spawn worker for re-execution");
     }
 }
