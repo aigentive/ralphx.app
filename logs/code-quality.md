@@ -103,7 +103,7 @@
 - [x] Extract emit_step_updated helper in task_step_commands.rs (711 LOC → 689 LOC) - src-tauri/src/commands/task_step_commands.rs:16-26
 - [x] Extract Column.utils.tsx from Column.tsx (392 LOC → 350 LOC) - src/components/tasks/TaskBoard/Column.tsx
 - [x] Extract ReviewStateBadge from TaskCard.tsx (621 LOC → 531 LOC) - src/components/tasks/TaskBoard/TaskCard.tsx
-- [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale - file is 336 LOC, under 500 limit)
+- [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale:1 - file is 336 LOC, under 500 limit)
 
 ### P3 - Low Impact
 - [x] Remove unused TransitionObserver trait (dead code) - src-tauri/src/domain/state_machine/transition_handler.rs:393
@@ -118,6 +118,7 @@
 - [x] Remove stale comment about execute_entry_actions being private - src-tauri/src/application/startup_jobs.rs:109
 - [ ] ~~Add contextual error messages in artifact type parsing failures - src-tauri/src/commands/artifact_commands.rs:158,216,357~~ (stale - all locations already have contextual messages)
 - [ ] ~~Extract duplicate parse error handling pattern in workflow/ideation commands - src-tauri/src/commands/workflow_commands.rs:25~~ (stale - not a duplicate pattern, each is specific to its context)
+- [x] Use ProfileRole Display/FromStr traits instead of custom role_to_string/string_to_role helpers - src-tauri/src/infrastructure/sqlite/sqlite_agent_profile_repo.rs:34-55
 
 ---
 

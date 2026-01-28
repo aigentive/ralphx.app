@@ -88,7 +88,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(spawner): add AppHandle field for event emission"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
