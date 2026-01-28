@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 00:28:38 - Backlog Maintenance
+
+**Archive:**
+- Archived 1 strikethrough item (ResizeablePanel constants - stale:2 validation complete)
+- Moved from polish/backlog.md REFILL (Added 2026-01-28 23:47) to archive/completed.md
+
+**Refill:**
+- No refill needed (refactor: 7 active items, polish: 8 active items)
+
+**Validation:**
+- Checked 2 strikethrough items:
+  - ResizeablePanel.tsx constants (stale:1 → stale:2): Constants extracted to ResizeablePanel.constants.ts → **Archived**
+  - ExtensibilityView.panels.tsx 906 LOC (misclassified → REACTIVATED): Exceeds 500 LOC limit by 406 lines, IS a P1 refactor → **Moved to refactor/backlog.md as P1 item**
+
+**Result:** 1 archived, 1 reactivated (moved to refactor as P1) - total 47 validated
+
+---
+
 ### 2026-01-29 00:18:30 - Backlog Maintenance
 
 **Archive:**
