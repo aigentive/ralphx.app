@@ -16,19 +16,6 @@
 
 _No active P2 items. Completed items moved to archive._
 
-## NEW ITEMS (Added 2026-01-28)
-
-### P2 - Medium Impact
-
-- [x] [P2] [Frontend] Extract hook logic from useEvents (417 LOC → 102 LOC) - split by event type - src/hooks/useEvents.ts:1-417
-- [x] [P2] [Frontend] Extract hook logic from useSupervisorAlerts (409 LOC → 184 LOC) - split alert management into store and listener modules - src/hooks/useSupervisorAlerts.ts:1-409
-- [x] [P2] [Frontend] Unused parameter: defaultStatus in TaskCreationForm prop defaults to undefined - src/components/tasks/TaskCreationForm.tsx:59
-
-### P3 - Low Impact
-
-- [x] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
-- [x] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - properly typed zustand mock - src/hooks/useChat.test.ts:8,29,37,42,58,103
-
 ## P3 - Low Impact
 
 ### Frontend
@@ -57,8 +44,8 @@ _No active P3 items. Completed items moved to archive._
 - [ ] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/error.rs:95
 - [ ] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/artifact_commands.rs:452
 - [ ] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
-- [ ] [P2] [Backend] Replace .expect() with error handling - src-tauri/src/http_server.rs:395
-- [ ] [P2] [Frontend] Type safety: Replace z.any() with specific type - src/types/task-context.ts:56
+- [x] [P2] [Backend] Replace .expect() with error handling - src-tauri/src/http_server.rs:395
+- [x] [P2] [Frontend] Type safety: Replace z.any() with specific type - src/types/task-context.ts:56
 - [ ] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
 - [ ] [P2] [Frontend] Refactor large API file (821 LOC) - extract helpers - src/api/ideation.ts:1
 

@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-28 23:19:53 - Replace z.any() with TaskSchema in task-context.ts
+**What:**
+- File: src/types/task-context.ts
+- Change: Improved type safety by replacing z.any() with proper TaskSchema
+  - Added import for TaskSchema from ./task (line 6)
+  - Replaced z.any() with TaskSchema in TaskContextSchema.task field (line 56)
+  - Removed comment about avoiding circular dependency (no longer applicable)
+- Reason: Type safety improvement (P2) - z.any() bypasses type checking
+
+**Commands:**
+- `npm run typecheck`
+- `npm run lint`
+
+**Result:** Success (all type checks pass, existing lint warnings unrelated to this change)
+
+---
+
 ### 2026-01-28 23:15:29 - Extract constants from ResizeablePanel
 **What:**
 - File: src/components/Chat/ResizeablePanel.tsx

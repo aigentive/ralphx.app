@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { ArtifactTypeSchema } from "./artifact";
+import { TaskSchema } from "./task";
 
 // ============================================================================
 // Task Proposal Summary
@@ -53,7 +54,7 @@ export type ArtifactSummary = z.infer<typeof ArtifactSummarySchema>;
  */
 export const TaskContextSchema = z.object({
   /** The task being executed (full Task object) */
-  task: z.any(), // We'll use 'any' to avoid circular dependency with TaskSchema
+  task: TaskSchema,
   /** Source proposal if task was created from ideation */
   sourceProposal: TaskProposalSummarySchema.nullable(),
   /** Implementation plan artifact (summary, not full content) */
