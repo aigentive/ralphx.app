@@ -379,10 +379,14 @@ async fn create_task_proposal(
         .unwrap_or(Priority::Medium);
 
     // Convert steps and acceptance criteria to JSON strings
-    let steps = req.steps.map(|s| serde_json::to_string(&s).unwrap());
+    let steps = req
+        .steps
+        .map(|s| serde_json::to_string(&s).map_err(|_| StatusCode::BAD_REQUEST))
+        .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
-        .map(|ac| serde_json::to_string(&ac).unwrap());
+        .map(|ac| serde_json::to_string(&ac).map_err(|_| StatusCode::BAD_REQUEST))
+        .transpose()?;
 
     let options = CreateProposalOptions {
         title: req.title,
@@ -424,10 +428,14 @@ async fn update_task_proposal(
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Convert steps and acceptance criteria to JSON strings
-    let steps = req.steps.map(|s| serde_json::to_string(&s).unwrap());
+    let steps = req
+        .steps
+        .map(|s| serde_json::to_string(&s).map_err(|_| StatusCode::BAD_REQUEST))
+        .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
-        .map(|ac| serde_json::to_string(&ac).unwrap());
+        .map(|ac| serde_json::to_string(&ac).map_err(|_| StatusCode::BAD_REQUEST))
+        .transpose()?;
 
     let options = UpdateProposalOptions {
         title: req.title,
