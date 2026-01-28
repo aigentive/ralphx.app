@@ -20,28 +20,18 @@
 
 set -e
 
-# Track child processes for cleanup
-CLAUDE_PID=""
-
-# Cleanup function to kill all child processes
+# Cleanup function to kill child processes for THIS stream only
 cleanup() {
   echo ""
   echo -e "${YELLOW}Cleaning up...${NC}"
 
-  # Kill the Claude process if running
-  if [[ -n "$CLAUDE_PID" ]] && kill -0 "$CLAUDE_PID" 2>/dev/null; then
-    echo -e "${YELLOW}Killing Claude process (PID: $CLAUDE_PID)...${NC}"
-    kill -TERM "$CLAUDE_PID" 2>/dev/null || true
-    sleep 1
-    kill -KILL "$CLAUDE_PID" 2>/dev/null || true
+  # Kill all child processes of this script (stream-specific)
+  pkill -9 -P $$ 2>/dev/null || true
+
+  # Kill claude processes started with THIS stream's prompt file only
+  if [ -n "$PROMPT_FILE" ]; then
+    pkill -9 -f "claude.*$PROMPT_FILE" 2>/dev/null || true
   fi
-
-  # Kill any remaining child processes in our process group
-  # This catches any bash commands Claude spawned
-  pkill -P $$ 2>/dev/null || true
-
-  # Also kill any 'claude' processes started by this script
-  pkill -f "claude -p" 2>/dev/null || true
 
   echo -e "${YELLOW}Cleanup complete.${NC}"
 }
@@ -217,9 +207,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   # Run Claude with the prompt from the appropriate PROMPT file
   # Stream JSON output with verbose, parse for readable display
-  # Use process substitution to capture PID while still piping
   exec 3< <(claude -p "$(cat "$PROMPT_FILE")" $MODEL_FLAG --output-format stream-json --verbose --dangerously-skip-permissions 2>&1)
-  CLAUDE_PID=$!
 
   # State tracking for clean output formatting
   last_output_type=""  # "text", "tool", "result"
@@ -265,7 +253,6 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     fi
   done || true
   exec 3<&-  # Close file descriptor
-  CLAUDE_PID=""  # Clear PID after completion
   result=$(cat $LOG_FILE 2>/dev/null || echo "")
   echo ""
 

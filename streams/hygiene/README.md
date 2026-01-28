@@ -47,20 +47,15 @@ Items marked as stale progress through validation:
 
 Three total checks before confirmed archival.
 
-## Trigger
-
-Hygiene runs **once at startup**, then only when manually triggered:
-
-```bash
-touch streams/hygiene/trigger
-```
-
-Unlike other streams, hygiene does NOT watch the backlog files. This prevents
-it from running after every polish/refactor commit (which would be wasteful).
-
 ## Watched Files
 
-- `streams/hygiene/trigger` - Manual trigger file only
+- `streams/refactor/backlog.md`
+- `streams/polish/backlog.md`
+- `streams/features/backlog.md`
+- `streams/archive/completed.md`
+
+**10-minute delay:** Unlike other streams (3s delay), hygiene uses a 10-minute
+debounce to batch changes and prevent running after every commit.
 
 ## Output Signals
 

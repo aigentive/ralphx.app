@@ -55,6 +55,21 @@ When evaluating if a file needs extraction:
 2. Compare against limits above
 3. **Exceeds limit = needs extraction (not optional)**
 
+## File Extraction Best Practices
+
+When splitting a file into multiple files or a module folder:
+
+1. **Atomic commits** - New files and deletion of original must be in the same commit. Never leave orphaned originals.
+
+2. **No backup files** - Never create `.bak` files. Git is your backup. Use `git restore` to recover if needed.
+
+3. **Verify deletion** - Before committing, confirm the original file no longer exists:
+   ```bash
+   ls <original_path>  # Should fail / not found
+   ```
+
+4. **One extraction = one commit** - Don't split the work across multiple commits with the same message.
+
 ## References
 
 This file is the canonical source. Referenced by:
