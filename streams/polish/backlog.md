@@ -61,7 +61,7 @@ _No active P3 items. Completed items moved to archive._
 ### P3 - Low Impact
 
 - [ ] [P3] [Frontend] Remove console.log from IntegratedChatPanel debug statement - src/components/Chat/IntegratedChatPanel.tsx:124
-- [ ] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
+- [x] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
 - [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:1 - no console.debug at those lines) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
