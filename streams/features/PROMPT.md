@@ -5,18 +5,19 @@
 ## Phase 0: Recovery Check (ALWAYS FIRST)
 
 ```
-1. Run: git status --porcelain streams/features/ specs/phases/
-2. Check streams/features/activity.md for last entry (task name, files mentioned)
-3. Uncommitted changes exist AND activity log shows incomplete features work?
-   → YES: Verify changes MATCH the logged task (PRD task or P0 item)
-          Changes match? → Complete if needed, commit, proceed
-          Changes DON'T match? → SKIP (other stream's work) → proceed to normal workflow
-   → NO activity log entry or no uncommitted changes? → Proceed to normal workflow
+1. Read streams/features/activity.md → get LAST entry (task name, files mentioned)
+2. No recent entry or entry marked complete? → Skip recovery, proceed to normal workflow
+3. Entry exists and looks incomplete? → Run: git status --porcelain
+4. Check if uncommitted changes CORRELATE to the logged task:
+   - Files in streams/features/ or specs/phases/ → YES, correlates
+   - Files in src/ or src-tauri/ mentioned in activity log → YES, correlates
+   - Files in src/ or src-tauri/ NOT mentioned → NO, other stream's work
+5. Correlated changes exist? → Complete if needed, commit ONLY correlated files, proceed
+   No correlated changes? → Proceed to normal workflow
 ```
 
-**CRITICAL:** Do NOT touch uncommitted changes in src/ or src-tauri/ unless they are clearly
-attributable to a PRD task or P0 item logged in YOUR activity file. Other streams may have
-uncommitted work there.
+**CRITICAL:** Only commit files that correlate to YOUR activity log. Leave other uncommitted
+files alone - they belong to other streams.
 
 ---
 
