@@ -1,9 +1,14 @@
 /**
- * TaskDetailPanel - Reusable task detail content (extracted from TaskDetailModal)
+ * TaskDetailPanel - State-aware task detail content using View Registry Pattern
  *
- * This component extracts the detail content from TaskDetailModal for reuse
- * in other contexts like TaskFullView. It renders task metadata, context,
- * steps, and history without edit buttons (parent handles that).
+ * This component selects and renders the appropriate detail view component
+ * based on the task's internal status. Each status maps to a specialized
+ * view that shows relevant information and actions for that state.
+ *
+ * View Registry Pattern:
+ * - Each InternalStatus maps to a specific detail view component
+ * - Specialized views: ExecutionTaskDetail, ReviewingTaskDetail, etc.
+ * - BasicTaskDetail serves as the fallback for simple states
  *
  * Design spec: specs/design/refined-studio-patterns.md
  * - Refined Studio aesthetic with layered depth
@@ -18,15 +23,75 @@ import { TaskContextPanel } from "./TaskContextPanel";
 import { StepList } from "./StepList";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import type { Task, InternalStatus } from "@/types/task";
+import type { ComponentType } from "react";
 import { Bot, User, Loader2, FileText } from "lucide-react";
 import { useState } from "react";
+
+// Import state-specific detail view components
+import {
+  BasicTaskDetail,
+  RevisionTaskDetail,
+  ExecutionTaskDetail,
+  ReviewingTaskDetail,
+  HumanReviewTaskDetail,
+  WaitingTaskDetail,
+  CompletedTaskDetail,
+} from "./detail-views";
 
 interface TaskDetailPanelProps {
   task: Task;
   showHeader?: boolean;
   showContext?: boolean;
   showHistory?: boolean;
+  /** Use state-specific view from registry instead of default panel */
+  useViewRegistry?: boolean;
 }
+
+/**
+ * Props interface for state-specific detail view components
+ */
+interface TaskDetailProps {
+  task: Task;
+}
+
+/**
+ * View Registry Pattern - Maps InternalStatus to specialized detail view components
+ *
+ * Each status maps to a view component that shows relevant information and actions:
+ * - BasicTaskDetail: Simple states (backlog, ready, blocked, qa_*, failed, cancelled)
+ * - ExecutionTaskDetail: Active work states (executing, re_executing)
+ * - RevisionTaskDetail: Needs revision state
+ * - WaitingTaskDetail: Pending review state
+ * - ReviewingTaskDetail: AI review in progress
+ * - HumanReviewTaskDetail: AI approved, awaiting human
+ * - CompletedTaskDetail: Successfully completed tasks
+ */
+const TASK_DETAIL_VIEWS: Record<
+  InternalStatus,
+  ComponentType<TaskDetailProps>
+> = {
+  // Idle states - use basic view
+  backlog: BasicTaskDetail,
+  ready: BasicTaskDetail,
+  blocked: BasicTaskDetail,
+  // Execution states - use execution view
+  executing: ExecutionTaskDetail,
+  re_executing: ExecutionTaskDetail,
+  // QA states - use basic view (no specialized QA view yet)
+  qa_refining: BasicTaskDetail,
+  qa_testing: BasicTaskDetail,
+  qa_passed: BasicTaskDetail,
+  qa_failed: BasicTaskDetail,
+  // Review states - specialized views
+  pending_review: WaitingTaskDetail,
+  reviewing: ReviewingTaskDetail,
+  review_passed: HumanReviewTaskDetail,
+  revision_needed: RevisionTaskDetail,
+  // Terminal states
+  approved: CompletedTaskDetail,
+  failed: BasicTaskDetail,
+  cancelled: BasicTaskDetail,
+};
 
 // Priority colors matching design spec
 const PRIORITY_COLORS: Record<number, { bg: string; text: string }> = {
@@ -216,14 +281,23 @@ export function TaskDetailPanel({
   showHeader = true,
   showContext: showContextProp = false,
   showHistory: showHistoryProp = true,
+  useViewRegistry = false,
 }: TaskDetailPanelProps) {
   const [showContext, setShowContext] = useState(showContextProp);
 
-  // Fetch reviews
+  // Fetch reviews - must be called unconditionally (hooks rules)
   const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(task.id);
 
-  // Fetch steps to determine if we should show the StepList
+  // Fetch steps - must be called unconditionally (hooks rules)
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
+
+  // If using View Registry Pattern, render the appropriate state-specific component
+  // This check must come AFTER all hooks to satisfy React hooks rules
+  if (useViewRegistry) {
+    const ViewComponent =
+      TASK_DETAIL_VIEWS[task.internalStatus] ?? BasicTaskDetail;
+    return <ViewComponent task={task} />;
+  }
 
   const hasReviews = reviews.length > 0;
   const hasContext = !!(task.sourceProposalId || task.planArtifactId);
@@ -366,3 +440,7 @@ export function TaskDetailPanel({
     </div>
   );
 }
+
+// Export the registry for external use (e.g., direct view lookup)
+export { TASK_DETAIL_VIEWS };
+export type { TaskDetailProps };
