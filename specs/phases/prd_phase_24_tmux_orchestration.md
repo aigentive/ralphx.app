@@ -208,7 +208,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Add: 'All backlogs healthy (>3 items, <10 completed) → Output <promise>IDLE</promise>, STOP'",
       "Commit: docs(rules): add IDLE detection to all stream workflows"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",

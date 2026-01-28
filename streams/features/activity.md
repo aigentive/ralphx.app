@@ -130,3 +130,19 @@
 - `cargo test` → 14 passed
 
 **Result:** Success
+
+---
+
+### 2026-01-28 20:25:00 - Phase 24 Task 7: Add IDLE detection to stream rules
+**What:**
+- Updated stream-features.md: Added IDLE Detection section for when no P0 items AND no active phase with failing tasks
+- Updated stream-refactor.md: Changed "Backlog Empty Detection" to output `<promise>IDLE</promise>` instead of COMPLETE
+- Updated stream-polish.md: Changed "Backlog Empty Detection" to output `<promise>IDLE</promise>` instead of COMPLETE
+- Updated stream-verify.md: Added IDLE Detection section for when no completed phases exist to verify
+- Updated stream-hygiene.md: Renamed "Nothing To Do Detection" to "IDLE Detection", outputs `<promise>IDLE</promise>`
+- All streams now signal IDLE when no work exists, enabling fswatch wrappers to take over
+
+**Commands:**
+- No build commands needed (documentation-only changes)
+
+**Result:** Success

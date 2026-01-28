@@ -156,16 +156,16 @@ Hygiene stream does NOT:
 
 **Why separate?** Combining maintenance with fixing creates scope creep. Hygiene ensures healthy backlogs exist; other streams consume them.
 
-## Nothing To Do Detection
+## IDLE Detection
 
 If all conditions are met:
 - All backlogs have < 10 `[x]` items (no archiving needed)
 - All backlogs have >= 3 active `[ ]` items (no refill needed)
 - No strikethrough items to validate
 
-Output: `<promise>COMPLETE</promise>`
+Output: `<promise>IDLE</promise>`
 
-This signals the orchestrator that maintenance is current.
+This signals the fswatch wrapper to take over and wait for backlog file changes.
 
 ## Activity Log Format
 
