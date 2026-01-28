@@ -437,6 +437,14 @@ TDD mandatory | Use in-memory repos for unit tests | Use tempfile for integratio
 
 ## Code Quality Rules
 
+### Continuous Improvement (MANDATORY)
+When modifying existing files during task execution:
+1. **Review the modified file** against the standards below
+2. **Refactor issues found** as part of the same task (not a separate PR)
+3. **Scope appropriately** — fix what you touch, don't refactor unrelated code
+
+This ensures code quality improves incrementally with each task.
+
 ### File Size (STRICT)
 **Maximum 500 lines per file** — no exceptions for new code, refactor existing violations.
 
