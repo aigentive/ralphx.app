@@ -28,4 +28,4 @@
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 13 | **Completed:** 3 | **Archived:** 1
+**Active items:** 12 | **Completed:** 3 | **Archived:** 1

@@ -63,10 +63,10 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] [P3] [Frontend] Remove unused imports: useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents - src/components/Chat/IntegratedChatPanel.tsx:42-44
-- [ ] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/IntegratedChatPanel.tsx:131,506,554
+- [ ] ~~[P3] [Frontend] Remove unused imports: useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents~~ (stale:1 - imports are used at lines 259, 273, 293)
+- [ ] ~~[P3] [Frontend] Remove console.log statements from production code~~ (stale:1 - lines 506,554 don't exist, only one at 124) - src/components/Chat/IntegratedChatPanel.tsx:124
 - [ ] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
-- [ ] [P3] [Frontend] Remove console.debug statements from production code - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:1 - no console.debug at those lines) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
 - [ ] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
@@ -83,5 +83,6 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 27 (3 excluded, 9 deferred to PRD, 15 new)
+**Active items:** 24 (3 excluded, 9 deferred to PRD, 12 active)
 **Completed:** 31 (moved to archive)
+**Validated:** 3 strikethroughs marked stale:1 (2026-01-28)
