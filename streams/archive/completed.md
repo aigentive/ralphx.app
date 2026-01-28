@@ -11,6 +11,7 @@
 
 - [ ] ~~[P2] [Frontend] Type safety - Replace `any` with proper types in test mocks~~ (stale:2 - fixed with proper typing in useChat.test.ts)
 - [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:2 - no console.debug at those lines) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
+- [ ] ~~[P3] [Frontend] Remove console.log stub from event handler~~ (stale:2 - no console.log present at line 263) - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
 
 ### From polish/backlog.md (PRD-deferred)
 
