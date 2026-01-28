@@ -15,16 +15,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Track child processes for cleanup
-FSWATCH_PID=""
-
 cleanup() {
     echo ""
     echo -e "${YELLOW}[$STREAM] Shutting down...${NC}"
-    if [ -n "$FSWATCH_PID" ] && kill -0 "$FSWATCH_PID" 2>/dev/null; then
-        kill "$FSWATCH_PID" 2>/dev/null
-        wait "$FSWATCH_PID" 2>/dev/null
-    fi
+    # Kill all child processes (fswatch, ralph-streams, claude)
+    pkill -9 -P $$ 2>/dev/null || true
+    # Kill any claude processes for this stream
+    pkill -9 -f "claude.*streams/$STREAM/PROMPT.md" 2>/dev/null || true
     exit 0
 }
 
@@ -44,7 +41,6 @@ fswatch -o -l 3 "${WATCH_FILES[@]}" | while read; do
     echo ""
     echo -e "${GREEN}[$STREAM] IDLE - watching for file changes...${NC}"
 done &
-FSWATCH_PID=$!
 
 # Give fswatch time to initialize before initial cycle
 sleep 0.5
@@ -60,5 +56,5 @@ echo -e "${BLUE}[$STREAM] Watching: ${WATCH_FILES[*]}${NC}"
 echo -e "${BLUE}[$STREAM] Will auto-start when files change...${NC}"
 echo ""
 
-# Wait for fswatch to complete (or be killed via trap)
-wait "$FSWATCH_PID"
+# Wait for background jobs (or be killed via trap)
+wait
