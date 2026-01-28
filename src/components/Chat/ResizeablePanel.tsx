@@ -4,9 +4,7 @@
 
 import { useRef, useState, useCallback, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-
-const MIN_WIDTH = 320;
-const MAX_WIDTH_PERCENT = 50;
+import { MIN_WIDTH, MAX_WIDTH_PERCENT } from "./ResizeablePanel.constants";
 
 interface ResizeHandleProps {
   isDragging: boolean;
@@ -134,5 +132,3 @@ export function ResizeablePanel({
     </aside>
   );
 }
-
-export { MIN_WIDTH, MAX_WIDTH_PERCENT };

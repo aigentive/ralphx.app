@@ -73,7 +73,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useIntegratedChatHandlers.ts:97,132,172
 - [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale - no console.debug present, only console.error at line 208 which is appropriate)
 - [x] [P3] [Frontend] Remove console.log statements from production code - src/hooks/useIntegratedChatEvents.ts:71,119
-- [ ] [P3] [Frontend] Fast refresh warning - Extract constant from component export - src/components/Chat/ResizeablePanel.tsx:52
+- [x] [P3] [Frontend] Fast refresh warning - Extract constant from component export - src/components/Chat/ResizeablePanel.tsx:52
 - [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
 - [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
 - [ ] [P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7
