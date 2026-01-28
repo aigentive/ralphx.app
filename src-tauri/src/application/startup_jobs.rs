@@ -124,13 +124,38 @@ impl<R: Runtime> StartupJobRunner<R> {
 mod tests {
     use super::*;
     use crate::application::AppState;
-    use crate::domain::entities::{InternalStatus, Project, Task};
-
+    use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task};
     // Helper to create test state
     async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
         let execution_state = Arc::new(ExecutionState::new());
         let app_state = AppState::new_test();
         (execution_state, app_state)
+    }
+
+    /// Helper to build a StartupJobRunner from test state
+    fn build_runner(
+        app_state: &AppState,
+        execution_state: &Arc<ExecutionState>,
+    ) -> StartupJobRunner<tauri::Wry> {
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(execution_state),
+            None,
+        );
+
+        StartupJobRunner::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.project_repo),
+            transition_service,
+            Arc::clone(execution_state),
+        )
     }
 
     #[tokio::test]
@@ -143,63 +168,74 @@ mod tests {
 
         let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
         task.internal_status = InternalStatus::Executing;
-        app_state.task_repo.create(task).await.unwrap();
+        app_state.task_repo.create(task.clone()).await.unwrap();
 
         // Pause execution
         execution_state.pause();
 
-        // Build transition service
-        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&execution_state),
-            None,
-        );
-
-        let runner = StartupJobRunner::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            transition_service,
-            Arc::clone(&execution_state),
-        );
+        let runner = build_runner(&app_state, &execution_state);
 
         // Run should skip because paused
         runner.run().await;
 
         // Running count should still be 0 (no tasks resumed)
         assert_eq!(execution_state.running_count(), 0);
+
+        // Verify no conversations were created (entry actions were NOT called)
+        let convs = app_state
+            .chat_conversation_repo
+            .get_by_context(ChatContextType::TaskExecution, task.id.as_str())
+            .await
+            .unwrap();
+        assert_eq!(convs.len(), 0, "No conversations should be created when paused");
+    }
+
+    #[tokio::test]
+    async fn test_resumption_spawns_agents() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project with a task in Executing state
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+        task.internal_status = InternalStatus::Executing;
+        let task_id = task.id.clone();
+        app_state.task_repo.create(task).await.unwrap();
+
+        // Set high max_concurrent to allow resumption
+        execution_state.set_max_concurrent(10);
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run should trigger entry actions for the Executing task
+        runner.run().await;
+
+        // Verify entry action was called by checking that a ChatConversation
+        // was created for the task. The on_enter(Executing) handler calls
+        // chat_service.send_message(TaskExecution, task_id, ...) which creates
+        // a conversation in the repo before attempting to spawn the CLI agent.
+        let convs = app_state
+            .chat_conversation_repo
+            .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+            .await
+            .unwrap();
+        assert_eq!(
+            convs.len(),
+            1,
+            "Entry action should create a TaskExecution conversation for the resumed task"
+        );
+
+        // Verify the task is still in Executing state (entry actions don't change status)
+        let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        assert_eq!(updated_task.internal_status, InternalStatus::Executing);
     }
 
     #[tokio::test]
     async fn test_resumption_handles_empty_projects() {
         let (execution_state, app_state) = setup_test_state().await;
 
-        // Build transition service with no projects
-        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&execution_state),
-            None,
-        );
-
-        let runner = StartupJobRunner::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            transition_service,
-            Arc::clone(&execution_state),
-        );
+        let runner = build_runner(&app_state, &execution_state);
 
         // Run should complete without panic
         runner.run().await;
@@ -225,26 +261,7 @@ mod tests {
             app_state.task_repo.create(task).await.unwrap();
         }
 
-        // Build transition service
-        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&execution_state),
-            None,
-        );
-
-        let runner = StartupJobRunner::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            transition_service,
-            Arc::clone(&execution_state),
-        );
+        let runner = build_runner(&app_state, &execution_state);
 
         // Run should stop after 2 tasks due to max_concurrent
         runner.run().await;
@@ -269,6 +286,7 @@ mod tests {
 
         let mut task1 = Task::new(project.id.clone(), "Executing Task".to_string());
         task1.internal_status = InternalStatus::Executing;
+        let task1_id = task1.id.clone();
         app_state.task_repo.create(task1).await.unwrap();
 
         let mut task2 = Task::new(project.id.clone(), "QaRefining Task".to_string());
@@ -282,36 +300,40 @@ mod tests {
         // Create a task NOT in agent-active state (should be skipped)
         let mut task4 = Task::new(project.id.clone(), "Ready Task".to_string());
         task4.internal_status = InternalStatus::Ready;
+        let task4_id = task4.id.clone();
         app_state.task_repo.create(task4).await.unwrap();
-
-        // Build transition service
-        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&execution_state),
-            None,
-        );
-
-        let runner = StartupJobRunner::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.project_repo),
-            transition_service,
-            Arc::clone(&execution_state),
-        );
 
         // Set high max_concurrent so all tasks can be resumed
         execution_state.set_max_concurrent(10);
 
+        let runner = build_runner(&app_state, &execution_state);
+
         // Run should complete
         runner.run().await;
 
-        // Test verifies that the runner can handle multiple statuses without panic
-        // and processes the correct number of tasks
+        // Verify entry actions were called for agent-active tasks:
+        // - Executing task should have a TaskExecution conversation created by on_enter(Executing)
+        let exec_convs = app_state
+            .chat_conversation_repo
+            .get_by_context(ChatContextType::TaskExecution, task1_id.as_str())
+            .await
+            .unwrap();
+        assert_eq!(
+            exec_convs.len(),
+            1,
+            "Executing task should have a TaskExecution conversation"
+        );
+
+        // - Ready task should NOT have any conversations (not an agent-active state)
+        let ready_exec_convs = app_state
+            .chat_conversation_repo
+            .get_by_context(ChatContextType::TaskExecution, task4_id.as_str())
+            .await
+            .unwrap();
+        assert_eq!(
+            ready_exec_convs.len(),
+            0,
+            "Ready task should not be resumed"
+        );
     }
 }
