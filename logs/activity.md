@@ -1,15 +1,30 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 04:14:46
+**Last Updated:** 2026-01-28 12:45:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 9 / 39
-**Current Task:** Add get_review_notes MCP tool definition
+**Tasks Completed:** 10 / 39
+**Current Task:** Add task-level MCP scoping (RALPHX_TASK_ID validation)
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 12:45:00 - Add get_review_notes MCP tool definition
+
+**What:**
+- Added `get_review_notes` MCP tool definition to `ralphx-plugin/ralphx-mcp-server/src/tools.ts`
+- Tool description: "Get all review feedback for a task. Call this before re-executing a task to understand what needs to be fixed."
+- Added to worker agent TOOL_ALLOWLIST
+- Added GET handler in `ralphx-plugin/ralphx-mcp-server/src/index.ts` for `/api/review_notes/:task_id`
+- **Quality improvement:** Fixed messagesData dependency chain in `src/components/Chat/ChatPanel.tsx:473` by wrapping in useMemo
+
+**Commands:**
+- `cd ralphx-plugin/ralphx-mcp-server && npm run build` - build succeeds
+- `npm run typecheck` - no errors
+- `git commit -m "feat(mcp): add get_review_notes tool"`
+- `git commit -m "refactor(frontend): wrap messagesData in useMemo in ChatPanel"`
 
 ### 2026-01-28 04:14:46 - Add maxRevisionCycles to ReviewSettings
 
