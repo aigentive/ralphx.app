@@ -108,7 +108,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Reference to code-quality-standards.md for LOC limits",
       "Commit: docs(rules): add refactor stream workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "rules",
