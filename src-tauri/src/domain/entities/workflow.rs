@@ -7,6 +7,79 @@ use std::str::FromStr;
 
 use super::status::InternalStatus;
 
+// ============================================
+// State Grouping Types (Multi-State Columns)
+// ============================================
+
+/// State group within a column
+/// Allows multiple internal statuses to be grouped and displayed within a single column
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StateGroup {
+    /// Unique group identifier within the column
+    pub id: String,
+    /// Display label for the group header (e.g., "Fresh Tasks", "Needs Revision")
+    pub label: String,
+    /// Internal statuses that belong to this group
+    pub statuses: Vec<InternalStatus>,
+    /// Optional Lucide icon name for the group
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Optional accent color for the group (CSS color value)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<String>,
+    /// Whether tasks can be dragged FROM this group (default: true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_drag_from: Option<bool>,
+    /// Whether tasks can be dropped TO this group (default: true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_drop_to: Option<bool>,
+}
+
+impl StateGroup {
+    /// Creates a new state group with the given id, label, and statuses
+    pub fn new(id: impl Into<String>, label: impl Into<String>, statuses: Vec<InternalStatus>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            statuses,
+            icon: None,
+            accent_color: None,
+            can_drag_from: None,
+            can_drop_to: None,
+        }
+    }
+
+    /// Sets the icon
+    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+
+    /// Sets the accent color
+    pub fn with_accent_color(mut self, color: impl Into<String>) -> Self {
+        self.accent_color = Some(color.into());
+        self
+    }
+
+    /// Sets whether tasks can be dragged from this group
+    pub fn with_can_drag_from(mut self, can_drag: bool) -> Self {
+        self.can_drag_from = Some(can_drag);
+        self
+    }
+
+    /// Sets whether tasks can be dropped to this group
+    pub fn with_can_drop_to(mut self, can_drop: bool) -> Self {
+        self.can_drop_to = Some(can_drop);
+        self
+    }
+
+    /// Convenience method to lock the group (no drag, no drop)
+    /// Use for system-managed states where users should not manually move tasks
+    pub fn locked(self) -> Self {
+        self.with_can_drag_from(false).with_can_drop_to(false)
+    }
+}
+
 /// A unique identifier for a Workflow
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WorkflowId(pub String);
@@ -91,6 +164,7 @@ impl WorkflowSchema {
     }
 
     /// Returns the default RalphX workflow
+    /// Multi-state columns use groups to provide visibility into task state
     pub fn default_ralphx() -> Self {
         Self {
             id: WorkflowId::from_string("ralphx-default"),
@@ -98,9 +172,40 @@ impl WorkflowSchema {
             description: Some("Default RalphX workflow".to_string()),
             columns: vec![
                 WorkflowColumn::new("draft", "Draft", InternalStatus::Backlog),
-                WorkflowColumn::new("ready", "Ready", InternalStatus::Ready),
-                WorkflowColumn::new("in_progress", "In Progress", InternalStatus::Executing),
-                WorkflowColumn::new("in_review", "In Review", InternalStatus::PendingReview),
+                WorkflowColumn::new("ready", "Ready", InternalStatus::Ready)
+                    .with_groups(vec![
+                        StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready])
+                            .with_can_drag_from(true)
+                            .with_can_drop_to(true),
+                        StateGroup::new("needs_revision", "Needs Revision", vec![InternalStatus::RevisionNeeded])
+                            .with_icon("RotateCcw")
+                            .with_accent_color("hsl(var(--warning))")
+                            .with_can_drag_from(true)
+                            .with_can_drop_to(false), // Only review process can add here
+                    ]),
+                WorkflowColumn::new("in_progress", "In Progress", InternalStatus::Executing)
+                    .with_groups(vec![
+                        StateGroup::new("first_attempt", "First Attempt", vec![InternalStatus::Executing])
+                            .locked(), // System-managed (agent working)
+                        StateGroup::new("revising", "Revising", vec![InternalStatus::ReExecuting])
+                            .with_icon("RefreshCw")
+                            .with_accent_color("hsl(var(--warning))")
+                            .locked(), // System-managed (agent revising)
+                    ]),
+                WorkflowColumn::new("in_review", "In Review", InternalStatus::PendingReview)
+                    .with_groups(vec![
+                        StateGroup::new("waiting_ai", "Waiting for AI", vec![InternalStatus::PendingReview])
+                            .with_icon("Clock")
+                            .locked(), // System-managed
+                        StateGroup::new("ai_reviewing", "AI Reviewing", vec![InternalStatus::Reviewing])
+                            .with_icon("Bot")
+                            .with_accent_color("hsl(var(--primary))")
+                            .locked(), // System-managed (AI working)
+                        StateGroup::new("ready_approval", "Ready for Approval", vec![InternalStatus::ReviewPassed])
+                            .with_icon("CheckCircle")
+                            .with_accent_color("hsl(var(--success))")
+                            .locked(), // User interacts via Approve/Revise buttons
+                    ]),
                 WorkflowColumn::new("done", "Done", InternalStatus::Approved),
             ],
             external_sync: None,
@@ -150,11 +255,14 @@ pub struct WorkflowColumn {
     /// Optional icon name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
-    /// The internal status this column maps to for side effects
+    /// The internal status this column maps to for side effects (primary status)
     pub maps_to: InternalStatus,
     /// Optional behavior overrides for this column
     #[serde(skip_serializing_if = "Option::is_none")]
     pub behavior: Option<ColumnBehavior>,
+    /// Optional state groups for multi-state columns
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groups: Option<Vec<StateGroup>>,
 }
 
 impl WorkflowColumn {
@@ -167,6 +275,7 @@ impl WorkflowColumn {
             icon: None,
             maps_to,
             behavior: None,
+            groups: None,
         }
     }
 
@@ -185,6 +294,12 @@ impl WorkflowColumn {
     /// Sets the column behavior
     pub fn with_behavior(mut self, behavior: ColumnBehavior) -> Self {
         self.behavior = Some(behavior);
+        self
+    }
+
+    /// Sets the column groups for multi-state columns
+    pub fn with_groups(mut self, groups: Vec<StateGroup>) -> Self {
+        self.groups = Some(groups);
         self
     }
 }
@@ -505,6 +620,7 @@ mod tests {
         assert!(col.color.is_none());
         assert!(col.icon.is_none());
         assert!(col.behavior.is_none());
+        assert!(col.groups.is_none());
     }
 
     #[test]
@@ -573,6 +689,168 @@ mod tests {
         assert_eq!(b.skip_review, Some(false));
         assert_eq!(b.auto_advance, Some(true));
         assert_eq!(b.agent_profile, Some("reviewer".to_string()));
+    }
+
+    // ===== StateGroup Tests =====
+
+    #[test]
+    fn state_group_new_creates_minimal() {
+        let group = StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready]);
+        assert_eq!(group.id, "fresh");
+        assert_eq!(group.label, "Fresh Tasks");
+        assert_eq!(group.statuses, vec![InternalStatus::Ready]);
+        assert!(group.icon.is_none());
+        assert!(group.accent_color.is_none());
+        assert!(group.can_drag_from.is_none());
+        assert!(group.can_drop_to.is_none());
+    }
+
+    #[test]
+    fn state_group_builder_chain() {
+        let group = StateGroup::new("needs_revision", "Needs Revision", vec![InternalStatus::RevisionNeeded])
+            .with_icon("RotateCcw")
+            .with_accent_color("hsl(var(--warning))")
+            .with_can_drag_from(true)
+            .with_can_drop_to(false);
+
+        assert_eq!(group.id, "needs_revision");
+        assert_eq!(group.icon, Some("RotateCcw".to_string()));
+        assert_eq!(group.accent_color, Some("hsl(var(--warning))".to_string()));
+        assert_eq!(group.can_drag_from, Some(true));
+        assert_eq!(group.can_drop_to, Some(false));
+    }
+
+    #[test]
+    fn state_group_locked_sets_both_flags() {
+        let group = StateGroup::new("locked", "Locked Group", vec![InternalStatus::Executing])
+            .locked();
+        assert_eq!(group.can_drag_from, Some(false));
+        assert_eq!(group.can_drop_to, Some(false));
+    }
+
+    #[test]
+    fn state_group_with_multiple_statuses() {
+        let group = StateGroup::new(
+            "review_states",
+            "Review States",
+            vec![InternalStatus::PendingReview, InternalStatus::Reviewing, InternalStatus::ReviewPassed],
+        );
+        assert_eq!(group.statuses.len(), 3);
+        assert!(group.statuses.contains(&InternalStatus::PendingReview));
+        assert!(group.statuses.contains(&InternalStatus::Reviewing));
+        assert!(group.statuses.contains(&InternalStatus::ReviewPassed));
+    }
+
+    #[test]
+    fn state_group_serializes() {
+        let group = StateGroup::new("test", "Test Group", vec![InternalStatus::Ready])
+            .with_icon("Star")
+            .with_can_drag_from(true);
+        let json = serde_json::to_string(&group).unwrap();
+        assert!(json.contains("\"id\":\"test\""));
+        assert!(json.contains("\"label\":\"Test Group\""));
+        assert!(json.contains("\"statuses\":[\"ready\"]"));
+        assert!(json.contains("\"icon\":\"Star\""));
+        assert!(json.contains("\"can_drag_from\":true"));
+    }
+
+    #[test]
+    fn state_group_deserializes() {
+        let json = r#"{"id":"group1","label":"Group 1","statuses":["ready","revision_needed"]}"#;
+        let group: StateGroup = serde_json::from_str(json).unwrap();
+        assert_eq!(group.id, "group1");
+        assert_eq!(group.label, "Group 1");
+        assert_eq!(group.statuses, vec![InternalStatus::Ready, InternalStatus::RevisionNeeded]);
+    }
+
+    // ===== WorkflowColumn with Groups Tests =====
+
+    #[test]
+    fn workflow_column_with_groups() {
+        let groups = vec![
+            StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready]),
+            StateGroup::new("needs_revision", "Needs Revision", vec![InternalStatus::RevisionNeeded]),
+        ];
+        let col = WorkflowColumn::new("ready", "Ready", InternalStatus::Ready)
+            .with_groups(groups);
+
+        assert!(col.groups.is_some());
+        let groups = col.groups.unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].id, "fresh");
+        assert_eq!(groups[1].id, "needs_revision");
+    }
+
+    #[test]
+    fn workflow_column_with_groups_serializes() {
+        let col = WorkflowColumn::new("ready", "Ready", InternalStatus::Ready)
+            .with_groups(vec![
+                StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready]),
+            ]);
+        let json = serde_json::to_string(&col).unwrap();
+        assert!(json.contains("\"groups\":["));
+        assert!(json.contains("\"id\":\"fresh\""));
+    }
+
+    #[test]
+    fn default_ralphx_workflow_has_groups_for_multi_state_columns() {
+        let workflow = WorkflowSchema::default_ralphx();
+
+        // Ready column should have 2 groups: Fresh Tasks, Needs Revision
+        let ready_col = workflow.columns.iter().find(|c| c.id == "ready").unwrap();
+        assert!(ready_col.groups.is_some());
+        let ready_groups = ready_col.groups.as_ref().unwrap();
+        assert_eq!(ready_groups.len(), 2);
+        assert!(ready_groups.iter().any(|g| g.id == "fresh" && g.statuses.contains(&InternalStatus::Ready)));
+        assert!(ready_groups.iter().any(|g| g.id == "needs_revision" && g.statuses.contains(&InternalStatus::RevisionNeeded)));
+
+        // In Progress column should have 2 groups: First Attempt, Revising
+        let progress_col = workflow.columns.iter().find(|c| c.id == "in_progress").unwrap();
+        assert!(progress_col.groups.is_some());
+        let progress_groups = progress_col.groups.as_ref().unwrap();
+        assert_eq!(progress_groups.len(), 2);
+        assert!(progress_groups.iter().any(|g| g.id == "first_attempt" && g.statuses.contains(&InternalStatus::Executing)));
+        assert!(progress_groups.iter().any(|g| g.id == "revising" && g.statuses.contains(&InternalStatus::ReExecuting)));
+
+        // In Review column should have 3 groups
+        let review_col = workflow.columns.iter().find(|c| c.id == "in_review").unwrap();
+        assert!(review_col.groups.is_some());
+        let review_groups = review_col.groups.as_ref().unwrap();
+        assert_eq!(review_groups.len(), 3);
+        assert!(review_groups.iter().any(|g| g.id == "waiting_ai" && g.statuses.contains(&InternalStatus::PendingReview)));
+        assert!(review_groups.iter().any(|g| g.id == "ai_reviewing" && g.statuses.contains(&InternalStatus::Reviewing)));
+        assert!(review_groups.iter().any(|g| g.id == "ready_approval" && g.statuses.contains(&InternalStatus::ReviewPassed)));
+    }
+
+    #[test]
+    fn default_ralphx_workflow_groups_have_correct_drag_drop_settings() {
+        let workflow = WorkflowSchema::default_ralphx();
+
+        // Ready column: fresh can drag/drop, needs_revision can drag but not drop
+        let ready_col = workflow.columns.iter().find(|c| c.id == "ready").unwrap();
+        let ready_groups = ready_col.groups.as_ref().unwrap();
+        let fresh = ready_groups.iter().find(|g| g.id == "fresh").unwrap();
+        assert_eq!(fresh.can_drag_from, Some(true));
+        assert_eq!(fresh.can_drop_to, Some(true));
+        let revision = ready_groups.iter().find(|g| g.id == "needs_revision").unwrap();
+        assert_eq!(revision.can_drag_from, Some(true));
+        assert_eq!(revision.can_drop_to, Some(false));
+
+        // In Progress: all groups locked (system-managed)
+        let progress_col = workflow.columns.iter().find(|c| c.id == "in_progress").unwrap();
+        let progress_groups = progress_col.groups.as_ref().unwrap();
+        for group in progress_groups {
+            assert_eq!(group.can_drag_from, Some(false));
+            assert_eq!(group.can_drop_to, Some(false));
+        }
+
+        // In Review: all groups locked (system-managed)
+        let review_col = workflow.columns.iter().find(|c| c.id == "in_review").unwrap();
+        let review_groups = review_col.groups.as_ref().unwrap();
+        for group in review_groups {
+            assert_eq!(group.can_drag_from, Some(false));
+            assert_eq!(group.can_drop_to, Some(false));
+        }
     }
 
     // ===== SyncProvider Tests =====
