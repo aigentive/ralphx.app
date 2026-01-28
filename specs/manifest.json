@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 24,
+  "currentPhase": 25,
   "phases": [
     {
       "phase": 0,
@@ -184,6 +184,13 @@
       "prd": "specs/phases/prd_phase_24_tmux_orchestration.md",
       "status": "complete",
       "description": "Tmux integration with fswatch for parallel stream visibility and zero-idle API usage"
+    },
+    {
+      "phase": 25,
+      "name": "Ideation UI Improvements",
+      "prd": "specs/phases/prd_phase_25_ideation_ui_improvements.md",
+      "status": "active",
+      "description": "Start ideation from draft tasks, drag-and-drop markdown import to proposals"
     }
   ]
 }
