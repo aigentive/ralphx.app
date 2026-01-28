@@ -101,9 +101,9 @@ Item exists in backlog? → You MUST work on it.
 
 When streams/polish/backlog.md has no unchecked `[ ]` items:
 
-Output: `<promise>COMPLETE</promise>`
+Output: `<promise>IDLE</promise>`
 
-This signals the orchestrator to skip this stream until hygiene refills it.
+This signals the fswatch wrapper to take over and wait for file changes (hygiene stream refills backlog).
 
 ## Activity Log Format
 

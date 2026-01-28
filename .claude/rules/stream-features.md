@@ -87,6 +87,14 @@ When all phases in manifest.json have `"status": "complete"`:
 
 Output: `<promise>COMPLETE</promise>`
 
+## IDLE Detection
+
+When **no work exists** (no P0 items AND no active phase with failing tasks):
+
+Output: `<promise>IDLE</promise>`
+
+This signals the fswatch wrapper to take over and wait for file changes.
+
 ## Activity Log Format
 
 Log entries go in `streams/features/activity.md`:

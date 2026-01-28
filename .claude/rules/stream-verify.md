@@ -143,11 +143,19 @@ Report as P0 items:
 
 ## No Gaps Found
 
-If verification finds no gaps:
+If verification finds no gaps in this pass:
 
 Output: `<promise>COMPLETE</promise>`
 
-This signals the orchestrator that no new P0 items were produced.
+This signals that verification completed successfully with no new P0 items.
+
+## IDLE Detection
+
+When there are **no completed phases to verify** (all phases are pending or active):
+
+Output: `<promise>IDLE</promise>`
+
+This signals the fswatch wrapper to take over and wait for manifest.json changes (phase completions).
 
 ## Activity Log Format
 
