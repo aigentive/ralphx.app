@@ -1,10 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:20:09
+**Last Updated:** 2026-01-28 17:26:00
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 11 / 12
-**Current Task:** Reduce polling frequency to 30 seconds
+**Tasks Completed:** 12 / 12
+**Current Task:** Write tests for useExecutionEvents hook
+
+---
+
+### 2026-01-28 17:26:00 - Write tests for useExecutionEvents hook
+
+**What:**
+- Created `src/hooks/useExecutionEvents.test.ts` with 15 comprehensive tests
+- Tests cover status_changed event updating store (isPaused, runningCount, maxConcurrent, canStartTask)
+- Tests cover queue_changed event updating only queuedCount
+- Tests verify both listeners are cleaned up on unmount
+- Tests verify queuedCount is preserved when status_changed fires
+
+**Quality Improvement (P3):**
+- Removed debug console.log from `handleEditProposal` and `onViewDiff` in App.tsx
+- Added 3 new P3 items to code-quality.md for remaining console.log statements
+- Validated stale:1 items → incremented to stale:2 (TODOs no longer exist)
+
+**Commands:**
+- `npm run test:run src/hooks/useExecutionEvents.test.ts` — 15 tests pass
+- `npm run lint` — clean (3 shadcn warnings excluded)
+- `npm run typecheck` — clean
 
 ---
 
