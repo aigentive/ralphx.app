@@ -215,7 +215,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(app): wire useExecutionEvents for real-time status"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",

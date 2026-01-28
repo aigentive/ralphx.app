@@ -62,6 +62,7 @@
 - [x] Fix type assertion in App.tsx (as unknown as TaskProposal[]) - src/App.tsx:1
 
 ### P3 - Low Impact
+- [x] Remove debug console.log statements from handleNewSession - src/App.tsx:369-378
 - [x] Extract duplicate SectionTitle component to shared.tsx in detail-views - src/components/tasks/detail-views/*.tsx
 - [x] Extract MODEL_OPTIONS constant from SettingsView.shared.tsx to SettingsView.constants.ts (react-refresh lint) - src/components/settings/SettingsView.shared.tsx:30
 - [x] Remove console.log debug statements from TaskFullView action handlers - src/components/tasks/TaskFullView.tsx:214,219,224,229

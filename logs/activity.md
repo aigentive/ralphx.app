@@ -1,10 +1,27 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:15:00
+**Last Updated:** 2026-01-28 18:30:00
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 9 / 12
-**Current Task:** Add queue_changed listener to useExecutionEvents
+**Tasks Completed:** 10 / 12
+**Current Task:** Wire useExecutionEvents in App.tsx
+
+---
+
+### 2026-01-28 18:30:00 - Wire useExecutionEvents in App.tsx
+
+**What:**
+- Imported `useExecutionEvents` from `@/hooks/useExecutionEvents` in App.tsx
+- Called `useExecutionEvents()` in AppContent component (after useTasks hook)
+- This enables real-time execution status updates throughout the app via Tauri events
+
+**Quality Improvement (P3):**
+- Removed debug console.log statements from `handleNewSession` callback (4 logs)
+- Kept console.error for actual error handling
+
+**Commands:**
+- `npm run lint` — clean (3 shadcn warnings excluded)
+- `npm run typecheck` — clean
 
 ---
 
