@@ -220,7 +220,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "DO NOT delete or modify logs/code-quality.md yet (cleanup is final task)",
       "Commit: chore(streams): migrate code-quality.md to stream backlogs"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
