@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 22:37:16 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 2/10 completed, polish: 8/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 12 active items, polish: 4 active items)
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - useChat console.error (stale → stale:1): Confirmed removed
+  - useEvents console.error (stale → stale:1): Confirmed removed
+  - useEvents.ts:88 TODO: Still exists, correctly deferred (not incremented)
+
+**Result:** 2 validation counters incremented
+
+---
+
 ### 2026-01-28 20:32:15 - Backlog Maintenance
 
 **Archive:**
