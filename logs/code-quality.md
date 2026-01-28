@@ -71,7 +71,7 @@
 - [x] Fix TaskChatPanel messagesData dependency issue in useMemo - src/components/tasks/TaskChatPanel.tsx:233
 - [ ] Reduce DiffViewer component size (966 LOC) - extract diff rendering logic - src/components/diff/DiffViewer.tsx:1-50
 - [ ] Reduce SettingsView size (827 LOC) - extract settings sections into sub-components - src/components/settings/SettingsView.tsx:1-50
-- [ ] Replace type assertions (as unknown) in test files with proper types - src/test/setup.ts
+- [x] Replace type assertions (as unknown) in test files with proper types - src/test/setup.ts
 - [ ] Fix type assertion in App.tsx (as unknown as TaskProposal[]) - src/App.tsx:1
 
 ### P3 - Low Impact

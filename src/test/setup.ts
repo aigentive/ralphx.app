@@ -8,12 +8,12 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 // Mock ResizeObserver for Radix UI components (ScrollArea, etc.)
-class ResizeObserverMock {
+class ResizeObserverMock implements ResizeObserver {
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
-global.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+global.ResizeObserver = ResizeObserverMock;
 
 // Cleanup after each test case (e.g., clearing jsdom)
 afterEach(() => {
