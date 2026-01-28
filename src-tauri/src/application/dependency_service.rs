@@ -527,6 +527,7 @@ pub struct DependencyAnalysis {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     use crate::domain::entities::{ArtifactId, Priority, TaskCategory};

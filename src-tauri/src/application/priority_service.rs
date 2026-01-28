@@ -375,6 +375,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> PriorityService
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     use crate::domain::entities::{ArtifactId, Complexity, Priority, TaskCategory};

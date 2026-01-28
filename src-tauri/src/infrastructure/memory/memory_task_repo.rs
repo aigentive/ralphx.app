@@ -320,7 +320,6 @@ impl TaskRepository for MemoryTaskRepository {
 
         // Apply pagination
         let start = offset as usize;
-        let end = start + limit as usize;
         let paginated = result.into_iter().skip(start).take(limit as usize).collect();
 
         Ok(paginated)

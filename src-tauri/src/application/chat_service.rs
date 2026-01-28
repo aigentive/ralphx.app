@@ -12,7 +12,7 @@
 // - ExecutionChatService (task_execution context)
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
@@ -1399,8 +1399,8 @@ async fn process_stream_background<R: Runtime>(
     let context_id_str = context_id.to_string();
 
     // Spawn stderr reader
-    let stderr_handle = app_handle.clone();
-    let stderr_conv_id = conversation_id_str.clone();
+    let _stderr_handle = app_handle.clone();
+    let _stderr_conv_id = conversation_id_str.clone();
     let stderr_task = tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();

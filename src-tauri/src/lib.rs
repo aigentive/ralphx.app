@@ -20,9 +20,6 @@
 #![allow(clippy::let_and_return)]
 #![allow(clippy::unwrap_or_default)]
 #![allow(clippy::unnecessary_map_or)]
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
 
 // Core modules
 pub mod application;
