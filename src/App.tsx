@@ -346,10 +346,9 @@ function AppContent() {
     }
   };
 
-  const handleQuestionSubmit = async (response: AskUserQuestionResponse) => {
+  const handleQuestionSubmit = async (_response: AskUserQuestionResponse) => {
     setIsQuestionLoading(true);
     try {
-      console.log("Submit answer:", response);
       // TODO: Call Tauri command to submit answer and trigger BlockersResolved event
       clearActiveQuestion();
     } catch (error) {
