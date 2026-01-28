@@ -34,6 +34,7 @@ import type { ApplyProposalsInput } from "@/types/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
+import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useTasks } from "@/hooks/useTasks";
 import { useProjects } from "@/hooks/useProjects";
 import {
@@ -158,6 +159,7 @@ function AppContent() {
 
   const { count: pendingReviewCount } = usePendingReviews(currentProjectId);
   const { data: tasks = [] } = useTasks(currentProjectId);
+  const { approve: approveReview, requestChanges: requestChangesReview, isApproving, isRequestingChanges } = useReviewMutations();
 
   // Ideation hooks
   const { data: sessionData } = useIdeationSession(activeSession?.id ?? "");
@@ -772,17 +774,20 @@ function AppContent() {
                 taskTitles={taskTitles}
                 onClose={() => setReviewsPanelOpen(false)}
                 onApprove={(reviewId) => {
-                  console.log("Approve review:", reviewId);
-                  // TODO: Call approveReview mutation
+                  approveReview.mutate({ reviewId });
                 }}
-                onRequestChanges={(reviewId) => {
-                  console.log("Request changes for review:", reviewId);
-                  // TODO: Open request changes modal
+                onRequestChanges={(reviewId, notes) => {
+                  // Use provided notes or a default message
+                  // Note: ReviewDetailModal (PRD task 37) will provide proper notes input
+                  const reviewNotes = notes || "Changes requested";
+                  requestChangesReview.mutate({ reviewId, notes: reviewNotes });
                 }}
                 onViewDiff={(reviewId) => {
                   console.log("View diff for review:", reviewId);
-                  // TODO: Open diff viewer
+                  // TODO: Open diff viewer (task in PRD - ColumnGroup component)
                 }}
+                isApproving={isApproving}
+                isRequestingChanges={isRequestingChanges}
               />
             </div>
           )}

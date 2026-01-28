@@ -36,11 +36,15 @@ interface ReviewsPanelProps {
   projectId: string;
   taskTitles: Record<string, string>;
   onApprove?: (reviewId: string) => void;
-  onRequestChanges?: (reviewId: string) => void;
+  onRequestChanges?: (reviewId: string, notes?: string) => void;
   onViewDiff?: (reviewId: string) => void;
   onOpenInIDE?: (filePath: string) => void;
   onClose?: () => void;
   isClosing?: boolean;
+  /** Whether an approve operation is in progress */
+  isApproving?: boolean;
+  /** Whether a request changes operation is in progress */
+  isRequestingChanges?: boolean;
 }
 
 // Panel slide animation styles
@@ -277,6 +281,7 @@ interface ReviewDetailHeaderProps {
   onBack: () => void;
   onApprove?: (reviewId: string) => void;
   onRequestChanges?: (reviewId: string) => void;
+  isLoading?: boolean;
 }
 
 function ReviewDetailHeader({
@@ -285,6 +290,7 @@ function ReviewDetailHeader({
   onBack,
   onApprove,
   onRequestChanges,
+  isLoading = false,
 }: ReviewDetailHeaderProps) {
   const isPending = review.status === "pending";
 
@@ -324,8 +330,10 @@ function ReviewDetailHeader({
               data-testid="review-detail-request-changes"
               size="sm"
               onClick={() => onRequestChanges(review.id)}
+              disabled={isLoading}
               className="bg-[var(--status-warning)] text-[var(--bg-base)] hover:opacity-90"
             >
+              {isLoading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
               Request Changes
             </Button>
           )}
@@ -334,8 +342,10 @@ function ReviewDetailHeader({
               data-testid="review-detail-approve"
               size="sm"
               onClick={() => onApprove(review.id)}
+              disabled={isLoading}
               className="bg-[var(--status-success)] text-white hover:opacity-90"
             >
+              {isLoading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
               Approve
             </Button>
           )}
@@ -355,6 +365,7 @@ interface ReviewDetailViewProps {
   onApprove?: (reviewId: string) => void;
   onRequestChanges?: (reviewId: string) => void;
   onOpenInIDE?: (filePath: string) => void;
+  isLoading?: boolean;
 }
 
 function ReviewDetailView({
@@ -364,6 +375,7 @@ function ReviewDetailView({
   onApprove,
   onRequestChanges,
   onOpenInIDE,
+  isLoading = false,
 }: ReviewDetailViewProps) {
   const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =
     useGitDiff({
@@ -383,6 +395,7 @@ function ReviewDetailView({
         onBack={onBack}
         {...(onApprove ? { onApprove } : {})}
         {...(onRequestChanges ? { onRequestChanges } : {})}
+        isLoading={isLoading}
       />
       <div className="flex-1 min-h-0">
         <DiffViewer
@@ -409,6 +422,8 @@ export function ReviewsPanel({
   onOpenInIDE,
   onClose,
   isClosing = false,
+  isApproving = false,
+  isRequestingChanges = false,
 }: ReviewsPanelProps) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -487,8 +502,9 @@ export function ReviewsPanel({
             taskTitle={taskTitles[selectedReview.task_id] ?? "Unknown Task"}
             onBack={handleBack}
             {...(onApprove ? { onApprove } : {})}
-            {...(onRequestChanges ? { onRequestChanges } : {})}
+            {...(onRequestChanges ? { onRequestChanges: (id: string) => onRequestChanges(id) } : {})}
             {...(onOpenInIDE ? { onOpenInIDE } : {})}
+            isLoading={isApproving || isRequestingChanges}
           />
         </div>
       </>
@@ -545,8 +561,9 @@ export function ReviewsPanel({
                   }}
                   taskTitle={taskTitles[review.task_id] ?? "Unknown Task"}
                   {...(onApprove && { onApprove })}
-                  {...(onRequestChanges && { onRequestChanges })}
+                  {...(onRequestChanges && { onRequestChanges: (id: string) => onRequestChanges(id) })}
                   onViewDiff={handleViewDiff}
+                  isLoading={isApproving || isRequestingChanges}
                 />
               ))}
             </div>
