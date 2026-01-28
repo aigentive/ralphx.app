@@ -5,7 +5,20 @@
 
 ---
 
-## Archived 2026-01-29
+## Archived 2026-01-29 (Second Batch)
+
+### From refactor/backlog.md (Frontend)
+
+- [x] Split IdeationView (1105 LOC → 438 LOC) - extracted SessionBrowser, StartSessionPanel, ProposalCard, ProposalsToolbar, ProactiveSyncNotification, ProposalsEmptyState, and useIdeationHandlers hook - src/components/Ideation/IdeationView.tsx:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:00)
+
+- [x] [P2] [Frontend] Consolidate ChatPanel console.error handlers into unified error handler - src/components/Chat/ChatPanel.tsx:332
+- [x] [P2] [Frontend] Remove TODO comment for Tauri command integration - src/App.tsx:359
+
+---
+
+## Archived 2026-01-29 (First Batch)
 
 ### From refactor/backlog.md (Frontend)
 

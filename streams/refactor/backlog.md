@@ -6,7 +6,6 @@
 
 ## Frontend (src/)
 
-- [x] Split IdeationView (1105 LOC → 438 LOC) - extracted SessionBrowser, StartSessionPanel, ProposalCard, ProposalsToolbar, ProactiveSyncNotification, ProposalsEmptyState, and useIdeationHandlers hook - src/components/Ideation/IdeationView.tsx:1-50
 - [x] Reduce ChatPanel component size (1041 LOC → 774 LOC) - extracted ResizeablePanel and ChatMessages components - src/components/Chat/ChatPanel.tsx:1-100
 - [x] Reduce IntegratedChatPanel component size (1025 LOC → 498 LOC) - extracted useIntegratedChatScroll, useIntegratedChatHandlers, useIntegratedChatEvents hooks and IntegratedChatPanel.components.tsx - src/components/Chat/IntegratedChatPanel.tsx:1-100
 
@@ -28,5 +27,5 @@
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 4 | **Completed:** 11 | **Archived:** 2
+**Active items:** 4 | **Completed:** 10 | **Archived:** 3
 **Last maintenance:** 2026-01-29 (archived 1 completed item)

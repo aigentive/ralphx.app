@@ -503,3 +503,23 @@
 - Archived stale items verified as correctly archived
 
 **Result:** No changes needed - all backlogs healthy
+
+### 2026-01-29 01:15:23 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (IdeationView split)
+- Moved 2 items from polish/backlog.md to archive (ChatPanel error handler, App.tsx TODO)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 10 → 8 completed items
+
+**Refill:**
+- No refill needed (refactor: 4 active items, polish: 11 active items)
+
+**Validation:**
+- Checked 2 strikethrough items:
+  - PlanTemplateSelector.tsx:94 Remove TODO (stale → stale:1): TODO not found at line 94 → **Counter incremented**
+  - dependency_service.rs:530 test fixtures (stale → stale:1): File no longer exists (module split) → **Counter incremented**
+
+**Result:** Maintenance complete - 3 archived, 2 validated (total 51 validated)
+
+---
