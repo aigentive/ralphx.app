@@ -16,6 +16,24 @@
 
 _No active P2 items. Completed items moved to archive._
 
+## NEW ITEMS (Added 2026-01-28)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Frontend] Extract hook logic from useChat (528 LOC) - split event handling - src/hooks/useChat.ts:1-528
+- [ ] [P2] [Frontend] Extract hook logic from useEvents (417 LOC) - split by event type - src/hooks/useEvents.ts:1-417
+- [ ] [P2] [Frontend] Extract hook logic from useSupervisorAlerts (409 LOC) - split alert management - src/hooks/useSupervisorAlerts.ts:1-409
+- [ ] [P2] [Frontend] Error handling: console.error in useChat lacks structured error reporting - src/hooks/useChat.ts:462
+- [ ] [P2] [Frontend] Error handling: console.error in useEvents lacks structured error reporting - src/hooks/useEvents.ts:53
+- [ ] [P2] [Frontend] Unused parameter: defaultStatus in TaskCreationForm prop defaults to undefined - src/components/tasks/TaskCreationForm.tsx:59
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Remove console.debug statements from useChat (agent event tracing) - src/hooks/useChat.ts:368,404,431
+- [ ] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
+- [ ] [P3] [Frontend] Remove eslint-disable comment from useTaskExecutionState exhaustive-deps - src/hooks/useTaskExecutionState.ts:141
+- [ ] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - src/hooks/useChat.test.ts:8,29,37,42,58,103
+
 ## P3 - Low Impact
 
 ### Frontend
@@ -25,9 +43,9 @@ _No active P2 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20)
-- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20)
-- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20)
+- [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20:1)
+- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20:1)
+- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20:1)
 - [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20)
 - [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18)
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18)
