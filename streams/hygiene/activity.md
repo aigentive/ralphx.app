@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:10:35 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 4/10 completed, polish: 11/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 11 active items, polish: 12 active items)
+
+**Validation:**
+- Checked 3 PRD-deferred items:
+  - App.tsx ~420 Open diff viewer (PRD:20:1:1 → PRD:20:1:1:1): TODO still exists at line 784 → **Counter incremented**
+  - TaskFullView.tsx ~100 Edit task modal (PRD:18:1:1 → PRD:18:1:1:1): No TODO at line 100 (status label config) → **Counter incremented**
+  - TaskFullView.tsx ~120 Archive task (PRD:18:1 → PRD:18:1:1): TODO still exists at line 217 → **Counter incremented**
+
+**Result:** 3 validation counters incremented
+
+---
+
 ### 2026-01-28 23:01:35 - Backlog Maintenance
 
 **Archive:**

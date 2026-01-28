@@ -39,9 +39,9 @@ _No active P2 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20:1:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18:1:1)
-- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20:1:1:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18:1:1:1)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21:1)
 - [ ] Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88 (was line ~50)
@@ -61,9 +61,9 @@ _No active P2 items._
 - [x] [P3] [Frontend] Remove console.log from IntegratedChatPanel debug statement - src/components/Chat/IntegratedChatPanel.tsx:124
 - [x] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
 - [x] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
-- [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
-- [ ] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
-- [ ] [P3] [Frontend] Remove console.log statement - src/components/Ideation/useIdeationHandlers.ts:74
+- [ ] ~~[P3] [Frontend] Remove console.log stub from event handler~~ (stale - no console.log present at line 263)
+- [x] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
+- [x] [P3] [Frontend] Remove console.log statement - src/components/Ideation/useIdeationHandlers.ts:74
 - [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useIntegratedChatHandlers.ts:97,132,172
 - [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useAgentEvents.ts:123,159,186
 - [ ] [P3] [Frontend] Remove console.log statements from production code - src/hooks/useIntegratedChatEvents.ts:71,119
@@ -75,6 +75,6 @@ _No active P2 items._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 13 (3 excluded, 9 deferred to PRD, 1 reactivated from validation)
+**Active items:** 12 (3 excluded, 9 deferred to PRD)
 **Completed:** 7
-**Validated:** 8 strikethroughs (2026-01-28) - 4 archived, 1 reactivated, 3 incremented
+**Validated:** 11 strikethroughs (2026-01-28) - 4 archived, 1 reactivated, 6 incremented

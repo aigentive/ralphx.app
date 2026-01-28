@@ -71,7 +71,6 @@ export function useIdeationHandlers(
 
   const handleUndoSync = useCallback(() => {
     if (!syncNotification) return;
-    console.log("Undo sync - restoring proposals:", syncNotification.previousStates);
     dismissSyncNotification();
     setHighlightedProposalIds(new Set());
   }, [syncNotification, dismissSyncNotification]);

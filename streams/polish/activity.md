@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-28 23:10:43 - Remove console.log from useIdeationHandlers
+**What:**
+- File: src/components/Ideation/useIdeationHandlers.ts:74
+- Change: Removed debug console.log statement from handleUndoSync callback
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passes)
+
+---
+
+### 2026-01-28 23:10:36 - Remove console.log from IdeationView inline handler
+**What:**
+- File: src/components/Ideation/IdeationView.tsx:336
+- Change: Removed console.log stub from PlanDisplay onEdit prop, replaced with empty function
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passes)
+
+---
+
 ### 2026-01-28 23:09:02 - Remove console.log from CompletedTaskDetail
 **What:**
 - File: src/components/tasks/detail-views/CompletedTaskDetail.tsx:262
