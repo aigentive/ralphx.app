@@ -66,6 +66,7 @@
 - [x] Extract duplicate SectionTitle component to shared.tsx in detail-views - src/components/tasks/detail-views/*.tsx
 - [x] Extract MODEL_OPTIONS constant from SettingsView.shared.tsx to SettingsView.constants.ts (react-refresh lint) - src/components/settings/SettingsView.shared.tsx:30
 - [x] Remove console.log debug statements from TaskFullView action handlers - src/components/tasks/TaskFullView.tsx:214,219,224,229
+- [x] Remove debug console.log from handleQuestionSubmit - src/App.tsx:352
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20)
 - [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20)
 - [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20)
