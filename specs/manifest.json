@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 21,
+  "currentPhase": 22,
   "phases": [
     {
       "phase": 0,
@@ -161,14 +161,14 @@
       "phase": 21,
       "name": "Execution Control & Task Resumption",
       "prd": "specs/phases/prd_phase_21_execution_control.md",
-      "status": "active",
+      "status": "complete",
       "description": "Wire ExecutionState to spawner, fix stop command, implement startup task resumption"
     },
     {
       "phase": 22,
       "name": "Execution Bar Real-time Updates",
       "prd": "specs/phases/prd_phase_22_execution_bar_realtime.md",
-      "status": "pending",
+      "status": "active",
       "description": "Real-time UI updates for execution status via Tauri events"
     }
   ]
