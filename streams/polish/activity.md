@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-29 01:00:00 - Mark stale item - dependency_service file removed
+**What:**
+- File: streams/polish/backlog.md:87
+- Marked P3 item as stale (dependency_service.rs no longer exists)
+- Item referred to cleaning up unused test fixtures in dependency_service
+
+**Commands:**
+- `find src-tauri -name "*dependency_service*" -type f` (no results)
+
+**Result:** Success (item marked stale, backlog now empty of active work)
+
+---
+
 ### 2026-01-29 00:33:48 - Remove TODO placeholder search implementation in task_context_commands
 **What:**
 - File: src-tauri/src/commands/task_context_commands.rs
