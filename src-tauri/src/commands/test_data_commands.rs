@@ -203,12 +203,9 @@ async fn seed_ideation(state: State<'_, AppState>) -> Result<SeedDataResponse, S
     let mut response = seed_kanban(state.clone()).await?;
     response.profile = "ideation".to_string();
 
-    // TODO: Add ideation sessions and proposals when those repos are available
-    // For now, just return the kanban data with ideation profile name
-    // let session = create_ideation_session(&state, &project_id, ...).await?;
-    // response.sessions_created = 1;
-    // let proposals = create_proposals(&state, &session.id, ...).await?;
-    // response.proposals_created = proposals;
+    // Note: Ideation session and proposal seeding not yet implemented
+    // Repositories are available in AppState but seeding logic requires design
+    // (initial session state, sample proposals, dependencies between proposals, etc.)
 
     Ok(response)
 }

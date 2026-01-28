@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-28 23:11:35 - Resolve TODO comment about ideation sessions
+**What:**
+- File: src-tauri/src/commands/test_data_commands.rs:206
+- Removed outdated TODO comment about adding ideation sessions and proposals
+- Replaced with accurate Note explaining that repositories exist but seeding logic requires design
+- Reason: Repositories (ideation_session_repo, task_proposal_repo) are now available in AppState
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test --lib` (passed - 3225 tests)
+
+**Result:** Success (TODO comment updated to reflect current state)
+
+---
+
 ### 2026-01-28 23:05:31 - Remove TODO comment about database search optimization
 **What:**
 - File: src-tauri/src/http_server.rs:1296
