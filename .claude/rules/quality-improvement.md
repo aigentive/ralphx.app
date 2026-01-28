@@ -8,24 +8,41 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
 
 ```
 1. Read logs/code-quality.md
-2. Pick ONE item (P0 first, then by task scope: small=P3, medium=P2, large=P1)
-3. VERIFY:
+2. P0 EXISTS? → MUST pick P0. No exceptions. No scope matching. No deferral.
+3. No P0? → Pick by task scope: small=P3, medium=P2, large=P1
+4. VERIFY (P1/P2/P3 only — P0 is NEVER deferred):
    a. Issue still exists? (read file:line)
    b. NOT in active PRD? (cross-reference with current phase task list)
    c. CRITICAL: Check against documented LOC limits (see below)
    ├── Valid & not in PRD? → Execute → Mark [x] → Commit
    ├── Stale (issue genuinely fixed)? → Strikethrough ~~text~~ (stale) → Pick next
    └── In PRD? → Strikethrough ~~text~~ (PRD) → Pick next
-4. No valid items at current scope? → ESCALATE to next priority tier (P3→P2→P1)
-5. ALL items exhausted/marked? → Run DEFERRED VALIDATION (below)
-6. Still nothing? → Launch Explore agent → Replenish → Pick ONE → Execute
+5. No valid items at current scope? → ESCALATE: P3→P2→P1→Explore
+6. ALL items exhausted/marked? → Run DEFERRED VALIDATION (below)
+7. Still nothing? → Launch Explore agent → Replenish → Pick ONE → Execute
 ```
+
+## P0 Rules (CANNOT BE BYPASSED)
+
+**P0 items are phase gaps — bugs where code exists but isn't wired up.**
+
+```
+P0 EXISTS? → You MUST fix it. Period.
+- NO scope matching ("too big for my task")
+- NO stale marking ("looks fine to me")
+- NO PRD deferral (P0 comes from COMPLETED phases, not active PRD)
+- NO deferred validation (P0 cannot be validated away)
+```
+
+**Why so strict?** P0 items represent shipped bugs. The feature "works" in isolation but users can't access it. Every iteration that passes without fixing P0 is an iteration where the bug remains in production.
 
 ## Deferred Validation Protocol
 
-**When:** After all active items are exhausted (step 5), before launching Explore agent.
+**When:** After all active P1/P2/P3 items are exhausted, before launching Explore agent.
 
-**Applies to:** All strikethrough items EXCEPT `(excluded)` which is a permanent policy decision.
+**Applies to:** P1/P2/P3 strikethrough items EXCEPT `(excluded)`.
+
+**Does NOT apply to:** P0 items. P0 cannot be deferred or strikethrough'd.
 
 **Process:**
 ```
@@ -93,14 +110,14 @@ If an item references an excluded path, mark it: `[ ] ~~text~~ (excluded)`
 
 ## Priority & Scope Matching
 
-| Priority | When | Pick Order |
-|----------|------|------------|
-| **P0 - Critical** | Gaps from phase verification | **ALWAYS FIRST** (any task size) |
-| P1 - High | Architecture, major refactors | Large tasks (>150 LOC) |
-| P2 - Medium | Error handling, extraction | Medium tasks (50-150 LOC) |
-| P3 - Low | Lint, naming, cleanup | Small tasks (<50 LOC) |
+| Priority | When | Pick Order | Can Defer? |
+|----------|------|------------|------------|
+| **P0 - Critical** | Gaps from phase verification | **ALWAYS FIRST** | **NO — NEVER** |
+| P1 - High | Architecture, major refactors | Large tasks (>150 LOC) | Yes (stale/PRD) |
+| P2 - Medium | Error handling, extraction | Medium tasks (50-150 LOC) | Yes (stale/PRD) |
+| P3 - Low | Lint, naming, cleanup | Small tasks (<50 LOC) | Yes (stale/PRD) |
 
-**P0 items are picked before any P1/P2/P3 regardless of task size.**
+**P0 blocks ALL other work.** You cannot pick P1/P2/P3 while P0 exists.
 
 ## Quality Targets
 
@@ -140,6 +157,12 @@ Group by: Frontend P1, P2, P3 then Backend P1, P2, P3
 ## File Format: logs/code-quality.md
 
 ```markdown
+## P0 - Critical (Phase Gaps)
+
+> Items here BLOCK all other quality work. Fix before picking P1/P2/P3.
+
+- [ ] [Frontend] Orphaned: View Registry not wired - src/components/tasks/TaskDetailOverlay.tsx:508
+
 ## Frontend (src/)
 
 ### P1 - High Impact
@@ -152,12 +175,14 @@ Group by: Frontend P1, P2, P3 then Backend P1, P2, P3
 - [ ] Fix unused import - src/utils/helpers.ts:3
 
 ## Backend (src-tauri/)
-[same structure]
+[same structure: P1, P2, P3]
 
 ## Last Explored
 **Date:** YYYY-MM-DD HH:MM
 **Areas:** src/, src-tauri/
 ```
+
+**P0 section is at the TOP** — agents see it first and cannot miss it.
 
 ## TODO Tracking (During Task Execution)
 

@@ -3,9 +3,10 @@
 > Full protocol: `.claude/rules/quality-improvement.md` | LOC limits: `.claude/rules/code-quality-standards.md`
 
 ## Quick Reference
-- **Pick:** P0 first → then by scope (small=P3, medium=P2, large=P1)
-- **Verify:** Issue exists? Not in PRD? → Execute → `[x]` → `refactor:` commit
-- **Defer:** Fixed=`(stale)` | Planned=`(PRD:N)` | Counter: `→:1→:2→archive`
+- **P0 EXISTS? → STOP. Fix P0 first. No exceptions. No scope matching. No deferral.**
+- **No P0?** → Pick by scope (small=P3, medium=P2, large=P1)
+- **Verify (P1-P3 only):** Issue exists? Not in PRD? → Execute → `[x]` → `refactor:` commit
+- **Defer (P1-P3 only):** Fixed=`(stale)` | Planned=`(PRD:N)` | Counter: `→:1→:2→archive`
 - **Cleanup:** `[x]` > 10/section → `logs/code-quality-archive.md`
 
 ## Markers
@@ -16,10 +17,16 @@
 
 ---
 
-## Frontend (src/)
+## P0 - Critical (Phase Gaps)
 
-### P0 - Critical (Phase Gaps)
-<!-- Gaps found during phase verification go here - pick FIRST -->
+> **BLOCKING:** Fix ALL P0 items before touching P1/P2/P3. Cannot be deferred, marked stale, or skipped.
+
+<!-- Gaps found during phase verification go here -->
+- [x] [Backend] Fix direct status update in chat_service.rs (lines 824-830) - use TaskTransitionService instead of direct DB update - src-tauri/src/application/chat_service.rs:824
+
+---
+
+## Frontend (src/)
 
 ### P1 - High Impact
 - [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/ChatPanel.tsx:473
@@ -70,10 +77,6 @@
 
 ## Backend (src-tauri/)
 
-### P0 - Critical (Phase Gaps)
-<!-- Gaps found during phase verification go here - pick FIRST -->
-- [x] Fix direct status update in chat_service.rs (lines 824-830) - use TaskTransitionService instead of direct DB update - src-tauri/src/application/chat_service.rs:824
-
 ### P1 - High Impact
 - [ ] Split ideation_commands.rs (2580 LOC) - extract session management and proposal handlers - src-tauri/src/commands/ideation_commands.rs:1-50
 - [ ] Split task_commands.rs (1867 LOC) - extract task mutation and query handlers - src-tauri/src/commands/task_commands.rs:1-50
@@ -92,6 +95,7 @@
 
 ### P2 - Medium Impact
 - [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1294
+- [x] Extract emit_task_lifecycle_event helper for consistent task event emission - src-tauri/src/commands/task_commands.rs:359-369
 - [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs:113~~ (stale:1 - TODO exists at different line, feature-level work)
 - [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs:206~~ (stale:1 - TODO exists, feature-level work)
 - [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:530~~ (stale:1 - TODO exists, feature-level work)
@@ -104,7 +108,7 @@
 - [x] Extract emit_step_updated helper in task_step_commands.rs (711 LOC → 689 LOC) - src-tauri/src/commands/task_step_commands.rs:16-26
 - [x] Extract Column.utils.tsx from Column.tsx (392 LOC → 350 LOC) - src/components/tasks/TaskBoard/Column.tsx
 - [x] Extract ReviewStateBadge from TaskCard.tsx (621 LOC → 531 LOC) - src/components/tasks/TaskBoard/TaskCard.tsx
-- [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale:1 - file is 336 LOC, under 500 limit)
+- [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale:2 - file is 336 LOC, under 500 limit - ARCHIVED)
 
 ### P3 - Low Impact
 - [x] Replace `.unwrap()` with `.expect()` in setup_test_state for better debugging - src-tauri/src/commands/execution_commands.rs:498-527
@@ -120,8 +124,8 @@
 - [x] Extract spawner.rs tests (560 LOC → 220 LOC) - extracted tests to spawner_tests.rs - src-tauri/src/infrastructure/agents/spawner.rs:1-50
 - [x] Make AGENT_ACTIVE_STATUSES public for reuse by StartupJobRunner - src-tauri/src/commands/execution_commands.rs:12
 - [x] Remove stale comment about execute_entry_actions being private - src-tauri/src/application/startup_jobs.rs:109
-- [ ] ~~Add contextual error messages in artifact type parsing failures - src-tauri/src/commands/artifact_commands.rs:158,216,357~~ (stale:1 - all locations already have contextual messages)
-- [ ] ~~Extract duplicate parse error handling pattern in workflow/ideation commands - src-tauri/src/commands/workflow_commands.rs:25~~ (stale:1 - not a duplicate pattern, each is specific to its context)
+- [ ] ~~Add contextual error messages in artifact type parsing failures - src-tauri/src/commands/artifact_commands.rs:158,216,357~~ (stale:2 - all locations already have contextual messages - ARCHIVED)
+- [ ] ~~Extract duplicate parse error handling pattern in workflow/ideation commands - src-tauri/src/commands/workflow_commands.rs:25~~ (stale:2 - not a duplicate pattern, each is specific to its context - ARCHIVED)
 - [x] Use ProfileRole Display/FromStr traits instead of custom role_to_string/string_to_role helpers - src-tauri/src/infrastructure/sqlite/sqlite_agent_profile_repo.rs:34-55
 
 ---
