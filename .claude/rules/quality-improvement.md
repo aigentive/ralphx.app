@@ -13,8 +13,8 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
    a. Issue still exists? (read file:line, check if problem remains)
    b. NOT in active PRD? (cross-reference with current phase task list)
    ├── Valid & not in PRD? → Execute → Mark [x] → Commit
-   ├── Stale (already fixed)? → Mark [~] → Pick next
-   └── In PRD (planned work)? → Mark [P] → Pick next
+   ├── Stale (already fixed)? → Strikethrough ~~text~~ (stale) → Pick next
+   └── In PRD (planned work)? → Strikethrough ~~text~~ (PRD) → Pick next
 4. List empty/all marked? → Launch Explore agent → Update file → Pick ONE → Verify → Execute
 ```
 

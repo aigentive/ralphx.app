@@ -9,12 +9,15 @@
    - Issue still exists? (read file:line)
    - NOT in active PRD? (cross-reference with current phase task list)
 4. Valid & not in PRD? → Execute the fix, mark `[x]`, commit with `refactor:` prefix
-5. Stale (already fixed)? → Mark `[~]` and pick next
-6. In PRD (planned work)? → Mark `[P]` and pick next
+5. Stale (already fixed)? → Strikethrough text `~~text~~ (stale)`, pick next
+6. In PRD (planned work)? → Strikethrough text `~~text~~ (PRD)`, pick next
 7. If all items done/marked → Launch Explore agent to replenish
 
 ## Markers
-- `[ ]` Pending | `[x]` Done | `[~]` Stale | `[P]` PRD-planned (skip)
+- `[ ]` Pending
+- `[x]` Done
+- `[ ] ~~text~~ (stale)` — Strikethrough for already fixed
+- `[ ] ~~text~~ (PRD)` — Strikethrough for PRD-planned tasks
 
 ---
 
@@ -85,8 +88,8 @@
 - [ ] Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs
 
 ### P3 - Low Impact
-- [~] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs (STALE: TODO not found)
-- [~] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs (STALE: Review context not yet added, pending future task)
+- [ ] ~~Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs~~ (stale: TODO not found)
+- [ ] ~~Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs~~ (stale: pending future task)
 - [ ] Review methodology.rs entity type definitions (1363 LOC) for extraction opportunities - src-tauri/src/domain/entities/methodology.rs:1-50
 - [ ] Review artifact_flow.rs entity type definitions (1389 LOC) - src-tauri/src/domain/entities/artifact_flow.rs:1-50
 - [ ] Review research.rs entity type definitions (1398 LOC) - src-tauri/src/domain/entities/research.rs:1-50
