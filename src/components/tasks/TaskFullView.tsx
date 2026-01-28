@@ -166,10 +166,19 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
   });
 
   // Determine context type based on task status
-  const contextType = useMemo((): "task" | "task_execution" => {
+  const contextType = useMemo((): "task" | "task_execution" | "review" => {
     if (!task) return "task";
+
+    // Review states route to reviewer agent
+    const reviewStatuses: InternalStatus[] = ["reviewing", "review_passed"];
+    if (reviewStatuses.includes(task.internalStatus)) {
+      return "review";
+    }
+
+    // Execution states route to worker agent
     const executingStatuses: InternalStatus[] = [
       "executing",
+      "re_executing",
       "qa_refining",
       "qa_testing",
       "qa_passed",
@@ -180,7 +189,7 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
       : "task";
   }, [task]);
 
-  const isExecuting = contextType === "task_execution";
+  const isExecuting = contextType === "task_execution" || contextType === "review";
 
   // Close on Escape key
   useEffect(() => {
@@ -380,7 +389,7 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
             minWidth: "360px",
           }}
         >
-          <TaskChatPanel taskId={taskId} contextType={contextType} />
+          <TaskChatPanel taskId={taskId} contextType={contextType} taskStatus={task.internalStatus} />
         </div>
       </div>
 

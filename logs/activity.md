@@ -1,10 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 05:01:15
+**Last Updated:** 2026-01-28 11:30:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 17 / 39
-**Current Task:** Implement live/historical chat mode (next)
+**Tasks Completed:** 18 / 39
+**Current Task:** Update context derivation in TaskFullView (next)
+
+---
+
+### 2026-01-28 11:30:00 - Implement live/historical chat mode
+
+**What:**
+- Updated TaskChatPanel to conditionally render chat input based on task state
+- When isLive=true (executing, re_executing, reviewing states): show full chat input with queue support
+- When isLive=false (historical mode): show read-only "Chat ended" message instead of input
+- ChatModeIndicator component already existed - shows "Live" badge with pulse or "Completed" badge
+- Updated TaskFullView to pass taskStatus prop and add review context type routing
+- Added re_executing to execution states and review states (reviewing, review_passed) to review context
+- Quality improvement: Fixed TaskChatPanel messagesData dependency issue by wrapping in useMemo
+- This prevents new array reference on every render, avoiding unnecessary sortedMessages recalculations
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+git commit -m "feat(chat): implement live/historical mode"
+git commit -m "refactor(chat): fix TaskChatPanel messagesData dependency"
+```
+
+**Results:**
+- Chat input now correctly hides when chat session is completed (historical mode)
+- Review context properly routes to reviewer agent in TaskFullView
+- Live/Completed badges display based on task state
+- All type checks and lint checks passing
 
 ---
 
