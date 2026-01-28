@@ -5,6 +5,12 @@
 
 ---
 
+## Archived 2026-01-28
+
+### From polish/backlog.md (PRD-deferred)
+
+- [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20:1:2 - verified removed)
+
 ## Migrated from logs/code-quality.md (2026-01-28)
 
 ### Stale Items (Verified Fixed - Archived 2026-01-28)
