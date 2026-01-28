@@ -100,10 +100,10 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Remove console.error call - src/App.tsx:361
 - [x] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:63
 - [x] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
-- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:213
-- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
-- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221
-- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:225
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:213
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:225
 - [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
 - [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
 
