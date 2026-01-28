@@ -9,6 +9,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { StepList } from "../StepList";
+import { SectionTitle } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { Loader2 } from "lucide-react";
 import type { Task, InternalStatus } from "@/types/task";
@@ -141,12 +142,6 @@ function StatusBadge({ status }: { status: InternalStatus }) {
     >
       {config.label}
     </Badge>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">{children}</h3>
   );
 }
 

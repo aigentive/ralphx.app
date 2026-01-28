@@ -9,6 +9,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { StepList } from "../StepList";
+import { SectionTitle } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { Loader2, AlertTriangle, Bot, User, RotateCcw, FileCode2 } from "lucide-react";
@@ -17,15 +18,6 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface RevisionTaskDetailProps {
   task: Task;
-}
-
-/**
- * SectionTitle - Consistent section header styling
- */
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">{children}</h3>
-  );
 }
 
 /**
