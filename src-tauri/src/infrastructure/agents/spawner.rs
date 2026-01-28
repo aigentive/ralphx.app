@@ -2,10 +2,12 @@
 // Bridges the state machine's AgentSpawner trait to the AgenticClient
 
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
-use crate::domain::agents::{AgentConfig, AgenticClient, AgentRole};
+use crate::domain::agents::{AgentConfig, AgentHandle, AgenticClient, AgentRole};
 use crate::domain::state_machine::AgentSpawner;
 use crate::domain::supervisor::{ErrorInfo, SupervisorEvent, ToolCallInfo};
 use crate::infrastructure::supervisor::EventBus;
@@ -21,6 +23,8 @@ pub struct AgenticClientSpawner {
     working_directory: PathBuf,
     /// Event bus for supervisor events (optional)
     event_bus: Option<Arc<EventBus>>,
+    /// Tracks active agent handles by task_id for wait/stop operations
+    handles: Arc<Mutex<HashMap<String, AgentHandle>>>,
 }
 
 impl AgenticClientSpawner {
@@ -37,6 +41,7 @@ impl AgenticClientSpawner {
             client,
             working_directory,
             event_bus: None,
+            handles: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -121,7 +126,11 @@ impl AgentSpawner for AgenticClientSpawner {
 
         // Spawn and handle errors
         match self.client.spawn_agent(config).await {
-            Ok(_) => {}
+            Ok(handle) => {
+                // Store handle for wait/stop operations
+                let mut handles = self.handles.lock().await;
+                handles.insert(task_id.to_string(), handle);
+            }
             Err(e) => {
                 // Emit error event
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "spawn_agent"));
@@ -134,14 +143,32 @@ impl AgentSpawner for AgenticClientSpawner {
         self.spawn(agent_type, task_id).await;
     }
 
-    async fn wait_for(&self, _agent_type: &str, _task_id: &str) {
-        // TODO: Implement handle tracking to wait for specific agent
-        // For now, this is a no-op since we don't track handles by task_id yet
+    async fn wait_for(&self, _agent_type: &str, task_id: &str) {
+        // Remove handle when done waiting (agent has completed)
+        let handle = {
+            let mut handles = self.handles.lock().await;
+            handles.remove(task_id)
+        };
+
+        if let Some(handle) = handle {
+            // Wait for agent to complete
+            if let Err(e) = self.client.wait_for_completion(&handle).await {
+                self.emit_error(task_id, ErrorInfo::new(e.to_string(), "wait_for"));
+            }
+        }
     }
 
-    async fn stop(&self, _agent_type: &str, _task_id: &str) {
-        // TODO: Implement handle tracking to stop specific agent
-        // For now, this is a no-op since we don't track handles by task_id yet
+    async fn stop(&self, _agent_type: &str, task_id: &str) {
+        let handle = {
+            let mut handles = self.handles.lock().await;
+            handles.remove(task_id)
+        };
+
+        if let Some(handle) = handle {
+            if let Err(e) = self.client.stop_agent(&handle).await {
+                self.emit_error(task_id, ErrorInfo::new(e.to_string(), "stop_agent"));
+            }
+        }
     }
 }
 
