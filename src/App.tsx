@@ -30,7 +30,8 @@ import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
 import type { ChatContext, ViewType } from "@/types/chat";
-import type { ApplyProposalsInput, TaskProposal } from "@/types/ideation";
+import type { ApplyProposalsInput } from "@/types/ideation";
+import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useTasks } from "@/hooks/useTasks";
@@ -169,8 +170,8 @@ function AppContent() {
   // Sync proposals from sessionData to the store
   useEffect(() => {
     if (sessionData?.proposals) {
-      // Cast API response to store type (string -> enum fields are compatible at runtime)
-      setProposals(sessionData.proposals as unknown as TaskProposal[]);
+      // Convert API response to store type using proper mapping function
+      setProposals(sessionData.proposals.map(toTaskProposal));
     }
   }, [sessionData?.proposals, setProposals]);
 

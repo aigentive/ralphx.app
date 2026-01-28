@@ -7,7 +7,13 @@ import type {
   IdeationSettingsResponse,
 } from "../types/ideation-config";
 import { IdeationSettingsResponseSchema } from "../types/ideation-config";
-import type { IdeationSessionStatus } from "../types/ideation";
+import type {
+  IdeationSessionStatus,
+  TaskProposal,
+  Priority,
+  Complexity,
+  ProposalStatus,
+} from "../types/ideation";
 
 // ============================================================================
 // Response Schemas (matching Rust backend serialization with snake_case)
@@ -295,6 +301,38 @@ function transformProposal(raw: z.infer<typeof TaskProposalResponseSchema>): Tas
     sortOrder: raw.sort_order,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+/**
+ * Convert TaskProposalResponse to TaskProposal (store type)
+ *
+ * This function properly types the enum fields that come as strings from the API
+ * to the branded enum types expected by the store.
+ */
+export function toTaskProposal(response: TaskProposalResponse): TaskProposal {
+  return {
+    id: response.id,
+    sessionId: response.sessionId,
+    title: response.title,
+    description: response.description,
+    category: response.category,
+    steps: response.steps,
+    acceptanceCriteria: response.acceptanceCriteria,
+    suggestedPriority: response.suggestedPriority as Priority,
+    priorityScore: response.priorityScore,
+    priorityReason: response.priorityReason,
+    estimatedComplexity: response.estimatedComplexity as Complexity,
+    userPriority: response.userPriority as Priority | null,
+    userModified: response.userModified,
+    status: response.status as ProposalStatus,
+    selected: response.selected,
+    createdTaskId: response.createdTaskId,
+    planArtifactId: response.planArtifactId,
+    planVersionAtCreation: response.planVersionAtCreation,
+    sortOrder: response.sortOrder,
+    createdAt: response.createdAt,
+    updatedAt: response.updatedAt,
   };
 }
 
