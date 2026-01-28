@@ -154,7 +154,7 @@
       "phase": 20,
       "name": "Review System",
       "prd": "specs/phases/prd_phase_20_review_system.md",
-      "status": "active",
+      "status": "complete",
       "description": "AI-powered review system with new states, MCP tools, task-level scoping, and state-specific views"
     }
   ]
