@@ -12,8 +12,16 @@ Execute ONE P1 item, then STOP (no special output).
 
 ## Quick Workflow
 ```
-Read backlog → First [ ] item (not struck) → Verify still exists → Execute split → Lint → Mark [x] → Log → Commit → STOP
+Read backlog → First [ ] item (not struck) → Verify still exists → Execute split → Lint → Mark [x] → Log → Commit (only your files) → STOP
 ```
+
+## Git Commit Rules (CRITICAL - parallel streams)
+
+**NEVER use `git add .` or `git add -A`** — other streams have uncommitted changes!
+
+1. Track files YOU modified during this task
+2. `git add <file1> <file2> ...` — only your files
+3. Commit with prefix: `refactor(scope):`
 
 ## IDLE Signal (ONLY when truly empty)
 
