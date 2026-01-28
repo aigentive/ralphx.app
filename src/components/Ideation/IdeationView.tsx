@@ -333,7 +333,7 @@ export function IdeationView({
                         plan={planArtifact}
                         showApprove={ideationSettings?.requirePlanApproval ?? false}
                         linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
-                        onEdit={() => console.log("Edit plan:", planArtifact.id)}
+                        onEdit={() => {}}
                         isExpanded={isPlanExpanded}
                         onExpandedChange={setIsPlanExpanded}
                       />
