@@ -48,16 +48,16 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
-- [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
-- [ ] [P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7
+- [ ] ~~[P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6~~ (excluded)
+- [ ] ~~[P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7~~ (excluded)
+- [ ] ~~[P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7~~ (excluded)
 - [x] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useSupervisorAlerts.listener.ts:100
 - [x] [P3] [Frontend] Error handling: Check empty catch blocks - src/components/Chat/ChatPanel.tsx:342
 
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 16 (3 excluded, 10 deferred to PRD)
-**Completed:** 3
+**Active items:** 0 (6 excluded, 10 deferred to PRD)
+**Completed:** 8
 **Validated:** 39 strikethroughs (2026-01-28 x24) - 6 archived, 1 reactivated, 32 incremented
-**Last maintenance:** 2026-01-28 (validated 3 strikethroughs, incremented 3 counters)
+**Last maintenance:** 2026-01-28 (marked 3 ui/* items as excluded)
