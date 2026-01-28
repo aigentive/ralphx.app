@@ -204,7 +204,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Create streams/archive/completed.md with header: '# Archived Completed Items'",
       "Commit: chore(streams): create initial backlog and activity files"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
