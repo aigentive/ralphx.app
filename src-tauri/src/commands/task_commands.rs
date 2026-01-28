@@ -326,6 +326,36 @@ pub async fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), S
         .map_err(|e| e.to_string())
 }
 
+/// Emit execution:queue_changed event with current count of tasks in Ready status.
+///
+/// This is called when a task moves to or from Ready status, providing real-time
+/// queue count updates to the frontend's ExecutionControlBar.
+async fn emit_queue_changed(
+    state: &State<'_, AppState>,
+    project_id: &ProjectId,
+    app: &tauri::AppHandle,
+) {
+    // Count tasks currently in Ready status
+    let queued_count = match state.task_repo.get_by_status(project_id, InternalStatus::Ready).await
+    {
+        Ok(tasks) => tasks.len(),
+        Err(e) => {
+            tracing::warn!("Failed to count Ready tasks for queue_changed event: {}", e);
+            return;
+        }
+    };
+
+    let _ = app.emit(
+        "execution:queue_changed",
+        serde_json::json!({
+            "queuedCount": queued_count,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        }),
+    );
+
+    tracing::debug!(queued_count, "Emitted execution:queue_changed event");
+}
+
 /// Move a task to a new status (for Kanban drag-drop)
 ///
 /// This command uses the TaskTransitionService to properly trigger state machine
@@ -357,6 +387,17 @@ pub async fn move_task(
         .parse()
         .map_err(|_| format!("Invalid status: {}", toStatus))?;
 
+    // Get the old task to know its current status before transition
+    let old_task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    let old_status = old_task.internal_status;
+    let project_id = old_task.project_id.clone();
+
     // Create the transition service with all required dependencies
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
@@ -368,7 +409,7 @@ pub async fn move_task(
         Arc::clone(&state.message_queue),
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
-        Some(app),
+        Some(app.clone()),
     );
 
     // Transition the task - this triggers entry actions like spawning workers!
@@ -376,6 +417,11 @@ pub async fn move_task(
         .transition_task(&task_id, new_status)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Emit queue_changed event if the move affects Ready status
+    if old_status == InternalStatus::Ready || new_status == InternalStatus::Ready {
+        emit_queue_changed(&state, &project_id, &app).await;
+    }
 
     Ok(TaskResponse::from(task))
 }
@@ -1865,5 +1911,66 @@ mod tests {
         // Verify no steps exist
         let task_steps = state.task_step_repo.get_by_task(&created_task.id).await.unwrap();
         assert_eq!(task_steps.len(), 0);
+    }
+
+    // ========================================
+    // Queue Changed Event Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_ready_status_count_for_queue_changed() {
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+
+        // Initially no tasks in Ready status
+        let ready_tasks = state.task_repo.get_by_status(&project_id, InternalStatus::Ready).await.unwrap();
+        assert_eq!(ready_tasks.len(), 0);
+
+        // Create a task in Ready status
+        let mut task1 = Task::new(project_id.clone(), "Task 1".to_string());
+        task1.internal_status = InternalStatus::Ready;
+        state.task_repo.create(task1).await.unwrap();
+
+        let ready_tasks = state.task_repo.get_by_status(&project_id, InternalStatus::Ready).await.unwrap();
+        assert_eq!(ready_tasks.len(), 1);
+
+        // Add another Ready task
+        let mut task2 = Task::new(project_id.clone(), "Task 2".to_string());
+        task2.internal_status = InternalStatus::Ready;
+        state.task_repo.create(task2).await.unwrap();
+
+        let ready_tasks = state.task_repo.get_by_status(&project_id, InternalStatus::Ready).await.unwrap();
+        assert_eq!(ready_tasks.len(), 2);
+
+        // Add a non-Ready task (should not affect count)
+        let mut task3 = Task::new(project_id.clone(), "Task 3".to_string());
+        task3.internal_status = InternalStatus::Executing;
+        state.task_repo.create(task3).await.unwrap();
+
+        let ready_tasks = state.task_repo.get_by_status(&project_id, InternalStatus::Ready).await.unwrap();
+        assert_eq!(ready_tasks.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_queue_change_detection_logic() {
+        // Test the logic for detecting when queue_changed should be emitted
+        let old_status = InternalStatus::Backlog;
+        let new_status = InternalStatus::Ready;
+
+        // Should emit: moving to Ready
+        let should_emit = old_status == InternalStatus::Ready || new_status == InternalStatus::Ready;
+        assert!(should_emit);
+
+        // Should emit: moving from Ready
+        let old_status = InternalStatus::Ready;
+        let new_status = InternalStatus::Executing;
+        let should_emit = old_status == InternalStatus::Ready || new_status == InternalStatus::Ready;
+        assert!(should_emit);
+
+        // Should NOT emit: neither is Ready
+        let old_status = InternalStatus::Backlog;
+        let new_status = InternalStatus::Blocked;
+        let should_emit = old_status == InternalStatus::Ready || new_status == InternalStatus::Ready;
+        assert!(!should_emit);
     }
 }
