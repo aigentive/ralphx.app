@@ -34,12 +34,17 @@ export function ResearchPanel() {
   const isCustom = selectedPreset === "custom";
 
   const handleLaunch = useCallback(() => {
+    // Note: brief and depth are prepared for API integration but not yet used
+    // @ts-expect-error Prepared for API integration
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const brief: ResearchBrief = {
       question,
       constraints: [],
       ...(context && { context }),
       ...(scope && { scope }),
     };
+    // @ts-expect-error Prepared for API integration
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const depth: ResearchDepth = isCustom
       ? {
           type: "custom",
@@ -50,10 +55,6 @@ export function ResearchPanel() {
           },
         }
       : { type: "preset", preset: selectedPreset as ResearchDepthPreset };
-
-    // Suppress unused variable warnings until API integration
-    void brief;
-    void depth;
 
     setIsLaunching(true);
     // Simulate launch

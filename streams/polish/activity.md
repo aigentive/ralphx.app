@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-28 23:26:41 - Clean up unused variable suppressions in ResearchPanel
+**What:**
+- File: src/components/ExtensibilityView.ResearchPanel.tsx:54-56
+- Removed void brief and void depth suppressions (lines 54-56)
+- Replaced with proper eslint-disable-next-line and @ts-expect-error comments
+- Variables brief and depth are prepared for future API integration (see TODO at line 61)
+- Proper annotation instead of void suppression improves code clarity
+
+**Commands:**
+- `npm run lint -- src/components/ExtensibilityView.ResearchPanel.tsx`
+- `npm run typecheck`
+
+**Result:** Success (no errors, only pre-existing warnings in other files)
+
+---
+
 ### 2026-01-29 02:15:00 - Resolve TODO comment about streaming implementation
 **What:**
 - File: src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
