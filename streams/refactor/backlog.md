@@ -12,7 +12,7 @@
 
 ## Backend (src-tauri/)
 
-- [ ] Split ideation_commands.rs (2580 LOC) - extract session management and proposal handlers - src-tauri/src/commands/ideation_commands.rs:1-50
+- [x] Split ideation_commands.rs (2595 LOC → 1660 LOC excluding tests) - extracted to 7 focused modules: types, session, proposals, dependencies, apply, chat, orchestrator - src-tauri/src/commands/ideation_commands/mod.rs:1-50
 - [ ] Split task_commands.rs (1867 LOC) - extract task mutation and query handlers - src-tauri/src/commands/task_commands.rs:1-50
 - [ ] Split chat_service.rs (2039 LOC) - extract message handling and streaming logic - src-tauri/src/application/chat_service.rs:1-50
 - [ ] Split apply_service.rs (1833 LOC) - extract proposal application handlers - src-tauri/src/application/apply_service.rs:1-50
@@ -28,4 +28,4 @@
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 12 | **Completed:** 3 | **Archived:** 1
+**Active items:** 11 | **Completed:** 4 | **Archived:** 1
