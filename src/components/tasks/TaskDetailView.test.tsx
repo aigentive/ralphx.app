@@ -315,13 +315,6 @@ describe("TaskDetailView", () => {
   });
 
   describe("status display", () => {
-    it("should format status label correctly", () => {
-      const taskWithExecDone = { ...mockTask, internalStatus: "execution_done" as const };
-      renderWithProviders(<TaskDetailView task={taskWithExecDone} />);
-      const statusBadge = screen.getByTestId("task-detail-status");
-      expect(statusBadge).toHaveAttribute("data-status", "execution_done");
-    });
-
     it("should apply appropriate color for approved status", () => {
       const approvedTask = { ...mockTask, internalStatus: "approved" as const };
       renderWithProviders(<TaskDetailView task={approvedTask} />);

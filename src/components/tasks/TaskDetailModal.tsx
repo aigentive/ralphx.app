@@ -76,11 +76,6 @@ const STATUS_CONFIG: Record<
     bg: "rgba(255, 107, 53, 0.15)",
     text: "var(--accent-primary)",
   },
-  execution_done: {
-    label: "Execution Done",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
-  },
   qa_refining: {
     label: "QA Refining",
     bg: "rgba(255, 107, 53, 0.15)",
@@ -125,6 +120,21 @@ const STATUS_CONFIG: Record<
     label: "Cancelled",
     bg: "var(--bg-hover)",
     text: "var(--text-muted)",
+  },
+  reviewing: {
+    label: "AI Review in Progress",
+    bg: "rgba(59, 130, 246, 0.15)",
+    text: "var(--status-info)",
+  },
+  review_passed: {
+    label: "AI Review Passed",
+    bg: "rgba(16, 185, 129, 0.15)",
+    text: "var(--status-success)",
+  },
+  re_executing: {
+    label: "Re-executing",
+    bg: "rgba(255, 107, 53, 0.15)",
+    text: "var(--accent-primary)",
   },
 };
 
@@ -263,16 +273,18 @@ export function TaskDetailModal({
   const hasContext = !!(task.sourceProposalId || task.planArtifactId);
 
   // Determine if task is editable
-  // System-controlled statuses: executing, execution_done, qa_*, pending_review, revision_needed
+  // System-controlled statuses: executing, qa_*, pending_review, revision_needed, reviewing, review_passed, re_executing
   const systemControlledStatuses: InternalStatus[] = [
     "executing",
-    "execution_done",
     "qa_refining",
     "qa_testing",
     "qa_passed",
     "qa_failed",
     "pending_review",
     "revision_needed",
+    "reviewing",
+    "review_passed",
+    "re_executing",
   ];
 
   const isArchived = !!task.archivedAt;

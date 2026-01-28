@@ -11,8 +11,8 @@ import {
 } from "./status";
 
 describe("InternalStatusSchema", () => {
-  it("should have exactly 14 status values", () => {
-    expect(INTERNAL_STATUS_VALUES.length).toBe(14);
+  it("should have exactly 13 status values", () => {
+    expect(INTERNAL_STATUS_VALUES.length).toBe(13);
   });
 
   it("should parse all valid status values", () => {
@@ -21,7 +21,6 @@ describe("InternalStatusSchema", () => {
       "ready",
       "blocked",
       "executing",
-      "execution_done",
       "qa_refining",
       "qa_testing",
       "qa_passed",
@@ -72,10 +71,9 @@ describe("Status Categories", () => {
     expect(IDLE_STATUSES).toContain("blocked");
   });
 
-  it("should have 6 active statuses", () => {
-    expect(ACTIVE_STATUSES.length).toBe(6);
+  it("should have 5 active statuses", () => {
+    expect(ACTIVE_STATUSES.length).toBe(5);
     expect(ACTIVE_STATUSES).toContain("executing");
-    expect(ACTIVE_STATUSES).toContain("execution_done");
     expect(ACTIVE_STATUSES).toContain("qa_refining");
     expect(ACTIVE_STATUSES).toContain("qa_testing");
     expect(ACTIVE_STATUSES).toContain("pending_review");
@@ -110,7 +108,7 @@ describe("Status Categories", () => {
     }
   });
 
-  it("should cover all 14 statuses between categories plus qa_passed and qa_failed", () => {
+  it("should cover all 13 statuses between categories plus qa_passed and qa_failed", () => {
     const allCategorized = [
       ...IDLE_STATUSES,
       ...ACTIVE_STATUSES,
@@ -118,7 +116,7 @@ describe("Status Categories", () => {
       "qa_passed",
       "qa_failed",
     ];
-    expect(allCategorized.length).toBe(14);
+    expect(allCategorized.length).toBe(13);
   });
 });
 
@@ -140,7 +138,6 @@ describe("Status Helper Functions", () => {
   describe("isActiveStatus", () => {
     it("should return true for active statuses", () => {
       expect(isActiveStatus("executing")).toBe(true);
-      expect(isActiveStatus("execution_done")).toBe(true);
       expect(isActiveStatus("qa_refining")).toBe(true);
       expect(isActiveStatus("qa_testing")).toBe(true);
       expect(isActiveStatus("pending_review")).toBe(true);

@@ -130,13 +130,15 @@ export function TaskCard({
   const isDraggable = useMemo(() => {
     const nonDraggableStatuses = [
       'executing',
-      'execution_done',
       'qa_refining',
       'qa_testing',
       'qa_passed',
       'qa_failed',
       'pending_review',
       'revision_needed',
+      'reviewing',
+      'review_passed',
+      're_executing',
     ];
     return !nonDraggableStatuses.includes(task.internalStatus);
   }, [task.internalStatus]);

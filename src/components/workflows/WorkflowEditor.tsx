@@ -44,7 +44,6 @@ const STATUS_LABELS: Record<InternalStatus, string> = {
   ready: "Ready",
   blocked: "Blocked",
   executing: "Executing",
-  execution_done: "Execution Done",
   qa_refining: "QA Refining",
   qa_testing: "QA Testing",
   qa_passed: "QA Passed",
@@ -54,6 +53,9 @@ const STATUS_LABELS: Record<InternalStatus, string> = {
   approved: "Approved",
   failed: "Failed",
   cancelled: "Cancelled",
+  reviewing: "AI Review in Progress",
+  review_passed: "AI Review Passed",
+  re_executing: "Re-executing",
 };
 
 // ============================================================================

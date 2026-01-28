@@ -26,7 +26,6 @@ const STATUS_CONFIG: Record<InternalStatus, { label: string; color: string }> = 
   ready: { label: "Ready", color: "var(--status-info)" },
   blocked: { label: "Blocked", color: "var(--status-warning)" },
   executing: { label: "Executing", color: "var(--accent-secondary)" },
-  execution_done: { label: "Execution Done", color: "var(--status-info)" },
   qa_refining: { label: "QA Refining", color: "var(--accent-secondary)" },
   qa_testing: { label: "QA Testing", color: "var(--accent-secondary)" },
   qa_passed: { label: "QA Passed", color: "var(--status-success)" },
@@ -36,6 +35,9 @@ const STATUS_CONFIG: Record<InternalStatus, { label: string; color: string }> = 
   approved: { label: "Approved", color: "var(--status-success)" },
   failed: { label: "Failed", color: "var(--status-error)" },
   cancelled: { label: "Cancelled", color: "var(--text-muted)" },
+  reviewing: { label: "AI Review in Progress", color: "var(--status-info)" },
+  review_passed: { label: "AI Review Passed", color: "var(--status-success)" },
+  re_executing: { label: "Re-executing", color: "var(--accent-primary)" },
 };
 
 function StatusBadge({ status }: { status: InternalStatus }) {

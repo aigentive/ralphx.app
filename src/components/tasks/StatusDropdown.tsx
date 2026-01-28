@@ -33,12 +33,13 @@ interface StatusDropdownProps {
  */
 function getStatusColor(status: string): string {
   // Terminal statuses
-  if (status === "approved") return "var(--status-success)";
+  if (status === "approved" || status === "review_passed") return "var(--status-success)";
   if (status === "failed" || status === "cancelled") return "var(--status-error)";
 
   // Active/working statuses
-  if (status === "executing" || status === "qa_testing") return "var(--status-info)";
+  if (status === "executing" || status === "qa_testing" || status === "reviewing") return "var(--status-info)";
   if (status === "pending_review" || status === "revision_needed") return "var(--status-warning)";
+  if (status === "re_executing") return "var(--accent-primary)";
 
   // Idle statuses
   if (status === "backlog" || status === "ready") return "var(--text-muted)";
@@ -62,7 +63,6 @@ function getStatusLabel(status: string): string {
     ready: "Ready",
     blocked: "Blocked",
     executing: "Executing",
-    execution_done: "Execution Done",
     qa_refining: "QA Refining",
     qa_testing: "QA Testing",
     qa_passed: "QA Passed",
@@ -72,6 +72,9 @@ function getStatusLabel(status: string): string {
     approved: "Approved",
     failed: "Failed",
     cancelled: "Cancelled",
+    reviewing: "AI Review in Progress",
+    review_passed: "AI Review Passed",
+    re_executing: "Re-executing",
   };
   return labels[status] || status;
 }
