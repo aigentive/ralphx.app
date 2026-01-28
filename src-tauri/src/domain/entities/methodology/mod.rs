@@ -661,6 +661,4 @@ impl FromStr for MethodologyStatus {
 }
 
 #[cfg(test)]
-
-#[cfg(test)]
 mod tests;
