@@ -223,7 +223,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test: Verify IDLE detection works (mock test or manual)",
       "Commit: feat(ralph): add IDLE detection and stream prefix to ralph-streams.sh"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "documentation",

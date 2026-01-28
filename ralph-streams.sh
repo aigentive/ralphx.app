@@ -175,16 +175,23 @@ fi
 echo -e "Model: ${GREEN}$MODEL${NC}"
 echo -e "Max iterations: ${GREEN}$MAX_ITERATIONS${NC}"
 echo -e "Prompt file: ${GREEN}$PROMPT_FILE${NC}"
-echo -e "Completion signal: ${GREEN}<promise>COMPLETE</promise>${NC}"
+echo -e "Completion signals: ${GREEN}<promise>COMPLETE</promise>${NC} or ${GREEN}<promise>IDLE</promise>${NC}"
 echo ""
 echo -e "${YELLOW}Starting in 3 seconds... Press Ctrl+C to abort${NC}"
 sleep 3
 echo ""
 
+# Determine stream prefix for output
+if [ "$STREAM_MODE" = true ]; then
+  STREAM_PREFIX="[$STREAM] "
+else
+  STREAM_PREFIX=""
+fi
+
 # Main loop
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
   echo -e "${BLUE}======================================${NC}"
-  echo -e "${BLUE}   Iteration $i of $MAX_ITERATIONS${NC}"
+  echo -e "${BLUE}   ${STREAM_PREFIX}Iteration $i of $MAX_ITERATIONS${NC}"
   echo -e "${BLUE}======================================${NC}"
   echo ""
 
@@ -234,18 +241,20 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   result=$(cat $LOG_FILE 2>/dev/null || echo "")
   echo ""
 
-  # Check for completion signal - only in assistant text output (not file contents in tool results)
-  # Extract just assistant text messages and check for COMPLETE there
+  # Check for completion signals - only in assistant text output (not file contents in tool results)
+  # Extract just assistant text messages and check for COMPLETE or IDLE there
   assistant_text=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text // empty' $LOG_FILE 2>/dev/null | tr '\n' ' ')
+
   if [[ "$assistant_text" == *"<promise>COMPLETE</promise>"* ]]; then
     echo ""
     echo -e "${GREEN}======================================${NC}"
-    echo -e "${GREEN}   ALL TASKS COMPLETE!${NC}"
+    echo -e "${GREEN}   ${STREAM_PREFIX}ALL TASKS COMPLETE!${NC}"
     echo -e "${GREEN}======================================${NC}"
     echo ""
-    echo -e "Finished after ${GREEN}$i${NC} iteration(s)"
+    echo -e "${STREAM_PREFIX}Signal: ${GREEN}COMPLETE${NC}"
+    echo -e "${STREAM_PREFIX}Finished after ${GREEN}$i${NC} iteration(s)"
     echo ""
-    echo "Next steps:"
+    echo "${STREAM_PREFIX}Next steps:"
     echo "  1. Review the completed work in your project"
     if [ "$STREAM_MODE" = true ]; then
       echo "  2. Check streams/${STREAM}/activity.md for the stream log"
@@ -258,8 +267,22 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     exit 0
   fi
 
+  if [[ "$assistant_text" == *"<promise>IDLE</promise>"* ]]; then
+    echo ""
+    echo -e "${YELLOW}======================================${NC}"
+    echo -e "${YELLOW}   ${STREAM_PREFIX}IDLE - No work available${NC}"
+    echo -e "${YELLOW}======================================${NC}"
+    echo ""
+    echo -e "${STREAM_PREFIX}Signal: ${YELLOW}IDLE${NC}"
+    echo -e "${STREAM_PREFIX}No tasks found after ${GREEN}$i${NC} iteration(s)"
+    echo ""
+    echo "${STREAM_PREFIX}The stream will resume when files change (fswatch)."
+    echo ""
+    exit 0
+  fi
+
   echo ""
-  echo -e "${YELLOW}--- End of iteration $i ---${NC}"
+  echo -e "${YELLOW}--- ${STREAM_PREFIX}End of iteration $i ---${NC}"
   echo ""
 
   # Small delay between iterations to prevent hammering

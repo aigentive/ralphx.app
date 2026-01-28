@@ -146,3 +146,23 @@
 - No build commands needed (documentation-only changes)
 
 **Result:** Success
+
+---
+
+### 2026-01-28 19:50:49 - Phase 24 Task 8: Update ralph-streams.sh for IDLE detection
+**What:**
+- Added IDLE signal detection alongside COMPLETE detection
+- Updated completion signal echo to mention both signals
+- Added stream name prefix to output: `[stream] Iteration X of Y`
+- IDLE handler: Shows yellow "IDLE - No work available" message, explains fswatch will resume
+- COMPLETE handler: Shows green "ALL TASKS COMPLETE!" message (unchanged behavior)
+- Both handlers log which signal was detected
+- Stream prefix applied to iteration headers and end markers
+
+**Commands:**
+- `bash -n ralph-streams.sh` → syntax check passed
+- `npm run lint && npm run typecheck` → passed (3 shadcn/ui warnings, 0 errors)
+- `cargo clippy --all-targets --all-features -- -D warnings` → passed
+- `cargo test` → 14 passed
+
+**Result:** Success
