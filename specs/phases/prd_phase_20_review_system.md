@@ -128,7 +128,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: refactor(status): remove ExecutionDone transitional state"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
