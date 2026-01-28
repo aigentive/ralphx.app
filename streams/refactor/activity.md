@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-29 01:12:45 - Split research.rs
+
+**What:**
+- Original file: src-tauri/src/domain/entities/research.rs (1398 LOC)
+- Extracted to:
+  - research/mod.rs (351 LOC) - main business logic with ResearchBrief, ResearchOutput, ResearchProgress, ResearchProcess
+  - research/types.rs (324 LOC) - type definitions with ResearchDepthPreset, CustomDepth, ResearchDepth, ResearchProcessStatus, errors
+  - research/tests.rs (740 LOC) - all 70 unit tests
+- New size: 351 LOC max (75% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/entities/research/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib domain::entities::research`
+
+**Result:** Success - All 70 tests passed, cargo clippy passed with no warnings, all files now under 500 LOC limit
+
+---
+
 ### 2026-01-29 00:34:02 - Split priority_service.rs
 
 **What:**
