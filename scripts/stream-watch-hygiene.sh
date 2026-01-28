@@ -1,13 +1,19 @@
 #!/bin/bash
 # stream-watch-hygiene.sh - fswatch wrapper for hygiene stream
 #
-# Runs the hygiene stream once on startup, then watches for file changes
-# and re-runs when any backlog or archive files are modified.
-# Zero API calls when idle - only runs when work exists.
+# Runs hygiene once on startup, then only on manual trigger.
+# Hygiene is a maintenance task - it doesn't need to react to every backlog change.
+#
+# To trigger manually: touch streams/hygiene/trigger
 
 STREAM="hygiene"
 MODEL="sonnet"
-WATCH_FILES=("streams/refactor/backlog.md" "streams/polish/backlog.md" "streams/features/backlog.md" "streams/archive/completed.md")
+TRIGGER_FILE="streams/hygiene/trigger"
+
+# Create trigger file if it doesn't exist
+touch "$TRIGGER_FILE"
+
+WATCH_FILES=("$TRIGGER_FILE")
 
 # Colors for output
 GREEN='\033[0;32m'

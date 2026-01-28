@@ -42,3 +42,4 @@ screenshots/*
 !screenshots/.gitkeep
 *.db
 .ralph-stop
+streams/hygiene/trigger
