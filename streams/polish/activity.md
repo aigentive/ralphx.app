@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-28 23:56:09 - Unnecessary useMemo: Multiple dependencies in ChatPanel could be optimized
+**What:**
+- File: src/components/Chat/ChatPanel.tsx
+- Change: Removed unnecessary useMemo wrapper from getContextKey() call
+- getContextKey() is a cheap computation (simple string concatenation), no need to memoize
+- Kept useMemo for selector factories (necessary to avoid recreating selectors on each render)
+- Simplified dependency chain: context → contextKey → selectors
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:53:47 - Event listener cleanup: useResizePanel needs useEffect for document listener lifecycle
 **What:**
 - File: src/components/Chat/ResizeablePanel.tsx
