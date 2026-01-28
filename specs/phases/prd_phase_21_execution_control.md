@@ -148,7 +148,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(startup): add StartupJobRunner module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
@@ -162,7 +162,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: refactor(transition): make execute_entry_actions public"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
