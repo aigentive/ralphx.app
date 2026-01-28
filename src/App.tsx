@@ -279,8 +279,8 @@ function AppContent() {
 
     register(shortcut, () => {
       setCurrentViewRef.current("settings");
-    }).catch((err) => {
-      console.warn("Failed to register global shortcut:", err);
+    }).catch(() => {
+      // Ignore registration errors
     });
 
     return () => {

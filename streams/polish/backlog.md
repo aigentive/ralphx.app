@@ -29,8 +29,8 @@ _No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] [P3] [Frontend] Remove console.debug statements from useChat (agent event tracing) - src/hooks/useChat.ts:368,404,431
-- [ ] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from useChat (agent event tracing) - src/hooks/useChat.ts:368,404,431~~ (stale - removed during refactor)
+- [x] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
 - [ ] [P3] [Frontend] Remove eslint-disable comment from useTaskExecutionState exhaustive-deps - src/hooks/useTaskExecutionState.ts:141
 - [ ] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - src/hooks/useChat.test.ts:8,29,37,42,58,103
 

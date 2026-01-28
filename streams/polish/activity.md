@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 22:37:36 - Remove console.warn from App.tsx
+**What:**
+- File: src/App.tsx:283
+- Change: Removed console.warn from global shortcut registration error handler
+- Replaced with silent catch block with inline comment
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (no new lint errors, type checking passes)
+
+---
+
 ### 2026-01-28 20:13:43 - Extract event handling from useChat
 **What:**
 - File: src/hooks/useChat.ts (528 LOC → 344 LOC)
