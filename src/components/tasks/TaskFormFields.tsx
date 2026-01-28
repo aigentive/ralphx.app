@@ -19,16 +19,6 @@ import {
   buttonSecondaryStyles,
 } from "./TaskFormFields.constants";
 
-// Re-export constants for backward compatibility
-export {
-  inputBaseStyles,
-  selectBaseStyles,
-  textareaBaseStyles,
-  labelStyles,
-  buttonPrimaryStyles,
-  buttonSecondaryStyles,
-};
-
 // ============================================================================
 // Form Field Components
 // ============================================================================

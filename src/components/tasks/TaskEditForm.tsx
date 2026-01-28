@@ -19,13 +19,12 @@ import { ACTIVE_STATUSES } from "@/types/status";
 import { Loader2, Plus } from "lucide-react";
 import { StepList } from "./StepList";
 import { useStepMutations } from "@/hooks/useStepMutations";
+import { TaskFormFields, TaskFormActions } from "./TaskFormFields";
 import {
-  TaskFormFields,
-  TaskFormActions,
   inputBaseStyles,
   buttonPrimaryStyles,
   labelStyles,
-} from "./TaskFormFields";
+} from "./TaskFormFields.constants";
 
 // ============================================================================
 // Types
