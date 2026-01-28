@@ -238,3 +238,18 @@
 **Result:** Success (no lint errors, type checking passed)
 
 ---
+
+### 2026-01-28 23:35:12 - Replace promise chain with async/await in useStepEvents
+**What:**
+- File: src/hooks/useStepEvents.ts
+- Change: Refactored cleanup function from .then() promise chain to async/await pattern
+  - Lines 81-86: Replaced .then() calls with async IIFE
+  - Awaited all unlisten promises sequentially
+  - Called unlisten functions after all promises resolved
+- Reason: Improve code readability and consistency with modern async patterns
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success

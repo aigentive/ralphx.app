@@ -76,7 +76,7 @@ _No active P3 items. Completed items moved to archive._
 - [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
 - [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
 - [ ] [P3] [Frontend] Fast refresh warning - Extract toggleVariants constant to separate file - src/components/ui/toggle.tsx:7
-- [ ] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useStepEvents.ts:82
+- [x] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useStepEvents.ts:82
 - [ ] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useSupervisorAlerts.listener.ts:100
 - [ ] [P3] [Frontend] Error handling: Check empty catch blocks - src/components/Chat/ChatPanel.tsx:342
 
