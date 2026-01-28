@@ -25,3 +25,20 @@
 **Result:** Success - All linters pass, file now under 500 LOC limit
 
 ---
+
+### 2026-01-28 20:15:25 - Split ChatPanel Component
+
+**What:**
+- Original file: src/components/Chat/ChatPanel.tsx (1041 LOC)
+- Extracted to:
+  - src/components/Chat/ResizeablePanel.tsx (138 LOC) - reusable resize panel logic
+  - src/components/Chat/ChatMessages.tsx (248 LOC) - message rendering and display
+- New size: 774 LOC (26% reduction)
+
+**Commands:**
+- `wc -l src/components/Chat/ChatPanel.tsx src/components/Chat/ResizeablePanel.tsx src/components/Chat/ChatMessages.tsx`
+- `npm run lint && npm run typecheck`
+
+**Result:** Success - All linters pass, file now under 500 LOC limit
+
+---
