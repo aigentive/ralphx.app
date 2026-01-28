@@ -227,16 +227,26 @@ After completing the task: update `"passes": true`, commit, and stop.
   },
   {
     "category": "documentation",
-    "description": "Add tmux documentation to CLAUDE.md",
+    "description": "Create streams/README.md with tmux documentation",
     "plan_section": "Implementation Tasks - Task 7",
     "steps": [
-      "Edit CLAUDE.md to add Tmux Orchestration section:",
+      "Create streams/README.md with:",
+      "  - Overview: Multi-stream RALPH architecture with tmux orchestration",
       "  - Prerequisites: brew install tmux fswatch",
-      "  - Daily commands: ./ralph-tmux.sh, attach, stop, restart",
-      "  - Key bindings: Ctrl+b d (detach), Ctrl+b [0-5] (switch pane), Ctrl+b z (zoom)",
-      "  - Pane layout reference",
-      "  - fswatch behavior explanation",
-      "Commit: docs: add tmux orchestration guide to CLAUDE.md"
+      "  - Quick Start:",
+      "    - ./ralph-tmux.sh (start all streams)",
+      "    - ./ralph-tmux.sh attach (view streams)",
+      "    - ./ralph-tmux.sh stop (stop all)",
+      "    - ./ralph-tmux.sh restart [stream] (restart one or all)",
+      "  - Pane Layout diagram (ASCII art)",
+      "  - Tmux Key Bindings:",
+      "    - Ctrl+b d (detach)",
+      "    - Ctrl+b [0-5] (switch pane)",
+      "    - Ctrl+b z (zoom toggle)",
+      "    - Ctrl+b [ (scroll mode, q to exit)",
+      "  - Stream Descriptions (features, refactor, polish, verify, hygiene)",
+      "  - fswatch Behavior: how file watching works, what triggers each stream",
+      "Commit: docs: add streams/README.md with tmux orchestration guide"
     ],
     "passes": false
   },
@@ -306,6 +316,7 @@ After completing the task: update `"passes": true`, commit, and stop.
 
 ### Documentation
 
-- [ ] CLAUDE.md has Tmux Orchestration section
+- [ ] `streams/README.md` exists with tmux orchestration guide
 - [ ] Daily workflow commands documented
 - [ ] Key bindings documented
+- [ ] Pane layout diagram included
