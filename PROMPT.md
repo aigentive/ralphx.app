@@ -111,3 +111,5 @@ List empty? → Explore agent → Update file → Pick ONE
 - NO: `git init`, remotes, push
 - Planning: preserve ALL master plan details
 - Implementation: tests FIRST
+- **Document patterns inline** — New architectural pattern? Add one-liner to `src/CLAUDE.md` or `src-tauri/CLAUDE.md`
+- **Task tools for complex work** — >3 files, refactoring, >100 LOC? Use TaskCreate/TaskUpdate/TaskList
