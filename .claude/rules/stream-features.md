@@ -47,10 +47,10 @@ Before starting normal workflow, check for incomplete work from a previous itera
 
 5. Execute task following PRD steps exactly
 
-6. Run linters:
-   - npm run lint && npm run typecheck
-   - cargo clippy --all-targets --all-features -- -D warnings
-   - cargo test
+6. Run linters (ONLY for what you modified):
+   - Modified src/ files? → npm run lint && npm run typecheck
+   - Modified src-tauri/ files? → cargo clippy --all-targets --all-features -- -D warnings && cargo test
+   - Do NOT run frontend linters for backend-only changes (and vice versa)
 
 7. Log to streams/features/activity.md
 

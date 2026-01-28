@@ -12,7 +12,7 @@ The polish stream handles **P2/P3 cleanup, type fixes, lint fixes, and small ext
 2. **ONLY do work from backlog.md** — cannot pick PRD tasks, P0s, or P1s
 3. **Cannot skip to other work** — work items in order
 4. **Verify issue still exists** — check file:line before starting
-5. **Run linters after every change** — cargo clippy, npm run lint
+5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
 
 ## Workflow
 
@@ -30,10 +30,10 @@ The polish stream handles **P2/P3 cleanup, type fixes, lint fixes, and small ext
    - P2: Error handling, small extractions, type fixes (50-150 LOC)
    - P3: Lint fixes, naming, cleanup, dead code removal (<50 LOC)
 
-5. Run linters:
-   - cargo clippy --all-targets --all-features -- -D warnings
-   - cargo test
-   - npm run lint && npm run typecheck
+5. Run linters (ONLY for what you modified):
+   - Modified src/ files? → npm run lint && npm run typecheck
+   - Modified src-tauri/ files? → cargo clippy --all-targets --all-features -- -D warnings && cargo test
+   - Do NOT run frontend linters for backend-only changes (and vice versa)
 
 6. Mark [x] in backlog.md
 
@@ -124,8 +124,8 @@ Log entries go in `streams/polish/activity.md`:
 - Change: [description of fix]
 
 **Commands:**
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- `npm run lint && npm run typecheck`
+- (if src-tauri/) `cargo clippy --all-targets --all-features -- -D warnings`
+- (if src/) `npm run lint && npm run typecheck`
 
 **Result:** Success/Failed
 ```
