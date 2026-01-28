@@ -1,10 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 06:21:00
+**Last Updated:** 2026-01-28 14:35:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 30 / 39
-**Current Task:** Create ColumnGroup component (next)
+**Tasks Completed:** 31 / 39
+**Current Task:** Add group configuration to workflow types (next)
+
+---
+
+### 2026-01-28 14:35:00 - Create ColumnGroup component
+
+**What:**
+- Created ColumnGroup.tsx in src/components/tasks/TaskBoard/
+- Implements collapsible group within kanban columns following macOS Tahoe Liquid Glass design
+- Props: label, count, icon (ReactNode), accentColor, collapsed, onToggle, children
+- Features:
+  - Chevron icon rotates on collapse
+  - Accent color left border when expanded
+  - Uses Radix UI Collapsible primitives
+  - Smooth transitions (200ms duration)
+- Exported from TaskBoard/index.tsx
+- Quality improvement: Extracted types from task_step_commands.rs (764 → 711 LOC)
+  - Created task_step_commands_types.rs with CreateTaskStepInput, UpdateTaskStepInput, TaskStepResponse
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+cargo clippy --all-targets --all-features -- -D warnings
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint: 0 errors, 3 warnings (all in excluded ui/ components)
+- Cargo clippy passes
 
 ---
 

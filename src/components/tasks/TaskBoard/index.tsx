@@ -10,3 +10,4 @@ export { TaskBoardWithHeader } from "./TaskBoardWithHeader";
 export { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 export { Column } from "./Column";
 export { TaskCard } from "./TaskCard";
+export { ColumnGroup } from "./ColumnGroup";
