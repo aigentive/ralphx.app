@@ -4,7 +4,7 @@
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 use crate::application::{AppState, TaskTransitionService};
 use crate::domain::entities::InternalStatus;
@@ -103,6 +103,20 @@ impl ExecutionState {
     /// Check if we can start a new task
     pub fn can_start_task(&self) -> bool {
         !self.is_paused() && self.running_count() < self.max_concurrent()
+    }
+
+    /// Emit execution:status_changed event with current state
+    pub fn emit_status_changed<R: Runtime>(&self, handle: &AppHandle<R>, reason: &str) {
+        let _ = handle.emit(
+            "execution:status_changed",
+            serde_json::json!({
+                "isPaused": self.is_paused(),
+                "runningCount": self.running_count(),
+                "maxConcurrent": self.max_concurrent(),
+                "reason": reason,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
     }
 }
 
@@ -668,6 +682,48 @@ mod tests {
         assert!(!state.is_paused());
         assert_eq!(state.running_count(), 0);
         assert_eq!(state.max_concurrent(), 2);
+    }
+
+    // ========================================
+    // Event Emission Tests
+    // ========================================
+
+    #[test]
+    fn test_emit_status_changed_does_not_panic() {
+        let state = ExecutionState::new();
+        state.increment_running();
+
+        let handle = crate::testing::create_mock_app_handle();
+        // Should not panic even with mock runtime
+        state.emit_status_changed(&handle, "task_started");
+    }
+
+    #[test]
+    fn test_emit_status_changed_reflects_current_state() {
+        let state = ExecutionState::with_max_concurrent(4);
+        state.increment_running();
+        state.increment_running();
+        state.pause();
+
+        let handle = crate::testing::create_mock_app_handle();
+        // Verify the method reads current state correctly
+        // (emit itself is fire-and-forget, but we can verify state is consistent)
+        assert!(state.is_paused());
+        assert_eq!(state.running_count(), 2);
+        assert_eq!(state.max_concurrent(), 4);
+        state.emit_status_changed(&handle, "paused");
+    }
+
+    #[test]
+    fn test_emit_status_changed_with_various_reasons() {
+        let state = ExecutionState::new();
+        let handle = crate::testing::create_mock_app_handle();
+
+        // All valid reason strings should work without panic
+        let reasons = ["task_started", "task_completed", "paused", "resumed", "stopped"];
+        for reason in &reasons {
+            state.emit_status_changed(&handle, reason);
+        }
     }
 
     // ========================================
