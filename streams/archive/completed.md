@@ -5,6 +5,15 @@
 
 ---
 
+## Archived 2026-01-29 (Sixth Batch)
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:43)
+
+- [x] [P2] [Backend] Error handling: Replace `.unwrap()` with proper error handling - src-tauri/src/domain/supervisor/patterns.rs:146
+- [x] [P2] [Backend] Error handling: Replace `.unwrap()` with proper error handling in serialization tests - src-tauri/src/domain/supervisor/patterns.rs:417
+
+---
+
 ## Archived 2026-01-29 (Fifth Batch)
 
 ### From polish/backlog.md (REFILL - Added 2026-01-29 00:00)

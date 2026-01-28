@@ -24,9 +24,9 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1)
@@ -75,8 +75,6 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Backend] Error handling: Replace `.unwrap()` with proper error handling - src-tauri/src/domain/supervisor/patterns.rs:146
-- [x] [P2] [Backend] Error handling: Replace `.unwrap()` with proper error handling in serialization tests - src-tauri/src/domain/supervisor/patterns.rs:417
 - [x] [P2] [Backend] Error handling: Replace `.unwrap()` calls in test assertions - src-tauri/src/domain/supervisor/patterns.rs:329
 - [ ] ~~[P2] [Backend] Error handling: Replace `.expect()` calls with proper type-safe parsing - src-tauri/src/domain/entities/ideation.rs:171~~ (stale:1 - file no longer exists)
 - [ ] ~~[P2] [Backend] Error handling: Replace `.parse().unwrap()` with Result handling - src-tauri/src/domain/entities/ideation.rs:1686~~ (stale:1 - file no longer exists)
@@ -104,7 +102,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:332
+- [x] [P3] [Frontend] Remove console.error call - src/App.tsx:332
 - [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:349
 - [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:361
 - [ ] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:63
@@ -121,5 +119,5 @@ _No active P3 items. Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 14 (9 excluded, 10 deferred to PRD)
 **Completed:** 10
-**Validated:** 63 strikethroughs (2026-01-29 x48) - 10 archived, 1 reactivated (moved to refactor as P1), 52 incremented
-**Last maintenance:** 2026-01-29 18:30 (archived 1 completed item, refilled with 14 P2/P3 items, validated 3 strikethroughs)
+**Validated:** 66 strikethroughs (2026-01-29 x51) - 12 archived, 1 reactivated (moved to refactor as P1), 53 incremented
+**Last maintenance:** 2026-01-29 19:15 (archived 2 completed items, validated 3 strikethroughs)

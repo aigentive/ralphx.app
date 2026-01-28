@@ -328,8 +328,7 @@ function AppContent() {
         ? await api.execution.resume()
         : await api.execution.pause();
       setExecutionStatus(response.status);
-    } catch (error) {
-      console.error("Failed to toggle pause:", error);
+    } catch {
       toast.error(
         executionStatus.isPaused
           ? "Failed to resume execution"
