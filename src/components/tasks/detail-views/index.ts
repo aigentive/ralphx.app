@@ -16,3 +16,4 @@ export { ExecutionTaskDetail } from "./ExecutionTaskDetail";
 export { ReviewingTaskDetail } from "./ReviewingTaskDetail";
 export { HumanReviewTaskDetail } from "./HumanReviewTaskDetail";
 export { WaitingTaskDetail } from "./WaitingTaskDetail";
+export { CompletedTaskDetail } from "./CompletedTaskDetail";
