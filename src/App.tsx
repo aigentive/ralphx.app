@@ -355,8 +355,7 @@ function AppContent() {
     setIsQuestionLoading(true);
     try {
       clearActiveQuestion();
-    } catch (error) {
-      console.error("Failed to submit answer:", error);
+    } catch {
       toast.error("Failed to submit answer");
     } finally {
       setIsQuestionLoading(false);
