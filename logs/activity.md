@@ -1,15 +1,42 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 02:56:30
+**Last Updated:** 2026-01-28 03:12:45
 **Phase:** Review System
-**Tasks Completed:** 1 / 39
-**Current Task:** Add valid transitions for new review states
+**Tasks Completed:** 2 / 39
+**Current Task:** Remove execution_done state from InternalStatus
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 03:12:45 - Add Valid Transitions for Review States
+
+**What:**
+- Updated `src-tauri/src/domain/entities/status.rs` valid_transitions():
+  - PendingReview => &[Reviewing] (removed direct Approved/RevisionNeeded)
+  - Reviewing => &[ReviewPassed, RevisionNeeded]
+  - ReviewPassed => &[Approved, RevisionNeeded]
+  - RevisionNeeded => &[ReExecuting, Cancelled] (updated from Executing)
+  - ReExecuting => &[PendingReview, Failed, Blocked]
+- Added 7 new unit tests for review state transitions:
+  - `pending_review_to_reviewing()`
+  - `reviewing_to_review_passed()`
+  - `reviewing_to_revision_needed()`
+  - `review_passed_to_approved()`
+  - `review_passed_to_revision_needed()`
+  - `revision_needed_to_re_executing()`
+  - `re_executing_to_pending_review()`
+- Updated existing tests to match new transition rules:
+  - `pending_review_transitions()`, `revision_needed_transitions()`
+  - `happy_path_without_qa()`, `happy_path_with_qa()`
+  - `qa_failure_retry_path()`, `review_rejection_path()`
+  - `can_transition_to_valid_returns_true()`
+
+**Commands:**
+- `cargo test domain::entities::status::tests` - All 51 tests pass
+- `cargo clippy --all-targets --all-features -- -D warnings` - Clean
 
 ### 2026-01-28 02:56:30 - Add Review States to InternalStatus Enum
 

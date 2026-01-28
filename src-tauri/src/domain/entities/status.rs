@@ -71,11 +71,11 @@ impl InternalStatus {
             QaFailed => &[RevisionNeeded],
 
             // Review states
-            PendingReview => &[Approved, RevisionNeeded],
-            Reviewing => &[],
-            ReviewPassed => &[],
-            RevisionNeeded => &[Executing, Cancelled],
-            ReExecuting => &[],
+            PendingReview => &[Reviewing],
+            Reviewing => &[ReviewPassed, RevisionNeeded],
+            ReviewPassed => &[Approved, RevisionNeeded],
+            RevisionNeeded => &[ReExecuting, Cancelled],
+            ReExecuting => &[PendingReview, Failed, Blocked],
 
             // Terminal states (can be re-opened)
             Approved => &[Ready],
@@ -417,14 +417,14 @@ mod tests {
     fn pending_review_transitions() {
         use InternalStatus::*;
         let transitions = PendingReview.valid_transitions();
-        assert_eq!(transitions, &[Approved, RevisionNeeded]);
+        assert_eq!(transitions, &[Reviewing]);
     }
 
     #[test]
     fn revision_needed_transitions() {
         use InternalStatus::*;
         let transitions = RevisionNeeded.valid_transitions();
-        assert_eq!(transitions, &[Executing, Cancelled]);
+        assert_eq!(transitions, &[ReExecuting, Cancelled]);
     }
 
     #[test]
@@ -469,8 +469,11 @@ mod tests {
         // QaTesting -> QaPassed is valid
         assert!(QaTesting.can_transition_to(QaPassed));
 
-        // PendingReview -> Approved is valid
-        assert!(PendingReview.can_transition_to(Approved));
+        // PendingReview -> Reviewing is valid
+        assert!(PendingReview.can_transition_to(Reviewing));
+
+        // ReviewPassed -> Approved is valid
+        assert!(ReviewPassed.can_transition_to(Approved));
     }
 
     #[test]
@@ -532,12 +535,14 @@ mod tests {
     fn happy_path_without_qa() {
         use InternalStatus::*;
 
-        // Backlog -> Ready -> Executing -> ExecutionDone -> PendingReview -> Approved
+        // Backlog -> Ready -> Executing -> ExecutionDone -> PendingReview -> Reviewing -> ReviewPassed -> Approved
         assert!(Backlog.can_transition_to(Ready));
         assert!(Ready.can_transition_to(Executing));
         assert!(Executing.can_transition_to(ExecutionDone));
         assert!(ExecutionDone.can_transition_to(PendingReview));
-        assert!(PendingReview.can_transition_to(Approved));
+        assert!(PendingReview.can_transition_to(Reviewing));
+        assert!(Reviewing.can_transition_to(ReviewPassed));
+        assert!(ReviewPassed.can_transition_to(Approved));
     }
 
     #[test]
@@ -545,7 +550,7 @@ mod tests {
         use InternalStatus::*;
 
         // Backlog -> Ready -> Executing -> ExecutionDone -> QaRefining ->
-        // QaTesting -> QaPassed -> PendingReview -> Approved
+        // QaTesting -> QaPassed -> PendingReview -> Reviewing -> ReviewPassed -> Approved
         assert!(Backlog.can_transition_to(Ready));
         assert!(Ready.can_transition_to(Executing));
         assert!(Executing.can_transition_to(ExecutionDone));
@@ -553,26 +558,73 @@ mod tests {
         assert!(QaRefining.can_transition_to(QaTesting));
         assert!(QaTesting.can_transition_to(QaPassed));
         assert!(QaPassed.can_transition_to(PendingReview));
-        assert!(PendingReview.can_transition_to(Approved));
+        assert!(PendingReview.can_transition_to(Reviewing));
+        assert!(Reviewing.can_transition_to(ReviewPassed));
+        assert!(ReviewPassed.can_transition_to(Approved));
     }
 
     #[test]
     fn qa_failure_retry_path() {
         use InternalStatus::*;
 
-        // QaTesting -> QaFailed -> RevisionNeeded -> Executing
+        // QaTesting -> QaFailed -> RevisionNeeded -> ReExecuting
         assert!(QaTesting.can_transition_to(QaFailed));
         assert!(QaFailed.can_transition_to(RevisionNeeded));
-        assert!(RevisionNeeded.can_transition_to(Executing));
+        assert!(RevisionNeeded.can_transition_to(ReExecuting));
     }
 
     #[test]
     fn review_rejection_path() {
         use InternalStatus::*;
 
-        // PendingReview -> RevisionNeeded -> Executing
-        assert!(PendingReview.can_transition_to(RevisionNeeded));
-        assert!(RevisionNeeded.can_transition_to(Executing));
+        // PendingReview -> Reviewing -> RevisionNeeded -> ReExecuting
+        assert!(PendingReview.can_transition_to(Reviewing));
+        assert!(Reviewing.can_transition_to(RevisionNeeded));
+        assert!(RevisionNeeded.can_transition_to(ReExecuting));
+    }
+
+    // ===== Review State Transition Tests =====
+
+    #[test]
+    fn pending_review_to_reviewing() {
+        use InternalStatus::*;
+        assert!(PendingReview.can_transition_to(Reviewing));
+    }
+
+    #[test]
+    fn reviewing_to_review_passed() {
+        use InternalStatus::*;
+        assert!(Reviewing.can_transition_to(ReviewPassed));
+    }
+
+    #[test]
+    fn reviewing_to_revision_needed() {
+        use InternalStatus::*;
+        assert!(Reviewing.can_transition_to(RevisionNeeded));
+    }
+
+    #[test]
+    fn review_passed_to_approved() {
+        use InternalStatus::*;
+        assert!(ReviewPassed.can_transition_to(Approved));
+    }
+
+    #[test]
+    fn review_passed_to_revision_needed() {
+        use InternalStatus::*;
+        assert!(ReviewPassed.can_transition_to(RevisionNeeded));
+    }
+
+    #[test]
+    fn revision_needed_to_re_executing() {
+        use InternalStatus::*;
+        assert!(RevisionNeeded.can_transition_to(ReExecuting));
+    }
+
+    #[test]
+    fn re_executing_to_pending_review() {
+        use InternalStatus::*;
+        assert!(ReExecuting.can_transition_to(PendingReview));
     }
 
     #[test]

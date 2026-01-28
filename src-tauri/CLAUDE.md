@@ -118,15 +118,23 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 ## Code Quality
 
-### Continuous Improvement (MANDATORY)
-When modifying any file, review and fix quality issues as part of the same task:
+### Proactive Quality Improvement (MANDATORY)
+For every task, launch an Explore agent to quickly scan a portion of the codebase for quality issues. Pick ONE improvement proportional to task size and execute it as part of the same work session.
+
+**Quality targets:**
 - Fix clippy warnings
 - Improve error handling (domain-specific variants over generic strings)
 - Fix naming inconsistencies
 - Remove dead code
 - Extract repeated logic into helpers
 
-Scope: only files you're modifying, proportional to the task.
+**Process:**
+1. Agent scans subset of codebase (don't analyze everything)
+2. Pick ONE actionable improvement
+3. Execute the fix
+4. Commit separately with `refactor:` prefix
+
+**Scope:** small task = small improvement, large task = larger improvement. Goal: incremental quality gains without over-engineering.
 
 ### File Size Limits
 **Maximum 500 lines per file** — refactor at 400 lines.
