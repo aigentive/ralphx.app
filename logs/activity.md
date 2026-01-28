@@ -1,10 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 22:00:00
+**Last Updated:** 2026-01-28 22:30:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 26 / 39
-**Current Task:** Implement View Registry Pattern in TaskDetailPanel (next)
+**Tasks Completed:** 27 / 39
+**Current Task:** Add useReviewMutations hook (next)
+
+---
+
+### 2026-01-28 22:30:00 - Implement View Registry Pattern in TaskDetailPanel
+
+**What:**
+- Implemented View Registry Pattern in `TaskDetailPanel.tsx`
+- Added `TASK_DETAIL_VIEWS` registry mapping InternalStatus to specialized detail view components:
+  - BasicTaskDetail: backlog, ready, blocked, qa_*, failed, cancelled
+  - ExecutionTaskDetail: executing, re_executing
+  - RevisionTaskDetail: revision_needed
+  - WaitingTaskDetail: pending_review
+  - ReviewingTaskDetail: reviewing
+  - HumanReviewTaskDetail: review_passed
+  - CompletedTaskDetail: approved
+- Added `useViewRegistry` prop to opt-in to state-specific views
+- Exported `TASK_DETAIL_VIEWS` and `TaskDetailProps` for external use
+- Fixed React hooks rules violation by moving hooks before conditional return
+- Quality improvement: Removed backward-compat re-exports from TaskFormFields.tsx
+  - Updated imports in TaskCreationForm.tsx and TaskEditForm.tsx to use `.constants` file
+  - Reduced lint warnings from 12 to 6
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+cargo clippy --all-targets --all-features -- -D warnings
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint passes with 0 errors (6 pre-existing warnings - all in excluded paths)
+- Clippy passes
 
 ---
 

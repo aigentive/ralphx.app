@@ -63,7 +63,7 @@
 - [x] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
 - [ ] ~~Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10~~ (stale - just a re-export barrel file)
 - [x] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
-- [ ] ~~Extract form field constants from TaskFormFields - src/components/tasks/TaskFormFields.tsx:28-64~~ (stale - already extracted to TaskFormFields.constants)
+- [x] Remove backward-compat re-exports from TaskFormFields.tsx (react-refresh lint) - updated imports in TaskCreationForm.tsx and TaskEditForm.tsx
 - [ ] ~~Extract constants from ui/badge - src/components/ui/badge.tsx:36~~ (excluded)
 - [ ] ~~Extract constants from ui/button - src/components/ui/button.tsx:58~~ (excluded)
 - [ ] ~~Extract constants from ui/toggle - src/components/ui/toggle.tsx:45~~ (excluded)
