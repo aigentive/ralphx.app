@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-29 00:17:30 - Extract ToolCallIndicator sub-functions
+**What:**
+- File: src/components/Chat/ToolCallIndicator.tsx (575 LOC → 245 LOC)
+- Created: src/components/Chat/ToolCallIndicator.helpers.tsx (334 LOC)
+- Change: Extracted helper functions (createSummary, truncate, formatValue, isArtifactContextTool, renderArtifactPreview) to separate file
+- Reason: File size reduction (P2) - Component exceeded 500 LOC limit
+
+**Commands:**
+- `wc -l src/components/Chat/ToolCallIndicator*.tsx` - Verified new file sizes
+- `npm run lint -- src/components/Chat/ToolCallIndicator.tsx src/components/Chat/ToolCallIndicator.helpers.tsx` - All checks passed
+- `npm run typecheck` - All checks passed
+
+**Result:** Success (330 lines extracted, main file reduced from 575 to 245 LOC)
+
+---
+
 ### 2026-01-28 23:57:05 - Fast refresh warning: Extract constants from ResizeablePanel.tsx
 **What:**
 - File: src/components/Chat/ResizeablePanel.tsx:45
