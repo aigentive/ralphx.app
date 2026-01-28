@@ -1,10 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 22:45:00
+**Last Updated:** 2026-01-28 05:01:15
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 16 / 39
-**Current Task:** Update useChat hook for review context routing (next)
+**Tasks Completed:** 17 / 39
+**Current Task:** Implement live/historical chat mode (next)
+
+---
+
+### 2026-01-28 05:01:15 - Update useChat hook for review context routing
+
+**What:**
+- Added 'review' case to buildContextKey() in src/hooks/useChat.ts to generate review:${contextId} keys
+- Added documentation to getContextTypeAndId() explaining that task/task_execution/review distinction is handled at component level (TaskChatPanel) rather than via ChatContext.view
+- This enables proper context key generation for review chat conversations
+- Quality improvement: Fixed useReviews hook exhaustive-deps warning by wrapping query.data ?? [] in useMemo
+- This prevents creating new array reference on every render and unnecessary re-computations
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+git commit -m "feat(hooks): add review context routing to useChat"
+git commit -m "refactor(hooks): fix useReviews exhaustive-deps warning"
+```
+
+**Results:**
+- Review context routing implemented in useChat
+- Context key generation working for review conversations
+- useReviews hook no longer triggers exhaustive-deps warnings
+- All type checks and lint checks passing
 
 ---
 
