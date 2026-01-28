@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 22:53:02 - Replace serde unwrap calls in supervisor events tests
+**What:**
+- File: src-tauri/src/domain/supervisor/events.rs
+- Replaced 4 `.unwrap()` calls with `.expect()` providing descriptive error messages
+- Lines 361, 374, 381, 382: Replaced serde serialization/deserialization unwraps
+- Also marked 2 stale items (ideation.rs file no longer exists)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (pre-existing compilation errors unrelated to changes)
+
+**Result:** Success (changes are syntactically correct, pre-existing compilation errors in codebase)
+
+---
+
 ### 2026-01-29 01:00:00 - Mark stale item - dependency_service file removed
 **What:**
 - File: streams/polish/backlog.md:87

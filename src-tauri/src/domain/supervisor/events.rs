@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn test_supervisor_event_serialize() {
         let event = SupervisorEvent::task_start("task-123", "worker");
-        let json = serde_json::to_string(&event).unwrap();
+        let json = serde_json::to_string(&event).expect("Failed to serialize SupervisorEvent");
         assert!(json.contains("\"type\":\"task_start\""));
         assert!(json.contains("\"task_id\":\"task-123\""));
     }
@@ -371,15 +371,15 @@ mod tests {
             "agent_role": "worker",
             "timestamp": "2026-01-24T10:00:00Z"
         }"#;
-        let event: SupervisorEvent = serde_json::from_str(json).unwrap();
+        let event: SupervisorEvent = serde_json::from_str(json).expect("Failed to deserialize SupervisorEvent");
         assert_eq!(event.task_id(), "task-123");
     }
 
     #[test]
     fn test_supervisor_event_roundtrip() {
         let original = SupervisorEvent::token_threshold("task-456", 75000, 50000);
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: SupervisorEvent = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("Failed to serialize SupervisorEvent");
+        let restored: SupervisorEvent = serde_json::from_str(&json).expect("Failed to deserialize SupervisorEvent");
         assert_eq!(original.task_id(), restored.task_id());
     }
 }
