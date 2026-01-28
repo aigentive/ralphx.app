@@ -20,7 +20,6 @@ _No active P2 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Frontend] Extract hook logic from useChat (528 LOC → 344 LOC) - extracted event handling to useAgentEvents - src/hooks/useChat.ts:1-528
 - [x] [P2] [Frontend] Extract hook logic from useEvents (417 LOC → 102 LOC) - split by event type - src/hooks/useEvents.ts:1-417
 - [x] [P2] [Frontend] Extract hook logic from useSupervisorAlerts (409 LOC → 184 LOC) - split alert management into store and listener modules - src/hooks/useSupervisorAlerts.ts:1-409
 - [x] [P2] [Frontend] Unused parameter: defaultStatus in TaskCreationForm prop defaults to undefined - src/components/tasks/TaskCreationForm.tsx:59
@@ -65,8 +64,8 @@ _No active P2 items._
 - [x] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
 - [x] [P3] [Frontend] Remove console.log statement - src/components/Ideation/useIdeationHandlers.ts:74
 - [x] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useIntegratedChatHandlers.ts:97,132,172
-- [ ] [P3] [Frontend] Remove console.debug statements from production code - src/hooks/useAgentEvents.ts:123,159,186
-- [ ] [P3] [Frontend] Remove console.log statements from production code - src/hooks/useIntegratedChatEvents.ts:71,119
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale - no console.debug present, only console.error at line 208 which is appropriate)
+- [x] [P3] [Frontend] Remove console.log statements from production code - src/hooks/useIntegratedChatEvents.ts:71,119
 - [ ] [P3] [Frontend] Fast refresh warning - Extract constant from component export - src/components/Chat/ResizeablePanel.tsx:52
 - [ ] [P3] [Frontend] Fast refresh warning - Extract badgeVariants constant to separate file - src/components/ui/badge.tsx:6
 - [ ] [P3] [Frontend] Fast refresh warning - Extract buttonVariants constant to separate file - src/components/ui/button.tsx:7
@@ -76,5 +75,5 @@ _No active P2 items._
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 12 (3 excluded, 9 deferred to PRD)
-**Completed:** 7
+**Completed:** 10
 **Validated:** 11 strikethroughs (2026-01-28) - 4 archived, 1 reactivated, 6 incremented

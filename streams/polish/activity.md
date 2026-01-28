@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-28 23:16:00 - Remove console.log statements from useIntegratedChatEvents
+**What:**
+- File: src/hooks/useIntegratedChatEvents.ts
+- Change: Removed 2 console.log statements from production code
+  - Line 71: "Chat run completed" debug log
+  - Line 119: "Worker execution completed" debug log
+- Also marked stale item: console.debug statements in useAgentEvents (no longer present, only console.error at line 208 which is appropriate)
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passes)
+
+---
+
 ### 2026-01-28 23:12:16 - Remove console.debug statements from useIntegratedChatHandlers
 **What:**
 - File: src/hooks/useIntegratedChatHandlers.ts
