@@ -144,6 +144,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // GET /api/step_progress/:task_id
       const { task_id } = args as { task_id: string };
       result = await callTauriGet(`step_progress/${task_id}`);
+    } else if (name === "get_review_notes") {
+      // GET /api/review_notes/:task_id
+      const { task_id } = args as { task_id: string };
+      result = await callTauriGet(`review_notes/${task_id}`);
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});
