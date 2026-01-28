@@ -32,8 +32,8 @@ export interface ProposalCardProps {
   onEdit: (proposalId: string) => void;
   onRemove: (proposalId: string) => void;
   isHighlighted?: boolean;
-  currentPlanVersion?: number;
-  onViewHistoricalPlan?: (artifactId: string, version: number) => void;
+  currentPlanVersion?: number | undefined;
+  onViewHistoricalPlan?: (artifactId: string, version: number) => void | undefined;
 }
 
 // ============================================================================

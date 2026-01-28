@@ -12,26 +12,10 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   MessageSquare,
   ListTodo,
-  Plus,
   Archive,
-  Lightbulb,
   Loader2,
-  ChevronDown,
-  FileEdit,
-  Inbox,
-  CheckSquare,
-  Square,
-  ArrowUpDown,
-  Trash2,
-  AlertCircle,
-  Undo2,
-  Eye,
   Upload,
-  Clock,
   Sparkles,
-  ArrowRight,
-  Layers,
-  Zap,
 } from "lucide-react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -40,26 +24,20 @@ import type {
   ApplyProposalsInput,
 } from "@/types/ideation";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Checkbox } from "@/components/ui/checkbox";
 import { PlanDisplay } from "./PlanDisplay";
 import { PlanHistoryDialog } from "./PlanHistoryDialog";
-import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { cn } from "@/lib/utils";
 import { ConversationEmptyState } from "./EmptyStates";
-import { PRIORITY_CONFIG, animationStyles } from "./IdeationView.constants";
+import { animationStyles } from "./IdeationView.constants";
+import { SessionBrowser } from "./SessionBrowser";
+import { StartSessionPanel } from "./StartSessionPanel";
+import { ProposalCard } from "./ProposalCard";
+import { ProposalsToolbar } from "./ProposalsToolbar";
+import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
+import { ProposalsEmptyState } from "./ProposalsEmptyState";
+import { useIdeationHandlers } from "./useIdeationHandlers";
 
 // ============================================================================
 // Types
@@ -79,594 +57,17 @@ interface IdeationViewProps {
   onApply: (options: ApplyProposalsInput) => void;
 }
 
-// ============================================================================
-// Empty States (Premium)
-// ============================================================================
+// Empty States extracted to separate files
 
-function ProposalsEmptyState() {
-  return (
-    <div data-testid="proposals-empty-state" className="flex flex-col items-center pt-[20%] h-full p-6">
-      {/* Structured, task-list oriented design for proposals */}
-      <div className="w-full max-w-[280px]">
-        {/* Mock task cards with dashed borders - suggests awaiting content */}
-        <div className="space-y-2 mb-5">
-          {[0.4, 0.25, 0.15].map((opacity, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-3 rounded-lg"
-              style={{
-                opacity,
-                border: "1.5px dashed rgba(255,107,53,0.25)",
-                background: "rgba(255,107,53,0.02)",
-              }}
-            >
-              <div
-                className="w-4 h-4 rounded border-[1.5px] border-dashed flex-shrink-0"
-                style={{ borderColor: "rgba(255,107,53,0.4)" }}
-              />
-              <div
-                className="h-2 rounded-full flex-1"
-                style={{
-                  background: "linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-                  maxWidth: `${70 - i * 15}%`,
-                }}
-              />
-            </div>
-          ))}
-        </div>
+// Session Browser extracted to SessionBrowser.tsx
 
-        {/* Central icon with glow */}
-        <div className="flex justify-center mb-4">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center relative"
-            style={{
-              background: "linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)",
-              border: "1px solid rgba(251,191,36,0.25)",
-              boxShadow: "0 0 24px rgba(251,191,36,0.1)",
-            }}
-          >
-            <Lightbulb className="w-5 h-5 text-amber-400" />
-          </div>
-        </div>
+// Start Session Panel extracted to StartSessionPanel.tsx
 
-        {/* Text content */}
-        <div className="text-center">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
-            No proposals yet
-          </h3>
-          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            Ideas from the conversation will appear here as task proposals
-          </p>
-        </div>
+// Proposal Card extracted to ProposalCard.tsx
 
-        {/* Visual connection hint - arrow pointing left to chat */}
-        <div className="flex justify-center mt-5">
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full"
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.06)",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[var(--text-muted)]">
-              <path d="M12 7H2m0 0l3-3m-3 3l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">From chat</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// Proactive Sync Notification extracted to ProactiveSyncNotification.tsx
 
-// ============================================================================
-// Session Browser (Premium Sidebar)
-// ============================================================================
-
-interface SessionBrowserProps {
-  sessions: IdeationSession[];
-  currentSessionId: string | null;
-  onSelectSession: (sessionId: string) => void;
-  onNewSession: () => void;
-}
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function SessionBrowser({ sessions, currentSessionId, onSelectSession, onNewSession }: SessionBrowserProps) {
-  const sortedSessions = useMemo(
-    () => [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
-    [sessions]
-  );
-
-  return (
-    <div
-      data-testid="session-browser"
-      className="flex flex-col h-full border-r border-white/[0.06]"
-      style={{
-        width: "260px",
-        minWidth: "260px",
-        flexShrink: 0,
-        background: "rgba(10,10,10,0.95)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-      }}
-    >
-      {/* Header */}
-      <div className="px-3 py-3 border-b border-white/[0.06]">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{
-                background: "rgba(255,107,53,0.1)",
-                border: "1px solid rgba(255,107,53,0.2)",
-              }}
-            >
-              <Layers className="w-3.5 h-3.5 text-[#ff6b35]" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Sessions</h2>
-              <p className="text-[10px] text-[var(--text-muted)]">{sessions.length} total</p>
-            </div>
-          </div>
-        </div>
-
-        {/* New Session Button - flat orange */}
-        <Button
-          onClick={onNewSession}
-          size="sm"
-          className="w-full h-8 text-xs bg-[#ff6b35] hover:bg-[#ff7a4d] text-white font-medium border-0 transition-all duration-180"
-          style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
-        >
-          <Plus className="w-3.5 h-3.5 mr-1.5" />
-          New Session
-        </Button>
-      </div>
-
-      {/* Session List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {sortedSessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-            <div className="w-9 h-9 rounded-lg bg-white/[0.03] flex items-center justify-center mb-2 border border-white/[0.06]">
-              <Sparkles className="w-4 h-4 text-[var(--text-muted)]" />
-            </div>
-            <p className="text-xs text-[var(--text-muted)]">No sessions yet</p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Start your first brainstorm</p>
-          </div>
-        ) : (
-          sortedSessions.map((session, index) => {
-            const isSelected = session.id === currentSessionId;
-            return (
-              <button
-                key={session.id}
-                data-testid={`session-item-${session.id}`}
-                onClick={() => onSelectSession(session.id)}
-                className={cn(
-                  "session-card-enter w-full p-2.5 rounded-lg text-left transition-all duration-180",
-                  "border border-transparent",
-                  "hover:bg-white/[0.03] hover:border-white/[0.06]"
-                )}
-                style={{
-                  animationDelay: `${index * 50}ms`,
-                  ...(isSelected && {
-                    background: "rgba(255,107,53,0.08)",
-                    borderColor: "rgba(255,107,53,0.25)",
-                  }),
-                }}
-              >
-                <div className="flex items-start gap-2.5">
-                  {/* Session indicator */}
-                  <div
-                    className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
-                    style={{
-                      background: isSelected ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.03)",
-                      border: isSelected ? "1px solid rgba(255,107,53,0.25)" : "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <MessageSquare className={cn("w-3.5 h-3.5", isSelected ? "text-[#ff6b35]" : "text-[var(--text-muted)]")} />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className={cn(
-                        "text-xs font-medium truncate",
-                        isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                      )}>
-                        {session.title || "Untitled Session"}
-                      </span>
-                      {isSelected && (
-                        <span className="w-1 h-1 rounded-full bg-[#ff6b35] flex-shrink-0" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>{formatRelativeTime(session.updatedAt)}</span>
-                    </div>
-                  </div>
-
-                  {/* Arrow indicator */}
-                  <ArrowRight className={cn(
-                    "w-3.5 h-3.5 flex-shrink-0 transition-all duration-200",
-                    isSelected ? "text-[#ff6b35] translate-x-0 opacity-100" : "text-[var(--text-muted)] -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
-                  )} />
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Start Session Panel (Premium)
-// ============================================================================
-
-function StartSessionPanel({ onNewSession }: { onNewSession: () => void }) {
-  return (
-    <div
-      className="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden"
-      style={{
-        background: `
-          radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
-          radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
-          var(--bg-base)
-        `,
-      }}
-    >
-      <div className="relative z-10 text-center max-w-md">
-        {/* Icon - flat glass style */}
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6"
-          style={{
-            background: "rgba(255,107,53,0.1)",
-            border: "1px solid rgba(255,107,53,0.2)",
-          }}
-        >
-          <Lightbulb className="w-8 h-8 text-[#ff6b35]" />
-        </div>
-
-        {/* Content */}
-        <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
-          Ideation Studio
-        </h1>
-        <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed max-w-xs mx-auto">
-          Select a session from the sidebar or start a new brainstorming session.
-        </p>
-
-        {/* Action button - flat orange */}
-        <Button
-          onClick={onNewSession}
-          className="h-9 px-5 text-sm bg-[#ff6b35] hover:bg-[#ff7a4d] text-white font-medium border-0 transition-all duration-180"
-          style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
-        >
-          <Zap className="w-4 h-4 mr-1.5" />
-          Start New Session
-        </Button>
-
-        {/* Hint */}
-        <p className="text-[11px] text-[var(--text-muted)] mt-4">
-          Press <kbd className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[10px] font-mono">⌘ N</kbd> to quickly start
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Proposal Card (Premium)
-// ============================================================================
-
-interface ProposalCardProps {
-  proposal: TaskProposal;
-  onSelect: (proposalId: string) => void;
-  onEdit: (proposalId: string) => void;
-  onRemove: (proposalId: string) => void;
-  isHighlighted?: boolean;
-  currentPlanVersion?: number | undefined;
-  onViewHistoricalPlan?: (artifactId: string, version: number) => void | undefined;
-}
-
-function ProposalCard({
-  proposal,
-  onSelect,
-  onEdit,
-  onRemove,
-  isHighlighted = false,
-  currentPlanVersion,
-  onViewHistoricalPlan,
-}: ProposalCardProps) {
-  const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
-  const isSelected = proposal.selected;
-  const config = PRIORITY_CONFIG[effectivePriority];
-
-  const showHistoricalPlanLink =
-    proposal.planArtifactId &&
-    proposal.planVersionAtCreation &&
-    currentPlanVersion &&
-    proposal.planVersionAtCreation !== currentPlanVersion;
-
-  const handleViewHistoricalPlan = () => {
-    if (proposal.planArtifactId && proposal.planVersionAtCreation && onViewHistoricalPlan) {
-      onViewHistoricalPlan(proposal.planArtifactId, proposal.planVersionAtCreation);
-    }
-  };
-
-  return (
-    <div
-      data-testid={`proposal-card-${proposal.id}`}
-      className={cn(
-        "group relative p-3 rounded-lg transition-all duration-200 cursor-pointer session-card-enter",
-        "bg-gradient-to-br",
-        config.gradient,
-        "border",
-        isHighlighted
-          ? "border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.15)]"
-          : isSelected
-            ? "border-[#ff6b35]/40 shadow-[0_0_20px_rgba(255,107,53,0.1)]"
-            : "border-white/[0.06] hover:border-white/[0.1] hover:shadow-md hover:shadow-black/15",
-        config.glow
-      )}
-      onClick={() => onSelect(proposal.id)}
-    >
-      {/* Selection indicator bar */}
-      <div className={cn(
-        "absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-all duration-200",
-        isSelected ? "bg-[#ff6b35]" : "bg-transparent"
-      )} />
-
-      <div className="flex items-start gap-2 pl-1.5">
-        {/* Checkbox */}
-        <div className="pt-px">
-          <Checkbox
-            checked={isSelected}
-            onCheckedChange={() => onSelect(proposal.id)}
-            aria-label={`Select ${proposal.title}`}
-            className="h-3.5 w-3.5 data-[state=checked]:bg-[#ff6b35] data-[state=checked]:border-[#ff6b35] border-white/20"
-          />
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-1.5">
-            <h3 className="text-xs font-medium text-[var(--text-primary)] leading-snug">
-              {proposal.title}
-            </h3>
-
-            {/* Actions */}
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 hover:bg-white/[0.06]"
-                      onClick={(e) => { e.stopPropagation(); onEdit(proposal.id); }}
-                    >
-                      <FileEdit className="w-3 h-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 hover:bg-red-500/10 hover:text-red-400"
-                      onClick={(e) => { e.stopPropagation(); onRemove(proposal.id); }}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Remove</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-[var(--text-secondary)] mt-1 line-clamp-2 leading-relaxed">
-            {proposal.description || "No description"}
-          </p>
-
-          {/* Tags */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <span className={cn(
-              "px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wider",
-              effectivePriority === "critical" && "bg-red-500/20 text-red-400",
-              effectivePriority === "high" && "bg-[#ff6b35]/20 text-[#ff6b35]",
-              effectivePriority === "medium" && "bg-amber-500/20 text-amber-400",
-              effectivePriority === "low" && "bg-slate-500/20 text-slate-400"
-            )}>
-              {config.label}
-            </span>
-            <span className="px-1.5 py-px rounded text-[9px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
-              {proposal.category}
-            </span>
-            {proposal.userModified && (
-              <span className="px-1.5 py-px rounded text-[9px] font-medium bg-purple-500/20 text-purple-400 italic">
-                Modified
-              </span>
-            )}
-          </div>
-
-          {showHistoricalPlanLink && (
-            <button
-              data-testid="view-historical-plan"
-              onClick={(e) => { e.stopPropagation(); handleViewHistoricalPlan(); }}
-              className="mt-3 text-xs text-[#ff6b35] hover:text-[#ff8050] flex items-center gap-1.5 transition-colors"
-            >
-              <Eye className="w-3 h-3" />
-              View plan as of proposal creation (v{proposal.planVersionAtCreation})
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Proactive Sync Notification
-// ============================================================================
-
-interface ProactiveSyncNotificationProps {
-  notification: ProactiveSyncNotification;
-  onDismiss: () => void;
-  onReview: () => void;
-  onUndo: () => void;
-}
-
-function ProactiveSyncNotificationBanner({ notification, onDismiss, onReview, onUndo }: ProactiveSyncNotificationProps) {
-  const affectedCount = notification.proposalIds.length;
-
-  return (
-    <div
-      data-testid="proactive-sync-notification"
-      className="mb-3 p-3 rounded-lg bg-gradient-to-br from-[#ff6b35]/10 to-[#ff6b35]/5 border border-[#ff6b35]/30"
-    >
-      <div className="flex items-start gap-2">
-        <div className="w-7 h-7 rounded-md bg-[#ff6b35]/20 flex items-center justify-center flex-shrink-0">
-          <AlertCircle className="w-3.5 h-3.5 text-[#ff6b35]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-[var(--text-primary)] mb-0.5">Plan updated</p>
-          <p className="text-[11px] text-[var(--text-secondary)]">
-            {affectedCount} proposal{affectedCount !== 1 ? "s" : ""} may need revision.
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={onReview} className="h-6 px-2 text-[11px] text-[#ff6b35] hover:bg-[#ff6b35]/10">
-            <Eye className="w-3 h-3 mr-1" /> Review
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onUndo} className="h-6 px-2 text-[11px] hover:bg-white/[0.06]">
-            <Undo2 className="w-3 h-3 mr-1" /> Undo
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onDismiss} className="h-6 w-6 hover:bg-white/[0.06]">
-            ×
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Proposals Toolbar
-// ============================================================================
-
-interface ProposalsToolbarProps {
-  selectedCount: number;
-  totalCount: number;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  onSortByPriority: () => void;
-  onClearAll: () => void;
-  onApply: (targetColumn: string) => void;
-}
-
-function ProposalsToolbar({ selectedCount, totalCount, onSelectAll, onDeselectAll, onSortByPriority, onClearAll, onApply }: ProposalsToolbarProps) {
-  const canApply = selectedCount > 0;
-
-  return (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-black/20">
-      <span className="text-[10px] text-[var(--text-muted)]">
-        <span className="text-[var(--text-primary)] font-medium">{selectedCount}</span> of {totalCount} selected
-      </span>
-
-      <div className="flex items-center gap-0.5">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/[0.06]" onClick={onSelectAll}>
-                <CheckSquare className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Select all</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/[0.06]" onClick={onDeselectAll}>
-                <Square className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Deselect all</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <div className="w-px h-3 bg-white/[0.1] mx-0.5" />
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-white/[0.06]" onClick={onSortByPriority}>
-                <ArrowUpDown className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Sort by priority</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-red-500/10 hover:text-red-400" onClick={onClearAll}>
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Clear all</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <div className="w-px h-3 bg-white/[0.1] mx-0.5" />
-
-        {/* Apply to dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!canApply}
-              className={cn(
-                "h-6 px-2 text-[10px] gap-1",
-                canApply
-                  ? "text-[#ff6b35] hover:bg-[#ff6b35]/10"
-                  : "text-[var(--text-muted)]"
-              )}
-            >
-              Apply
-              <ChevronDown className="w-3 h-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-[#1a1a1a] border-white/[0.1]">
-            <DropdownMenuItem onClick={() => onApply("draft")} className="hover:bg-white/[0.06]">
-              <FileEdit className="w-4 h-4 mr-2" /> Draft
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onApply("backlog")} className="hover:bg-white/[0.06]">
-              <Inbox className="w-4 h-4 mr-2" /> Backlog
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onApply("todo")} className="hover:bg-white/[0.06]">
-              <ListTodo className="w-4 h-4 mr-2" /> Todo
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
-}
+// Proposals Toolbar extracted to ProposalsToolbar.tsx
 
 // ============================================================================
 // Main Component
@@ -753,10 +154,6 @@ export function IdeationView({
     };
   }, [isResizing]);
 
-  const handleArchive = useCallback(() => {
-    if (session) onArchiveSession(session.id);
-  }, [session, onArchiveSession]);
-
   const handleApply = useCallback((targetColumn: string) => {
     if (!session) return;
     const selectedProposals = proposals.filter((p) => p.selected);
@@ -768,102 +165,38 @@ export function IdeationView({
     });
   }, [session, proposals, onApply]);
 
-  const [highlightedProposalIds, setHighlightedProposalIds] = useState<Set<string>>(new Set());
-  const [planHistoryDialog, setPlanHistoryDialog] = useState<{ isOpen: boolean; artifactId: string; version: number } | null>(null);
-  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
-
-  // Collapse plan when interacting with proposals
-  const collapsePlan = useCallback(() => {
-    setIsPlanExpanded(false);
-  }, []);
-
-  const handleSelectAll = useCallback(() => {
-    collapsePlan();
-    proposals.forEach((p) => { if (!p.selected) onSelectProposal(p.id); });
-  }, [proposals, onSelectProposal, collapsePlan]);
-
-  const handleDeselectAll = useCallback(() => {
-    collapsePlan();
-    proposals.forEach((p) => { if (p.selected) onSelectProposal(p.id); });
-  }, [proposals, onSelectProposal, collapsePlan]);
-
-  const handleSortByPriority = useCallback(() => {
-    collapsePlan();
-    const sorted = [...proposals].sort((a, b) => b.priorityScore - a.priorityScore);
-    onReorderProposals(sorted.map((p) => p.id));
-  }, [proposals, onReorderProposals, collapsePlan]);
-
-  // Wrap onSelectProposal to also collapse plan
-  const handleSelectProposal = useCallback((proposalId: string) => {
-    collapsePlan();
-    onSelectProposal(proposalId);
-  }, [onSelectProposal, collapsePlan]);
-
-  const handleClearAll = useCallback(() => {
-    proposals.forEach((p) => onRemoveProposal(p.id));
-  }, [proposals, onRemoveProposal]);
-
-  const handleViewHistoricalPlan = useCallback((artifactId: string, version: number) => {
-    setPlanHistoryDialog({ isOpen: true, artifactId, version });
-  }, []);
-
-  const handleClosePlanHistoryDialog = useCallback(() => setPlanHistoryDialog(null), []);
-
-  const handleReviewSync = useCallback(() => {
-    if (syncNotification) {
-      setHighlightedProposalIds(new Set(syncNotification.proposalIds));
-      setTimeout(() => setHighlightedProposalIds(new Set()), 5000);
-    }
-  }, [syncNotification]);
-
-  const handleUndoSync = useCallback(() => {
-    if (!syncNotification) return;
-    console.log("Undo sync - restoring proposals:", syncNotification.previousStates);
-    dismissSyncNotification();
-    setHighlightedProposalIds(new Set());
-  }, [syncNotification, dismissSyncNotification]);
-
-  const handleDismissSync = useCallback(() => {
-    dismissSyncNotification();
-    setHighlightedProposalIds(new Set());
-  }, [dismissSyncNotification]);
-
-  const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImportPlan = useCallback(() => fileInputRef.current?.click(), []);
-
-  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!session) return;
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const content = await file.text();
-      const title = file.name.replace(/\.md$/, "").replace(/_/g, " ");
-
-      const apiResponse = await fetch("http://localhost:3847/api/create_plan_artifact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: session.id, title, content }),
-      });
-
-      if (!apiResponse.ok) throw new Error("Failed to import plan");
-
-      const data = await apiResponse.json();
-      if (data.id) {
-        await fetchPlanArtifact(data.id);
-        setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
-        setTimeout(() => setImportStatus(null), 5000);
-      }
-    } catch (error) {
-      console.error("Plan import error:", error);
-      setImportStatus({ type: "error", message: error instanceof Error ? error.message : "Failed to import plan" });
-      setTimeout(() => setImportStatus(null), 5000);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }, [session, fetchPlanArtifact]);
+  const {
+    highlightedProposalIds,
+    planHistoryDialog,
+    isPlanExpanded,
+    setIsPlanExpanded,
+    importStatus,
+    setImportStatus,
+    fileInputRef,
+    handleArchive,
+    handleSelectAll,
+    handleDeselectAll,
+    handleSortByPriority,
+    handleSelectProposal,
+    handleClearAll,
+    handleViewHistoricalPlan,
+    handleClosePlanHistoryDialog,
+    handleReviewSync,
+    handleUndoSync,
+    handleDismissSync,
+    handleImportPlan,
+    handleFileSelected,
+  } = useIdeationHandlers(
+    session,
+    proposals,
+    onSelectProposal,
+    onRemoveProposal,
+    onReorderProposals,
+    onArchiveSession,
+    fetchPlanArtifact,
+    dismissSyncNotification,
+    syncNotification
+  );
 
   const selectedCount = proposals.filter((p) => p.selected).length;
 
