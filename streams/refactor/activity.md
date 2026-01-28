@@ -85,3 +85,23 @@
 **Result:** Success - All 41 tests passed, cargo clippy passed with no warnings
 
 ---
+
+### 2026-01-28 - Split task_commands.rs
+**What:**
+- Original file: src-tauri/src/commands/task_commands.rs (1992 LOC)
+- Extracted to: 
+  - task_commands/types.rs (137 LOC) - Input/output types
+  - task_commands/helpers.rs (78 LOC) - Helper functions
+  - task_commands/query.rs (203 LOC) - Read operations
+  - task_commands/mutation.rs (496 LOC) - Write operations
+  - task_commands/tests.rs (1094 LOC) - All tests
+  - task_commands/mod.rs (53 LOC) - Module re-exports
+- New size: 496 LOC (largest module)
+
+**Commands:**
+- `wc -l src-tauri/src/commands/task_commands.rs` → 1992 LOC
+- `wc -l src-tauri/src/commands/task_commands/*.rs` → types:137, helpers:78, query:203, mutation:496, tests:1094, mod:53
+- `cargo clippy --all-targets --all-features -- -D warnings` → passed
+- `cargo test task_commands` → 51 tests passed
+
+**Result:** Success

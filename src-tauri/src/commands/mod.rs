@@ -64,7 +64,11 @@ pub use review_commands::{
     get_review_by_id, get_reviews_by_task_id, get_task_state_history, reject_fix_task,
     reject_review, request_changes,
 };
-pub use task_commands::{answer_user_question, create_task, delete_task, emit_queue_changed, get_task, inject_task, list_tasks, update_task};
+pub use task_commands::{
+    answer_user_question, archive_task, create_task, delete_task, emit_queue_changed,
+    get_archived_count, get_task, get_valid_transitions, inject_task, list_tasks, move_task,
+    permanently_delete_task, restore_task, search_tasks, update_task,
+};
 pub use task_step_commands::{
     create_task_step, delete_task_step, get_step_progress, get_task_steps, reorder_task_steps,
     update_task_step,
