@@ -329,7 +329,7 @@ mod tests {
 
         let result = window.detect_loop();
         assert!(result.is_some());
-        let result = result.unwrap();
+        let result = result.expect("Expected Some(DetectionResult) for infinite loop");
         assert_eq!(result.pattern, Pattern::InfiniteLoop);
         assert_eq!(result.occurrences, 3);
     }
@@ -349,7 +349,7 @@ mod tests {
 
         let result = window.detect_stuck(5);
         assert!(result.is_some());
-        let result = result.unwrap();
+        let result = result.expect("Expected Some(DetectionResult) for stuck detection");
         assert_eq!(result.pattern, Pattern::Stuck);
         assert_eq!(result.occurrences, 5);
     }
@@ -374,7 +374,7 @@ mod tests {
 
         let result = window.detect_repeating_error();
         assert!(result.is_some());
-        let result = result.unwrap();
+        let result = result.expect("Expected Some(DetectionResult) for repeating error");
         assert_eq!(result.pattern, Pattern::RepeatingError);
         assert_eq!(result.occurrences, 2);
     }
