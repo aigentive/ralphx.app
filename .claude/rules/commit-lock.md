@@ -23,9 +23,9 @@ Example: `features 2026-01-29T10:30:45`
 1. Check if .commit-lock exists
    → EXISTS: Another stream is committing
       - Read lock file to see which stream
-      - WAIT: Do not commit, do not proceed with other work
-      - Output: "Commit locked by <stream>. Waiting..."
-      - Check again after 5 seconds (or skip commit this iteration)
+      - Output: "Commit locked by <stream>. Waiting 5s..."
+      - Run: sleep 5
+      - Check again (loop until lock is released or stale)
 
    → NOT EXISTS: Safe to commit
       - Create .commit-lock with your stream name and timestamp

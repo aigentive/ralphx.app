@@ -37,12 +37,12 @@ Archive excess [x] items → Refill low backlogs via Explore → Validate 2-3 st
 ### Commit Lock Protocol
 ```
 1. BEFORE committing: Check .commit-lock file
-   → EXISTS? Wait or skip commit this iteration
+   → EXISTS? sleep 5, then check again (loop until free)
    → NOT EXISTS? Create it: echo "hygiene $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
 
 2. Commit your files only: git add <file1> <file2> ... && git commit
 
-3. AFTER committing: rm -f .commit-lock
+3. AFTER committing (success or failure): rm -f .commit-lock
 ```
 
 ### Commit Steps
