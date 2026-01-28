@@ -106,3 +106,44 @@
 - streams/README.md documentation complete
 
 **Result:** No gaps found. Phase 24 implementation complete and properly wired.
+
+---
+
+### 2026-01-28 22:55:30 - Phase 24 Deep Verification (Process Management)
+**Phases Checked:** 24
+
+**Checks Run:**
+- WIRING: All 6 panes and 5 stream wrappers verified for correct invocation
+- PROCESS MANAGEMENT: fswatch cleanup, signal handling, subprocess tracking
+- RACE CONDITIONS: Initial cycle vs fswatch startup timing
+- SHELL SAFETY: Variable quoting, regex patterns, error handling
+
+**Gaps Found:** 5
+
+**Gap Details:**
+1. [Infrastructure] Regex pattern error in fswatch cleanup: pkill pattern uses invalid regex
+   - File: ralph-tmux.sh:185
+   - Issue: `pkill -f "fswatch.*(streams/|specs/)"` uses unescaped regex that may match unintended processes
+   - Impact: Potential to kill wrong processes or fail cleanup
+
+2. [Infrastructure] Unquoted variable expansion in fswatch arguments
+   - File: scripts/stream-watch-*.sh:35 (all 5 wrappers)
+   - Issue: `fswatch -o -l 3 $WATCH_FILES` without quotes
+   - Impact: Breaks if any path contains spaces, fragile architecture
+
+3. [Infrastructure] Race condition: initial cycle and fswatch startup overlap
+   - File: scripts/stream-watch-*.sh:24-35 (all 5 wrappers)
+   - Issue: Initial ralph-streams.sh cycle commits to watched files, triggers fswatch prematurely
+   - Impact: Two concurrent cycles for same stream during startup
+
+4. [Infrastructure] Orphaned subshells: fswatch pipes not properly managed on stop
+   - File: ralph-tmux.sh:167-191 (stop_all function)
+   - Issue: `fswatch | while read` creates subshell, Ctrl+C kills fswatch but orphans while loop
+   - Impact: Orphaned ralph-streams.sh processes or hanging fswatch subshells
+
+5. [Infrastructure] Stream wrappers missing signal trap handlers for clean shutdown
+   - File: scripts/stream-watch-*.sh (all 5 wrappers)
+   - Issue: No trap handlers for INT/TERM signals, no cleanup of child processes
+   - Impact: Hanging processes on stop/restart
+
+**Result:** 5 P0 items added to features/backlog.md
