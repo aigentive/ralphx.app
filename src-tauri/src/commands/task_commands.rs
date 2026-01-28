@@ -356,6 +356,19 @@ async fn emit_queue_changed(
     tracing::debug!(queued_count, "Emitted execution:queue_changed event");
 }
 
+/// Emit a task lifecycle event (archived, restored, deleted).
+///
+/// These events share a common payload structure with task and project IDs.
+fn emit_task_lifecycle_event(app: &tauri::AppHandle, event_name: &str, task_id: &str, project_id: &str) {
+    let _ = app.emit(
+        event_name,
+        serde_json::json!({
+            "taskId": task_id,
+            "projectId": project_id,
+        }),
+    );
+}
+
 /// Move a task to a new status (for Kanban drag-drop)
 ///
 /// This command uses the TaskTransitionService to properly trigger state machine
@@ -613,12 +626,11 @@ pub async fn archive_task(
         .map_err(|e| e.to_string())?;
 
     // Emit event for real-time UI updates
-    let _ = app.emit(
+    emit_task_lifecycle_event(
+        &app,
         "task:archived",
-        serde_json::json!({
-            "taskId": archived_task.id.as_str(),
-            "projectId": archived_task.project_id.as_str(),
-        }),
+        archived_task.id.as_str(),
+        archived_task.project_id.as_str(),
     );
 
     Ok(TaskResponse::from(archived_task))
@@ -653,12 +665,11 @@ pub async fn restore_task(
         .map_err(|e| e.to_string())?;
 
     // Emit event for real-time UI updates
-    let _ = app.emit(
+    emit_task_lifecycle_event(
+        &app,
         "task:restored",
-        serde_json::json!({
-            "taskId": restored_task.id.as_str(),
-            "projectId": restored_task.project_id.as_str(),
-        }),
+        restored_task.id.as_str(),
+        restored_task.project_id.as_str(),
     );
 
     Ok(TaskResponse::from(restored_task))
@@ -715,13 +726,7 @@ pub async fn permanently_delete_task(
         .map_err(|e| e.to_string())?;
 
     // Emit event for real-time UI updates
-    let _ = app.emit(
-        "task:deleted",
-        serde_json::json!({
-            "taskId": task_id,
-            "projectId": project_id,
-        }),
-    );
+    emit_task_lifecycle_event(&app, "task:deleted", &task_id, &project_id);
 
     Ok(())
 }
