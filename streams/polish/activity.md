@@ -574,5 +574,16 @@
 
 **Result:** Success (all linters pass, error handling consolidated)
 
+### 2026-01-29 00:26:43 - Remove TODO comment for diff viewer integration
+**What:**
+- File: src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
+- Removed TODO comment from handleViewDiff function
+- Replaced with console.warn for unimplemented functionality
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (all linters pass, TODO comment removed)
+
 ---
 

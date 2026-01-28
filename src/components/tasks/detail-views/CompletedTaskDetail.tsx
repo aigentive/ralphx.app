@@ -254,7 +254,7 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
   const { humanApproval } = getApprovalInfo(history);
 
   const handleViewDiff = () => {
-    // TODO: Open DiffViewer or ReviewDetailModal
+    console.warn("Diff viewer not yet implemented");
   };
 
   const handleReopenTask = () => {
