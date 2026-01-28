@@ -362,7 +362,7 @@ export function HumanReviewTaskDetail({ task }: HumanReviewTaskDetailProps) {
   const pendingReview = reviews.find((r) => r.status === "pending");
 
   const handleViewDiff = () => {
-    console.warn("DiffViewer/ReviewDetailModal not yet implemented");
+    // TODO: Implement DiffViewer/ReviewDetailModal (deferred to PRD:20)
   };
 
   const isLoading = reviewsLoading || historyLoading;
