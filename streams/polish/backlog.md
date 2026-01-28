@@ -66,7 +66,8 @@ _No active P2 items. Completed items moved to archive._
 _No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
-- [x] [P3] [Backend] Remove dead code suppression and clean - src-tauri/src/application/priority_service/tests.rs:11
+
+_No active P3 items. Completed items moved to archive._
 
 ---
 
@@ -89,12 +90,12 @@ _No active P2 items. Completed items moved to archive._
 - [x] [P3] [Backend] Code cleanup: Resolve TODO comment about task dependencies - src-tauri/src/application/task_transition_service.rs:104
 - [x] [P3] [Backend] Code cleanup: Resolve TODO comment about ideation sessions - src-tauri/src/commands/test_data_commands.rs:206
 - [x] [P3] [Backend] Code cleanup: Resolve TODO comment about streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
-- [ ] [P3] [Backend] Code cleanup: Resolve TODO comment about agent context - src-tauri/src/commands/task_commands/mutation.rs:353
+- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about agent context - src-tauri/src/commands/task_commands/mutation.rs:353
 
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 3 (9 excluded, 10 deferred to PRD)
+**Active items:** 2 (9 excluded, 10 deferred to PRD)
 **Completed:** 10
 **Validated:** 60 strikethroughs (2026-01-29 x45) - 10 archived, 1 reactivated (moved to refactor as P1), 49 incremented
-**Last maintenance:** 2026-01-29 (archived 3 completed items)
+**Last maintenance:** 2026-01-29 (archived 1 completed item)
