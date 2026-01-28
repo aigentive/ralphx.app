@@ -40,16 +40,20 @@ fswatch --version
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ [0] RALPH ORCHESTRATOR STATUS (header)                       │
-├──────────────────────────────┬──────────────────────────────┤
-│ [1] FEATURES (opus)          │ [2] REFACTOR (sonnet)        │
-│                              │                              │
-│ PRD tasks + P0 gap fixes     │ P1 large file splits         │
-├───────────────┬──────────────┼──────────────────────────────┤
-│ [3] POLISH    │ [4] VERIFY   │ [5] HYGIENE                  │
-│ (sonnet)      │ (sonnet)     │ (sonnet)                     │
-│ P2/P3 cleanup │ Gap detect   │ Backlog maintenance          │
-└───────────────┴──────────────┴──────────────────────────────┘
+│ [0] STATUS (keybindings, refresh info)                      │
+├───────────────────────────────────┬─────────────────────────┤
+│                                   │ [2] REFACTOR (sonnet)   │
+│                                   │ P1 large file splits    │
+│                                   ├─────────────────────────┤
+│ [1] FEATURES (opus)               │ [3] POLISH (sonnet)     │
+│ PRD tasks + P0 gap fixes          │ P2/P3 cleanup           │
+│ Main stream - 60% width           ├─────────────────────────┤
+│                                   │ [4] VERIFY (sonnet)     │
+│                                   │ Gap detection           │
+│                                   ├─────────────────────────┤
+│                                   │ [5] HYGIENE (sonnet)    │
+│                                   │ Backlog maintenance     │
+└───────────────────────────────────┴─────────────────────────┘
 ```
 
 ## Tmux Key Bindings
