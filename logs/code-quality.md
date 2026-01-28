@@ -91,11 +91,11 @@
 
 ### P2 - Medium Impact
 - [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1243
-- [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs~~ (stale - TODO found but different line)
-- [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs~~ (stale - TODO not found)
-- [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:1867~~ (stale - TODO not found)
-- [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs~~ (stale - TODO not found)
-- [ ] ~~Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs~~ (PRD:20)
+- [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs:113~~ (stale:1 - TODO exists at different line, feature-level work)
+- [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs:206~~ (stale:1 - TODO exists, feature-level work)
+- [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:530~~ (stale:1 - TODO exists, feature-level work)
+- [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs:104~~ (stale:1 - TODO exists, feature-level work)
+- [x] Fix incorrect InternalStatus→State mapping in execute_entry_actions (Reviewing→PendingReview, ReExecuting→Executing) - src-tauri/src/application/task_transition_service.rs:329-332
 - [x] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
@@ -106,8 +106,6 @@
 - [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale - file is 336 LOC, under 500 limit)
 
 ### P3 - Low Impact
-- [x] Replace println! debug statements with tracing::debug! in task_transition_service.rs - src-tauri/src/application/task_transition_service.rs
-- [x] Remove redundant derive trait tests (Debug, Clone) in health.rs - src-tauri/src/commands/health.rs:37-50
 - [x] Remove unused TransitionObserver trait (dead code) - src-tauri/src/domain/state_machine/transition_handler.rs:393
 - [x] Remove broad clippy allows (dead_code, unused_imports, unused_variables) from lib.rs - src-tauri/src/lib.rs:23-25
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
@@ -117,6 +115,7 @@
 - [x] Consolidate duplicate ExecutionState imports in spawner.rs tests - src-tauri/src/infrastructure/agents/spawner.rs:204
 - [x] Reduce spawner.rs (529 LOC → 500 LOC) - consolidated role_from_string tests - src-tauri/src/infrastructure/agents/spawner.rs:1-50
 - [x] Make AGENT_ACTIVE_STATUSES public for reuse by StartupJobRunner - src-tauri/src/commands/execution_commands.rs:12
+- [x] Remove stale comment about execute_entry_actions being private - src-tauri/src/application/startup_jobs.rs:109
 - [ ] ~~Add contextual error messages in artifact type parsing failures - src-tauri/src/commands/artifact_commands.rs:158,216,357~~ (stale - all locations already have contextual messages)
 - [ ] ~~Extract duplicate parse error handling pattern in workflow/ideation commands - src-tauri/src/commands/workflow_commands.rs:25~~ (stale - not a duplicate pattern, each is specific to its context)
 
