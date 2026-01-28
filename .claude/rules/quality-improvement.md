@@ -8,15 +8,27 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
 
 ```
 1. Read logs/code-quality.md
-2. Items exist? → Pick ONE by scope
+2. Pick ONE item (P0 first, then by task scope: small=P3, medium=P2, large=P1)
 3. VERIFY:
-   a. Issue still exists? (read file:line, check if problem remains)
+   a. Issue still exists? (read file:line)
    b. NOT in active PRD? (cross-reference with current phase task list)
    ├── Valid & not in PRD? → Execute → Mark [x] → Commit
-   ├── Stale (already fixed)? → Strikethrough ~~text~~ (stale) → Pick next
-   └── In PRD (planned work)? → Strikethrough ~~text~~ (PRD) → Pick next
-4. List empty/all marked? → Launch Explore agent → Update file → Pick ONE → Verify → Execute
+   ├── Stale? → Strikethrough ~~text~~ (stale) → Pick next
+   └── In PRD? → Strikethrough ~~text~~ (PRD) → Pick next
+4. No valid items at current scope? → ESCALATE to next priority tier (P3→P2→P1)
+5. ALL items exhausted/marked? → Launch Explore agent → Replenish → Pick ONE → Execute
 ```
+
+## CRITICAL: No Skipping Allowed
+
+**Quality improvement is MANDATORY. "Nothing to do" is NOT an excuse.**
+
+If your scope tier is exhausted:
+- P3 exhausted → Pick from P2
+- P2 exhausted → Pick from P1
+- P1 exhausted → Launch Explore agent to find new issues
+
+**The iteration does NOT complete until a `refactor:` commit exists.**
 
 **Why verify?**
 - Other tasks or parallel agents may have already fixed the issue
