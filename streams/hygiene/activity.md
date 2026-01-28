@@ -1,5 +1,22 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:18:27 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 4/10 completed, polish: 10/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 11 active items, polish: 14 active items)
+
+**Validation:**
+- Checked 2 strikethrough items:
+  - App.tsx:784 Open diff viewer (PRD:20:1:1:1:1:1 → PRD:20:1:1:1:1:1:1): TODO still exists → **Counter incremented**
+  - useAgentEvents.ts:208 console.debug (stale → stale:1): No console.debug present, only appropriate console.error → **Counter incremented**
+
+**Result:** 2 validation counters incremented
+
+---
+
 ### 2026-01-28 23:16:47 - Backlog Maintenance
 
 **Archive:**
