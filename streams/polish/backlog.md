@@ -73,7 +73,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] [P2] [Frontend] Extract ToolCallIndicator sub-functions - src/components/Chat/ToolCallIndicator.tsx:49-200
+- [x] [P2] [Frontend] Extract ToolCallIndicator sub-functions - src/components/Chat/ToolCallIndicator.tsx:49-200
 - [ ] [P2] [Frontend] Consolidate ChatPanel console.error handlers into unified error handler - src/components/Chat/ChatPanel.tsx:332
 - [ ] [P2] [Frontend] Remove TODO comment for Tauri command integration - src/App.tsx:359
 - [ ] [P2] [Frontend] Extract ExtensibilityView.panels large panel components (906 LOC) - src/components/ExtensibilityView.panels.tsx:1
@@ -94,7 +94,7 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 18 (9 excluded, 10 deferred to PRD)
-**Completed:** 8
+**Active items:** 17 (9 excluded, 10 deferred to PRD)
+**Completed:** 9
 **Validated:** 44 strikethroughs (2026-01-29 x29) - 6 archived, 1 reactivated, 37 incremented
 **Last maintenance:** 2026-01-29 00:00 (refilled 15 P2/P3 items)
