@@ -1,15 +1,36 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 12:45:00
+**Last Updated:** 2026-01-28 04:23:21
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 10 / 39
-**Current Task:** Add task-level MCP scoping (RALPHX_TASK_ID validation)
+**Tasks Completed:** 11 / 39
+**Current Task:** Update worker agent prompt with revision instructions
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 04:23:21 - Add task-level MCP scoping (RALPHX_TASK_ID validation)
+
+**What:**
+- Implemented task-level MCP scoping to prevent agents from modifying wrong tasks
+- Added `validateTaskScope()` function in `ralphx-plugin/ralphx-mcp-server/src/index.ts`
+- Defined 13 task-scoped tools: complete_review, update_task, add_task_note, get_task_details, get_task_context, get_review_notes, get_task_steps, start_step, complete_step, skip_step, fail_step, add_step, get_step_progress
+- Added scope validation before tool execution in CallToolRequestSchema handler
+- Updated `src-tauri/src/application/chat_service.rs` to set RALPHX_TASK_ID env var for Task and TaskExecution contexts (both initial spawn and resume)
+- Added helpful error messages for scope violations
+- Backward compatible: when RALPHX_TASK_ID is not set, no validation occurs
+- **Quality improvement:** Wrapped messagesData in useMemo in `src/components/Chat/IntegratedChatPanel.tsx:519` to fix dependency chain issues
+
+**Commands:**
+- `cd ralphx-plugin/ralphx-mcp-server && npm run build` - build succeeds
+- `cargo clippy --all-targets --all-features -- -D warnings` - no warnings
+- `cargo test` - all tests pass
+- `npm run typecheck` - no errors
+- `npm run lint` - no errors
+- `git commit -m "feat(mcp): add task-level scope validation"`
+- `git commit -m "refactor(frontend): wrap messagesData in useMemo in IntegratedChatPanel"`
 
 ### 2026-01-28 12:45:00 - Add get_review_notes MCP tool definition
 
