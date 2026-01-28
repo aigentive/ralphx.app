@@ -21,6 +21,9 @@ import {
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import { api } from "@/lib/tauri";
+import { useQueryClient } from "@tanstack/react-query";
+import { taskKeys } from "@/hooks/useTasks";
 
 interface CompletedTaskDetailProps {
   task: Task;
@@ -247,6 +250,7 @@ function ActionButtons({
  * Shows: completed banner, final summary, review history timeline, and action buttons.
  */
 export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
+  const queryClient = useQueryClient();
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(
     task.id
   );
@@ -257,8 +261,13 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
     console.warn("Diff viewer not yet implemented");
   };
 
-  const handleReopenTask = () => {
-    // TODO: Transition task back to ready state
+  const handleReopenTask = async () => {
+    try {
+      await api.tasks.move(task.id, "ready");
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(task.projectId) });
+    } catch (error) {
+      console.error("Failed to reopen task:", error);
+    }
   };
 
   const approvalTimeDisplay = humanApproval
