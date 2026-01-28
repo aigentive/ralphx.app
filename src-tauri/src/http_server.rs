@@ -143,6 +143,15 @@ pub struct SuccessResponse {
     pub message: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct CompleteReviewResponse {
+    pub success: bool,
+    pub message: String,
+    pub new_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix_task_id: Option<String>,
+}
+
 // Permission request/response types
 #[derive(Debug, Deserialize)]
 pub struct PermissionRequestInput {
@@ -885,26 +894,167 @@ async fn suggest_task(
 // ============================================================================
 
 async fn complete_review(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CompleteReviewRequest>,
-) -> Result<Json<SuccessResponse>, StatusCode> {
-    let _task_id = TaskId::from_string(req.task_id);
+) -> Result<Json<CompleteReviewResponse>, (StatusCode, String)> {
+    use crate::domain::entities::{Review, ReviewerType, ReviewNote, ReviewOutcome};
+    use crate::domain::tools::complete_review::ReviewToolOutcome;
+    use crate::application::TaskTransitionService;
 
-    // Parse decision
-    let _decision = match req.decision.as_str() {
-        "approved" => "approved",
-        "needs_changes" => "needs_changes",
-        "escalate" => "escalate",
-        _ => return Err(StatusCode::BAD_REQUEST),
+    let task_id = TaskId::from_string(req.task_id);
+
+    // 1. Get task and validate state is Reviewing
+    let task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    if task.internal_status != InternalStatus::Reviewing {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("Task not in reviewing state. Current state: {}", task.internal_status.as_str()),
+        ));
+    }
+
+    // 2. Parse and map decision to ReviewToolOutcome
+    let outcome = match req.decision.as_str() {
+        "approved" => ReviewToolOutcome::Approved,
+        "needs_changes" => ReviewToolOutcome::NeedsChanges,
+        "escalate" => ReviewToolOutcome::Escalate,
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid decision: '{}'. Expected 'approved', 'needs_changes', or 'escalate'", req.decision),
+            ))
+        }
     };
 
-    // TODO: Implement review submission logic
-    // This will be implemented when ReviewService is updated in future tasks
-    // For now, just acknowledge the review
+    // 3. Get feedback
+    let feedback = req.comments.unwrap_or_else(|| "No comments provided".to_string());
 
-    Ok(Json(SuccessResponse {
+    // 4. Get or create Review record for this task
+    let reviews = state
+        .review_repo
+        .get_by_task_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Find the most recent pending review, or None if none exists
+    let existing_review = reviews
+        .into_iter()
+        .find(|r| r.status == crate::domain::entities::ReviewStatus::Pending);
+
+    let is_new_review = existing_review.is_none();
+    let mut review = existing_review
+        .unwrap_or_else(|| Review::new(task.project_id.clone(), task_id.clone(), ReviewerType::Ai));
+
+    // 5. Process the review result based on outcome
+    let review_outcome = match outcome {
+        ReviewToolOutcome::Approved => ReviewOutcome::Approved,
+        ReviewToolOutcome::NeedsChanges => ReviewOutcome::ChangesRequested,
+        ReviewToolOutcome::Escalate => ReviewOutcome::Rejected,
+    };
+
+    // Update review status
+    match outcome {
+        ReviewToolOutcome::Approved => {
+            review.approve(Some(feedback.clone()));
+        }
+        ReviewToolOutcome::NeedsChanges => {
+            review.request_changes(feedback.clone());
+        }
+        ReviewToolOutcome::Escalate => {
+            review.reject(feedback.clone());
+        }
+    }
+
+    // Save review
+    if is_new_review {
+        // New review, create it
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    } else {
+        // Existing review, update it
+        state
+            .review_repo
+            .update(&review)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    // Create review note for history
+    let review_note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Ai,
+        review_outcome,
+        feedback.clone(),
+    );
+    state
+        .review_repo
+        .add_note(&review_note)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // For now, we don't create fix tasks automatically - that can be added later
+    let fix_task_id: Option<TaskId> = None;
+
+    // 6. Trigger state transition via TaskTransitionService
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        state.app_handle.as_ref().cloned(),
+    );
+
+    let new_status = match outcome {
+        ReviewToolOutcome::Approved => {
+            // Approved: transition to ReviewPassed (awaiting human approval)
+            transition_service
+                .transition_task(&task_id, InternalStatus::ReviewPassed)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            InternalStatus::ReviewPassed
+        }
+        ReviewToolOutcome::NeedsChanges | ReviewToolOutcome::Escalate => {
+            // Needs changes or escalate: transition to RevisionNeeded
+            transition_service
+                .transition_task(&task_id, InternalStatus::RevisionNeeded)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            InternalStatus::RevisionNeeded
+        }
+    };
+
+    // 7. Emit events
+    if let Some(app_handle) = &state.app_handle {
+        let _ = app_handle.emit("review:completed", serde_json::json!({
+            "task_id": task_id.as_str(),
+            "decision": req.decision,
+            "new_status": new_status.as_str(),
+        }));
+        let _ = app_handle.emit("task:status_changed", serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": task.internal_status.as_str(),
+            "new_status": new_status.as_str(),
+        }));
+    }
+
+    // 8. Return response
+    Ok(Json(CompleteReviewResponse {
         success: true,
         message: "Review submitted successfully".to_string(),
+        new_status: new_status.as_str().to_string(),
+        fix_task_id: fix_task_id.map(|id| id.as_str().to_string()),
     }))
 }
 

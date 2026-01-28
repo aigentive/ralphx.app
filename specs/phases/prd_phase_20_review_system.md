@@ -227,7 +227,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(http): implement complete_review handler"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
