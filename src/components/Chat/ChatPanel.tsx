@@ -16,38 +16,30 @@ import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
-import { useUiStore } from "@/stores/uiStore";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi, stopAgent } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   MessageSquare,
   CheckSquare,
   FolderKanban,
-  Bot,
   X,
   PanelRightClose,
   PanelRightOpen,
   Loader2,
-  Hammer,
-  Activity,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { type ToolCall } from "./ToolCallIndicator";
-import { StreamingToolIndicator } from "./StreamingToolIndicator";
-import { MessageItem } from "./MessageItem";
+import { ChatMessages } from "./ChatMessages";
+import { ResizeablePanel, useResizePanel } from "./ResizeablePanel";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const MIN_WIDTH = 320;
-const MAX_WIDTH_PERCENT = 50;
 const COLLAPSED_WIDTH = 40;
 
 // ============================================================================
@@ -99,141 +91,6 @@ const animationStyles = `
 // Sub-components
 // ============================================================================
 
-function TypingIndicator() {
-  return (
-    <div
-      data-testid="chat-typing-indicator"
-      className="flex items-start gap-2 mb-2"
-    >
-      <Bot className="w-3.5 h-3.5 mt-2 shrink-0 text-white/40" />
-      <div
-        className="px-3 py-2 rounded-[10px_10px_10px_4px]"
-        style={{
-          background: "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div
-      data-testid="chat-panel-empty"
-      className="flex flex-col items-center justify-center h-full p-6 text-center"
-    >
-      <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
-        style={{
-          background: "linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(255,107,53,0.05) 100%)",
-          border: "1px solid rgba(255,107,53,0.15)",
-        }}
-      >
-        <MessageSquare className="w-5 h-5 text-[#ff6b35]" />
-      </div>
-      <p className="text-[13px] font-medium text-white/80">
-        Start a conversation
-      </p>
-      <p className="text-xs mt-1 text-white/40">
-        Ask questions or get help with your tasks
-      </p>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div
-      data-testid="chat-panel-loading"
-      className="flex items-center justify-center p-6"
-    >
-      <Loader2 className="w-5 h-5 animate-spin text-[#ff6b35]" />
-    </div>
-  );
-}
-
-function WorkerExecutingIndicator() {
-  const setCurrentView = useUiStore((s) => s.setCurrentView);
-
-  return (
-    <div
-      data-testid="worker-executing-indicator"
-      className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.03) 100%)",
-        border: "1px solid rgba(255,107,53,0.15)",
-      }}
-    >
-      <Hammer className="w-3.5 h-3.5 text-[#ff6b35]" />
-      <div className="flex items-center gap-2 flex-1">
-        <span className="text-[13px] font-medium text-white/80">Worker is executing...</span>
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setCurrentView("activity")}
-        className="shrink-0 h-7 px-2"
-        aria-label="View all activity"
-      >
-        <Activity className="w-3.5 h-3.5 mr-1" />
-        <span className="text-[11px]">Activity</span>
-      </Button>
-    </div>
-  );
-}
-
-interface FailedRunBannerProps {
-  errorMessage: string;
-  onDismiss?: () => void;
-}
-
-function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProps) {
-  return (
-    <div
-      data-testid="failed-run-banner"
-      className="flex items-start gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.05) 100%)",
-        border: "1px solid rgba(239,68,68,0.25)",
-      }}
-    >
-      <Activity className="w-3.5 h-3.5 mt-0.5 text-red-400 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <span className="text-[13px] font-medium text-red-300 block">
-          Agent run failed
-        </span>
-        <span className="text-[12px] text-red-300/70 block mt-0.5 break-words">
-          {errorMessage.slice(0, 200)}
-          {errorMessage.length > 200 && "..."}
-        </span>
-      </div>
-      {onDismiss && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onDismiss}
-          className="shrink-0 text-red-300/60 hover:text-red-300"
-          aria-label="Dismiss error"
-        >
-          <X className="w-3.5 h-3.5" />
-        </Button>
-      )}
-    </div>
-  );
-}
-
 interface ContextIndicatorProps {
   context: ChatContext;
   isExecutionMode?: boolean;
@@ -272,8 +129,6 @@ function ContextIndicator({ context, isExecutionMode = false }: ContextIndicator
     </div>
   );
 }
-
-// MessageItem is now imported from "./MessageItem" - shared component
 
 // ============================================================================
 // Collapsed Panel
@@ -314,46 +169,6 @@ function CollapsedPanel({ onExpand, hasUnread }: CollapsedPanelProps) {
 }
 
 // ============================================================================
-// Resize Handle
-// ============================================================================
-
-interface ResizeHandleProps {
-  isDragging: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
-}
-
-function ResizeHandle({ isDragging, onMouseDown }: ResizeHandleProps) {
-  return (
-    <div
-      data-testid="chat-panel-resize-handle"
-      className="absolute top-0 bottom-0 w-1.5 cursor-ew-resize z-[41]"
-      style={{ left: "-3px" }}
-      onMouseDown={onMouseDown}
-    >
-      <div
-        className={cn(
-          "absolute top-1/2 left-1/2 w-0.5 h-12 -translate-x-1/2 -translate-y-1/2 rounded-sm transition-all duration-150",
-          isDragging ? "h-16" : ""
-        )}
-        style={{
-          backgroundColor: isDragging
-            ? "var(--accent-primary)"
-            : "transparent",
-          boxShadow: isDragging
-            ? "0 0 8px rgba(255,107,53,0.4)"
-            : "none",
-        }}
-      />
-      <style>{`
-        [data-testid="chat-panel-resize-handle"]:hover > div {
-          background-color: var(--border-default);
-        }
-      `}</style>
-    </div>
-  );
-}
-
-// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -375,6 +190,7 @@ export function ChatPanel({ context }: ChatPanelProps) {
 
 function ChatPanelContent({ context }: ChatPanelProps) {
   const queryClient = useQueryClient();
+  const chatStore = useChatStore();
   const {
     width,
     togglePanel,
@@ -384,7 +200,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     startEditingQueuedMessage,
     queueExecutionMessage,
     deleteExecutionQueuedMessage,
-  } = useChatStore();
+  } = chatStore;
   const activeConversationId = useChatStore(selectActiveConversationId);
 
   // Compute context key for queue/agent state operations
@@ -447,18 +263,21 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   } = regularChatData;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   // Streaming tool calls - accumulated during agent execution
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const lastMessageCountRef = useRef(0);
   // Ref for activeConversationId so event listeners always have current value
   const activeConversationIdRef = useRef(activeConversationId);
+
+  // Resize panel hook
+  const { ResizeHandle } = useResizePanel({
+    initialWidth: width,
+    onWidthChange: setWidth,
+  });
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -535,37 +354,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isCollapsed, handleClose]);
-
-  // Resize handlers
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsDragging(true);
-      resizeRef.current = {
-        startX: e.clientX,
-        startWidth: width,
-      };
-
-      const handleResizeMove = (moveEvent: MouseEvent) => {
-        if (!resizeRef.current) return;
-        const deltaX = resizeRef.current.startX - moveEvent.clientX;
-        const newWidth = resizeRef.current.startWidth + deltaX;
-        const maxWidth = window.innerWidth * (MAX_WIDTH_PERCENT / 100);
-        setWidth(Math.max(MIN_WIDTH, Math.min(maxWidth, newWidth)));
-      };
-
-      const handleResizeEnd = () => {
-        resizeRef.current = null;
-        setIsDragging(false);
-        document.removeEventListener("mousemove", handleResizeMove);
-        document.removeEventListener("mouseup", handleResizeEnd);
-      };
-
-      document.addEventListener("mousemove", handleResizeMove);
-      document.addEventListener("mouseup", handleResizeEnd);
-    },
-    [width, setWidth]
-  );
 
   // Send message handler
   const handleSend = useCallback(
@@ -844,13 +632,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     };
   }, [queryClient]);
 
-  // Sort messages by createdAt - render in chronological order, no grouping
-  const sortedMessages = useMemo(() => {
-    return [...messagesData].sort((a, b) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-  }, [messagesData]);
-
   if (isCollapsed) {
     return (
       <CollapsedPanel
@@ -862,32 +643,17 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
   const isLoading = activeConversation.isLoading;
   const isSending = sendMessage.isPending;
-  const isEmpty = !isLoading && sortedMessages.length === 0;
 
   return (
     <>
       <style>{animationStyles}</style>
-      <aside
-        ref={panelRef}
-        data-testid="chat-panel"
-        role="complementary"
-        aria-label="Chat panel"
-        className={cn(
-          "fixed top-14 right-0 bottom-0 flex flex-col",
-          isExiting ? "chat-panel-exit" : "chat-panel-enter"
-        )}
-        style={{
-          width: `${width}px`,
-          minWidth: `${MIN_WIDTH}px`,
-          backgroundColor: "var(--bg-surface)",
-          borderLeft: "1px solid var(--border-subtle)",
-          boxShadow: "var(--shadow-md)",
-          zIndex: 40,
-        }}
+      <ResizeablePanel
+        width={width}
+        isExiting={isExiting}
+        testId="chat-panel"
+        ariaLabel="Chat panel"
+        ResizeHandle={ResizeHandle}
       >
-        {/* Resize Handle */}
-        <ResizeHandle isDragging={isDragging} onMouseDown={handleResizeStart} />
-
         {/* Header - Glass effect */}
         <div
           data-testid="chat-panel-header"
@@ -951,52 +717,18 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         </div>
 
         {/* Messages Area */}
-        <ScrollArea
-          ref={scrollAreaRef}
-          className="flex-1"
-          data-testid="chat-panel-messages"
-        >
-          <div className="p-3">
-            {/* Show failed run banner if last run failed */}
-            {showFailedBanner && failedRun?.errorMessage && (
-              <FailedRunBanner
-                errorMessage={failedRun.errorMessage}
-                onDismiss={() => setDismissedErrorId(failedRun.id)}
-              />
-            )}
-
-            {/* Show worker executing indicator when in execution mode */}
-            {isExecutionMode && <WorkerExecutingIndicator />}
-
-            {isLoading ? (
-              <LoadingState />
-            ) : isEmpty ? (
-              <EmptyState />
-            ) : (
-              <>
-                {sortedMessages.map((msg) => (
-                  <MessageItem
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    createdAt={msg.createdAt}
-                    toolCalls={msg.toolCalls}
-                    contentBlocks={msg.contentBlocks}
-                  />
-                ))}
-                {/* Show streaming tool calls or typing indicator while agent is working */}
-                {(isSending || isAgentRunning) && (
-                  streamingToolCalls.length > 0 ? (
-                    <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-                  ) : (
-                    <TypingIndicator />
-                  )
-                )}
-                <div ref={messagesEndRef} />
-              </>
-            )}
-          </div>
-        </ScrollArea>
+        <ChatMessages
+          messages={messagesData}
+          isLoading={isLoading}
+          isSending={isSending}
+          isAgentRunning={isAgentRunning}
+          isExecutionMode={isExecutionMode}
+          streamingToolCalls={streamingToolCalls}
+          failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
+          onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
+          messagesEndRef={messagesEndRef}
+          scrollAreaRef={scrollAreaRef}
+        />
 
         {/* Input Area */}
         <div className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
@@ -1035,7 +767,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             />
           </div>
         </div>
-      </aside>
+      </ResizeablePanel>
     </>
   );
 }

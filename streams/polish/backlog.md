@@ -20,7 +20,7 @@ _No active P2 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] [P2] [Frontend] Extract hook logic from useChat (528 LOC) - split event handling - src/hooks/useChat.ts:1-528
+- [x] [P2] [Frontend] Extract hook logic from useChat (528 LOC → 344 LOC) - extracted event handling to useAgentEvents - src/hooks/useChat.ts:1-528
 - [ ] [P2] [Frontend] Extract hook logic from useEvents (417 LOC) - split by event type - src/hooks/useEvents.ts:1-417
 - [ ] [P2] [Frontend] Extract hook logic from useSupervisorAlerts (409 LOC) - split alert management - src/hooks/useSupervisorAlerts.ts:1-409
 - [ ] [P2] [Frontend] Error handling: console.error in useChat lacks structured error reporting - src/hooks/useChat.ts:462

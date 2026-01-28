@@ -34,7 +34,7 @@ echo ""
 fswatch -o $WATCH_FILES | while read; do
     echo ""
     echo -e "${YELLOW}[$STREAM] File change detected, starting cycle...${NC}"
-    ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50
+    ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
     echo ""
     echo -e "${GREEN}[$STREAM] IDLE - watching for file changes...${NC}"
 done
