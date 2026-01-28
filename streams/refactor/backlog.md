@@ -6,8 +6,8 @@
 
 ## Frontend (src/)
 
-- [ ] Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components - src/components/ExtensibilityView.tsx:1-50
-- [ ] Split IdeationView (1105 LOC, was 1198) - extract ideation session and proposal panels into sub-components - src/components/Ideation/IdeationView.tsx:1-50
+- [ ] ~~Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components~~ (stale - now 205 LOC)
+- [x] Split IdeationView (1105 LOC → 438 LOC) - extracted SessionBrowser, StartSessionPanel, ProposalCard, ProposalsToolbar, ProactiveSyncNotification, ProposalsEmptyState, and useIdeationHandlers hook - src/components/Ideation/IdeationView.tsx:1-50
 - [ ] Reduce ChatPanel component size (1044 LOC) - extract ResizeablePanel and message rendering logic - src/components/Chat/ChatPanel.tsx:1-100
 - [ ] Reduce IntegratedChatPanel component size (1021 LOC) - extract scrolling logic and message rendering - src/components/Chat/IntegratedChatPanel.tsx:1-100
 
