@@ -73,7 +73,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Create scripts/ directory if it doesn't exist",
       "Commit: chore(tmux): verify prerequisites and create scripts directory"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "infrastructure",
