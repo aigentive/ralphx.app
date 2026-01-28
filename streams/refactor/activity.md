@@ -331,3 +331,26 @@ Updated backlog item to reflect complexity.
 - `cargo test --lib infrastructure::sqlite::migrations`
 
 **Result:** Success - All 149 tests passed, cargo clippy passed with no warnings, file now under 1500 LOC (still exceeds 500 but migrations are special historical records)
+
+### 2026-01-29 01:15:42 - Split ideation.rs
+
+**What:**
+- Original file: src-tauri/src/domain/entities/ideation.rs (3982 LOC)
+- Extracted to:
+  - ideation/mod.rs (234 LOC) - IdeationSession + Builder + impl
+  - ideation/types.rs (365 LOC) - All enums (Priority, Complexity, ProposalStatus, TaskCategory, MessageRole) + error types
+  - ideation/proposal.rs (201 LOC) - TaskProposal struct + impl
+  - ideation/assessment.rs (426 LOC) - Priority assessment factors (7 types)
+  - ideation/chat.rs (258 LOC) - ChatMessage struct + impl
+  - ideation/graph.rs (198 LOC) - DependencyGraph, Node, Edge
+  - ideation/tests.rs (2345 LOC) - All 205 unit tests
+- New size: 426 LOC (max module size, 89% reduction in largest module)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/entities/ideation/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib domain::entities::ideation`
+
+**Result:** Success - All 205 tests passed, cargo clippy passed with no warnings, all modules now under 500 LOC limit
+
+---
