@@ -87,7 +87,7 @@
 - [ ] Split artifact_flow.rs (1389 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/artifact_flow.rs:1-50
 - [ ] Split methodology.rs (1363 LOC) entity - extract types/helpers - src-tauri/src/domain/entities/methodology.rs:1-50
 - [ ] Split artifact_flow_service.rs (1247 LOC) - separate queries from domain logic - src-tauri/src/domain/services/artifact_flow_service.rs:1-50
-- [ ] Split artifact_service.rs (1140 LOC) - separate concerns - src-tauri/src/domain/services/artifact_service.rs:1-50
+- [x] Split artifact_service.rs (1140 LOC → 266 LOC) - extracted tests to artifact_service_tests.rs - src-tauri/src/domain/services/artifact_service.rs:1-50
 
 ### P2 - Medium Impact
 - [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1243
