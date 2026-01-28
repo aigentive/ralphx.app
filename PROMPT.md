@@ -63,8 +63,8 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 **Every task requires a `refactor:` commit. No exceptions.**
 
 ```
-Read logs/code-quality.md → Pick ONE by scope → VERIFY still exists → Execute → Mark [x]
-Stale? → Mark [~] → Pick next | List empty? → Explore agent → Update file
+Read logs/code-quality.md → Pick ONE by scope → VERIFY (exists + NOT in active PRD) → Execute → Mark [x]
+Stale [~] or PRD-planned [P]? → Pick next | List empty? → Explore agent → Update file
 ```
 
 **Full workflow:** `.claude/rules/quality-improvement.md`

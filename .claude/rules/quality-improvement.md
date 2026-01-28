@@ -9,13 +9,18 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
 ```
 1. Read logs/code-quality.md
 2. Items exist? → Pick ONE by scope
-3. VERIFY issue still exists (read file:line, check if problem remains)
-   ├── Still valid? → Execute → Mark [x] → Commit
-   └── Stale? → Mark [~] → Pick next item
-4. List empty/all stale? → Launch Explore agent → Update file → Pick ONE → Verify → Execute
+3. VERIFY:
+   a. Issue still exists? (read file:line, check if problem remains)
+   b. NOT in active PRD? (cross-reference with current phase task list)
+   ├── Valid & not in PRD? → Execute → Mark [x] → Commit
+   ├── Stale (already fixed)? → Mark [~] → Pick next
+   └── In PRD (planned work)? → Mark [P] → Pick next
+4. List empty/all marked? → Launch Explore agent → Update file → Pick ONE → Verify → Execute
 ```
 
-**Why verify?** Other tasks or parallel agents may have already fixed the issue. Don't waste effort on stale items.
+**Why verify?**
+- Other tasks or parallel agents may have already fixed the issue
+- Some issues may be planned work in the active PRD — don't duplicate effort
 
 ## Scope Matching
 
