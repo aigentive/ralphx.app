@@ -35,6 +35,7 @@ import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
+import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useTasks } from "@/hooks/useTasks";
 import { useProjects } from "@/hooks/useProjects";
 import {
@@ -159,6 +160,9 @@ function AppContent() {
 
   const { count: pendingReviewCount } = usePendingReviews(currentProjectId);
   const { data: tasks = [] } = useTasks(currentProjectId);
+
+  // Real-time execution status updates via Tauri events
+  useExecutionEvents();
   const { approve: approveReview, requestChanges: requestChangesReview, isApproving, isRequestingChanges } = useReviewMutations();
 
   // Ideation hooks
@@ -362,19 +366,15 @@ function AppContent() {
 
   // Ideation handlers
   const handleNewSession = useCallback(async () => {
-    console.log("handleNewSession called with projectId:", currentProjectId);
     try {
-      console.log("About to call createSession.mutateAsync");
       const session = await createSession.mutateAsync({
         projectId: currentProjectId,
       });
-      console.log("Session created:", session);
       // Add session to store immediately (don't wait for refetch)
       addSession(session);
       setActiveSession(session.id);
     } catch (error) {
       console.error("Failed to create session:", error);
-      console.error("Error details:", error);
     }
   }, [createSession, addSession, setActiveSession, currentProjectId]);
 
