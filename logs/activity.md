@@ -1,10 +1,40 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:20:00
+**Last Updated:** 2026-01-28 18:05:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 20 / 39
-**Current Task:** Create RevisionTaskDetail component (next)
+**Tasks Completed:** 21 / 39
+**Current Task:** Create ExecutionTaskDetail component (next)
+
+---
+
+### 2026-01-28 18:05:00 - Create RevisionTaskDetail component
+
+**What:**
+- Created `RevisionTaskDetail.tsx` in `src/components/tasks/detail-views/` for revision_needed state
+- Implemented View Registry Pattern component showing:
+  - REVISION NEEDED banner (orange/warning)
+  - Attempt badge with revision count from state history
+  - Review Feedback section with AI/Human icon, feedback text, and issues list
+  - Issues list supports file:line references with syntax highlighting
+  - Description and StepList sections
+- Uses `useTaskStateHistory` hook to fetch review notes and calculate revision count
+- Helper functions: `formatTimeAgo`, `parseIssuesFromNotes`, `calculateAttemptNumber`
+- Exported from barrel file `index.ts`
+- Quality improvement: Fixed type assertion in App.tsx by creating `toTaskProposal` mapping function
+  - Added to `src/api/ideation.ts` with proper enum type conversions
+  - Replaces unsafe `as unknown as TaskProposal[]` cast
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint passes (only pre-existing warnings)
+- Component ready for View Registry Pattern integration
 
 ---
 
