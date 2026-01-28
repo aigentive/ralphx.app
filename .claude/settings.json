@@ -1,27 +1,4 @@
 {
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '⚠️ REMINDER: Every task requires a refactor: commit. Launch Explore agent to scan for quality issues, pick ONE fix, execute it, commit with refactor: prefix.'"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/verify-refactor-commit.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  },
   "env": {
     "XDG_CACHE_HOME": ".cache",
     "npm_config_cache": ".cache/npm",
