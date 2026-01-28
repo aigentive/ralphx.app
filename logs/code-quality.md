@@ -57,8 +57,8 @@
 - [x] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693
 - [ ] ~~Extract constants from ScreenshotGallery/index into separate file - src/components/qa/ScreenshotGallery/index.tsx:3~~ (stale - just a re-export barrel file, no constants)
 - [x] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
-- [ ] Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10
-- [ ] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
+- [ ] ~~Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10~~ (stale - just a re-export barrel file)
+- [x] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
 - [ ] Extract form field constants from TaskFormFields - src/components/tasks/TaskFormFields.tsx:28-64
 - [ ] ~~Extract constants from ui/badge - src/components/ui/badge.tsx:36~~ (excluded)
 - [ ] ~~Extract constants from ui/button - src/components/ui/button.tsx:58~~ (excluded)
