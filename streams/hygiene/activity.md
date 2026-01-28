@@ -1,5 +1,26 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:01:08 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (ChatPanel component split)
+- Moved 3 items from polish/backlog.md to archive (2 P2, 1 P3 from REFILL 2026-01-29 00:00)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 13 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 3 active items, polish: 6 active items)
+
+**Validation:**
+- Checked 3 strikethrough items (all stale:2 ready for archive):
+  - ResizeablePanel.tsx constants (stale:2): Constants already extracted → **Archived**
+  - PlanTemplateSelector.tsx:94 TODO (stale:1 → stale:2): TODO not found at line 94 → **Archived**
+  - dependency_service.rs:530 test fixtures (stale:1 → stale:2): File no longer exists (module split) → **Archived**
+
+**Result:** Maintenance complete - 4 archived (1 refactor + 3 polish), 3 strikethroughs archived (total 54 validated)
+
+---
+
 ### 2026-01-29 00:41:57 - Backlog Maintenance
 
 **Archive:**
