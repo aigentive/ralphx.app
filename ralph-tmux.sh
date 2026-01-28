@@ -73,12 +73,12 @@ create_session() {
     tmux set-option -t "$SESSION_NAME" pane-base-index 0
 
     # Bind Ctrl-b + number to switch panes AND zoom (select + toggle zoom)
-    tmux bind-key 0 select-pane -t "$SESSION_NAME:0.0" \; resize-pane -Z
-    tmux bind-key 1 select-pane -t "$SESSION_NAME:0.1" \; resize-pane -Z
-    tmux bind-key 2 select-pane -t "$SESSION_NAME:0.2" \; resize-pane -Z
-    tmux bind-key 3 select-pane -t "$SESSION_NAME:0.3" \; resize-pane -Z
-    tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4" \; resize-pane -Z
-    tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5" \; resize-pane -Z
+    tmux bind-key 0 select-pane -t "$SESSION_NAME:0.0" \\; resize-pane -Z
+    tmux bind-key 1 select-pane -t "$SESSION_NAME:0.1" \\; resize-pane -Z
+    tmux bind-key 2 select-pane -t "$SESSION_NAME:0.2" \\; resize-pane -Z
+    tmux bind-key 3 select-pane -t "$SESSION_NAME:0.3" \\; resize-pane -Z
+    tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4" \\; resize-pane -Z
+    tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5" \\; resize-pane -Z
 
     # Create the pane layout
     # Layout: STATUS header at top, FEATURES (60%) on left, 4 sonnet streams stacked on right
