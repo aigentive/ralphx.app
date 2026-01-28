@@ -2,6 +2,21 @@
 
 # Verify Stream
 
+## Phase 0: Recovery Check (ALWAYS FIRST)
+
+```
+1. Run: git status --porcelain streams/verify/ streams/features/backlog.md
+2. Uncommitted changes exist?
+   → YES: Run git diff to review changes
+          Check streams/verify/activity.md for last entry
+          If work looks complete → Commit with chore(verify):
+          If work incomplete → Try to complete it, then commit
+          Then proceed to normal workflow
+   → NO: Proceed to normal workflow
+```
+
+---
+
 Scan for gaps, output P0 items, then STOP.
 
 ## Rules
