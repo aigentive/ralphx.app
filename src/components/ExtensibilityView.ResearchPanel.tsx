@@ -57,9 +57,8 @@ export function ResearchPanel() {
       : { type: "preset", preset: selectedPreset as ResearchDepthPreset };
 
     setIsLaunching(true);
-    // Simulate launch
+    // Simulate launch - TODO: needs actual command call with brief/depth
     setTimeout(() => setIsLaunching(false), 2000);
-    console.warn("Research launch not implemented - needs actual command call with brief/depth");
   }, [question, context, scope, isCustom, selectedPreset, customIterations, customTimeout]);
 
   // Recent sessions mock
