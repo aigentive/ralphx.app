@@ -112,8 +112,8 @@ const AgentMessageSchema = z.object({
   id: z.string(),
   role: z.string(),
   content: z.string(),
-  toolCalls: z.unknown().nullable(),
-  contentBlocks: z.unknown().nullable(),
+  toolCalls: z.any().nullable(),
+  contentBlocks: z.any().nullable(),
   createdAt: z.string(),
 });
 

@@ -24,12 +24,12 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:784~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:784~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21:1)
-- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1)
+- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1)
 
 ### Backend
 
@@ -43,7 +43,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/error.rs:95
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/artifact_commands.rs:452
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
-- [ ] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
+- [x] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
 - [ ] [P2] [Frontend] Refactor large API file (821 LOC) - extract helpers - src/api/ideation.ts:1
 
 ### P3 - Low Impact
@@ -59,5 +59,5 @@ _No active P3 items. Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 16 (3 excluded, 10 deferred to PRD)
 **Completed:** 3
-**Validated:** 36 strikethroughs (2026-01-28 x21) - 6 archived, 1 reactivated, 29 incremented
+**Validated:** 39 strikethroughs (2026-01-28 x24) - 6 archived, 1 reactivated, 32 incremented
 **Last maintenance:** 2026-01-28 (validated 3 strikethroughs, incremented 3 counters)
