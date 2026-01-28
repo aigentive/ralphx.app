@@ -168,7 +168,7 @@
       "phase": 22,
       "name": "Execution Bar Real-time Updates",
       "prd": "specs/phases/prd_phase_22_execution_bar_realtime.md",
-      "status": "active",
+      "status": "complete",
       "description": "Real-time UI updates for execution status via Tauri events"
     }
   ]
