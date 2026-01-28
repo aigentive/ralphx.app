@@ -144,4 +144,19 @@
 
 ---
 
-**Total archived:** 62 items (7 P0 + 6 P1 + 18 P2 + 20 P3 + 11 stale)
+## Archived 2026-01-28 (Hygiene Cycle)
+
+### From polish/backlog.md (P2)
+
+- [x] [P2] [Frontend] Extract hook logic from useEvents (417 LOC → 102 LOC) - split by event type - src/hooks/useEvents.ts:1-417
+- [x] [P2] [Frontend] Extract hook logic from useSupervisorAlerts (409 LOC → 184 LOC) - split alert management into store and listener modules - src/hooks/useSupervisorAlerts.ts:1-409
+- [x] [P2] [Frontend] Unused parameter: defaultStatus in TaskCreationForm prop defaults to undefined - src/components/tasks/TaskCreationForm.tsx:59
+
+### From polish/backlog.md (P3)
+
+- [x] [P3] [Frontend] Remove console.warn from App.tsx global shortcut registration - src/App.tsx:283
+- [x] [P3] [Frontend] Remove eslint-disable comments from useChat.test.ts (6 occurrences) - properly typed zustand mock - src/hooks/useChat.test.ts:8,29,37,42,58,103
+
+---
+
+**Total archived:** 67 items (7 P0 + 6 P1 + 21 P2 + 22 P3 + 11 stale)
