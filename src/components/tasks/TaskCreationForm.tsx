@@ -10,13 +10,12 @@ import { useState, useCallback, type FormEvent } from "react";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { CreateTaskSchema, type CreateTask } from "@/types/task";
 import { Plus, X, ChevronUp, ChevronDown } from "lucide-react";
+import { TaskFormFields, TaskFormActions } from "./TaskFormFields";
 import {
-  TaskFormFields,
-  TaskFormActions,
   inputBaseStyles,
   buttonPrimaryStyles,
   labelStyles,
-} from "./TaskFormFields";
+} from "./TaskFormFields.constants";
 
 // ============================================================================
 // Types
