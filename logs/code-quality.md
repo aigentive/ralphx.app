@@ -76,6 +76,7 @@
 
 ### P3 - Low Impact
 - [x] Extract duplicate SectionTitle component to shared.tsx in detail-views - src/components/tasks/detail-views/*.tsx
+- [x] Extract MODEL_OPTIONS constant from SettingsView.shared.tsx to SettingsView.constants.ts (react-refresh lint) - src/components/settings/SettingsView.shared.tsx:30
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD)
 - [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD)
 - [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD)

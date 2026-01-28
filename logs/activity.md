@@ -1,10 +1,43 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 21:00:00
+**Last Updated:** 2026-01-28 21:30:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 24 / 39
-**Current Task:** Create WaitingTaskDetail component (next)
+**Tasks Completed:** 25 / 39
+**Current Task:** Create CompletedTaskDetail component (next)
+
+---
+
+### 2026-01-28 21:30:00 - Create WaitingTaskDetail component
+
+**What:**
+- Created `WaitingTaskDetail.tsx` in `src/components/tasks/detail-views/` for pending_review state
+- Implements View Registry Pattern component showing:
+  - WAITING FOR AI REVIEWER banner with clock icon
+  - PendingReviewBadge showing waiting status
+  - Work Completed section with:
+    - Submitted time (relative format, e.g., "2m ago")
+    - Files changed info placeholder
+    - All steps completed indicator
+  - StepList component showing all completed steps
+  - Description section
+- Uses `useTaskSteps` and `useStepProgress` hooks for step tracking
+- Includes `formatRelativeTime` utility for human-readable timestamps
+- Exported from barrel file `index.ts`
+- Quality improvement: Extracted MODEL_OPTIONS constant from SettingsView.shared.tsx
+  - Created `SettingsView.constants.ts` to satisfy react-refresh/only-export-components lint rule
+  - Updated SettingsView.shared.tsx to re-export from constants file
+  - Reduced lint warnings from 13 to 12
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint passes (12 pre-existing warnings, down from 13)
 
 ---
 
