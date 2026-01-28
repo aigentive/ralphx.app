@@ -314,6 +314,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }
   }, [messagesData.length]);
 
+  // Unified error handler for chat operations
+  const logError = useCallback((operation: string, error: unknown, showToast = false) => {
+    console.error(`ChatPanel - ${operation}:`, error);
+    if (showToast) {
+      toast.error(`Failed to ${operation.toLowerCase()}. Please try again.`);
+    }
+  }, []);
+
   // Close with animation
   const handleClose = useCallback(() => {
     setIsExiting(true);
@@ -341,10 +349,9 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       // Clear streaming tool calls when agent is stopped
       setStreamingToolCalls([]);
     } catch (error) {
-      console.error("Failed to stop agent:", error);
-      toast.error("Failed to stop agent. Please try again.");
+      logError("stop agent", error, true);
     }
-  }, [isExecutionMode, context]);
+  }, [isExecutionMode, context, logError]);
 
   // Escape to close panel (only runs when panel is open via wrapper)
   useEffect(() => {
@@ -414,12 +421,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         // Queue via backend API with the same ID
         await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
       } catch (error) {
-        console.error("Failed to queue message to backend:", error);
+        logError("queue message to backend", error);
         // Message is already in local store, which is fine - it just won't be processed by backend
         // User can delete and re-queue if needed
       }
     },
-    [isExecutionMode, context.selectedTaskId, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey]
+    [isExecutionMode, context.selectedTaskId, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey, logError]
   );
 
   // Delete queued message handler - syncs with backend
@@ -439,11 +446,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       try {
         await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
       } catch (error) {
-        console.error("Failed to delete queued message from backend:", error);
+        logError("delete queued message from backend", error);
         // Message already removed from local store, which is fine
       }
     },
-    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, contextKey]
+    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, contextKey, logError]
   );
 
   // Edit queued message handler - delete old and queue new
@@ -456,7 +463,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       try {
         await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
       } catch (error) {
-        console.error("Failed to delete old queued message:", error);
+        logError("delete old queued message", error);
       }
 
       // Delete from local store
@@ -480,11 +487,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       try {
         await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
       } catch (error) {
-        console.error("Failed to queue edited message to backend:", error);
+        logError("queue edited message to backend", error);
         // Message is already in local store
       }
     },
-    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey]
+    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey, logError]
   );
 
   // Edit last queued message
@@ -566,7 +573,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         error: string;
       }>("agent:error", (event) => {
         const { conversation_id, error, context_type } = event.payload;
-        console.error(`Agent error: context=${context_type}, conversation=${conversation_id}:`, error);
+        logError(`agent error (context=${context_type}, conversation=${conversation_id})`, error);
         // Clear streaming tool calls on error
         setStreamingToolCalls([]);
         // Invalidate cache
@@ -626,7 +633,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [queryClient]);
+  }, [queryClient, logError]);
 
   if (isCollapsed) {
     return (
