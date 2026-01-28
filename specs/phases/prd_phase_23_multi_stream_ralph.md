@@ -292,7 +292,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - rm logs/code-quality.md (content now in stream backlogs)",
       "Commit: chore(cleanup): remove legacy PROMPT.md, quality-improvement.md, code-quality.md"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

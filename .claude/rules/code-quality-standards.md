@@ -58,7 +58,8 @@ When evaluating if a file needs extraction:
 ## References
 
 This file is the canonical source. Referenced by:
-- `.claude/rules/quality-improvement.md`
+- `.claude/rules/stream-refactor.md`
+- `.claude/rules/stream-hygiene.md`
 - `src-tauri/CLAUDE.md`
 - `src/CLAUDE.md`
-- `logs/code-quality.md`
+- `streams/refactor/backlog.md`

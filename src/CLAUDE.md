@@ -95,19 +95,13 @@ NO purple gradients | NO Inter font | Warm orange #ff6b35
 
 ## Code Quality
 
-### Proactive Quality Improvement (MANDATORY — NEVER SKIP)
-Every task requires a `refactor:` commit. No exceptions.
-
-**Workflow:**
-1. Read `logs/code-quality.md`
-2. Items exist? → Pick ONE by task scope → Execute → Mark `[x]`
-3. List empty? → Launch Explore agent → Update file → Pick ONE
-
-**Scope:** Small task = P3, Medium = P2, Large = P1
+### Multi-Stream Workflow
+Quality work is now split into dedicated streams. See `.claude/rules/stream-*.md`:
+- **features**: PRD tasks + P0 gap fixes
+- **refactor**: P1 large file splits (>500 LOC)
+- **polish**: P2/P3 cleanup, lint, type fixes
 
 **Targets:** `any` types, naming, error handling, dead code, repeated logic, lint
-
-**Verification:** Task NOT complete until `refactor:` commit + item marked done.
 
 ### File Size Limits
 **See:** `.claude/rules/code-quality-standards.md` (single source of truth)
