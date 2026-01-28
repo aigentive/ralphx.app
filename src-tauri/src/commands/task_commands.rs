@@ -267,12 +267,13 @@ pub async fn create_task(
 
 /// Update an existing task
 #[tauri::command]
+#[allow(non_snake_case)]
 pub async fn update_task(
-    id: String,
+    taskId: String,
     input: UpdateTaskInput,
     state: State<'_, AppState>,
 ) -> Result<TaskResponse, String> {
-    let task_id = TaskId::from_string(id);
+    let task_id = TaskId::from_string(taskId);
 
     // Get existing task
     let mut task = state
