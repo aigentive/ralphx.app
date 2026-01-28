@@ -9,6 +9,7 @@
 
 import { Loader2, Radio, AlertTriangle, Bot, User } from "lucide-react";
 import { StepList } from "../StepList";
+import { SectionTitle } from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import type { Task } from "@/types/task";
@@ -16,15 +17,6 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface ExecutionTaskDetailProps {
   task: Task;
-}
-
-/**
- * SectionTitle - Consistent section header styling
- */
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">{children}</h3>
-  );
 }
 
 /**
