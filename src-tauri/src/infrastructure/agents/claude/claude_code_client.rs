@@ -246,10 +246,11 @@ impl AgenticClient for ClaudeCodeClient {
         _handle: &AgentHandle,
         _prompt: &str,
     ) -> Pin<Box<dyn Stream<Item = AgentResult<ResponseChunk>> + Send>> {
-        // TODO: Implement proper streaming
-        // For now, return a simple stream with a placeholder
+        // Note: Production streaming uses spawn_agent_streaming() which returns Child process
+        // for external stream handling (see ExecutionChatService). This trait method is a
+        // placeholder for potential future trait-level streaming support.
         let chunks = vec![
-            Ok(ResponseChunk::new("Streaming not yet implemented")),
+            Ok(ResponseChunk::new("Use spawn_agent_streaming() for production streaming")),
             Ok(ResponseChunk::final_chunk("")),
         ];
         Box::pin(futures::stream::iter(chunks))

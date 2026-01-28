@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-29 02:15:00 - Resolve TODO comment about streaming implementation
+**What:**
+- File: src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
+- Replaced TODO comment with explanatory Note
+- Clarified that spawn_agent_streaming() is the production streaming implementation
+- This trait method (stream_response) is a placeholder for potential future trait-level streaming
+
+**Commands:**
+- Note: Pre-existing compilation errors in methodology module (refactor stream work), unrelated to this change
+- Verified claude_code_client.rs has no errors via cargo check
+
+**Result:** Success (TODO comment resolved with clear documentation)
+
+---
+
 ### 2026-01-28 23:11:35 - Resolve TODO comment about ideation sessions
 **What:**
 - File: src-tauri/src/commands/test_data_commands.rs:206
