@@ -42,7 +42,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P2] [Backend] Replace panic! with proper error handling - src-tauri/src/infrastructure/agents/claude/stream_processor.rs:432
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/error.rs:95
 - [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/artifact_commands.rs:452
-- [ ] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
+- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
 - [ ] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
 - [ ] [P2] [Frontend] Refactor large API file (821 LOC) - extract helpers - src/api/ideation.ts:1
 
