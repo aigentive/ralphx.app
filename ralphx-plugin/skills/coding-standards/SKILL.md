@@ -87,6 +87,9 @@ export function MyComponent({ value, onChange }: Props) {
 
 ## File Size Limits
 
+**See:** `.claude/rules/code-quality-standards.md` (single source of truth)
+
+Plugin-specific limits:
 | File Type | Max Lines |
 |-----------|-----------|
 | Component | 100 |
