@@ -24,7 +24,7 @@
 ## Frontend (src/)
 
 ### P1 - High Impact
-- [ ] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/ChatPanel.tsx:473
+- [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/ChatPanel.tsx:473
 - [ ] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/IntegratedChatPanel.tsx:519
 - [ ] Split ExtensibilityView (1239 LOC) - extract Workflows/Artifacts/Research/Methodologies into sub-components - src/components/ExtensibilityView.tsx:1-50
 - [ ] Split IdeationView (1198 LOC) - extract ideation session and proposal panels into sub-components - src/components/Ideation/IdeationView.tsx:1-50

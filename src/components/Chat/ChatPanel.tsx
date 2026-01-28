@@ -469,8 +469,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
-  // Extract messages array from active conversation
-  const messagesData = activeConversation.data?.messages ?? [];
+  // Extract messages array from active conversation (memoized to avoid dependency chain issues)
+  const messagesData = useMemo(
+    () => activeConversation.data?.messages ?? [],
+    [activeConversation.data?.messages]
+  );
 
   // Track unread messages when collapsed
   useEffect(() => {
