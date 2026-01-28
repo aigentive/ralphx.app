@@ -951,3 +951,16 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+### 2026-01-29 19:35:00 - Remove console.warn calls from TaskFullView
+**What:**
+- File: src/components/tasks/TaskFullView.tsx:213,217,221,225
+- Removed 4 console.warn calls from stub handlers (handleEdit, handleArchive, handlePause, handleStop)
+- Replaced with inline comments explaining unimplemented functionality
+
+**Commands:**
+- `npm run lint -- src/components/tasks/TaskFullView.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass, 0 errors)
+
+---
+
