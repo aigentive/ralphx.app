@@ -1,10 +1,41 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:05:00
+**Last Updated:** 2026-01-28 19:30:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 21 / 39
-**Current Task:** Create ExecutionTaskDetail component (next)
+**Tasks Completed:** 22 / 39
+**Current Task:** Create ReviewingTaskDetail component (next)
+
+---
+
+### 2026-01-28 19:30:00 - Create ExecutionTaskDetail component
+
+**What:**
+- Created `ExecutionTaskDetail.tsx` in `src/components/tasks/detail-views/` for executing and re_executing states
+- Implemented View Registry Pattern component showing:
+  - Live indicator badge (red pulse for executing, orange for revising)
+  - Progress bar with percentage and step count
+  - Revision feedback banner (for re_executing only) with review context
+  - StepList showing current execution progress
+  - Description section
+- Uses `useTaskSteps`, `useStepProgress`, and `useTaskStateHistory` hooks
+- Helper components: `LiveBadge`, `ProgressBar`, `RevisionFeedbackBanner`, `ReviewerIcon`
+- Exported from barrel file `index.ts`
+- Quality improvement: Extracted types/utils from DiffViewer (966→740 LOC)
+  - Created `DiffViewer.types.tsx` with types, utility functions, and buildFileTree logic
+  - Reduces main component by 226 lines for better maintainability
+
+**Commands:**
+```bash
+npm run test -- --run src/components/tasks/detail-views/ExecutionTaskDetail.test.tsx
+npm run typecheck
+npm run lint
+```
+
+**Results:**
+- All 11 tests pass
+- TypeScript type checking passes
+- ESLint passes (only pre-existing warnings)
 
 ---
 
