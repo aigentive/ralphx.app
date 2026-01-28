@@ -113,3 +113,4 @@ List empty? → Explore agent → Update file → Pick ONE
 - Implementation: tests FIRST
 - **Document patterns inline** — New architectural pattern? Add one-liner to `src/CLAUDE.md` or `src-tauri/CLAUDE.md`
 - **Task tools for complex work** — >3 files, refactoring, >100 LOC? Use TaskCreate/TaskUpdate/TaskList
+- **Self-improving loop** — Found something mandatory? Add one-liner to this PROMPT.md file
