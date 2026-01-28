@@ -7,7 +7,7 @@
 
 STREAM="hygiene"
 MODEL="sonnet"
-WATCH_FILES=("streams/refactor/backlog.md" "streams/polish/backlog.md" "streams/archive/completed.md")
+WATCH_FILES=("streams/refactor/backlog.md" "streams/polish/backlog.md" "streams/features/backlog.md" "streams/archive/completed.md")
 
 # Colors for output
 GREEN='\033[0;32m'
