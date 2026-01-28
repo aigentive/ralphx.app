@@ -181,8 +181,9 @@ stop_all() {
     sleep 1
 
     # Kill any remaining fswatch processes from stream watchers
-    # Pattern matches both streams/ paths and specs/ paths (verify stream)
-    pkill -f "fswatch.*(streams/|specs/)" 2>/dev/null || true
+    # Pattern matches fswatch command (not fswatch-something) with streams/ or specs/ paths
+    # Uses word boundary: fswatch preceded by start, space, or path separator
+    pkill -f "(^|[/ ])fswatch .*(streams/|specs/)" 2>/dev/null || true
 
     # Kill the tmux session
     tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
