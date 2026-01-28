@@ -199,3 +199,21 @@ Updated backlog item to reflect complexity.
 - `cargo test`
 
 **Result:** Success - All linters passed, all tests passed
+
+---
+
+### 2026-01-28 23:58:43 - Verified apply_service.rs Split (Already Complete)
+
+**What:**
+- Original file: src-tauri/src/application/apply_service.rs (1833 LOC)
+- Found already extracted to:
+  - apply_service/types.rs (60 LOC)
+  - apply_service/helpers.rs (107 LOC)
+  - apply_service/tests.rs (1408 LOC)
+  - apply_service/mod.rs (309 LOC)
+- New size: 309 LOC (83% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/application/apply_service/*.rs`
+
+**Result:** Verified - File already split and under 500 LOC limit, marked as complete in backlog
