@@ -1,15 +1,47 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 05:47:30
+**Last Updated:** 2026-01-28 03:25:43
 **Phase:** Review System
-**Tasks Completed:** 3 / 39
-**Current Task:** Add State enum variants and handlers in machine.rs
+**Tasks Completed:** 4 / 39
+**Current Task:** Extend transition_handler.rs with review state entry actions
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 03:25:43 - Add Review State Handlers to Machine
+
+**What:**
+- Added new State variants to `src-tauri/src/domain/state_machine/machine.rs`:
+  - `State::Reviewing` - AI agent is actively reviewing
+  - `State::ReviewPassed` - AI approved, awaiting human confirmation
+  - `State::ReExecuting` - Worker revising after failed review
+- Removed `State::ExecutionDone` variant (execution now transitions directly)
+- Added new events in `src-tauri/src/domain/state_machine/events.rs`:
+  - `TaskEvent::HumanApprove` - Human approves after AI review
+  - `TaskEvent::HumanRequestChanges` - Human requests changes after AI review
+- Updated state handlers:
+  - `executing()` now checks `qa_enabled` directly, transitions to QaRefining or PendingReview
+  - `re_executing()` handles revision work, same logic as executing()
+  - `reviewing()` handles ReviewComplete, goes to ReviewPassed or RevisionNeeded
+  - `review_passed()` handles HumanApprove/HumanRequestChanges
+  - `pending_review()` simplified, no longer handles ReviewComplete
+- Updated `transition_handler.rs` auto-transitions:
+  - PendingReview → Reviewing (spawn reviewer)
+  - RevisionNeeded → ReExecuting (not Executing)
+  - Removed ExecutionDone auto-transition logic
+- Updated all integration tests:
+  - `tests/state_machine_flows.rs` - 3 tests updated
+  - `tests/qa_system_flows.rs` - 4 tests updated
+  - `tests/execution_control_flows.rs` - 2 tests updated
+  - `tests/review_flows.rs` - 2 tests updated
+
+**Commands:**
+- `cargo test --lib domain::state_machine::machine` - All 49 machine tests pass
+- `cargo test --lib domain::state_machine` - All 231 state machine tests pass
+- `cargo test` - All tests pass
 
 ### 2026-01-28 05:47:30 - Remove ExecutionDone Transitional State
 
