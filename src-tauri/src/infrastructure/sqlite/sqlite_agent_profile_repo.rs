@@ -29,30 +29,6 @@ impl SqliteAgentProfileRepository {
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
         Self { conn }
     }
-
-    /// Helper to convert ProfileRole to string for database storage
-    fn role_to_string(role: &ProfileRole) -> &'static str {
-        match role {
-            ProfileRole::Worker => "worker",
-            ProfileRole::Reviewer => "reviewer",
-            ProfileRole::Supervisor => "supervisor",
-            ProfileRole::Orchestrator => "orchestrator",
-            ProfileRole::Researcher => "researcher",
-        }
-    }
-
-    /// Helper to convert string to ProfileRole
-    #[cfg(test)]
-    fn string_to_role(s: &str) -> ProfileRole {
-        match s {
-            "worker" => ProfileRole::Worker,
-            "reviewer" => ProfileRole::Reviewer,
-            "supervisor" => ProfileRole::Supervisor,
-            "orchestrator" => ProfileRole::Orchestrator,
-            "researcher" => ProfileRole::Researcher,
-            _ => ProfileRole::Worker, // Default fallback
-        }
-    }
 }
 
 #[async_trait]
@@ -69,7 +45,7 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
             rusqlite::params![
                 id.as_str(),
                 profile.name,
-                Self::role_to_string(&profile.role),
+                profile.role.to_string(),
                 profile_json,
                 if is_builtin { 1 } else { 0 },
             ],
@@ -158,7 +134,7 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let profiles = stmt
-            .query_map([Self::role_to_string(&role)], |row| {
+            .query_map([role.to_string()], |row| {
                 let json: String = row.get(0)?;
                 Ok(json)
             })
@@ -237,7 +213,7 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
             rusqlite::params![
                 id.as_str(),
                 profile.name,
-                Self::role_to_string(&profile.role),
+                profile.role.to_string(),
                 profile_json,
             ],
         )
@@ -455,24 +431,8 @@ mod tests {
         assert_eq!(all.len(), 5); // Still 5, not duplicated
     }
 
-    #[tokio::test]
-    async fn test_role_to_string_conversions() {
-        assert_eq!(SqliteAgentProfileRepository::role_to_string(&ProfileRole::Worker), "worker");
-        assert_eq!(SqliteAgentProfileRepository::role_to_string(&ProfileRole::Reviewer), "reviewer");
-        assert_eq!(SqliteAgentProfileRepository::role_to_string(&ProfileRole::Supervisor), "supervisor");
-        assert_eq!(SqliteAgentProfileRepository::role_to_string(&ProfileRole::Orchestrator), "orchestrator");
-        assert_eq!(SqliteAgentProfileRepository::role_to_string(&ProfileRole::Researcher), "researcher");
-    }
-
-    #[tokio::test]
-    async fn test_string_to_role_conversions() {
-        assert_eq!(SqliteAgentProfileRepository::string_to_role("worker"), ProfileRole::Worker);
-        assert_eq!(SqliteAgentProfileRepository::string_to_role("reviewer"), ProfileRole::Reviewer);
-        assert_eq!(SqliteAgentProfileRepository::string_to_role("supervisor"), ProfileRole::Supervisor);
-        assert_eq!(SqliteAgentProfileRepository::string_to_role("orchestrator"), ProfileRole::Orchestrator);
-        assert_eq!(SqliteAgentProfileRepository::string_to_role("researcher"), ProfileRole::Researcher);
-        assert_eq!(SqliteAgentProfileRepository::string_to_role("unknown"), ProfileRole::Worker); // Default
-    }
+    // Note: ProfileRole Display/FromStr trait implementations are tested in
+    // src/domain/agents/agent_profile.rs (test_profile_role_display, test_profile_role_from_str)
 
     #[tokio::test]
     async fn test_profile_json_serialization() {
