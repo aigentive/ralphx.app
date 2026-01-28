@@ -1,15 +1,34 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 04:23:21
+**Last Updated:** 2026-01-28 14:30:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 11 / 39
-**Current Task:** Update worker agent prompt with revision instructions
+**Tasks Completed:** 12 / 39
+**Current Task:** Update reviewer agent prompt for state transitions
 
 ---
 
 
 ## Session Log
+
+### 2026-01-28 14:30:00 - Update worker agent prompt with revision instructions
+
+**What:**
+- Added "Before Starting Re-Execution Work" section to `ralphx-plugin/agents/worker.md`
+- Instructed worker to check RALPHX_TASK_STATE env var for re-execution status
+- Mandated calling `get_task_context(task_id)` and `get_review_notes(task_id)` before starting revision work
+- Added comprehensive example re-execution flow showing how to read and address review feedback
+- Updated Available MCP Tools table to include `get_review_notes` with MANDATORY designation
+- Updated Workflow section to check task type and fetch review feedback as first steps for re-execution
+- Emphasized addressing all feedback points and not repeating mistakes
+
+**Commands:**
+- `git commit -m "docs(agent): add revision instructions to worker prompt"`
+
+**Result:**
+- Worker agent now has clear instructions for handling revision tasks
+- Agent will fetch and read all review feedback before implementing fixes
+- Quality improvement skipped (pure documentation change per skip conditions)
 
 ### 2026-01-28 04:23:21 - Add task-level MCP scoping (RALPHX_TASK_ID validation)
 
