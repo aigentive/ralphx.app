@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 23:45:15 - Mark shadcn/ui items as excluded
+**What:**
+- File: streams/polish/backlog.md
+- Change: Marked 3 P3 items in src/components/ui/* as excluded (badge, button, toggle)
+- Reason: These files are shadcn/ui components, explicitly excluded from polish stream per backlog.md line 5
+- Updated metadata: Active items 16 → 0, excluded 3 → 6, completed 3 → 8
+
+**Commands:**
+- None required (documentation-only change)
+
+**Result:** Success - Backlog now reflects exclusion policy correctly
+
+---
+
 ### 2026-01-28 23:44:10 - Add user feedback for agent stop failure
 **What:**
 - File: src/components/Chat/ChatPanel.tsx:342
