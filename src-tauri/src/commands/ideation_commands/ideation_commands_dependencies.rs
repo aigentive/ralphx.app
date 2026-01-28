@@ -254,7 +254,7 @@ fn find_critical_path(
     for deps in from_map.values() {
         for dep in deps {
             if in_degree.contains_key(dep) {
-                *in_degree.get_mut(dep).unwrap() += 1;
+                *in_degree.get_mut(dep).expect("Dependency should exist in in_degree map") += 1;
             }
         }
     }

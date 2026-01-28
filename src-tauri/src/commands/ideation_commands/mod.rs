@@ -42,7 +42,7 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id.clone());
-        let created = state.ideation_session_repo.create(session).await.unwrap();
+        let created = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         assert_eq!(created.project_id, project_id);
         assert!(created.title.is_none());
@@ -55,7 +55,7 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new_with_title(project_id.clone(), "Test Session");
-        let created = state.ideation_session_repo.create(session).await.unwrap();
+        let created = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         assert_eq!(created.project_id, project_id);
         assert_eq!(created.title, Some("Test Session".to_string()));
@@ -67,7 +67,7 @@ mod tests {
         let state = setup_test_state();
         let id = IdeationSessionId::new();
 
-        let result = state.ideation_session_repo.get_by_id(&id).await.unwrap();
+        let result = state.ideation_session_repo.get_by_id(&id).await.expect("Failed to get ideation session by id in test");
         assert!(result.is_none());
     }
 
@@ -77,15 +77,15 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id);
-        let created = state.ideation_session_repo.create(session).await.unwrap();
+        let created = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let result = state
             .ideation_session_repo
             .get_by_id(&created.id)
             .await
-            .unwrap();
+            .expect("Failed to get ideation session by id in test");
         assert!(result.is_some());
-        assert_eq!(result.unwrap().id, created.id);
+        assert_eq!(result.expect("Expected to find session").id, created.id);
     }
 
     #[tokio::test]
@@ -99,25 +99,25 @@ mod tests {
             .ideation_session_repo
             .create(IdeationSession::new(project_id.clone()))
             .await
-            .unwrap();
+            .expect("Failed to create ideation session in test");
         state
             .ideation_session_repo
             .create(IdeationSession::new(project_id.clone()))
             .await
-            .unwrap();
+            .expect("Failed to create ideation session in test");
 
         // Create session for different project
         state
             .ideation_session_repo
             .create(IdeationSession::new(other_project_id))
             .await
-            .unwrap();
+            .expect("Failed to create ideation session in test");
 
         let sessions = state
             .ideation_session_repo
             .get_by_project(&project_id)
             .await
-            .unwrap();
+            .expect("Failed to get sessions by project in test");
         assert_eq!(sessions.len(), 2);
     }
 
@@ -127,20 +127,20 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id);
-        let created = state.ideation_session_repo.create(session).await.unwrap();
+        let created = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         state
             .ideation_session_repo
             .update_status(&created.id, IdeationSessionStatus::Archived)
             .await
-            .unwrap();
+            .expect("Failed to update ideation session status in test");
 
         let retrieved = state
             .ideation_session_repo
             .get_by_id(&created.id)
             .await
-            .unwrap()
-            .unwrap();
+            .expect("Failed to get by id in test")
+            .expect("Expected to find entity");
         assert_eq!(retrieved.status, IdeationSessionStatus::Archived);
     }
 
@@ -150,19 +150,19 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id);
-        let created = state.ideation_session_repo.create(session).await.unwrap();
+        let created = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         state
             .ideation_session_repo
             .delete(&created.id)
             .await
-            .unwrap();
+            .expect("Failed to delete ideation session in test");
 
         let result = state
             .ideation_session_repo
             .get_by_id(&created.id)
             .await
-            .unwrap();
+            .expect("Failed to get by id in test");
         assert!(result.is_none());
     }
 
@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(response.status, "active");
 
         // Verify it serializes to JSON
-        let json = serde_json::to_string(&response).unwrap();
+        let json = serde_json::to_string(&response).expect("Failed to serialize response in test");
         assert!(json.contains("\"title\":\"Test Session\""));
     }
 
@@ -192,7 +192,7 @@ mod tests {
             .ideation_session_repo
             .create(session)
             .await
-            .unwrap();
+            .expect("Failed to create ideation session in test");
 
         // Create proposal for session
         let proposal = TaskProposal::new(
@@ -201,23 +201,23 @@ mod tests {
             crate::domain::entities::TaskCategory::Feature,
             crate::domain::entities::Priority::High,
         );
-        state.task_proposal_repo.create(proposal).await.unwrap();
+        state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
 
         // Create message for session
         let message = ChatMessage::user_in_session(created_session.id.clone(), "Hello");
-        state.chat_message_repo.create(message).await.unwrap();
+        state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         // Get session with data
         let proposals = state
             .task_proposal_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get proposals by session in test");
         let messages = state
             .chat_message_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get messages by session in test");
 
         assert_eq!(proposals.len(), 1);
         assert_eq!(messages.len(), 1);
@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(response.suggested_priority, "high");
 
         // Verify it serializes to JSON
-        let json = serde_json::to_string(&response).unwrap();
+        let json = serde_json::to_string(&response).expect("Failed to serialize response in test");
         assert!(json.contains("\"title\":\"Test Proposal\""));
     }
 
@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(response.role, "user");
 
         // Verify it serializes to JSON
-        let json = serde_json::to_string(&response).unwrap();
+        let json = serde_json::to_string(&response).expect("Failed to serialize response in test");
         assert!(json.contains("\"content\":\"Hello world\""));
     }
 
@@ -270,7 +270,7 @@ mod tests {
 
         // Create session first
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create proposal
         let proposal = TaskProposal::new(
@@ -279,7 +279,7 @@ mod tests {
             TaskCategory::Feature,
             Priority::High,
         );
-        let created = state.task_proposal_repo.create(proposal).await.unwrap();
+        let created = state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
 
         assert_eq!(created.title, "Test Proposal");
         assert_eq!(created.category, TaskCategory::Feature);
@@ -291,7 +291,7 @@ mod tests {
         let state = setup_test_state();
         let id = TaskProposalId::new();
 
-        let result = state.task_proposal_repo.get_by_id(&id).await.unwrap();
+        let result = state.task_proposal_repo.get_by_id(&id).await.expect("Failed to get task proposal by id in test");
         assert!(result.is_none());
     }
 
@@ -302,7 +302,7 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create proposals
         for i in 0..3 {
@@ -312,14 +312,14 @@ mod tests {
                 TaskCategory::Feature,
                 Priority::Medium,
             );
-            state.task_proposal_repo.create(proposal).await.unwrap();
+            state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
         }
 
         let proposals = state
             .task_proposal_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get proposals by session in test");
         assert_eq!(proposals.len(), 3);
     }
 
@@ -330,7 +330,7 @@ mod tests {
 
         // Create session and proposal
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let proposal = TaskProposal::new(
             created_session.id.clone(),
@@ -338,21 +338,21 @@ mod tests {
             TaskCategory::Feature,
             Priority::Low,
         );
-        let created = state.task_proposal_repo.create(proposal).await.unwrap();
+        let created = state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
 
         // Update proposal
         let mut updated = created.clone();
         updated.title = "Updated Title".to_string();
         updated.user_modified = true;
 
-        state.task_proposal_repo.update(&updated).await.unwrap();
+        state.task_proposal_repo.update(&updated).await.expect("Failed to update task proposal in test");
 
         let retrieved = state
             .task_proposal_repo
             .get_by_id(&created.id)
             .await
-            .unwrap()
-            .unwrap();
+            .expect("Failed to get by id in test")
+            .expect("Expected to find entity");
         assert_eq!(retrieved.title, "Updated Title");
         assert!(retrieved.user_modified);
     }
@@ -364,7 +364,7 @@ mod tests {
 
         // Create session and proposal
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let proposal = TaskProposal::new(
             created_session.id.clone(),
@@ -372,16 +372,16 @@ mod tests {
             TaskCategory::Feature,
             Priority::Medium,
         );
-        let created = state.task_proposal_repo.create(proposal).await.unwrap();
+        let created = state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
 
         // Delete proposal
-        state.task_proposal_repo.delete(&created.id).await.unwrap();
+        state.task_proposal_repo.delete(&created.id).await.expect("Failed to delete task proposal in test");
 
         let result = state
             .task_proposal_repo
             .get_by_id(&created.id)
             .await
-            .unwrap();
+            .expect("Failed to get by id in test");
         assert!(result.is_none());
     }
 
@@ -392,7 +392,7 @@ mod tests {
 
         // Create session and proposal
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let proposal = TaskProposal::new(
             created_session.id.clone(),
@@ -400,7 +400,7 @@ mod tests {
             TaskCategory::Feature,
             Priority::Medium,
         );
-        let created = state.task_proposal_repo.create(proposal).await.unwrap();
+        let created = state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
 
         // Initial state should be selected (true)
         assert!(created.selected);
@@ -410,14 +410,14 @@ mod tests {
             .task_proposal_repo
             .update_selection(&created.id, false)
             .await
-            .unwrap();
+            .expect("Failed to update selection in test");
 
         let retrieved = state
             .task_proposal_repo
             .get_by_id(&created.id)
             .await
-            .unwrap()
-            .unwrap();
+            .expect("Failed to get by id in test")
+            .expect("Expected to find entity");
         assert!(!retrieved.selected);
     }
 
@@ -428,7 +428,7 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create 3 proposals
         let mut ids = Vec::new();
@@ -439,7 +439,7 @@ mod tests {
                 TaskCategory::Feature,
                 Priority::Medium,
             );
-            let created = state.task_proposal_repo.create(proposal).await.unwrap();
+            let created = state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
             ids.push(created.id);
         }
 
@@ -449,14 +449,14 @@ mod tests {
             .task_proposal_repo
             .reorder(&created_session.id, reversed_ids)
             .await
-            .unwrap();
+            .expect("Failed to reorder proposals in test");
 
         // Verify order changed
         let proposals = state
             .task_proposal_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get proposals by session in test");
         assert_eq!(proposals.len(), 3);
         // The first proposal should now be "Proposal 2"
         assert_eq!(proposals[0].title, "Proposal 2");
@@ -483,7 +483,7 @@ mod tests {
         assert_eq!(response.reason, "Test reason");
 
         // Verify it serializes to JSON
-        let json = serde_json::to_string(&response).unwrap();
+        let json = serde_json::to_string(&response).expect("Failed to serialize response in test");
         assert!(json.contains("\"priority\":\"critical\""));
     }
 
@@ -498,7 +498,7 @@ mod tests {
 
         // Create session and proposals
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let proposal1 = TaskProposal::new(
             created_session.id.clone(),
@@ -513,22 +513,22 @@ mod tests {
             Priority::Medium,
         );
 
-        let p1 = state.task_proposal_repo.create(proposal1).await.unwrap();
-        let p2 = state.task_proposal_repo.create(proposal2).await.unwrap();
+        let p1 = state.task_proposal_repo.create(proposal1).await.expect("Failed to create task proposal in test");
+        let p2 = state.task_proposal_repo.create(proposal2).await.expect("Failed to create task proposal in test");
 
         // Add dependency: p1 depends on p2
         state
             .proposal_dependency_repo
             .add_dependency(&p1.id, &p2.id)
             .await
-            .unwrap();
+            .expect("Failed to add dependency in test");
 
         // Verify dependency exists
         let deps = state
             .proposal_dependency_repo
             .get_dependencies(&p1.id)
             .await
-            .unwrap();
+            .expect("Failed to get dependencies in test");
         assert_eq!(deps.len(), 1);
         assert_eq!(deps[0], p2.id);
     }
@@ -540,7 +540,7 @@ mod tests {
 
         // Create session and proposals
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let proposal1 = TaskProposal::new(
             created_session.id.clone(),
@@ -555,27 +555,27 @@ mod tests {
             Priority::Medium,
         );
 
-        let p1 = state.task_proposal_repo.create(proposal1).await.unwrap();
-        let p2 = state.task_proposal_repo.create(proposal2).await.unwrap();
+        let p1 = state.task_proposal_repo.create(proposal1).await.expect("Failed to create task proposal in test");
+        let p2 = state.task_proposal_repo.create(proposal2).await.expect("Failed to create task proposal in test");
 
         // Add then remove dependency
         state
             .proposal_dependency_repo
             .add_dependency(&p1.id, &p2.id)
             .await
-            .unwrap();
+            .expect("Failed to add dependency in test");
         state
             .proposal_dependency_repo
             .remove_dependency(&p1.id, &p2.id)
             .await
-            .unwrap();
+            .expect("Failed to remove dependency in test");
 
         // Verify dependency was removed
         let deps = state
             .proposal_dependency_repo
             .get_dependencies(&p1.id)
             .await
-            .unwrap();
+            .expect("Failed to get dependencies in test");
         assert!(deps.is_empty());
     }
 
@@ -586,7 +586,7 @@ mod tests {
 
         // Create session and proposals
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let proposal1 = TaskProposal::new(
             created_session.id.clone(),
@@ -601,21 +601,21 @@ mod tests {
             Priority::Medium,
         );
 
-        let p1 = state.task_proposal_repo.create(proposal1).await.unwrap();
-        let p2 = state.task_proposal_repo.create(proposal2).await.unwrap();
+        let p1 = state.task_proposal_repo.create(proposal1).await.expect("Failed to create task proposal in test");
+        let p2 = state.task_proposal_repo.create(proposal2).await.expect("Failed to create task proposal in test");
 
         // p1 depends on p2, so p2 should have p1 as a dependent
         state
             .proposal_dependency_repo
             .add_dependency(&p1.id, &p2.id)
             .await
-            .unwrap();
+            .expect("Failed to add dependency in test");
 
         let dependents = state
             .proposal_dependency_repo
             .get_dependents(&p2.id)
             .await
-            .unwrap();
+            .expect("Failed to get dependents in test");
         assert_eq!(dependents.len(), 1);
         assert_eq!(dependents[0], p1.id);
     }
@@ -627,19 +627,19 @@ mod tests {
 
         // Create session with no proposals
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Get dependencies (should be empty graph)
         let proposals = state
             .task_proposal_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get proposals by session in test");
         let deps = state
             .proposal_dependency_repo
             .get_all_for_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get all dependencies for session in test");
 
         let graph = build_dependency_graph(&proposals, &deps);
 
@@ -660,7 +660,7 @@ mod tests {
         assert!(!response.has_cycles);
 
         // Verify it serializes to JSON
-        let json = serde_json::to_string(&response).unwrap();
+        let json = serde_json::to_string(&response).expect("Failed to serialize response in test");
         assert!(json.contains("\"has_cycles\":false"));
     }
 
@@ -673,22 +673,22 @@ mod tests {
         let task1 = crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
         let task2 = crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
 
-        let t1 = state.task_repo.create(task1).await.unwrap();
-        let t2 = state.task_repo.create(task2).await.unwrap();
+        let t1 = state.task_repo.create(task1).await.expect("Failed to create task in test");
+        let t2 = state.task_repo.create(task2).await.expect("Failed to create task in test");
 
         // Add dependency: t1 depends on t2
         state
             .task_dependency_repo
             .add_dependency(&t1.id, &t2.id)
             .await
-            .unwrap();
+            .expect("Failed to add task dependency in test");
 
         // t2 should be a blocker for t1
         let blockers = state
             .task_dependency_repo
             .get_blockers(&t1.id)
             .await
-            .unwrap();
+            .expect("Failed to get blockers in test");
         assert_eq!(blockers.len(), 1);
         assert_eq!(blockers[0], t2.id);
 
@@ -697,7 +697,7 @@ mod tests {
             .task_dependency_repo
             .get_blocked_by(&t2.id)
             .await
-            .unwrap();
+            .expect("Failed to get blocked tasks in test");
         assert_eq!(blocked.len(), 1);
         assert_eq!(blocked[0], t1.id);
     }
@@ -713,11 +713,11 @@ mod tests {
 
         // Create session first
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Send a message
         let message = ChatMessage::user_in_session(created_session.id.clone(), "Hello world");
-        let created = state.chat_message_repo.create(message).await.unwrap();
+        let created = state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         assert_eq!(created.content, "Hello world");
         assert_eq!(created.session_id, Some(created_session.id));
@@ -730,7 +730,7 @@ mod tests {
 
         // Send a message to project
         let message = ChatMessage::user_in_project(project_id.clone(), "Project message");
-        let created = state.chat_message_repo.create(message).await.unwrap();
+        let created = state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         assert_eq!(created.content, "Project message");
         assert_eq!(created.project_id, Some(project_id));
@@ -744,11 +744,11 @@ mod tests {
 
         // Create a task
         let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
-        let created_task = state.task_repo.create(task).await.unwrap();
+        let created_task = state.task_repo.create(task).await.expect("Failed to create task in test");
 
         // Send a message about the task
         let message = ChatMessage::user_about_task(created_task.id.clone(), "Task message");
-        let created = state.chat_message_repo.create(message).await.unwrap();
+        let created = state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         assert_eq!(created.content, "Task message");
         assert_eq!(created.task_id, Some(created_task.id));
@@ -761,13 +761,13 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Send multiple messages
         for i in 1..=3 {
             let message =
                 ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
-            state.chat_message_repo.create(message).await.unwrap();
+            state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
         }
 
         // Get all messages
@@ -775,7 +775,7 @@ mod tests {
             .chat_message_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get messages by session in test");
         assert_eq!(messages.len(), 3);
     }
 
@@ -788,7 +788,7 @@ mod tests {
         for i in 1..=2 {
             let message =
                 ChatMessage::user_in_project(project_id.clone(), format!("Project message {}", i));
-            state.chat_message_repo.create(message).await.unwrap();
+            state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
         }
 
         // Get all project messages
@@ -796,7 +796,7 @@ mod tests {
             .chat_message_repo
             .get_by_project(&project_id)
             .await
-            .unwrap();
+            .expect("Failed to get sessions by project in test");
         assert_eq!(messages.len(), 2);
     }
 
@@ -807,13 +807,13 @@ mod tests {
 
         // Create a task
         let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
-        let created_task = state.task_repo.create(task).await.unwrap();
+        let created_task = state.task_repo.create(task).await.expect("Failed to create task in test");
 
         // Send messages about the task
         for i in 1..=2 {
             let message =
                 ChatMessage::user_about_task(created_task.id.clone(), format!("Task message {}", i));
-            state.chat_message_repo.create(message).await.unwrap();
+            state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
         }
 
         // Get all task messages
@@ -821,7 +821,7 @@ mod tests {
             .chat_message_repo
             .get_by_task(&created_task.id)
             .await
-            .unwrap();
+            .expect("Failed to get messages by task in test");
         assert_eq!(messages.len(), 2);
     }
 
@@ -832,16 +832,16 @@ mod tests {
 
         // Create session and message
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         let message = ChatMessage::user_in_session(created_session.id.clone(), "To delete");
-        let created = state.chat_message_repo.create(message).await.unwrap();
+        let created = state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         // Delete the message
-        state.chat_message_repo.delete(&created.id).await.unwrap();
+        state.chat_message_repo.delete(&created.id).await.expect("Failed to delete chat message in test");
 
         // Verify it's gone
-        let result = state.chat_message_repo.get_by_id(&created.id).await.unwrap();
+        let result = state.chat_message_repo.get_by_id(&created.id).await.expect("Failed to get chat message by id in test");
         assert!(result.is_none());
     }
 
@@ -852,13 +852,13 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create multiple messages
         for i in 1..=3 {
             let message =
                 ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
-            state.chat_message_repo.create(message).await.unwrap();
+            state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
         }
 
         // Delete all session messages
@@ -866,14 +866,14 @@ mod tests {
             .chat_message_repo
             .delete_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to delete messages by session in test");
 
         // Verify they're gone
         let messages = state
             .chat_message_repo
             .get_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to get messages by session in test");
         assert!(messages.is_empty());
     }
 
@@ -884,13 +884,13 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create messages
         for i in 1..=5 {
             let message =
                 ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
-            state.chat_message_repo.create(message).await.unwrap();
+            state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
         }
 
         // Count messages
@@ -898,7 +898,7 @@ mod tests {
             .chat_message_repo
             .count_by_session(&created_session.id)
             .await
-            .unwrap();
+            .expect("Failed to count messages by session in test");
         assert_eq!(count, 5);
     }
 
@@ -909,13 +909,13 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create 5 messages
         for i in 1..=5 {
             let message =
                 ChatMessage::user_in_session(created_session.id.clone(), format!("Message {}", i));
-            state.chat_message_repo.create(message).await.unwrap();
+            state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
         }
 
         // Get only 3 recent messages
@@ -923,7 +923,7 @@ mod tests {
             .chat_message_repo
             .get_recent_by_session(&created_session.id, 3)
             .await
-            .unwrap();
+            .expect("Failed to get recent messages by session in test");
         assert_eq!(messages.len(), 3);
     }
 
@@ -950,12 +950,12 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create orchestrator message
         let message =
             ChatMessage::orchestrator_in_session(created_session.id.clone(), "AI response");
-        let created = state.chat_message_repo.create(message).await.unwrap();
+        let created = state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         let response = ChatMessageResponse::from(created);
         assert_eq!(response.role, "orchestrator");
@@ -969,11 +969,11 @@ mod tests {
 
         // Create session
         let session = IdeationSession::new(project_id);
-        let created_session = state.ideation_session_repo.create(session).await.unwrap();
+        let created_session = state.ideation_session_repo.create(session).await.expect("Failed to create ideation session in test");
 
         // Create system message
         let message = ChatMessage::system_in_session(created_session.id.clone(), "Session started");
-        let created = state.chat_message_repo.create(message).await.unwrap();
+        let created = state.chat_message_repo.create(message).await.expect("Failed to create chat message in test");
 
         let response = ChatMessageResponse::from(created);
         assert_eq!(response.role, "system");
@@ -993,7 +993,7 @@ mod tests {
             .ideation_settings_repo
             .get_settings()
             .await
-            .unwrap();
+            .expect("Failed to get ideation settings in test");
 
         assert_eq!(settings.plan_mode, crate::domain::ideation::IdeationPlanMode::Optional);
         assert!(!settings.require_plan_approval);
@@ -1018,7 +1018,7 @@ mod tests {
             .ideation_settings_repo
             .update_settings(&custom_settings)
             .await
-            .unwrap();
+            .expect("Failed to update ideation settings in test");
 
         assert_eq!(updated.plan_mode, crate::domain::ideation::IdeationPlanMode::Required);
         assert!(updated.require_plan_approval);
@@ -1042,14 +1042,14 @@ mod tests {
             .ideation_settings_repo
             .update_settings(&custom_settings)
             .await
-            .unwrap();
+            .expect("Failed to update ideation settings in test");
 
         // Read settings again
         let retrieved = state
             .ideation_settings_repo
             .get_settings()
             .await
-            .unwrap();
+            .expect("Failed to get ideation settings in test");
 
         assert_eq!(retrieved.plan_mode, crate::domain::ideation::IdeationPlanMode::Parallel);
         assert!(!retrieved.require_plan_approval);

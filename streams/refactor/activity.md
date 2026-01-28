@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-29 00:26:21 - Split dependency_service.rs
+
+**What:**
+- Original file: src-tauri/src/application/dependency_service.rs (1435 LOC)
+- Extracted to:
+  - dependency_service/types.rs (57 LOC) - ValidationResult, DependencyAnalysis types
+  - dependency_service/tests.rs (908 LOC) - all unit tests and mock repositories
+  - dependency_service/mod.rs (479 LOC) - main service implementation
+- New size: 479 LOC (67% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/application/dependency_service/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib application::dependency_service`
+
+**Result:** Success - All 29 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
+
+---
+
 ### 2026-01-28 20:08:39 - Split IdeationView Component
 
 **What:**

@@ -65,7 +65,7 @@ style={{ boxShadow: "none", outline: "none" }}
 4. Type safety (strict TS, newtype IDs in Rust)
 5. Full timestamps in activity log
 6. **USE TransitionHandler for status changes** — NEVER direct DB update
-7. **Lint before commit**: `cargo clippy --all-targets --all-features -- -D warnings` + `npm run lint`
+7. **Lint before commit** (only for what you modified): `src-tauri/` → cargo clippy, `src/` → npm run lint
 8. **NEVER start/stop dev server** — User manages manually
 9. **Multi-stream workflow** — Use `./ralph-streams.sh <stream>` for focused work: features (PRD+P0), refactor (P1), polish (P2/P3), verify (gaps), hygiene (backlog maintenance). See `.claude/rules/stream-*.md`
 10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.

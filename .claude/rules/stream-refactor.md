@@ -12,7 +12,7 @@ The refactor stream handles **P1 large file splits and architectural refactors o
 2. **ONLY do P1 work from backlog.md** — cannot pick PRD tasks, P0s, P2s, or P3s
 3. **Cannot skip to easier work** — there is no easier work in this stream
 4. **Must verify LOC limits** — reference `.claude/rules/code-quality-standards.md` before starting
-5. **Run linters after every change** — cargo clippy, npm run lint
+5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
 
 ## Workflow
 
@@ -32,10 +32,10 @@ The refactor stream handles **P1 large file splits and architectural refactors o
    - Backend: Extract to {module}_helpers.rs, {module}_types.rs, {module}_tests.rs
    - Frontend: Extract to Component.utils.ts, Component.types.ts, useHook.ts
 
-5. Run linters:
-   - cargo clippy --all-targets --all-features -- -D warnings
-   - cargo test
-   - npm run lint && npm run typecheck
+5. Run linters (ONLY for what you modified):
+   - Modified src/ files? → npm run lint && npm run typecheck
+   - Modified src-tauri/ files? → cargo clippy --all-targets --all-features -- -D warnings && cargo test
+   - Do NOT run frontend linters for backend-only changes (and vice versa)
 
 6. Mark [x] in backlog.md
 
