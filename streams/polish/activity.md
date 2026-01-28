@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-28 23:12:16 - Remove console.debug statements from useIntegratedChatHandlers
+**What:**
+- File: src/hooks/useIntegratedChatHandlers.ts
+- Change: Removed 3 console.debug statements from production code (lines 97, 132, 172)
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (type checking passes, only pre-existing fast-refresh warnings remain)
+
+---
+
 ### 2026-01-28 23:10:43 - Remove console.log from useIdeationHandlers
 **What:**
 - File: src/components/Ideation/useIdeationHandlers.ts:74

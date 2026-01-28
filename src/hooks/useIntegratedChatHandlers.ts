@@ -94,7 +94,6 @@ export function useIntegratedChatHandlers({
       // ALSO queue to backend so it gets processed when agent completes
       try {
         await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
-        console.debug(`[queue] Queued message ${messageId} for ${ctxType}/${ctxId}`);
       } catch (error) {
         console.error("Failed to queue message to backend:", error);
         // Message is already in local store, which is fine - it just won't be processed by backend
@@ -129,7 +128,6 @@ export function useIntegratedChatHandlers({
       // Delete from backend using the same ID
       try {
         await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
-        console.debug(`[queue] Deleted message ${messageId} from backend`);
       } catch (error) {
         console.error("Failed to delete queued message from backend:", error);
       }
@@ -169,7 +167,6 @@ export function useIntegratedChatHandlers({
       // Queue to backend with same ID
       try {
         await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
-        console.debug(`[queue] Edited message, new ID ${newMessageId} for ${ctxType}/${ctxId}`);
       } catch (error) {
         console.error("Failed to queue edited message to backend:", error);
       }
