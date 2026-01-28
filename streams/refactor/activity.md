@@ -294,3 +294,21 @@ Updated backlog item to reflect complexity.
 - `npm run typecheck`
 
 **Result:** Success - All linters passed, all components now under 500 LOC limit
+
+---
+
+### 2026-01-29 00:34:15 - Split priority_service.rs
+
+**What:**
+- Original file: src-tauri/src/application/priority_service.rs (1299 LOC)
+- Extracted to:
+  - priority_service/tests.rs (912 LOC) - all unit tests (42 tests)
+  - priority_service/mod.rs (379 LOC) - main service implementation
+- New size: 379 LOC (71% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/application/priority_service/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib application::priority_service`
+
+**Result:** Success - All 42 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
