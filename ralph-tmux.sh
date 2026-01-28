@@ -72,6 +72,14 @@ create_session() {
     # Set base index to 0 for predictable pane numbering
     tmux set-option -t "$SESSION_NAME" pane-base-index 0
 
+    # Bind Ctrl-b + number to switch panes directly (override default window switching)
+    tmux bind-key 0 select-pane -t "$SESSION_NAME:0.0"
+    tmux bind-key 1 select-pane -t "$SESSION_NAME:0.1"
+    tmux bind-key 2 select-pane -t "$SESSION_NAME:0.2"
+    tmux bind-key 3 select-pane -t "$SESSION_NAME:0.3"
+    tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4"
+    tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5"
+
     # Create the pane layout
     # Start with pane 0 (header) at top
 

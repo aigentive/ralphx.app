@@ -57,10 +57,12 @@ fswatch --version
 | Action | Keys | Description |
 |--------|------|-------------|
 | Detach | `Ctrl+b d` | Exit tmux, streams keep running |
-| Switch pane | `Ctrl+b 0-5` | Jump to specific pane (0=header, 1-5=streams) |
+| Switch pane | `Ctrl+b 0-5` | Jump to specific pane (0=status, 1-5=streams) |
 | Next pane | `Ctrl+b o` | Cycle through panes |
 | Scroll mode | `Ctrl+b [` | View history (arrows/PgUp to scroll, `q` to exit) |
 | Zoom toggle | `Ctrl+b z` | Full-screen current pane (toggle) |
+
+> **Note:** `Ctrl+b <number>` is custom-bound to switch panes directly (overrides default window switching).
 
 ## Streams
 
