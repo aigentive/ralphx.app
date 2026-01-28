@@ -201,7 +201,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(hooks): add queue_changed listener"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
