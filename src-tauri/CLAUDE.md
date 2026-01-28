@@ -118,8 +118,25 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 ## Code Quality
 
-### Proactive Quality Improvement (ENFORCED BY HOOK)
-Every code task requires `refactor:` commit. See `.claude/rules/quality-improvement.md` for targets and process.
+### Proactive Quality Improvement (MANDATORY — NEVER SKIP)
+Every task MUST include a quality improvement. No exceptions.
+
+**Process:**
+1. Launch Explore agent to scan codebase subset for issues
+2. Pick ONE actionable improvement
+3. Execute the fix
+4. Commit with `refactor:` prefix (BEFORE or AFTER main task commit)
+
+**Quality targets:**
+- Fix clippy warnings
+- Improve error handling (domain-specific variants over generic strings)
+- Fix naming inconsistencies
+- Remove dead code
+- Extract repeated logic into helpers
+
+**Verification:** Task is NOT complete until `refactor:` commit exists.
+
+**Scope:** small task = small improvement, large task = larger improvement.
 
 ### File Size Limits
 **Maximum 500 lines per file** — refactor at 400 lines.
