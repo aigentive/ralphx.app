@@ -105,3 +105,78 @@
 - `cargo test task_commands` → 51 tests passed
 
 **Result:** Success
+
+---
+
+### 2026-01-29 00:28:00 - Attempted Split of chat_service.rs (INCOMPLETE)
+**What:**
+- Original file: src-tauri/src/application/chat_service.rs (2109 LOC)
+- Attempted extraction to:
+  - chat_service/types.rs (~137 LOC) - types, event payloads, error enum
+  - chat_service/helpers.rs (~170 LOC) - helper functions (get_agent_name, create_user_message, etc.)
+  - chat_service/streaming.rs (~250 LOC) - process_stream_background function
+- Target: Reduce main file to ~1500 LOC
+
+**Commands:**
+- Analysis: `wc -l`, `grep -n`, structure mapping with Explore agent
+- Extraction: Created module files, updated imports
+- Issue: Files accidentally lost during module reorganization
+- Recovery: `git restore src-tauri/src/application/chat_service.rs`
+
+**Result:** FAILED - Module files lost, imports broken, code wouldn't compile. Reverted all changes.
+
+**Lessons:**
+1. This file is too large and complex for a single iteration
+2. Need to use a directory-based module structure (chat_service/ folder)
+3. Should test compilation after each extraction step
+4. Consider breaking into smaller sub-tasks:
+   - First: Extract just types
+   - Second: Extract helpers  
+   - Third: Extract streaming logic
+
+**Next Attempt:**
+- Use task_commands/ pattern as reference (already successfully split)
+- Extract in phases with compilation checks between each
+- Keep backups of working state at each step
+
+---
+
+### 2026-01-28 23:37:05 - Re-attempted Split of chat_service.rs (INCOMPLETE - Analysis Phase)
+**What:**
+- Re-analyzed chat_service.rs structure (2109 LOC)
+- Identified extraction candidates:
+  - Types + Event Payloads (lines 37-163, ~127 LOC)
+  - Background Streaming (lines 1269-1391, ~122 LOC)
+  - Mock Service (lines 1635-1877, ~242 LOC)
+  - Tests (lines 1883-2109, ~226 LOC)
+  - Main impl still ~1400 LOC after these extractions
+- Created chat_service_types.rs and chat_service_streaming.rs
+- Import conflicts: streaming module tried to reference types module
+- Auto-generated incorrect module declarations appeared in file
+- Reverted all changes with `git restore`
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service.rs` → 2109 LOC
+- `grep -n "^// ===\|^pub struct\|^impl"` → structure analysis
+- Created but deleted: chat_service_types.rs, chat_service_streaming.rs
+- `git restore src-tauri/src/application/chat_service.rs` → back to original
+
+**Result:** INCOMPLETE - Extraction too complex for single iteration
+
+**Analysis:**
+This P1 item is significantly more complex than previous splits because:
+1. File is 2109 LOC (4x the limit), needs ~75% reduction
+2. Tightly coupled dependencies between sections (streaming needs types, impl needs both)
+3. Generic type parameters (<R: Runtime>) complicate module boundaries
+4. Mock service and tests add complexity but should be extracted to #[cfg(test)]
+5. Main impl block (~660 LOC in send_message alone) needs further decomposition
+
+**Recommendation:**
+Mark this item as requiring multi-iteration approach:
+- Iteration 1: Extract types, events → chat_service/types.rs (~127 LOC saved)
+- Iteration 2: Extract streaming → chat_service/streaming.rs (~122 LOC saved)
+- Iteration 3: Extract mock+tests → chat_service/mock.rs + tests/ (~468 LOC saved)
+- Iteration 4+: Decompose main impl block into message_handler.rs, queue_handler.rs, etc.
+Total: ~1500 LOC to extract across 4+ iterations to reach <500 LOC target
+
+Updated backlog item to reflect complexity.
