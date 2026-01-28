@@ -7,7 +7,7 @@
  * - Action buttons with proper styling
  */
 import { useState } from "react";
-import { Bot, User, GitCompare, Loader2 } from "lucide-react";
+import { Bot, User, GitCompare, Loader2, Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,8 @@ interface ReviewCardProps {
   fixAttempt?: number;
   maxFixAttempts?: number;
   onViewDiff?: (reviewId: string) => void;
+  /** Opens full-screen ReviewDetailModal for comprehensive review */
+  onReview?: (reviewId: string) => void;
   onApprove?: (reviewId: string) => void;
   onRequestChanges?: (reviewId: string) => void;
   onViewFullNotes?: (reviewId: string) => void;
@@ -100,6 +102,7 @@ export function ReviewCard({
   fixAttempt,
   maxFixAttempts,
   onViewDiff,
+  onReview,
   onApprove,
   onRequestChanges,
   onViewFullNotes,
@@ -110,7 +113,7 @@ export function ReviewCard({
   const showFixCounter =
     fixAttempt !== undefined && maxFixAttempts !== undefined;
   const hasButtons =
-    onViewDiff || (showActions && (onApprove || onRequestChanges));
+    onViewDiff || onReview || (showActions && (onApprove || onRequestChanges));
 
   return (
     <Card
@@ -158,6 +161,19 @@ export function ReviewCard({
       {/* Action Buttons */}
       {hasButtons && (
         <div className="flex flex-wrap gap-2 mt-4">
+          {onReview && (
+            <Button
+              data-testid={`review-button-${review.id}`}
+              variant="ghost"
+              size="sm"
+              onClick={() => onReview(review.id)}
+              disabled={isLoading}
+              className="bg-[var(--accent-muted)] hover:bg-[var(--accent-primary)] hover:text-white text-[var(--accent-primary)]"
+            >
+              <Eye className="w-4 h-4 mr-1.5" />
+              Review
+            </Button>
+          )}
           {onViewDiff && (
             <Button
               variant="ghost"
