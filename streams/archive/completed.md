@@ -7,6 +7,11 @@
 
 ## Archived 2026-01-28
 
+### From polish/backlog.md (Strikethrough Validation - 2026-01-28)
+
+- [ ] ~~[P2] [Frontend] Type safety - Replace `any` with proper types in test mocks~~ (stale:2 - fixed with proper typing in useChat.test.ts)
+- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:2 - no console.debug at those lines) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
+
 ### From polish/backlog.md (PRD-deferred)
 
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20:1:2 - verified removed)
@@ -128,4 +133,4 @@
 
 ---
 
-**Total archived:** 59 items (7 P0 + 6 P1 + 16 P2 + 19 P3 + 11 stale)
+**Total archived:** 61 items (7 P0 + 6 P1 + 17 P2 + 20 P3 + 11 stale)

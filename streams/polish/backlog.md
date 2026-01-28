@@ -56,13 +56,12 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] ~~[P2] [Frontend] Type safety - Replace `any` with proper types in test mocks~~ (stale:1 - fixed in P3 item)
+_No active P2 items._
 
 ### P3 - Low Impact
 
 - [x] [P3] [Frontend] Remove console.log from IntegratedChatPanel debug statement - src/components/Chat/IntegratedChatPanel.tsx:124
 - [x] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
-- [ ] ~~[P3] [Frontend] Remove console.debug statements from production code~~ (stale:1 - no console.debug at those lines) - src/components/Chat/IntegratedChatPanel.tsx:370,402,442
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
 - [ ] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
@@ -80,4 +79,4 @@ _No active P3 items. Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 13 (3 excluded, 9 deferred to PRD, 1 reactivated from validation)
 **Completed:** 7
-**Validated:** 6 strikethroughs (2026-01-28) - 2 archived, 1 reactivated, 3 incremented (2026-01-28)
+**Validated:** 8 strikethroughs (2026-01-28) - 4 archived, 1 reactivated, 3 incremented
