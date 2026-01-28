@@ -24,9 +24,9 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:794~~ (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18:1:1:1:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1)
@@ -94,8 +94,32 @@ _No active P3 items. Completed items moved to archive._
 
 ---
 
+## REFILL (Added 2026-01-29 18:30)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Frontend] Unused variables with void suppression - src/components/ExtensibilityView.ResearchPanel.tsx:54-56
+- [ ] [P2] [Frontend] Remove TODOs and implement handlers - src/components/ExtensibilityView.ResearchPanel.tsx:61
+- [ ] [P2] [Frontend] Remove TODO and implement task reopen - src/components/tasks/detail-views/CompletedTaskDetail.tsx:261
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:332
+- [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:349
+- [ ] [P3] [Frontend] Remove console.error call - src/App.tsx:361
+- [ ] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:63
+- [ ] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
+- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:213
+- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
+- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221
+- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:225
+- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
+- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+
+---
+
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 2 (9 excluded, 10 deferred to PRD)
+**Active items:** 14 (9 excluded, 10 deferred to PRD)
 **Completed:** 10
-**Validated:** 60 strikethroughs (2026-01-29 x45) - 10 archived, 1 reactivated (moved to refactor as P1), 49 incremented
-**Last maintenance:** 2026-01-29 (archived 1 completed item)
+**Validated:** 63 strikethroughs (2026-01-29 x48) - 10 archived, 1 reactivated (moved to refactor as P1), 52 incremented
+**Last maintenance:** 2026-01-29 18:30 (archived 1 completed item, refilled with 14 P2/P3 items, validated 3 strikethroughs)
