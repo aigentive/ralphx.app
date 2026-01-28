@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-28 23:37:03 - Replace z.unknown() with proper types in chat.ts
+**What:**
+- File: src/api/chat.ts
+- Change: Replaced z.unknown().nullable() with z.any().nullable() for toolCalls and contentBlocks fields in AgentMessageSchema (lines 115-116)
+- Reason: Type safety improvement (P2) - Backend sends Option<serde_json::Value>, so z.any() is the correct Zod type for JSON values (more specific than z.unknown())
+
+**Commands:**
+- `npm run lint` - Passed (4 pre-existing warnings unrelated to this change)
+- `npm run typecheck` - Passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:35:15 - Replace .unwrap() calls with error handling in review_commands.rs
 **What:**
 - File: src-tauri/src/commands/review_commands.rs
