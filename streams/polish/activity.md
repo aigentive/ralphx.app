@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-29 00:15:40 - Remove TODO comment for Tauri command integration
+**What:**
+- File: src/App.tsx:359
+- Change: Removed TODO comment from handleQuestionSubmit function
+- Reason: Documentation cleanup (P2) - placeholder comment for unimplemented functionality
+
+**Commands:**
+- `npm run lint -- src/App.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass)
+
+---
+
 ### 2026-01-29 00:17:30 - Extract ToolCallIndicator sub-functions
 **What:**
 - File: src/components/Chat/ToolCallIndicator.tsx (575 LOC → 245 LOC)
