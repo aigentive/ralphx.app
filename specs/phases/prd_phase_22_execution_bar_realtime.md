@@ -73,7 +73,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(execution): add emit_status_changed helper"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

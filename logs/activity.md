@@ -1,10 +1,31 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 19:00:00
+**Last Updated:** 2026-01-28 20:00:00
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 0 / ?
-**Current Task:** Phase 22 activated
+**Tasks Completed:** 1 / 12
+**Current Task:** Add emit_status_changed helper to ExecutionState
+
+---
+
+### 2026-01-28 20:00:00 - Add emit_status_changed helper to ExecutionState
+
+**What:**
+- Added `emit_status_changed<R: Runtime>` method to `ExecutionState` struct
+- Emits `execution:status_changed` Tauri event with payload: isPaused, runningCount, maxConcurrent, reason, timestamp
+- Added imports for `tauri::{AppHandle, Emitter, Runtime}`
+- Wrote 3 unit tests using MockRuntime: no-panic, state reflection, various reasons
+
+**Quality Improvement:**
+- Extracted artifact_flow_service.rs tests to artifact_flow_service_tests.rs (1247 → 304 LOC)
+- Used `#[path]` attribute pattern (same as artifact_service.rs extraction)
+- All 52 artifact_flow_service tests pass after extraction
+
+**Commands:**
+- `cargo test --lib commands::execution_commands::tests` — 23 passed
+- `cargo test --lib domain::services::artifact_flow_service::tests` — 52 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `npm run lint` — 0 errors
 
 ---
 
