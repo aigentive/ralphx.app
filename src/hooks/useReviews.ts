@@ -139,7 +139,8 @@ export function useReviewsByTaskId(
     staleTime: 30 * 1000, // 30 seconds
   });
 
-  const data = query.data ?? [];
+  // Wrap data in useMemo to prevent creating new array reference on every render
+  const data = useMemo(() => query.data ?? [], [query.data]);
 
   // Computed properties
   const hasAiReview = useMemo(

@@ -59,11 +59,11 @@
 - [x] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
 - [ ] ~~Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10~~ (stale - just a re-export barrel file)
 - [x] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
-- [ ] Extract form field constants from TaskFormFields - src/components/tasks/TaskFormFields.tsx:28-64
+- [ ] ~~Extract form field constants from TaskFormFields - src/components/tasks/TaskFormFields.tsx:28-64~~ (stale - already extracted to TaskFormFields.constants)
 - [ ] ~~Extract constants from ui/badge - src/components/ui/badge.tsx:36~~ (excluded)
 - [ ] ~~Extract constants from ui/button - src/components/ui/button.tsx:58~~ (excluded)
 - [ ] ~~Extract constants from ui/toggle - src/components/ui/toggle.tsx:45~~ (excluded)
-- [ ] Fix useReviews hook with multiple useMemo hooks - wrap data derivation in useMemo - src/hooks/useReviews.ts:142
+- [x] Fix useReviews hook with multiple useMemo hooks - wrap data derivation in useMemo - src/hooks/useReviews.ts:142
 - [ ] Fix TaskChatPanel messagesData dependency issue in useMemo - src/components/tasks/TaskChatPanel.tsx:233
 - [ ] Reduce DiffViewer component size (966 LOC) - extract diff rendering logic - src/components/diff/DiffViewer.tsx:1-50
 - [ ] Reduce SettingsView size (827 LOC) - extract settings sections into sub-components - src/components/settings/SettingsView.tsx:1-50
