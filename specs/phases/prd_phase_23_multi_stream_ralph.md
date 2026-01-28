@@ -141,7 +141,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - No backlog (produces to features/backlog.md)",
       "Commit: docs(rules): add verify stream workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "rules",
