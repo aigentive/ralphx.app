@@ -68,10 +68,6 @@ type ViewMode = "single" | "comparison";
 // Helper Functions
 // ============================================================================
 
-function getFilename(path: string): string {
-  return path.split("/").pop() || path;
-}
-
 function formatTimestamp(timestamp: string | undefined): string {
   if (!timestamp) return "";
   try {
@@ -680,34 +676,6 @@ export function ScreenshotGallery({
       )}
     </div>
   );
-}
-
-// ============================================================================
-// Utility: Convert simple paths to Screenshot objects
-// ============================================================================
-
-/**
- * Convert an array of screenshot paths to Screenshot objects
- * Useful for integration with TaskDetailQAPanel
- */
-export function pathsToScreenshots(
-  paths: string[],
-  stepResults?: Map<string, QAStepResult>
-): Screenshot[] {
-  return paths.map((path, index) => {
-    const filename = getFilename(path);
-    // Try to match with step result based on filename
-    const matchingResult = stepResults
-      ? Array.from(stepResults.values()).find((r) => r.screenshot === path)
-      : undefined;
-
-    return {
-      id: `screenshot-${index}`,
-      path,
-      label: matchingResult?.step_id || filename,
-      stepResult: matchingResult,
-    };
-  });
 }
 
 export default ScreenshotGallery;

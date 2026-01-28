@@ -47,7 +47,7 @@
 - [ ] Fix react-hooks/exhaustive-deps in ChatPanel - wrap messagesData in useMemo - src/components/Chat/ChatPanel.tsx:855
 
 ### P2 - Medium Impact
-- [ ] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693
+- [x] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693
 - [ ] Extract constants from ScreenshotGallery/index into separate file - src/components/qa/ScreenshotGallery/index.tsx:3
 - [ ] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
 - [ ] Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10

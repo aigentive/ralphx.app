@@ -3,9 +3,9 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   ScreenshotGallery,
-  pathsToScreenshots,
   type Screenshot,
 } from "./ScreenshotGallery";
+import { pathsToScreenshots } from "./utils";
 import type { QAStepResult } from "@/types/qa";
 
 // ============================================================================
