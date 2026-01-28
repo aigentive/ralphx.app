@@ -163,6 +163,13 @@
       "prd": "specs/phases/prd_phase_21_execution_control.md",
       "status": "active",
       "description": "Wire ExecutionState to spawner, fix stop command, implement startup task resumption"
+    },
+    {
+      "phase": 22,
+      "name": "Execution Bar Real-time Updates",
+      "prd": "specs/phases/prd_phase_22_execution_bar_realtime.md",
+      "status": "pending",
+      "description": "Real-time UI updates for execution status via Tauri events"
     }
   ]
 }
