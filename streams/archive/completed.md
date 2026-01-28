@@ -7,6 +7,10 @@
 
 ## Migrated from logs/code-quality.md (2026-01-28)
 
+### Stale Items (Verified Fixed - Archived 2026-01-28)
+
+- [ ] ~~Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components~~ (stale:2 - now 205 LOC)
+
 ### P0 - Critical (Phase Gaps)
 
 - [x] [Backend] inject_task doesn't emit queue_changed when creating task with Ready status (target=planned) - src-tauri/src/commands/task_commands.rs:512
@@ -104,4 +108,4 @@
 
 ---
 
-**Total archived:** 54 items (7 P0 + 6 P1 + 16 P2 + 15 P3 + 10 stale)
+**Total archived:** 55 items (7 P0 + 6 P1 + 16 P2 + 15 P3 + 11 stale)

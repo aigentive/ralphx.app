@@ -28,6 +28,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Loader2,
+  Hammer,
 } from "lucide-react";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";

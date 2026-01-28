@@ -5,6 +5,10 @@
 
 <!-- All P0 items from Phase 20-22 have been resolved. New P0s from verify stream go here. -->
 
+## From Phase 24 Verification (2026-01-28)
+
+- [ ] [Infrastructure] Orphaned Process: verify stream fswatch not killed on stop - ralph-tmux.sh:169
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
