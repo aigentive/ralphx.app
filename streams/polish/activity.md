@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-28 23:42:01 - Replace promise chain with async/await
+**What:**
+- File: src/hooks/useSupervisorAlerts.listener.ts:100
+- Change: Refactored cleanup function from `.forEach((unlisten) => unlisten.then((fn) => fn()))` to use `Promise.all().then()` pattern
+- Improved: More idiomatic async pattern, easier to read and understand
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 23:40:26 - Refactor large API file - extract helpers from ideation.ts
 **What:**
 - File: src/api/ideation.ts (821 LOC → 473 LOC)
