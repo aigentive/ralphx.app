@@ -25,6 +25,8 @@ function buildContextKey(contextType: ContextType, contextId: string): string {
     case "task":
     case "task_execution":
       return `task:${contextId}`;
+    case "review":
+      return `review:${contextId}`;
     case "project":
       return `project:${contextId}`;
     default:
@@ -56,6 +58,10 @@ export const chatKeys = {
 
 /**
  * Get context type and ID from ChatContext
+ *
+ * NOTE: This function currently doesn't distinguish between 'task', 'task_execution', and 'review'
+ * context types when view='task_detail'. Components like TaskChatPanel handle this distinction
+ * by directly querying conversations with the appropriate contextType based on task state.
  */
 function getContextTypeAndId(context: ChatContext): {
   contextType: ContextType;
@@ -71,6 +77,8 @@ function getContextTypeAndId(context: ChatContext): {
       if (!context.selectedTaskId) {
         throw new Error("Task detail context requires selectedTaskId");
       }
+      // Returns 'task' contextType by default. Components should query conversations
+      // with 'task_execution' or 'review' contextType directly when needed based on task state.
       return { contextType: "task", contextId: context.selectedTaskId };
     case "kanban":
       if (context.selectedTaskId) {
