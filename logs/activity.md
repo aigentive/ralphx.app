@@ -1,10 +1,35 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:48:00
+**Last Updated:** 2026-01-28 18:15:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 3 / 11
-**Current Task:** Add ExecutionState to TransitionHandler for decrement on exit
+**Tasks Completed:** 4 / 11
+**Current Task:** Fix stop_execution to use TransitionHandler
+
+---
+
+### 2026-01-28 18:15:00 - Fix stop_execution to use TransitionHandler
+
+**What:**
+- Removed direct DB status update in stop_execution command
+- Added AGENT_ACTIVE_STATUSES constant for states where agents are running:
+  - Executing, QaRefining, QaTesting, Reviewing, ReExecuting
+- Updated stop_execution to use TaskTransitionService.transition_task() for each agent-active task
+- This properly triggers on_exit handlers which decrement running count
+- Removed manual running count reset (now handled by state machine)
+- Added integration test: test_stop_cancels_multiple_agent_active_tasks
+- Added test: test_agent_active_statuses_constant
+
+**Quality Improvement:**
+- Made AGENT_ACTIVE_STATUSES public for reuse by StartupJobRunner (future task)
+- Added new P3 items to code-quality.md from Explore agent scan
+
+**Commands:**
+```bash
+cargo test execution_commands --lib
+cargo clippy --all-targets --all-features -- -D warnings
+npm run lint && npm run typecheck
+```
 
 ---
 

@@ -6,8 +6,23 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::State;
 
-use crate::application::AppState;
+use crate::application::{AppState, TaskTransitionService};
 use crate::domain::entities::InternalStatus;
+
+/// Statuses where an agent is actively running.
+/// Tasks in these states need to be cancelled when stop is called,
+/// and resumed when the app restarts.
+///
+/// Used by:
+/// - `stop_execution` command to find tasks to cancel
+/// - `StartupJobRunner` to find tasks to resume on app restart
+pub const AGENT_ACTIVE_STATUSES: &[InternalStatus] = &[
+    InternalStatus::Executing,
+    InternalStatus::QaRefining,
+    InternalStatus::QaTesting,
+    InternalStatus::Reviewing,
+    InternalStatus::ReExecuting,
+];
 
 /// Global execution state managed atomically for thread safety
 pub struct ExecutionState {
@@ -195,7 +210,8 @@ pub async fn resume_execution(
 }
 
 /// Stop execution (cancels current tasks and pauses)
-/// This transitions all executing tasks to Cancelled status
+/// This transitions all agent-active tasks to Failed status via TransitionHandler.
+/// The on_exit handlers will decrement the running count for each task.
 #[tauri::command]
 pub async fn stop_execution(
     execution_state: State<'_, Arc<ExecutionState>>,
@@ -204,7 +220,20 @@ pub async fn stop_execution(
     // First pause to prevent new tasks from starting
     execution_state.pause();
 
-    // Find all executing tasks and cancel them
+    // Build transition service for proper state machine transitions
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        app_state.app_handle.clone(),
+    );
+
+    // Find all tasks in agent-active states across all projects
     let all_projects = app_state
         .project_repo
         .get_all()
@@ -218,26 +247,27 @@ pub async fn stop_execution(
             .await
             .map_err(|e| e.to_string())?;
 
-        for mut task in tasks {
-            if task.internal_status == InternalStatus::Executing {
-                // Transition to Cancelled (valid transition per state machine)
-                // Note: Executing can transition to Failed, which can then transition to Cancelled
-                // For immediate stop, we use Failed as an intermediate state
-                task.internal_status = InternalStatus::Failed;
-                task.touch();
-                app_state
-                    .task_repo
-                    .update(&task)
+        for task in tasks {
+            // Check if task is in an agent-active state
+            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                // Use TransitionHandler to transition to Failed
+                // This triggers on_exit handlers which decrement running count
+                if let Err(e) = transition_service
+                    .transition_task(&task.id, InternalStatus::Failed)
                     .await
-                    .map_err(|e| e.to_string())?;
+                {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to transition task to Failed during stop"
+                    );
+                }
             }
         }
     }
 
-    // Reset running count to 0 since we've stopped all tasks
-    while execution_state.running_count() > 0 {
-        execution_state.decrement_running();
-    }
+    // Note: running_count is decremented by on_exit handlers in TransitionHandler
+    // No manual reset needed here
 
     // Get current status
     let status = get_execution_status(execution_state, app_state).await?;
@@ -538,6 +568,96 @@ mod tests {
 
         assert_eq!(executing_count, 0);
         assert_eq!(failed_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_stop_cancels_multiple_agent_active_tasks() {
+        // Setup: Create tasks in various agent-active states
+        let execution_state = Arc::new(ExecutionState::new());
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create tasks in all agent-active statuses
+        let mut task1 = Task::new(project.id.clone(), "Executing Task".to_string());
+        task1.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(task1.clone()).await.unwrap();
+
+        let mut task2 = Task::new(project.id.clone(), "QaRefining Task".to_string());
+        task2.internal_status = InternalStatus::QaRefining;
+        app_state.task_repo.create(task2.clone()).await.unwrap();
+
+        let mut task3 = Task::new(project.id.clone(), "Reviewing Task".to_string());
+        task3.internal_status = InternalStatus::Reviewing;
+        app_state.task_repo.create(task3.clone()).await.unwrap();
+
+        // Create a task NOT in agent-active state (should not be affected)
+        let mut task4 = Task::new(project.id.clone(), "Ready Task".to_string());
+        task4.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(task4.clone()).await.unwrap();
+
+        // Build transition service (same as stop_execution does)
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            None,
+        );
+
+        // Pause execution (as stop_execution would)
+        execution_state.pause();
+
+        // Transition all agent-active tasks to Failed
+        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        for task in tasks {
+            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                let _ = transition_service
+                    .transition_task(&task.id, InternalStatus::Failed)
+                    .await;
+            }
+        }
+
+        // Verify: All agent-active tasks should now be Failed
+        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+
+        let failed_count = tasks
+            .iter()
+            .filter(|t| t.internal_status == InternalStatus::Failed)
+            .count();
+
+        let ready_count = tasks
+            .iter()
+            .filter(|t| t.internal_status == InternalStatus::Ready)
+            .count();
+
+        // 3 agent-active tasks should be Failed
+        assert_eq!(failed_count, 3);
+        // 1 Ready task should remain Ready
+        assert_eq!(ready_count, 1);
+        // Execution should be paused
+        assert!(execution_state.is_paused());
+    }
+
+    #[test]
+    fn test_agent_active_statuses_constant() {
+        // Verify the constant includes all expected statuses
+        assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Executing));
+        assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::QaRefining));
+        assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::QaTesting));
+        assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Reviewing));
+        assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::ReExecuting));
+
+        // Non-agent-active statuses should not be included
+        assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Ready));
+        assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Backlog));
+        assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Failed));
     }
 
     #[test]

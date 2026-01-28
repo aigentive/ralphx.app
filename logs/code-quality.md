@@ -139,11 +139,14 @@
 - [x] Add StateGroup.locked() convenience method for system-managed groups - src-tauri/src/domain/entities/workflow.rs:67
 - [x] Consolidate duplicate ExecutionState imports in spawner.rs tests - src-tauri/src/infrastructure/agents/spawner.rs:204
 - [x] Reduce spawner.rs (529 LOC → 500 LOC) - consolidated role_from_string tests - src-tauri/src/infrastructure/agents/spawner.rs:1-50
+- [x] Make AGENT_ACTIVE_STATUSES public for reuse by StartupJobRunner - src-tauri/src/commands/execution_commands.rs:12
+- [ ] Add contextual error messages in artifact type parsing failures - src-tauri/src/commands/artifact_commands.rs:158,216,357
+- [ ] Extract duplicate parse error handling pattern in workflow/ideation commands - src-tauri/src/commands/workflow_commands.rs:25
 
 ---
 
 ## Last Explored
-**Date:** 2026-01-28 12:30:00
-**Areas:** src/, src-tauri/
-**Agent:** a092c9d
-**Total Issues:** 72 (P1: 23 | P2: 32 | P3: 17)
+**Date:** 2026-01-28 14:00:00
+**Areas:** src-tauri/src/commands/, src-tauri/src/application/
+**Agent:** a98d79f
+**Total Issues:** 74 (P1: 23 | P2: 32 | P3: 19)
