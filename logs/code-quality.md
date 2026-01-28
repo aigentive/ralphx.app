@@ -52,8 +52,8 @@
 
 ### P2 - Medium Impact
 - [x] Extract constants from ScreenshotGallery into separate file (react-refresh/only-export-components) - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:693
-- [ ] Extract constants from ScreenshotGallery/index into separate file - src/components/qa/ScreenshotGallery/index.tsx:3
-- [ ] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
+- [ ] ~~Extract constants from ScreenshotGallery/index into separate file - src/components/qa/ScreenshotGallery/index.tsx:3~~ (stale - just a re-export barrel file, no constants)
+- [x] Extract constants from TaskQABadge into separate file - src/components/qa/TaskQABadge.tsx:103
 - [ ] Extract constants from TaskBoard/index into separate file - src/components/tasks/TaskBoard/index.tsx:10
 - [ ] Extract constants from TaskFormFields into separate file - src/components/tasks/TaskFormFields.tsx:18
 - [ ] Extract form field constants from TaskFormFields - src/components/tasks/TaskFormFields.tsx:28-64
@@ -112,12 +112,12 @@
 - [x] Implement TODO: Fetch maxRevisionCycles from review settings - src-tauri/src/http_server.rs:1115
 - [~] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs (STALE: TODO not found)
 - [~] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs (STALE: Review context not yet added, pending future task)
-- [ ] Review methodology.rs entity type definitions (1363 LOC) for extraction opportunities - src-tauri/src/domain/entities/methodology.rs:1-50
-- [ ] Review artifact_flow.rs entity type definitions (1389 LOC) - src-tauri/src/domain/entities/artifact_flow.rs:1-50
-- [ ] Review research.rs entity type definitions (1398 LOC) - src-tauri/src/domain/entities/research.rs:1-50
-- [ ] Review ideation.rs entity type definitions (3979 LOC) for module breakdown - src-tauri/src/domain/entities/ideation.rs:1-50
-- [ ] Extract artifact_flow_service (1247 LOC) - split domain logic from queries - src-tauri/src/domain/services/artifact_flow_service.rs:1-50
-- [ ] Extract artifact_service (1140 LOC) - separate concerns - src-tauri/src/domain/services/artifact_service.rs:1-50
+- [ ] ~~Review methodology.rs entity type definitions (1363 LOC) for extraction opportunities - src-tauri/src/domain/entities/methodology.rs:1-50~~ (stale - well organized, no extraction needed)
+- [ ] ~~Review artifact_flow.rs entity type definitions (1389 LOC) - src-tauri/src/domain/entities/artifact_flow.rs:1-50~~ (stale - well organized, no extraction needed)
+- [ ] ~~Review research.rs entity type definitions (1398 LOC) - src-tauri/src/domain/entities/research.rs:1-50~~ (stale - well organized, no extraction needed)
+- [ ] ~~Review ideation.rs entity type definitions (3979 LOC) for module breakdown - src-tauri/src/domain/entities/ideation.rs:1-50~~ (stale - well organized, no extraction needed)
+- [ ] ~~Extract artifact_flow_service (1247 LOC) - split domain logic from queries - src-tauri/src/domain/services/artifact_flow_service.rs:1-50~~ (stale - service files with domain logic are acceptable)
+- [ ] ~~Extract artifact_service (1140 LOC) - separate concerns - src-tauri/src/domain/services/artifact_service.rs:1-50~~ (stale - service files with domain logic are acceptable)
 
 ---
 

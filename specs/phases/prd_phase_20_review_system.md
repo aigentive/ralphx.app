@@ -385,7 +385,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(types): add review context type for chat"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
