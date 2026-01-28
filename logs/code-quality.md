@@ -121,7 +121,7 @@
 - [ ] ~~Implement TODO: Store answer for agent context - src-tauri/src/commands/task_commands.rs:1867~~ (stale - TODO not found)
 - [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs~~ (stale - TODO not found)
 - [ ] ~~Replace TODO state mappings with proper state variants - src-tauri/src/application/task_transition_service.rs~~ (PRD - review states task)
-- [ ] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
+- [x] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
 - [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
 - [x] Reduce task_step_commands.rs size (764 LOC → 711 LOC) - extracted types to task_step_commands_types.rs - src-tauri/src/commands/task_step_commands.rs:1-50
