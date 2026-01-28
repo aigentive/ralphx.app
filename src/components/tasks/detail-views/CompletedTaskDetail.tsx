@@ -259,7 +259,6 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
 
   const handleReopenTask = () => {
     // TODO: Transition task back to ready state
-    console.log("Reopen task:", task.id);
   };
 
   const approvalTimeDisplay = humanApproval

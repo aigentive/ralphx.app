@@ -60,7 +60,7 @@ _No active P2 items._
 
 - [x] [P3] [Frontend] Remove console.log from IntegratedChatPanel debug statement - src/components/Chat/IntegratedChatPanel.tsx:124
 - [x] [P3] [Frontend] Remove console.log statements from production code - src/components/Chat/ChatPanel.tsx:414,440,482,533,593,613
-- [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
+- [x] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:258
 - [ ] [P3] [Frontend] Remove console.log stub from event handler - src/components/tasks/detail-views/CompletedTaskDetail.tsx:263
 - [ ] [P3] [Frontend] Remove console.log stub from inline handler - src/components/Ideation/IdeationView.tsx:336
 - [ ] [P3] [Frontend] Remove console.log statement - src/components/Ideation/useIdeationHandlers.ts:74
