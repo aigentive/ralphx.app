@@ -5,6 +5,17 @@
 
 ---
 
+## Archived 2026-01-29
+
+### From polish/backlog.md (REFILL - Added 2026-01-28)
+
+- [x] [P2] [Backend] Replace panic! with proper error handling - src-tauri/src/infrastructure/agents/claude/stream_processor.rs:432
+- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/error.rs:95
+- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/artifact_commands.rs:452
+- [x] [P2] [Backend] Replace .unwrap() calls with error handling - src-tauri/src/commands/review_commands.rs:375
+
+---
+
 ## Archived 2026-01-28
 
 ### From polish/backlog.md (Strikethrough Validation - 2026-01-28)
