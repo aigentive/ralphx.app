@@ -143,17 +143,20 @@ impl ToolCallWindow {
         }
 
         if max_count >= self.loop_threshold {
-            let call = max_call.unwrap();
-            let confidence = if max_count > self.loop_threshold + 1 { 95 }
-                           else if max_count > self.loop_threshold { 85 }
-                           else { 75 };
+            if let Some(call) = max_call {
+                let confidence = if max_count > self.loop_threshold + 1 { 95 }
+                               else if max_count > self.loop_threshold { 85 }
+                               else { 75 };
 
-            Some(DetectionResult::new(
-                Pattern::InfiniteLoop,
-                confidence,
-                format!("Tool '{}' called {} times with similar arguments", call.tool_name, max_count),
-                max_count,
-            ))
+                Some(DetectionResult::new(
+                    Pattern::InfiniteLoop,
+                    confidence,
+                    format!("Tool '{}' called {} times with similar arguments", call.tool_name, max_count),
+                    max_count,
+                ))
+            } else {
+                None
+            }
         } else {
             None
         }
