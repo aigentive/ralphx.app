@@ -22,6 +22,7 @@
 > **BLOCKING:** Fix ALL P0 items before touching P1/P2/P3. Cannot be deferred, marked stale, or skipped.
 
 <!-- Gaps found during phase verification go here -->
+- [ ] [Frontend] Orphaned: View Registry not wired - TaskDetailOverlay needs `useViewRegistry={true}` - src/components/tasks/TaskDetailOverlay.tsx:508
 - [x] [Backend] Fix direct status update in chat_service.rs (lines 824-830) - use TaskTransitionService instead of direct DB update - src-tauri/src/application/chat_service.rs:824
 
 ---
