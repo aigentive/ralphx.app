@@ -8,9 +8,9 @@ import {
   TaskBoardSkeleton,
   Column,
   TaskCard,
-  useTaskBoard,
   type TaskBoardProps,
 } from "./index";
+import { useTaskBoard } from "./hooks";
 import { workflowKeys } from "@/hooks/useWorkflows";
 
 describe("TaskBoard exports", () => {
@@ -34,7 +34,9 @@ describe("TaskBoard exports", () => {
     expect(typeof TaskCard).toBe("function");
   });
 
-  it("should export useTaskBoard hook", () => {
+  it("should export useTaskBoard hook from hooks module", () => {
+    // Note: useTaskBoard is exported from ./hooks, not ./index
+    // This avoids react-refresh lint warning about mixing components and hooks
     expect(useTaskBoard).toBeDefined();
     expect(typeof useTaskBoard).toBe("function");
   });
