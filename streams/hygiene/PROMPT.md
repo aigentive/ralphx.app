@@ -12,8 +12,16 @@ Maintain backlogs, then STOP.
 
 ## Quick Workflow
 ```
-Archive excess [x] items → Refill low backlogs via Explore → Validate 2-3 strikethroughs → Log → STOP
+Archive excess [x] items → Refill low backlogs via Explore → Validate 2-3 strikethroughs → Log → Commit (only your files) → STOP
 ```
+
+## Git Commit Rules (CRITICAL - parallel streams)
+
+**NEVER use `git add .` or `git add -A`** — other streams have uncommitted changes!
+
+1. Only commit: `streams/*/backlog.md`, `streams/archive/*`, `streams/hygiene/activity.md`
+2. `git add <file1> <file2> ...` — only files you modified
+3. Commit with prefix: `chore(hygiene):`
 
 ## Nothing to maintain?
 Output: `<promise>COMPLETE</promise>`
