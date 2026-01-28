@@ -46,7 +46,7 @@ _No active P2 items. Completed items moved to archive._
 - [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20:1:1:1:1)
 - [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20:1:1:1)
 - [ ] ~~Implement TODO: Open diff viewer - src/App.tsx (line ~420)~~ (PRD:20:1)
-- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18:1)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx (line ~100)~~ (PRD:18:1:1)
 - [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx (line ~120)~~ (PRD:18:1)
 - [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx (line ~130)~~ (PRD:21:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx (line ~140)~~ (PRD:21:1)
