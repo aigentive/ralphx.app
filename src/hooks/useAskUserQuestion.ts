@@ -60,7 +60,6 @@ export function useAskUserQuestion() {
       const parsed = AskUserQuestionPayloadSchema.safeParse(event.payload);
 
       if (!parsed.success) {
-        console.error("Invalid ask_user_question event:", parsed.error.message);
         return;
       }
 
