@@ -77,7 +77,7 @@ fswatch --version
 | **refactor** | sonnet | P1 large file splits | `backlog.md` |
 | **polish** | sonnet | P2/P3 cleanup, type fixes | `backlog.md` |
 | **verify** | sonnet | Gap detection in completed phases | `manifest.json` |
-| **hygiene** | sonnet | Backlog maintenance, refilling | All backlogs, archive |
+| **hygiene** | sonnet | Backlog maintenance, refilling | Manual trigger only |
 
 ## fswatch Behavior
 
@@ -99,7 +99,7 @@ Streams use file watching instead of polling. **Zero API calls when idle.**
 | **refactor** | Items added to refactor backlog by hygiene |
 | **polish** | Items added to polish backlog by hygiene |
 | **verify** | Phase marked complete in manifest |
-| **hygiene** | Any backlog change, archive updates |
+| **hygiene** | Manual only: `touch streams/hygiene/trigger` |
 
 ### Manual Trigger
 
@@ -109,6 +109,9 @@ touch streams/features/backlog.md
 
 # Trigger verify stream
 touch specs/manifest.json
+
+# Trigger hygiene stream (only way to trigger it)
+touch streams/hygiene/trigger
 ```
 
 ## Daily Workflow
