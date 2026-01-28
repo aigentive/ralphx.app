@@ -473,6 +473,9 @@ pub async fn create_agent_conversation(
         ChatContextType::TaskExecution => {
             ChatConversation::new_task_execution(TaskId::from_string(input.context_id.clone()))
         }
+        ChatContextType::Review => {
+            ChatConversation::new_review(TaskId::from_string(input.context_id.clone()))
+        }
     };
 
     state

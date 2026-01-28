@@ -1,10 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:30:00
+**Last Updated:** 2026-01-28 22:45:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 15 / 39
-**Current Task:** Add Review context type to ChatService (next)
+**Tasks Completed:** 16 / 39
+**Current Task:** Update useChat hook for review context routing (next)
+
+---
+
+### 2026-01-28 22:45:00 - Add Review context type to ChatService
+
+**What:**
+- Added ChatContextType::Review variant to enum in src-tauri/src/domain/entities/chat_conversation.rs
+- Added MessageRole::Reviewer variant to enum in src-tauri/src/domain/entities/ideation.rs
+- Updated get_agent_name() to route Review context to 'reviewer' agent
+- Updated get_assistant_role() to return MessageRole::Reviewer for Review context
+- Added initial prompt for Review context: "RalphX Review Session. Task ID: {id}. You are reviewing..."
+- Updated ChatConversation::new_review() constructor for review conversations
+- Fixed all exhaustive pattern matches across codebase for new Review variant
+- Added tests for Review context type serialization and parsing
+- All cargo tests pass (3206 passed)
+
+**Commands:**
+```bash
+cargo test --lib
+```
+
+**Results:**
+- ChatContextType::Review variant added and working
+- MessageRole::Reviewer variant added for reviewer agent messages
+- Review context routes to 'reviewer' agent
+- All exhaustive pattern matches updated
+- All tests passing
 
 ---
 

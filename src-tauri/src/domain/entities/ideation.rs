@@ -1204,6 +1204,8 @@ pub enum MessageRole {
     System,
     /// Message from the Worker AI agent (task execution output)
     Worker,
+    /// Message from the Reviewer AI agent (task review)
+    Reviewer,
 }
 
 impl Default for MessageRole {
@@ -1219,6 +1221,7 @@ impl std::fmt::Display for MessageRole {
             MessageRole::Orchestrator => write!(f, "orchestrator"),
             MessageRole::System => write!(f, "system"),
             MessageRole::Worker => write!(f, "worker"),
+            MessageRole::Reviewer => write!(f, "reviewer"),
         }
     }
 }
