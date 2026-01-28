@@ -8,6 +8,7 @@ export interface IdeationSessionResponse {
   title: string | null;
   status: IdeationSessionStatus;
   planArtifactId: string | null;
+  seedTaskId?: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;

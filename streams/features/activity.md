@@ -313,3 +313,18 @@
 - `bash -n scripts/stream-watch-hygiene.sh` → syntax check passed
 
 **Result:** Success
+
+---
+
+### 2026-01-28 23:55:57 - Phase 25 Task 1: Extend IdeationSession type with seedTaskId
+**What:**
+- Activated Phase 25 in manifest.json (currentPhase: 25, status: active)
+- Added seedTaskId field to IdeationSessionSchema (src/types/ideation.ts:31)
+- Added seedTaskId field to CreateSessionInputSchema (src/types/ideation.ts:244)
+- Added seedTaskId to IdeationSessionResponse interface (src/api/ideation.types.ts:11)
+- Used z.string().nullish() for backwards compatibility with existing sessions
+
+**Commands:**
+- `npm run typecheck` → passed
+
+**Result:** Success

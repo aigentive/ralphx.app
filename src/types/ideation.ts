@@ -28,6 +28,7 @@ export const IdeationSessionSchema = z.object({
   title: z.string().nullable(),
   status: IdeationSessionStatusSchema,
   planArtifactId: z.string().nullable(),
+  seedTaskId: z.string().nullish(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().nullable(),
@@ -241,6 +242,7 @@ export type ApplyProposalsResult = z.infer<typeof ApplyProposalsResultSchema>;
 export const CreateSessionInputSchema = z.object({
   projectId: z.string().min(1, "Project ID is required"),
   title: z.string().optional(),
+  seedTaskId: z.string().optional(),
 });
 
 export type CreateSessionInput = z.infer<typeof CreateSessionInputSchema>;
