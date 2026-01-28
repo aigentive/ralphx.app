@@ -15,6 +15,8 @@
 ### From polish/backlog.md (PRD-deferred)
 
 - [ ] ~~Implement TODO: Call Tauri command for answer submission - src/App.tsx (line ~200)~~ (PRD:20:1:2 - verified removed)
+- [ ] ~~Implement TODO: Approve review modal - src/App.tsx (line ~400)~~ (PRD:20:1:1:1:1:1 - verified removed)
+- [ ] ~~Implement TODO: Request changes modal - src/App.tsx (line ~410)~~ (PRD:20:1:1:1:1 - verified removed)
 
 ## Migrated from logs/code-quality.md (2026-01-28)
 

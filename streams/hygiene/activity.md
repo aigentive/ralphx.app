@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:01:35 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 3/10 completed, polish: 10/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 12 active items, polish: 12 active items)
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - App.tsx ~400 Approve review modal (PRD:20:1:1:1:1:1 - verified removed): TODO not found → **Archived**
+  - App.tsx ~410 Request changes modal (PRD:20:1:1:1:1 - verified removed): TODO not found → **Archived**
+  - App.tsx ~420 Open diff viewer (PRD:20:1 → PRD:20:1:1): TODO still exists at line 784 with PRD note → **Counter incremented**
+
+**Result:** 2 items archived, 1 validation counter incremented
+
+---
+
 ### 2026-01-28 22:59:20 - Backlog Maintenance
 
 **Archive:**
