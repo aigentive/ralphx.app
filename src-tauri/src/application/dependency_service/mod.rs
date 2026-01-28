@@ -9,7 +9,6 @@
 // - Validation for apply workflow (no cycles in selection)
 
 #[cfg(test)]
-#[allow(dead_code)]
 mod tests;
 
 mod types;

@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-28 23:03:00 - Remove dead_code allow attribute from dependency_service tests
+**What:**
+- File: src-tauri/src/application/dependency_service/mod.rs:12
+- Removed `#[allow(dead_code)]` attribute from tests module
+- File: src-tauri/src/application/dependency_service/tests.rs:20,154
+- Removed unused `new()` methods from MockTaskProposalRepository and MockProposalDependencyRepository (were never called)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test --lib` (206 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 22:53:02 - Replace serde unwrap calls in supervisor events tests
 **What:**
 - File: src-tauri/src/domain/supervisor/events.rs
