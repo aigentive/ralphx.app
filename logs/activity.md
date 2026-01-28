@@ -1,10 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 14:35:00
+**Last Updated:** 2026-01-28 15:15:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 31 / 39
-**Current Task:** Add group configuration to workflow types (next)
+**Tasks Completed:** 32 / 39
+**Current Task:** Update Column component for grouping (next)
+
+---
+
+### 2026-01-28 15:15:00 - Add group configuration to workflow types
+
+**What:**
+- Added StateGroup interface to src/types/workflow.ts:
+  - id, label, statuses, icon, accentColor, canDragFrom, canDropTo fields
+- Added groups field to WorkflowColumnSchema for multi-state columns
+- Updated defaultWorkflow with group definitions:
+  - Ready: "Fresh Tasks" (ready) + "Needs Revision" (revision_needed)
+  - In Progress: "First Attempt" (executing) + "Revising" (re_executing)
+  - In Review: "Waiting for AI" (pending_review) + "AI Reviewing" (reviewing) + "Ready for Approval" (review_passed)
+- Quality improvement: Extracted emit_step_updated helper in task_step_commands.rs
+  - Reduced from 711 to 689 LOC by extracting repetitive event emission pattern
+
+**Commands:**
+```bash
+npm run typecheck
+npm run lint
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --package ralphx --lib commands::task_step_commands
+```
+
+**Results:**
+- TypeScript type checking passes
+- ESLint: 0 errors, 3 warnings (all in excluded ui/ components)
+- Cargo clippy passes
+- All 14 task_step tests pass
 
 ---
 
