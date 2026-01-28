@@ -158,7 +158,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(machine): add review state handlers, remove execution_done"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
