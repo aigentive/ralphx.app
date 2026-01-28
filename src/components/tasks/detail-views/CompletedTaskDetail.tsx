@@ -255,7 +255,6 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
 
   const handleViewDiff = () => {
     // TODO: Open DiffViewer or ReviewDetailModal
-    console.log("View final diff for task:", task.id);
   };
 
   const handleReopenTask = () => {
