@@ -1,10 +1,37 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:15:00
+**Last Updated:** 2026-01-28 17:00:00
 **Phase:** Review System (Phase 20)
-**Tasks Completed:** 13 / 39
-**Current Task:** Add new states to TypeScript InternalStatus (next)
+**Tasks Completed:** 14 / 39
+**Current Task:** Add review context type to chat system (next)
+
+---
+
+### 2026-01-28 17:00:00 - Add new review states to TypeScript InternalStatus
+
+**What:**
+- Added three new review states to InternalStatusSchema: `reviewing`, `review_passed`, `re_executing`
+- Removed transitional `execution_done` state from InternalStatusSchema
+- Updated ACTIVE_STATUSES to include new review states
+- Added REVIEW_STATUSES constant and isReviewStatus() helper function
+- Updated all status configuration maps across 11 component files
+- Added new states to system-controlled status arrays
+- Updated all tests to reflect 13 total statuses (was 14)
+- Quality improvement: Extracted pathsToScreenshots utility from ScreenshotGallery component
+
+**Commands:**
+- `npm run typecheck` - Verified types
+- `npm run lint` - Checked code quality
+- `git commit -m "feat(types): add review states to InternalStatus"`
+- `git commit -m "refactor: extract pathsToScreenshots utility from ScreenshotGallery"`
+
+**Results:**
+- Frontend now supports all review workflow states
+- Type safety enforced across UI components
+- ScreenshotGallery component now only exports components (fixed react-refresh warning)
+- All status dropdowns, cards, and views display new states correctly
+- New states marked as system-controlled (no manual editing)
 
 ---
 
