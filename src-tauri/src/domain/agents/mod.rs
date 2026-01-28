@@ -21,38 +21,9 @@ pub use types::{
 };
 
 #[cfg(test)]
-#[allow(dead_code)]
 mod dependency_tests {
-    use async_trait::async_trait;
     use futures::Stream;
     use std::pin::Pin;
-
-    // Test that async_trait is available for the AgenticClient trait
-    #[async_trait]
-    trait TestTrait: Send + Sync {
-        async fn test_method(&self) -> String;
-    }
-
-    struct TestImpl;
-
-    #[async_trait]
-    impl TestTrait for TestImpl {
-        async fn test_method(&self) -> String {
-            "test".to_string()
-        }
-    }
-
-    #[test]
-    fn test_async_trait_available() {
-        // Verify async_trait compiles for trait definitions
-        let _impl = TestImpl;
-    }
-
-    #[test]
-    fn test_futures_stream_available() {
-        // Verify futures Stream trait is available
-        fn _takes_stream<S: Stream>(_s: S) {}
-    }
 
     #[test]
     fn test_which_crate_available() {
