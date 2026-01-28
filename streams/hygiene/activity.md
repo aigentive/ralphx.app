@@ -1,5 +1,21 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:28:33 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 4/10 completed, polish: 2/10 completed)
+
+**Refill:**
+- No refill needed (refactor: 11 active items, polish: 11 active items)
+
+**Validation:**
+- Checked 1 PRD-deferred item:
+  - useEvents.ts:88 File change handling (unmarked → PRD:1): TODO still exists at line 88 → **Marked as deferred with counter**
+
+**Result:** 1 validation counter added
+
+---
+
 ### 2026-01-28 23:25:51 - Backlog Maintenance
 
 **Archive:**
