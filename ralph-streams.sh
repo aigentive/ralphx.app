@@ -168,21 +168,16 @@ fi
 mkdir -p screenshots
 mkdir -p logs
 
-echo -e "${BLUE}======================================${NC}"
-echo -e "${BLUE}   Ralph Wiggum Autonomous Loop${NC}"
-echo -e "${BLUE}======================================${NC}"
 echo ""
 if [ "$STREAM_MODE" = true ]; then
-  echo -e "Stream: ${GREEN}$STREAM${NC}"
+  echo -e "  ${CYAN}Stream:${NC} ${GREEN}$STREAM${NC}"
 fi
-echo -e "Model: ${GREEN}$MODEL${NC}"
-echo -e "Max iterations: ${GREEN}$MAX_ITERATIONS${NC}"
-echo -e "Prompt file: ${GREEN}$PROMPT_FILE${NC}"
-echo -e "Completion signals: ${GREEN}<promise>COMPLETE</promise>${NC} or ${GREEN}<promise>IDLE</promise>${NC}"
+echo -e "  ${CYAN}Model:${NC} $MODEL"
+echo -e "  ${CYAN}Max iterations:${NC} $MAX_ITERATIONS"
+echo -e "  ${CYAN}Prompt:${NC} ${DIM}$PROMPT_FILE${NC}"
 echo ""
-echo -e "${YELLOW}Starting in 3 seconds... Press Ctrl+C to abort${NC}"
+echo -e "${YELLOW}Starting in 3 seconds...${NC} ${DIM}Press Ctrl+C to abort${NC}"
 sleep 3
-echo ""
 
 # Determine stream prefix for output
 if [ "$STREAM_MODE" = true ]; then
@@ -193,9 +188,10 @@ fi
 
 # Main loop
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
-  echo -e "${BLUE}======================================${NC}"
-  echo -e "${BLUE}   ${STREAM_PREFIX}Iteration $i of $MAX_ITERATIONS${NC}"
-  echo -e "${BLUE}======================================${NC}"
+  echo ""
+  echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+  echo -e "  ${CYAN}${STREAM_PREFIX}${NC}${GREEN}Iteration $i${NC} ${DIM}of $MAX_ITERATIONS${NC}"
+  echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
   echo ""
 
   # Clear previous iteration output (include stream name if in stream mode)
@@ -212,6 +208,9 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   exec 3< <(claude -p "$(cat "$PROMPT_FILE")" $MODEL_FLAG --output-format stream-json --verbose --dangerously-skip-permissions 2>&1)
   CLAUDE_PID=$!
 
+  # State tracking for clean output formatting
+  last_output_type=""  # "text", "tool", "result"
+
   while IFS= read -r line <&3; do
     # Save raw JSON to file for completion check
     echo "$line" >> $LOG_FILE
@@ -223,20 +222,32 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
       # Extract text content from assistant messages
       text=$(echo "$line" | jq -r '.message.content[]? | select(.type=="text") | .text // empty' 2>/dev/null)
       if [[ -n "$text" ]]; then
+        # Add spacing when transitioning from tools to text
+        if [[ "$last_output_type" == "tool" || "$last_output_type" == "result" ]]; then
+          echo ""
+        fi
         echo -e "${GREEN}$text${NC}"
+        echo ""  # Always add newline after text
+        last_output_type="text"
       fi
 
       # Show tool calls (cyan, medium visibility)
       tool_name=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | .name // empty' 2>/dev/null)
       if [[ -n "$tool_name" ]]; then
-        tool_input=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | .input | to_entries | map("\(.key)=\(.value | tostring | .[0:50])") | join(", ") | .[0:80]' 2>/dev/null)
-        echo -e "${CYAN}▸ ${tool_name}${DIM} ${tool_input}${NC}"
+        # Add spacing when transitioning from text to tools
+        if [[ "$last_output_type" == "text" ]]; then
+          : # text already added newline
+        fi
+        tool_input=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | .input | to_entries | map("\(.key)=\(.value | tostring | .[0:40])") | join(" ") | .[0:70]' 2>/dev/null)
+        echo -e "  ${CYAN}▸ ${tool_name}${NC} ${DARK_GRAY}${tool_input}${NC}"
+        last_output_type="tool"
       fi
     elif [[ "$type" == "user" ]]; then
-      # Show tool results briefly (dark gray, subtle)
-      tool_result=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_result") | .content // empty' 2>/dev/null | head -c 100 | tr '\n' ' ')
+      # Show tool results briefly (very dim)
+      tool_result=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_result") | .content // empty' 2>/dev/null | head -c 60 | tr '\n' ' ' | tr -s ' ')
       if [[ -n "$tool_result" ]]; then
-        echo -e "${DARK_GRAY}  ◂ ${tool_result:0:80}…${NC}"
+        echo -e "    ${DIM}${DARK_GRAY}└─ ${tool_result:0:55}…${NC}"
+        last_output_type="result"
       fi
     fi
   done || true
@@ -251,65 +262,32 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   if [[ "$assistant_text" == *"<promise>COMPLETE</promise>"* ]]; then
     echo ""
-    echo -e "${GREEN}======================================${NC}"
-    echo -e "${GREEN}   ${STREAM_PREFIX}ALL TASKS COMPLETE!${NC}"
-    echo -e "${GREEN}======================================${NC}"
-    echo ""
-    echo -e "${STREAM_PREFIX}Signal: ${GREEN}COMPLETE${NC}"
-    echo -e "${STREAM_PREFIX}Finished after ${GREEN}$i${NC} iteration(s)"
-    echo ""
-    echo "${STREAM_PREFIX}Next steps:"
-    echo "  1. Review the completed work in your project"
-    if [ "$STREAM_MODE" = true ]; then
-      echo "  2. Check streams/${STREAM}/activity.md for the stream log"
-    else
-      echo "  2. Check logs/activity.md for the full build log"
-    fi
-    echo "  3. Review screenshots/ for visual verification"
-    echo "  4. Run your tests to verify everything works"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${GREEN}✓ COMPLETE${NC} ${DIM}after $i iteration(s)${NC}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo ""
     exit 0
   fi
 
   if [[ "$assistant_text" == *"<promise>IDLE</promise>"* ]]; then
     echo ""
-    echo -e "${YELLOW}======================================${NC}"
-    echo -e "${YELLOW}   ${STREAM_PREFIX}IDLE - No work available${NC}"
-    echo -e "${YELLOW}======================================${NC}"
-    echo ""
-    echo -e "${STREAM_PREFIX}Signal: ${YELLOW}IDLE${NC}"
-    echo -e "${STREAM_PREFIX}No tasks found after ${GREEN}$i${NC} iteration(s)"
-    echo ""
-    echo "${STREAM_PREFIX}The stream will resume when files change (fswatch)."
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${YELLOW}◆ IDLE${NC} ${DIM}no work available · watching for changes${NC}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo ""
     exit 0
   fi
 
   echo ""
-  echo -e "${YELLOW}--- ${STREAM_PREFIX}End of iteration $i ---${NC}"
-  echo ""
+  echo -e "${DIM}  ── end of iteration $i ──${NC}"
 
   # Small delay between iterations to prevent hammering
   sleep 2
 done
 
 echo ""
-echo -e "${RED}======================================${NC}"
-echo -e "${RED}   MAX ITERATIONS REACHED${NC}"
-echo -e "${RED}======================================${NC}"
-echo ""
-echo -e "Reached max iterations (${RED}$MAX_ITERATIONS${NC}) without completion."
-echo ""
-echo "Options:"
-if [ "$STREAM_MODE" = true ]; then
-  echo "  1. Run again with more iterations: ./ralph-streams.sh $STREAM 50"
-  echo "  2. Check streams/${STREAM}/activity.md to see current progress"
-  echo "  3. Check streams/${STREAM}/backlog.md to see remaining tasks"
-else
-  echo "  1. Run again with more iterations: ./ralph-streams.sh 50"
-  echo "  2. Check logs/activity.md to see current progress"
-  echo "  3. Check specs/prd.md to see remaining tasks"
-fi
-echo "  4. Manually complete remaining tasks"
+echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+echo -e "  ${RED}✗ MAX ITERATIONS${NC} ${DIM}reached $MAX_ITERATIONS without completion${NC}"
+echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
 echo ""
 exit 1
