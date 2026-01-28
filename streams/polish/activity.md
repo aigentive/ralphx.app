@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-29 00:30:17 - Remove TODO in HumanReviewTaskDetail
+**What:**
+- File: src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+- Change: Replaced TODO comment with console.warn statement
+- Reason: Comment cleanup (P3) - placeholder for unimplemented DiffViewer/ReviewDetailModal
+
+**Commands:**
+- `npm run lint -- src/components/tasks/detail-views/HumanReviewTaskDetail.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass)
+
+---
+
 ### 2026-01-29 00:28:50 - Remove TODO comments for unimplemented task actions
 **What:**
 - File: src/components/tasks/TaskFullView.tsx
