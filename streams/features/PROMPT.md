@@ -37,9 +37,22 @@ No P0? → Manifest → Active phase PRD → First failing task → Execute → 
 
 **NEVER use `git add .` or `git add -A`** — other streams have uncommitted changes!
 
-1. Track files YOU modified during this task
+### Commit Lock Protocol
+```
+1. BEFORE committing: Check .commit-lock file
+   → EXISTS? Wait or skip commit this iteration
+   → NOT EXISTS? Create it: echo "features $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
+
+2. Commit your files only: git add <file1> <file2> ... && git commit
+
+3. AFTER committing: rm -f .commit-lock
+```
+
+### Commit Steps
+1. Acquire lock (create `.commit-lock`)
 2. `git add <file1> <file2> ...` — only your files
-3. Commit with appropriate prefix: `feat:` | `fix:` | `docs:`
+3. Commit with prefix: `feat:` | `fix:` | `docs:`
+4. Release lock (delete `.commit-lock`)
 
 ## All phases complete?
 Output: `<promise>COMPLETE</promise>`
