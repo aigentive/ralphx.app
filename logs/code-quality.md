@@ -37,7 +37,7 @@
 ### P1 - High Impact
 - [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/ChatPanel.tsx:473
 - [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/IntegratedChatPanel.tsx:519
-- [ ] Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components - src/components/ExtensibilityView.tsx:1-50
+- [x] Split ExtensibilityView (1076 LOC → 205 LOC) - extracted Workflows/Artifacts/Research panels to ExtensibilityView.panels.tsx - src/components/ExtensibilityView.tsx:1-50
 - [ ] Split IdeationView (1105 LOC, was 1198) - extract ideation session and proposal panels into sub-components - src/components/Ideation/IdeationView.tsx:1-50
 - [ ] Reduce ChatPanel component size (1044 LOC) - extract ResizeablePanel and message rendering logic - src/components/Chat/ChatPanel.tsx:1-100
 - [ ] Reduce IntegratedChatPanel component size (1021 LOC) - extract scrolling logic and message rendering - src/components/Chat/IntegratedChatPanel.tsx:1-100
