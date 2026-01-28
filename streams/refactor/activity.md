@@ -312,3 +312,22 @@ Updated backlog item to reflect complexity.
 - `cargo test --lib application::priority_service`
 
 **Result:** Success - All 42 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
+
+---
+
+### 2026-01-29 00:41:12 - Split migrations.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/migrations.rs (5694 LOC)
+- Extracted to:
+  - migrations/tests.rs (4390 LOC) - all 149 unit tests
+  - migrations/mod.rs (1304 LOC) - all 25 migrations (v1-v25)
+- New size: 1304 LOC (77% reduction in main implementation)
+- Corrected migrate_v22 and migrate_v23 placement (were mistakenly in test module)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/migrations/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib infrastructure::sqlite::migrations`
+
+**Result:** Success - All 149 tests passed, cargo clippy passed with no warnings, file now under 1500 LOC (still exceeds 500 but migrations are special historical records)
