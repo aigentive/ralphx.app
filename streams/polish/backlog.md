@@ -64,7 +64,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] [P3] [Frontend] Fast refresh warning: Extract constants from ResizeablePanel.tsx component export - src/components/Chat/ResizeablePanel.tsx:45
+- [ ] ~~[P3] [Frontend] Fast refresh warning: Extract constants from ResizeablePanel.tsx component export~~ (stale - constants already extracted to ResizeablePanel.constants.ts)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract badgeVariants from Badge component - src/components/ui/badge.tsx:30~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract buttonVariants from Button component - src/components/ui/button.tsx:44~~ (excluded)
 - [ ] ~~[P3] [Frontend] Fast refresh warning: Extract toggleVariants from Toggle component - src/components/ui/toggle.tsx:29~~ (excluded)
