@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-28 23:07:59 - Split artifact_flow.rs
+
+**What:**
+- Original file: src-tauri/src/domain/entities/artifact_flow.rs (1389 LOC)
+- Extracted to:
+  - artifact_flow/mod.rs (160 LOC) - main ArtifactFlow entity + Builder + impl
+  - artifact_flow/types.rs (434 LOC) - All type definitions (ArtifactFlowId, Trigger, Step, Filter, EventFilter, etc.)
+  - artifact_flow/tests.rs (818 LOC) - all 70 unit tests
+- New size: 160 LOC (88% reduction in main module)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/entities/artifact_flow/*.rs`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --lib domain::entities::artifact_flow`
+
+**Result:** Success - All 70 tests passed, cargo clippy passed with no warnings, file now under 500 LOC limit
+
+---
+
 ### 2026-01-29 01:12:45 - Split research.rs
 
 **What:**

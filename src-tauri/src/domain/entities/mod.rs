@@ -51,7 +51,7 @@ pub use artifact::{
 pub use artifact_flow::{
     ArtifactFlow, ArtifactFlowContext, ArtifactFlowEngine, ArtifactFlowEvaluation,
     ArtifactFlowEvent, ArtifactFlowFilter, ArtifactFlowId, ArtifactFlowStep, ArtifactFlowTrigger,
-    ParseArtifactFlowEventError, create_research_to_dev_flow,
+    ParseArtifactFlowEventError, create_plan_updated_sync_flow, create_research_to_dev_flow,
 };
 pub use research::{
     CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchBrief,
