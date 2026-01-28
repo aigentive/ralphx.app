@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::info;
 
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgenticClient, AgentRole};
@@ -114,6 +115,23 @@ impl AgenticClientSpawner {
 #[async_trait]
 impl AgentSpawner for AgenticClientSpawner {
     async fn spawn(&self, agent_type: &str, task_id: &str) {
+        // Check execution state before spawning
+        if let Some(ref exec) = self.execution_state {
+            if !exec.can_start_task() {
+                info!(
+                    task_id = task_id,
+                    agent_type = agent_type,
+                    is_paused = exec.is_paused(),
+                    running_count = exec.running_count(),
+                    max_concurrent = exec.max_concurrent(),
+                    "Spawn blocked: execution paused or at max concurrent"
+                );
+                return;
+            }
+            // Increment running count before spawning
+            exec.increment_running();
+        }
+
         // Emit TaskStart event before spawning
         self.emit_task_start(task_id, agent_type);
 
@@ -185,6 +203,7 @@ impl AgentSpawner for AgenticClientSpawner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::ExecutionState;
     use crate::infrastructure::MockAgenticClient;
 
     #[test]
@@ -414,13 +433,97 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_execution_state() {
-        use crate::commands::ExecutionState;
-
         let mock = Arc::new(MockAgenticClient::new());
         let exec_state = Arc::new(ExecutionState::new());
         let spawner =
             AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
 
         assert!(spawner.execution_state.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_spawn_blocked_when_paused() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let exec_state = Arc::new(ExecutionState::new());
+
+        // Pause execution
+        exec_state.pause();
+
+        let spawner =
+            AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+
+        // Try to spawn while paused
+        spawner.spawn("worker", "task-123").await;
+
+        // Verify no spawn occurred
+        let calls = mock.get_spawn_calls().await;
+        assert_eq!(calls.len(), 0, "Should not spawn when paused");
+
+        // Running count should not have incremented
+        assert_eq!(exec_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_blocked_at_max_concurrent() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let exec_state = Arc::new(ExecutionState::with_max_concurrent(2));
+
+        // Fill up to max concurrent
+        exec_state.increment_running();
+        exec_state.increment_running();
+
+        let spawner =
+            AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+
+        // Try to spawn at max concurrent
+        spawner.spawn("worker", "task-123").await;
+
+        // Verify no spawn occurred
+        let calls = mock.get_spawn_calls().await;
+        assert_eq!(calls.len(), 0, "Should not spawn when at max concurrent");
+
+        // Running count should still be 2 (not incremented)
+        assert_eq!(exec_state.running_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_increments_running_count() {
+        let mock = Arc::new(MockAgenticClient::new());
+        let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+
+        let spawner =
+            AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+
+        // Verify initial state
+        assert_eq!(exec_state.running_count(), 0);
+
+        // Spawn a task
+        spawner.spawn("worker", "task-1").await;
+
+        // Verify running count incremented
+        assert_eq!(exec_state.running_count(), 1);
+
+        // Spawn another task
+        spawner.spawn("reviewer", "task-2").await;
+
+        // Verify running count incremented again
+        assert_eq!(exec_state.running_count(), 2);
+
+        // Verify spawns actually occurred
+        let calls = mock.get_spawn_calls().await;
+        assert_eq!(calls.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_without_execution_state_still_works() {
+        let mock = Arc::new(MockAgenticClient::new());
+        // No execution state attached
+        let spawner = AgenticClientSpawner::new(mock.clone());
+
+        // Should still spawn normally
+        spawner.spawn("worker", "task-123").await;
+
+        let calls = mock.get_spawn_calls().await;
+        assert_eq!(calls.len(), 1);
     }
 }

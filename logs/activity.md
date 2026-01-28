@@ -1,10 +1,33 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 14:09:57
+**Last Updated:** 2026-01-28 15:32:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 1 / 11
-**Current Task:** Add ExecutionState field to AgenticClientSpawner
+**Tasks Completed:** 2 / 11
+**Current Task:** Check can_start_task() before spawning agents
+
+---
+
+### 2026-01-28 15:32:00 - Check can_start_task() before spawning agents
+
+**What:**
+- Added can_start_task() check at start of spawn() method in AgenticClientSpawner
+- If execution is paused or at max concurrent, spawning is blocked and logged
+- Added increment_running() call before spawning to track running count
+- spawn_background() inherits check by calling spawn()
+- Added tests: test_spawn_blocked_when_paused, test_spawn_blocked_at_max_concurrent
+- Added test: test_spawn_increments_running_count
+- Added test: test_spawn_without_execution_state_still_works
+
+**Quality Improvement:**
+- Consolidated duplicate ExecutionState imports in spawner.rs tests
+- Added spawner.rs LOC issue to code-quality.md (529 LOC, needs extraction)
+
+**Commands:**
+```bash
+cargo test spawner --lib
+cargo clippy --all-targets --all-features -- -D warnings
+```
 
 ---
 
