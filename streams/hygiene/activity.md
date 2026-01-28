@@ -1,5 +1,27 @@
 # Hygiene Stream Activity
 
+### 2026-01-28 23:15:00 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from polish/backlog.md to archive (useChat hook extraction - P2)
+- Polish backlog: 11 → 10 completed items
+
+**Refill:**
+- Added 11 P2/P3 items to polish/backlog.md via Explore agent
+- P2 items: 8 (error handling, type safety, large file extraction)
+- P3 items: 3 (promise chains, error handling)
+- Polish backlog: 6 → 17 active items
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - App.tsx:784 Open diff viewer (PRD:20:1:1:1 → PRD:20:1:1:1:1): TODO still exists → **Counter incremented**
+  - TaskFullView.tsx:213 Edit task modal (PRD:18:1:1:1 → PRD:18:1:1:1:1): TODO still exists → **Counter incremented**
+  - CompletedTaskDetail.tsx console.log (stale → stale:1): Confirmed removed → **Counter incremented**
+
+**Result:** Maintenance complete - 1 archived, 11 refilled, 3 validated
+
+---
+
 ### 2026-01-28 23:10:35 - Backlog Maintenance
 
 **Archive:**
