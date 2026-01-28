@@ -12,12 +12,51 @@ Every code task requires a `refactor:` commit. Use `logs/code-quality.md` to tra
 3. VERIFY:
    a. Issue still exists? (read file:line)
    b. NOT in active PRD? (cross-reference with current phase task list)
+   c. CRITICAL: Check against documented LOC limits (see below)
    ├── Valid & not in PRD? → Execute → Mark [x] → Commit
-   ├── Stale? → Strikethrough ~~text~~ (stale) → Pick next
+   ├── Stale (issue genuinely fixed)? → Strikethrough ~~text~~ (stale) → Pick next
    └── In PRD? → Strikethrough ~~text~~ (PRD) → Pick next
 4. No valid items at current scope? → ESCALATE to next priority tier (P3→P2→P1)
 5. ALL items exhausted/marked? → Launch Explore agent → Replenish → Pick ONE → Execute
 ```
+
+## CRITICAL: LOC Limits Verification
+
+**Before marking ANY LOC/extraction item as stale, you MUST verify against documented limits.**
+
+Reference files:
+- **Backend:** `src-tauri/CLAUDE.md` → "File Size Limits" section
+- **Frontend:** `src/CLAUDE.md` → "File Size Limits" section
+- **Plugin:** `ralphx-plugin/skills/coding-standards/SKILL.md` → "File Size Limits" section
+
+### Backend Limits (src-tauri/)
+| Condition | Max Lines | Action |
+|-----------|-----------|--------|
+| Any file | 500 | Refactor at 400 lines |
+| Helper functions | 100 | Extract to `{module}_helpers.rs` |
+| >5 structs/enums | N/A | Extract to `{module}_types.rs` |
+| Service method | 50 | Extract helper |
+| Validation | 30 | Extract to `{module}_validation.rs` |
+
+### Frontend Limits (src/)
+| File Type | Max Lines |
+|-----------|-----------|
+| Component | 500 (refactor at 400) |
+| Custom Hook | 300 |
+| Presentational | 200 |
+
+### Plugin Limits (ralphx-plugin/)
+| File Type | Max Lines |
+|-----------|-----------|
+| Component | 100 |
+| Hook | 100 |
+| Store | 150 |
+| Skill | 150 |
+| Agent | 100 |
+
+**A file exceeding these limits is NOT "well-organized" — it is a valid extraction target.**
+
+**"Stale" means the issue was FIXED, not that you subjectively think the code is fine.**
 
 ## CRITICAL: No Skipping Allowed
 
