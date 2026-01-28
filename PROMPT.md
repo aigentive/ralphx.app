@@ -230,6 +230,31 @@ cargo test           # For Rust-only work
   cargo test
   ```
 
+### 2.5. Code Quality Improvement (MANDATORY for Modified Files)
+
+When modifying existing files during task execution, you MUST:
+
+1. **Review the modified file** against code quality standards:
+   - TypeScript: strict types, no `any`, proper error handling, consistent naming
+   - Rust: idiomatic patterns, proper error handling, no clippy warnings
+   - React: proper hooks usage, component structure, accessibility
+   - CSS/Tailwind: design system compliance, no inline magic values
+
+2. **If the file has quality issues**, refactor as part of the same task:
+   - Fix type safety issues (replace `any` with proper types)
+   - Improve naming consistency
+   - Extract repeated logic into functions/hooks
+   - Add missing error handling
+   - Remove dead code
+   - Fix lint/clippy warnings
+
+3. **Scope the refactoring appropriately**:
+   - Only refactor code in files you're already modifying
+   - Keep refactoring proportional to the task (don't over-engineer)
+   - If major refactoring is needed, note it for a future task
+
+This continuous improvement approach ensures code quality improves incrementally with each task.
+
 ### 3. Log Progress
 Update `logs/activity.md`:
 - Update the **header section** with current task count and next task

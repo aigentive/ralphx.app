@@ -115,6 +115,7 @@ Reference: `src/components/Chat/ChatInput.tsx` textarea styling
 7. **USE TransitionHandler for status changes** — NEVER direct DB update
 8. **Lint before commit**: `cargo clippy --all-targets --all-features -- -D warnings` + `npm run lint`
 9. **NEVER start/stop dev server** — User manages dev server manually. Only touch it if explicitly asked.
+10. **Code quality on modified files** — When modifying existing files, review against quality standards (strict types, no `any`, proper error handling, naming consistency, no dead code). Refactor issues as part of the same task for continuous improvement.
 
 ## Slash Commands
 - `/activate-prd <path>` — Switch active PRD (updates manifest, logs, commits)
