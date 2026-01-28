@@ -73,15 +73,15 @@ create_session() {
     tmux set-option -t "$SESSION_NAME" pane-base-index 0
 
     # Bind Ctrl-b + number to switch panes AND zoom (select + toggle zoom)
-    tmux bind-key 0 select-pane -t "$SESSION_NAME:0.0" \\; resize-pane -Z
-    tmux bind-key 1 select-pane -t "$SESSION_NAME:0.1" \\; resize-pane -Z
-    tmux bind-key 2 select-pane -t "$SESSION_NAME:0.2" \\; resize-pane -Z
-    tmux bind-key 3 select-pane -t "$SESSION_NAME:0.3" \\; resize-pane -Z
-    tmux bind-key 4 select-pane -t "$SESSION_NAME:0.4" \\; resize-pane -Z
-    tmux bind-key 5 select-pane -t "$SESSION_NAME:0.5" \\; resize-pane -Z
+    tmux bind-key -T prefix 0 select-pane -t 0 \; resize-pane -Z
+    tmux bind-key -T prefix 1 select-pane -t 1 \; resize-pane -Z
+    tmux bind-key -T prefix 2 select-pane -t 2 \; resize-pane -Z
+    tmux bind-key -T prefix 3 select-pane -t 3 \; resize-pane -Z
+    tmux bind-key -T prefix 4 select-pane -t 4 \; resize-pane -Z
+    tmux bind-key -T prefix 5 select-pane -t 5 \; resize-pane -Z
 
     # Bind Ctrl-b S to graceful stop (creates stop signal file)
-    tmux bind-key S run-shell "touch $SCRIPT_DIR/.ralph-stop && tmux display-message 'Graceful stop initiated - streams will finish current tasks'"
+    tmux bind-key -T prefix S run-shell "touch $SCRIPT_DIR/.ralph-stop && tmux display-message 'Graceful stop initiated'"
 
     # Create the pane layout
     # Layout: STATUS header at top, FEATURES (60%) on left, 4 sonnet streams stacked on right
