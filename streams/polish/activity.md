@@ -58,3 +58,19 @@
 **Result:** Success (all linters pass, 225 lines extracted into 2 specialized modules)
 
 ---
+
+### 2026-01-28 20:26:26 - Remove unused defaultStatus parameter from TaskCreationForm
+**What:**
+- File: src/components/tasks/TaskCreationForm.tsx
+- Change: Removed unused `defaultStatus` prop from interface and component
+- Removed from TaskCreationFormProps interface (line 30)
+- Removed from component destructuring (line 44)
+- Removed `void defaultStatus;` workaround statement (line 60)
+- Marked 2 stale P2 items: console.error issues already removed during refactor
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success (no lint errors, type checking passed)
+
+---

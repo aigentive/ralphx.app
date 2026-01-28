@@ -26,8 +26,6 @@ export interface TaskCreationFormProps {
   projectId: string;
   /** Pre-fill the title field */
   defaultTitle?: string;
-  /** Pre-fill the status/category (e.g., "draft", "backlog") */
-  defaultStatus?: string;
   /** Callback when task is created successfully */
   onSuccess?: () => void;
   /** Callback when form is cancelled */
@@ -41,7 +39,6 @@ export interface TaskCreationFormProps {
 export function TaskCreationForm({
   projectId,
   defaultTitle = "",
-  defaultStatus,
   onSuccess,
   onCancel,
 }: TaskCreationFormProps) {
@@ -55,9 +52,6 @@ export function TaskCreationForm({
   const [steps, setSteps] = useState<string[]>([]);
   const [newStepTitle, setNewStepTitle] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-
-  // Note: defaultStatus is currently unused as tasks always start in "draft" status
-  void defaultStatus;
 
   // Steps management
   const addStep = useCallback(() => {
