@@ -79,10 +79,17 @@ export function useStepEvents() {
     );
 
     return () => {
-      unlistenCreated.then((fn) => fn());
-      unlistenUpdated.then((fn) => fn());
-      unlistenDeleted.then((fn) => fn());
-      unlistenReordered.then((fn) => fn());
+      void (async () => {
+        const createdFn = await unlistenCreated;
+        const updatedFn = await unlistenUpdated;
+        const deletedFn = await unlistenDeleted;
+        const reorderedFn = await unlistenReordered;
+
+        createdFn();
+        updatedFn();
+        deletedFn();
+        reorderedFn();
+      })();
     };
   }, [queryClient]);
 }
