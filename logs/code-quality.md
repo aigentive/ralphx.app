@@ -106,6 +106,7 @@
 - [ ] ~~Extract task_qa_repo (repetitive CRUD patterns) - src-tauri/src/infrastructure/memory/memory_task_qa_repo.rs~~ (stale - file is 336 LOC, under 500 limit)
 
 ### P3 - Low Impact
+- [x] Replace println! debug statements with tracing::debug! in task_transition_service.rs - src-tauri/src/application/task_transition_service.rs
 - [x] Remove redundant derive trait tests (Debug, Clone) in health.rs - src-tauri/src/commands/health.rs:37-50
 - [x] Remove unused TransitionObserver trait (dead code) - src-tauri/src/domain/state_machine/transition_handler.rs:393
 - [x] Remove broad clippy allows (dead_code, unused_imports, unused_variables) from lib.rs - src-tauri/src/lib.rs:23-25

@@ -1,10 +1,39 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:45:00
+**Last Updated:** 2026-01-28 17:30:00
 **Phase:** Execution Control & Task Resumption (Phase 21)
-**Tasks Completed:** 9 / 11
-**Current Task:** Add get_by_status method to TaskRepository (verified existing)
+**Tasks Completed:** 10 / 11
+**Current Task:** Write integration tests for execution control
+
+---
+
+### 2026-01-28 17:30:00 - Add Integration Tests for Execution Control
+
+**What:**
+- Added integration tests for execution control in execution_commands.rs:
+  - `test_stop_resets_running_count` - verifies running count goes to 0 after stop cancels all tasks
+  - `test_running_count_decrements_on_task_completion` - verifies decrement when task exits Executing state
+  - `test_running_count_decrements_for_all_agent_active_states` - tests all 5 agent-active states
+- Fixed TaskTransitionService to call on_exit when transitioning:
+  - Made TransitionHandler::on_exit public
+  - Added execute_exit_actions method to TaskTransitionService
+  - Updated transition_task to call exit actions before entry actions
+- This ensures running_count is properly decremented through on_exit handlers
+
+**Quality Improvement:**
+- Replaced println! debug statements with tracing::debug! in task_transition_service.rs
+  - 12 println! statements converted to structured tracing::debug! calls
+  - Proper field syntax for task_id, old_status, new_status, state
+  - Production logging now goes through tracing framework
+
+**Commands:**
+```bash
+cargo test execution_commands
+cargo test --lib
+cargo clippy --all-targets --all-features -- -D warnings
+npm run lint && npm run typecheck
+```
 
 ---
 
