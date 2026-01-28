@@ -64,7 +64,7 @@ Grep pattern="description.*[task words]" path="[prd]" output_mode="content" -C=5
 
 ```
 Read logs/code-quality.md → Pick ONE by scope → VERIFY (exists + NOT in active PRD) → Execute → Mark [x]
-Stale [~] or PRD-planned [P]? → Pick next | List empty? → Explore agent → Update file
+Stale/PRD? → Strikethrough ~~text~~ (stale|PRD), pick next | List empty? → Explore agent
 ```
 
 **Full workflow:** `.claude/rules/quality-improvement.md`
