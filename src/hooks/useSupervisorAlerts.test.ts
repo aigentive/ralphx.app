@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { useSupervisorStore } from "./useSupervisorAlerts.store";
 import {
-  useSupervisorStore,
   useFilteredAlerts,
   useAlertStats,
   useSupervisorAlerts,
