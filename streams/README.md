@@ -65,6 +65,7 @@ fswatch --version
 | Next pane | `Ctrl+b o` | Cycle through panes |
 | Scroll mode | `Ctrl+b [` | View history (arrows/PgUp to scroll, `q` to exit) |
 | Zoom toggle | `Ctrl+b z` | Full-screen current pane (toggle) |
+| Graceful stop | `Ctrl+b S` | Stop after current tasks complete |
 
 > **Note:** `Ctrl+b <number>` switches to pane AND zooms it automatically. Press `Ctrl+b z` to unzoom.
 

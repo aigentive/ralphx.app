@@ -186,8 +186,21 @@ else
   STREAM_PREFIX=""
 fi
 
+# Graceful stop signal file
+STOP_SIGNAL_FILE=".ralph-stop"
+
 # Main loop
 for ((i=1; i<=MAX_ITERATIONS; i++)); do
+  # Check for graceful stop signal before starting iteration
+  if [ -f "$STOP_SIGNAL_FILE" ]; then
+    echo ""
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "  ${YELLOW}■ STOPPED${NC} ${DIM}graceful stop requested${NC}"
+    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo ""
+    exit 0
+  fi
+
   echo ""
   echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
   echo -e "  ${CYAN}${STREAM_PREFIX}${NC}${GREEN}Iteration $i${NC} ${DIM}of $MAX_ITERATIONS${NC}"

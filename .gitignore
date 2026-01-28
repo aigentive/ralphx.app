@@ -41,3 +41,4 @@ src-tauri/gen/schemas
 screenshots/*
 !screenshots/.gitkeep
 *.db
+.ralph-stop
