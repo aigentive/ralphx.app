@@ -1,10 +1,29 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 17:15:32
+**Last Updated:** 2026-01-28 18:45:00
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 6 / 12
-**Current Task:** Emit events on pause/resume/stop commands
+**Tasks Completed:** 7 / 12
+**Current Task:** Emit queue_changed event on task move affecting Ready status
+
+---
+
+### 2026-01-28 18:45:00 - Emit queue_changed event on task move affecting Ready status
+
+**What:**
+- Added `emit_queue_changed` helper function to emit `execution:queue_changed` events
+- Updated `move_task` command to fetch old task status before transition
+- Emit queue_changed event when old or new status is Ready, providing real-time queue count updates
+- Added tests: `test_ready_status_count_for_queue_changed` and `test_queue_change_detection_logic`
+
+**Quality Improvement:**
+- Extracted `emit_task_lifecycle_event` helper for consistent task event emission (archived/restored/deleted)
+- Ran deferred validation, archived 3 stale items (task_qa_repo, artifact error messages, parse error pattern)
+
+**Commands:**
+- `cargo test --lib task_commands` — 51 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `npm run lint && npm run typecheck` — clean (3 shadcn warnings)
 
 ---
 
