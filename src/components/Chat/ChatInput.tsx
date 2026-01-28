@@ -197,7 +197,10 @@ export function ChatInput({
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        (e.target as HTMLTextAreaElement).blur();
+      } else if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       } else if (e.key === "ArrowUp" && !value && hasQueuedMessages) {
