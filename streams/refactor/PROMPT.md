@@ -2,6 +2,21 @@
 
 # Refactor Stream
 
+## Phase 0: Recovery Check (ALWAYS FIRST)
+
+```
+1. Run: git status --porcelain streams/refactor/ src/ src-tauri/
+2. Uncommitted changes exist?
+   → YES: Run git diff to review changes
+          Check streams/refactor/activity.md for last entry
+          If work looks complete → Commit with refactor(scope):
+          If work incomplete → Try to complete it, then commit
+          Then proceed to normal workflow
+   → NO: Proceed to normal workflow
+```
+
+---
+
 Execute ONE P1 item, then STOP (no special output).
 
 ## Rules

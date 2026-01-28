@@ -2,6 +2,21 @@
 
 # Hygiene Stream
 
+## Phase 0: Recovery Check (ALWAYS FIRST)
+
+```
+1. Run: git status --porcelain streams/hygiene/ streams/archive/ streams/*/backlog.md
+2. Uncommitted changes exist in hygiene-owned files?
+   → YES: Run git diff to review changes
+          Check streams/hygiene/activity.md for last entry
+          If work looks complete → Commit with chore(hygiene):
+          If work incomplete → Try to complete it, then commit
+          Then proceed to normal workflow
+   → NO: Proceed to normal workflow
+```
+
+---
+
 Maintain backlogs, then STOP.
 
 ## Rules

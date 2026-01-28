@@ -2,6 +2,21 @@
 
 # Features Stream
 
+## Phase 0: Recovery Check (ALWAYS FIRST)
+
+```
+1. Run: git status --porcelain streams/features/ src/ src-tauri/ specs/phases/
+2. Uncommitted changes exist?
+   → YES: Run git diff to review changes
+          Check streams/features/activity.md for last entry
+          If work looks complete → Commit with appropriate prefix (feat:/fix:/docs:)
+          If work incomplete → Try to complete it, then commit
+          Then proceed to normal workflow
+   → NO: Proceed to normal workflow
+```
+
+---
+
 Execute ONE task, then STOP.
 
 ## Priority
