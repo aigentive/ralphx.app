@@ -7,6 +7,28 @@
 
 ## Archived 2026-01-29
 
+### From refactor/backlog.md (Frontend)
+
+- [x] Split ExtensibilityView.panels (906 LOC → 382 LOC max) - extracted to ExtensibilityView.WorkflowsPanel.tsx (192 LOC), ExtensibilityView.ArtifactsPanel.tsx (272 LOC), ExtensibilityView.ResearchPanel.tsx (382 LOC), ExtensibilityView.utils.tsx (70 LOC) - src/components/ExtensibilityView.panels.tsx:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-28)
+
+- [x] [P2] [Frontend] Type safety: Replace z.unknown() with proper types - src/api/chat.ts:115
+- [x] [P2] [Frontend] Refactor large API file (821 LOC → 473 LOC) - extracted schemas, transforms, types - src/api/ideation.ts:1
+- [x] [P3] [Frontend] Replace promise chain .then() with async/await - src/hooks/useSupervisorAlerts.listener.ts:100
+- [x] [P3] [Frontend] Error handling: Check empty catch blocks - src/components/Chat/ChatPanel.tsx:342
+
+### From polish/backlog.md (REFILL - Added 2026-01-28 23:47)
+
+- [x] [P2] [Frontend] Error handling: App.tsx catch blocks need proper user feedback via toast - src/App.tsx:330
+- [x] [P2] [Frontend] Event listener cleanup: useResizePanel needs useEffect for document listener lifecycle - src/components/Chat/ResizeablePanel.tsx:63
+- [x] [P2] [Frontend] Unnecessary useMemo: Multiple dependencies in ChatPanel could be optimized - src/components/Chat/ChatPanel.tsx:200
+- [x] [P2] [Frontend] Extract ToolCallIndicator sub-functions - src/components/Chat/ToolCallIndicator.tsx:49-200
+
+---
+
+## Archived 2026-01-29 (Earlier)
+
 ### From polish/backlog.md (REFILL - Added 2026-01-28)
 
 - [x] [P2] [Backend] Replace panic! with proper error handling - src-tauri/src/infrastructure/agents/claude/stream_processor.rs:432

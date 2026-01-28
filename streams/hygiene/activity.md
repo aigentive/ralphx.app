@@ -1,5 +1,28 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 00:41:57 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (ExtensibilityView.panels split)
+- Moved 8 items from polish/backlog.md to archive (4 P2, 4 P3 from REFILL sections)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 18 → 10 completed items
+
+**Refill:**
+- Added 13 P2/P3 items to polish/backlog.md via Explore agent
+- P2 items: 8 (error handling - unwrap/expect replacements, dead_code attributes)
+- P3 items: 5 (TODO comment resolution)
+- Polish backlog: 0 → 13 active items (refill threshold met)
+
+**Validation:**
+- Checked 2 strikethrough items:
+  - App.tsx:794 Open diff viewer (PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1 → PRD:20:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1): TODO still exists → **Counter incremented**
+  - TaskFullView.tsx:213 Edit task modal (PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1 → PRD:18:1:1:1:1:1:1:1:1:1:1:1:1:1:1): TODO removed but console.warn stub exists → **Counter incremented**
+
+**Result:** Maintenance complete - 9 archived, 13 refilled, 2 validated (total 49 validated)
+
+---
+
 ### 2026-01-29 00:28:38 - Backlog Maintenance
 
 **Archive:**
