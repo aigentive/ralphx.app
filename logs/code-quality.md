@@ -37,7 +37,7 @@
 ### P1 - High Impact
 - [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/ChatPanel.tsx:473
 - [x] Extract messagesData useMemo hook to avoid dependency chain issues - src/components/Chat/IntegratedChatPanel.tsx:519
-- [ ] Split ExtensibilityView (1239 LOC) - extract Workflows/Artifacts/Research/Methodologies into sub-components - src/components/ExtensibilityView.tsx:1-50
+- [ ] Split ExtensibilityView (1076 LOC, was 1239) - extract Workflows/Artifacts/Research panels into sub-components - src/components/ExtensibilityView.tsx:1-50
 - [ ] Split IdeationView (1105 LOC, was 1198) - extract ideation session and proposal panels into sub-components - src/components/Ideation/IdeationView.tsx:1-50
 - [ ] Reduce ChatPanel component size (1044 LOC) - extract ResizeablePanel and message rendering logic - src/components/Chat/ChatPanel.tsx:1-100
 - [ ] Reduce IntegratedChatPanel component size (1021 LOC) - extract scrolling logic and message rendering - src/components/Chat/IntegratedChatPanel.tsx:1-100
@@ -108,7 +108,7 @@
 - [x] Split artifact_service.rs (1140 LOC → 266 LOC) - extracted tests to artifact_service_tests.rs - src-tauri/src/domain/services/artifact_service.rs:1-50
 
 ### P2 - Medium Impact
-- [ ] Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1294
+- [ ] ~~Implement TODO: Optimize with proper database search - src-tauri/src/http_server.rs:1294~~ (stale - explicitly marked "future iteration")
 - [x] Extract emit_task_lifecycle_event helper for consistent task event emission - src-tauri/src/commands/task_commands.rs:359-369
 - [ ] ~~Implement TODO: Full-text search index for production - src-tauri/src/commands/task_context_commands.rs:113~~ (stale:2 - TODO not found, ARCHIVED)
 - [ ] ~~Implement TODO: Add ideation sessions to test data - src-tauri/src/commands/test_data_commands.rs:206~~ (stale:2 - TODO not found, ARCHIVED)
@@ -116,7 +116,7 @@
 - [ ] ~~Implement TODO: Task dependencies wiring - src-tauri/src/application/task_transition_service.rs:104~~ (stale:2 - TODO not found, ARCHIVED)
 - [x] Fix incorrect InternalStatus→State mapping in execute_entry_actions (Reviewing→PendingReview, ReExecuting→Executing) - src-tauri/src/application/task_transition_service.rs:329-332
 - [x] Implement TODO: Track start time for duration - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
-- [ ] Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs
+- [ ] ~~Implement TODO: Proper streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs~~ (stale - intentional placeholder, not yet needed)
 - [x] Reduce review_commands.rs size (790 LOC → 663 LOC) - extracted types to review_commands_types.rs - src-tauri/src/commands/review_commands.rs:1-50
 - [x] Reduce task_step_commands.rs size (764 LOC → 711 LOC) - extracted types to task_step_commands_types.rs - src-tauri/src/commands/task_step_commands.rs:1-50
 - [x] Extract emit_step_updated helper in task_step_commands.rs (711 LOC → 689 LOC) - src-tauri/src/commands/task_step_commands.rs:16-26
