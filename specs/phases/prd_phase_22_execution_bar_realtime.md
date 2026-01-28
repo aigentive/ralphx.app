@@ -134,7 +134,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(transition): emit status_changed on task complete"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

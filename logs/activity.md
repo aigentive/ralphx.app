@@ -1,10 +1,28 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 16:33:15
+**Last Updated:** 2026-01-28 16:42:25
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 4 / 12
-**Current Task:** Pass AppHandle to TransitionHandler for decrement emission
+**Tasks Completed:** 5 / 12
+**Current Task:** Emit event on running count decrement
+
+---
+
+### 2026-01-28 16:42:25 - Emit event on running count decrement
+
+**What:**
+- Updated `on_exit()` in transition_handler.rs to emit `execution:status_changed` event after decrementing running count
+- Event emitted with reason `"task_completed"` when both execution_state and app_handle are available
+- Added tests: `test_on_exit_with_execution_state_no_app_handle_does_not_panic` and `test_on_exit_emits_for_all_agent_active_states`
+
+**Quality Improvement:**
+- Added `Clone` derive to `StepResponse` struct in http_server.rs
+- Optimized 4 step handler functions to avoid unnecessary `step.clone()` - create response once, clone for event
+- Reduces allocations: instead of cloning full TaskStep then converting twice, convert once and clone smaller StepResponse
+
+**Commands:**
+- `cargo test domain::state_machine::transition_handler::tests` — 42 passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
 
 ---
 
