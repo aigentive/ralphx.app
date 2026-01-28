@@ -10,9 +10,13 @@
 
 import { useDroppable, useDndContext } from "@dnd-kit/core";
 import { Inbox, XCircle, Loader2 } from "lucide-react";
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import type { WorkflowColumnResponse } from "@/lib/api/workflows";
+import type { StateGroup } from "@/types/workflow";
+import type { InternalStatus } from "@/types/status";
+import type { Task } from "@/types/task";
 import { TaskCard } from "./TaskCard";
+import { ColumnGroup } from "./ColumnGroup";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InlineTaskAdd } from "../InlineTaskAdd";
@@ -20,6 +24,11 @@ import {
   useInfiniteTasksQuery,
   flattenPages,
 } from "@/hooks/useInfiniteTasksQuery";
+import {
+  getCollapsedGroups,
+  saveCollapsedGroups,
+  getGroupIcon,
+} from "./Column.utils.tsx";
 
 interface ColumnProps {
   column: WorkflowColumnResponse;
@@ -33,9 +42,9 @@ interface ColumnProps {
   searchTasks?: Task[] | undefined;
   /** Optional match count badge for search mode */
   matchCount?: number | undefined;
+  /** Optional state groups for multi-state columns */
+  groups?: StateGroup[];
 }
-
-import type { Task } from "@/types/task";
 
 function InvalidDropIcon() {
   return (
@@ -71,7 +80,7 @@ function TaskSkeleton() {
   );
 }
 
-export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount }: ColumnProps) {
+export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -79,7 +88,32 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
   const { active } = useDndContext();
   const isDragging = active !== null;
 
+  // Track collapsed state for groups (persisted to localStorage)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
+    getCollapsedGroups(column.id)
+  );
+
+  // Handler for toggling group collapse state
+  const handleToggleGroup = useCallback(
+    (groupId: string) => {
+      setCollapsedGroups((prev) => {
+        const next = new Set(prev);
+        if (next.has(groupId)) {
+          next.delete(groupId);
+        } else {
+          next.add(groupId);
+        }
+        saveCollapsedGroups(column.id, next);
+        return next;
+      });
+    },
+    [column.id]
+  );
+
   // Each column manages its own infinite query
+  // Note: Backend only supports single status filter. For multi-state columns,
+  // we fetch by the primary mapsTo status and group client-side.
+  // Future: Add backend support for multi-status queries if needed.
   const {
     data,
     fetchNextPage,
@@ -102,6 +136,29 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
     const flattened = flattenPages(data);
     return flattened.sort((a, b) => a.priority - b.priority);
   }, [data, searchTasks]);
+
+  // Group tasks by their internal status when groups are defined
+  const tasksByGroup = useMemo(() => {
+    if (!groups || groups.length === 0) return null;
+
+    const grouped = new Map<string, Task[]>();
+    groups.forEach((group) => {
+      grouped.set(group.id, []);
+    });
+
+    tasks.forEach((task) => {
+      // Find which group this task belongs to based on its internalStatus
+      const matchingGroup = groups.find((g) =>
+        g.statuses.includes(task.internalStatus as InternalStatus)
+      );
+      if (matchingGroup) {
+        const existing = grouped.get(matchingGroup.id) || [];
+        grouped.set(matchingGroup.id, [...existing, task]);
+      }
+    });
+
+    return grouped;
+  }, [groups, tasks]);
 
   // Infinite scroll with IntersectionObserver
   useEffect(() => {
@@ -215,7 +272,48 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
           </>
         ) : tasks.length === 0 ? (
           <EmptyState />
+        ) : groups && groups.length > 0 && tasksByGroup ? (
+          /* Grouped rendering - render ColumnGroup for each group */
+          <>
+            {groups.map((group) => {
+              const groupTasks = tasksByGroup.get(group.id) || [];
+              // Only render groups that have tasks
+              if (groupTasks.length === 0) return null;
+
+              return (
+                <ColumnGroup
+                  key={group.id}
+                  label={group.label}
+                  count={groupTasks.length}
+                  icon={getGroupIcon(group.icon)}
+                  {...(group.accentColor && { accentColor: group.accentColor })}
+                  collapsed={collapsedGroups.has(group.id)}
+                  onToggle={() => handleToggleGroup(group.id)}
+                >
+                  {groupTasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      isHidden={task.id === hiddenTaskId}
+                      {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
+                    />
+                  ))}
+                </ColumnGroup>
+              );
+            })}
+
+            {/* Sentinel element for infinite scroll */}
+            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+
+            {/* Loading spinner when fetching next page */}
+            {isFetchingNextPage && (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--accent-primary)" }} />
+              </div>
+            )}
+          </>
         ) : (
+          /* Ungrouped rendering - render tasks directly */
           <>
             {tasks.map((task) => (
               <TaskCard
