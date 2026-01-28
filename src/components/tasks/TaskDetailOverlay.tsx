@@ -510,6 +510,7 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   showHeader={false}
                   showContext={true}
                   showHistory={true}
+                  useViewRegistry={true}
                 />
               </div>
             </ScrollArea>
