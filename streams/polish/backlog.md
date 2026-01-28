@@ -104,7 +104,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
 - [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221
 - [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:225
-- [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
 - [ ] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
 
 ---

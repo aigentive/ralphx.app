@@ -964,3 +964,15 @@
 
 ---
 
+### 2026-01-29 19:45:00 - Remove console.warn call from CompletedTaskDetail
+**What:**
+- File: src/components/tasks/detail-views/CompletedTaskDetail.tsx:261
+- Removed console.warn call from handleViewDiff stub handler
+- Replaced with inline comment explaining unimplemented functionality
+
+**Commands:**
+- `npm run lint -- src/components/tasks/detail-views/CompletedTaskDetail.tsx && npm run typecheck`
+
+**Result:** Success (all linters pass, 0 errors)
+
+---
