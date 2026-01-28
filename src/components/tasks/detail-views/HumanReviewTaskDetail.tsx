@@ -363,7 +363,6 @@ export function HumanReviewTaskDetail({ task }: HumanReviewTaskDetailProps) {
 
   const handleViewDiff = () => {
     // TODO: Open DiffViewer or ReviewDetailModal
-    console.log("View diff for task:", task.id);
   };
 
   const isLoading = reviewsLoading || historyLoading;
