@@ -2,407 +2,57 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import type {
-  IdeationSettings,
-  IdeationSettingsResponse,
-} from "../types/ideation-config";
 import { IdeationSettingsResponseSchema } from "../types/ideation-config";
+import type { IdeationSettings } from "../types/ideation-config";
+import {
+  IdeationSessionResponseSchema,
+  TaskProposalResponseSchema,
+  SessionWithDataResponseSchema,
+  PriorityAssessmentResponseSchema,
+  DependencyGraphResponseSchema,
+  ApplyProposalsResultResponseSchema,
+} from "./ideation.schemas";
+import {
+  transformSession,
+  transformProposal,
+  transformSessionWithData,
+  transformPriorityAssessment,
+  transformDependencyGraph,
+  transformApplyResult,
+  transformIdeationSettings,
+} from "./ideation.transforms";
+export { toTaskProposal } from "./ideation.transforms";
 import type {
-  IdeationSessionStatus,
-  TaskProposal,
-  Priority,
-  Complexity,
-  ProposalStatus,
-} from "../types/ideation";
+  IdeationSessionResponse,
+  TaskProposalResponse,
+  SessionWithDataResponse,
+  PriorityAssessmentResponse,
+  DependencyGraphResponse,
+  ApplyProposalsResultResponse,
+  CreateProposalInput,
+  UpdateProposalInput,
+  ApplyProposalsInput,
+} from "./ideation.types";
+
+// Re-export types for convenience
+export type {
+  IdeationSessionResponse,
+  TaskProposalResponse,
+  ChatMessageResponse,
+  SessionWithDataResponse,
+  PriorityAssessmentResponse,
+  DependencyGraphNodeResponse,
+  DependencyGraphEdgeResponse,
+  DependencyGraphResponse,
+  ApplyProposalsResultResponse,
+  CreateProposalInput,
+  UpdateProposalInput,
+  ApplyProposalsInput,
+} from "./ideation.types";
+
 
 // ============================================================================
-// Response Schemas (matching Rust backend serialization with snake_case)
-// ============================================================================
-
-/**
- * Ideation session response schema (snake_case from Rust)
- */
-const IdeationSessionResponseSchema = z.object({
-  id: z.string(),
-  project_id: z.string(),
-  title: z.string().nullable(),
-  status: z.string(),
-  plan_artifact_id: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  archived_at: z.string().nullable(),
-  converted_at: z.string().nullable(),
-});
-
-/**
- * Task proposal response schema (snake_case from Rust)
- */
-const TaskProposalResponseSchema = z.object({
-  id: z.string(),
-  session_id: z.string(),
-  title: z.string(),
-  description: z.string().nullable(),
-  category: z.string(),
-  steps: z.array(z.string()),
-  acceptance_criteria: z.array(z.string()),
-  suggested_priority: z.string(),
-  priority_score: z.number(),
-  priority_reason: z.string().nullable(),
-  estimated_complexity: z.string(),
-  user_priority: z.string().nullable(),
-  user_modified: z.boolean(),
-  status: z.string(),
-  selected: z.boolean(),
-  created_task_id: z.string().nullable(),
-  plan_artifact_id: z.string().nullable(),
-  plan_version_at_creation: z.number().nullable(),
-  sort_order: z.number(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-
-/**
- * Chat message response schema (snake_case from Rust)
- */
-const ChatMessageResponseSchema = z.object({
-  id: z.string(),
-  session_id: z.string().nullable(),
-  project_id: z.string().nullable(),
-  task_id: z.string().nullable(),
-  role: z.string(),
-  content: z.string(),
-  metadata: z.string().nullable(),
-  tool_calls: z.string().nullable(),
-  parent_message_id: z.string().nullable(),
-  created_at: z.string(),
-});
-
-/**
- * Session with proposals and messages (snake_case from Rust)
- */
-const SessionWithDataResponseSchema = z.object({
-  session: IdeationSessionResponseSchema,
-  proposals: z.array(TaskProposalResponseSchema),
-  messages: z.array(ChatMessageResponseSchema),
-});
-
-/**
- * Priority assessment response (snake_case from Rust)
- */
-const PriorityAssessmentResponseSchema = z.object({
-  proposal_id: z.string(),
-  priority: z.string(),
-  score: z.number(),
-  reason: z.string(),
-});
-
-/**
- * Dependency graph node response (snake_case from Rust)
- */
-const DependencyGraphNodeResponseSchema = z.object({
-  proposal_id: z.string(),
-  title: z.string(),
-  in_degree: z.number(),
-  out_degree: z.number(),
-});
-
-/**
- * Dependency graph edge response (snake_case from Rust)
- */
-const DependencyGraphEdgeResponseSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-});
-
-/**
- * Dependency graph response (snake_case from Rust)
- */
-const DependencyGraphResponseSchema = z.object({
-  nodes: z.array(DependencyGraphNodeResponseSchema),
-  edges: z.array(DependencyGraphEdgeResponseSchema),
-  critical_path: z.array(z.string()),
-  has_cycles: z.boolean(),
-  cycles: z.array(z.array(z.string())).nullable(),
-});
-
-/**
- * Apply proposals result response (snake_case from Rust)
- */
-const ApplyProposalsResultResponseSchema = z.object({
-  created_task_ids: z.array(z.string()),
-  dependencies_created: z.number(),
-  warnings: z.array(z.string()),
-  session_converted: z.boolean(),
-});
-
-// ============================================================================
-// Transformed Types (camelCase for frontend usage)
-// ============================================================================
-
-export interface IdeationSessionResponse {
-  id: string;
-  projectId: string;
-  title: string | null;
-  status: IdeationSessionStatus;
-  planArtifactId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  archivedAt: string | null;
-  convertedAt: string | null;
-}
-
-export interface TaskProposalResponse {
-  id: string;
-  sessionId: string;
-  title: string;
-  description: string | null;
-  category: string;
-  steps: string[];
-  acceptanceCriteria: string[];
-  suggestedPriority: string;
-  priorityScore: number;
-  priorityReason: string | null;
-  estimatedComplexity: string;
-  userPriority: string | null;
-  userModified: boolean;
-  status: string;
-  selected: boolean;
-  createdTaskId: string | null;
-  planArtifactId: string | null;
-  planVersionAtCreation: number | null;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ChatMessageResponse {
-  id: string;
-  sessionId: string | null;
-  projectId: string | null;
-  taskId: string | null;
-  role: string;
-  content: string;
-  metadata: string | null;
-  parentMessageId: string | null;
-  toolCalls: string | null;
-  createdAt: string;
-}
-
-export interface SessionWithDataResponse {
-  session: IdeationSessionResponse;
-  proposals: TaskProposalResponse[];
-  messages: ChatMessageResponse[];
-}
-
-export interface PriorityAssessmentResponse {
-  proposalId: string;
-  priority: string;
-  score: number;
-  reason: string;
-}
-
-export interface DependencyGraphNodeResponse {
-  proposalId: string;
-  title: string;
-  inDegree: number;
-  outDegree: number;
-}
-
-export interface DependencyGraphEdgeResponse {
-  from: string;
-  to: string;
-}
-
-export interface DependencyGraphResponse {
-  nodes: DependencyGraphNodeResponse[];
-  edges: DependencyGraphEdgeResponse[];
-  criticalPath: string[];
-  hasCycles: boolean;
-  cycles: string[][] | null;
-}
-
-export interface ApplyProposalsResultResponse {
-  createdTaskIds: string[];
-  dependenciesCreated: number;
-  warnings: string[];
-  sessionConverted: boolean;
-}
-
-// ============================================================================
-// Input Types
-// ============================================================================
-
-export interface CreateProposalInput {
-  sessionId: string;
-  title: string;
-  category: string;
-  description?: string;
-  steps?: string[];
-  acceptanceCriteria?: string[];
-  priority?: string;
-  complexity?: string;
-}
-
-export interface UpdateProposalInput {
-  title?: string;
-  description?: string;
-  category?: string;
-  steps?: string[];
-  acceptanceCriteria?: string[];
-  userPriority?: string;
-  complexity?: string;
-}
-
-export interface ApplyProposalsInput {
-  sessionId: string;
-  proposalIds: string[];
-  targetColumn: string;
-  preserveDependencies: boolean;
-}
-
-// ============================================================================
-// Transform Functions (snake_case -> camelCase)
-// ============================================================================
-
-function transformSession(raw: z.infer<typeof IdeationSessionResponseSchema>): IdeationSessionResponse {
-  return {
-    id: raw.id,
-    projectId: raw.project_id,
-    title: raw.title,
-    status: raw.status as IdeationSessionStatus,
-    planArtifactId: raw.plan_artifact_id,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
-    archivedAt: raw.archived_at,
-    convertedAt: raw.converted_at,
-  };
-}
-
-function transformProposal(raw: z.infer<typeof TaskProposalResponseSchema>): TaskProposalResponse {
-  return {
-    id: raw.id,
-    sessionId: raw.session_id,
-    title: raw.title,
-    description: raw.description,
-    category: raw.category,
-    steps: raw.steps,
-    acceptanceCriteria: raw.acceptance_criteria,
-    suggestedPriority: raw.suggested_priority,
-    priorityScore: raw.priority_score,
-    priorityReason: raw.priority_reason,
-    estimatedComplexity: raw.estimated_complexity,
-    userPriority: raw.user_priority,
-    userModified: raw.user_modified,
-    status: raw.status,
-    selected: raw.selected,
-    createdTaskId: raw.created_task_id,
-    planArtifactId: raw.plan_artifact_id,
-    planVersionAtCreation: raw.plan_version_at_creation,
-    sortOrder: raw.sort_order,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
-  };
-}
-
-/**
- * Convert TaskProposalResponse to TaskProposal (store type)
- *
- * This function properly types the enum fields that come as strings from the API
- * to the branded enum types expected by the store.
- */
-export function toTaskProposal(response: TaskProposalResponse): TaskProposal {
-  return {
-    id: response.id,
-    sessionId: response.sessionId,
-    title: response.title,
-    description: response.description,
-    category: response.category,
-    steps: response.steps,
-    acceptanceCriteria: response.acceptanceCriteria,
-    suggestedPriority: response.suggestedPriority as Priority,
-    priorityScore: response.priorityScore,
-    priorityReason: response.priorityReason,
-    estimatedComplexity: response.estimatedComplexity as Complexity,
-    userPriority: response.userPriority as Priority | null,
-    userModified: response.userModified,
-    status: response.status as ProposalStatus,
-    selected: response.selected,
-    createdTaskId: response.createdTaskId,
-    planArtifactId: response.planArtifactId,
-    planVersionAtCreation: response.planVersionAtCreation,
-    sortOrder: response.sortOrder,
-    createdAt: response.createdAt,
-    updatedAt: response.updatedAt,
-  };
-}
-
-function transformMessage(raw: z.infer<typeof ChatMessageResponseSchema>): ChatMessageResponse {
-  return {
-    id: raw.id,
-    sessionId: raw.session_id,
-    projectId: raw.project_id,
-    taskId: raw.task_id,
-    role: raw.role,
-    content: raw.content,
-    metadata: raw.metadata,
-    toolCalls: raw.tool_calls,
-    parentMessageId: raw.parent_message_id,
-    createdAt: raw.created_at,
-  };
-}
-
-function transformSessionWithData(raw: z.infer<typeof SessionWithDataResponseSchema>): SessionWithDataResponse {
-  return {
-    session: transformSession(raw.session),
-    proposals: raw.proposals.map(transformProposal),
-    messages: raw.messages.map(transformMessage),
-  };
-}
-
-function transformPriorityAssessment(raw: z.infer<typeof PriorityAssessmentResponseSchema>): PriorityAssessmentResponse {
-  return {
-    proposalId: raw.proposal_id,
-    priority: raw.priority,
-    score: raw.score,
-    reason: raw.reason,
-  };
-}
-
-function transformDependencyGraph(raw: z.infer<typeof DependencyGraphResponseSchema>): DependencyGraphResponse {
-  return {
-    nodes: raw.nodes.map((n) => ({
-      proposalId: n.proposal_id,
-      title: n.title,
-      inDegree: n.in_degree,
-      outDegree: n.out_degree,
-    })),
-    edges: raw.edges,
-    criticalPath: raw.critical_path,
-    hasCycles: raw.has_cycles,
-    cycles: raw.cycles,
-  };
-}
-
-function transformApplyResult(raw: z.infer<typeof ApplyProposalsResultResponseSchema>): ApplyProposalsResultResponse {
-  return {
-    createdTaskIds: raw.created_task_ids,
-    dependenciesCreated: raw.dependencies_created,
-    warnings: raw.warnings,
-    sessionConverted: raw.session_converted,
-  };
-}
-
-function transformIdeationSettings(raw: IdeationSettingsResponse): IdeationSettings {
-  return {
-    planMode: raw.plan_mode as IdeationSettings["planMode"],
-    requirePlanApproval: raw.require_plan_approval,
-    suggestPlansForComplex: raw.suggest_plans_for_complex,
-    autoLinkProposals: raw.auto_link_proposals,
-  };
-}
-
-// ============================================================================
-// Typed Invoke Helpers
+// Typed Invoke Helper
 // ============================================================================
 
 async function typedInvoke<T>(

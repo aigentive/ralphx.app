@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-28 23:40:26 - Refactor large API file - extract helpers from ideation.ts
+**What:**
+- File: src/api/ideation.ts (821 LOC → 473 LOC)
+- Created new files:
+  - src/api/ideation.schemas.ts (119 LOC) - Zod response schemas
+  - src/api/ideation.transforms.ts (169 LOC) - Transform functions for snake_case → camelCase
+  - src/api/ideation.types.ts (122 LOC) - Frontend response types and input types
+- Refactored main file to import from extracted modules
+- Re-exported types for convenience
+- Re-exported toTaskProposal converter function
+- Reason: File size reduction (P2) - Large API file exceeded recommended limits
+
+**Commands:**
+- `wc -l src/api/ideation*.ts` - Verified new file sizes
+- `npm run lint && npm run typecheck` - All checks passed
+
+**Result:** Success (348 lines extracted, main file reduced from 821 to 473 LOC)
+
+---
+
 ### 2026-01-28 23:37:03 - Replace z.unknown() with proper types in chat.ts
 **What:**
 - File: src/api/chat.ts
