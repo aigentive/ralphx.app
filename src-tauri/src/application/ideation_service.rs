@@ -479,6 +479,7 @@ pub struct SessionStats {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::*;
     use async_trait::async_trait;

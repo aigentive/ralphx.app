@@ -21,6 +21,7 @@ pub use types::{
 };
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod dependency_tests {
     use async_trait::async_trait;
     use futures::Stream;
