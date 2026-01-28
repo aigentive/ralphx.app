@@ -34,15 +34,16 @@ Read backlog → First [ ] item (not struck/excluded) → Verify still exists �
 
 **NEVER use `git add .` or `git add -A`** — other streams have uncommitted changes!
 
-### Commit Lock Protocol
+### Commit Lock Protocol (see .claude/rules/commit-lock.md)
 ```
-1. BEFORE committing: Check .commit-lock file
-   → EXISTS? sleep 5, then check again (loop until free)
-   → NOT EXISTS? Create it: echo "polish $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
+1. Check .commit-lock:
+   → NOT EXISTS? Create: echo "polish $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
+   → EXISTS? Read content, check if stale (>2min). If stale, delete and acquire.
+            If not stale: sleep 5, re-read content (lock may change hands), loop.
 
-2. Commit your files only: git add <file1> <file2> ... && git commit
+2. Commit your files: git add <file1> <file2> ... && git commit
 
-3. AFTER committing (success or failure): rm -f .commit-lock
+3. Release lock: rm -f .commit-lock
 ```
 
 ### Commit Steps
