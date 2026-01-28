@@ -89,7 +89,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(spawner): check can_start_task before spawning"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

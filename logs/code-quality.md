@@ -137,6 +137,8 @@
 - [x] Implement TODO: Handle tracking for specific agent - src-tauri/src/infrastructure/agents/spawner.rs:138,143
 - [x] Implement TODO: ChatContextType::Review in state transitions - src-tauri/src/domain/state_machine/transition_handler.rs
 - [x] Add StateGroup.locked() convenience method for system-managed groups - src-tauri/src/domain/entities/workflow.rs:67
+- [x] Consolidate duplicate ExecutionState imports in spawner.rs tests - src-tauri/src/infrastructure/agents/spawner.rs:204
+- [ ] Reduce spawner.rs (529 LOC) - extract tests or helpers to separate file - src-tauri/src/infrastructure/agents/spawner.rs:1-50
 
 ---
 
