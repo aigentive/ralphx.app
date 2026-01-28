@@ -1,10 +1,28 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-01-28 18:30:00
+**Last Updated:** 2026-01-28 17:20:09
 **Phase:** Execution Bar Real-time Updates (Phase 22)
-**Tasks Completed:** 10 / 12
-**Current Task:** Wire useExecutionEvents in App.tsx
+**Tasks Completed:** 11 / 12
+**Current Task:** Reduce polling frequency to 30 seconds
+
+---
+
+### 2026-01-28 17:20:09 - Reduce polling frequency to 30 seconds
+
+**What:**
+- Updated `useExecutionControl.ts` refetchInterval from 5000ms to 30000ms
+- Changed comment to indicate this is now a fallback (real-time updates via useExecutionEvents)
+- Polling now serves as eventual consistency guarantee rather than primary update mechanism
+
+**Quality Improvement (P3):**
+- Removed debug `console.log` from `handleQuestionSubmit` in App.tsx
+- Prefixed unused parameter with underscore to satisfy lint rules
+
+**Commands:**
+- `npm run lint` — clean (3 shadcn warnings excluded)
+- `npm run typecheck` — clean
+- `cargo clippy` — clean
 
 ---
 
