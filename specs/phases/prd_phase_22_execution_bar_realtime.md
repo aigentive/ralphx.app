@@ -229,7 +229,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck",
       "Commit: feat(hooks): reduce polling to 30s (events provide real-time)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
