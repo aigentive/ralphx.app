@@ -332,6 +332,21 @@ export const ALL_TOOLS: Tool[] = [
       required: ["task_id", "decision", "feedback"],
     },
   },
+  {
+    name: "get_review_notes",
+    description:
+      "Get all review feedback for a task. Call this before re-executing a task to understand what needs to be fixed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID to get review notes for",
+        },
+      },
+      required: ["task_id"],
+    },
+  },
 
   // ========================================================================
   // PLAN ARTIFACT TOOLS (orchestrator-ideation agent)
@@ -374,6 +389,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_artifact_version",
     "get_related_artifacts",
     "search_project_artifacts",
+    "get_review_notes",
     "get_task_steps",
     "start_step",
     "complete_step",
