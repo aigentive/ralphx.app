@@ -135,9 +135,50 @@ interface ContextIndicatorProps {
   isExecutionMode: boolean;
 }
 
-function ContextIndicator({ isExecutionMode }: ContextIndicatorProps) {
-  const Icon = isExecutionMode ? Hammer : CheckSquare;
-  const label = isExecutionMode ? "Worker Execution" : "Task";
+interface ChatModeIndicatorProps {
+  isLive: boolean;
+}
+
+function ChatModeIndicator({ isLive }: ChatModeIndicatorProps) {
+  if (!isLive) {
+    return (
+      <Badge
+        variant="secondary"
+        className="shrink-0 text-xs"
+        style={{
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.1)",
+        }}
+      >
+        Completed
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="secondary"
+      className="shrink-0 text-xs flex items-center gap-1"
+      style={{
+        background: "rgba(255,107,53,0.1)",
+        border: "1px solid rgba(255,107,53,0.2)",
+        color: "#ff6b35",
+      }}
+    >
+      <div
+        className="w-1.5 h-1.5 rounded-full bg-[#ff6b35]"
+        style={{
+          animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        }}
+      />
+      Live
+    </Badge>
+  );
+}
+
+function ContextIndicator({ isExecutionMode, isReviewMode }: ContextIndicatorProps & { isReviewMode: boolean }) {
+  const Icon = isExecutionMode ? Hammer : isReviewMode ? Bot : CheckSquare;
+  const label = isExecutionMode ? "Worker Execution" : isReviewMode ? "AI Review" : "Task";
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -155,11 +196,13 @@ function ContextIndicator({ isExecutionMode }: ContextIndicatorProps) {
 
 export interface TaskChatPanelProps {
   taskId: string;
-  /** Context type - 'task' for regular chat, 'task_execution' for worker execution */
-  contextType: "task" | "task_execution";
+  /** Context type - 'task' for regular chat, 'task_execution' for worker execution, 'review' for reviewer */
+  contextType: "task" | "task_execution" | "review";
+  /** Current task internal status - used to determine if chat is live or historical */
+  taskStatus: string;
 }
 
-export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
+export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanelProps) {
   const queryClient = useQueryClient();
   const {
     queueMessage,
@@ -172,6 +215,19 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
   const activeConversationId = useChatStore(selectActiveConversationId);
 
   const isExecutionMode = contextType === "task_execution";
+  const isReviewMode = contextType === "review";
+
+  // Determine if chat is live or historical based on task state
+  const isLive = useMemo(() => {
+    if (contextType === "task_execution") {
+      return taskStatus === "executing" || taskStatus === "re_executing";
+    }
+    if (contextType === "review") {
+      return taskStatus === "reviewing";
+    }
+    // Regular task chat is always live
+    return true;
+  }, [contextType, taskStatus]);
 
   // Memoize the selector to avoid creating new function references on each render
   const executionQueuedMessagesSelector = useMemo(
@@ -229,8 +285,12 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
-  // Extract messages array from active conversation
-  const messagesData = activeConversation.data?.messages ?? [];
+  // Extract messages array from active conversation - wrapped in useMemo to avoid
+  // creating new array reference on each render, which would trigger sortedMessages recalculation
+  const messagesData = useMemo(
+    () => activeConversation.data?.messages ?? [],
+    [activeConversation.data?.messages]
+  );
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -394,13 +454,16 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
             background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
           }}
         >
-          <ContextIndicator isExecutionMode={isExecutionMode} />
+          <ContextIndicator isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />
+
+          {/* Chat mode indicator */}
+          <ChatModeIndicator isLive={isLive} />
 
           {/* Active agent badge */}
-          {(isSending || isAgentRunning || isExecutionMode) && (
+          {isLive && (isSending || isAgentRunning || isExecutionMode) && (
             <Badge variant="secondary" className="shrink-0 mr-2">
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
+              {isExecutionMode ? "Worker running..." : isReviewMode ? "Reviewer working..." : isAgentRunning ? "Agent responding..." : "Working"}
             </Badge>
           )}
 
@@ -454,44 +517,62 @@ export function TaskChatPanel({ taskId, contextType }: TaskChatPanelProps) {
 
         {/* Input Area */}
         <div className="border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-          {/* Queued Messages - use execution queue in execution mode */}
-          {(() => {
-            const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
-            const deleteHandler = isExecutionMode
-              ? (id: string) => deleteExecutionQueuedMessage(taskId, id)
-              : (id: string) => deleteQueuedMessage(storeContextKey, id);
-            // Edit handler always needs context key
-            const editHandler = (id: string, content: string) => editQueuedMessage(storeContextKey, id, content);
+          {isLive ? (
+            <>
+              {/* Queued Messages - use execution queue in execution mode */}
+              {(() => {
+                const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
+                const deleteHandler = isExecutionMode
+                  ? (id: string) => deleteExecutionQueuedMessage(taskId, id)
+                  : (id: string) => deleteQueuedMessage(storeContextKey, id);
+                // Edit handler always needs context key
+                const editHandler = (id: string, content: string) => editQueuedMessage(storeContextKey, id, content);
 
-            return messagesToDisplay.length > 0 && (
-              <div className="p-3 pb-0">
-                <QueuedMessageList
-                  messages={messagesToDisplay}
-                  onEdit={editHandler}
-                  onDelete={deleteHandler}
+                return messagesToDisplay.length > 0 && (
+                  <div className="p-3 pb-0">
+                    <QueuedMessageList
+                      messages={messagesToDisplay}
+                      onEdit={editHandler}
+                      onDelete={deleteHandler}
+                    />
+                  </div>
+                );
+              })()}
+
+              {/* Chat Input */}
+              <div className="p-3">
+                <ChatInput
+                  onSend={handleSend}
+                  onQueue={handleQueue}
+                  isAgentRunning={isExecutionMode || isAgentRunning}
+                  isSending={isSending}
+                  hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+                  onEditLastQueued={handleEditLastQueued}
+                  placeholder={
+                    isExecutionMode
+                      ? "Message worker... (will be sent when current response completes)"
+                      : isReviewMode
+                        ? "Chat with the reviewer..."
+                        : "Send a message..."
+                  }
+                  showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+                  autoFocus
                 />
               </div>
-            );
-          })()}
-
-          {/* Chat Input */}
-          <div className="p-3">
-            <ChatInput
-              onSend={handleSend}
-              onQueue={handleQueue}
-              isAgentRunning={isExecutionMode || isAgentRunning}
-              isSending={isSending}
-              hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
-              onEditLastQueued={handleEditLastQueued}
-              placeholder={
-                isExecutionMode
-                  ? "Message worker... (will be sent when current response completes)"
-                  : "Send a message..."
-              }
-              showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
-              autoFocus
-            />
-          </div>
+            </>
+          ) : (
+            /* Historical mode - read-only */
+            <div
+              className="px-4 py-3 text-center"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%)",
+              }}
+            >
+              <p className="text-[13px] text-white/50">
+                Chat ended — {contextType === "review" ? "Review" : "Execution"} completed
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </>
