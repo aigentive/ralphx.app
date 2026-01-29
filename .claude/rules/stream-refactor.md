@@ -23,21 +23,27 @@ Before starting normal workflow, check for incomplete work from a previous itera
 1. Run: git status --porcelain
    → No uncommitted changes? → Skip recovery, proceed to normal workflow
 
-2. Identify uncommitted files and check ownership:
-   a. Read streams/refactor/activity.md → scan ALL entries (not just last)
-   b. Read streams/refactor/backlog.md → get all P1 items
-   c. For each uncommitted file, check if it CORRELATES:
-      - File path matches an activity log entry (any entry, not just last)? → YES
-      - File path matches a backlog item? → YES
-      - File is part of an obvious P1 pattern (e.g., module split: {name}/mod.rs, {name}/types.rs)? → YES
-      - None of the above? → NO, belongs to another stream
+2. Read streams/refactor/backlog.md → get all P1 items
 
-3. Correlated changes exist?
-   → YES: Complete the work if needed, commit ONLY correlated files, then proceed
-   → NO: Leave uncommitted files alone, proceed to normal workflow
+3. For each uncommitted file, check if it matches a BACKLOG ITEM:
+   - File path contains a path/module mentioned in any backlog item? → YOURS
+   - Example: backlog has "http_server" item, uncommitted file is http_server/handlers/foo.rs → YOURS
+   - No backlog match at all? → NOT yours, leave alone
+
+4. Matched files exist?
+   → YES: This is YOUR incomplete work. Complete it, commit matched files, proceed.
+   → NO: Leave all uncommitted files alone, proceed to normal workflow.
 ```
 
-**CRITICAL:** Only commit files that match your activity log or backlog. No match → not yours.
+## BACKLOG = OWNERSHIP
+
+**If a file matches something in YOUR BACKLOG, it is YOUR WORK. Period.**
+
+- Backlog has "http_server" → any file in `http_server/` is YOURS
+- Backlog has "chat_service" → any file in `chat_service/` is YOURS
+- Activity log says "reverted" or "failed"? **IRRELEVANT.** Backlog decides ownership.
+
+**Do NOT reject ownership because a previous attempt failed.** Someone started a new attempt. The backlog item still exists. The work is YOURS.
 
 ## Workflow
 
