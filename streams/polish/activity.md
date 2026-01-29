@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-29 01:32:52 - Replace Debug format with Display for enum serialization
+**What:**
+- File: src-tauri/src/http_server/types.rs:81-82
+- Changed `format!("{:?}", proposal.category)` to `proposal.category.to_string()`
+- Changed `format!("{:?}", proposal.suggested_priority)` to `proposal.suggested_priority.to_string()`
+- Both TaskCategory and Priority enums already have proper Display implementations
+- This ensures type-safe serialization with predictable output format
+
+**Commands:**
+- `cargo check --message-format=short`
+
+**Result:** Success (no compilation errors in types.rs)
+
+---
+
 ### 2026-01-28 23:26:41 - Clean up unused variable suppressions in ResearchPanel
 **What:**
 - File: src/components/ExtensibilityView.ResearchPanel.tsx:54-56
