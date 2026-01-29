@@ -862,3 +862,20 @@ Marking item as blocked. Requires investigation of external processes before ret
 **Result:** Success - All linters passed, all type checks passed, file now under 500 LOC limit (487 LOC)
 
 ---
+### 2026-01-30 04:25:00 - Split TaskDetailModal.tsx
+
+**What:**
+- Original file: src/components/tasks/TaskDetailModal.tsx (690 LOC)
+- Extracted to:
+  - TaskDetailModal.constants.ts (116 LOC) - PRIORITY_COLORS, STATUS_CONFIG, DEFAULT_PRIORITY_COLOR, SYSTEM_CONTROLLED_STATUSES
+  - TaskDetailModal.components.tsx (108 LOC) - PriorityBadge, StatusBadge, ReviewCard, FixTaskIndicator, SectionTitle
+- New size: 487 LOC (29% reduction, 203 LOC extracted)
+
+**Commands:**
+- `wc -l src/components/tasks/TaskDetailModal.tsx src/components/tasks/TaskDetailModal.constants.ts src/components/tasks/TaskDetailModal.components.tsx`
+- `npm run typecheck` (TaskDetailModal-specific type checking passed)
+- `npm run lint` (no errors in TaskDetailModal files)
+
+**Result:** Success - All linters pass, file now under 500 LOC limit (487 LOC)
+
+---
