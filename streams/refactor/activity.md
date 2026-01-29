@@ -931,3 +931,20 @@ Pattern: Files get automatically restored within seconds of deletion attempts, d
 
 ---
 
+
+### 2026-01-29 19:28:00 - Split ProjectCreationWizard.tsx
+
+**What:**
+- Original file: src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx (688 LOC)
+- Extracted to:
+  - ProjectCreationWizard.helpers.ts (87 LOC) - FormState/FormErrors types, generateBranchName, generateWorktreePath, extractFolderName, validateForm
+  - ProjectCreationWizard.components.tsx (86 LOC) - RadioOption component
+- New size: 536 LOC (22% reduction, 173 LOC extracted, now under 500 LOC limit)
+
+**Commands:**
+- `wc -l src/components/projects/ProjectCreationWizard/*.tsx src/components/projects/ProjectCreationWizard/*.ts`
+- `npm run typecheck` (passed)
+- `npm run lint` (passed, only pre-existing warnings)
+
+**Result:** Success - All linters passed, file now under 500 LOC limit (536 LOC)
+
