@@ -502,3 +502,32 @@ This P1 item requires a more careful, multi-step approach:
 **Result:** Success - No transition_handler-specific clippy warnings, all modules now under 500 LOC limit
 
 ---
+
+###2026-01-29 01:50:00 - http_server/mod.rs Split Attempt (Reverted)
+
+**What:**
+- Original item: "Split http_server.rs (2105 LOC)" - file did not exist (backlog error)
+- Actual file: src-tauri/src/http_server/mod.rs (1515 LOC, exceeds 500 LOC limit)
+- Attempted extraction using Bash subagent to split handlers into separate modules
+- Extraction resulted in 29 compilation errors (missing fields, enums, methods)
+- Reverted changes via `git reset --hard HEAD~2` to restore working state
+
+**Commands:**
+- `git reset --hard HEAD~2` (reverted broken extraction)
+- `cargo check --lib` (verified 0 errors after reset)
+- `wc -l src-tauri/src/http_server/mod.rs` (confirmed 1515 LOC)
+
+**Result:** Failed - extraction introduced compilation errors, reverted to maintain working codebase
+
+**Analysis:**
+1. Bash subagent extracted code referencing non-existent APIs (task.steps, InternalStatus::Completed, etc.)
+2. Original extraction strategy was sound, but implementation used incorrect/outdated API surface
+3. Item remains in backlog, updated to reflect correct file path (mod.rs not .rs)
+
+**Recommendation:**
+- Manual extraction required with careful API verification at each step
+- Break into smaller sub-tasks:
+  - First: Extract one handler module (e.g., handlers/steps.rs)
+  - Verify compilation after each extraction
+  - Incrementally extract remaining handlers
+
