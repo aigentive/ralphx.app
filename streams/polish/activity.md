@@ -951,6 +951,21 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+
+---
+
+### 2026-01-29 02:05:09 - Replace `.map_err(|_|` with proper error logging in handlers/steps.rs
+**What:**
+- File: src-tauri/src/http_server/handlers/steps.rs
+- Added `use tracing::error;` import
+- Replaced 13 `.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)` patterns with proper error logging
+- Each error now logs context (task_id or step_id) and the actual error message using `error!()` macro
+- Affected functions: get_task_steps_http, start_step_http, complete_step_http, skip_step_http, fail_step_http, add_step_http, get_step_progress_http
+
+**Commands:**
+- Note: Pre-existing compilation errors in other modules (transition_handler, ideation_session) unrelated to this change
+
+**Result:** Success (changes are syntactically correct, error logging now preserved)
 ### 2026-01-29 19:35:00 - Remove console.warn calls from TaskFullView
 **What:**
 - File: src/components/tasks/TaskFullView.tsx:213,217,221,225

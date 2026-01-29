@@ -103,8 +103,20 @@ _No active P2 items. Completed items moved to archive._
 
 ---
 
+## REFILL (Added 2026-01-29 20:30)
+
+### P2 - Medium Impact
+
+- [x] [P2] [Backend] Error logging suppression: Multiple `.map_err(|_|` patterns discard error details - src-tauri/src/http_server/handlers/steps.rs:20
+
+### P3 - Low Impact
+
+_No active P3 items. Completed items moved to archive._
+
+---
+
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 1 (9 excluded, 10 deferred to PRD)
-**Completed:** 10
+**Active items:** 0 (9 excluded, 10 deferred to PRD)
+**Completed:** 11
 **Validated:** 69 strikethroughs (2026-01-29 x54) - 14 archived, 1 reactivated (moved to refactor as P1), 54 incremented
-**Last maintenance:** 2026-01-29 19:35 (archived 7 completed items)
+**Last maintenance:** 2026-01-29 20:30 (completed 1 P2 item)
