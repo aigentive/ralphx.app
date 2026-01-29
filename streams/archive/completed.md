@@ -5,6 +5,15 @@
 
 ---
 
+## Archived 2026-01-29 (Ninth Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split apply_service.rs (1833 LOC → 309 LOC) - extracted to apply_service/{types.rs (60), helpers.rs (107), tests.rs (1408), mod.rs (309)} - src-tauri/src/application/apply_service/mod.rs:1-50
+- [x] Split ideation_service.rs (1666 LOC → 423 LOC) - extracted to ideation_service/{types.rs (70), tests.rs (1198), mod.rs (423)} - src-tauri/src/application/ideation_service/mod.rs:1-50
+
+---
+
 ## Archived 2026-01-29 (Eighth Batch)
 
 ### From refactor/backlog.md (Backend)
