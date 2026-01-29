@@ -17,6 +17,7 @@ import {
   useStepEvents,
   useExecutionErrorEvents,
 } from "@/hooks/useEvents";
+import { useIdeationEvents } from "@/hooks/useIdeationEvents";
 
 interface EventProviderProps {
   children: ReactNode;
@@ -32,6 +33,7 @@ interface EventProviderProps {
  * - Supervisor alerts
  * - Review events (placeholder for Phase 9)
  * - File change events (placeholder)
+ * - Ideation events (session title updates from session-namer agent)
  *
  * @example
  * ```tsx
@@ -58,6 +60,7 @@ export function EventProvider({ children }: EventProviderProps) {
   useFileChangeEvents();
   useAgentEvents(); // Listen to agent:message events for Activity view
   useExecutionErrorEvents(); // Handle agent execution errors and unstick UI
+  useIdeationEvents(); // Listen to ideation events (session title updates)
 
   return <>{children}</>;
 }

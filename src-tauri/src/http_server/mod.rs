@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::application::AppState;
 use crate::commands::ExecutionState;
@@ -73,7 +74,11 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .route("/api/permission/request", post(request_permission))
         .route("/api/permission/await/:request_id", get(await_permission))
         .route("/api/permission/resolve", post(resolve_permission))
-        .with_state(state);
+        .with_state(state)
+        .layer(CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3847")
         .await
