@@ -217,7 +217,7 @@
       "phase": 29,
       "name": "Unified Chat Resumption",
       "prd": "specs/phases/prd_phase_29_chat_resumption.md",
-      "status": "active",
+      "status": "complete",
       "description": "Wire execution_state to unified chat commands, add ChatResumptionRunner for startup resumption"
     }
   ]
