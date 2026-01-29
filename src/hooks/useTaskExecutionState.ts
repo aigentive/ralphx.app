@@ -54,12 +54,11 @@ function getExecutionPhase(status: string): ExecutionPhase {
 /**
  * Calculate duration since task started
  */
-function calculateDuration(startedAt: string | null): number | null {
+function calculateDuration(startedAt: string | null, currentTimeMs: number): number | null {
   if (!startedAt) return null;
 
   const start = new Date(startedAt);
-  const now = new Date();
-  const diffMs = now.getTime() - start.getTime();
+  const diffMs = currentTimeMs - start.getTime();
   return Math.floor(diffMs / 1000); // Return seconds
 }
 
@@ -129,7 +128,7 @@ export function useTaskExecutionState(taskId: string): TaskExecutionState {
 
     const phase = getExecutionPhase(task.internalStatus);
     // Recalculate duration on each render when active (triggered by currentTime state)
-    const duration = calculateDuration(task.startedAt);
+    const duration = calculateDuration(task.startedAt, currentTime);
     const isActive = phase !== "idle" && phase !== "done";
 
     return {
@@ -138,7 +137,6 @@ export function useTaskExecutionState(taskId: string): TaskExecutionState {
       phase,
       stepProgress: stepProgress ?? null,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task, stepProgress, currentTime]); // currentTime triggers recalc every second
 
   return executionState;
