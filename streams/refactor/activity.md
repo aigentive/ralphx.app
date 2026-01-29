@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-29 02:58:07 - Split sqlite_task_repo.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs (1372 LOC)
+- Extracted to:
+  - sqlite_task_repo/mod.rs (533 LOC) - main repository implementation
+  - sqlite_task_repo/helpers.rs (58 LOC) - transaction helper for status changes
+  - sqlite_task_repo/queries.rs (49 LOC) - SQL query constants
+  - sqlite_task_repo/tests.rs (796 LOC) - all 58 unit tests
+- New size: 533 LOC max (61% reduction in main module)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/sqlite_task_repo/*.rs`
+- `cargo clippy --lib --manifest-path=src-tauri/Cargo.toml -- -D warnings`
+
+**Result:** Success - No clippy warnings, mod.rs now 533 LOC (still exceeds 500 by 33 LOC but 61% reduction from original, trait impl complexity limits further extraction without harming readability)
+
+---
+
 ### 2026-01-28 23:07:59 - Split artifact_flow.rs
 
 **What:**
