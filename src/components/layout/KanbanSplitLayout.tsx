@@ -40,6 +40,7 @@ interface KanbanSplitLayoutProps {
 
 export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLayoutProps) {
   const chatCollapsed = useUiStore((s) => s.chatCollapsed);
+  const toggleChatCollapsed = useUiStore((s) => s.toggleChatCollapsed);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
 
@@ -159,7 +160,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
             transition: isResizing ? "none" : "width 150ms ease-out",
           }}
         >
-          <IntegratedChatPanel projectId={projectId} />
+          <IntegratedChatPanel projectId={projectId} onClose={toggleChatCollapsed} />
         </div>
       )}
     </div>
