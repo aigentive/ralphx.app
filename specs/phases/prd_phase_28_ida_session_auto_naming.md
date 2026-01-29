@@ -111,7 +111,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test with CLI: claude --plugin-dir ./ralphx-plugin --agent session-namer",
       "Commit: feat(plugin): add session-namer agent"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
