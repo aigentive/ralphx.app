@@ -23,6 +23,7 @@ use super::chat_service_types::{AgentQueueSentPayload, AgentRunStartedPayload};
 ///
 /// This handles race conditions where messages can be queued while we're processing,
 /// so it keeps checking until the queue is stable-empty.
+#[allow(dead_code)]
 pub async fn process_message_queue<R: Runtime + 'static>(
     context_type: ChatContextType,
     context_id: &str,
