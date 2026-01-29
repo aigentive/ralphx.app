@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-29 02:40:02 - Split artifact.rs
+
+**What:**
+- Original file: src-tauri/src/domain/entities/artifact.rs (1147 LOC)
+- Extracted to:
+  - artifact/mod.rs (7 LOC) - module re-exports
+  - artifact/types.rs (671 LOC) - all type definitions and impl blocks
+  - artifact/tests.rs (480 LOC) - all tests
+- New size: 671 LOC main module (58% reduction, 171 LOC under 500 LOC limit)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/entities/artifact/{mod.rs,types.rs,tests.rs}`
+- `cargo check`
+
+**Result:** Success - Compilation passes, all files now under 500 LOC limit
+
+---
+
 ### 2026-01-29 02:19:02 - Split DiffViewer.tsx
 
 **What:**
