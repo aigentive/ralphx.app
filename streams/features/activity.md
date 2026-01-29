@@ -4,6 +4,41 @@
 
 ---
 
+### 2026-01-30 05:45:00 - Phase 27 Task 3: Unify message queues in chatStore
+**What:**
+- Removed `executionQueuedMessages` state from ChatState - now uses unified `queuedMessages` with context-aware keys
+- Removed `queueExecutionMessage` and `deleteExecutionQueuedMessage` actions
+- Removed `selectExecutionQueuedMessages` selector
+- Updated `queueMessage` to use context-aware keys (e.g., "task_execution:id", "review:id")
+- Updated all components to use unified queue:
+  - TaskChatPanel: Uses `contextKey` from `useTaskChat` hook
+  - ChatPanel: Computes context-aware key for execution mode
+  - IntegratedChatPanel: Computes context-aware key for execution mode
+  - useChatPanelHandlers: Simplified to use single queue
+  - useIntegratedChatHandlers: Simplified to use single queue
+  - useAgentEvents: Updated `buildContextKey` to return "task_execution:id" for execution context
+- Updated all test files to use new API with context keys
+
+**Files:**
+- src/stores/chatStore.ts (removed execution queue, ~40 LOC)
+- src/components/tasks/TaskChatPanel.tsx (simplified queue logic)
+- src/components/Chat/ChatPanel.tsx (context-aware key computation)
+- src/components/Chat/IntegratedChatPanel.tsx (context-aware key computation)
+- src/hooks/useChatPanelHandlers.ts (simplified to single queue)
+- src/hooks/useIntegratedChatHandlers.ts (simplified to single queue)
+- src/hooks/useAgentEvents.ts (updated context key building)
+- src/stores/chatStore.test.ts (updated tests for new API)
+- src/components/tasks/TaskChatPanel.test.tsx (updated mocks)
+- src/components/Chat/ChatPanel.test.tsx (updated mocks)
+
+**Commands:**
+- `npm run lint` - passes (0 errors, 4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 04:30:00 - Phase 27 Task 2: Migrate TaskChatPanel to useTaskChat hook
 **What:**
 - Replaced `useChat` hook with new `useTaskChat` hook

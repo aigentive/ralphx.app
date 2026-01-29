@@ -23,7 +23,6 @@ interface UseChatPanelHandlersProps {
   activeConversationId: string | null;
   sendMessage: UseMutationResult<SendAgentMessageResult, Error, string, unknown>;
   queuedMessages: Array<{ id: string; content: string }>;
-  executionQueuedMessages: Array<{ id: string; content: string }>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -34,7 +33,6 @@ export function useChatPanelHandlers({
   activeConversationId,
   sendMessage,
   queuedMessages,
-  executionQueuedMessages,
   messagesEndRef,
 }: UseChatPanelHandlersProps) {
   const queryClient = useQueryClient();
@@ -43,8 +41,6 @@ export function useChatPanelHandlers({
     queueMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
-    queueExecutionMessage,
-    deleteExecutionQueuedMessage,
   } = chatStore;
 
   // Streaming tool calls - accumulated during agent execution
@@ -132,11 +128,8 @@ export function useChatPanelHandlers({
       const messageId = generateQueuedMessageId();
 
       // Add to local store immediately for optimistic UI (using the same ID)
-      if (isExecutionMode && context.selectedTaskId) {
-        queueExecutionMessage(context.selectedTaskId, content, messageId);
-      } else {
-        queueMessage(contextKey, content, messageId);
-      }
+      // contextKey now uses context-aware keys (e.g., "task_execution:id" for execution mode)
+      queueMessage(contextKey, content, messageId);
 
       try {
         // Queue via backend API with the same ID
@@ -147,7 +140,7 @@ export function useChatPanelHandlers({
         // User can delete and re-queue if needed
       }
     },
-    [isExecutionMode, context.selectedTaskId, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey, logError]
+    [queueMessage, getQueueContext, generateQueuedMessageId, contextKey, logError]
   );
 
   // Delete queued message handler - syncs with backend
@@ -156,12 +149,8 @@ export function useChatPanelHandlers({
     async (messageId: string) => {
       const { ctxType, ctxId } = getQueueContext();
 
-      // Delete from local store immediately (optimistic)
-      if (isExecutionMode && context.selectedTaskId) {
-        deleteExecutionQueuedMessage(context.selectedTaskId, messageId);
-      } else {
-        deleteQueuedMessage(contextKey, messageId);
-      }
+      // Delete from local store immediately (optimistic) - unified queue with context-aware keys
+      deleteQueuedMessage(contextKey, messageId);
 
       // Delete from backend using the same ID
       try {
@@ -171,7 +160,7 @@ export function useChatPanelHandlers({
         // Message already removed from local store, which is fine
       }
     },
-    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, contextKey, logError]
+    [deleteQueuedMessage, getQueueContext, contextKey, logError]
   );
 
   // Edit queued message handler - delete old and queue new
@@ -187,22 +176,14 @@ export function useChatPanelHandlers({
         logError("delete old queued message", error);
       }
 
-      // Delete from local store
-      if (isExecutionMode && context.selectedTaskId) {
-        deleteExecutionQueuedMessage(context.selectedTaskId, messageId);
-      } else {
-        deleteQueuedMessage(contextKey, messageId);
-      }
+      // Delete from local store - unified queue with context-aware keys
+      deleteQueuedMessage(contextKey, messageId);
 
       // Generate new ID and queue the edited content
       const newMessageId = generateQueuedMessageId();
 
-      // Add to local store first (optimistic)
-      if (isExecutionMode && context.selectedTaskId) {
-        queueExecutionMessage(context.selectedTaskId, newContent, newMessageId);
-      } else {
-        queueMessage(contextKey, newContent, newMessageId);
-      }
+      // Add to local store first (optimistic) - unified queue with context-aware keys
+      queueMessage(contextKey, newContent, newMessageId);
 
       // Queue to backend with same ID
       try {
@@ -212,16 +193,15 @@ export function useChatPanelHandlers({
         // Message is already in local store
       }
     },
-    [isExecutionMode, context.selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, contextKey, logError]
+    [deleteQueuedMessage, queueMessage, getQueueContext, generateQueuedMessageId, contextKey, logError]
   );
 
-  // Edit last queued message
+  // Edit last queued message - now using unified queue with context-aware keys
   const handleEditLastQueued = useCallback(() => {
-    const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
-    const lastMessage = messagesToUse[messagesToUse.length - 1];
+    const lastMessage = queuedMessages[queuedMessages.length - 1];
     if (!lastMessage) return;
     startEditingQueuedMessage(contextKey, lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, contextKey]);
+  }, [queuedMessages, startEditingQueuedMessage, contextKey]);
 
   // Subscribe to Tauri events for real-time updates (only on mount)
   // Using unified agent:* events (Phase 5-6 consolidation)
@@ -325,7 +305,7 @@ export function useChatPanelHandlers({
       unlisteners.push(runStartedUnlisten);
 
       // Listen for queue_sent - backend notifies when it sends a queued message
-      // This updates the optimistic UI for execution queued messages
+      // This updates the optimistic UI for queued messages
       // Since frontend and backend use the same ID, we can match exactly by ID
       const queueSentUnlisten = await listen<{
         message_id: string;
@@ -335,18 +315,17 @@ export function useChatPanelHandlers({
       }>("agent:queue_sent", (event) => {
         const { message_id, context_type, context_id } = event.payload;
 
-        // For task_execution context, remove from execution queue by exact ID
-        if (context_type === "task_execution") {
-          useChatStore.getState().deleteExecutionQueuedMessage(context_id, message_id);
-        } else {
-          // For other contexts, build context key and remove from queue
-          const eventContextKey = context_type === "ideation"
-            ? `session:${context_id}`
-            : context_type === "task"
-              ? `task:${context_id}`
-              : `project:${context_id}`;
-          useChatStore.getState().deleteQueuedMessage(eventContextKey, message_id);
-        }
+        // Build context key from event payload - unified queue with context-aware keys
+        const eventContextKey = context_type === "ideation"
+          ? `session:${context_id}`
+          : context_type === "task"
+            ? `task:${context_id}`
+            : context_type === "task_execution"
+              ? `task_execution:${context_id}`
+              : context_type === "review"
+                ? `review:${context_id}`
+                : `project:${context_id}`;
+        useChatStore.getState().deleteQueuedMessage(eventContextKey, message_id);
       });
       unlisteners.push(queueSentUnlisten);
     })();

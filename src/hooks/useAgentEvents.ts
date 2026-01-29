@@ -15,15 +15,16 @@ import { chatKeys } from "./useChat";
 
 /**
  * Build a context key string from context type and ID
- * This matches the getContextKey format in chatStore
+ * Uses context-aware keys for unified queue system
  */
 function buildContextKey(contextType: ContextType, contextId: string): string {
   switch (contextType) {
     case "ideation":
       return `session:${contextId}`;
     case "task":
-    case "task_execution":
       return `task:${contextId}`;
+    case "task_execution":
+      return `task_execution:${contextId}`;
     case "review":
       return `review:${contextId}`;
     case "project":
@@ -165,16 +166,10 @@ export function useAgentEvents(activeConversationId: string | null) {
       }>("agent:queue_sent", (event) => {
         const { message_id, context_type, context_id: eventContextId } = event.payload;
 
-        // Execution mode uses a separate queue (executionQueuedMessages keyed by taskId)
-        if (context_type === "task_execution") {
-          // Use direct store access for execution queue
-          useChatStore.getState().deleteExecutionQueuedMessage(eventContextId, message_id);
-        } else {
-          // Build context key from the event payload for regular chat queue
-          const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
-          // Remove from frontend optimistic queue by exact ID match
-          deleteQueuedMessage(eventContextKey, message_id);
-        }
+        // Build context key from the event payload - unified queue with context-aware keys
+        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+        // Remove from frontend optimistic queue by exact ID match
+        deleteQueuedMessage(eventContextKey, message_id);
       });
       unlisteners.push(queueSentUnlisten);
 

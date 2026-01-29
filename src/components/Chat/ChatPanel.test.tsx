@@ -76,10 +76,10 @@ vi.mock("@/stores/chatStore", () => ({
     }
     return mockStoreState;
   }),
-  selectQueuedMessages: vi.fn((state: typeof mockStoreState) => state.queuedMessages || []),
-  selectIsAgentRunning: vi.fn((state: typeof mockStoreState) => state.isAgentRunning || false),
+  selectQueuedMessages: vi.fn(() => () => []),
+  selectIsAgentRunning: vi.fn(() => () => false),
   selectActiveConversationId: vi.fn((state: typeof mockStoreState) => state.activeConversationId || null),
-  selectExecutionQueuedMessages: vi.fn(() => () => []),
+  getContextKey: vi.fn(() => "project:test"),
 }));
 
 import { useChat } from "@/hooks/useChat";

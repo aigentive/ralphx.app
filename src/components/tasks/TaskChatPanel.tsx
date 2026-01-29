@@ -10,7 +10,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { CHAT_TOOL_CALL, CHAT_RUN_COMPLETED } from "@/lib/events";
 import { useTaskChat, type TaskContextType } from "@/hooks/useTaskChat";
 import { chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectExecutionQueuedMessages } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning } from "@/stores/chatStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -209,8 +209,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     editQueuedMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
-    queueExecutionMessage,
-    deleteExecutionQueuedMessage,
   } = useChatStore();
 
   // Use the new useTaskChat hook - single hook call handles all context types
@@ -241,14 +239,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     return true;
   }, [contextType, taskStatus]);
 
-  // Memoize the selector to avoid creating new function references on each render
-  const executionQueuedMessagesSelector = useMemo(
-    () => selectExecutionQueuedMessages(taskId),
-    [taskId]
-  );
-  const executionQueuedMessages = useChatStore(executionQueuedMessagesSelector);
-
-  // Use context-aware selectors with contextKey from hook
+  // Use context-aware selectors with contextKey from hook (e.g., "task:id", "task_execution:id", "review:id")
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
@@ -285,27 +276,21 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     [sendMessage]
   );
 
-  // Queue message handler (when agent is running)
+  // Queue message handler (when agent is running) - uses unified queue with context-aware keys
   const handleQueue = useCallback(
     (content: string) => {
       if (!content.trim()) return;
-      // Use execution queue if in execution mode
-      if (isExecutionMode) {
-        queueExecutionMessage(taskId, content);
-      } else {
-        queueMessage(contextKey, content);
-      }
+      queueMessage(contextKey, content);
     },
-    [isExecutionMode, taskId, queueMessage, queueExecutionMessage, contextKey]
+    [queueMessage, contextKey]
   );
 
   // Edit last queued message
   const handleEditLastQueued = useCallback(() => {
-    const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
-    const lastMessage = messagesToUse[messagesToUse.length - 1];
+    const lastMessage = queuedMessages[queuedMessages.length - 1];
     if (!lastMessage) return;
     startEditingQueuedMessage(contextKey, lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, contextKey]);
+  }, [queuedMessages, startEditingQueuedMessage, contextKey]);
 
   // Subscribe to Tauri events for real-time updates (only on mount)
   useEffect(() => {
@@ -454,25 +439,16 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         <div className="border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
           {isLive ? (
             <>
-              {/* Queued Messages - use execution queue in execution mode */}
-              {(() => {
-                const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
-                const deleteHandler = isExecutionMode
-                  ? (id: string) => deleteExecutionQueuedMessage(taskId, id)
-                  : (id: string) => deleteQueuedMessage(contextKey, id);
-                // Edit handler always needs context key
-                const editHandler = (id: string, content: string) => editQueuedMessage(contextKey, id, content);
-
-                return messagesToDisplay.length > 0 && (
-                  <div className="p-3 pb-0">
-                    <QueuedMessageList
-                      messages={messagesToDisplay}
-                      onEdit={editHandler}
-                      onDelete={deleteHandler}
-                    />
-                  </div>
-                );
-              })()}
+              {/* Queued Messages - unified queue with context-aware keys */}
+              {queuedMessages.length > 0 && (
+                <div className="p-3 pb-0">
+                  <QueuedMessageList
+                    messages={queuedMessages}
+                    onEdit={(id, content) => editQueuedMessage(contextKey, id, content)}
+                    onDelete={(id) => deleteQueuedMessage(contextKey, id)}
+                  />
+                </div>
+              )}
 
               {/* Chat Input */}
               <div className="p-3">
@@ -481,7 +457,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
                   onQueue={handleQueue}
                   isAgentRunning={isExecutionMode || isAgentRunning}
                   isSending={isSending}
-                  hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+                  hasQueuedMessages={queuedMessages.length > 0}
                   onEditLastQueued={handleEditLastQueued}
                   placeholder={
                     isExecutionMode
@@ -490,7 +466,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
                         ? "Chat with the reviewer..."
                         : "Send a message..."
                   }
-                  showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+                  showHelperText={queuedMessages.length > 0}
                   autoFocus
                 />
               </div>
