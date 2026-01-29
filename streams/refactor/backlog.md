@@ -25,7 +25,7 @@ _No active P1 items. Completed items moved to archive._
 
 - [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale - now 84 LOC, already extracted to handlers/ directory)
 - [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
-- [ ] Split sqlite_task_repo.rs (1372 LOC) - extract query builders and mapping functions - src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs:1
+- [x] Split sqlite_task_repo.rs (1372 LOC → 533 LOC max) - extracted to sqlite_task_repo/{mod.rs (533), helpers.rs (58), queries.rs (49), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
 - [ ] Split migrations/mod.rs (1304 LOC) - extract migration functions to migrations_v*.rs - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
 - [ ] Split chat_service/mod.rs (1263 LOC) - extract message queue and context routing - src-tauri/src/application/chat_service/mod.rs:1
 
