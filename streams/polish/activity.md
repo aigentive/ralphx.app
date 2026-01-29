@@ -1148,3 +1148,18 @@
 **Result:** Success (compiles without errors, pre-existing test errors unrelated to this change)
 
 ---
+
+### 2026-01-29 21:45:00 - Remove redundant clone in step creation
+**What:**
+- File: src-tauri/src/http_server/handlers/steps.rs:303-315
+- Eliminated duplicate `StepResponse::from()` call and unnecessary clone
+- Created response once from `step`, then used reference in event emission
+- Changed `StepResponse::from(step.clone())` + later `StepResponse::from(step)` to single `StepResponse::from(step)` with `&response` in event
+
+**Commands:**
+- `cargo check --manifest-path src-tauri/Cargo.toml` (verified compilation)
+- `cargo clippy` (no warnings in steps.rs)
+
+**Result:** Success (eliminated redundant clone and duplicate conversion)
+
+---
