@@ -5,6 +5,18 @@
 
 ---
 
+## Archived 2026-01-29 (Fifteenth Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split migrations.rs (5694 LOC → 1304 LOC) - extracted to migrations/tests.rs (4390 LOC), migrations/mod.rs (1304 LOC) with all 25 migrations - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
+
+- [x] [P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42
+
+---
+
 ## Archived 2026-01-29 (Fourteenth Batch)
 
 ### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
