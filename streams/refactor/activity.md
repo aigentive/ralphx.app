@@ -484,3 +484,21 @@ This P1 item requires a more careful, multi-step approach:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 
 **Result:** Success - All linters passed, file now under 2000 LOC, types and helpers extracted to separate modules
+
+### 2026-01-29 20:31:15 - Split transition_handler.rs
+
+**What:**
+- Original file: src-tauri/src/domain/state_machine/transition_handler.rs (1471 LOC)
+- Extracted to:
+  - transition_handler/mod.rs (160 LOC) - TransitionResult, TransitionHandler, handle_transition, on_exit, check_auto_transition
+  - transition_handler/side_effects.rs (250 LOC) - on_enter state entry side effects (QA, review, agent spawning)
+  - transition_handler/tests.rs (1071 LOC) - all 53 unit tests
+- New size: 250 LOC max (83% reduction in main implementation)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/state_machine/transition_handler/*.rs`
+- `cargo clippy --lib --manifest-path=src-tauri/Cargo.toml -- -D warnings`
+
+**Result:** Success - No transition_handler-specific clippy warnings, all modules now under 500 LOC limit
+
+---
