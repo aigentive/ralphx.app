@@ -24,6 +24,7 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
+    TaskScheduler,
 };
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
@@ -203,6 +204,10 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     chat_service: Arc<dyn ChatService>,
     execution_state: Arc<ExecutionState>,
     _app_handle: Option<AppHandle<R>>,
+    /// Task scheduler for auto-scheduling Ready tasks when slots are available.
+    /// Passed to TaskServices so TransitionHandler can trigger scheduling on
+    /// state exits and Ready state entry.
+    task_scheduler: Option<Arc<dyn TaskScheduler>>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -263,7 +268,17 @@ impl<R: Runtime> TaskTransitionService<R> {
             chat_service,
             execution_state,
             _app_handle: app_handle,
+            task_scheduler: None,
         }
+    }
+
+    /// Set the task scheduler for auto-scheduling Ready tasks (builder pattern).
+    ///
+    /// When set, the scheduler is passed to TaskServices so that TransitionHandler
+    /// can trigger scheduling when tasks exit agent-active states or enter Ready state.
+    pub fn with_task_scheduler(mut self, scheduler: Arc<dyn TaskScheduler>) -> Self {
+        self.task_scheduler = Some(scheduler);
+        self
     }
 
     /// Transition a task to a new status, triggering appropriate entry actions.
@@ -394,6 +409,11 @@ impl<R: Runtime> TaskTransitionService<R> {
             services = services.try_with_app_handle(handle.clone());
         }
 
+        // Pass task scheduler for auto-scheduling Ready tasks
+        if let Some(ref scheduler) = self.task_scheduler {
+            services = services.with_task_scheduler(Arc::clone(scheduler));
+        }
+
         // Create TaskContext
         let context = TaskContext::new(
             task_id.as_str(),
@@ -473,6 +493,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Pass app_handle for event emission (uses try_with_app_handle for generic R)
         if let Some(ref handle) = self._app_handle {
             services = services.try_with_app_handle(handle.clone());
+        }
+
+        // Pass task scheduler for auto-scheduling Ready tasks
+        if let Some(ref scheduler) = self.task_scheduler {
+            services = services.with_task_scheduler(Arc::clone(scheduler));
         }
 
         // Create TaskContext

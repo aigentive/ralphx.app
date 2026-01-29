@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 00:15:00 - P0 Fix: TaskScheduler Production Implementation and Wiring
+**What:**
+- Created `TaskSchedulerService` implementing the `TaskScheduler` trait
+- Added field and builder method `with_task_scheduler()` to `TaskTransitionService`
+- Updated `TaskServices` wiring in `execute_entry_actions` and `execute_exit_actions` to pass scheduler
+- Wired scheduler into `lib.rs` startup code, passing it to both `TaskTransitionService` and `StartupJobRunner`
+
+**Files:**
+- src-tauri/src/application/task_scheduler_service.rs (new)
+- src-tauri/src/application/task_transition_service.rs (modified)
+- src-tauri/src/application/mod.rs (modified)
+- src-tauri/src/lib.rs (modified)
+
+**Commands:**
+- `cargo check --lib` - passes (only warning from other stream's work)
+- `cargo build --lib` - passes
+
+**Result:** Success - Both P0 items fixed
+
+---
+
 ### 2026-01-29 23:45:00 - Phase 26 Task 4: Extend StartupJobRunner to schedule Ready tasks
 **What:**
 - Added optional `task_scheduler: Option<Arc<dyn TaskScheduler>>` field to StartupJobRunner
