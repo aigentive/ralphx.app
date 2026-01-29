@@ -1240,3 +1240,18 @@
 **Result:** Success
 
 ---
+
+---
+### 2026-01-29 23:10:15 - Remove unused prepared variables
+**What:**
+- File: src/components/ExtensibilityView.ResearchPanel.tsx:38
+- Removed unused `brief` and `depth` variables marked with @ts-expect-error
+- These were "prepared for API integration" but never actually used (dead code)
+- Cleaned up corresponding type imports (ResearchDepth, ResearchBrief)
+- Simplified handleLaunch callback, removed unused dependencies
+
+**Commands:**
+- `npm run lint` (passed - errors fixed)
+- `npm run typecheck` (passed)
+
+**Result:** Success

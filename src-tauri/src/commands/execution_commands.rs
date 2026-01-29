@@ -6,8 +6,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-use crate::application::{AppState, TaskTransitionService};
+use crate::application::{AppState, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::InternalStatus;
+use crate::domain::state_machine::services::TaskScheduler;
 
 /// Statuses where an agent is actively running.
 /// Tasks in these states need to be cancelled when stop is called,
@@ -212,6 +213,7 @@ pub async fn pause_execution(
 }
 
 /// Resume execution (allows picking up new tasks again)
+/// After resuming, triggers the scheduler to pick up waiting Ready tasks.
 #[tauri::command]
 pub async fn resume_execution(
     execution_state: State<'_, Arc<ExecutionState>>,
@@ -223,6 +225,21 @@ pub async fn resume_execution(
     if let Some(ref handle) = app_state.app_handle {
         execution_state.emit_status_changed(handle, "resumed");
     }
+
+    // Trigger scheduler to pick up waiting Ready tasks
+    let scheduler = TaskSchedulerService::new(
+        Arc::clone(&execution_state),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        app_state.app_handle.clone(),
+    );
+    scheduler.try_schedule_ready_tasks().await;
 
     // Get current status
     let status = get_execution_status(execution_state, app_state).await?;
@@ -298,6 +315,48 @@ pub async fn stop_execution(
     // This reflects the final state after all tasks have been stopped
     if let Some(ref handle) = app_state.app_handle {
         execution_state.emit_status_changed(handle, "stopped");
+    }
+
+    // Get current status
+    let status = get_execution_status(execution_state, app_state).await?;
+
+    Ok(ExecutionCommandResponse {
+        success: true,
+        status,
+    })
+}
+
+/// Set maximum concurrent tasks
+/// When capacity increases, triggers the scheduler to pick up waiting Ready tasks.
+#[tauri::command]
+pub async fn set_max_concurrent(
+    max: u32,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app_state: State<'_, AppState>,
+) -> Result<ExecutionCommandResponse, String> {
+    let old_max = execution_state.max_concurrent();
+    execution_state.set_max_concurrent(max);
+
+    // Emit status_changed event for real-time UI update
+    if let Some(ref handle) = app_state.app_handle {
+        execution_state.emit_status_changed(handle, "max_concurrent_changed");
+    }
+
+    // If capacity increased, trigger scheduler to pick up waiting Ready tasks
+    if max > old_max {
+        let scheduler = TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            app_state.app_handle.clone(),
+        );
+        scheduler.try_schedule_ready_tasks().await;
     }
 
     // Get current status
@@ -946,4 +1005,53 @@ mod tests {
     // - test_spawn_blocked_at_max_concurrent
     // - test_spawn_increments_running_count
     // These tests verify the ExecutionState integration with the spawner.
+
+    // ========================================
+    // set_max_concurrent Tests
+    // ========================================
+
+    #[test]
+    fn test_set_max_concurrent_updates_value() {
+        let state = ExecutionState::new();
+        assert_eq!(state.max_concurrent(), 2); // default
+
+        state.set_max_concurrent(5);
+        assert_eq!(state.max_concurrent(), 5);
+
+        state.set_max_concurrent(1);
+        assert_eq!(state.max_concurrent(), 1);
+    }
+
+    #[test]
+    fn test_can_start_task_respects_max_concurrent() {
+        let state = ExecutionState::with_max_concurrent(2);
+
+        // Initially can start
+        assert!(state.can_start_task());
+
+        // Add one running
+        state.increment_running();
+        assert!(state.can_start_task());
+
+        // At max
+        state.increment_running();
+        assert!(!state.can_start_task());
+
+        // Increase max - now can start again
+        state.set_max_concurrent(3);
+        assert!(state.can_start_task());
+    }
+
+    #[tokio::test]
+    async fn test_resume_clears_pause_and_allows_tasks() {
+        let state = ExecutionState::with_max_concurrent(2);
+
+        // Pause
+        state.pause();
+        assert!(!state.can_start_task());
+
+        // Resume
+        state.resume();
+        assert!(state.can_start_task());
+    }
 }
