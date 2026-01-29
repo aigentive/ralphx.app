@@ -282,7 +282,7 @@ impl TaskRepository for MemoryTaskRepository {
     async fn list_paginated(
         &self,
         project_id: &ProjectId,
-        status: Option<InternalStatus>,
+        statuses: Option<Vec<InternalStatus>>,
         offset: u32,
         limit: u32,
         include_archived: bool,
@@ -303,9 +303,9 @@ impl TaskRepository for MemoryTaskRepository {
                     return false;
                 }
 
-                // Match status if provided
-                if let Some(s) = status {
-                    if t.internal_status != s {
+                // Match status if provided (any of the statuses)
+                if let Some(ref status_vec) = statuses {
+                    if !status_vec.contains(&t.internal_status) {
                         return false;
                     }
                 }

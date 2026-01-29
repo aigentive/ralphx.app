@@ -17,6 +17,20 @@ import { getActiveWorkflowColumns, type WorkflowColumnResponse } from "@/lib/api
 import { workflowKeys } from "@/hooks/useWorkflows";
 import type { Task, InternalStatus, TaskListResponse } from "@/types/task";
 
+/**
+ * Get all statuses for a column from its groups, or fallback to mapsTo
+ */
+function getColumnStatuses(col: WorkflowColumnResponse): InternalStatus[] {
+  if (col.groups && col.groups.length > 0) {
+    const allStatuses = new Set<InternalStatus>();
+    col.groups.forEach((group) => {
+      group.statuses.forEach((status) => allStatuses.add(status));
+    });
+    return Array.from(allStatuses);
+  }
+  return [col.mapsTo];
+}
+
 export interface UseTaskBoardResult {
   columns: WorkflowColumnResponse[];
   onDragEnd: (event: DragEndEvent) => void;
@@ -53,7 +67,7 @@ export function useTaskBoard(
           queryClient.cancelQueries({
             queryKey: infiniteTaskKeys.list({
               projectId,
-              status: col.mapsTo,
+              statuses: getColumnStatuses(col),
               includeArchived: showArchived,
             }),
           })
@@ -65,7 +79,7 @@ export function useTaskBoard(
       columns.forEach((col) => {
         const key = infiniteTaskKeys.list({
           projectId,
-          status: col.mapsTo,
+          statuses: getColumnStatuses(col),
           includeArchived: showArchived,
         });
         snapshots.set(col.id, queryClient.getQueryData(key));
@@ -78,7 +92,7 @@ export function useTaskBoard(
       for (const col of columns) {
         const key = infiniteTaskKeys.list({
           projectId,
-          status: col.mapsTo,
+          statuses: getColumnStatuses(col),
           includeArchived: showArchived,
         });
         const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
@@ -100,7 +114,7 @@ export function useTaskBoard(
       // Remove from source column's cache
       const fromKey = infiniteTaskKeys.list({
         projectId,
-        status: fromColumn.mapsTo,
+        statuses: getColumnStatuses(fromColumn),
         includeArchived: showArchived,
       });
       queryClient.setQueryData<InfiniteData<TaskListResponse>>(
@@ -122,7 +136,7 @@ export function useTaskBoard(
       if (toColumn && movedTask) {
         const toKey = infiniteTaskKeys.list({
           projectId,
-          status: toColumn.mapsTo,
+          statuses: getColumnStatuses(toColumn),
           includeArchived: showArchived,
         });
         queryClient.setQueryData<InfiniteData<TaskListResponse>>(
@@ -158,7 +172,7 @@ export function useTaskBoard(
         if (snapshot) {
           const key = infiniteTaskKeys.list({
             projectId,
-            status: col.mapsTo,
+            statuses: getColumnStatuses(col),
             includeArchived: showArchived,
           });
           queryClient.setQueryData(key, snapshot);
@@ -172,7 +186,7 @@ export function useTaskBoard(
         queryClient.invalidateQueries({
           queryKey: infiniteTaskKeys.list({
             projectId,
-            status: col.mapsTo,
+            statuses: getColumnStatuses(col),
             includeArchived: showArchived,
           }),
         });
@@ -196,7 +210,7 @@ export function useTaskBoard(
       for (const col of columns) {
         const key = infiniteTaskKeys.list({
           projectId,
-          status: col.mapsTo,
+          statuses: getColumnStatuses(col),
           includeArchived: showArchived,
         });
         const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);

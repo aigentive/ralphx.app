@@ -351,7 +351,7 @@ export const api = {
      * List all tasks for a project with optional pagination and filtering
      * @param params Parameters for listing tasks
      * @param params.projectId The project ID
-     * @param params.status Optional status filter
+     * @param params.statuses Optional status filter (array of statuses, matches any)
      * @param params.offset Optional pagination offset (default 0)
      * @param params.limit Optional pagination limit (default 20)
      * @param params.includeArchived Optional flag to include archived tasks (default false)
@@ -359,7 +359,7 @@ export const api = {
      */
     list: (params: {
       projectId: string;
-      status?: string;
+      statuses?: string[];
       offset?: number;
       limit?: number;
       includeArchived?: boolean;

@@ -379,27 +379,36 @@ impl TaskRepository for SqliteTaskRepository {
     async fn list_paginated(
         &self,
         project_id: &ProjectId,
-        status: Option<InternalStatus>,
+        statuses: Option<Vec<InternalStatus>>,
         offset: u32,
         limit: u32,
         include_archived: bool,
     ) -> AppResult<Vec<Task>> {
         let conn = self.conn.lock().await;
 
-        let query = query_builder::build_paginated_query(status.is_some(), include_archived);
+        let status_count = statuses.as_ref().map_or(0, |s| s.len());
+        let query = query_builder::build_paginated_query(status_count, include_archived);
 
         let mut stmt = conn
             .prepare(&query)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let tasks = if let Some(s) = status {
-            stmt.query_map(
-                rusqlite::params![project_id.as_str(), s.as_str(), limit as i64, offset as i64],
-                Task::from_row,
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?
+        let tasks = if let Some(ref status_vec) = statuses {
+            // Build params: project_id, status1, status2, ..., limit, offset
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            params.push(Box::new(project_id.as_str().to_string()));
+            for s in status_vec {
+                params.push(Box::new(s.as_str().to_string()));
+            }
+            params.push(Box::new(limit as i64));
+            params.push(Box::new(offset as i64));
+
+            let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+            stmt.query_map(params_ref.as_slice(), Task::from_row)
+                .map_err(|e| AppError::Database(e.to_string()))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| AppError::Database(e.to_string()))?
         } else {
             stmt.query_map(
                 rusqlite::params![project_id.as_str(), limit as i64, offset as i64],

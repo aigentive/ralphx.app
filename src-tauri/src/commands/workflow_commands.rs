@@ -75,6 +75,23 @@ pub struct UpdateWorkflowInput {
     pub reviewer_profile: Option<String>,
 }
 
+/// Response wrapper for state group within a column
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateGroupResponse {
+    pub id: String,
+    pub label: String,
+    pub statuses: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_drag_from: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_drop_to: Option<bool>,
+}
+
 /// Response wrapper for workflow column
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +109,8 @@ pub struct WorkflowColumnResponse {
     pub auto_advance: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groups: Option<Vec<StateGroupResponse>>,
 }
 
 impl From<&WorkflowColumn> for WorkflowColumnResponse {
@@ -100,6 +119,20 @@ impl From<&WorkflowColumn> for WorkflowColumnResponse {
             Some(b) => (b.skip_review, b.auto_advance, b.agent_profile.clone()),
             None => (None, None, None),
         };
+
+        let groups = col.groups.as_ref().map(|gs| {
+            gs.iter()
+                .map(|g| StateGroupResponse {
+                    id: g.id.clone(),
+                    label: g.label.clone(),
+                    statuses: g.statuses.iter().map(|s| s.to_string()).collect(),
+                    icon: g.icon.clone(),
+                    accent_color: g.accent_color.clone(),
+                    can_drag_from: g.can_drag_from,
+                    can_drop_to: g.can_drop_to,
+                })
+                .collect()
+        });
 
         Self {
             id: col.id.clone(),
@@ -110,6 +143,7 @@ impl From<&WorkflowColumn> for WorkflowColumnResponse {
             skip_review,
             auto_advance,
             agent_profile,
+            groups,
         }
     }
 }

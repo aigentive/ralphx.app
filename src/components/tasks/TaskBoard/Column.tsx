@@ -112,8 +112,20 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
 
   // Each column manages its own infinite query
   // Note: Backend only supports single status filter. For multi-state columns,
-  // we fetch by the primary mapsTo status and group client-side.
-  // Future: Add backend support for multi-status queries if needed.
+  // Gather all statuses from groups if they exist, otherwise use mapsTo
+  const columnStatuses = useMemo(() => {
+    if (groups && groups.length > 0) {
+      // Collect all unique statuses from all groups
+      const allStatuses = new Set<InternalStatus>();
+      groups.forEach((group) => {
+        group.statuses.forEach((status) => allStatuses.add(status));
+      });
+      return Array.from(allStatuses);
+    }
+    // No groups - use the primary mapsTo status
+    return [column.mapsTo];
+  }, [groups, column.mapsTo]);
+
   const {
     data,
     fetchNextPage,
@@ -122,7 +134,7 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
     isLoading,
   } = useInfiniteTasksQuery({
     projectId,
-    status: column.mapsTo,
+    statuses: columnStatuses,
     includeArchived: showArchived,
   });
 
