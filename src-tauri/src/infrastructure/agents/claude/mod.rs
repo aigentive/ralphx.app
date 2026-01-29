@@ -69,11 +69,15 @@ pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path, agent_type: Op
 
 /// Add prompt-related args to a CLI command
 pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_session: Option<&str>) {
+    // Add resume if continuing an existing session
     if let Some(session_id) = resume_session {
-        // Resume existing session - Claude remembers context
         cmd.args(["--resume", session_id]);
-    } else if let Some(agent_name) = agent {
-        // New session with specific agent
+    }
+
+    // CRITICAL: Always add agent if provided, even when resuming
+    // This ensures disallowedTools and other agent restrictions are enforced
+    // Without this, resumed sessions bypass tool restrictions
+    if let Some(agent_name) = agent {
         cmd.args(["--agent", agent_name]);
     }
 
