@@ -149,6 +149,31 @@ export const ideationApi = {
     delete: async (sessionId: string): Promise<void> => {
       await invoke("delete_ideation_session", { id: sessionId });
     },
+
+    /**
+     * Update a session's title
+     * @param sessionId The session ID
+     * @param title The new title (or null to clear)
+     * @returns The updated session
+     */
+    updateTitle: async (sessionId: string, title: string | null): Promise<IdeationSessionResponse> => {
+      const raw = await typedInvoke(
+        "update_ideation_session_title",
+        { id: sessionId, title },
+        IdeationSessionResponseSchema
+      );
+      return transformSession(raw);
+    },
+
+    /**
+     * Spawn a session-namer agent to auto-generate a title from the first message
+     * Runs in background and returns immediately (fire-and-forget)
+     * @param sessionId The session ID
+     * @param firstMessage The user's first message in the session
+     */
+    spawnSessionNamer: async (sessionId: string, firstMessage: string): Promise<void> => {
+      await invoke("spawn_session_namer", { sessionId, firstMessage });
+    },
   },
 
   /**
