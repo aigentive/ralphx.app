@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use tracing::error;
 
 use super::*;
 use crate::domain::entities::{Task, TaskId};
@@ -19,7 +20,10 @@ pub async fn update_task(
         .task_repo
         .get_by_id(&task_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get task {}: {}", task_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Update fields
@@ -39,7 +43,10 @@ pub async fn update_task(
         .task_repo
         .update(&task)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to update task {}: {}", task_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(task_to_response(&task)))
 }
@@ -56,7 +63,10 @@ pub async fn add_task_note(
         .task_repo
         .get_by_id(&task_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get task {}: {}", task_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Add note to description (append with newline separator)
@@ -72,7 +82,10 @@ pub async fn add_task_note(
         .task_repo
         .update(&task)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to update task {}: {}", task_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(task_to_response(&task)))
 }
@@ -88,7 +101,10 @@ pub async fn get_task_details(
         .task_repo
         .get_by_id(&task_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get task {}: {}", task_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(task_to_response(&task)))

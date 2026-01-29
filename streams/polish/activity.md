@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-29 03:43:29 - Add error logging to task handlers
+**What:**
+- File: src-tauri/src/http_server/handlers/tasks.rs
+- Change: Added tracing::error! logging to all .map_err handlers (5 locations)
+- Replaced `.map_err(|_| StatusCode::...)` with proper error logging pattern from steps.rs
+- Affected functions: update_task (2 locations), add_task_note (2 locations), get_task_details (1 location)
+
+**Commands:**
+- `cargo check --lib` (tasks.rs changes passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 21:28:15 - Add error logging to artifact handlers
 **What:**
 - File: src-tauri/src/http_server/handlers/artifacts.rs
