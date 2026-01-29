@@ -24,8 +24,8 @@
 
 ## From Phase 26 Verification (2026-01-29)
 
-- [ ] [Backend] Missing production implementation: TaskScheduler trait has no concrete implementation in application layer - src-tauri/src/application/
-- [ ] [Backend] Service not injected: TaskScheduler missing from AppState builder - src-tauri/src/application/app_state.rs
+- [x] [Backend] Missing production implementation: TaskScheduler trait has no concrete implementation in application layer - src-tauri/src/application/
+- [x] [Backend] Service not injected: TaskScheduler missing from AppState builder - src-tauri/src/application/app_state.rs
 
 ---
 

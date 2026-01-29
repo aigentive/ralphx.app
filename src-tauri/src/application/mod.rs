@@ -13,6 +13,7 @@ pub mod review_service;
 pub mod startup_jobs;
 pub mod supervisor_service;
 pub mod task_context_service;
+pub mod task_scheduler_service;
 pub mod task_transition_service;
 
 // Re-export commonly used items
@@ -31,6 +32,7 @@ pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorSta
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
 pub use startup_jobs::StartupJobRunner;
 pub use task_context_service::TaskContextService;
+pub use task_scheduler_service::TaskSchedulerService;
 pub use task_transition_service::TaskTransitionService;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)

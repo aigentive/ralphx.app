@@ -39,7 +39,7 @@ use std::time::Duration;
 use tauri::Manager;
 use tracing::{info, warn};
 
-use application::{StartupJobRunner, TaskTransitionService};
+use application::{StartupJobRunner, TaskSchedulerService, TaskTransitionService};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -140,6 +140,21 @@ pub fn run() {
 
                 info!("Starting startup job runner...");
 
+                // Create TaskSchedulerService for auto-scheduling Ready tasks
+                let task_scheduler: Arc<dyn domain::state_machine::services::TaskScheduler> =
+                    Arc::new(TaskSchedulerService::<tauri::Wry>::new(
+                        Arc::clone(&startup_execution_state),
+                        startup_project_repo.clone(),
+                        startup_task_repo.clone(),
+                        startup_chat_message_repo.clone(),
+                        startup_conversation_repo.clone(),
+                        startup_agent_run_repo.clone(),
+                        startup_ideation_session_repo.clone(),
+                        startup_message_queue.clone(),
+                        startup_running_agent_registry.clone(),
+                        None, // No app_handle in background task
+                    ));
+
                 // Create TaskTransitionService for startup resumption
                 let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
                     startup_task_repo.clone(),
@@ -152,14 +167,16 @@ pub fn run() {
                     startup_running_agent_registry,
                     Arc::clone(&startup_execution_state),
                     None, // No app_handle in background task
-                );
+                )
+                .with_task_scheduler(Arc::clone(&task_scheduler));
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
                     startup_project_repo,
                     transition_service,
-                    startup_execution_state,
-                );
+                    Arc::clone(&startup_execution_state),
+                )
+                .with_task_scheduler(task_scheduler);
 
                 runner.run().await;
             });
