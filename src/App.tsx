@@ -49,7 +49,6 @@ import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { api, getGitBranches } from "@/lib/tauri";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -261,7 +260,7 @@ function AppContent() {
     }
   };
 
-  const handleQuestionSubmit = async (_response: AskUserQuestionResponse) => {
+  const handleQuestionSubmit = async () => {
     setIsQuestionLoading(true);
     try {
       clearActiveQuestion();

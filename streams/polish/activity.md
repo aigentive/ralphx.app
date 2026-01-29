@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-29 23:15:00 - Remove unused parameter in handleQuestionSubmit
+**What:**
+- File: src/App.tsx:264
+- Removed unused `_response: AskUserQuestionResponse` parameter from handleQuestionSubmit
+- Removed unused import: `import type { AskUserQuestionResponse } from "@/types/ask-user-question"`
+- Function signature simplified from `async (_response: AskUserQuestionResponse) => {` to `async () => {`
+- Parameter was never used in function body, only the clearActiveQuestion() call
+
+**Commands:**
+- `npm run lint -- src/App.tsx` (passed - 0 errors, 4 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 22:20:00 - Reduce redundant clones in permissions.rs
 **What:**
 - File: src-tauri/src/http_server/handlers/permissions.rs:22-40
