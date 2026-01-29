@@ -747,3 +747,31 @@ Marking item as blocked. Requires investigation of external processes before ret
 
 **Result:** Success - All linters passed, all type checks passed, file now under 500 LOC limit (480 LOC)
 
+---
+
+### 2026-01-29 02:05:35 - Investigation: chat_service/mod.rs architectural constraints
+
+**What:**
+- Attempted further extraction of chat_service/mod.rs (currently 1081 LOC, target 500 LOC)
+- Investigated extracting send_message method implementation to separate file
+- Discovered architectural constraint: Rust trait implementations cannot be split across files
+- Attempted extraction created conflicting trait implementations compilation error
+
+**Issue:**
+- Remaining 1081 LOC is primarily:
+  - ChatService trait implementation (lines 293-1077, ~784 LOC)
+  - Most of that is send_message method with inline background processing (lines 294-881, ~587 LOC)
+- Cannot move trait method to separate impl block in another file (Rust orphan rules)
+- Previous extractions already moved: context (241 LOC), queue (246 LOC), helpers, streaming, types
+
+**Possible approaches (not attempted):**
+1. Extract background closure body (lines 426-873) to helper function in chat_service_queue.rs (~447 LOC)
+2. Extract queue processing loop (lines 605-825) to helper function (~220 LOC)
+3. Architectural refactor: break up ClaudeChatService into smaller services
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service/mod.rs` → 1081
+- `cargo check` (failed with conflicting trait impl when attempted split)
+
+**Result:** Blocked - Requires helper function extraction or architectural refactoring. File exceeds limit but trait constraints prevent simple file split. Deferring to next iteration.
+
