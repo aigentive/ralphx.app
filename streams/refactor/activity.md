@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-29 01:47:42 - Split App.tsx
+
+**What:**
+- Original file: src/App.tsx (855 LOC)
+- Extracted to:
+  - Navigation.tsx (88 LOC) - view navigation bar with icons and shortcuts
+  - useAppKeyboardShortcuts.ts (102 LOC) - keyboard shortcuts for view switching (Cmd+1-5) and chat toggle (Cmd+K)
+- New size: 721 LOC (16% reduction)
+
+**Commands:**
+- `wc -l src/App.tsx src/components/layout/Navigation.tsx src/hooks/useAppKeyboardShortcuts.ts`
+- `npm run lint && npm run typecheck`
+
+**Result:** Success - All linters pass, file reduced by 16% (still 721 LOC, further extraction may be needed)
+
+---
+
 ### 2026-01-29 03:05:55 - Split migrations/mod.rs
 
 **What:**

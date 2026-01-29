@@ -462,3 +462,32 @@ All components properly wired and integrated:
 - Database: seed_task_id column exists in migrations ✓
 
 **Result:** No gaps found. Phase 25 implementation is complete and properly wired with no P0 items to report.
+
+---
+
+### 2026-01-29 01:45:54 - Phase 25 Re-verification
+**Phases Checked:** 25
+
+**Checks Run:**
+- WIRING: 9 components re-verified (all entry points, dialog, hooks, overlays)
+- API: seedTaskId data flow verified end-to-end (TypeScript → Rust → Database)
+- STATE: N/A (no new statuses)
+- EVENTS: N/A (no new events)
+
+**Gaps Found:** 0
+
+**Verification Summary:**
+All Phase 25 features properly wired with no orphaned implementations:
+- ✓ TaskCardContextMenu "Start Ideation" menu item - rendered and invoked
+- ✓ TaskDetailOverlay "Start Ideation" button - rendered and invoked
+- ✓ StartSessionPanel "Seed from Draft Task" link - rendered and invoked
+- ✓ TaskPickerDialog component - imported AND rendered in JSX
+- ✓ useFileDrop hook - defined AND actively used in IdeationView
+- ✓ DropZoneOverlay component - imported AND rendered in IdeationView
+- ✓ ProposalsEmptyState drop hint - visible in empty state
+- ✓ Backend seed_task_id - accepted, stored in database
+- ✓ API integration - seedTaskId passed through all layers
+
+**No disabled flags, no import-only components, no unused hooks detected.**
+
+**Result:** Verification complete. No P0 items to report.
