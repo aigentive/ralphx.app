@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-01-29 18:30:00 - Phase 29 Task 1: Wire execution_state to unified chat commands
+**What:**
+- Modified create_chat_service() to accept execution_state parameter
+- Added .with_execution_state(Arc::clone(execution_state)) call to builder
+- Updated all 11 unified chat commands to extract execution_state from Tauri state:
+  - send_agent_message
+  - queue_agent_message
+  - get_queued_agent_messages
+  - delete_queued_agent_message
+  - list_agent_conversations
+  - get_agent_conversation
+  - get_agent_run_status_unified
+  - is_chat_service_available
+  - stop_agent
+  - is_agent_running
+- This enables TaskExecution/Review chats to perform proper state transitions
+
+**Files:**
+- src-tauri/src/commands/unified_chat_commands.rs (added imports, modified function signatures)
+
+**Commands:**
+- `cargo check` - passes
+- `cargo clippy --lib -- -D warnings` - 0 warnings
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 17:45:00 - Phase 28 Complete: IDA Session Auto-Naming
 **What:**
 - Verified P0 item was false positive (useIdeationEvents IS called in IdeationView.tsx:93)

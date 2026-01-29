@@ -78,7 +78,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: fix(chat): wire execution_state to unified chat commands"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

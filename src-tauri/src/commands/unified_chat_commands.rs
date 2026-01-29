@@ -12,10 +12,13 @@
 // - agent:error - Agent failed
 // - agent:queue_sent - Queued message sent
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
+use crate::commands::ExecutionState;
 use crate::domain::entities::{ChatContextType, ChatConversation};
 use crate::domain::services::QueuedMessage;
 
@@ -153,6 +156,7 @@ pub struct AgentRunStatusResponse {
 fn create_chat_service(
     state: &AppState,
     app_handle: tauri::AppHandle,
+    execution_state: &Arc<ExecutionState>,
 ) -> ClaudeChatService<tauri::Wry> {
     ClaudeChatService::new(
         state.chat_message_repo.clone(),
@@ -165,6 +169,7 @@ fn create_chat_service(
         state.running_agent_registry.clone(),
     )
     .with_app_handle(app_handle)
+    .with_execution_state(Arc::clone(execution_state))
 }
 
 /// Parse context type string to enum
@@ -194,11 +199,12 @@ fn parse_context_type(context_type: &str) -> Result<ChatContextType, String> {
 pub async fn send_agent_message(
     input: SendAgentMessageInput,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<SendAgentMessageResponse, String> {
     let context_type = parse_context_type(&input.context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     if !service.is_available().await {
         return Err(
@@ -225,11 +231,12 @@ pub async fn send_agent_message(
 pub async fn queue_agent_message(
     input: QueueAgentMessageInput,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<QueuedMessageResponse, String> {
     let context_type = parse_context_type(&input.context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .queue_message(
@@ -249,11 +256,12 @@ pub async fn get_queued_agent_messages(
     context_type: String,
     context_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Vec<QueuedMessageResponse>, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .get_queued_messages(context_type, &context_id)
@@ -269,11 +277,12 @@ pub async fn delete_queued_agent_message(
     context_id: String,
     message_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .delete_queued_message(context_type, &context_id, &message_id)
@@ -287,11 +296,12 @@ pub async fn list_agent_conversations(
     context_type: String,
     context_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Vec<AgentConversationResponse>, String> {
     let context_type_enum = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .list_conversations(context_type_enum, &context_id)
@@ -320,13 +330,14 @@ pub async fn list_agent_conversations(
 pub async fn get_agent_conversation(
     conversation_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Option<AgentConversationWithMessagesResponse>, String> {
     use crate::domain::entities::ChatConversationId;
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .get_conversation_with_messages(&conversation_id)
@@ -366,13 +377,14 @@ pub async fn get_agent_conversation(
 pub async fn get_agent_run_status_unified(
     conversation_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Option<AgentRunStatusResponse>, String> {
     use crate::domain::entities::ChatConversationId;
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .get_active_run(&conversation_id)
@@ -394,9 +406,10 @@ pub async fn get_agent_run_status_unified(
 #[tauri::command]
 pub async fn is_chat_service_available(
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
     Ok(service.is_available().await)
 }
 
@@ -413,11 +426,12 @@ pub async fn stop_agent(
     context_type: String,
     context_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     service
         .stop_agent(context_type, &context_id)
@@ -431,11 +445,12 @@ pub async fn is_agent_running(
     context_type: String,
     context_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app);
+    let service = create_chat_service(&state, app, &execution_state);
 
     Ok(service.is_agent_running(context_type, &context_id).await)
 }
