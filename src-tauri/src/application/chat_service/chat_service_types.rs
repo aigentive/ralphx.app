@@ -7,6 +7,37 @@ use serde::Serialize;
 use crate::domain::entities::{ChatConversation, ChatMessage};
 
 // ============================================================================
+// Event Name Constants
+// ============================================================================
+// Unified event names for all chat-related events.
+// Use these constants instead of hardcoding event strings.
+
+/// Unified events (new API - includes context_type in payload)
+pub mod events {
+    /// Agent text chunk event
+    pub const AGENT_CHUNK: &str = "agent:chunk";
+    /// Agent tool call event
+    pub const AGENT_TOOL_CALL: &str = "agent:tool_call";
+    /// Agent run started event
+    pub const AGENT_RUN_STARTED: &str = "agent:run_started";
+    /// Agent run completed event
+    pub const AGENT_RUN_COMPLETED: &str = "agent:run_completed";
+    /// Agent message created event
+    pub const AGENT_MESSAGE_CREATED: &str = "agent:message_created";
+    /// Agent error event
+    pub const AGENT_ERROR: &str = "agent:error";
+    /// Agent queue sent event
+    pub const AGENT_QUEUE_SENT: &str = "agent:queue_sent";
+    /// Activity stream message event (for execution bar)
+    pub const AGENT_MESSAGE: &str = "agent:message";
+
+    /// Legacy events (unified - no longer context-type specific)
+    pub const CHAT_CHUNK: &str = "chat:chunk";
+    pub const CHAT_TOOL_CALL: &str = "chat:tool_call";
+    pub const CHAT_RUN_COMPLETED: &str = "chat:run_completed";
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 

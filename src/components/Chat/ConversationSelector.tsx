@@ -80,6 +80,11 @@ function getConversationTitle(conversation: ChatConversation, index?: number): s
     return `Execution #${index + 1}`;
   }
 
+  // For review context, show "Review #N"
+  if (conversation.contextType === "review" && index !== undefined) {
+    return `Review #${index + 1}`;
+  }
+
   // Fallback title
   if (conversation.messageCount === 0) {
     return "New conversation";
@@ -129,13 +134,15 @@ export function ConversationSelector({
   onNewConversation,
   isLoading = false,
 }: ConversationSelectorProps) {
+  // Execution and review contexts share similar behavior (agent runs, status polling)
+  const isAgentContext = contextType === "task_execution" || contextType === "review";
   const isExecutionContext = contextType === "task_execution";
 
-  // Sort conversations by creation date for executions, last message date otherwise
+  // Sort conversations by creation date for agent contexts, last message date otherwise
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
-      if (isExecutionContext) {
-        // For executions, sort by creation date DESC (most recent first)
+      if (isAgentContext) {
+        // For agent contexts (execution/review), sort by creation date DESC (most recent first)
         const aDate = new Date(a.createdAt).getTime();
         const bDate = new Date(b.createdAt).getTime();
         return bDate - aDate;
@@ -146,18 +153,18 @@ export function ConversationSelector({
         return bDate - aDate;
       }
     });
-  }, [conversations, isExecutionContext]);
+  }, [conversations, isAgentContext]);
 
-  // Fetch agent run status for all execution conversations using useQueries
-  // This is the correct way to fetch multiple queries dynamically
+  // Fetch agent run status for all agent context conversations using useQueries
+  // This enables status polling for both execution and review contexts
   const statusQueries = useQueries({
     queries: sortedConversations.map((conv) => ({
       queryKey: ["agent-run", conv.id] as const,
       queryFn: () => chatApi.getAgentRunStatus(conv.id),
-      enabled: isExecutionContext,
+      enabled: isAgentContext,
       // Poll every 2 seconds for running agents
       refetchInterval: 2000,
-      // Only refetch if we're in execution context
+      // Only refetch if we're in agent context
       refetchIntervalInBackground: false,
     })),
   });
@@ -182,11 +189,11 @@ export function ConversationSelector({
         data-testid="conversation-selector-menu"
       >
         <DropdownMenuLabel className="text-[var(--text-secondary)] text-xs font-medium tracking-wide uppercase px-3 py-2">
-          {isExecutionContext ? "Execution History" : "Conversation History"}
+          {isExecutionContext ? "Execution History" : contextType === "review" ? "Review History" : "Conversation History"}
         </DropdownMenuLabel>
 
-        {/* New Conversation Option - Only for non-execution contexts */}
-        {!isExecutionContext && (
+        {/* New Conversation Option - Only for non-agent contexts (not execution or review) */}
+        {!isAgentContext && (
           <>
             <DropdownMenuItem
               onClick={onNewConversation}
@@ -228,13 +235,13 @@ export function ConversationSelector({
             const isActive = conversation.id === activeConversationId;
             const title = getConversationTitle(conversation, index);
 
-            // Get agent run status for execution conversations
-            const agentRunStatus = isExecutionContext && statusQueries[index]
+            // Get agent run status for agent context conversations (execution/review)
+            const agentRunStatus = isAgentContext && statusQueries[index]
               ? statusQueries[index].data?.status ?? null
               : null;
 
-            if (isExecutionContext) {
-              // Execution-specific rendering
+            if (isAgentContext) {
+              // Agent context rendering (execution and review)
               const executionDate = formatExecutionDate(conversation.createdAt);
               const statusIcon = getStatusIcon(agentRunStatus);
 

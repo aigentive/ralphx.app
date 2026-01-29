@@ -50,6 +50,9 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
         .route("/api/review_notes/:task_id", get(get_review_notes))
+        // Review chat tools (review-chat agent) - post-review human decision
+        .route("/api/approve_task", post(approve_task))
+        .route("/api/request_task_changes", post(request_task_changes))
         // Worker context tools (worker agent)
         .route("/api/task_context/:task_id", get(get_task_context))
         .route("/api/artifact/:artifact_id", get(get_artifact_full))

@@ -347,6 +347,48 @@ export const ALL_TOOLS: Tool[] = [
       required: ["task_id"],
     },
   },
+  {
+    name: "approve_task",
+    description:
+      "Approve a task after AI review. ONLY available when task is in 'review_passed' status (awaiting human decision). " +
+      "Use this when the user confirms they want to approve the task after discussing the review with you. " +
+      "This will NOT work during active review - use complete_review for that.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID to approve",
+        },
+        comment: {
+          type: "string",
+          description: "Optional approval comment or notes",
+        },
+      },
+      required: ["task_id"],
+    },
+  },
+  {
+    name: "request_task_changes",
+    description:
+      "Request changes on a task after AI review. ONLY available when task is in 'review_passed' status (awaiting human decision). " +
+      "Use this when the user wants to request changes after discussing the review with you. " +
+      "This will NOT work during active review - use complete_review for that.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID to request changes on",
+        },
+        feedback: {
+          type: "string",
+          description: "Detailed feedback explaining what changes are needed",
+        },
+      },
+      required: ["task_id", "feedback"],
+    },
+  },
 
   // ========================================================================
   // PLAN ARTIFACT TOOLS (orchestrator-ideation agent)
@@ -383,6 +425,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],
   "ralphx-reviewer": ["complete_review"],
+  // Post-review chat agent - helps user discuss review findings and take action
+  "ralphx-review-chat": ["get_review_notes", "approve_task", "request_task_changes"],
   "ralphx-worker": [
     "get_task_context",
     "get_artifact",
@@ -407,11 +451,35 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
 };
 
 /**
+ * Module-level agent type storage
+ * Set by index.ts on startup after parsing CLI args
+ * This is needed because CLI args take precedence over env vars
+ * (Claude CLI doesn't pass env vars to MCP servers it spawns)
+ */
+let currentAgentType = "";
+
+/**
+ * Set the current agent type (called from index.ts after parsing CLI args)
+ * @param agentType - The agent type to set
+ */
+export function setAgentType(agentType: string): void {
+  currentAgentType = agentType;
+}
+
+/**
+ * Get the current agent type
+ * @returns The current agent type
+ */
+export function getAgentType(): string {
+  return currentAgentType || process.env.RALPHX_AGENT_TYPE || "";
+}
+
+/**
  * Get allowed tool names for the current agent type
  * @returns Array of tool names this agent is allowed to use
  */
 export function getAllowedToolNames(): string[] {
-  const agentType = process.env.RALPHX_AGENT_TYPE || "";
+  const agentType = getAgentType();
   return TOOL_ALLOWLIST[agentType] || [];
 }
 

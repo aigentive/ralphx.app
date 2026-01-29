@@ -426,8 +426,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         let handler = TransitionHandler::new(&mut machine);
 
         // Execute entry action via TransitionHandler
+        eprintln!("[ENTRY_ACTION] Calling on_enter for state: {:?}", state);
         tracing::debug!(?state, "Calling TransitionHandler::on_enter");
         handler.on_enter(&state).await;
+        eprintln!("[ENTRY_ACTION] on_enter complete");
         tracing::debug!("TransitionHandler::on_enter complete");
 
         // Check for auto-transitions (e.g., PendingReview → Reviewing, RevisionNeeded → ReExecuting)

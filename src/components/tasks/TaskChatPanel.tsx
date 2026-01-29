@@ -7,7 +7,8 @@
 
 import { useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useChat, chatKeys } from "@/hooks/useChat";
+import { CHAT_TOOL_CALL, CHAT_RUN_COMPLETED } from "@/lib/events";
+import { useChat, chatKeys, useConversation } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -223,7 +224,8 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
       return taskStatus === "executing" || taskStatus === "re_executing";
     }
     if (contextType === "review") {
-      return taskStatus === "reviewing";
+      // Live when actively reviewing OR after AI review passed (user can chat with review-chat agent)
+      return taskStatus === "reviewing" || taskStatus === "review_passed";
     }
     // Regular task chat is always live
     return true;
@@ -244,7 +246,15 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
   }), [taskId]);
 
   // Compute store context key for queue/agent state operations
-  const storeContextKey = useMemo(() => getContextKey(context), [context]);
+  // IMPORTANT: For review mode, events are emitted with context_type "review",
+  // so useAgentEvents stores running state under "review:taskId" not "task:taskId".
+  // We need to use the same key that useAgentEvents uses.
+  const storeContextKey = useMemo(() => {
+    if (isReviewMode) {
+      return `review:${taskId}`;
+    }
+    return getContextKey(context);
+  }, [context, isReviewMode, taskId]);
 
   // Use context-aware selectors
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
@@ -263,17 +273,51 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     enabled: isExecutionMode,
   });
 
-  // Use execution conversations when in execution mode, otherwise regular conversations
+  // Fetch review conversations when in review mode
+  const reviewConversationsQuery = useQuery({
+    queryKey: chatKeys.conversationList("review", taskId),
+    queryFn: () => chatApi.listConversations("review", taskId),
+    enabled: isReviewMode,
+  });
+
+  // Use execution/review conversations when in those modes, otherwise regular conversations
   const conversations = isExecutionMode
     ? executionConversationsQuery
-    : regularChatData.conversations;
+    : isReviewMode
+      ? reviewConversationsQuery
+      : regularChatData.conversations;
 
   const {
-    messages: activeConversation,
+    messages: regularActiveConversation,
     sendMessage,
     switchConversation: handleSelectConversation,
     createConversation: handleNewConversation,
   } = regularChatData;
+
+  // For review/execution modes, fetch active conversation directly by ID
+  // This bypasses useChat's context type limitation (always returns "task")
+  const directConversationQuery = useConversation(
+    (isReviewMode || isExecutionMode) ? activeConversationId : null
+  );
+
+  // Use direct query for review/execution modes, regularChatData otherwise
+  const activeConversation = (isReviewMode || isExecutionMode)
+    ? directConversationQuery
+    : regularActiveConversation;
+
+  // Store selector for setting active conversation
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+
+  // Auto-select the latest conversation for review/execution modes
+  // This ensures the chat panel shows the active review/execution conversation
+  useEffect(() => {
+    if ((isReviewMode || isExecutionMode) && conversations.data && conversations.data.length > 0) {
+      const latestConversation = conversations.data[0]; // Most recent conversation
+      if (latestConversation && latestConversation.id !== activeConversationId) {
+        setActiveConversation(latestConversation.id);
+      }
+    }
+  }, [isReviewMode, isExecutionMode, conversations.data, activeConversationId, setActiveConversation]);
 
   // Streaming state - accumulates text chunks as they arrive
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -346,7 +390,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         arguments: unknown;
         result: unknown;
         conversation_id: string;
-      }>("chat:tool_call", (event) => {
+      }>(CHAT_TOOL_CALL, (event) => {
         const { conversation_id } = event.payload;
         // Invalidate cache to pick up any new messages from backend
         if (conversation_id === activeConversationIdRef.current) {
@@ -360,7 +404,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
       // Listen for chat run completion - refresh messages
       const runCompletedUnlisten = await listen<{
         conversation_id: string;
-      }>("chat:run_completed", (event) => {
+      }>(CHAT_RUN_COMPLETED, (event) => {
         const { conversation_id } = event.payload;
         // Invalidate cache to get final messages
         if (conversation_id) {
@@ -377,42 +421,8 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
       });
       unlisteners.push(runCompletedUnlisten);
 
-      // Execution-specific events
-      // Listen for execution tool calls - invalidate cache
-      const execToolCallUnlisten = await listen<{
-        conversation_id: string;
-        tool_name: string;
-        arguments: unknown;
-      }>("execution:tool_call", (event) => {
-        const { conversation_id } = event.payload;
-        // Invalidate cache to pick up any new messages from backend
-        if (conversation_id === activeConversationIdRef.current) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-      });
-      unlisteners.push(execToolCallUnlisten);
-
-      // Listen for execution completion - refresh messages
-      const execCompletedUnlisten = await listen<{
-        conversation_id: string;
-      }>("execution:run_completed", (event) => {
-        const { conversation_id } = event.payload;
-        // Invalidate cache to get final messages
-        if (conversation_id) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-        // Scroll to bottom
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
-      });
-      unlisteners.push(execCompletedUnlisten);
+      // Note: execution:* and review:* events are now unified under chat:* events
+      // The backend emits chat:tool_call and chat:run_completed for all context types
     })();
 
     return () => {
@@ -427,7 +437,20 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     );
   }, [messagesData]);
 
-  const isLoading = activeConversation.isLoading;
+  // Loading states:
+  // 1. Conversations list is loading
+  // 2. Active conversation query is pending (enabled but no data yet)
+  // 3. In agent mode (review/execution) with conversations but no selection yet
+  const isConversationsLoading = conversations.isLoading;
+  const isConversationPending = activeConversation.isPending && !!activeConversationId;
+  const isWaitingForSelection =
+    (isReviewMode || isExecutionMode) &&
+    !activeConversationId &&
+    !conversations.isLoading &&
+    conversations.data &&
+    conversations.data.length > 0;
+
+  const isLoading = isConversationsLoading || isConversationPending || isWaitingForSelection;
   const isSending = sendMessage.isPending;
   const isEmpty = !isLoading && sortedMessages.length === 0;
 
@@ -466,7 +489,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
           <div className="flex items-center gap-1 shrink-0">
             {/* Conversation Selector */}
             <ConversationSelector
-              contextType={isExecutionMode ? "task_execution" : "task"}
+              contextType={isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task"}
               contextId={taskId}
               conversations={conversations.data ?? []}
               activeConversationId={activeConversationId}

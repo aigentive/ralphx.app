@@ -229,3 +229,166 @@ pub async fn get_review_notes(
         reviews,
     }))
 }
+
+/// Approve a task after AI review has passed
+/// Only available when task is in ReviewPassed status
+pub async fn approve_task(
+    State(state): State<HttpServerState>,
+    Json(req): Json<super::ApproveTaskRequest>,
+) -> Result<Json<CompleteReviewResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(req.task_id);
+
+    // 1. Get task and validate state is ReviewPassed
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    if task.internal_status != InternalStatus::ReviewPassed {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Task must be in 'review_passed' status to approve. Current status: {}. \
+                This tool is only available after the AI reviewer has approved the task.",
+                task.internal_status.as_str()
+            ),
+        ));
+    }
+
+    // 2. Create a human approval review note
+    let review_note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Human,
+        ReviewOutcome::Approved,
+        req.comment.unwrap_or_else(|| "Approved by user".to_string()),
+    );
+    state
+        .app_state
+        .review_repo
+        .add_note(&review_note)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 3. Transition to Approved
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+    );
+
+    transition_service
+        .transition_task(&task_id, InternalStatus::Approved)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 4. Emit events
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit("review:human_approved", serde_json::json!({
+            "task_id": task_id.as_str(),
+        }));
+        let _ = app_handle.emit("task:status_changed", serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": task.internal_status.as_str(),
+            "new_status": "approved",
+        }));
+    }
+
+    Ok(Json(CompleteReviewResponse {
+        success: true,
+        message: "Task approved and complete".to_string(),
+        new_status: "approved".to_string(),
+        fix_task_id: None,
+    }))
+}
+
+/// Request changes on a task after AI review has passed
+/// Only available when task is in ReviewPassed status
+pub async fn request_task_changes(
+    State(state): State<HttpServerState>,
+    Json(req): Json<super::RequestTaskChangesRequest>,
+) -> Result<Json<CompleteReviewResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(req.task_id);
+
+    // 1. Get task and validate state is ReviewPassed
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    if task.internal_status != InternalStatus::ReviewPassed {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Task must be in 'review_passed' status to request changes. Current status: {}. \
+                This tool is only available after the AI reviewer has approved the task.",
+                task.internal_status.as_str()
+            ),
+        ));
+    }
+
+    // 2. Create a human changes-requested review note
+    let review_note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Human,
+        ReviewOutcome::ChangesRequested,
+        req.feedback.clone(),
+    );
+    state
+        .app_state
+        .review_repo
+        .add_note(&review_note)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 3. Transition to RevisionNeeded (will auto-trigger re-execution)
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+    );
+
+    transition_service
+        .transition_task(&task_id, InternalStatus::RevisionNeeded)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 4. Emit events
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit("review:human_changes_requested", serde_json::json!({
+            "task_id": task_id.as_str(),
+            "feedback": req.feedback,
+        }));
+        let _ = app_handle.emit("task:status_changed", serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": task.internal_status.as_str(),
+            "new_status": "revision_needed",
+        }));
+    }
+
+    Ok(Json(CompleteReviewResponse {
+        success: true,
+        message: "Changes requested. Task will be re-executed with your feedback.".to_string(),
+        new_status: "revision_needed".to_string(),
+        fix_task_id: None,
+    }))
+}

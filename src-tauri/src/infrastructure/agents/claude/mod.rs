@@ -20,7 +20,11 @@ use tracing::{info, warn};
 
 /// Build base CLI arguments for Claude Code
 /// These are the common args needed for all Claude CLI invocations with streaming output
-pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path) -> Command {
+///
+/// When `agent_type` is provided, creates a dynamic MCP config that passes
+/// the agent type as a CLI argument to the MCP server. This is necessary because
+/// Claude CLI does NOT pass its environment variables to MCP servers it spawns.
+pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path, agent_type: Option<&str>) -> Command {
     let mut cmd = Command::new(cli_path);
 
     // Plugin directory for agent/skill discovery
@@ -31,6 +35,34 @@ pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path) -> Command {
 
     // Required for stream-json with -p (print mode)
     cmd.arg("--verbose");
+
+    // If agent_type is provided, create a dynamic MCP config that passes it
+    // to the MCP server via CLI args (since env vars don't propagate to MCP servers)
+    if let Some(agent) = agent_type {
+        let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
+        let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
+
+        // Create MCP config with agent type as CLI arg
+        let mcp_config = serde_json::json!({
+            "mcpServers": {
+                "ralphx": {
+                    "type": "stdio",
+                    "command": "node",
+                    "args": [mcp_server_path_str, "--agent-type", agent]
+                }
+            }
+        });
+
+        // Write to temp file and add --mcp-config arg
+        if let Ok(config_json) = serde_json::to_string(&mcp_config) {
+            // Use a temp file in system temp dir
+            let temp_path = std::env::temp_dir().join(format!("ralphx-mcp-{}.json", std::process::id()));
+            if std::fs::write(&temp_path, &config_json).is_ok() {
+                cmd.args(["--mcp-config", temp_path.to_str().unwrap_or("")]);
+                eprintln!("[MCP] Dynamic config written to {} with agent_type={}", temp_path.display(), agent);
+            }
+        }
+    }
 
     cmd
 }

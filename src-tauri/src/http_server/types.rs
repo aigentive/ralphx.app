@@ -189,6 +189,18 @@ pub struct CompleteReviewResponse {
     pub fix_task_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ApproveTaskRequest {
+    pub task_id: String,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RequestTaskChangesRequest {
+    pub task_id: String,
+    pub feedback: String,
+}
+
 // ============================================================================
 // Request/Response Types - Permissions
 // ============================================================================

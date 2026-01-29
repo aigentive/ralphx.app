@@ -9,7 +9,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::domain::entities::{ChatContextType, ChatConversationId};
 use crate::infrastructure::agents::claude::{ContentBlockItem, StreamEvent, StreamProcessor, ToolCall};
 
-use super::{AgentChunkPayload, AgentToolCallPayload};
+use super::{events, AgentChunkPayload, AgentToolCallPayload};
 
 // ============================================================================
 // Background stream processing
@@ -60,15 +60,15 @@ pub async fn process_stream_background<R: Runtime>(
 
     while let Ok(Some(line)) = lines.next_line().await {
         if let Some(msg) = StreamProcessor::parse_line(&line) {
-            let events = processor.process_message(msg);
+            let stream_events = processor.process_message(msg);
 
-            for event in events {
+            for event in stream_events {
                 match event {
                     StreamEvent::TextChunk(text) => {
                         if let Some(ref handle) = app_handle {
                             // Unified event
                             let _ = handle.emit(
-                                "agent:chunk",
+                                events::AGENT_CHUNK,
                                 AgentChunkPayload {
                                     text: text.clone(),
                                     conversation_id: conversation_id_str.clone(),
@@ -77,14 +77,9 @@ pub async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event
-                            let legacy_event = if context_type == ChatContextType::TaskExecution {
-                                "execution:chunk"
-                            } else {
-                                "chat:chunk"
-                            };
+                            // Legacy event - unified to chat:* for all context types
                             let _ = handle.emit(
-                                legacy_event,
+                                events::CHAT_CHUNK,
                                 serde_json::json!({
                                     "text": text,
                                     "conversation_id": conversation_id_str,
@@ -94,7 +89,7 @@ pub async fn process_stream_background<R: Runtime>(
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
                                 let _ = handle.emit(
-                                    "agent:message",
+                                    events::AGENT_MESSAGE,
                                     serde_json::json!({
                                         "taskId": context_id_str,
                                         "type": "text",
@@ -108,7 +103,7 @@ pub async fn process_stream_background<R: Runtime>(
                     StreamEvent::ToolCallStarted { name, id } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
-                                "agent:tool_call",
+                                events::AGENT_TOOL_CALL,
                                 AgentToolCallPayload {
                                     tool_name: name.clone(),
                                     tool_id: id.clone(),
@@ -120,14 +115,9 @@ pub async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event
-                            let legacy_event = if context_type == ChatContextType::TaskExecution {
-                                "execution:tool_call"
-                            } else {
-                                "chat:tool_call"
-                            };
+                            // Legacy event - unified to chat:* for all context types
                             let _ = handle.emit(
-                                legacy_event,
+                                events::CHAT_TOOL_CALL,
                                 serde_json::json!({
                                     "tool_name": name,
                                     "tool_id": id,
@@ -141,7 +131,7 @@ pub async fn process_stream_background<R: Runtime>(
                     StreamEvent::ToolCallCompleted(tool_call) => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
-                                "agent:tool_call",
+                                events::AGENT_TOOL_CALL,
                                 AgentToolCallPayload {
                                     tool_name: tool_call.name.clone(),
                                     tool_id: tool_call.id.clone(),
@@ -153,14 +143,9 @@ pub async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event
-                            let legacy_event = if context_type == ChatContextType::TaskExecution {
-                                "execution:tool_call"
-                            } else {
-                                "chat:tool_call"
-                            };
+                            // Legacy event - unified to chat:* for all context types
                             let _ = handle.emit(
-                                legacy_event,
+                                events::CHAT_TOOL_CALL,
                                 serde_json::json!({
                                     "tool_name": tool_call.name,
                                     "tool_id": tool_call.id,
@@ -173,7 +158,7 @@ pub async fn process_stream_background<R: Runtime>(
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
                                 let _ = handle.emit(
-                                    "agent:message",
+                                    events::AGENT_MESSAGE,
                                     serde_json::json!({
                                         "taskId": context_id_str,
                                         "type": "tool_call",
@@ -194,7 +179,7 @@ pub async fn process_stream_background<R: Runtime>(
                     StreamEvent::ToolResultReceived { tool_use_id, result } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
-                                "agent:tool_call",
+                                events::AGENT_TOOL_CALL,
                                 AgentToolCallPayload {
                                     tool_name: format!("result:{}", tool_use_id),
                                     tool_id: Some(tool_use_id.clone()),
@@ -206,14 +191,9 @@ pub async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event
-                            let legacy_event = if context_type == ChatContextType::TaskExecution {
-                                "execution:tool_call"
-                            } else {
-                                "chat:tool_call"
-                            };
+                            // Legacy event - unified to chat:* for all context types
                             let _ = handle.emit(
-                                legacy_event,
+                                events::CHAT_TOOL_CALL,
                                 serde_json::json!({
                                     "tool_name": format!("result:{}", tool_use_id),
                                     "tool_id": tool_use_id,

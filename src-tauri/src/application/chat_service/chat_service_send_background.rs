@@ -26,7 +26,7 @@ use super::chat_service_context;
 use super::chat_service_helpers::{get_agent_name, get_assistant_role};
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
-    AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
+    events, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload,
 };
 
@@ -236,13 +236,9 @@ pub fn spawn_send_message_background<R: Runtime>(
                             },
                         );
 
-                        // Legacy event
+                        // Legacy event - unified to chat:* for all context types
                         let _ = handle.emit(
-                            if context_type == ChatContextType::TaskExecution {
-                                "execution:run_completed"
-                            } else {
-                                "chat:run_completed"
-                            },
+                            events::CHAT_RUN_COMPLETED,
                             serde_json::json!({
                                 "conversation_id": conversation_id.as_str(),
                                 "claude_session_id": effective_session_id,
@@ -348,7 +344,7 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                         // Build and spawn resume command
                         let agent_name = get_agent_name(&context_type);
-                        let mut cmd = build_base_cli_command(cli_path.as_path(), plugin_dir.as_path());
+                        let mut cmd = build_base_cli_command(cli_path.as_path(), plugin_dir.as_path(), Some(agent_name));
                         cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
                         // Add task scope for task-related contexts
@@ -464,13 +460,9 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event
+                            // Legacy event - unified to chat:* for all context types
                             let _ = handle.emit(
-                                if context_type == ChatContextType::TaskExecution {
-                                    "execution:run_completed"
-                                } else {
-                                    "chat:run_completed"
-                                },
+                                events::CHAT_RUN_COMPLETED,
                                 serde_json::json!({
                                     "conversation_id": conversation_id.as_str(),
                                     "claude_session_id": sess_id,
