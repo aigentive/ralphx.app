@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-30 01:05:00 - Phase 26 Task 5: Trigger scheduling on unpause and max_concurrent increase
+**What:**
+- Added scheduler call to `resume_execution` command after resuming execution
+- Created new `set_max_concurrent` Tauri command that:
+  - Sets the max concurrent value
+  - Emits status_changed event for real-time UI update
+  - Triggers scheduler when capacity increases (new max > old max)
+- Registered `set_max_concurrent` command in lib.rs
+- Added unit tests for max_concurrent and can_start_task behavior
+
+**Files:**
+- src-tauri/src/commands/execution_commands.rs (modified)
+- src-tauri/src/lib.rs (modified)
+
+**Commands:**
+- `cargo build --lib` - passes (1 warning from other stream's uncommitted work)
+- `cargo clippy` - blocked by pre-existing test errors in sqlite_task_repo/tests.rs from refactor stream
+
+**Note:** Full cargo test blocked by pre-existing compilation errors in uncommitted files from another stream. My changes are syntactically correct and the lib compiles successfully.
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 00:15:00 - P0 Fix: TaskScheduler Production Implementation and Wiring
 **What:**
 - Created `TaskSchedulerService` implementing the `TaskScheduler` trait

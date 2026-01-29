@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { ResearchDepthPreset, ResearchDepth, ResearchBrief } from "@/types/research";
+import type { ResearchDepthPreset } from "@/types/research";
 import { RESEARCH_PRESET_INFO } from "@/types/research";
 import { getDepthIcon } from "./ExtensibilityView.utils";
 
@@ -34,32 +34,10 @@ export function ResearchPanel() {
   const isCustom = selectedPreset === "custom";
 
   const handleLaunch = useCallback(() => {
-    // Note: brief and depth are prepared for API integration but not yet used
-    // @ts-expect-error Prepared for API integration
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const brief: ResearchBrief = {
-      question,
-      constraints: [],
-      ...(context && { context }),
-      ...(scope && { scope }),
-    };
-    // @ts-expect-error Prepared for API integration
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const depth: ResearchDepth = isCustom
-      ? {
-          type: "custom",
-          config: {
-            maxIterations: customIterations,
-            timeoutHours: customTimeout,
-            checkpointInterval: Math.ceil(customIterations / 10),
-          },
-        }
-      : { type: "preset", preset: selectedPreset as ResearchDepthPreset };
-
     setIsLaunching(true);
-    // Simulate launch - TODO: needs actual command call with brief/depth
+    // TODO: needs actual command call - will require brief/depth parameters
     setTimeout(() => setIsLaunching(false), 2000);
-  }, [question, context, scope, isCustom, selectedPreset, customIterations, customTimeout]);
+  }, []);
 
   // Recent sessions mock
   const recentSessions = [

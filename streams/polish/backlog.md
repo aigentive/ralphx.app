@@ -96,8 +96,6 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Backend] Error logging suppression: Multiple `.map_err(|_|` patterns discard error details - src-tauri/src/http_server/handlers/steps.rs:20
-
 ### P3 - Low Impact
 
 _No active P3 items. Completed items moved to archive._
@@ -112,13 +110,12 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P2] [Backend] Inconsistent error handling: Direct `.map_err(|_| StatusCode::...)` swallows error details; use tracing like in steps.rs - src-tauri/src/http_server/handlers/ideation.rs:58
 - [x] [P2] [Backend] Inconsistent error handling: Missing error logging in artifact handlers despite having tracing in steps.rs - src-tauri/src/http_server/handlers/artifacts.rs:31
 - [x] [P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42
-- [ ] ~~[P2] [Backend] Inconsistent error handling: Missing error logging in review handlers despite tracing available - src-tauri/src/http_server/handlers/reviews.rs:27~~ (stale:1 - handlers return error messages via Result<T, (StatusCode, String)> pattern)
 
 ### P3 - Low Impact
 
 - [x] [P3] [Backend] Dead code: Unused variable `_rx` never referenced - src-tauri/src/http_server/handlers/permissions.rs:18
-- [ ] ~~[P3] [Backend] Dead code: Unused variable `_session_link` never referenced~~ (stale - variable already removed)
-- [ ] ~~[P3] [Backend] Redundant clone: Using `.clone()` in serde_json::json! macro (owned values unnecessary)~~ (stale - already using &response)
+- [ ] ~~[P3] [Backend] Dead code: Unused variable `_session_link` never referenced~~ (stale:1 - variable already removed)
+- [ ] ~~[P3] [Backend] Redundant clone: Using `.clone()` in serde_json::json! macro (owned values unnecessary)~~ (stale:1 - already using &response)
 - [x] [P3] [Backend] Redundant clone: Unnecessary `response.clone()` when value is already moved - src-tauri/src/http_server/handlers/steps.rs:304
 - [x] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
 
@@ -133,7 +130,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P2] [Frontend] Type safety: Unused parameter with underscore prefix - src/App.tsx:264
 - [x] [P2] [Backend] Naming: non_snake_case suppressions in command handlers - src-tauri/src/commands/task_commands/mutation.rs:71
 - [x] [P2] [Frontend] Lint suppression: eslint-disable-next-line for hook dependencies - src/hooks/useTaskExecutionState.ts:141
-- [ ] [P2] [Frontend] Dead code: Prepared variables marked with @ts-expect-error never used - src/components/ExtensibilityView.ResearchPanel.tsx:38
+- [x] [P2] [Frontend] Dead code: Prepared variables marked with @ts-expect-error never used - src/components/ExtensibilityView.ResearchPanel.tsx:38
 
 ### P3 - Low Impact
 
@@ -150,4 +147,4 @@ _No active P3 items. Completed items moved to archive._
 **Active items:** 12 (9 excluded, 3 deferred to PRD)
 **Completed:** 10
 **Validated:** 72 strikethroughs (2026-01-29 x57) - 21 archived, 1 reactivated (moved to refactor as P1), 57 incremented
-**Last maintenance:** 2026-01-29 22:50 (archived 5 items, refilled 12 P2/P3 items)
+**Last maintenance:** 2026-01-29 02:05 (archived 1 item)
