@@ -26,7 +26,7 @@ CLAUDE_PID=""
 # Cleanup function to kill child processes for THIS stream only
 cleanup() {
   echo ""
-  echo -e "${YELLOW}Cleaning up...${NC}"
+  echo -e "  ${YELLOW}Cleaning up...${NC}"
 
   # Kill the tracked claude process first
   if [ -n "$CLAUDE_PID" ] && kill -0 "$CLAUDE_PID" 2>/dev/null; then
@@ -36,7 +36,7 @@ cleanup() {
   # Kill all child processes of this script
   pkill -9 -P $$ 2>/dev/null || true
 
-  echo -e "${YELLOW}Cleanup complete.${NC}"
+  echo -e "  ${YELLOW}Cleanup complete.${NC}"
 }
 
 # Set up trap for cleanup on exit/interrupt
@@ -51,6 +51,9 @@ CYAN='\033[0;36m'
 DIM='\033[2m'
 DARK_GRAY='\033[90m'
 NC='\033[0m' # No Color
+
+# Padding for visual spacing
+PAD="  "
 
 # Valid streams
 VALID_STREAMS="features|refactor|polish|verify|hygiene"
@@ -163,13 +166,13 @@ mkdir -p logs
 
 echo ""
 if [ "$STREAM_MODE" = true ]; then
-  echo -e "  ${CYAN}Stream:${NC} ${GREEN}$STREAM${NC}"
+  echo -e "${PAD}${CYAN}Stream:${NC} ${GREEN}$STREAM${NC}"
 fi
-echo -e "  ${CYAN}Model:${NC} $MODEL"
-echo -e "  ${CYAN}Max iterations:${NC} $MAX_ITERATIONS"
-echo -e "  ${CYAN}Prompt:${NC} ${DIM}$PROMPT_FILE${NC}"
+echo -e "${PAD}${CYAN}Model:${NC} $MODEL"
+echo -e "${PAD}${CYAN}Max iterations:${NC} $MAX_ITERATIONS"
+echo -e "${PAD}${CYAN}Prompt:${NC} ${DIM}$PROMPT_FILE${NC}"
 echo ""
-echo -e "${YELLOW}Starting in 3 seconds...${NC} ${DIM}Press Ctrl+C to abort${NC}"
+echo -e "${PAD}${YELLOW}Starting in 3 seconds...${NC} ${DIM}Press Ctrl+C to abort${NC}"
 sleep 3
 
 # Determine stream prefix for output
@@ -187,17 +190,17 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   # Check for graceful stop signal before starting iteration
   if [ -f "$STOP_SIGNAL_FILE" ]; then
     echo ""
-    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
-    echo -e "  ${YELLOW}■ STOPPED${NC} ${DIM}graceful stop requested${NC}"
-    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${PAD}${YELLOW}■ STOPPED${NC} ${DIM}graceful stop requested${NC}"
+    echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo ""
     exit 0
   fi
 
   echo ""
-  echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
-  echo -e "  ${CYAN}${STREAM_PREFIX}${NC}${GREEN}Iteration $i${NC} ${DIM}of $MAX_ITERATIONS${NC}"
-  echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+  echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
+  echo -e "${PAD}${CYAN}${STREAM_PREFIX}${NC}${GREEN}Iteration $i${NC} ${DIM}of $MAX_ITERATIONS${NC}"
+  echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
   echo ""
 
   # Clear previous iteration output (include stream name if in stream mode)
@@ -236,7 +239,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
         if [[ "$last_output_type" == "tool" || "$last_output_type" == "result" ]]; then
           echo ""
         fi
-        echo -e "${GREEN}$text${NC}"
+        echo -e "${PAD}${GREEN}$text${NC}"
         echo ""  # Always add newline after text
         last_output_type="text"
       fi
@@ -249,14 +252,14 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
           : # text already added newline
         fi
         tool_input=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | .input | to_entries | map("\(.key)=\(.value | tostring | .[0:40])") | join(" ") | .[0:70]' 2>/dev/null)
-        echo -e "  ${CYAN}▸ ${tool_name}${NC} ${DARK_GRAY}${tool_input}${NC}"
+        echo -e "${PAD}  ${CYAN}▸ ${tool_name}${NC} ${DARK_GRAY}${tool_input}${NC}"
         last_output_type="tool"
       fi
     elif [[ "$type" == "user" ]]; then
       # Show tool results briefly (very dim)
       tool_result=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_result") | .content // empty' 2>/dev/null | head -c 60 | tr '\n' ' ' | tr -s ' ')
       if [[ -n "$tool_result" ]]; then
-        echo -e "    ${DIM}${DARK_GRAY}└─ ${tool_result:0:55}…${NC}"
+        echo -e "${PAD}    ${DIM}${DARK_GRAY}└─ ${tool_result:0:55}…${NC}"
         last_output_type="result"
       fi
     fi
@@ -272,32 +275,32 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   if [[ "$last_assistant_text" == *"<promise>COMPLETE</promise>"* ]]; then
     echo ""
-    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
-    echo -e "  ${GREEN}✓ COMPLETE${NC} ${DIM}after $i iteration(s)${NC}"
-    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${PAD}${GREEN}✓ COMPLETE${NC} ${DIM}after $i iteration(s)${NC}"
+    echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo ""
     exit 0
   fi
 
   if [[ "$last_assistant_text" == *"<promise>IDLE</promise>"* ]]; then
     echo ""
-    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
-    echo -e "  ${YELLOW}◆ IDLE${NC} ${DIM}no work available · watching for changes${NC}"
-    echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${PAD}${YELLOW}◆ IDLE${NC} ${DIM}no work available · watching for changes${NC}"
+    echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
     echo ""
     exit 0
   fi
 
   echo ""
-  echo -e "${DIM}  ── end of iteration $i ──${NC}"
+  echo -e "${PAD}${DIM}── end of iteration $i ──${NC}"
 
   # Small delay between iterations to prevent hammering
   sleep 2
 done
 
 echo ""
-echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
-echo -e "  ${RED}✗ MAX ITERATIONS${NC} ${DIM}reached $MAX_ITERATIONS without completion${NC}"
-echo -e "${DIM}─────────────────────────────────────────────────────────────────${NC}"
+echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
+echo -e "${PAD}${RED}✗ MAX ITERATIONS${NC} ${DIM}reached $MAX_ITERATIONS without completion${NC}"
+echo -e "${PAD}${DIM}─────────────────────────────────────────────────────────────────${NC}"
 echo ""
 exit 1
