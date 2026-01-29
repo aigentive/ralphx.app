@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-29 02:19:02 - Split DiffViewer.tsx
+
+**What:**
+- Original file: src/components/diff/DiffViewer.tsx (740 LOC)
+- Extracted to:
+  - DiffViewer.components.tsx (502 LOC) - FileTreeItem, FileTree, CommitList, DiffPanel, CommitDiffPanel, FileTreeSkeleton
+- New size: 284 LOC (62% reduction, 216 LOC under 500 LOC limit)
+
+**Commands:**
+- `wc -l src/components/diff/DiffViewer.tsx src/components/diff/DiffViewer.components.tsx`
+- `npm run typecheck`
+- `npm run lint`
+
+**Result:** Success - All linters pass, file now under 500 LOC limit (284 LOC)
+
+---
+
 ### 2026-01-29 04:14:25 - Split chat_service/mod.rs
 
 **What:**
