@@ -27,6 +27,10 @@
 - [x] [Backend] Missing production implementation: TaskScheduler trait has no concrete implementation in application layer - src-tauri/src/application/
 - [x] [Backend] Service not injected: TaskScheduler missing from AppState builder - src-tauri/src/application/app_state.rs
 
+## From Phase 28 Verification (2026-01-29)
+
+- [x] [Frontend] Dead hook: useIdeationEvents defined but never called in any component - src/hooks/useIdeationEvents.ts:33
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
