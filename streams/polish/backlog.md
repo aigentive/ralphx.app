@@ -133,7 +133,7 @@ _Completed items moved to archive._
 - [x] [P3] [Frontend] Console.error cleanup: Error logging in chat handlers - src/hooks/useIntegratedChatHandlers.ts:98
 - [x] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
 - [ ] ~~[P3] [Frontend] Code organization: Large component needing extraction~~ (stale - 690 LOC exceeds limit, P1 refactor work)
-- [ ] [P3] [Frontend] Commented example code: console.log example in docs - src/hooks/useFileDrop.ts:74
+- [x] [P3] [Frontend] Commented example code: console.log example in docs - src/hooks/useFileDrop.ts:74
 
 ---
 
@@ -157,7 +157,7 @@ _Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 11 (9 excluded, 3 deferred to PRD)
-**Completed:** 10
+**Active items:** 10 (9 excluded, 3 deferred to PRD)
+**Completed:** 11
 **Validated:** 75 strikethroughs (2026-01-29 x60) - 22 archived, 1 reactivated (moved to refactor as P1), 60 incremented
 **Last maintenance:** 2026-01-29 23:30 (archived 1 item)
