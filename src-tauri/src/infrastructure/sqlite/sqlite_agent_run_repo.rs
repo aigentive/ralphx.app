@@ -267,4 +267,17 @@ impl AgentRunRepository for SqliteAgentRunRepository {
 
         Ok(count as u32)
     }
+
+    async fn cancel_all_running(&self) -> AppResult<u32> {
+        let conn = self.conn.lock().await;
+
+        let changes = conn
+            .execute(
+                "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = 'Orphaned on app restart' WHERE status = 'running'",
+                rusqlite::params![Utc::now().to_rfc3339()],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(changes as u32)
+    }
 }

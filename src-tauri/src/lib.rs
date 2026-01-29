@@ -161,7 +161,7 @@ pub fn run() {
                     startup_project_repo.clone(),
                     startup_chat_message_repo,
                     startup_conversation_repo,
-                    startup_agent_run_repo,
+                    startup_agent_run_repo.clone(),
                     startup_ideation_session_repo,
                     startup_message_queue,
                     startup_running_agent_registry,
@@ -173,6 +173,7 @@ pub fn run() {
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
                     startup_project_repo,
+                    startup_agent_run_repo,
                     transition_service,
                     Arc::clone(&startup_execution_state),
                 )

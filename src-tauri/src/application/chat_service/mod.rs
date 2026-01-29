@@ -401,6 +401,19 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             ).await;
         }
 
+        // 7b. Increment running count for task execution contexts
+        // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
+        // The count is decremented in TransitionHandler::on_exit when leaving these states
+        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Review) {
+            if let Some(ref exec) = self.execution_state {
+                exec.increment_running();
+                // Emit status_changed event to frontend for real-time UI update
+                if let Some(ref handle) = self.app_handle {
+                    exec.emit_status_changed(handle, "task_started");
+                }
+            }
+        }
+
         // 8. Clone values for background task
         let context_type_clone = context_type;
         let context_id_clone = context_id.to_string();

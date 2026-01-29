@@ -134,6 +134,18 @@ impl AgentRunRepository for MemoryAgentRunRepository {
             .count();
         Ok(count as u32)
     }
+
+    async fn cancel_all_running(&self) -> AppResult<u32> {
+        let mut runs = self.runs.write().await;
+        let mut count = 0u32;
+        for run in runs.values_mut() {
+            if run.status == AgentRunStatus::Running {
+                run.cancel();
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
 }
 
 #[cfg(test)]

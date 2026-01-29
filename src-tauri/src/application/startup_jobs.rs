@@ -5,8 +5,11 @@
 // when the app shut down are automatically resumed on startup, respecting pause state and
 // max_concurrent limits.
 //
+// Also cleans up orphaned agent runs that were left in "running" status from previous sessions.
+//
 // Usage:
 // - Called once during app initialization after HTTP server is ready
+// - Cleans up orphaned agent runs from previous sessions
 // - Iterates all projects to find tasks in agent-active states
 // - Re-executes entry actions to respawn agents
 // - Stops early if max_concurrent is reached
@@ -16,7 +19,7 @@ use tauri::Runtime;
 use tracing::info;
 
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::domain::repositories::{AgentRunRepository, ProjectRepository, TaskRepository};
 use crate::domain::state_machine::services::TaskScheduler;
 
 use super::TaskTransitionService;
@@ -25,9 +28,11 @@ use super::TaskTransitionService;
 ///
 /// Finds all tasks that were in agent-active states when the app shut down
 /// and re-triggers their entry actions to respawn worker agents.
+/// Also cleans up orphaned agent runs from previous sessions.
 pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: TaskTransitionService<R>,
     execution_state: Arc<ExecutionState>,
     /// Optional task scheduler for auto-starting Ready tasks on startup.
@@ -40,12 +45,14 @@ impl<R: Runtime> StartupJobRunner<R> {
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        agent_run_repo: Arc<dyn AgentRunRepository>,
         transition_service: TaskTransitionService<R>,
         execution_state: Arc<ExecutionState>,
     ) -> Self {
         Self {
             task_repo,
             project_repo,
+            agent_run_repo,
             transition_service,
             execution_state,
             task_scheduler: None,
@@ -67,6 +74,20 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// For each task in an agent-active state, re-executes entry actions to
     /// respawn the appropriate agent.
     pub async fn run(&self) {
+        // Clean up orphaned agent runs from previous sessions first
+        // These are runs that were left in "running" status when the app was closed/crashed
+        match self.agent_run_repo.cancel_all_running().await {
+            Ok(count) if count > 0 => {
+                info!(count = count, "Cancelled orphaned agent runs from previous session");
+            }
+            Ok(_) => {
+                // No orphaned runs, nothing to log
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to clean up orphaned agent runs");
+            }
+        }
+
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
             info!("Execution paused, skipping task resumption");
@@ -171,9 +192,12 @@ mod tests {
             None,
         );
 
+        let agent_run_repo = Arc::clone(&app_state.agent_run_repo);
+
         StartupJobRunner::new(
             Arc::clone(&app_state.task_repo),
             Arc::clone(&app_state.project_repo),
+            agent_run_repo,
             transition_service,
             Arc::clone(execution_state),
         )
