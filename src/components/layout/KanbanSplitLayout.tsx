@@ -3,7 +3,7 @@
  *
  * Provides a split layout with:
  * - Left side: Kanban board + task detail overlay (when selected)
- * - Right side: Integrated chat panel (always visible, collapsible, resizable)
+ * - Right side: Integrated chat panel (toggleable via header button, resizable)
  *
  * This layout is specific to the Kanban view. Other views continue to use
  * the floating ChatPanel.
@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 // Constants
 // ============================================================================
 
-const COLLAPSED_WIDTH = 48;
 const MIN_LEFT_PERCENT = 40; // Minimum left panel width as percentage
 const MAX_LEFT_PERCENT = 75; // Maximum left panel width as percentage
 const DEFAULT_LEFT_PERCENT = 60; // Default: 60% left, 40% chat
@@ -103,7 +102,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         data-testid="kanban-split-left"
         className="relative flex flex-col overflow-hidden"
         style={{
-          width: chatCollapsed ? `calc(100% - ${COLLAPSED_WIDTH}px)` : `${leftPanelWidth}%`,
+          width: chatCollapsed ? "100%" : `${leftPanelWidth}%`,
           minWidth: "400px",
           transition: isResizing ? "none" : "width 150ms ease-out",
         }}
@@ -127,7 +126,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {/* Resize Handle (only when chat is not collapsed) */}
+      {/* Resize Handle (only when chat is visible) */}
       {!chatCollapsed && (
         <div
           data-testid="split-layout-resize-handle"
@@ -149,18 +148,20 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         </div>
       )}
 
-      {/* Right Section - Integrated Chat Panel */}
-      <div
-        data-testid="kanban-split-right"
-        className="flex flex-col overflow-hidden shrink-0"
-        style={{
-          width: chatCollapsed ? `${COLLAPSED_WIDTH}px` : `${100 - leftPanelWidth}%`,
-          minWidth: chatCollapsed ? `${COLLAPSED_WIDTH}px` : "320px",
-          transition: isResizing ? "none" : "width 150ms ease-out",
-        }}
-      >
-        <IntegratedChatPanel projectId={projectId} />
-      </div>
+      {/* Right Section - Integrated Chat Panel (hidden when collapsed) */}
+      {!chatCollapsed && (
+        <div
+          data-testid="kanban-split-right"
+          className="flex flex-col overflow-hidden shrink-0"
+          style={{
+            width: `${100 - leftPanelWidth}%`,
+            minWidth: "320px",
+            transition: isResizing ? "none" : "width 150ms ease-out",
+          }}
+        >
+          <IntegratedChatPanel projectId={projectId} />
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,6 @@
  *
  * This is a refactored version of ChatPanel that:
  * - Is part of the layout, not fixed positioned
- * - Has collapsed state (thin bar with expand button)
  * - Supports context switching based on selected task
  * - No slide animations (instant show/hide)
  *
@@ -19,10 +18,9 @@ import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PanelRightClose, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -36,7 +34,6 @@ import {
   WorkerExecutingIndicator,
   FailedRunBanner,
   ContextIndicator,
-  CollapsedPanel,
   animationStyles,
 } from "./IntegratedChatPanel.components";
 import { useIntegratedChatScroll } from "@/hooks/useIntegratedChatScroll";
@@ -58,8 +55,6 @@ interface IntegratedChatPanelProps {
   showHelperTextAlways?: boolean;
   /** Custom class for input container */
   inputContainerClassName?: string;
-  /** Whether to show the collapse button (default: true) */
-  showCollapseButton?: boolean;
   /** Custom header content to replace default context indicator */
   headerContent?: React.ReactNode;
 }
@@ -70,13 +65,10 @@ export function IntegratedChatPanel({
   emptyState,
   showHelperTextAlways = false,
   inputContainerClassName,
-  showCollapseButton = true,
   headerContent,
 }: IntegratedChatPanelProps) {
   const queryClient = useQueryClient();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
-  const chatCollapsed = useUiStore((s) => s.chatCollapsed);
-  const setChatCollapsed = useUiStore((s) => s.setChatCollapsed);
 
   const activeConversationId = useChatStore(selectActiveConversationId);
 
@@ -320,9 +312,7 @@ export function IntegratedChatPanel({
     createConversation: handleNewConversation,
   } = regularChatData;
 
-  const [hasUnread, setHasUnread] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const lastMessageCountRef = useRef(0);
 
   // Determine current context type and ID for validation
   const currentContextType: ContextType = ideationSessionId
@@ -354,7 +344,6 @@ export function IntegratedChatPanel({
   // Use custom hooks for extracted logic
   const { messagesEndRef } = useIntegratedChatScroll({
     messagesData,
-    chatCollapsed,
     isAgentRunning,
     streamingToolCallsLength: streamingToolCalls.length,
   });
@@ -394,37 +383,12 @@ export function IntegratedChatPanel({
     setStreamingToolCalls,
   });
 
-  // Track unread messages when collapsed
-  useEffect(() => {
-    const messageCount = messagesData.length;
-    if (chatCollapsed && messageCount > lastMessageCountRef.current) {
-      setHasUnread(true);
-    }
-    lastMessageCountRef.current = messageCount;
-  }, [messagesData.length, chatCollapsed]);
-
-  // Clear unread when expanded
-  useEffect(() => {
-    if (!chatCollapsed) {
-      setHasUnread(false);
-    }
-  }, [chatCollapsed]);
-
   // Sort messages by createdAt - render in chronological order, no grouping
   const sortedMessages = useMemo(() => {
     return [...messagesData].sort((a, b) =>
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [messagesData]);
-
-  if (chatCollapsed) {
-    return (
-      <CollapsedPanel
-        onExpand={() => setChatCollapsed(false)}
-        hasUnread={hasUnread}
-      />
-    );
-  }
 
   const isLoading = activeConversation.isLoading;
   const isSending = sendMessage.isPending;
@@ -460,39 +424,26 @@ export function IntegratedChatPanel({
             </Badge>
           )}
 
-          <div className="flex items-center gap-1 shrink-0">
-            {/* Conversation Selector */}
-            <ConversationSelector
-              contextType={
-                ideationSessionId
-                  ? "ideation"
-                  : isExecutionMode
-                    ? "task_execution"
-                    : isReviewMode
-                      ? "review"
-                      : selectedTaskId
-                        ? "task"
-                        : "project"
-              }
-              contextId={ideationSessionId || selectedTaskId || projectId}
-              conversations={conversations.data ?? []}
-              activeConversationId={activeConversationId}
-              onSelectConversation={handleSelectConversation}
-              onNewConversation={handleNewConversation}
-              isLoading={conversations.isLoading}
-            />
-            {showCollapseButton && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setChatCollapsed(true)}
-                aria-label="Collapse chat panel"
-                className="hover:bg-white/5"
-              >
-                <PanelRightClose className="w-[18px] h-[18px]" />
-              </Button>
-            )}
-          </div>
+          {/* Conversation Selector */}
+          <ConversationSelector
+            contextType={
+              ideationSessionId
+                ? "ideation"
+                : isExecutionMode
+                  ? "task_execution"
+                  : isReviewMode
+                    ? "review"
+                    : selectedTaskId
+                      ? "task"
+                      : "project"
+            }
+            contextId={ideationSessionId || selectedTaskId || projectId}
+            conversations={conversations.data ?? []}
+            activeConversationId={activeConversationId}
+            onSelectConversation={handleSelectConversation}
+            onNewConversation={handleNewConversation}
+            isLoading={conversations.isLoading}
+          />
         </div>
 
         {/* Messages Area */}

@@ -2,7 +2,7 @@
  * IntegratedChatPanel.components - Sub-components for IntegratedChatPanel
  */
 
-import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, PanelRightOpen, Loader2 } from "lucide-react";
+import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
@@ -17,21 +17,12 @@ export const animationStyles = `
   30% { transform: translateY(-4px); }
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.1); }
-}
-
 .typing-dot {
   animation: typingBounce 1.4s ease-in-out infinite;
 }
 
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.3s; }
-
-.unread-dot {
-  animation: pulse 2s ease-in-out infinite;
-}
 `;
 
 // ============================================================================
@@ -212,53 +203,6 @@ export function ContextIndicator({ context, isExecutionMode = false, isReviewMod
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <Icon className="w-3.5 h-3.5 shrink-0 text-white/50" />
       <span className="text-[13px] font-medium truncate text-white/80">{label}</span>
-    </div>
-  );
-}
-
-// ============================================================================
-// Collapsed Panel (Thin bar with expand button)
-// ============================================================================
-
-const COLLAPSED_WIDTH = 48;
-
-interface CollapsedPanelProps {
-  onExpand: () => void;
-  hasUnread: boolean;
-}
-
-export function CollapsedPanel({ onExpand, hasUnread }: CollapsedPanelProps) {
-  return (
-    <div
-      data-testid="integrated-chat-collapsed"
-      className="relative h-full flex flex-col items-center justify-center border-l"
-      style={{
-        width: `${COLLAPSED_WIDTH}px`,
-        backgroundColor: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
-      }}
-    >
-      {hasUnread && (
-        <div
-          className="unread-dot absolute top-4 w-2 h-2 rounded-full"
-          style={{ backgroundColor: "var(--accent-primary)" }}
-        />
-      )}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onExpand}
-        aria-label="Expand chat panel"
-        className="hover:bg-white/5"
-      >
-        <PanelRightOpen className="w-[18px] h-[18px]" />
-      </Button>
-      <span
-        className="text-[10px] mt-2 rotate-90 whitespace-nowrap"
-        style={{ color: "var(--text-muted)" }}
-      >
-        Chat
-      </span>
     </div>
   );
 }
