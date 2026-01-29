@@ -5,20 +5,33 @@
  * - New session button
  * - Session cards with title, timestamp
  * - Active session highlighting
+ * - Three-dot menu for rename/archive/delete
  */
 
-import { useMemo } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   MessageSquare,
   Plus,
   Clock,
-  ArrowRight,
   Layers,
   Sparkles,
+  MoreHorizontal,
+  Pencil,
+  Archive,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { IdeationSession } from "@/types/ideation";
+import { ideationApi } from "@/api/ideation";
 
 // ============================================================================
 // Helpers
@@ -49,6 +62,8 @@ interface SessionBrowserProps {
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
+  onArchiveSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 // ============================================================================
@@ -60,11 +75,59 @@ export function SessionBrowser({
   currentSessionId,
   onSelectSession,
   onNewSession,
+  onArchiveSession,
+  onDeleteSession,
 }: SessionBrowserProps) {
   const sortedSessions = useMemo(
     () => [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [sessions]
   );
+
+  // Inline edit state
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (editingSessionId && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingSessionId]);
+
+  const handleStartRename = (session: IdeationSession) => {
+    setEditingSessionId(session.id);
+    setEditingTitle(session.title || "");
+  };
+
+  const handleCancelRename = () => {
+    setEditingSessionId(null);
+    setEditingTitle("");
+  };
+
+  const handleConfirmRename = async (sessionId: string) => {
+    const trimmedTitle = editingTitle.trim();
+    if (trimmedTitle) {
+      try {
+        await ideationApi.sessions.updateTitle(sessionId, trimmedTitle);
+      } catch (error) {
+        console.error("Failed to rename session:", error);
+      }
+    }
+    setEditingSessionId(null);
+    setEditingTitle("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, sessionId: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleConfirmRename(sessionId);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancelRename();
+    }
+  };
 
   return (
     <div
@@ -124,13 +187,14 @@ export function SessionBrowser({
         ) : (
           sortedSessions.map((session, index) => {
             const isSelected = session.id === currentSessionId;
+            const isEditing = editingSessionId === session.id;
+
             return (
-              <button
+              <div
                 key={session.id}
                 data-testid={`session-item-${session.id}`}
-                onClick={() => onSelectSession(session.id)}
                 className={cn(
-                  "session-card-enter w-full p-2.5 rounded-lg text-left transition-all duration-180",
+                  "session-card-enter group w-full p-2.5 rounded-lg text-left transition-all duration-180 relative",
                   "border border-transparent",
                   "hover:bg-white/[0.03] hover:border-white/[0.06]"
                 )}
@@ -142,7 +206,10 @@ export function SessionBrowser({
                   }),
                 }}
               >
-                <div className="flex items-start gap-2.5">
+                <div
+                  className="flex items-start gap-2.5 cursor-pointer"
+                  onClick={() => !isEditing && onSelectSession(session.id)}
+                >
                   {/* Session indicator */}
                   <div
                     className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
@@ -155,30 +222,93 @@ export function SessionBrowser({
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className={cn(
-                        "text-xs font-medium truncate",
-                        isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                      )}>
-                        {session.title || "Untitled Session"}
-                      </span>
-                      {isSelected && (
-                        <span className="w-1 h-1 rounded-full bg-[#ff6b35] flex-shrink-0" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>{formatRelativeTime(session.updatedAt)}</span>
-                    </div>
+                    {isEditing ? (
+                      <Input
+                        ref={inputRef}
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, session.id)}
+                        onBlur={() => handleConfirmRename(session.id)}
+                        className="h-6 text-xs px-1.5 py-0 bg-white/[0.05] border-white/[0.1] focus:border-[#ff6b35]/50"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className={cn(
+                            "text-xs font-medium truncate",
+                            isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+                          )}>
+                            {session.title || "Untitled Session"}
+                          </span>
+                          {isSelected && (
+                            <span className="w-1 h-1 rounded-full bg-[#ff6b35] flex-shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                          <Clock className="w-2.5 h-2.5" />
+                          <span>{formatRelativeTime(session.updatedAt)}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  {/* Arrow indicator */}
-                  <ArrowRight className={cn(
-                    "w-3.5 h-3.5 flex-shrink-0 transition-all duration-200",
-                    isSelected ? "text-[#ff6b35] translate-x-0 opacity-100" : "text-[var(--text-muted)] -translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
-                  )} />
+                  {/* Three-dot menu (replaces arrow indicator) */}
+                  {!isEditing && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className={cn(
+                            "w-6 h-6 rounded flex items-center justify-center flex-shrink-0 transition-all duration-200",
+                            "hover:bg-white/[0.08]",
+                            "opacity-0 group-hover:opacity-100",
+                            isSelected && "opacity-100"
+                          )}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        className="w-36 bg-[#1a1a1a] border-white/[0.1]"
+                      >
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartRename(session);
+                          }}
+                          className="text-xs cursor-pointer"
+                        >
+                          <Pencil className="w-3.5 h-3.5 mr-2" />
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onArchiveSession?.(session.id);
+                          }}
+                          className="text-xs cursor-pointer"
+                        >
+                          <Archive className="w-3.5 h-3.5 mr-2" />
+                          Archive
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="bg-white/[0.06]" />
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteSession?.(session.id);
+                          }}
+                          className="text-xs cursor-pointer text-red-400 focus:text-red-400"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
-              </button>
+              </div>
             );
           })
         )}
