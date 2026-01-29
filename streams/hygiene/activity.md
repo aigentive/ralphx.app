@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 02:18:21 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (migrations.rs split)
+- Moved 1 item from polish/backlog.md to archive (P2 error handling in tasks.rs from REFILL 2026-01-29 20:43)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 11 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 6 active, polish: 11 active)
+
+**Validation:**
+- No strikethrough validation this cycle (backlogs healthy)
+
+**Result:** Maintenance complete - archived 2 items (1 refactor + 1 polish)
+
+---
+
 ### 2026-01-29 23:18:30 - Backlog Maintenance
 
 **Archive:**
