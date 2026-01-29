@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 26,
+  "currentPhase": 27,
   "phases": [
     {
       "phase": 0,
@@ -198,6 +198,13 @@
       "prd": "specs/phases/prd_phase_26_auto_scheduler.md",
       "status": "complete",
       "description": "Automatic task scheduling when tasks enter Ready status with queue-based execution"
+    },
+    {
+      "phase": 27,
+      "name": "Chat Architecture Refactor",
+      "prd": "specs/phases/prd_phase_27_chat_architecture_refactor.md",
+      "status": "active",
+      "description": "Refactor TaskChatPanel with dedicated useTaskChat hook for context-aware conversations"
     }
   ]
 }
