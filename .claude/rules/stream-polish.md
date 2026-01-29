@@ -45,6 +45,7 @@ Before starting normal workflow, check for incomplete work from a previous itera
 1. Read streams/polish/backlog.md
 
 2. Find first unchecked [ ] item
+   → NO UNCHECKED ITEMS? → Output IDLE signal → END
 
 3. Verify the issue still exists:
    - Read file:line referenced in the item
@@ -66,8 +67,10 @@ Before starting normal workflow, check for incomplete work from a previous itera
 
 8. Commit: refactor(scope): description
 
-9. STOP — one item per iteration
+9. STOP — end iteration (do NOT check for IDLE here, just end)
 ```
+
+**IMPORTANT:** IDLE detection happens ONLY at step 2 (start of iteration). After completing an item (step 9), just end — the next iteration will find the next item.
 
 ## P2/P3 Item Categories
 
@@ -124,11 +127,15 @@ Item exists in backlog? → You MUST work on it.
 
 ## Backlog Empty Detection
 
-When streams/polish/backlog.md has no unchecked `[ ]` items:
+**When:** At the START of an iteration (step 2), NOT after completing an item.
 
-Output: `<promise>IDLE</promise>`
+**Condition:** streams/polish/backlog.md has no unchecked `[ ]` items
+
+**Action:** Output `<promise>IDLE</promise>`
 
 This signals the fswatch wrapper to take over and wait for file changes (hygiene stream refills backlog).
+
+**NEVER output IDLE after completing an item.** Just end the iteration — the next iteration will find the next item.
 
 ## Signal Output Rules
 
