@@ -15,10 +15,9 @@ You are helping the user manually switch the active PRD. This is typically used 
 
 ### Step 1: Assess Current State
 
-Read `specs/manifest.json` and `logs/activity.md` to understand:
+Read `specs/manifest.json` to understand:
 1. Which phase is currently active
 2. How many tasks are complete vs remaining in the current PRD
-3. Recent activity (what was just being worked on)
 
 ### Step 2: Validate the Target PRD
 
@@ -84,50 +83,14 @@ Based on user's choices, update `specs/manifest.json`:
 }
 ```
 
-### Step 5: Update Activity Log Header
-
-The `logs/activity.md` file has a header section that must be updated to reflect the new active phase:
-
-```markdown
-## Current Status
-**Last Updated:** YYYY-MM-DD HH:MM:SS
-**Phase:** [New phase name]
-**Tasks Completed:** X / Y
-**Current Task:** [First task with passes: false, or "All complete"]
-```
-
-Read the new active PRD to count:
-- Total tasks
-- Tasks with `"passes": true`
-- First task with `"passes": false`
-
-### Step 6: Append Log Entry
-
-Append to `logs/activity.md` with full timestamp:
-
-```markdown
-### YYYY-MM-DD HH:MM:SS - Manual PRD Switch
-
-**Action:** Switched active PRD via /activate-prd command
-
-**From:** Phase N - [name] (status: [old status] → [new status])
-**To:** Phase M - [name] (status: [old status] → active)
-
-**Reason:** [User's stated reason or "Manual intervention"]
-
-**Current state:**
-- Previous phase: X/Y tasks complete
-- Target phase: X/Y tasks complete
-```
-
-### Step 7: Commit Changes
+### Step 5: Commit Changes
 
 ```bash
-git add specs/manifest.json logs/activity.md
+git add specs/manifest.json
 git commit -m "chore: manual PRD switch - activate [target phase name]"
 ```
 
-### Step 8: Confirm
+### Step 6: Confirm
 
 Tell the user:
 - The manifest has been updated
@@ -146,7 +109,7 @@ This would:
 1. Show current state (e.g., "Phase 1 Foundation is active, 8/15 tasks complete")
 2. Ask what to do with Phase 1 (pause, complete, block, etc.)
 3. Ask how to set up Phase 2 (activate, reset, etc.)
-4. Update manifest and log the change
+4. Update manifest and commit
 5. Confirm the switch
 
 ---
