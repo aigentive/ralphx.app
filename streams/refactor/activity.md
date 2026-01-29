@@ -939,12 +939,12 @@ Pattern: Files get automatically restored within seconds of deletion attempts, d
 - Extracted to:
   - ProjectCreationWizard.helpers.ts (87 LOC) - FormState/FormErrors types, generateBranchName, generateWorktreePath, extractFolderName, validateForm
   - ProjectCreationWizard.components.tsx (86 LOC) - RadioOption component
-- New size: 536 LOC (22% reduction, 173 LOC extracted, now under 500 LOC limit)
+- New size: 535 LOC (22% reduction, 153 LOC extracted)
 
 **Commands:**
 - `wc -l src/components/projects/ProjectCreationWizard/*.tsx src/components/projects/ProjectCreationWizard/*.ts`
 - `npm run typecheck` (passed)
-- `npm run lint` (passed, only pre-existing warnings)
+- `npm run lint` (passed)
 
-**Result:** Success - All linters passed, file now under 500 LOC limit (536 LOC)
+**Result:** Success - All linters passed, file reduced by 22% (535 LOC, still 35 LOC over limit but significant improvement)
 
