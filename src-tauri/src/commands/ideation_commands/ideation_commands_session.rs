@@ -188,3 +188,65 @@ pub async fn update_ideation_session_title(
 
     Ok(IdeationSessionResponse::from(session))
 }
+
+/// Spawn the session-namer agent to auto-generate a title for the session
+///
+/// This is a fire-and-forget operation that spawns a background agent.
+/// The agent will call the update_session_title MCP tool when complete,
+/// which will emit an event for real-time UI updates.
+#[tauri::command]
+pub async fn spawn_session_namer(
+    session_id: String,
+    first_message: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use crate::domain::agents::{AgentConfig, AgentRole};
+
+    // Build the prompt with session context
+    let prompt = format!(
+        "Session ID: {}\nUser's first message: {}\n\nGenerate a concise title (3-6 words) for this ideation session based on the user's message, then call the update_session_title tool with the session_id and the generated title.",
+        session_id, first_message
+    );
+
+    // Get the working directory (project root)
+    let working_directory = std::env::current_dir()
+        .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    let plugin_dir = working_directory.join("ralphx-plugin");
+
+    let config = AgentConfig {
+        role: AgentRole::Custom("session-namer".to_string()),
+        prompt,
+        working_directory,
+        plugin_dir: Some(plugin_dir),
+        agent: Some("session-namer".to_string()),
+        model: None, // Agent file specifies haiku
+        max_tokens: None,
+        timeout_secs: Some(60), // 60 second timeout for title generation
+        env: std::collections::HashMap::new(),
+    };
+
+    // Clone the agent client for the background task
+    let agent_client = Arc::clone(&state.agent_client);
+
+    // Spawn in background (fire-and-forget)
+    tokio::spawn(async move {
+        match agent_client.spawn_agent(config).await {
+            Ok(handle) => {
+                // Wait for completion in the background
+                if let Err(e) = agent_client.wait_for_completion(&handle).await {
+                    tracing::warn!("Session namer agent failed: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to spawn session namer agent: {}", e);
+            }
+        }
+    });
+
+    Ok(())
+}
