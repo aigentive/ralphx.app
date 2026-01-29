@@ -4,7 +4,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { TaskProposal, IdeationSession } from "@/types/ideation";
-import type { ProactiveSyncNotification } from "@/stores/ideationStore";
+import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
 import { ideationApi } from "@/api/ideation";
 
 export function useIdeationHandlers(
@@ -23,6 +23,7 @@ export function useIdeationHandlers(
   const [isPlanExpanded, setIsPlanExpanded] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const updateSession = useIdeationStore((state) => state.updateSession);
 
   const collapsePlan = useCallback(() => {
     setIsPlanExpanded(false);
@@ -103,6 +104,8 @@ export function useIdeationHandlers(
       const data = await apiResponse.json();
       if (data.id) {
         await fetchPlanArtifact(data.id);
+        // Update session in store so planArtifactId persists across navigation
+        updateSession(session.id, { planArtifactId: data.id });
         setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
         setTimeout(() => setImportStatus(null), 5000);
 
@@ -120,7 +123,7 @@ export function useIdeationHandlers(
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [session, fetchPlanArtifact]);
+  }, [session, fetchPlanArtifact, updateSession]);
 
   // Handler for drag-and-drop file import (used with useFileDrop)
   const handleFileDrop = useCallback(async (file: File, content: string) => {
@@ -140,6 +143,8 @@ export function useIdeationHandlers(
       const data = await apiResponse.json();
       if (data.id) {
         await fetchPlanArtifact(data.id);
+        // Update session in store so planArtifactId persists across navigation
+        updateSession(session.id, { planArtifactId: data.id });
         setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
         setTimeout(() => setImportStatus(null), 5000);
 
@@ -155,7 +160,7 @@ export function useIdeationHandlers(
       setImportStatus({ type: "error", message: error instanceof Error ? error.message : "Failed to import plan" });
       setTimeout(() => setImportStatus(null), 5000);
     }
-  }, [session, fetchPlanArtifact]);
+  }, [session, fetchPlanArtifact, updateSession]);
 
   return {
     highlightedProposalIds,

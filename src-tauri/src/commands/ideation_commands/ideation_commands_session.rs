@@ -207,7 +207,7 @@ pub async fn spawn_session_namer(
 
     // Build the prompt with session context
     let prompt = format!(
-        "Session ID: {}\nUser's first message: {}\n\nGenerate a concise title (3-6 words) for this ideation session based on the user's message, then call the update_session_title tool with the session_id and the generated title.",
+        "Session ID: {}\nContext: {}\n\nGenerate a concise title (exactly 2 words) for this ideation session based on the context, then call the update_session_title tool with the session_id and the generated title.",
         session_id, first_message
     );
 
@@ -218,6 +218,10 @@ pub async fn spawn_session_namer(
 
     let plugin_dir = working_directory.join("ralphx-plugin");
 
+    // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
+    let mut env = std::collections::HashMap::new();
+    env.insert("RALPHX_AGENT_TYPE".to_string(), "session-namer".to_string());
+
     let config = AgentConfig {
         role: AgentRole::Custom("session-namer".to_string()),
         prompt,
@@ -227,7 +231,7 @@ pub async fn spawn_session_namer(
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
-        env: std::collections::HashMap::new(),
+        env,
     };
 
     // Clone the agent client for the background task
