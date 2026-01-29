@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-29 22:20:00 - Reduce redundant clones in permissions.rs
+**What:**
+- File: src-tauri/src/http_server/handlers/permissions.rs:22-40
+- Change: Optimized clone usage in request_permission function
+- Input fields (tool_name, tool_input, context) now cloned once for .register() call
+- json! macro uses references instead of cloning (&request_id, &input.tool_name, etc.)
+- Reduced from 2x cloning (register + emit) to 1x cloning (register only)
+
+**Commands:**
+- `cargo check --manifest-path src-tauri/Cargo.toml` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 01:44:05 - Remove unused variable _rx
 **What:**
 - File: src-tauri/src/http_server/handlers/permissions.rs:19

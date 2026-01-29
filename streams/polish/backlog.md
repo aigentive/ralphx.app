@@ -126,7 +126,7 @@ _No active P3 items. Completed items moved to archive._
 - [ ] ~~[P3] [Backend] Dead code: Unused variable `_session_link` never referenced~~ (stale - variable already removed)
 - [ ] ~~[P3] [Backend] Redundant clone: Using `.clone()` in serde_json::json! macro (owned values unnecessary)~~ (stale - already using &response)
 - [x] [P3] [Backend] Redundant clone: Unnecessary `response.clone()` when value is already moved - src-tauri/src/http_server/handlers/steps.rs:304
-- [ ] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
+- [x] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
 
 ---
 
