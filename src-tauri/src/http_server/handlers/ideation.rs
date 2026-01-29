@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use tauri::Emitter;
 use tracing::error;
 
 use crate::application::{CreateProposalOptions, UpdateProposalOptions};
@@ -14,6 +15,7 @@ use super::super::helpers::{create_proposal_impl, parse_category, parse_priority
 use super::super::types::{
     AddDependencyRequest, CreateProposalRequest, DeleteProposalRequest,
     HttpServerState, ProposalResponse, SuccessResponse, UpdateProposalRequest,
+    UpdateSessionTitleRequest,
 };
 
 pub async fn create_task_proposal(
@@ -182,5 +184,39 @@ pub async fn add_proposal_dependency(
     Ok(Json(SuccessResponse {
         success: true,
         message: "Dependency added successfully".to_string(),
+    }))
+}
+
+pub async fn update_session_title(
+    State(state): State<HttpServerState>,
+    Json(req): Json<UpdateSessionTitleRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    // Update title in database
+    state
+        .app_state
+        .ideation_session_repo
+        .update_title(&session_id, Some(req.title.clone()))
+        .await
+        .map_err(|e| {
+            error!("Failed to update session title: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Emit event for real-time UI update
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "ideation:session_title_updated",
+            serde_json::json!({
+                "sessionId": req.session_id,
+                "title": req.title
+            }),
+        );
+    }
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Session title updated".to_string(),
     }))
 }

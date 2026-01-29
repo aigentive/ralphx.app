@@ -82,7 +82,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(http): add update_session_title endpoint"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "mcp",

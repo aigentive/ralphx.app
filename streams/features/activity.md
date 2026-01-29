@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-29 08:56:22 - Phase 28 Task 2: Add HTTP endpoint for update_session_title
+**What:**
+- Added `UpdateSessionTitleRequest` struct in http_server/types.rs (session_id: String, title: String)
+- Added `update_session_title` handler in handlers/ideation.rs
+- Handler calls `ideation_session_repo.update_title()` to persist title
+- Handler emits `ideation:session_title_updated` event for real-time UI updates
+- Added route `.route("/api/update_session_title", post(update_session_title))` in http_server/mod.rs
+- Added `use tauri::Emitter;` import for event emission
+
+**Files:**
+- src-tauri/src/http_server/types.rs (added UpdateSessionTitleRequest, lines 28-32)
+- src-tauri/src/http_server/handlers/ideation.rs (added handler + Emitter import, lines 8, 18, 190-222)
+- src-tauri/src/http_server/mod.rs (added route, lines 37-38)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo build --lib` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 09:30:00 - Phase 28 Task 1: Add update_ideation_session_title Tauri command
 **What:**
 - Added `update_ideation_session_title` Tauri command in ideation_commands_session.rs
