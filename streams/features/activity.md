@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-29 02:48:00 - Phase 25 Task 6: Create TaskPickerDialog component
+**What:**
+- Created src/components/Ideation/TaskPickerDialog.tsx
+- Modal dialog for selecting draft tasks to seed ideation sessions
+- Features: search/filter by title, displays only backlog (draft) non-archived tasks
+- Uses shadcn/ui Dialog component with project design system styling
+- Fetches tasks via useTasks hook, gets projectId from useProjectStore
+- On select: returns task and closes dialog
+
+**Files:**
+- src/components/Ideation/TaskPickerDialog.tsx (new)
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 02:45:00 - Add Start Ideation button to TaskDetailOverlay
 **What:**
 - Added "Start Ideation" button to TaskDetailOverlay header for draft (backlog) tasks
