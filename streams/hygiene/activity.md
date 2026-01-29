@@ -1,5 +1,25 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 21:15:00 - Backlog Maintenance
+
+**Archive:**
+- Moved 2 items from refactor/backlog.md to archive (apply_service.rs, ideation_service.rs splits)
+- Refactor backlog: 12 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 9 active, polish: 10 active)
+
+**Validation:**
+- Checked 4 strikethrough items:
+  - http_server/mod.rs (stale → stale:1): Still 84 LOC, under limit → **Counter incremented**
+  - TaskFullView.tsx:221 Pause execution (PRD:21:1:1:1:1 → :1:1:1:1:1): TODO still exists → **Counter incremented**
+  - TaskFullView.tsx:225 Stop execution (PRD:21:1:1:1:1 → :1:1:1:1:1): TODO still exists → **Counter incremented**
+  - useEvents.ts:88 File change handling (PRD:1:1:1:1 → :1:1:1:1:1): TODO still exists → **Counter incremented**
+
+**Result:** Maintenance complete - 2 archived, 4 strikethroughs validated and incremented
+
+---
+
 ### 2026-01-29 19:22:00 - Backlog Maintenance
 
 **Archive:**
