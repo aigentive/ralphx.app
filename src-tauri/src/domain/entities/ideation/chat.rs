@@ -69,6 +69,7 @@ impl FromStr for MessageRole {
             "orchestrator" => Ok(MessageRole::Orchestrator),
             "system" => Ok(MessageRole::System),
             "worker" => Ok(MessageRole::Worker),
+            "reviewer" => Ok(MessageRole::Reviewer),
             _ => Err(ParseMessageRoleError {
                 value: s.to_string(),
             }),

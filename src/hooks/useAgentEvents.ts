@@ -44,7 +44,7 @@ function buildContextKey(contextType: ContextType, contextId: string): string {
  */
 export function useAgentEvents(activeConversationId: string | null) {
   const queryClient = useQueryClient();
-  const { setAgentRunning, deleteQueuedMessage } = useChatStore();
+  const { setAgentRunning, deleteQueuedMessage, setActiveConversation } = useChatStore();
 
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
@@ -59,20 +59,33 @@ export function useAgentEvents(activeConversationId: string | null) {
       // but we don't use them to update the UI during streaming. This avoids
       // issues with mismatched tool calls/results and partial content.
 
-      // Listen for run started - set agent running state to true
+      // Listen for run started - set agent running state to true and update conversation cache
       const runStartedUnlisten = await listen<{
         run_id: string;
         context_type: string;
         context_id: string;
         conversation_id: string;
       }>("agent:run_started", (event) => {
-        const { context_type, context_id: eventContextId } = event.payload;
+        const { context_type, context_id: eventContextId, conversation_id } = event.payload;
 
         // Build context key from the event payload
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
 
         // Set agent as running for this context
         setAgentRunning(eventContextKey, true);
+
+        // Invalidate conversations list to pick up newly created conversation
+        // This fixes the race condition where the list query runs before the backend
+        // creates the conversation (e.g., when task enters "reviewing" state)
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversationList(context_type as ContextType, eventContextId),
+        });
+
+        // If no active conversation is set, set it to this one
+        // This handles the case where a new conversation was just created by the backend
+        if (!activeConversationId && conversation_id) {
+          setActiveConversation(conversation_id);
+        }
       });
       unlisteners.push(runStartedUnlisten);
 
@@ -208,5 +221,5 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [activeConversationId, queryClient, setAgentRunning, deleteQueuedMessage]);
+  }, [activeConversationId, queryClient, setAgentRunning, deleteQueuedMessage, setActiveConversation]);
 }

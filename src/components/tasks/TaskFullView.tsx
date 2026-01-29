@@ -167,11 +167,15 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
 
   // Determine context type based on task status
   const contextType = useMemo((): "task" | "task_execution" | "review" => {
-    if (!task) return "task";
+    if (!task) {
+      console.log("[TaskFullView] contextType: task (no task object)");
+      return "task";
+    }
 
     // Review states route to reviewer agent
     const reviewStatuses: InternalStatus[] = ["reviewing", "review_passed"];
     if (reviewStatuses.includes(task.internalStatus)) {
+      console.log(`[TaskFullView] contextType: review (internalStatus=${task.internalStatus})`);
       return "review";
     }
 
@@ -184,9 +188,11 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
       "qa_passed",
       "qa_failed",
     ];
-    return executingStatuses.includes(task.internalStatus)
+    const result = executingStatuses.includes(task.internalStatus)
       ? "task_execution"
       : "task";
+    console.log(`[TaskFullView] contextType: ${result} (internalStatus=${task.internalStatus})`);
+    return result;
   }, [task]);
 
   const isExecuting = contextType === "task_execution" || contextType === "review";

@@ -176,12 +176,16 @@ export function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProp
 interface ContextIndicatorProps {
   context: ChatContext;
   isExecutionMode?: boolean;
+  isReviewMode?: boolean;
 }
 
-export function ContextIndicator({ context, isExecutionMode = false }: ContextIndicatorProps) {
+export function ContextIndicator({ context, isExecutionMode = false, isReviewMode = false }: ContextIndicatorProps) {
   const getContextInfo = () => {
     if (isExecutionMode) {
       return { icon: Hammer, label: "Worker Execution" };
+    }
+    if (isReviewMode) {
+      return { icon: Bot, label: "AI Review" };
     }
 
     switch (context.view) {

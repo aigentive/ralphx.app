@@ -11,6 +11,7 @@
 
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage as ChatMessageType, MessageRole } from "@/types/ideation";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 
@@ -226,7 +227,7 @@ function TextBubble({
       }}
     >
       <div className="text-[13px] leading-relaxed">
-        <ReactMarkdown components={markdownComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {content}
         </ReactMarkdown>
       </div>
