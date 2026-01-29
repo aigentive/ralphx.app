@@ -1,5 +1,22 @@
 # Hygiene Stream Activity
 
+### 2026-01-30 02:43:34 - Backlog Maintenance
+
+**Archive:**
+- Moved 3 items from refactor/backlog.md to archive (research.rs, artifact_flow.rs, methodology.rs splits)
+- Refactor backlog: 13 → 10 completed items
+
+**Refill:**
+- Added 9 P1 items to refactor/backlog.md (4 backend, 5 frontend)
+- Refactor backlog: 1 → 10 active items
+
+**Validation:**
+- No strikethrough validation this cycle (archive and refill took priority)
+
+**Result:** Maintenance complete - archived 3 items, refilled 9 items
+
+---
+
 ### 2026-01-29 02:32:45 - Backlog Maintenance
 
 **Archive:**

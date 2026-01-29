@@ -9,9 +9,8 @@
 _No active P1 items. Completed items moved to archive._
 
 ## Backend (src-tauri/)
-- [x] Split research.rs (1398 LOC → 351 LOC max) - extracted to research/{mod.rs (351), types.rs (324), tests.rs (740)} - src-tauri/src/domain/entities/research/mod.rs:1-50
-- [x] Split artifact_flow.rs (1389 LOC → 434 LOC max) - extracted to artifact_flow/{mod.rs (160), types.rs (434), tests.rs (816)} - src-tauri/src/domain/entities/artifact_flow/mod.rs:1-50
-- [x] Split methodology.rs (1363 LOC → 664 LOC max) - extracted to methodology/{mod.rs (664), tests.rs (698)} - src-tauri/src/domain/entities/methodology/mod.rs:1-50
+
+_Completed items moved to archive._
 
 ## REFILL (Added 2026-01-29)
 
@@ -41,6 +40,25 @@ _No active P1 items. Completed items moved to archive._
 
 ---
 
+## REFILL (Added 2026-01-30)
+
+### Backend
+
+- [ ] Split memory_task_repo.rs (1149 LOC) - extract test helpers and memory storage impls - src-tauri/src/infrastructure/memory/memory_task_repo.rs:1
+- [ ] Split research_service.rs (1109 LOC) - extract helper functions and validation - src-tauri/src/domain/services/research_service.rs:1
+- [ ] Split sqlite_chat_message_repo.rs (1065 LOC) - extract query builders and result mapping - src-tauri/src/infrastructure/sqlite/sqlite_chat_message_repo.rs:1
+- [ ] Split sqlite_proposal_dependency_repo.rs (1062 LOC) - extract query logic and helpers - src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs:1
+
+### Frontend
+
+- [ ] Split lib/tauri.ts (858 LOC) - extract response schemas into separate modules - src/lib/tauri.ts:1
+- [ ] Split App.tsx (714 LOC) - extract view components and handlers - src/App.tsx:1
+- [ ] Split ScreenshotGallery.tsx (681 LOC) - extract gallery controls and image rendering - src/components/qa/ScreenshotGallery/ScreenshotGallery.tsx:1
+- [ ] Split ActivityView.tsx (641 LOC) - extract activity filtering and rendering logic - src/components/activity/ActivityView.tsx:1
+- [ ] Split useChatPanelHandlers.ts (368 LOC) - extract message handling into separate hook - src/hooks/useChatPanelHandlers.ts:1
+
+---
+
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 4 | **Completed:** 10 | **Archived:** 13
-**Last maintenance:** 2026-01-30 (archived 1 item)
+**Active items:** 10 | **Completed:** 10 | **Archived:** 16
+**Last maintenance:** 2026-01-30 (archived 3 items, refilled 9 items)
