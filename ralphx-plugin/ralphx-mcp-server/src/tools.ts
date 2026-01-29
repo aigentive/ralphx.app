@@ -382,8 +382,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   ],
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],
-  "reviewer": ["complete_review"],
-  worker: [
+  "ralphx-reviewer": ["complete_review"],
+  "ralphx-worker": [
     "get_task_context",
     "get_artifact",
     "get_artifact_version",
