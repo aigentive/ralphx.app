@@ -33,7 +33,7 @@ _No active P1 items. Completed items moved to archive._
 
 ### Frontend
 
-- [ ] Split App.tsx (855 LOC) - extract sidebar/navigation logic - src/App.tsx:1
+- [x] Split App.tsx (855 LOC → 721 LOC) - extracted Navigation.tsx (88 LOC), useAppKeyboardShortcuts.ts (102 LOC) - src/App.tsx:1
 - [ ] Split ChatPanel.tsx (776 LOC) - extract message rendering and handlers - src/components/Chat/ChatPanel.tsx:1
 - [ ] Split DiffViewer.tsx (740 LOC) - extract diff formatting utilities - src/components/diff/DiffViewer.tsx:1
 - [ ] Split TaskDetailModal.tsx (690 LOC) - extract form and step management - src/components/tasks/TaskDetailModal.tsx:1

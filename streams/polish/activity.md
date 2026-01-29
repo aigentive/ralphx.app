@@ -1134,3 +1134,17 @@
 **Result:** Success (artifacts.rs compiles without errors, pre-existing clippy errors in other files)
 
 ---
+
+### 2026-01-29 01:47:09 - Remove redundant clones in steps.rs event emissions
+**What:**
+- File: src-tauri/src/http_server/handlers/steps.rs:76,132,188,244
+- Removed `.clone()` calls on `response` in `serde_json::json!` macros
+- Changed from `response.clone()` to `&response` (4 occurrences)
+- The json! macro can serialize from references, making the clone unnecessary
+
+**Commands:**
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+
+**Result:** Success (compiles without errors, pre-existing test errors unrelated to this change)
+
+---

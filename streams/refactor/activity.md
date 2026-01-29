@@ -656,3 +656,21 @@ This is the 3rd consecutive failure on this specific file due to external interf
 
 Marking item as blocked. Requires investigation of external processes before retry.
 
+
+### 2026-01-29 03:46:00 - Split App.tsx
+
+**What:**
+- Original file: src/App.tsx (855 LOC)
+- Extracted to:
+  - src/components/layout/Navigation.tsx (88 LOC) - navigation bar component with NAV_ITEMS config
+  - src/hooks/useAppKeyboardShortcuts.ts (102 LOC) - keyboard shortcuts hook (Cmd+1-5, Cmd+K, Cmd+,)
+- New size: 721 LOC (16% reduction)
+
+**Commands:**
+- `wc -l src/App.tsx src/components/layout/Navigation.tsx src/hooks/useAppKeyboardShortcuts.ts`
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success - All linters passed, all type checks passed, App.tsx now 721 LOC (still exceeds 500 but significant reduction)
+
+---
