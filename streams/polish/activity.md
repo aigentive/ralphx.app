@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-29 21:28:15 - Add error logging to artifact handlers
+**What:**
+- File: src-tauri/src/http_server/handlers/artifacts.rs
+- Change: Added tracing::error! logging to all .map_err handlers (11 locations)
+- Replaced `.map_err(|_| StatusCode::...)` with proper error logging pattern from steps.rs
+- Affected functions: create_plan_artifact, update_plan_artifact, get_plan_artifact, link_proposals_to_plan
+
+**Commands:**
+- `cargo check --message-format=short` (artifacts.rs changes passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 03:35:42 - Add error logging to ideation handlers
 **What:**
 - File: src-tauri/src/http_server/handlers/ideation.rs
