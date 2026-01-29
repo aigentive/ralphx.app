@@ -16,7 +16,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Eye, Pencil, Archive, RotateCcw, Trash, X, Ban, Unlock } from "lucide-react";
+import { Eye, Pencil, Archive, RotateCcw, Trash, X, Ban, Unlock, Lightbulb } from "lucide-react";
 import type { Task } from "@/types/task";
 
 interface TaskCardContextMenuProps {
@@ -28,6 +28,8 @@ interface TaskCardContextMenuProps {
   onRestore: () => void;
   onPermanentDelete: () => void;
   onStatusChange: (newStatus: string) => void;
+  /** Handler for starting ideation seeded from this task (only for backlog tasks) */
+  onStartIdeation?: () => void;
 }
 
 /**
@@ -101,10 +103,13 @@ export function TaskCardContextMenu({
   onRestore,
   onPermanentDelete,
   onStatusChange,
+  onStartIdeation,
 }: TaskCardContextMenuProps) {
   const isArchived = task.archivedAt !== null;
   const canEditTask = canEdit(task);
   const statusActions = getStatusActions(task.internalStatus);
+  // "Backlog" is the equivalent of "draft" - tasks that haven't started execution yet
+  const isBacklog = task.internalStatus === "backlog";
 
   return (
     <ContextMenu>
@@ -121,6 +126,14 @@ export function TaskCardContextMenu({
           <ContextMenuItem onClick={onEdit}>
             <Pencil className="w-4 h-4 mr-2" />
             Edit
+          </ContextMenuItem>
+        )}
+
+        {/* Start Ideation - only for backlog tasks */}
+        {isBacklog && onStartIdeation && (
+          <ContextMenuItem onClick={onStartIdeation}>
+            <Lightbulb className="w-4 h-4 mr-2" />
+            Start Ideation
           </ContextMenuItem>
         )}
 
