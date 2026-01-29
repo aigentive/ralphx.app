@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import type { GitMode, CreateProject } from "@/types/project";
+import type { CreateProject } from "@/types/project";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,14 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RadioOption } from "./ProjectCreationWizard.components";
+import {
+  type FormState,
+  generateBranchName,
+  generateWorktreePath,
+  extractFolderName,
+  validateForm,
+} from "./ProjectCreationWizard.helpers";
 
 // ============================================================================
 // Props Interface
@@ -55,167 +63,6 @@ export interface ProjectCreationWizardProps {
   error?: string | null;
   /** Whether this is the first-run mode (no existing projects) - disables close/cancel */
   isFirstRun?: boolean;
-}
-
-// ============================================================================
-// Form State Interface
-// ============================================================================
-
-interface FormState {
-  name: string;
-  workingDirectory: string;
-  gitMode: GitMode;
-  worktreeBranch: string;
-  baseBranch: string;
-}
-
-interface FormErrors {
-  name?: string;
-  workingDirectory?: string;
-  worktreeBranch?: string;
-  baseBranch?: string;
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Generate default branch name from project name
- * Format: ralphx/<project-name-slug>
- */
-function generateBranchName(projectName: string): string {
-  const slug = projectName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug ? `ralphx/${slug}` : "ralphx/feature";
-}
-
-/**
- * Generate worktree path from working directory and branch
- * Format: ~/ralphx-worktrees/<project-folder-name>
- */
-function generateWorktreePath(workingDirectory: string): string {
-  const folderName = workingDirectory.split("/").pop() || "project";
-  return `~/ralphx-worktrees/${folderName}`;
-}
-
-/**
- * Extract folder name from path for auto-inferring project name
- */
-function extractFolderName(path: string): string {
-  const folderName = path.split("/").pop() || "";
-  return folderName;
-}
-
-/**
- * Validate the form and return errors
- * Note: Project name is optional - will be inferred from folder if empty
- */
-function validateForm(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-
-  // Project name is now optional - will be inferred from folder
-  // Only validate if user explicitly set it to something invalid
-  // (not just empty)
-
-  if (!form.workingDirectory.trim()) {
-    errors.workingDirectory = "Location is required";
-  }
-
-  if (form.gitMode === "worktree") {
-    if (!form.worktreeBranch.trim()) {
-      errors.worktreeBranch = "Branch name is required";
-    } else if (!/^[a-zA-Z0-9/_-]+$/.test(form.worktreeBranch)) {
-      errors.worktreeBranch = "Branch name contains invalid characters";
-    }
-
-    if (!form.baseBranch.trim()) {
-      errors.baseBranch = "Base branch is required";
-    }
-  }
-
-  return errors;
-}
-
-// ============================================================================
-// Sub-components
-// ============================================================================
-
-interface RadioOptionProps {
-  value: GitMode;
-  selected: boolean;
-  onSelect: (value: GitMode) => void;
-  label: string;
-  description: string;
-  warning?: string;
-  testId: string;
-  children?: React.ReactNode;
-}
-
-function RadioOption({
-  value,
-  selected,
-  onSelect,
-  label,
-  description,
-  warning,
-  testId,
-  children,
-}: RadioOptionProps) {
-  return (
-    <label
-      data-testid={testId}
-      data-selected={selected ? "true" : "false"}
-      className={cn(
-        "flex gap-3 p-3 rounded-lg cursor-pointer transition-colors",
-        selected
-          ? "bg-[var(--bg-elevated)] border-[var(--accent-primary)]"
-          : "bg-transparent border-[var(--border-subtle)] hover:bg-[var(--bg-hover)]"
-      )}
-      style={{
-        border: `1px solid ${selected ? "var(--accent-primary)" : "var(--border-subtle)"}`,
-      }}
-    >
-      <input
-        type="radio"
-        name="gitMode"
-        value={value}
-        checked={selected}
-        onChange={() => onSelect(value)}
-        className="sr-only"
-      />
-      <span
-        className="mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-        style={{
-          borderColor: selected ? "var(--accent-primary)" : "var(--border-subtle)",
-        }}
-      >
-        {selected && (
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: "var(--accent-primary)" }}
-          />
-        )}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-[var(--text-primary)]">
-          {label}
-        </div>
-        <div className="text-xs mt-0.5 text-[var(--text-muted)]">
-          {description}
-        </div>
-        {warning && (
-          <div className="flex items-center gap-1.5 text-xs mt-1.5 text-[var(--status-warning)]">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            <span>{warning}</span>
-          </div>
-        )}
-        {selected && children && <div className="mt-3 space-y-3">{children}</div>}
-      </div>
-    </label>
-  );
 }
 
 // ============================================================================
