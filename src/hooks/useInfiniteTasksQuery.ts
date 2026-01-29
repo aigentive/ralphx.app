@@ -16,8 +16,8 @@ import type { InternalStatus } from "@/types/status";
 export interface InfiniteTasksParams {
   /** The project ID to fetch tasks for */
   projectId: string;
-  /** Optional status filter */
-  status?: InternalStatus | undefined;
+  /** Optional status filter (single status or array of statuses) */
+  statuses?: InternalStatus[] | undefined;
   /** Whether to include archived tasks (default false) */
   includeArchived?: boolean | undefined;
 }
@@ -31,7 +31,7 @@ export const infiniteTaskKeys = {
     [
       ...infiniteTaskKeys.all,
       params.projectId,
-      params.status,
+      params.statuses,
       params.includeArchived,
     ] as const,
 };
@@ -80,15 +80,15 @@ export const infiniteTaskKeys = {
  */
 export function useInfiniteTasksQuery({
   projectId,
-  status,
+  statuses,
   includeArchived = false,
 }: InfiniteTasksParams) {
   return useInfiniteQuery<TaskListResponse, Error>({
-    queryKey: infiniteTaskKeys.list({ projectId, status, includeArchived }),
+    queryKey: infiniteTaskKeys.list({ projectId, statuses, includeArchived }),
     queryFn: async ({ pageParam = 0 }) => {
       return api.tasks.list({
         projectId,
-        ...(status !== undefined && { status }),
+        ...(statuses !== undefined && statuses.length > 0 && { statuses }),
         offset: pageParam as number,
         limit: 20,
         includeArchived,

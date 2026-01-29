@@ -2,26 +2,47 @@
 
 use super::queries::TASK_COLUMNS;
 
-/// Build paginated query based on status and archived filters
-pub(super) fn build_paginated_query(has_status: bool, include_archived: bool) -> String {
+/// Build paginated query based on status count and archived filters
+///
+/// # Arguments
+/// * `status_count` - Number of statuses to filter by (0 = no filter)
+/// * `include_archived` - Whether to include archived tasks
+///
+/// When status_count > 0, generates `internal_status IN (?2, ?3, ...)` clause.
+/// Parameter indices: ?1=project_id, ?2..?(1+count)=statuses, ?(2+count)=limit, ?(3+count)=offset
+pub(super) fn build_paginated_query(status_count: usize, include_archived: bool) -> String {
     let base = format!("SELECT {} FROM tasks WHERE project_id = ?1", TASK_COLUMNS);
 
-    match (has_status, include_archived) {
-        (true, true) => {
+    if status_count == 0 {
+        // No status filter
+        if include_archived {
+            format!("{} ORDER BY created_at DESC LIMIT ?2 OFFSET ?3", base)
+        } else {
             format!(
-                "{} AND internal_status = ?2 ORDER BY created_at DESC LIMIT ?3 OFFSET ?4",
+                "{} AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
                 base
             )
         }
-        (true, false) => format!(
-            "{} AND internal_status = ?2 AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?3 OFFSET ?4",
-            base
-        ),
-        (false, true) => format!("{} ORDER BY created_at DESC LIMIT ?2 OFFSET ?3", base),
-        (false, false) => format!(
-            "{} AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
-            base
-        ),
+    } else {
+        // Build IN clause: ?2, ?3, ... for status_count statuses
+        let placeholders: Vec<String> = (2..=status_count + 1)
+            .map(|i| format!("?{}", i))
+            .collect();
+        let in_clause = placeholders.join(", ");
+        let limit_idx = status_count + 2;
+        let offset_idx = status_count + 3;
+
+        if include_archived {
+            format!(
+                "{} AND internal_status IN ({}) ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
+                base, in_clause, limit_idx, offset_idx
+            )
+        } else {
+            format!(
+                "{} AND internal_status IN ({}) AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
+                base, in_clause, limit_idx, offset_idx
+            )
+        }
     }
 }
 

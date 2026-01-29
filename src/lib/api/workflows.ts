@@ -13,6 +13,23 @@ import { InternalStatusSchema } from "@/types/status";
 // ============================================================================
 
 /**
+ * Schema for state group response from Rust backend
+ * Groups allow columns to contain multiple internal statuses
+ * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
+ */
+export const StateGroupResponseSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  statuses: z.array(InternalStatusSchema),
+  icon: z.string().optional(),
+  accentColor: z.string().optional(),
+  canDragFrom: z.boolean().optional(),
+  canDropTo: z.boolean().optional(),
+});
+
+export type StateGroupResponse = z.infer<typeof StateGroupResponseSchema>;
+
+/**
  * Schema for workflow column response from Rust backend
  * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
  */
@@ -25,6 +42,7 @@ export const WorkflowColumnResponseSchema = z.object({
   skipReview: z.boolean().optional(),
   autoAdvance: z.boolean().optional(),
   agentProfile: z.string().optional(),
+  groups: z.array(StateGroupResponseSchema).optional(),
 });
 
 export type WorkflowColumnResponse = z.infer<typeof WorkflowColumnResponseSchema>;

@@ -172,7 +172,10 @@ pub fn spawn_send_message_background<R: Runtime>(
                     if let Some(ref exec_state) = execution_state {
                         let task_id = TaskId::from_string(context_id.clone());
                         if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                            if task.internal_status == InternalStatus::Executing {
+                            // Handle both first execution (Executing) and re-execution (ReExecuting)
+                            if task.internal_status == InternalStatus::Executing
+                                || task.internal_status == InternalStatus::ReExecuting
+                            {
                                 let transition_service = TaskTransitionService::new(
                                     Arc::clone(&task_repo),
                                     Arc::clone(&project_repo),

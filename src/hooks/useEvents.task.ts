@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { TaskEventSchema } from "@/types/events";
 import { useTaskStore } from "@/stores/taskStore";
 import { taskKeys } from "@/hooks/useTasks";
+import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import type { Task } from "@/types/task";
 
 /**
@@ -45,24 +46,28 @@ export function useTaskEvents() {
       switch (taskEvent.type) {
         case "created":
           addTask(taskEvent.task);
-          // Invalidate task list queries to refetch
+          // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+          queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           break;
         case "updated":
           // Cast to Partial<Task> for exactOptionalPropertyTypes compatibility
           updateTask(taskEvent.taskId, taskEvent.changes as Partial<Task>);
-          // Invalidate task list queries to refetch
+          // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+          queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           break;
         case "deleted":
           removeTask(taskEvent.taskId);
-          // Invalidate task list queries to refetch
+          // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+          queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           break;
         case "status_changed":
           updateTask(taskEvent.taskId, { internalStatus: taskEvent.to });
-          // Invalidate task list queries so Kanban board refetches
+          // Invalidate both regular and infinite task queries so Kanban refetches
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+          queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           break;
       }
     });

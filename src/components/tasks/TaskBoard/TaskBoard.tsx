@@ -32,8 +32,22 @@ import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
-import { defaultWorkflow } from "@/types/workflow";
-import type { Task, TaskListResponse } from "@/types/task";
+import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
+import type { Task, TaskListResponse, InternalStatus } from "@/types/task";
+
+/**
+ * Get all statuses for a column from its groups, or fallback to mapsTo
+ */
+function getColumnStatuses(col: WorkflowColumn): InternalStatus[] {
+  if (col.groups && col.groups.length > 0) {
+    const allStatuses = new Set<InternalStatus>();
+    col.groups.forEach((group) => {
+      group.statuses.forEach((status) => allStatuses.add(status));
+    });
+    return Array.from(allStatuses);
+  }
+  return [col.mapsTo];
+}
 
 export interface TaskBoardProps {
   projectId: string;
@@ -251,7 +265,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     for (const col of columns) {
       const key = infiniteTaskKeys.list({
         projectId,
-        status: col.mapsTo,
+        statuses: getColumnStatuses(col),
         includeArchived: showArchived,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);

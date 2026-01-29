@@ -10,7 +10,7 @@ use super::helpers::status_to_label;
 ///
 /// # Arguments
 /// * `project_id` - The project ID
-/// * `status` - Optional status filter
+/// * `statuses` - Optional status filter (array of status strings)
 /// * `offset` - Pagination offset (default 0)
 /// * `limit` - Page size (default 20)
 /// * `include_archived` - Whether to include archived tasks (default false)
@@ -20,7 +20,7 @@ use super::helpers::status_to_label;
 #[tauri::command]
 pub async fn list_tasks(
     project_id: String,
-    status: Option<String>,
+    statuses: Option<Vec<String>>,
     offset: Option<u32>,
     limit: Option<u32>,
     include_archived: Option<bool>,
@@ -31,13 +31,20 @@ pub async fn list_tasks(
     let limit = limit.unwrap_or(20);
     let include_archived = include_archived.unwrap_or(false);
 
-    // Parse status if provided
-    let internal_status = if let Some(status_str) = status {
-        Some(
-            status_str
+    // Parse statuses if provided
+    let internal_statuses = if let Some(status_vec) = statuses {
+        let mut parsed = Vec::new();
+        for status_str in status_vec {
+            let status = status_str
                 .parse::<InternalStatus>()
-                .map_err(|_| format!("Invalid status: {}", status_str))?,
-        )
+                .map_err(|_| format!("Invalid status: {}", status_str))?;
+            parsed.push(status);
+        }
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
     } else {
         None
     };
@@ -45,7 +52,7 @@ pub async fn list_tasks(
     // Get paginated tasks
     let tasks = state
         .task_repo
-        .list_paginated(&project_id, internal_status, offset, limit, include_archived)
+        .list_paginated(&project_id, internal_statuses, offset, limit, include_archived)
         .await
         .map_err(|e| e.to_string())?;
 

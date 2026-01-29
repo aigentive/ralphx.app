@@ -102,7 +102,7 @@ pub trait TaskRepository: Send + Sync {
     ///
     /// # Arguments
     /// * `project_id` - The project ID
-    /// * `status` - Optional status filter
+    /// * `statuses` - Optional list of status filters (OR logic - matches any)
     /// * `offset` - Number of tasks to skip
     /// * `limit` - Maximum number of tasks to return
     /// * `include_archived` - Whether to include archived tasks
@@ -112,7 +112,7 @@ pub trait TaskRepository: Send + Sync {
     async fn list_paginated(
         &self,
         project_id: &ProjectId,
-        status: Option<InternalStatus>,
+        statuses: Option<Vec<InternalStatus>>,
         offset: u32,
         limit: u32,
         include_archived: bool,
