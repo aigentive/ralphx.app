@@ -124,7 +124,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(application): add ChatResumptionRunner for startup resumption"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

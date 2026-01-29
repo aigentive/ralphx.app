@@ -3,6 +3,7 @@
 
 pub mod app_state;
 pub mod apply_service;
+pub mod chat_resumption;
 pub mod chat_service;
 pub mod dependency_service;
 pub mod ideation_service;
@@ -30,6 +31,7 @@ pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
+pub use chat_resumption::ChatResumptionRunner;
 pub use startup_jobs::StartupJobRunner;
 pub use task_context_service::TaskContextService;
 pub use task_scheduler_service::TaskSchedulerService;
