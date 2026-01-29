@@ -73,13 +73,15 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
     let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
 
     // Build the JSON config for the MCP server
+    // IMPORTANT: Do NOT specify an "env" field here. The env field in MCP config
+    // REPLACES the parent environment entirely (Node.js spawn behavior). We need
+    // the MCP server to INHERIT RALPHX_AGENT_TYPE from Claude CLI's environment
+    // (set by Rust when spawning). The MCP server defaults to http://127.0.0.1:3847
+    // for TAURI_API_URL if not specified.
     let mcp_config = serde_json::json!({
         "type": "stdio",
         "command": "node",
-        "args": [mcp_server_path_str],
-        "env": {
-            "TAURI_API_URL": "http://127.0.0.1:3847"
-        }
+        "args": [mcp_server_path_str]
     });
 
     let config_json = serde_json::to_string(&mcp_config)
