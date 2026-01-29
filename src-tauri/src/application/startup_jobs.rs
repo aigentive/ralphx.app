@@ -17,6 +17,7 @@ use tracing::info;
 
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::domain::state_machine::services::TaskScheduler;
 
 use super::TaskTransitionService;
 
@@ -29,6 +30,9 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     project_repo: Arc<dyn ProjectRepository>,
     transition_service: TaskTransitionService<R>,
     execution_state: Arc<ExecutionState>,
+    /// Optional task scheduler for auto-starting Ready tasks on startup.
+    /// When provided, Ready tasks will be scheduled after resuming agent-active tasks.
+    task_scheduler: Option<Arc<dyn TaskScheduler>>,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
@@ -44,7 +48,17 @@ impl<R: Runtime> StartupJobRunner<R> {
             project_repo,
             transition_service,
             execution_state,
+            task_scheduler: None,
         }
+    }
+
+    /// Set the task scheduler for auto-starting Ready tasks (builder pattern).
+    ///
+    /// When set, the runner will call try_schedule_ready_tasks() after resuming
+    /// agent-active tasks, allowing queued Ready tasks to start execution.
+    pub fn with_task_scheduler(mut self, scheduler: Arc<dyn TaskScheduler>) -> Self {
+        self.task_scheduler = Some(scheduler);
+        self
     }
 
     /// Run startup jobs, resuming tasks in agent-active states.
@@ -116,6 +130,13 @@ impl<R: Runtime> StartupJobRunner<R> {
         }
 
         info!(count = resumed, "Task resumption complete");
+
+        // After resuming agent-active tasks, try to schedule any Ready tasks
+        // that may be waiting in the queue (if scheduler is configured)
+        if let Some(ref scheduler) = self.task_scheduler {
+            info!("Scheduling Ready tasks after resumption");
+            scheduler.try_schedule_ready_tasks().await;
+        }
     }
 }
 
@@ -124,6 +145,7 @@ mod tests {
     use super::*;
     use crate::application::AppState;
     use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task};
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
     // Helper to create test state
     async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
         let execution_state = Arc::new(ExecutionState::new());
@@ -333,6 +355,83 @@ mod tests {
             ready_exec_convs.len(),
             0,
             "Ready task should not be resumed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_startup_schedules_ready_tasks_when_scheduler_configured() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a mock scheduler to verify it gets called
+        let scheduler = Arc::new(MockTaskScheduler::new());
+
+        let runner = build_runner(&app_state, &execution_state)
+            .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+        // Run startup (no agent-active tasks, but should still call scheduler)
+        runner.run().await;
+
+        // Verify scheduler was called once at the end of startup
+        assert_eq!(
+            scheduler.call_count(),
+            1,
+            "Scheduler should be called once after startup resumption"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_startup_does_not_schedule_when_paused() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Pause execution
+        execution_state.pause();
+
+        // Create a mock scheduler
+        let scheduler = Arc::new(MockTaskScheduler::new());
+
+        let runner = build_runner(&app_state, &execution_state)
+            .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+        // Run startup while paused
+        runner.run().await;
+
+        // Scheduler should NOT be called when paused (early return)
+        assert_eq!(
+            scheduler.call_count(),
+            0,
+            "Scheduler should not be called when execution is paused"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_startup_schedules_after_resuming_agent_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project with an Executing task (agent-active)
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+        task.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(task).await.unwrap();
+
+        // Set high max_concurrent to allow resumption
+        execution_state.set_max_concurrent(10);
+
+        // Create a mock scheduler
+        let scheduler = Arc::new(MockTaskScheduler::new());
+
+        let runner = build_runner(&app_state, &execution_state)
+            .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+        // Run startup - should resume the Executing task AND call scheduler
+        runner.run().await;
+
+        // Verify scheduler was called (happens after resumption loop)
+        assert_eq!(
+            scheduler.call_count(),
+            1,
+            "Scheduler should be called after resuming agent-active tasks"
         );
     }
 }
