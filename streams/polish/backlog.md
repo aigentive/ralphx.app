@@ -134,7 +134,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [ ] [P3] [Frontend] Console.error cleanup: Multiple console.error calls in error handlers - src/App.tsx:290
+- [x] [P3] [Frontend] Console.error cleanup: Multiple console.error calls in error handlers - src/App.tsx:290
 - [ ] [P3] [Frontend] Console.error cleanup: Error logging in chat handlers - src/hooks/useIntegratedChatHandlers.ts:98
 - [ ] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
 - [ ] [P3] [Frontend] Code organization: Large component needing extraction - src/components/tasks/TaskDetailModal.tsx:690
@@ -145,6 +145,6 @@ _No active P3 items. Completed items moved to archive._
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 12 (9 excluded, 3 deferred to PRD)
-**Completed:** 10
+**Completed:** 11
 **Validated:** 75 strikethroughs (2026-01-29 x60) - 22 archived, 1 reactivated (moved to refactor as P1), 60 incremented
 **Last maintenance:** 2026-01-29 02:05 (archived 1 item, validated 3 strikethroughs: 1 archived, 2 incremented)

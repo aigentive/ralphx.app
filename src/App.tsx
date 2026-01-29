@@ -285,8 +285,7 @@ function AppContent() {
       // Add session to store immediate (don't wait for refetch)
       addSession(session);
       setActiveSession(session.id);
-    } catch (error) {
-      console.error("Failed to create session:", error);
+    } catch {
       toast.error("Failed to create new session");
     }
   }, [createSession, addSession, setActiveSession, currentProjectId]);
@@ -295,8 +294,7 @@ function AppContent() {
     try {
       await archiveSession.mutateAsync(sessionId);
       setActiveSession(null);
-    } catch (error) {
-      console.error("Failed to archive session:", error);
+    } catch {
       toast.error("Failed to archive session");
     }
   }, [archiveSession, setActiveSession]);
@@ -331,8 +329,7 @@ function AppContent() {
   const handleApplyProposals = useCallback(async (options: ApplyProposalsInput) => {
     try {
       await applyProposalsMutation.mutateAsync(options);
-    } catch (error) {
-      console.error("Failed to apply proposals:", error);
+    } catch {
       toast.error("Failed to apply proposals");
     }
   }, [applyProposalsMutation]);
@@ -367,7 +364,6 @@ function AppContent() {
       selectProject(newProject.id);
       setIsProjectWizardOpen(false);
     } catch (error) {
-      console.error("Failed to create project:", error);
       setProjectCreationError(error instanceof Error ? error.message : "Failed to create project");
     } finally {
       setIsCreatingProject(false);
@@ -386,8 +382,7 @@ function AppContent() {
         return selected;
       }
       return null;
-    } catch (error) {
-      console.error("Failed to browse folder:", error);
+    } catch {
       return null;
     }
   }, []);
@@ -396,8 +391,7 @@ function AppContent() {
     try {
       const branches = await getGitBranches(workingDirectory);
       return branches;
-    } catch (error) {
-      console.error("Failed to fetch branches:", error);
+    } catch {
       return [];
     }
   }, []);
