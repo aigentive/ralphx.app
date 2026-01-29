@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 09:30:00 - Phase 28 Task 1: Add update_ideation_session_title Tauri command
+**What:**
+- Added `update_ideation_session_title` Tauri command in ideation_commands_session.rs
+- Command takes `id: String`, `title: Option<String>`, `state: State<AppState>`, `app: AppHandle`
+- Calls `session_repo.update_title()` to persist title in database
+- Emits `ideation:session_title_updated` event with `sessionId` and `title` for real-time UI updates
+- Returns `IdeationSessionResponse` with updated session data
+- Registered command in lib.rs (line 261)
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_session.rs (added command, lines 151-190)
+- src-tauri/src/lib.rs (registered command)
+
+**Commands:**
+- `cargo check` - passes
+- `cargo clippy --lib -- -D warnings` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 08:15:00 - Phase 27 Complete: Gap Verification Passed
 **What:**
 - Ran gap verification for Phase 27 (Chat Architecture Refactor)

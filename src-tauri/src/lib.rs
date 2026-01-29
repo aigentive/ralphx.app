@@ -258,6 +258,7 @@ pub fn run() {
             commands::ideation_commands::list_ideation_sessions,
             commands::ideation_commands::archive_ideation_session,
             commands::ideation_commands::delete_ideation_session,
+            commands::ideation_commands::update_ideation_session_title,
             // Task proposal commands
             commands::ideation_commands::create_task_proposal,
             commands::ideation_commands::get_task_proposal,
