@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 03:15:00 - Phase 27 Task 1: Create useTaskChat hook
+**What:**
+- Created `src/hooks/useTaskChat.ts` with context-aware conversation fetching
+- Hook accepts taskId and contextType (task | task_execution | review)
+- Uses correct context type for conversation list query (fixes review loading issue)
+- Handles auto-selection of latest conversation
+- Syncs agent running state with context key
+- Resets active conversation when context type changes
+- Builds context keys in format `${contextType}:${taskId}`
+
+**Files:**
+- src/hooks/useTaskChat.ts (new, ~200 LOC)
+
+**Commands:**
+- `npm run lint` - passes (0 errors, 4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 02:20:00 - Phase 26 Enhancement: Repository-Level Cross-Project Query
 **What:**
 - Added `get_oldest_ready_task()` method to `TaskRepository` trait
