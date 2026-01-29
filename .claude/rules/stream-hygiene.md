@@ -14,6 +14,7 @@ The hygiene stream handles **backlog maintenance, refilling via Explore, and arc
 4. **Archive completed items when count > 10**
 5. **Refill backlogs when active items < 3**
 6. **Validate strikethroughs periodically**
+7. **Follow git workflow rules** — see `.claude/rules/git-workflow.md` (Recovery Check does not apply — this stream doesn't write code)
 
 ## Workflow
 

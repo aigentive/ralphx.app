@@ -77,7 +77,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(scheduler): add try_schedule_ready_tasks method"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

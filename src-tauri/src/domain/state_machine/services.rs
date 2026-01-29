@@ -155,6 +155,31 @@ pub trait ReviewStarter: Send + Sync {
     async fn start_ai_review(&self, task_id: &str, project_id: &str) -> ReviewStartResult;
 }
 
+/// Trait for scheduling Ready tasks when execution slots are available.
+///
+/// The TransitionHandler uses this trait to automatically schedule Ready tasks
+/// when capacity becomes available (e.g., on slot free, on enter Ready, on unpause).
+/// The implementation queries for Ready tasks across projects and transitions
+/// the oldest one to Executing state.
+///
+/// Implementations are provided in Phase 26 (Auto-Scheduler).
+#[async_trait]
+pub trait TaskScheduler: Send + Sync {
+    /// Tries to schedule Ready tasks if execution slots are available.
+    ///
+    /// This method:
+    /// 1. Checks if execution is paused or at capacity
+    /// 2. Finds the oldest Ready task across all projects
+    /// 3. Transitions it to Executing state via the state machine
+    ///
+    /// Called from:
+    /// - on_exit() when exiting agent-active states (slot freed)
+    /// - on_enter(Ready) when a task becomes Ready
+    /// - startup when resuming after app restart
+    /// - unpause/capacity increase commands
+    async fn try_schedule_ready_tasks(&self);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +212,11 @@ mod tests {
     }
 
     #[test]
+    fn test_task_scheduler_is_object_safe() {
+        fn _assert_object_safe(_: &dyn TaskScheduler) {}
+    }
+
+    #[test]
     fn test_traits_can_be_wrapped_in_arc() {
         // This is important for sharing services across threads
         fn _takes_arc_spawner(_: Arc<dyn AgentSpawner>) {}
@@ -194,6 +224,7 @@ mod tests {
         fn _takes_arc_notifier(_: Arc<dyn Notifier>) {}
         fn _takes_arc_manager(_: Arc<dyn DependencyManager>) {}
         fn _takes_arc_review_starter(_: Arc<dyn ReviewStarter>) {}
+        fn _takes_arc_task_scheduler(_: Arc<dyn TaskScheduler>) {}
     }
 
     #[test]
@@ -203,6 +234,7 @@ mod tests {
         fn _takes_box_notifier(_: Box<dyn Notifier>) {}
         fn _takes_box_manager(_: Box<dyn DependencyManager>) {}
         fn _takes_box_review_starter(_: Box<dyn ReviewStarter>) {}
+        fn _takes_box_task_scheduler(_: Box<dyn TaskScheduler>) {}
     }
 
     // ReviewStartResult tests

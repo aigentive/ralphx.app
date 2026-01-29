@@ -1,7 +1,7 @@
 // Mock service implementations for testing
 // These implementations record calls for verification in tests
 
-use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, ReviewStartResult};
+use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, ReviewStartResult, TaskScheduler};
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
@@ -385,6 +385,43 @@ impl ReviewStarter for MockReviewStarter {
     }
 }
 
+/// Mock implementation of TaskScheduler that records all calls.
+#[derive(Debug, Default)]
+pub struct MockTaskScheduler {
+    calls: Arc<Mutex<Vec<ServiceCall>>>,
+}
+
+impl MockTaskScheduler {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns all recorded calls
+    pub fn get_calls(&self) -> Vec<ServiceCall> {
+        self.calls.lock().unwrap().clone()
+    }
+
+    /// Clears all recorded calls
+    pub fn clear(&self) {
+        self.calls.lock().unwrap().clear();
+    }
+
+    /// Returns the number of try_schedule_ready_tasks calls
+    pub fn call_count(&self) -> usize {
+        self.calls.lock().unwrap().len()
+    }
+}
+
+#[async_trait]
+impl TaskScheduler for MockTaskScheduler {
+    async fn try_schedule_ready_tasks(&self) {
+        self.calls.lock().unwrap().push(ServiceCall::new(
+            "try_schedule_ready_tasks",
+            vec![],
+        ));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -745,5 +782,42 @@ mod tests {
 
         let result = starter.start_ai_review("task-1", "proj-1").await;
         assert_eq!(result, ReviewStartResult::Disabled);
+    }
+
+    // ==================
+    // MockTaskScheduler tests
+    // ==================
+
+    #[tokio::test]
+    async fn test_mock_task_scheduler_records_calls() {
+        let scheduler = MockTaskScheduler::new();
+        scheduler.try_schedule_ready_tasks().await;
+
+        let calls = scheduler.get_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].method, "try_schedule_ready_tasks");
+        assert!(calls[0].args.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_mock_task_scheduler_call_count() {
+        let scheduler = MockTaskScheduler::new();
+        assert_eq!(scheduler.call_count(), 0);
+
+        scheduler.try_schedule_ready_tasks().await;
+        assert_eq!(scheduler.call_count(), 1);
+
+        scheduler.try_schedule_ready_tasks().await;
+        assert_eq!(scheduler.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_mock_task_scheduler_clear() {
+        let scheduler = MockTaskScheduler::new();
+        scheduler.try_schedule_ready_tasks().await;
+        assert_eq!(scheduler.call_count(), 1);
+
+        scheduler.clear();
+        assert_eq!(scheduler.call_count(), 0);
     }
 }
