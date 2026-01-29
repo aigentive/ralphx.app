@@ -1,8 +1,8 @@
 // TaskServices container and TaskContext for state machine
 // These provide the shared context needed during state transitions
 
-use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter};
-use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter};
+use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter, MockTaskScheduler};
+use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, TaskScheduler};
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
@@ -41,6 +41,10 @@ pub struct TaskServices {
     /// Tauri app handle for emitting events to frontend (optional).
     /// Used by TransitionHandler to emit execution:status_changed events.
     pub app_handle: Option<AppHandle<Wry>>,
+
+    /// Task scheduler for auto-scheduling Ready tasks when slots are available.
+    /// Used by TransitionHandler to trigger scheduling on slot free and on enter Ready.
+    pub task_scheduler: Option<Arc<dyn TaskScheduler>>,
 }
 
 impl TaskServices {
@@ -62,6 +66,7 @@ impl TaskServices {
             chat_service,
             execution_state: None,
             app_handle: None,
+            task_scheduler: None,
         }
     }
 
@@ -89,6 +94,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the task scheduler (builder pattern)
+    pub fn with_task_scheduler(mut self, scheduler: Arc<dyn TaskScheduler>) -> Self {
+        self.task_scheduler = Some(scheduler);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -102,6 +113,7 @@ impl TaskServices {
             chat_service: Arc::new(MockChatService::new()),
             execution_state: None,
             app_handle: None,
+            task_scheduler: Some(Arc::new(MockTaskScheduler::new())),
         }
     }
 }
@@ -117,6 +129,7 @@ impl std::fmt::Debug for TaskServices {
             .field("chat_service", &"<ChatService>")
             .field("execution_state", &self.execution_state.as_ref().map(|_| "<ExecutionState>"))
             .field("app_handle", &self.app_handle.as_ref().map(|_| "<AppHandle>"))
+            .field("task_scheduler", &self.task_scheduler.as_ref().map(|_| "<TaskScheduler>"))
             .finish()
     }
 }

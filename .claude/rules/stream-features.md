@@ -13,33 +13,22 @@ The features stream handles **PRD tasks and P0 gap fixes**. It is the primary st
 3. **No quality improvement work** — that's other streams' job (refactor, polish)
 4. **TDD mandatory** — tests FIRST
 5. **Document patterns inline** — new architectural patterns go in src/CLAUDE.md or src-tauri/CLAUDE.md
-6. **Only recover YOUR work** — see Recovery Check below
+6. **Follow git workflow rules** — see `.claude/rules/git-workflow.md`
 
 ## Recovery Check (ALWAYS FIRST)
 
-Before starting normal workflow, check for incomplete work from a previous iteration:
+Follow the Recovery Check in `git-workflow.md` with these ownership rules:
 
 ```
-1. Run: git status --porcelain
-   → No uncommitted changes? → Skip recovery, proceed to normal workflow
+Ownership sources:
+- streams/features/backlog.md (P0 items)
+- Active PRD task files
+- Files in streams/features/ or specs/phases/
 
-2. Read streams/features/backlog.md → get all P0 items
-   Read active PRD → get files mentioned in current task
-
-3. For each uncommitted file, check if it matches BACKLOG or PRD:
-   - File path matches a P0 backlog item? → YOURS
-   - File path matches active PRD task? → YOURS
-   - Files in streams/features/ or specs/phases/? → YOURS
-   - No match? → NOT yours, leave alone
-
-4. Matched files exist?
-   → YES: This is YOUR incomplete work. Complete it, commit matched files, proceed.
-   → NO: Leave all uncommitted files alone, proceed to normal workflow.
+Match if: File path appears in P0 item OR active PRD task OR is a features stream file
 ```
 
-## BACKLOG/PRD = OWNERSHIP
-
-**If uncommitted files match a backlog item or active PRD task, they are YOUR WORK. Period.**
+**If uncommitted files match, they are YOUR WORK. Complete and commit before proceeding.**
 
 ## Workflow
 

@@ -111,6 +111,9 @@ impl<'a> TransitionHandler<'a> {
                     if let Some(ref handle) = self.machine.context.services.app_handle {
                         exec.emit_status_changed(handle, "task_completed");
                     }
+
+                    // Try to schedule next Ready task now that a slot is free
+                    self.try_schedule_ready_tasks().await;
                 }
             }
             _ => {}
@@ -155,6 +158,25 @@ impl<'a> TransitionHandler<'a> {
                 Some(State::Reviewing)
             }
             _ => None,
+        }
+    }
+
+    /// Try to schedule Ready tasks if execution slots are available.
+    ///
+    /// This method delegates to the TaskScheduler service if available.
+    /// Called from:
+    /// - on_exit() when exiting agent-active states (slot freed)
+    /// - on_enter(Ready) when a task becomes Ready
+    ///
+    /// The scheduler will check capacity and start the oldest Ready task
+    /// across all projects if a slot is available.
+    pub async fn try_schedule_ready_tasks(&self) {
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            tracing::debug!(
+                task_id = %self.machine.context.task_id,
+                "Triggering ready task scheduling"
+            );
+            scheduler.try_schedule_ready_tasks().await;
         }
     }
 }

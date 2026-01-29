@@ -12,6 +12,7 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 2. **Output P0 items to streams/features/backlog.md** — verify produces, features consumes
 3. **ONE verification pass per iteration, then STOP**
 4. **No backlog** — this stream reads completed phases and outputs to features/backlog.md
+5. **Follow git workflow rules** — see `.claude/rules/git-workflow.md` (Recovery Check does not apply — this stream doesn't write code)
 
 ## Workflow
 

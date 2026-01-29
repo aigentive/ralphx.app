@@ -19,9 +19,9 @@ pub use context::{TaskContext, TaskServices};
 pub use events::TaskEvent;
 pub use machine::{ParseStateError, Response, State, TaskStateMachine};
 pub use mocks::{
-    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, ServiceCall,
+    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockTaskScheduler, ServiceCall,
 };
-pub use services::{AgentSpawner, DependencyManager, EventEmitter, Notifier};
+pub use services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, TaskScheduler};
 pub use persistence::{
     deserialize_failed_data, deserialize_qa_failed_data, serialize_failed_data,
     serialize_qa_failed_data, state_has_data, StateData,

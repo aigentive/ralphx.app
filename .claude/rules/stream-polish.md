@@ -13,30 +13,20 @@ The polish stream handles **P2/P3 cleanup, type fixes, lint fixes, and small ext
 3. **Cannot skip to other work** — work items in order
 4. **Verify issue still exists** — check file:line before starting
 5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
-6. **Only recover YOUR work** — see Recovery Check below
+6. **Follow git workflow rules** — see `.claude/rules/git-workflow.md`
 
 ## Recovery Check (ALWAYS FIRST)
 
-Before starting normal workflow, check for incomplete work from a previous iteration:
+Follow the Recovery Check in `git-workflow.md` with these ownership rules:
 
 ```
-1. Run: git status --porcelain
-   → No uncommitted changes? → Skip recovery, proceed to normal workflow
+Ownership source:
+- streams/polish/backlog.md (P2/P3 items)
 
-2. Read streams/polish/backlog.md → get all P2/P3 items
-
-3. For each uncommitted file, check if it matches a BACKLOG ITEM:
-   - File path matches a backlog item path? → YOURS
-   - No backlog match? → NOT yours, leave alone
-
-4. Matched files exist?
-   → YES: This is YOUR incomplete work. Complete it, commit matched files, proceed.
-   → NO: Leave all uncommitted files alone, proceed to normal workflow.
+Match if: File path matches a backlog item's file:line reference
 ```
 
-## BACKLOG = OWNERSHIP
-
-**If uncommitted files match a backlog item, they are YOUR WORK. Period.**
+**If uncommitted files match, they are YOUR WORK. Complete and commit before proceeding.**
 
 ## Workflow
 

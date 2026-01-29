@@ -13,31 +13,21 @@ The refactor stream handles **P1 large file splits and architectural refactors o
 3. **Cannot skip to easier work** — there is no easier work in this stream
 4. **Must verify LOC limits** — reference `.claude/rules/code-quality-standards.md` before starting
 5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
-6. **Only recover YOUR work** — see Recovery Check below
+6. **Follow git workflow rules** — see `.claude/rules/git-workflow.md`
 
 ## Recovery Check (ALWAYS FIRST)
 
-Before starting normal workflow, check for incomplete work from a previous iteration:
+Follow the Recovery Check in `git-workflow.md` with these ownership rules:
 
 ```
-1. Run: git status --porcelain
-   → No uncommitted changes? → Skip recovery, proceed to normal workflow
+Ownership source:
+- streams/refactor/backlog.md (P1 items)
 
-2. Read streams/refactor/backlog.md → get all P1 items
-
-3. For each uncommitted file, check if it matches a BACKLOG ITEM:
-   - File path contains a path/module mentioned in any backlog item? → YOURS
-   - Example: backlog has "http_server" item, uncommitted file is http_server/handlers/foo.rs → YOURS
-   - No backlog match at all? → NOT yours, leave alone
-
-4. Matched files exist?
-   → YES: This is YOUR incomplete work. Complete it, commit matched files, proceed.
-   → NO: Leave all uncommitted files alone, proceed to normal workflow.
+Match if: File path contains a module/path mentioned in any P1 backlog item
+Example: Backlog has "http_server" item → http_server/handlers/foo.rs is YOURS
 ```
 
-## BACKLOG = OWNERSHIP
-
-**If uncommitted files match a backlog item, they are YOUR WORK. Period.**
+**If uncommitted files match, they are YOUR WORK. Complete and commit before proceeding.**
 
 Activity log status (failed/reverted) is irrelevant. The backlog defines what work belongs to this stream.
 

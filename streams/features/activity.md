@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-01-29 01:44:03 - Phase 26 Task 1: Add try_schedule_ready_tasks() method to TransitionHandler
+**What:**
+- Added TaskScheduler trait to services.rs with try_schedule_ready_tasks() method
+- Implemented MockTaskScheduler in mocks.rs with call recording for testing
+- Added task_scheduler field to TaskServices in context.rs (optional Arc<dyn TaskScheduler>)
+- Added with_task_scheduler() builder method to TaskServices
+- Added try_schedule_ready_tasks() method to TransitionHandler that delegates to scheduler
+- Wired call from on_exit() when exiting agent-active states (slot freed)
+- Updated mod.rs exports for TaskScheduler and MockTaskScheduler
+- Added unit tests for trait object safety and MockTaskScheduler functionality
+
+**Files:**
+- src-tauri/src/domain/state_machine/services.rs (modified)
+- src-tauri/src/domain/state_machine/mocks.rs (modified)
+- src-tauri/src/domain/state_machine/context.rs (modified)
+- src-tauri/src/domain/state_machine/mod.rs (modified)
+- src-tauri/src/domain/state_machine/transition_handler/mod.rs (modified)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passed (lib only, pre-existing test compile errors in sqlite_task_repo)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 22:58:00 - Phase 25 Task 11: Enhance ProposalsEmptyState with drop hint
 **What:**
 - Added "or" divider with gradient lines after the "From chat" hint
