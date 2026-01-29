@@ -1,5 +1,26 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 23:18:30 - Backlog Maintenance
+
+**Archive:**
+- Moved 3 items from polish/backlog.md to archive (P2 error handling items from REFILL 2026-01-29 20:43)
+- Archived 2 strikethroughs from polish/backlog.md (stale:2 validation complete)
+- Polish backlog: 13 → 10 completed items
+
+**Refill:**
+- Added 9 P2/P3 items to polish/backlog.md (4 P2, 5 P3)
+- Polish backlog: 4 → 13 active items
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - _session_link variable (stale:1 → stale:2): Confirmed removed → **Archived**
+  - Redundant clone in json! macro (stale:1 → stale:2): Confirmed fixed → **Archived**
+  - TaskFullView.tsx:221 Pause execution (PRD:21:1:1:1:1:1:1 → :1:1:1:1:1:1:1): Comment still exists → **Counter incremented**
+
+**Result:** Maintenance complete - 3 completed archived, 2 stale:2 archived, 9 items refilled, 1 PRD counter incremented (total 78 validated)
+
+---
+
 ### 2026-01-29 02:07:24 - Backlog Maintenance
 
 **Archive:**

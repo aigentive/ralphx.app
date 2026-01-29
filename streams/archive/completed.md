@@ -5,6 +5,21 @@
 
 ---
 
+## Archived 2026-01-29 (Fourteenth Batch)
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
+
+- [x] [P2] [Backend] Type safety: Use `format!("{:?}", ...)` for enum serialization instead of proper variants - src-tauri/src/http_server/types.rs:81
+- [x] [P2] [Backend] Inconsistent error handling: Direct `.map_err(|_| StatusCode::...)` swallows error details; use tracing like in steps.rs - src-tauri/src/http_server/handlers/ideation.rs:58
+- [x] [P2] [Backend] Inconsistent error handling: Missing error logging in artifact handlers despite having tracing in steps.rs - src-tauri/src/http_server/handlers/artifacts.rs:31
+
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P3] [Backend] Dead code: Unused variable `_session_link` never referenced~~ (stale:2 - variable already removed)
+- [ ] ~~[P3] [Backend] Redundant clone: Using `.clone()` in serde_json::json! macro (owned values unnecessary)~~ (stale:2 - already using &response)
+
+---
+
 ## Archived 2026-01-29 (Thirteenth Batch)
 
 ### From refactor/backlog.md (Backend)
