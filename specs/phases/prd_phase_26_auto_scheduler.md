@@ -103,7 +103,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(scheduler): auto-start Ready tasks when slots available"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

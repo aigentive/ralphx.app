@@ -21,6 +21,9 @@ impl<'a> super::TransitionHandler<'a> {
                         .spawn_background("qa-prep", &self.machine.context.task_id)
                         .await;
                 }
+
+                // Try to auto-start this task if execution slots are available
+                self.try_schedule_ready_tasks().await;
             }
             State::Executing => {
                 // Use ChatService for persistent worker execution (Phase 15B)
