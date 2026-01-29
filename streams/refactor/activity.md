@@ -710,3 +710,40 @@ Marking item as blocked. Requires investigation of external processes before ret
 
 **Result:** Success - Extracted 487 LOC to new modules, reduced main file by 14%. File still above 500 LOC limit (1081 LOC), may need further extraction.
 
+---
+
+### 2026-01-29 03:58:54 - Verification: chat_service/mod.rs still exceeds LOC limit
+
+**What:**
+- Verified chat_service/mod.rs current state: 1081 LOC
+- LOC limit for backend files: 500 LOC (per code-quality-standards.md)
+- Previous extraction (chat_service_context.rs + chat_service_queue.rs) reduced file from 1263 to 1081 LOC
+- Item was incorrectly marked as complete [x] in backlog
+
+**Action:**
+- Unmarked item in backlog (changed [x] to [ ])
+- Updated item description to reflect partial progress and remaining work
+- Identified need for additional extraction: send_message background task logic (~400 LOC) could be extracted
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service/mod.rs` → 1081
+- Limit check: 1081 > 500 = STILL EXCEEDS
+
+**Result:** Item remains active, needs additional extraction to reach 500 LOC target
+
+
+### 2026-01-29 23:15:00 - Split ChatPanel.tsx
+
+**What:**
+- Original file: src/components/Chat/ChatPanel.tsx (776 LOC)
+- Extracted to:
+  - useChatPanelHandlers.ts (368 LOC) - event handlers, queue management, Tauri event subscriptions
+- New size: 480 LOC (38% reduction, 296 LOC extracted)
+
+**Commands:**
+- `wc -l src/components/Chat/ChatPanel.tsx src/hooks/useChatPanelHandlers.ts`
+- `npm run typecheck`
+- `npm run lint`
+
+**Result:** Success - All linters passed, all type checks passed, file now under 500 LOC limit (480 LOC)
+
