@@ -586,3 +586,73 @@ This P1 item requires a more careful, multi-step approach:
 - Cargo check passed (no sqlite_task_repo errors)
 
 **Result:** Success - mod.rs now 466 LOC (well under 500 LOC backend file limit)
+
+### 2026-01-29 03:37:00 - Split chat_service/mod.rs (FAILED)
+
+**What:**
+- Attempted to extract:
+  - Message queue processing to chat_service_queue.rs
+  - Context routing to chat_service_context.rs
+  - Message factories to chat_service_messages.rs
+- Original file: 1263 LOC
+- Target: reduce to ~800 LOC
+
+**Commands:**
+- Created extracted modules
+- Modified mod.rs to use extracted functions
+
+**Result:** FAILED - Work was interfered with by external process (file watcher or concurrent agent). Changes were reverted mid-extraction. Cleaned up orphaned files. Will retry in next iteration.
+
+---
+
+### 2026-01-29 01:39:30 - Attempted Split of chat_service/mod.rs (FAILED - File Persistence Issue)
+
+**What:**
+- Original file: src-tauri/src/application/chat_service/mod.rs (1263 LOC, exceeds 500 LOC limit by 763 lines)
+- Attempted extraction:
+  - Background spawn task (lines 453-726, ~273 lines) to chat_service_send_background.rs
+  - Target: Reduce send_message method from 555 lines to ~180 lines
+  - Created chat_service_send_background.rs with spawn_send_message_background() function
+- Issue: File persistence problem - created file disappeared, Edit tool calls conflicted
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service/mod.rs` → 1263 LOC
+- Created chat_service_send_background.rs (new file)
+- Multiple Edit attempts to update mod.rs imports and replace inline spawn
+
+**Result:** FAILED - File tool persistence issues, edits conflicted or reverted
+
+**Analysis:**
+This is the 4th failed attempt at splitting chat_service/mod.rs (see activity log lines 224-296, 543-588).
+The file has a massive send_message implementation (555 lines, 11x the 50-line service method limit).
+Requires multi-iteration approach:
+1. Iteration 1: Extract background task handling
+2. Iteration 2: Extract event emission logic
+3. Iteration 3: Extract conversation management
+Target: Reduce to < 500 LOC total, send_message to < 100 lines.
+
+Skipping to next P1 item due to technical blocker.
+### 2026-01-29 03:44:15 - Split chat_service/mod.rs (FAILED - 3rd attempt)
+
+**What:**
+- Attempted to extract:
+  - Message queue processing (~280 lines) to chat_service_queue_processor.rs
+  - Context routing (~220 lines) to chat_service_context_routing.rs
+- Original file: 1263 LOC
+- Target: reduce to ~800 LOC
+
+**Commands:**
+- Created chat_service_queue_processor.rs (237 LOC)
+- Created chat_service_context_routing.rs (235 LOC)
+- Attempted to modify mod.rs to use extracted modules
+
+**Result:** FAILED - External process deleted created files and reverted mod.rs edits. Same interference pattern as previous attempts (2026-01-29 03:37:00, 2026-01-29 01:39:30). 
+
+**Analysis:**
+This is the 3rd consecutive failure on this specific file due to external interference. Pattern suggests:
+- File watcher or concurrent process monitoring chat_service/
+- Changes get reverted within seconds of being made
+- Not related to commit lock (no lock file present)
+
+Marking item as blocked. Requires investigation of external processes before retry.
+
