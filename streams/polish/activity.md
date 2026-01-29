@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-29 02:04:26 - Remove eslint-disable from useTaskExecutionState hook
+**What:**
+- File: src/hooks/useTaskExecutionState.ts:141
+- Removed eslint-disable-next-line react-hooks/exhaustive-deps suppression
+- Fixed by making currentTime dependency actually used in the calculation
+- Updated calculateDuration function to accept currentTimeMs parameter
+- Changed from `new Date()` inside function to using passed currentTimeMs
+- Now currentTime dependency is properly used, satisfying exhaustive-deps rule
+
+**Commands:**
+- `npm run lint -- src/hooks/useTaskExecutionState.ts` (passed - 0 errors, 4 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 23:15:00 - Remove unused parameter in handleQuestionSubmit
 **What:**
 - File: src/App.tsx:264
