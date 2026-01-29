@@ -598,6 +598,10 @@ mod tests {
         ) -> AppResult<Vec<Task>> {
             Ok(vec![])
         }
+
+        async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
+            Ok(None)
+        }
     }
 
     fn setup() -> (Arc<MockReviewRepo>, Arc<MockTaskRepo>, ProjectId, TaskId) {

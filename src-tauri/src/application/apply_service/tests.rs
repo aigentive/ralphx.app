@@ -586,6 +586,10 @@ use std::sync::{Arc, Mutex};
                 .cloned()
                 .collect())
         }
+
+        async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
+            Ok(None)
+        }
     }
 
     struct MockTaskDependencyRepository {

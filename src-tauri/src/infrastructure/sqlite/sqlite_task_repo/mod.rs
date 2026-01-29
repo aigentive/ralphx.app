@@ -459,6 +459,18 @@ impl TaskRepository for SqliteTaskRepository {
 
         Ok(tasks)
     }
+
+    async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
+        let conn = self.conn.lock().await;
+
+        let result = conn.query_row(queries::GET_OLDEST_READY_TASK, [], |row| Task::from_row(row));
+
+        match result {
+            Ok(task) => Ok(Some(task)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
 }
 
 

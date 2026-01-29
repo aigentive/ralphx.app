@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-01-30 02:20:00 - Phase 26 Enhancement: Repository-Level Cross-Project Query
+**What:**
+- Added `get_oldest_ready_task()` method to `TaskRepository` trait
+- Implemented efficient single-query in `SqliteTaskRepository` (vs. iterating all projects)
+- Implemented in `MemoryTaskRepository` for test isolation
+- Updated `TaskSchedulerService::find_oldest_ready_task()` to use repository method
+- Added mock implementations in all test files
+- Added 6 comprehensive tests for the repository method in MemoryTaskRepository
+
+**Files:**
+- src-tauri/src/domain/repositories/task_repository.rs (trait + mock)
+- src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs (implementation)
+- src-tauri/src/infrastructure/memory/memory_task_repo.rs (implementation + tests)
+- src-tauri/src/application/task_scheduler_service.rs (use new method)
+- src-tauri/src/application/apply_service/tests.rs (mock)
+- src-tauri/src/application/review_service.rs (mock)
+- src-tauri/src/application/task_context_service.rs (mock)
+
+**Commands:**
+- `cargo check --lib` - passes
+- `cargo clippy --lib -- -D warnings` - passes
+
+**Note:** Full `cargo test` blocked by pre-existing test compilation errors in sqlite_task_repo/tests.rs from refactor stream.
+
+**Result:** Success - Repository layer now has optimized cross-project query
+
+---
+
 ### 2026-01-30 01:45:00 - Phase 26 Complete: All Tasks Verified
 **What:**
 - Verified Tasks 6-7 were already implemented in TaskSchedulerService

@@ -151,6 +151,21 @@ pub trait TaskRepository: Send + Sync {
         query: &str,
         include_archived: bool,
     ) -> AppResult<Vec<Task>>;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Cross-Project Scheduling Operations (Phase 26 - Auto-Scheduler)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Get the oldest Ready task across all projects
+    ///
+    /// Used by the auto-scheduler to find the next task to execute when
+    /// execution slots become available. Returns the oldest (by created_at)
+    /// Ready task from any project, excluding archived tasks.
+    ///
+    /// # Returns
+    /// * `Some(Task)` - The oldest Ready task (FIFO ordering)
+    /// * `None` - No Ready tasks exist across any project
+    async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>>;
 }
 
 #[cfg(test)]
@@ -277,6 +292,10 @@ mod tests {
             _include_archived: bool,
         ) -> AppResult<Vec<Task>> {
             Ok(vec![])
+        }
+
+        async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
+            Ok(None)
         }
     }
 

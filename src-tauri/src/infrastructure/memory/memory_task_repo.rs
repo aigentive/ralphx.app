@@ -383,6 +383,21 @@ impl TaskRepository for MemoryTaskRepository {
 
         Ok(result)
     }
+
+    async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
+        let tasks = self.tasks.read().await;
+
+        // Find all Ready tasks that are not archived
+        let mut ready_tasks: Vec<&Task> = tasks
+            .values()
+            .filter(|t| t.internal_status == InternalStatus::Ready && t.archived_at.is_none())
+            .collect();
+
+        // Sort by created_at ASC (oldest first) for FIFO
+        ready_tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+        Ok(ready_tasks.first().cloned().cloned())
+    }
 }
 
 #[cfg(test)]
@@ -1011,5 +1026,124 @@ mod tests {
         // Search for "authentication" - should match both (title and description)
         let results = repo.search(&project, "authentication", false).await.unwrap();
         assert_eq!(results.len(), 2);
+    }
+
+    // ===== Cross-Project Ready Task Tests (Phase 26 - Auto-Scheduler) =====
+
+    #[tokio::test]
+    async fn test_get_oldest_ready_task_returns_oldest_by_created_at() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        // Create older Ready task first
+        let mut older_task = create_test_task(project.clone(), "Older Task", 1);
+        older_task.internal_status = InternalStatus::Ready;
+        repo.create(older_task.clone()).await.unwrap();
+
+        // Small delay to ensure different created_at
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Create newer Ready task
+        let mut newer_task = create_test_task(project.clone(), "Newer Task", 2);
+        newer_task.internal_status = InternalStatus::Ready;
+        repo.create(newer_task.clone()).await.unwrap();
+
+        let result = repo.get_oldest_ready_task().await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, older_task.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_ready_task_across_projects() {
+        let repo = MemoryTaskRepository::new();
+        let project1 = ProjectId::new();
+        let project2 = ProjectId::new();
+
+        // Create older Ready task in project 2
+        let mut older_task = Task::new(project2, "Older Task (P2)".to_string());
+        older_task.internal_status = InternalStatus::Ready;
+        repo.create(older_task.clone()).await.unwrap();
+
+        // Small delay
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Create newer Ready task in project 1
+        let mut newer_task = Task::new(project1, "Newer Task (P1)".to_string());
+        newer_task.internal_status = InternalStatus::Ready;
+        repo.create(newer_task.clone()).await.unwrap();
+
+        let result = repo.get_oldest_ready_task().await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, older_task.id, "Should return oldest task regardless of project");
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_ready_task_excludes_non_ready() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        // Create Backlog task (older)
+        let mut backlog_task = create_test_task(project.clone(), "Backlog Task", 1);
+        backlog_task.internal_status = InternalStatus::Backlog;
+        repo.create(backlog_task.clone()).await.unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Create Ready task (newer)
+        let mut ready_task = create_test_task(project.clone(), "Ready Task", 2);
+        ready_task.internal_status = InternalStatus::Ready;
+        repo.create(ready_task.clone()).await.unwrap();
+
+        let result = repo.get_oldest_ready_task().await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, ready_task.id, "Should only return Ready tasks");
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_ready_task_excludes_archived() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        // Create older Ready task and archive it
+        let mut archived_task = create_test_task(project.clone(), "Archived Ready", 1);
+        archived_task.internal_status = InternalStatus::Ready;
+        repo.create(archived_task.clone()).await.unwrap();
+        repo.archive(&archived_task.id).await.unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Create active Ready task (newer)
+        let mut active_task = create_test_task(project.clone(), "Active Ready", 2);
+        active_task.internal_status = InternalStatus::Ready;
+        repo.create(active_task.clone()).await.unwrap();
+
+        let result = repo.get_oldest_ready_task().await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, active_task.id, "Should exclude archived tasks");
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_ready_task_returns_none_when_no_ready_tasks() {
+        let repo = MemoryTaskRepository::new();
+        let project = ProjectId::new();
+
+        // Create tasks in non-Ready statuses
+        let mut backlog = create_test_task(project.clone(), "Backlog", 1);
+        backlog.internal_status = InternalStatus::Backlog;
+        repo.create(backlog).await.unwrap();
+
+        let mut executing = create_test_task(project.clone(), "Executing", 2);
+        executing.internal_status = InternalStatus::Executing;
+        repo.create(executing).await.unwrap();
+
+        let result = repo.get_oldest_ready_task().await.unwrap();
+        assert!(result.is_none(), "Should return None when no Ready tasks exist");
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_ready_task_returns_none_when_empty() {
+        let repo = MemoryTaskRepository::new();
+        let result = repo.get_oldest_ready_task().await.unwrap();
+        assert!(result.is_none(), "Should return None for empty repository");
     }
 }
