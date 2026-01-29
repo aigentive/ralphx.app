@@ -72,11 +72,11 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
+_No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
-- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about agent context - src-tauri/src/commands/task_commands/mutation.rs:353
+_Completed items moved to archive._
 
 ---
 
@@ -117,7 +117,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P2] [Backend] Type safety: Use `format!("{:?}", ...)` for enum serialization instead of proper variants - src-tauri/src/http_server/types.rs:81
 - [x] [P2] [Backend] Inconsistent error handling: Direct `.map_err(|_| StatusCode::...)` swallows error details; use tracing like in steps.rs - src-tauri/src/http_server/handlers/ideation.rs:58
 - [x] [P2] [Backend] Inconsistent error handling: Missing error logging in artifact handlers despite having tracing in steps.rs - src-tauri/src/http_server/handlers/artifacts.rs:31
-- [ ] [P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42
+- [ ] ~~[P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42~~ (stale - all error handlers now have proper logging)
 - [ ] [P2] [Backend] Inconsistent error handling: Missing error logging in review handlers despite tracing available - src-tauri/src/http_server/handlers/reviews.rs:27
 
 ### P3 - Low Impact
@@ -131,7 +131,7 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 10 (9 excluded, 3 deferred to PRD)
-**Completed:** 10
-**Validated:** 72 strikethroughs (2026-01-29 x57) - 19 archived, 1 reactivated (moved to refactor as P1), 57 incremented
-**Last maintenance:** 2026-01-29 21:07 (validated 3 PRD-deferred items)
+**Active items:** 7 (9 excluded, 3 deferred to PRD)
+**Completed:** 11
+**Validated:** 72 strikethroughs (2026-01-29 x57) - 21 archived, 1 reactivated (moved to refactor as P1), 57 incremented
+**Last maintenance:** 2026-01-29 22:15 (archived 2 items)

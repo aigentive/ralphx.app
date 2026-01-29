@@ -5,6 +5,15 @@
 
 ---
 
+## Archived 2026-01-29 (Tenth Batch)
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:43)
+
+- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about streaming implementation - src-tauri/src/infrastructure/agents/claude/claude_code_client.rs:249
+- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about agent context - src-tauri/src/commands/task_commands/mutation.rs:353
+
+---
+
 ## Archived 2026-01-29 (Ninth Batch)
 
 ### From refactor/backlog.md (Backend)
