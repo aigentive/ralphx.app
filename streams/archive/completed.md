@@ -5,6 +5,18 @@
 
 ---
 
+## Archived 2026-01-29 (Sixteenth Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split ideation.rs (3982 LOC → 426 LOC max) - extracted to ideation/{mod.rs (234), types.rs (365), proposal.rs (201), assessment.rs (426), chat.rs (258), graph.rs (198), tests.rs (2345)} - src-tauri/src/domain/entities/ideation/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
+
+- [x] [P3] [Backend] Dead code: Unused variable `_rx` never referenced - src-tauri/src/http_server/handlers/permissions.rs:18
+
+---
+
 ## Archived 2026-01-29 (Fifteenth Batch)
 
 ### From refactor/backlog.md (Backend)
