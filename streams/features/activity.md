@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-29 12:15:00 - Phase 28 Task 5: Add spawn_session_namer Tauri command
+**What:**
+- Added `spawn_session_namer` Tauri command in ideation_commands_session.rs
+- Command takes `session_id` and `first_message` parameters
+- Uses `AgenticClient::spawn_agent` with custom `session-namer` agent role
+- Builds prompt with session context for title generation
+- Spawns agent in background using `tokio::spawn` (fire-and-forget)
+- Waits for completion in background task, logs any errors
+- Registered command in lib.rs
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_session.rs (added command, lines 193-251)
+- src-tauri/src/lib.rs (registered command at line 262)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo build --lib` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 10:59:00 - Phase 28 Task 4: Create session-namer agent
 **What:**
 - Created `session-namer.md` agent file in ralphx-plugin/agents/
