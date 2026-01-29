@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 07:40:00 - Phase 27 Task 4: Clean up useChat and verify all contexts work
+**What:**
+- Reviewed useChat and useTaskChat for dead code - no dead code found
+- Verified chatKeys are properly exported from useChat.ts and imported by all dependent files
+- Confirmed TaskChatPanel works correctly in all modes (task, task_execution, review)
+- Fixed TaskChatPanel.test.tsx to properly mock useConversation and useAgentEvents hooks
+- Fixed useChat.test.ts to use sendAgentMessage instead of deprecated sendContextMessage
+- Fixed useChat.test.ts setAgentRunning call to use new (contextKey, isRunning) signature
+
+**Files:**
+- src/components/tasks/TaskChatPanel.test.tsx (added useConversation and useAgentEvents mocks)
+- src/hooks/useChat.test.ts (updated sendAgentMessage, fixed setAgentRunning signature)
+
+**Commands:**
+- `npm run lint` - passes (0 errors, 4 pre-existing warnings)
+- `npm run typecheck` - passes
+- `npm run test -- --run src/components/tasks/TaskChatPanel.test.tsx` - passes (5 tests)
+- `npm run test -- --run src/hooks/useChat.test.ts` - passes (19 tests)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 05:45:00 - Phase 27 Task 3: Unify message queues in chatStore
 **What:**
 - Removed `executionQueuedMessages` state from ChatState - now uses unified `queuedMessages` with context-aware keys
