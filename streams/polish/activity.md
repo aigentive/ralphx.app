@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-29 01:44:05 - Remove unused variable _rx
+**What:**
+- File: src-tauri/src/http_server/handlers/permissions.rs:19
+- Change: Removed unused variable `_rx` from request_permission function
+- The receiver returned by register() was assigned but never used
+- Function doesn't need to wait for response - it just registers and emits event
+
+**Commands:**
+- `cargo check --manifest-path src-tauri/Cargo.toml` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 03:43:29 - Add error logging to task handlers
 **What:**
 - File: src-tauri/src/http_server/handlers/tasks.rs
