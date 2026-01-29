@@ -90,7 +90,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(scheduler): trigger scheduling when execution slot frees"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
