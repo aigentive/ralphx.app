@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-29 16:30:00 - Phase 28 Task 8: Add three-dot menu with rename option to SessionBrowser items
+**What:**
+- Added DropdownMenu to session items in SessionBrowser.tsx
+- Menu options: Rename, Archive, Delete (with separator before delete)
+- Implemented inline edit mode for rename with Input component
+- Edit mode activates on "Rename" click, confirms on Enter/blur, cancels on Escape
+- Calls ideationApi.sessions.updateTitle() on confirm
+- Added optional onArchiveSession and onDeleteSession props for parent handling
+- Menu shows on hover (opacity transition) and always visible when selected
+
+**Files:**
+- src/components/Ideation/SessionBrowser.tsx (added imports, state, handlers, menu UI)
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 15:45:00 - Phase 28 Task 7: Trigger session namer on first message send
 **What:**
 - Modified useIntegratedChatHandlers to accept `messageCount` parameter
