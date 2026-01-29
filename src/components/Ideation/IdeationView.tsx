@@ -423,7 +423,6 @@ export function IdeationView({
                   emptyState={<ConversationEmptyState />}
                   showHelperTextAlways={true}
                   inputContainerClassName="border-t border-white/[0.06] bg-black/30"
-                  showCollapseButton={false}
                   headerContent={
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <MessageSquare className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />

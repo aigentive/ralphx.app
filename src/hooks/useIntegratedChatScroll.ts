@@ -3,7 +3,6 @@
  *
  * Handles:
  * - Auto-scroll to bottom when messages change
- * - Instant scroll when panel expands
  * - Auto-scroll during streaming (with RAF debouncing)
  */
 
@@ -11,14 +10,12 @@ import { useEffect, useRef } from "react";
 
 interface UseIntegratedChatScrollProps {
   messagesData: unknown[];
-  chatCollapsed: boolean;
   isAgentRunning: boolean;
   streamingToolCallsLength: number;
 }
 
 export function useIntegratedChatScroll({
   messagesData,
-  chatCollapsed,
   isAgentRunning,
   streamingToolCallsLength,
 }: UseIntegratedChatScrollProps) {
@@ -31,13 +28,6 @@ export function useIntegratedChatScroll({
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messagesData.length]);
-
-  // Scroll to bottom instantly when panel expands
-  useEffect(() => {
-    if (!chatCollapsed && messagesEndRef.current && messagesData.length) {
-      messagesEndRef.current.scrollIntoView({ behavior: "instant" });
-    }
-  }, [chatCollapsed, messagesData.length]);
 
   // Auto-scroll during streaming (tool calls and agent running)
   // Use requestAnimationFrame to debounce rapid updates
