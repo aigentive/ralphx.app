@@ -33,7 +33,8 @@ import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
-import { ResizeablePanel, useResizePanel } from "./ResizeablePanel";
+import { ResizeablePanel } from "./ResizeablePanel";
+import { useResizePanel } from "./useResizePanel";
 import { useChatPanelHandlers } from "@/hooks/useChatPanelHandlers";
 
 // ============================================================================

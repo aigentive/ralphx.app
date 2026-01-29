@@ -140,7 +140,7 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] [P2] [Frontend] Extract constants from ResizeablePanel.tsx - `useResizePanel` hook exported from component file violates react-refresh rule - src/components/Chat/ResizeablePanel.tsx:50
+- [x] [P2] [Frontend] Extract constants from ResizeablePanel.tsx - `useResizePanel` hook exported from component file violates react-refresh rule - src/components/Chat/ResizeablePanel.tsx:50
 - [ ] [P2] [Backend] Replace panic! with Result in supervisor events - Test assertions use panic! for pattern matching - src-tauri/src/domain/supervisor/events.rs:304
 - [ ] [P2] [Backend] Replace panic! with Result in artifact.rs - Test assertions use panic! for content validation - src-tauri/src/domain/entities/artifact.rs:849
 - [ ] [P2] [Backend] Replace expect() with Result handling in patterns.rs - Error handling uses expect() in production paths - src-tauri/src/domain/supervisor/patterns.rs:332

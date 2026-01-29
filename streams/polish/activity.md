@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-29 02:26:50 - Extract useResizePanel hook from ResizeablePanel component
+**What:**
+- File: src/components/Chat/ResizeablePanel.tsx (151 LOC → 44 LOC)
+- Created: src/components/Chat/useResizePanel.tsx (111 LOC)
+- Extracted useResizePanel hook and ResizeHandle sub-component to separate file
+- Fixed Fast Refresh warning (react-refresh/only-export-components)
+- Updated ChatPanel.tsx to import hook from new location
+- Removed re-export from ResizeablePanel.tsx
+
+**Commands:**
+- `npm run lint -- src/components/Chat/ResizeablePanel.tsx src/components/Chat/ChatPanel.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 02:19:54 - Remove console.log from JSDoc example
 **What:**
 - File: src/hooks/useFileDrop.ts:74
