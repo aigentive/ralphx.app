@@ -142,7 +142,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(scheduler): add cross-project Ready task query"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
@@ -155,7 +155,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: test(scheduler): add functional tests for scheduler"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

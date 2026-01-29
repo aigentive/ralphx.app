@@ -196,7 +196,7 @@
       "phase": 26,
       "name": "Auto-Scheduler for Ready Tasks",
       "prd": "specs/phases/prd_phase_26_auto_scheduler.md",
-      "status": "active",
+      "status": "complete",
       "description": "Automatic task scheduling when tasks enter Ready status with queue-based execution"
     }
   ]
