@@ -1,6 +1,8 @@
 mod tests {
     use super::*;
+    use crate::domain::entities::{ProjectId, Task};
     use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+    use rusqlite::Connection;
 
     fn setup_test_db() -> Connection {
         let conn = open_memory_connection().unwrap();
