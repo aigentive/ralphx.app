@@ -106,7 +106,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42
+_Completed items moved to archive._
 
 ### P3 - Low Impact
 
@@ -133,7 +133,6 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Console.error cleanup: Error logging in chat handlers - src/hooks/useIntegratedChatHandlers.ts:98
 - [x] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
 - [ ] ~~[P3] [Frontend] Code organization: Large component needing extraction~~ (stale - 690 LOC exceeds limit, P1 refactor work)
-- [ ] [P3] [Backend] Dead code marker: Query functions marked #[allow(dead_code)] - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs:20
 - [ ] [P3] [Frontend] Commented example code: console.log example in docs - src/hooks/useFileDrop.ts:74
 
 ---

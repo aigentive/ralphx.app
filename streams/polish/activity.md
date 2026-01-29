@@ -1300,3 +1300,19 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+
+---
+### 2026-01-29 23:30:00 - Remove unused query constants marked with #[allow(dead_code)]
+**What:**
+- File: src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs:20
+- Removed three unused query constants: UPDATE_TASK, INSERT_STATUS_HISTORY, GET_STATUS_HISTORY
+- All three were marked with #[allow(dead_code)] and labeled "for future use"
+- Verified none are referenced anywhere in the codebase
+- Removed outdated comment about "constants defined for future use"
+
+**Commands:**
+- `cargo check --lib` (no errors in queries.rs)
+- Verified removal: `grep -r "UPDATE_TASK|INSERT_STATUS_HISTORY|GET_STATUS_HISTORY" src-tauri/src` (not found)
+
+**Result:** Success
+
