@@ -15,7 +15,7 @@ pub async fn request_permission(
 ) -> Json<PermissionRequestResponse> {
     let request_id = Uuid::new_v4().to_string();
 
-    // Store pending request with metadata
+    // Store pending request with metadata (clone once for storage)
     state
         .app_state
         .permission_state
@@ -27,15 +27,15 @@ pub async fn request_permission(
         )
         .await;
 
-    // Emit Tauri event to frontend (if app_handle is available)
+    // Emit Tauri event to frontend using references (no additional clones)
     if let Some(ref app_handle) = state.app_state.app_handle {
         let _ = app_handle.emit(
             "permission:request",
             serde_json::json!({
-                "request_id": request_id,
-                "tool_name": input.tool_name,
-                "tool_input": input.tool_input,
-                "context": input.context,
+                "request_id": &request_id,
+                "tool_name": &input.tool_name,
+                "tool_input": &input.tool_input,
+                "context": &input.context,
             }),
         );
     }
