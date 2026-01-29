@@ -5,6 +5,25 @@
 
 ---
 
+## Archived 2026-01-29 (Eighth Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split chat_service.rs (2109 LOC → 1263 LOC) - extracted to chat_service/{types.rs (135), helpers.rs (25), streaming.rs (255), mock.rs (259), mod.rs (1263)} - src-tauri/src/application/chat_service/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 00:43)
+
+- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about task dependencies - src-tauri/src/application/task_transition_service.rs:104
+- [x] [P3] [Backend] Code cleanup: Resolve TODO comment about ideation sessions - src-tauri/src/commands/test_data_commands.rs:206
+
+### From polish/backlog.md (PRD-deferred - Validated 20+ times)
+
+- [ ] ~~Implement TODO: Open diff viewer - src/App.tsx:791~~ (PRD:20 - validated 20+ times, stable as future work)
+- [ ] ~~Implement TODO: Edit task modal - src/components/tasks/TaskFullView.tsx:213~~ (PRD:18 - validated 18+ times, stable as future work)
+- [ ] ~~Implement TODO: Archive task - src/components/tasks/TaskFullView.tsx:217~~ (PRD:18 - validated 12+ times, stable as future work)
+
+---
+
 ## Archived 2026-01-29 (Seventh Batch)
 
 ### From refactor/backlog.md (Backend)

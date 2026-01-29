@@ -9,7 +9,6 @@
 _No active P1 items. Completed items moved to archive._
 
 ## Backend (src-tauri/)
-- [x] Split chat_service.rs (2109 LOC → 1263 LOC) - extracted to chat_service/{types.rs (135), helpers.rs (25), streaming.rs (255), mock.rs (259), mod.rs (1263)} - src-tauri/src/application/chat_service/mod.rs:1-50
 - [x] Split apply_service.rs (1833 LOC → 309 LOC) - extracted to apply_service/{types.rs (60), helpers.rs (107), tests.rs (1408), mod.rs (309)} - src-tauri/src/application/apply_service/mod.rs:1-50
 - [x] Split ideation_service.rs (1666 LOC → 423 LOC) - extracted to ideation_service/{types.rs (70), tests.rs (1198), mod.rs (423)} - src-tauri/src/application/ideation_service/mod.rs:1-50
 - [x] Split dependency_service.rs (1435 LOC → 479 LOC) - extracted to dependency_service/{types.rs (57), tests.rs (908), mod.rs (479)} - src-tauri/src/application/dependency_service/mod.rs:1-50
@@ -24,7 +23,7 @@ _No active P1 items. Completed items moved to archive._
 
 ### Backend
 
-- [ ] Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules (handlers/ideation.rs, artifacts.rs, tasks.rs, projects.rs, reviews.rs, worker.rs, permissions.rs, steps.rs) - src-tauri/src/http_server/mod.rs:1
+- [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale - now 84 LOC, handlers already extracted)
 - [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [ ] Split sqlite_task_repo.rs (1372 LOC) - extract query builders and mapping functions - src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs:1
 - [ ] Split migrations/mod.rs (1304 LOC) - extract migration functions to migrations_v*.rs - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
@@ -33,5 +32,5 @@ _No active P1 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 5 | **Completed:** 10 | **Archived:** 7
-**Last maintenance:** 2026-01-29 19:22 (archived 1 completed item)
+**Active items:** 3 | **Completed:** 10 | **Archived:** 8
+**Last maintenance:** 2026-01-29 20:43 (archived 1 completed item)
