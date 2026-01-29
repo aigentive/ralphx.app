@@ -37,13 +37,9 @@ Before starting normal workflow, check for incomplete work from a previous itera
 
 ## BACKLOG = OWNERSHIP
 
-**If a file matches something in YOUR BACKLOG, it is YOUR WORK. Period.**
+**If uncommitted files match a backlog item, they are YOUR WORK. Period.**
 
-- Backlog has "http_server" → any file in `http_server/` is YOURS
-- Backlog has "chat_service" → any file in `chat_service/` is YOURS
-- Activity log says "reverted" or "failed"? **IRRELEVANT.** Backlog decides ownership.
-
-**Do NOT reject ownership because a previous attempt failed.** Someone started a new attempt. The backlog item still exists. The work is YOURS.
+Activity log status (failed/reverted) is irrelevant. The backlog defines what work belongs to this stream.
 
 ## Workflow
 

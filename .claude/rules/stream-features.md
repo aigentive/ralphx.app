@@ -23,23 +23,23 @@ Before starting normal workflow, check for incomplete work from a previous itera
 1. Run: git status --porcelain
    → No uncommitted changes? → Skip recovery, proceed to normal workflow
 
-2. Identify uncommitted files and check ownership:
-   a. Read streams/features/activity.md → scan ALL entries (not just last)
-   b. Read streams/features/backlog.md → get all P0 items
-   c. Read active PRD → get current task files
-   d. For each uncommitted file, check if it CORRELATES:
-      - File path matches an activity log entry (any entry, not just last)? → YES
-      - File path matches a P0 backlog item? → YES
-      - File path matches active PRD task? → YES
-      - Files in streams/features/ or specs/phases/? → YES
-      - None of the above? → NO, belongs to another stream
+2. Read streams/features/backlog.md → get all P0 items
+   Read active PRD → get files mentioned in current task
 
-3. Correlated changes exist?
-   → YES: Complete the work if needed, commit ONLY correlated files, then proceed
-   → NO: Leave uncommitted files alone, proceed to normal workflow
+3. For each uncommitted file, check if it matches BACKLOG or PRD:
+   - File path matches a P0 backlog item? → YOURS
+   - File path matches active PRD task? → YOURS
+   - Files in streams/features/ or specs/phases/? → YOURS
+   - No match? → NOT yours, leave alone
+
+4. Matched files exist?
+   → YES: This is YOUR incomplete work. Complete it, commit matched files, proceed.
+   → NO: Leave all uncommitted files alone, proceed to normal workflow.
 ```
 
-**CRITICAL:** Only commit files that match your activity log, backlog, or active PRD. No match → not yours.
+## BACKLOG/PRD = OWNERSHIP
+
+**If uncommitted files match a backlog item or active PRD task, they are YOUR WORK. Period.**
 
 ## Workflow
 
