@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-29 09:15:00 - Phase 28 Task 3: Add update_session_title MCP tool
+**What:**
+- Added `update_session_title` tool definition to ALL_TOOLS array in tools.ts
+- Tool accepts `session_id` (string) and `title` (string) parameters
+- Added `session-namer` agent to TOOL_ALLOWLIST with access to `update_session_title`
+- Tool uses default POST routing in index.ts (no custom routing needed)
+- Verified build passes with `npm run build`
+
+**Files:**
+- ralphx-plugin/ralphx-mcp-server/src/tools.ts (added tool definition lines 139-157, added allowlist entry line 465)
+
+**Commands:**
+- `npm run build` - passes (TypeScript compilation successful)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 08:56:22 - Phase 28 Task 2: Add HTTP endpoint for update_session_title
 **What:**
 - Added `UpdateSessionTitleRequest` struct in http_server/types.rs (session_id: String, title: String)
