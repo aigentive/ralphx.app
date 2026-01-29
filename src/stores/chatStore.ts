@@ -58,10 +58,8 @@ interface ChatState {
   isLoading: boolean;
   /** Active conversation ID for the current context */
   activeConversationId: string | null;
-  /** Messages queued to send when agent finishes, keyed by context key */
+  /** Messages queued to send when agent finishes, keyed by context key (e.g., "task:id", "task_execution:id", "review:id") */
   queuedMessages: Record<string, QueuedMessage[]>;
-  /** Messages queued to send when worker finishes (for task_execution context) */
-  executionQueuedMessages: Record<string, QueuedMessage[]>;
   /** Whether an agent is currently running, keyed by context key */
   isAgentRunning: Record<string, boolean>;
 }
@@ -103,10 +101,6 @@ interface ChatActions {
   startEditingQueuedMessage: (contextKey: string, id: string) => void;
   /** Stop editing a queued message */
   stopEditingQueuedMessage: (contextKey: string, id: string) => void;
-  /** Queue a message to be sent to the worker when it finishes */
-  queueExecutionMessage: (taskId: string, content: string, clientId?: string) => void;
-  /** Delete a queued execution message */
-  deleteExecutionQueuedMessage: (taskId: string, messageId: string) => void;
 }
 
 // ============================================================================
@@ -123,7 +117,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
     isLoading: false,
     activeConversationId: null,
     queuedMessages: {},
-    executionQueuedMessages: {},
     isAgentRunning: {},
 
     // Actions
@@ -263,36 +256,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
         }
       });
     },
-
-    queueExecutionMessage: (taskId, content, clientId) =>
-      set((state) => {
-        const queuedMessage: QueuedMessage = {
-          id: clientId ?? `queued-exec-${Date.now()}-${Math.random()}`,
-          content,
-          createdAt: new Date().toISOString(),
-          isEditing: false,
-        };
-
-        if (!state.executionQueuedMessages[taskId]) {
-          state.executionQueuedMessages[taskId] = [];
-        }
-        state.executionQueuedMessages[taskId].push(queuedMessage);
-      }),
-
-    deleteExecutionQueuedMessage: (taskId, messageId) =>
-      set((state) => {
-        if (state.executionQueuedMessages[taskId]) {
-          state.executionQueuedMessages[taskId] =
-            state.executionQueuedMessages[taskId].filter(
-              (m) => m.id !== messageId
-            );
-
-          // Clean up empty arrays
-          if (state.executionQueuedMessages[taskId].length === 0) {
-            delete state.executionQueuedMessages[taskId];
-          }
-        }
-      }),
   }))
 );
 
@@ -369,13 +332,3 @@ export const selectActiveConversationId = (
 
 // Stable empty array to avoid creating new references
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = [];
-
-/**
- * Select queued execution messages for a specific task
- * @param taskId - The task ID to get queued messages for
- * @returns Selector function returning queued execution messages array
- */
-export const selectExecutionQueuedMessages =
-  (taskId: string) =>
-  (state: ChatState): QueuedMessage[] =>
-    state.executionQueuedMessages[taskId] ?? EMPTY_QUEUED_MESSAGES;

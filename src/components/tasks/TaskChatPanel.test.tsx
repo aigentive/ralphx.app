@@ -34,16 +34,13 @@ vi.mock("@/stores/chatStore", () => ({
       editQueuedMessage: vi.fn(),
       deleteQueuedMessage: vi.fn(),
       startEditingQueuedMessage: vi.fn(),
-      queueExecutionMessage: vi.fn(),
-      deleteExecutionQueuedMessage: vi.fn(),
       activeConversationId: null,
     };
     return selector ? selector(state) : state;
   }),
-  selectQueuedMessages: vi.fn(() => []),
-  selectIsAgentRunning: vi.fn(() => false),
+  selectQueuedMessages: vi.fn(() => () => []),
+  selectIsAgentRunning: vi.fn(() => () => false),
   selectActiveConversationId: vi.fn(() => null),
-  selectExecutionQueuedMessages: vi.fn(() => () => []),
 }));
 
 // Mock chat API

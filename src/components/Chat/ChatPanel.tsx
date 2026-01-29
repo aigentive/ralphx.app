@@ -12,7 +12,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
 import { useQuery } from "@tanstack/react-query";
@@ -198,28 +198,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   } = chatStore;
   const activeConversationId = useChatStore(selectActiveConversationId);
 
-  // Compute context key for queue/agent state operations (no useMemo needed - it's a cheap computation)
-  const contextKey = getContextKey(context);
-
-  // Use context-aware selectors
-  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
-  const queuedMessages = useChatStore(queuedMessagesSelector);
-  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
-  const isAgentRunning = useChatStore(isAgentRunningSelector);
-
   // Detect execution mode: if task is executing, switch to task_execution context
   const selectedTask = useTaskStore((state) =>
     context.selectedTaskId ? state.tasks[context.selectedTaskId] : undefined
   );
   const isExecutionMode = selectedTask?.internalStatus === "executing";
 
-  // Memoize the selector to avoid creating new function references on each render
-  const taskIdForQueue = context.selectedTaskId ?? "";
-  const executionQueuedMessagesSelector = useMemo(
-    () => selectExecutionQueuedMessages(taskIdForQueue),
-    [taskIdForQueue]
-  );
-  const executionQueuedMessages = useChatStore(executionQueuedMessagesSelector);
+  // Compute context key for queue/agent state operations
+  // Uses context-aware keys: "task_execution:id" for execution mode, otherwise standard keys
+  const contextKey = useMemo(() => {
+    if (isExecutionMode && context.selectedTaskId) {
+      return `task_execution:${context.selectedTaskId}`;
+    }
+    return getContextKey(context);
+  }, [isExecutionMode, context]);
+
+  // Use context-aware selectors - unified queue works for all modes
+  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
+  const queuedMessages = useChatStore(queuedMessagesSelector);
+  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
+  const isAgentRunning = useChatStore(isAgentRunningSelector);
 
   // For execution mode, fetch execution conversations directly using task_execution context
   // For regular chat, use the standard useChat hook
@@ -299,7 +297,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }
   }, [messagesData.length]);
 
-  // Use extracted handlers hook
+  // Use extracted handlers hook - unified queue with context-aware keys
   const {
     streamingToolCalls,
     handleSend,
@@ -315,7 +313,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     activeConversationId,
     sendMessage,
     queuedMessages,
-    executionQueuedMessages,
     messagesEndRef,
   });
 
@@ -440,20 +437,16 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
         {/* Input Area */}
         <div className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
-          {/* Queued Messages - use execution queue in execution mode */}
-          {(() => {
-            const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
-
-            return messagesToDisplay.length > 0 && (
-              <div className="p-3 pb-0">
-                <QueuedMessageList
-                  messages={messagesToDisplay}
-                  onEdit={handleEditQueuedMessage}
-                  onDelete={handleDeleteQueuedMessage}
-                />
-              </div>
-            );
-          })()}
+          {/* Queued Messages - unified queue with context-aware keys */}
+          {queuedMessages.length > 0 && (
+            <div className="p-3 pb-0">
+              <QueuedMessageList
+                messages={queuedMessages}
+                onEdit={handleEditQueuedMessage}
+                onDelete={handleDeleteQueuedMessage}
+              />
+            </div>
+          )}
 
           {/* Chat Input */}
           <div className="p-3">
@@ -463,14 +456,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               onStop={handleStopAgent}
               isAgentRunning={isExecutionMode || isAgentRunning}
               isSending={isSending}
-              hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+              hasQueuedMessages={queuedMessages.length > 0}
               onEditLastQueued={handleEditLastQueued}
               placeholder={
                 isExecutionMode
                   ? "Message worker... (will be sent when current response completes)"
                   : "Send a message..."
               }
-              showHelperText={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+              showHelperText={queuedMessages.length > 0}
               autoFocus
             />
           </div>

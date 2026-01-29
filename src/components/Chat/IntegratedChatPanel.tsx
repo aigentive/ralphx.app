@@ -12,7 +12,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import type { ChatContext } from "@/types/chat";
@@ -111,9 +111,15 @@ export function IntegratedChatPanel({
   }, [selectedTaskId, isExecutionMode, projectId, ideationSessionId]);
 
   // Compute store context key for queue/agent state operations
-  const storeContextKey = useMemo(() => getContextKey(chatContext), [chatContext]);
+  // Uses context-aware keys: "task_execution:id" for execution mode, otherwise standard keys
+  const storeContextKey = useMemo(() => {
+    if (isExecutionMode && selectedTaskId) {
+      return `task_execution:${selectedTaskId}`;
+    }
+    return getContextKey(chatContext);
+  }, [isExecutionMode, selectedTaskId, chatContext]);
 
-  // Use context-aware selectors
+  // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
@@ -176,14 +182,6 @@ export function IntegratedChatPanel({
       prevContextKeyRef.current = contextKey;
     }
   }, [contextKey, setActiveConversation, queryClient]);
-
-  // Memoize the selector for execution queued messages
-  const taskIdForQueue = selectedTaskId ?? "";
-  const executionQueuedMessagesSelector = useMemo(
-    () => selectExecutionQueuedMessages(taskIdForQueue),
-    [taskIdForQueue]
-  );
-  const executionQueuedMessages = useChatStore(executionQueuedMessagesSelector);
 
   // For execution mode, fetch execution conversations directly
   const regularChatData = useChat(chatContext);
@@ -275,9 +273,9 @@ export function IntegratedChatPanel({
     sendMessage,
   });
 
-  // Wrapper for handleEditLastQueued that provides the queued messages
+  // Wrapper for handleEditLastQueued that provides the queued messages - unified queue
   const handleEditLastQueuedWrapper = () => {
-    handleEditLastQueued(queuedMessages, executionQueuedMessages);
+    handleEditLastQueued(queuedMessages);
   };
 
   // Handle stopping agent - clear streaming tool calls
@@ -449,20 +447,16 @@ export function IntegratedChatPanel({
           className={inputContainerClassName ?? "border-t shrink-0"}
           style={inputContainerClassName ? undefined : { borderColor: "var(--border-subtle)" }}
         >
-          {/* Queued Messages */}
-          {(() => {
-            const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
-
-            return messagesToDisplay.length > 0 && (
-              <div className="p-3 pb-0">
-                <QueuedMessageList
-                  messages={messagesToDisplay}
-                  onEdit={handleEditQueuedMessage}
-                  onDelete={handleDeleteQueuedMessage}
-                />
-              </div>
-            );
-          })()}
+          {/* Queued Messages - unified queue with context-aware keys */}
+          {queuedMessages.length > 0 && (
+            <div className="p-3 pb-0">
+              <QueuedMessageList
+                messages={queuedMessages}
+                onEdit={handleEditQueuedMessage}
+                onDelete={handleDeleteQueuedMessage}
+              />
+            </div>
+          )}
 
           {/* Chat Input */}
           <div className="p-3">
@@ -472,7 +466,7 @@ export function IntegratedChatPanel({
               onStop={handleStopAgentWrapper}
               isAgentRunning={isExecutionMode || isAgentRunning}
               isSending={isSending}
-              hasQueuedMessages={(isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+              hasQueuedMessages={queuedMessages.length > 0}
               onEditLastQueued={handleEditLastQueuedWrapper}
               placeholder={
                 ideationSessionId
@@ -483,7 +477,7 @@ export function IntegratedChatPanel({
                       ? "Ask about this task..."
                       : "Send a message..."
               }
-              showHelperText={showHelperTextAlways || (isExecutionMode ? executionQueuedMessages : queuedMessages).length > 0}
+              showHelperText={showHelperTextAlways || queuedMessages.length > 0}
               autoFocus
             />
           </div>

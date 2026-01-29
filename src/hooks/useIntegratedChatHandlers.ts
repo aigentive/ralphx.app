@@ -37,8 +37,6 @@ export function useIntegratedChatHandlers({
     queueMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
-    queueExecutionMessage,
-    deleteExecutionQueuedMessage,
   } = useChatStore();
 
   // Get current context type and ID for queue operations
@@ -85,11 +83,8 @@ export function useIntegratedChatHandlers({
       const messageId = generateQueuedMessageId();
 
       // Add to local store immediately for optimistic UI (using the same ID)
-      if (isExecutionMode && selectedTaskId) {
-        queueExecutionMessage(selectedTaskId, content, messageId);
-      } else {
-        queueMessage(storeContextKey, content, messageId);
-      }
+      // storeContextKey now uses context-aware keys (e.g., "task_execution:id" for execution mode)
+      queueMessage(storeContextKey, content, messageId);
 
       // ALSO queue to backend so it gets processed when agent completes
       try {
@@ -98,18 +93,17 @@ export function useIntegratedChatHandlers({
         // Message is already in local store, which is fine - it just won't be processed by backend
       }
     },
-    [isExecutionMode, selectedTaskId, queueMessage, queueExecutionMessage, storeContextKey, getQueueContext, generateQueuedMessageId]
+    [queueMessage, storeContextKey, getQueueContext, generateQueuedMessageId]
   );
 
-  // Edit last queued message
+  // Edit last queued message - now using unified queue with context-aware keys
   const handleEditLastQueued = useCallback(
-    (queuedMessages: unknown[], executionQueuedMessages: unknown[]) => {
-      const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
-      const lastMessage = messagesToUse[messagesToUse.length - 1] as { id: string } | undefined;
+    (queuedMessages: unknown[]) => {
+      const lastMessage = queuedMessages[queuedMessages.length - 1] as { id: string } | undefined;
       if (!lastMessage) return;
       startEditingQueuedMessage(storeContextKey, lastMessage.id);
     },
-    [isExecutionMode, startEditingQueuedMessage, storeContextKey]
+    [startEditingQueuedMessage, storeContextKey]
   );
 
   // Delete queued message handler - syncs with backend
@@ -117,12 +111,8 @@ export function useIntegratedChatHandlers({
     async (messageId: string) => {
       const { ctxType, ctxId } = getQueueContext();
 
-      // Delete from local store immediately (optimistic)
-      if (isExecutionMode && selectedTaskId) {
-        deleteExecutionQueuedMessage(selectedTaskId, messageId);
-      } else {
-        deleteQueuedMessage(storeContextKey, messageId);
-      }
+      // Delete from local store immediately (optimistic) - unified queue with context-aware keys
+      deleteQueuedMessage(storeContextKey, messageId);
 
       // Delete from backend using the same ID
       try {
@@ -131,7 +121,7 @@ export function useIntegratedChatHandlers({
         console.error("Failed to delete queued message from backend:", error);
       }
     },
-    [isExecutionMode, selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, getQueueContext, storeContextKey]
+    [deleteQueuedMessage, getQueueContext, storeContextKey]
   );
 
   // Edit queued message handler - delete old and queue new (syncs with backend)
@@ -146,22 +136,14 @@ export function useIntegratedChatHandlers({
         console.error("Failed to delete old queued message:", error);
       }
 
-      // Delete from local store
-      if (isExecutionMode && selectedTaskId) {
-        deleteExecutionQueuedMessage(selectedTaskId, messageId);
-      } else {
-        deleteQueuedMessage(storeContextKey, messageId);
-      }
+      // Delete from local store - unified queue with context-aware keys
+      deleteQueuedMessage(storeContextKey, messageId);
 
       // Generate new ID and queue the edited content
       const newMessageId = generateQueuedMessageId();
 
-      // Add to local store first (optimistic)
-      if (isExecutionMode && selectedTaskId) {
-        queueExecutionMessage(selectedTaskId, newContent, newMessageId);
-      } else {
-        queueMessage(storeContextKey, newContent, newMessageId);
-      }
+      // Add to local store first (optimistic) - unified queue with context-aware keys
+      queueMessage(storeContextKey, newContent, newMessageId);
 
       // Queue to backend with same ID
       try {
@@ -170,7 +152,7 @@ export function useIntegratedChatHandlers({
         console.error("Failed to queue edited message to backend:", error);
       }
     },
-    [isExecutionMode, selectedTaskId, deleteQueuedMessage, deleteExecutionQueuedMessage, queueMessage, queueExecutionMessage, getQueueContext, generateQueuedMessageId, storeContextKey]
+    [deleteQueuedMessage, queueMessage, getQueueContext, generateQueuedMessageId, storeContextKey]
   );
 
   // Stop the running agent
