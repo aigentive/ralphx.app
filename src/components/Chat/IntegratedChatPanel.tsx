@@ -57,6 +57,8 @@ interface IntegratedChatPanelProps {
   inputContainerClassName?: string;
   /** Custom header content to replace default context indicator */
   headerContent?: React.ReactNode;
+  /** Called when Escape is pressed with input blurred - used to close the panel */
+  onClose?: () => void;
 }
 
 export function IntegratedChatPanel({
@@ -66,6 +68,7 @@ export function IntegratedChatPanel({
   showHelperTextAlways = false,
   inputContainerClassName,
   headerContent,
+  onClose,
 }: IntegratedChatPanelProps) {
   const queryClient = useQueryClient();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
@@ -382,6 +385,21 @@ export function IntegratedChatPanel({
     messagesEndRef,
     setStreamingToolCalls,
   });
+
+  // Handle Escape key to close panel
+  useEffect(() => {
+    if (!onClose) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   // Sort messages by createdAt - render in chronological order, no grouping
   const sortedMessages = useMemo(() => {
