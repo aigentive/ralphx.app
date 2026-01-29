@@ -20,11 +20,10 @@ _No active P1 items. Completed items moved to archive._
 
 ### Backend
 
-- [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale:1 - now 84 LOC, already extracted to handlers/ directory)
 - [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [x] Split sqlite_task_repo.rs (1372 LOC → 466 LOC) - extracted to sqlite_task_repo/{mod.rs (466), helpers.rs (58), queries.rs (49), query_builder.rs (57), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
 - [x] Split migrations/mod.rs (1324 LOC → 200 LOC) - extracted to migrations/{migrations_v1_v10.rs (276), migrations_v11_v20.rs (561), migrations_v21_v26.rs (201), mod.rs (200)} - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
-- [x] Split chat_service/mod.rs (1263 LOC → 1081 LOC) - extracted to chat_service_context.rs (241 LOC), chat_service_queue.rs (246 LOC) - src-tauri/src/application/chat_service/mod.rs:1
+- [ ] Split chat_service/mod.rs (1081 LOC) - extract send_message background task logic and repository operations - src-tauri/src/application/chat_service/mod.rs:1 (Note: Previously extracted context (241 LOC) and queue (246 LOC), still exceeds 500 LOC limit)
 
 ---
 
@@ -33,7 +32,7 @@ _No active P1 items. Completed items moved to archive._
 ### Frontend
 
 - [x] Split App.tsx (855 LOC → 721 LOC) - extracted Navigation.tsx (88 LOC), useAppKeyboardShortcuts.ts (102 LOC) - src/App.tsx:1
-- [ ] Split ChatPanel.tsx (776 LOC) - extract message rendering and handlers - src/components/Chat/ChatPanel.tsx:1
+- [x] Split ChatPanel.tsx (776 LOC → 480 LOC) - extracted useChatPanelHandlers.ts (368 LOC) - src/components/Chat/ChatPanel.tsx:1
 - [ ] Split DiffViewer.tsx (740 LOC) - extract diff formatting utilities - src/components/diff/DiffViewer.tsx:1
 - [ ] Split TaskDetailModal.tsx (690 LOC) - extract form and step management - src/components/tasks/TaskDetailModal.tsx:1
 - [ ] Split ProjectCreationWizard.tsx (688 LOC) - extract wizard steps into separate components - src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx:1
