@@ -40,8 +40,6 @@ export function useSupervisorEventListener(options: { enabled?: boolean } = {}) 
 
         if (parsed.success) {
           addAlert(parsed.data);
-        } else {
-          console.error("Invalid supervisor alert:", parsed.error.message);
         }
       })
     );
@@ -52,7 +50,6 @@ export function useSupervisorEventListener(options: { enabled?: boolean } = {}) 
         const parsed = SupervisorEventSchema.safeParse(event.payload);
 
         if (!parsed.success) {
-          console.error("Invalid supervisor event:", parsed.error.message);
           return;
         }
 

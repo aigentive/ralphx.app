@@ -1285,3 +1285,18 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+
+---
+### 2026-01-29 23:25:00 - Remove console.error from supervisor event hooks
+**What:**
+- File: src/hooks/useSupervisorAlerts.listener.ts:44
+- Removed 2 console.error calls from event validation handlers
+- Lines 44: Invalid supervisor alert error logging
+- Lines 55: Invalid supervisor event error logging
+- Validation failures now silently return without logging
+
+**Commands:**
+- `npm run lint` (passed - warnings are pre-existing)
+- `npm run typecheck` (passed)
+
+**Result:** Success

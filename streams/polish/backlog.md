@@ -106,9 +106,6 @@ _No active P3 items. Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Backend] Type safety: Use `format!("{:?}", ...)` for enum serialization instead of proper variants - src-tauri/src/http_server/types.rs:81
-- [x] [P2] [Backend] Inconsistent error handling: Direct `.map_err(|_| StatusCode::...)` swallows error details; use tracing like in steps.rs - src-tauri/src/http_server/handlers/ideation.rs:58
-- [x] [P2] [Backend] Inconsistent error handling: Missing error logging in artifact handlers despite having tracing in steps.rs - src-tauri/src/http_server/handlers/artifacts.rs:31
 - [x] [P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42
 
 ### P3 - Low Impact
@@ -136,7 +133,7 @@ _No active P3 items. Completed items moved to archive._
 
 - [x] [P3] [Frontend] Console.error cleanup: Multiple console.error calls in error handlers - src/App.tsx:290
 - [x] [P3] [Frontend] Console.error cleanup: Error logging in chat handlers - src/hooks/useIntegratedChatHandlers.ts:98
-- [ ] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
+- [x] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
 - [ ] [P3] [Frontend] Code organization: Large component needing extraction - src/components/tasks/TaskDetailModal.tsx:690
 - [ ] [P3] [Backend] Dead code marker: Query functions marked #[allow(dead_code)] - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs:20
 - [ ] [P3] [Frontend] Commented example code: console.log example in docs - src/hooks/useFileDrop.ts:74
