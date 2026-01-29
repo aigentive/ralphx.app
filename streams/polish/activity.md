@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-29 02:30:02 - Replace panic! with assert!(matches!()) in supervisor events tests
+**What:**
+- File: src-tauri/src/domain/supervisor/events.rs
+- Replaced 4 panic! calls in test assertions with proper assert!(matches!(...)) patterns
+- Lines modified: 304, 316, 342, 354
+- Improved error messages with descriptive failure text
+
+**Commands:**
+- `cargo check --lib` (passed - no errors in events.rs)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 02:26:50 - Extract useResizePanel hook from ResizeablePanel component
 **What:**
 - File: src/components/Chat/ResizeablePanel.tsx (151 LOC → 44 LOC)
