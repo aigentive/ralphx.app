@@ -5,6 +5,22 @@
 
 ---
 
+## Archived 2026-01-29 (Thirteenth Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split priority_service.rs (1300 LOC → 379 LOC) - extracted to priority_service/{tests.rs (924), mod.rs (379)} - src-tauri/src/application/priority_service/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
+
+- [x] [P2] [Backend] Error logging suppression: Multiple `.map_err(|_|` patterns discard error details - src-tauri/src/http_server/handlers/steps.rs:20
+
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P2] [Backend] Inconsistent error handling: Missing error logging in review handlers despite tracing available - src-tauri/src/http_server/handlers/reviews.rs:27~~ (stale:2 - handlers return error messages via Result<T, (StatusCode, String)> pattern)
+
+---
+
 ## Archived 2026-01-29 (Twelfth Batch)
 
 ### From refactor/backlog.md (Strikethrough Validation - stale:2)
