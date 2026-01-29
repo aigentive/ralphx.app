@@ -107,7 +107,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(sqlite): implement interrupted conversations query"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
