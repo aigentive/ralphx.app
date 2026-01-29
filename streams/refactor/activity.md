@@ -809,3 +809,21 @@ Marking item as blocked. Requires investigation of external processes before ret
 
 **Result:** Blocked - Requires helper function extraction or architectural refactoring. File exceeds limit but trait constraints prevent simple file split. Deferring to next iteration.
 
+
+### 2026-01-29 23:45:00 - Split DiffViewer.tsx
+
+**What:**
+- Original file: src/components/diff/DiffViewer.tsx (740 LOC)
+- Extracted to:
+  - DiffViewer.components.tsx (502 LOC) - FileTreeItem, FileTree, CommitList, DiffPanel, CommitDiffPanel, FileTreeSkeleton
+  - Types/utilities already in DiffViewer.types.tsx (261 LOC from previous extraction)
+- New size: 284 LOC (62% reduction)
+
+**Commands:**
+- `wc -l src/components/diff/DiffViewer.tsx src/components/diff/DiffViewer.components.tsx src/components/diff/DiffViewer.types.tsx`
+- `npm run typecheck`
+- `npm run lint`
+
+**Result:** Success - All linters passed, file now well under 500 LOC limit (284 LOC)
+
+---
