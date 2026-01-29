@@ -203,7 +203,7 @@
       "phase": 27,
       "name": "Chat Architecture Refactor",
       "prd": "specs/phases/prd_phase_27_chat_architecture_refactor.md",
-      "status": "active",
+      "status": "complete",
       "description": "Refactor TaskChatPanel with dedicated useTaskChat hook for context-aware conversations"
     }
   ]
