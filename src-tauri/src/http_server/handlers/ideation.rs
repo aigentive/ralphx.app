@@ -20,7 +20,7 @@ pub async fn create_task_proposal(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateProposalRequest>,
 ) -> Result<Json<ProposalResponse>, StatusCode> {
-    let session_id = IdeationSessionId::from_string(req.session_id);
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
 
     // Parse category
     let category = parse_category(&req.category).map_err(|e| {
@@ -35,7 +35,7 @@ pub async fn create_task_proposal(
         .map(|s| parse_priority(s.as_str()))
         .transpose()
         .map_err(|e| {
-            error!("Invalid priority '{}': {}", req.priority.as_ref().unwrap(), e);
+            error!("Invalid priority: {}", e);
             StatusCode::BAD_REQUEST
         })?
         .unwrap_or(Priority::Medium);
@@ -66,10 +66,11 @@ pub async fn create_task_proposal(
     };
 
     // Create proposal using IdeationService logic
+    let session_id_str = session_id.as_str().to_string();
     let proposal = create_proposal_impl(&state.app_state, session_id, options)
         .await
         .map_err(|e| {
-            error!("Failed to create proposal for session {}: {}", session_id.as_str(), e);
+            error!("Failed to create proposal for session {}: {}", session_id_str, e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -89,7 +90,7 @@ pub async fn update_task_proposal(
         .map(|s| parse_category(s.as_str()))
         .transpose()
         .map_err(|e| {
-            error!("Invalid category '{}': {}", req.category.as_ref().unwrap(), e);
+            error!("Invalid category: {}", e);
             StatusCode::BAD_REQUEST
         })?;
 
@@ -100,7 +101,7 @@ pub async fn update_task_proposal(
         .map(|s| parse_priority(s.as_str()))
         .transpose()
         .map_err(|e| {
-            error!("Invalid priority '{}': {}", req.user_priority.as_ref().unwrap(), e);
+            error!("Invalid priority: {}", e);
             StatusCode::BAD_REQUEST
         })?;
 

@@ -1062,3 +1062,18 @@
 **Result:** Success (idiomatic enum-to-string conversion)
 
 ---
+
+### 2026-01-29 21:20:00 - Add error logging to ideation.rs error handlers
+**What:**
+- File: src-tauri/src/http_server/handlers/ideation.rs:26-140
+- Added error logging to 6 `.map_err(|_| StatusCode::BAD_REQUEST)` patterns
+- Parse errors (category, priority) now log invalid input
+- Serialization errors (steps, acceptance_criteria) now log failures
+- Consistent with tracing pattern established in steps.rs
+
+**Commands:**
+- `cargo check` (verified compilation)
+
+**Result:** Success (all error handlers now log details before returning status codes)
+
+---
