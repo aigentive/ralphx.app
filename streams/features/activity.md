@@ -393,3 +393,22 @@
 **Note:** Could not run linters due to module conflict from refactor stream's in-progress transition_handler extraction. My changes are complete and correct.
 
 **Result:** Success (pending lint after refactor stream resolves conflict)
+
+---
+
+### 2026-01-29 13:45:00 - Phase 25 Task 4: Verify Start Ideation in TaskCardContextMenu
+**What:**
+- Verified Task 4 already fully implemented (previously completed but not marked)
+- TaskCardContextMenu.tsx has "Start Ideation" menu item with Lightbulb icon (lines 132-138)
+- Menu item only shows for backlog tasks (isBacklog check on line 112)
+- TaskCard.tsx has handleStartIdeation handler (lines 191-208) that:
+  - Creates session with seedTaskId via useCreateIdeationSession
+  - Adds session to store and sets as active
+  - Navigates to ideation view
+- Handler wired to context menu via onStartIdeation prop (line 220)
+
+**Commands:**
+- `npm run lint` → passed (4 warnings from shadcn/ui, 0 errors)
+- `npm run typecheck` → passed
+
+**Result:** Success - Task was already implemented, marking as passes: true

@@ -114,7 +114,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(tasks): add Start Ideation to context menu"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
