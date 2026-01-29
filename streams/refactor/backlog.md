@@ -26,7 +26,7 @@ _No active P1 items. Completed items moved to archive._
 - [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale - now 84 LOC, already extracted to handlers/ directory)
 - [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [x] Split sqlite_task_repo.rs (1372 LOC → 466 LOC) - extracted to sqlite_task_repo/{mod.rs (466), helpers.rs (58), queries.rs (49), query_builder.rs (57), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
-- [ ] Split migrations/mod.rs (1304 LOC) - extract migration functions to migrations_v*.rs - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
+- [x] Split migrations/mod.rs (1324 LOC → 200 LOC) - extracted to migrations/{migrations_v1_v10.rs (276), migrations_v11_v20.rs (561), migrations_v21_v26.rs (201), mod.rs (200)} - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
 - [ ] Split chat_service/mod.rs (1263 LOC) - extract message queue and context routing - src-tauri/src/application/chat_service/mod.rs:1
 
 ---
@@ -50,5 +50,5 @@ _No active P1 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 11 | **Completed:** 10 | **Archived:** 8
+**Active items:** 10 | **Completed:** 11 | **Archived:** 8
 **Last maintenance:** 2026-01-29 21:07 (refilled 8 P1 items)

@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-29 03:05:55 - Split migrations/mod.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/migrations/mod.rs (1324 LOC)
+- Extracted to:
+  - migrations/migrations_v1_v10.rs (276 LOC) - migrations v1-v10 (initial schema)
+  - migrations/migrations_v11_v20.rs (561 LOC) - migrations v11-v20 (ideation, workflows, artifacts)
+  - migrations/migrations_v21_v26.rs (201 LOC) - migrations v21-v26 (phase implementations)
+  - migrations/mod.rs (200 LOC) - coordinator with helper functions
+- New size: 200 LOC (85% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/migrations/*.rs`
+- Cargo compilation check (migrations module compiles correctly, existing codebase has unrelated errors)
+
+**Result:** Success - mod.rs reduced from 1324 LOC to 200 LOC, all migrations extracted to logical groupings
+
+---
+
 ### 2026-01-29 02:58:07 - Split sqlite_task_repo.rs
 
 **What:**
