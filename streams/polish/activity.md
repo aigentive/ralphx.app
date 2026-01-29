@@ -1209,3 +1209,17 @@
 **Result:** Success
 
 ---
+### 2026-01-29 23:00:00 - Remove non_snake_case suppressions in mutation.rs
+**What:**
+- File: src-tauri/src/commands/task_commands/mutation.rs:71,140
+- Removed `#[allow(non_snake_case)]` attributes from `update_task` and `move_task` commands
+- Renamed parameters to snake_case: `taskId` → `task_id`, `toStatus` → `to_status`
+- Tauri automatically converts snake_case Rust parameters to camelCase in JavaScript API
+- Updated tracing log field names to match new parameter names
+
+**Commands:**
+- `cargo check --lib` (mutation.rs changes passed)
+
+**Result:** Success
+
+---
