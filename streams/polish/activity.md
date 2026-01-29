@@ -1255,3 +1255,18 @@
 - `npm run typecheck` (passed)
 
 **Result:** Success
+
+---
+### 2026-01-29 23:15:30 - Remove console.error calls from error handlers
+**What:**
+- File: src/App.tsx:290
+- Removed 6 console.error calls from error handlers (lines 289, 299, 335, 387, 395)
+- Console logging is redundant when user-facing errors are already shown via toast notifications
+- Changed catch blocks to omit unused error parameter (catch { } instead of catch (error) { })
+- Exception: Line 367 kept error parameter as it's used to extract error message
+
+**Commands:**
+- `npm run lint` (passed - warnings are pre-existing from other files)
+- `npm run typecheck` (passed)
+
+**Result:** Success
