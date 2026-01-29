@@ -1,6 +1,6 @@
 // Session management commands
 
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
@@ -146,4 +146,45 @@ pub async fn delete_ideation_session(
         .delete(&session_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Update the title of an ideation session
+///
+/// Sets or clears the session title and emits a real-time event for UI updates.
+/// This is used by the session-namer agent for auto-generated titles and
+/// by the frontend for manual renames.
+#[tauri::command]
+pub async fn update_ideation_session_title(
+    id: String,
+    title: Option<String>,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<IdeationSessionResponse, String> {
+    let session_id = IdeationSessionId::from_string(id.clone());
+
+    // Update the title in the database
+    state
+        .ideation_session_repo
+        .update_title(&session_id, title.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Get the updated session to return
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session not found after update: {}", id))?;
+
+    // Emit event for real-time UI updates
+    let _ = app.emit(
+        "ideation:session_title_updated",
+        serde_json::json!({
+            "sessionId": id,
+            "title": title,
+        }),
+    );
+
+    Ok(IdeationSessionResponse::from(session))
 }
