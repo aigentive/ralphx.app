@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-01-29 19:15:00 - Phase 29 Task 2: Add InterruptedConversation entity and repository trait method
+**What:**
+- Added InterruptedConversation struct to src-tauri/src/domain/entities/agent_run.rs
+- Struct holds both the ChatConversation and its last AgentRun that was orphaned
+- Added get_interrupted_conversations() method to AgentRunRepository trait
+- Method returns conversations where: claude_session_id IS NOT NULL, status='cancelled', error_message='Orphaned on app restart'
+- Added placeholder implementations to SqliteAgentRunRepository (actual query in Task 3)
+- Added placeholder implementations to MemoryAgentRunRepository
+- Updated mock implementation in agent_run_repository.rs tests
+- Exported InterruptedConversation from domain/entities/mod.rs
+
+**Files:**
+- src-tauri/src/domain/entities/agent_run.rs (added struct)
+- src-tauri/src/domain/entities/mod.rs (added export)
+- src-tauri/src/domain/repositories/agent_run_repository.rs (added trait method + mock)
+- src-tauri/src/infrastructure/sqlite/sqlite_agent_run_repo.rs (placeholder impl)
+- src-tauri/src/infrastructure/memory/memory_agent_run_repo.rs (placeholder impl)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes (0 warnings)
+- `cargo build --lib` - passes
+
+**Note:** Full cargo test blocked by pre-existing test compilation errors from another stream's mock repository updates.
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 18:30:00 - Phase 29 Task 1: Wire execution_state to unified chat commands
 **What:**
 - Modified create_chat_service() to accept execution_state parameter

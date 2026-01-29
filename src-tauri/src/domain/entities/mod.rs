@@ -63,6 +63,6 @@ pub use methodology::{
     MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,
 };
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
-pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus};
+pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
 pub use task_context::{ArtifactSummary, TaskContext, TaskProposalSummary};
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};

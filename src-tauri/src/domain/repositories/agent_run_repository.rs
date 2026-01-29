@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId};
+use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation};
 use crate::error::AppResult;
 
 /// Repository trait for AgentRun persistence.
@@ -67,6 +67,16 @@ pub trait AgentRunRepository: Send + Sync {
     /// that didn't complete properly (e.g., app crash or force quit).
     /// Returns the number of runs cancelled.
     async fn cancel_all_running(&self) -> AppResult<u32>;
+
+    /// Get conversations that were interrupted during app shutdown
+    ///
+    /// Returns conversations where:
+    /// - claude_session_id is NOT NULL (can use --resume)
+    /// - latest agent_run status is 'cancelled'
+    /// - latest agent_run error_message is 'Orphaned on app restart'
+    ///
+    /// Used by ChatResumptionRunner to resume interrupted conversations on startup.
+    async fn get_interrupted_conversations(&self) -> AppResult<Vec<InterruptedConversation>>;
 }
 
 #[cfg(test)]
@@ -174,6 +184,11 @@ mod tests {
         async fn cancel_all_running(&self) -> AppResult<u32> {
             // Mock just returns 0 - not needed for mock tests
             Ok(0)
+        }
+
+        async fn get_interrupted_conversations(&self) -> AppResult<Vec<InterruptedConversation>> {
+            // Mock returns empty - actual filtering would need conversation data
+            Ok(vec![])
         }
     }
 

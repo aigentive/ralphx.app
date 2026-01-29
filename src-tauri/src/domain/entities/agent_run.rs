@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
-use super::ChatConversationId;
+use super::{ChatConversation, ChatConversationId};
 
 /// Unique identifier for an agent run
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -190,6 +190,19 @@ impl AgentRun {
     pub fn is_terminal(&self) -> bool {
         self.status.is_terminal()
     }
+}
+
+/// A conversation that was interrupted during app shutdown
+///
+/// Contains the conversation that was interrupted along with the
+/// last agent run that was orphaned. Used by ChatResumptionRunner
+/// to resume conversations on app startup.
+#[derive(Debug, Clone)]
+pub struct InterruptedConversation {
+    /// The conversation that was interrupted
+    pub conversation: ChatConversation,
+    /// The last agent run that was orphaned
+    pub last_run: AgentRun,
 }
 
 #[cfg(test)]
