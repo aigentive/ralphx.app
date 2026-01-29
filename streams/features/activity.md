@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-29 21:00:00 - Phase 29 Task 5: Integrate ChatResumptionRunner into startup flow
+**What:**
+- Added ChatResumptionRunner import to lib.rs
+- Cloned all required repos before they're consumed by TaskTransitionService/StartupJobRunner
+- Created ChatResumptionRunner after StartupJobRunner::run() completes
+- Wired with_app_handle() to enable event emission during resumption
+- Called chat_resumption.run().await to resume interrupted conversations on startup
+- Order: HTTP server wait → StartupJobRunner (task resumption) → ChatResumptionRunner (chat resumption)
+- Deduplication: ChatResumptionRunner skips TaskExecution/Review if task in AGENT_ACTIVE_STATUSES (already handled)
+
+**Files:**
+- src-tauri/src/lib.rs (added import, cloned repos, created runner, wired run())
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes (0 warnings)
+- `cargo build --lib` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 20:30:00 - Phase 29 Task 4: Create ChatResumptionRunner with priority ordering
 **What:**
 - Created src-tauri/src/application/chat_resumption.rs with ChatResumptionRunner struct

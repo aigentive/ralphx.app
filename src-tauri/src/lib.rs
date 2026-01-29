@@ -39,7 +39,7 @@ use std::time::Duration;
 use tauri::Manager;
 use tracing::{info, warn};
 
-use application::{StartupJobRunner, TaskSchedulerService, TaskTransitionService};
+use application::{ChatResumptionRunner, StartupJobRunner, TaskSchedulerService, TaskTransitionService};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -157,6 +157,17 @@ pub fn run() {
                         Some(startup_app_handle.clone()),
                     ));
 
+                // Clone repos for ChatResumptionRunner before they're consumed by TaskTransitionService/StartupJobRunner
+                let chat_resumption_agent_run_repo = Arc::clone(&startup_agent_run_repo);
+                let chat_resumption_task_repo = Arc::clone(&startup_task_repo);
+                let chat_resumption_project_repo = Arc::clone(&startup_project_repo);
+                let chat_resumption_chat_message_repo = Arc::clone(&startup_chat_message_repo);
+                let chat_resumption_conversation_repo = Arc::clone(&startup_conversation_repo);
+                let chat_resumption_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
+                let chat_resumption_message_queue = Arc::clone(&startup_message_queue);
+                let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
+                let chat_resumption_app_handle = startup_app_handle.clone();
+
                 // Create TaskTransitionService for startup resumption
                 let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
                     startup_task_repo.clone(),
@@ -182,6 +193,24 @@ pub fn run() {
                 .with_task_scheduler(task_scheduler);
 
                 runner.run().await;
+
+                // Resume interrupted chat conversations (Ideation, Task, Project, TaskExecution, Review)
+                // This runs after StartupJobRunner to avoid duplicate resumption of task-based chats
+                info!("Starting chat resumption runner...");
+                let chat_resumption = ChatResumptionRunner::<tauri::Wry>::new(
+                    chat_resumption_agent_run_repo,
+                    chat_resumption_conversation_repo,
+                    chat_resumption_task_repo,
+                    chat_resumption_chat_message_repo,
+                    chat_resumption_project_repo,
+                    chat_resumption_ideation_session_repo,
+                    chat_resumption_message_queue,
+                    chat_resumption_running_agent_registry,
+                    Arc::clone(&startup_execution_state),
+                )
+                .with_app_handle(chat_resumption_app_handle);
+
+                chat_resumption.run().await;
             });
 
             // Register app_state with Tauri's state management
