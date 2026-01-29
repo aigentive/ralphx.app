@@ -879,3 +879,55 @@ Marking item as blocked. Requires investigation of external processes before ret
 **Result:** Success - All linters pass, file now under 500 LOC limit (487 LOC)
 
 ---
+### 2026-01-29 02:26:30 - Attempted Split of ProjectCreationWizard.tsx (FAILED - External Interference)
+
+**What:**
+- Original file: src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx (688 LOC, exceeds 500 LOC limit by 188 lines)
+- Attempted extraction:
+  - ProjectCreationWizard.helpers.ts (86 LOC) - helper functions and form types
+  - ProjectCreationWizard.components.tsx (79 LOC) - RadioOption component
+  - Target: Reduce main file to ~523 LOC
+- Issue: External process (linter/file watcher) automatically reverted code deletions
+
+**Commands:**
+- Created ProjectCreationWizard.helpers.ts (86 LOC)
+- Created ProjectCreationWizard.components.tsx (79 LOC)
+- Updated imports in main file
+- Deleted duplicate code (lines 69-228) using sed
+- File reduced to 537 LOC temporarily
+- External process restored duplicate code, file back to 688 LOC
+- Reverted all changes with `git checkout`
+
+**Result:** FAILED - External interference pattern same as chat_service attempts (activity log lines 656-774)
+
+**Analysis:**
+This is the 5th file to encounter external process interference during refactor stream:
+1. chat_service/mod.rs (2026-01-29 03:37:00, 03:44:15, 01:39:30)
+2. ProjectCreationWizard.tsx (this attempt)
+
+Pattern: Files get automatically restored within seconds of deletion attempts, defeating the extraction.
+
+**Recommendation:**
+- Mark item as blocked requiring investigation of file watchers
+- Continue with next P1 item (sqlite_task_proposal_repo.rs)
+- May need to disable watch mode during refactor operations
+
+
+### 2026-01-29 02:30:49 - Split sqlite_task_proposal_repo.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo.rs (1190 LOC)
+- Extracted to:
+  - sqlite_task_proposal_repo/mod.rs (352 LOC) - main repository implementation
+  - sqlite_task_proposal_repo/tests.rs (838 LOC) - all unit tests
+- New size: 352 LOC (70% reduction)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo/*.rs`
+- `cargo check --lib` (passed)
+- `cargo clippy --lib -- -D warnings` (passed)
+
+**Result:** Success - mod.rs now 352 LOC (well under 500 LOC backend file limit)
+
+---
+

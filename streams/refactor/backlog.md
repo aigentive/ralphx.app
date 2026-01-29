@@ -17,7 +17,6 @@ _No active P1 items. Completed items moved to archive._
 
 ### Backend
 
-- [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [x] Split sqlite_task_repo.rs (1372 LOC → 466 LOC) - extracted to sqlite_task_repo/{mod.rs (466), helpers.rs (58), queries.rs (49), query_builder.rs (57), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
 - [x] Split migrations/mod.rs (1324 LOC → 200 LOC) - extracted to migrations/{migrations_v1_v10.rs (276), migrations_v11_v20.rs (561), migrations_v21_v26.rs (201), mod.rs (200)} - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
 - [x] Split chat_service/mod.rs (1081 LOC → 611 LOC) - extracted background processing to chat_service_send_background.rs (524 LOC) - src-tauri/src/application/chat_service/mod.rs:1
@@ -36,12 +35,12 @@ _No active P1 items. Completed items moved to archive._
 
 ### Backend
 
-- [ ] Split sqlite_task_proposal_repo.rs (1190 LOC) - extract query operations to helpers - src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo.rs:1
+- [x] Split sqlite_task_proposal_repo.rs (1190 LOC → 352 LOC) - extracted to sqlite_task_proposal_repo/{mod.rs (352), tests.rs (838)} - src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo/mod.rs:1
 - [ ] Split artifact.rs (1147 LOC) - extract entity methods to artifact_impl.rs - src-tauri/src/domain/entities/artifact.rs:1
 - [ ] Split machine.rs (1114 LOC) - extract transition logic to machine_transitions.rs - src-tauri/src/domain/state_machine/machine.rs:1
 
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 5 | **Completed:** 10 | **Archived:** 12
+**Active items:** 4 | **Completed:** 10 | **Archived:** 13
 **Last maintenance:** 2026-01-30 (archived 1 item)
