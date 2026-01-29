@@ -16,7 +16,7 @@ pub async fn request_permission(
     let request_id = Uuid::new_v4().to_string();
 
     // Store pending request with metadata
-    let _rx = state
+    state
         .app_state
         .permission_state
         .register(
