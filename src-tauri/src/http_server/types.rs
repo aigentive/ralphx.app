@@ -110,13 +110,16 @@ pub struct GetTaskDetailsRequest {
     pub task_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TaskResponse {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
     pub status: String,
     pub priority: String,
+    pub category: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 // ============================================================================
@@ -130,6 +133,11 @@ pub struct ListTasksRequest {
     pub category: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ListTasksResponse {
+    pub tasks: Vec<TaskResponse>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SuggestTaskRequest {
     pub project_id: String,
@@ -137,6 +145,11 @@ pub struct SuggestTaskRequest {
     pub description: String,
     pub category: String,
     pub priority: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuggestTaskResponse {
+    pub task: TaskResponse,
 }
 
 // ============================================================================

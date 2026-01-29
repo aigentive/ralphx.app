@@ -6,7 +6,8 @@ use axum::{
 
 use super::*;
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactId, ArtifactType, IdeationSessionId, TaskProposalId,
+    Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
+    IdeationSessionId, TaskProposalId,
 };
 
 pub async fn create_plan_artifact(
@@ -15,30 +16,43 @@ pub async fn create_plan_artifact(
 ) -> Result<Json<ArtifactResponse>, StatusCode> {
     let session_id = IdeationSessionId::from_string(req.session_id);
 
-    // Create a plan artifact
-    let artifact = Artifact::new_inline(
-        req.title.clone(),
-        ArtifactType::Plan,
-        req.content.clone(),
-    );
-
-    // Store artifact
+    // Verify session exists
     state
         .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Create the specification artifact
+    let bucket_id = ArtifactBucketId::from_string("prd-library");
+    let artifact = Artifact {
+        id: ArtifactId::new(),
+        artifact_type: ArtifactType::Specification,
+        name: req.title.clone(),
+        content: ArtifactContent::inline(&req.content),
+        metadata: ArtifactMetadata::new("orchestrator").with_version(1),
+        derived_from: vec![],
+        bucket_id: Some(bucket_id),
+    };
+
+    let created = state
+        .app_state
         .artifact_repo
-        .create(artifact.clone())
+        .create(artifact)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Link artifact to session
-    let _session_link = state
+    state
         .app_state
-        .artifact_session_link_repo
-        .link_artifact_to_session(session_id.clone(), artifact.id.clone())
+        .ideation_session_repo
+        .update_plan_artifact_id(&session_id, Some(created.id.to_string()))
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(ArtifactResponse::from(artifact)))
+    Ok(Json(ArtifactResponse::from(created)))
 }
 
 pub async fn update_plan_artifact(
@@ -56,15 +70,15 @@ pub async fn update_plan_artifact(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Update content
+    // Update content and increment version
     artifact.content = ArtifactContent::Inline { text: req.content };
-    artifact.metadata.bump_version();
+    artifact.metadata.version += 1;
 
     // Save updated artifact
     state
         .app_state
         .artifact_repo
-        .update(artifact.clone())
+        .update(&artifact)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -91,56 +105,72 @@ pub async fn get_plan_artifact(
 pub async fn link_proposals_to_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<LinkProposalsToPlanRequest>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<Json<SuccessResponse>, StatusCode> {
     let artifact_id = ArtifactId::from_string(req.artifact_id);
-    let proposal_ids: Vec<TaskProposalId> = req
-        .proposal_ids
-        .into_iter()
-        .map(TaskProposalId::from_string)
-        .collect();
 
-    // Link each proposal to the artifact
-    for proposal_id in proposal_ids {
+    // Verify artifact exists
+    let artifact = state
+        .app_state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Update each proposal
+    for proposal_id_str in req.proposal_ids {
+        let proposal_id = TaskProposalId::from_string(proposal_id_str);
+
+        let mut proposal = state
+            .app_state
+            .task_proposal_repo
+            .get_by_id(&proposal_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
+
+        proposal.plan_artifact_id = Some(artifact_id.clone());
+        proposal.plan_version_at_creation = Some(artifact.metadata.version);
+
         state
             .app_state
-            .artifact_proposal_link_repo
-            .link_artifact_to_proposal(artifact_id.clone(), proposal_id)
+            .task_proposal_repo
+            .update(&proposal)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Proposals linked to plan successfully".to_string(),
+    }))
 }
 
 pub async fn get_session_plan(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
-) -> Result<Json<ArtifactResponse>, StatusCode> {
+) -> Result<Json<Option<ArtifactResponse>>, StatusCode> {
     let session_id = IdeationSessionId::from_string(session_id);
 
-    // Get session artifacts
-    let artifact_ids = state
+    let session = state
         .app_state
-        .artifact_session_link_repo
-        .get_artifacts_for_session(&session_id)
+        .ideation_session_repo
+        .get_by_id(&session_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Find the plan artifact
-    for artifact_id in artifact_ids {
+    if let Some(artifact_id) = session.plan_artifact_id {
         let artifact = state
             .app_state
             .artifact_repo
             .get_by_id(&artifact_id)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
-        if let Some(artifact) = artifact {
-            if artifact.artifact_type == ArtifactType::Plan {
-                return Ok(Json(ArtifactResponse::from(artifact)));
-            }
-        }
+        Ok(Json(Some(ArtifactResponse::from(artifact))))
+    } else {
+        Ok(Json(None))
     }
-
-    Err(StatusCode::NOT_FOUND)
 }

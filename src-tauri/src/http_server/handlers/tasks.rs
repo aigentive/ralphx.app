@@ -27,17 +27,17 @@ pub async fn update_task(
         task.title = title;
     }
     if let Some(description) = req.description {
-        task.description = description;
+        task.description = Some(description);
     }
-    if let Some(priority_str) = req.priority {
-        task.priority = parse_priority(&priority_str).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if let Some(priority) = req.priority {
+        task.priority = priority;
     }
 
     // Save updated task
     state
         .app_state
         .task_repo
-        .update(task.clone())
+        .update(&task)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -47,17 +47,34 @@ pub async fn update_task(
 pub async fn add_task_note(
     State(state): State<HttpServerState>,
     Json(req): Json<AddTaskNoteRequest>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<Json<TaskResponse>, StatusCode> {
     let task_id = TaskId::from_string(req.task_id);
 
+    // Get existing task
+    let mut task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Add note to description (append with newline separator)
+    let note_text = format!("\n\n---\n**Note:** {}", req.note);
+    task.description = Some(match task.description {
+        Some(existing) => format!("{}{}", existing, note_text),
+        None => note_text,
+    });
+
+    // Save updated task
     state
         .app_state
-        .task_service
-        .add_note(task_id, req.note)
+        .task_repo
+        .update(&task)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(task_to_response(&task)))
 }
 
 pub async fn get_task_details(
@@ -79,15 +96,12 @@ pub async fn get_task_details(
 
 pub fn task_to_response(task: &Task) -> TaskResponse {
     TaskResponse {
-        task_id: task.id.to_string(),
+        id: task.id.to_string(),
         title: task.title.clone(),
         description: task.description.clone(),
-        status: task.internal_status.to_string(),
+        status: format!("{:?}", task.internal_status),
         priority: task.priority.to_string(),
-        category: task.category.to_string(),
-        steps: task.steps.clone(),
-        acceptance_criteria: task.acceptance_criteria.clone(),
-        notes: task.notes.clone(),
+        category: task.category.clone(),
         created_at: task.created_at.to_rfc3339(),
         updated_at: task.updated_at.to_rfc3339(),
     }

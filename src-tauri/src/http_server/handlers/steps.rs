@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use tauri::Emitter;
 use tracing::error;
 
 use super::*;
