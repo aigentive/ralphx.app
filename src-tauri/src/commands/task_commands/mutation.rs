@@ -68,13 +68,12 @@ pub async fn create_task(
 
 /// Update an existing task
 #[tauri::command]
-#[allow(non_snake_case)]
 pub async fn update_task(
-    taskId: String,
+    task_id: String,
     input: UpdateTaskInput,
     state: State<'_, AppState>,
 ) -> Result<TaskResponse, String> {
-    let task_id = TaskId::from_string(taskId);
+    let task_id = TaskId::from_string(task_id);
 
     // Get existing task
     let mut task = state
@@ -137,24 +136,23 @@ pub async fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), S
 /// # Returns
 /// * `TaskResponse` - The updated task
 #[tauri::command]
-#[allow(non_snake_case)]
 pub async fn move_task(
-    taskId: String,
-    toStatus: String,
+    task_id: String,
+    to_status: String,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
     use crate::application::TaskTransitionService;
 
-    tracing::info!(taskId = %taskId, toStatus = %toStatus, "move_task command invoked");
+    tracing::info!(task_id = %task_id, to_status = %to_status, "move_task command invoked");
 
-    let task_id = TaskId::from_string(taskId);
+    let task_id = TaskId::from_string(task_id);
 
     // Parse the target status
-    let new_status: InternalStatus = toStatus
+    let new_status: InternalStatus = to_status
         .parse()
-        .map_err(|_| format!("Invalid status: {}", toStatus))?;
+        .map_err(|_| format!("Invalid status: {}", to_status))?;
 
     // Get the old task to know its current status before transition
     let old_task = state
