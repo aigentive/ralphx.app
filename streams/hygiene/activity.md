@@ -1,5 +1,24 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 02:54:01 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (sqlite_task_repo.rs split)
+- Moved 2 strikethrough items from polish/backlog.md to archive (stale:2 error handling items)
+- Refactor backlog: 11 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 9 active, polish: 7 active)
+
+**Validation:**
+- Validated 3 strikethrough items:
+  - 2 stale:1 items confirmed resolved → archived as stale:2
+  - 2 PRD-deferred items still deferred → incremented counters (PRD:21:x → PRD:21:x:1)
+
+**Result:** Maintenance complete - archived 3 items, validated 3 strikethroughs
+
+---
+
 ### 2026-01-30 02:43:34 - Backlog Maintenance
 
 **Archive:**

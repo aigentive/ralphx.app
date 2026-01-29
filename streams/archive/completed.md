@@ -19,6 +19,11 @@
 - [x] [P3] [Backend] Redundant clone: Unnecessary `response.clone()` when value is already moved - src-tauri/src/http_server/handlers/steps.rs:304
 - [x] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
 
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P2] [Frontend] Error handling: Empty catch blocks without error logging - src/App.tsx:241~~ (stale:2 - already has toast.error)
+- [ ] ~~[P2] [Frontend] Error handling: Silent catch block in pause/stop handlers - src/App.tsx:257~~ (stale:2 - already has toast.error)
+
 ---
 
 ## Archived 2026-01-29 (Sixteenth Batch)
