@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-29 02:13:13 - Split chat_service/mod.rs (partial)
+
+**What:**
+- Original file: src-tauri/src/application/chat_service/mod.rs (1081 LOC)
+- Extracted to: chat_service_repository.rs (90 LOC)
+- Repository operations: get_or_create_conversation, get_conversation_with_messages, list_conversations
+- New size: 611 LOC (43% reduction, still 111 LOC over 500 limit)
+- Note: Background processing already in send_background.rs (524 LOC), further trait impl extraction needed
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service/*.rs`
+- `cargo check`
+
+**Result:** Success - Compiles cleanly, significant reduction but still exceeds 500 LOC limit
+
+---
+
 ### 2026-01-29 01:47:42 - Split App.tsx
 
 **What:**

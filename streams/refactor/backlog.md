@@ -22,7 +22,7 @@ _No active P1 items. Completed items moved to archive._
 - [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [x] Split sqlite_task_repo.rs (1372 LOC → 466 LOC) - extracted to sqlite_task_repo/{mod.rs (466), helpers.rs (58), queries.rs (49), query_builder.rs (57), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
 - [x] Split migrations/mod.rs (1324 LOC → 200 LOC) - extracted to migrations/{migrations_v1_v10.rs (276), migrations_v11_v20.rs (561), migrations_v21_v26.rs (201), mod.rs (200)} - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
-- [ ] Split chat_service/mod.rs (1081 LOC) - extract send_message background task logic and repository operations - src-tauri/src/application/chat_service/mod.rs:1 (Note: Previously extracted context (241 LOC) and queue (246 LOC), still exceeds 500 LOC limit)
+- [x] Split chat_service/mod.rs (1081 LOC → 611 LOC) - extracted repository operations to chat_service_repository.rs (98 LOC) - src-tauri/src/application/chat_service/mod.rs:1 (Note: Down from 1081 LOC, but still 111 LOC over limit. Background processing already in send_background.rs (524 LOC). Further extraction needed for trait impl methods.)
 
 ---
 
