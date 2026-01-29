@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-29 21:55:00 - Phase 25 Task 10: Integrate drag-and-drop into IdeationView
+**What:**
+- Integrated useFileDrop hook into IdeationView proposals panel
+- Added DropZoneOverlay render when dragging files over the panel
+- Created handleFileDrop callback in useIdeationHandlers.ts for API call
+- On drop: calls create_plan_artifact API with file contents
+- Shows success/error toast via existing importStatus mechanism
+- Added relative positioning to proposals panel for overlay positioning
+
+**Files:**
+- src/components/Ideation/IdeationView.tsx (modified)
+- src/components/Ideation/useIdeationHandlers.ts (modified)
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passed
+- `npm run build` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 20:52:00 - Phase 25 Task 9: Create DropZoneOverlay component
 **What:**
 - Created src/components/Ideation/DropZoneOverlay.tsx - visual feedback component for drag-and-drop
