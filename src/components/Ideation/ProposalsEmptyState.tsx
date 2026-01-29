@@ -2,7 +2,7 @@
  * ProposalsEmptyState - Empty state for proposals panel
  */
 
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, FileDown } from "lucide-react";
 
 export function ProposalsEmptyState() {
   return (
@@ -92,6 +92,40 @@ export function ProposalsEmptyState() {
               From chat
             </span>
           </div>
+        </div>
+
+        {/* Divider with "or" */}
+        <div className="flex items-center gap-3 mt-6">
+          <div
+            className="flex-1 h-px"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+            }}
+          />
+          <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
+            or
+          </span>
+          <div
+            className="flex-1 h-px"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+            }}
+          />
+        </div>
+
+        {/* Drop hint */}
+        <div
+          data-testid="drop-hint"
+          className="flex flex-col items-center gap-2 mt-4"
+        >
+          <FileDown className="w-4 h-4 text-[var(--text-muted)]" />
+          <p className="text-xs text-[var(--text-muted)] text-center leading-relaxed">
+            Drag a markdown file here
+            <br />
+            to import a plan
+          </p>
         </div>
       </div>
     </div>
