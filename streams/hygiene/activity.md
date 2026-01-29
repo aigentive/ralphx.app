@@ -1,5 +1,27 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 02:07:24 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (priority_service.rs split)
+- Moved 1 item from polish/backlog.md to archive (Error logging suppression P2)
+- Archived 1 strikethrough from polish/backlog.md (reviews.rs error handling stale:2)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 11 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 7 active, polish: 7 active)
+
+**Validation:**
+- Checked 3 strikethrough items:
+  - reviews.rs:27 error handling (stale:1 → stale:2): Uses Result<T, (StatusCode, String)> pattern → **Archived**
+  - _session_link variable (stale → stale:1): Variable not found, removed → **Counter incremented**
+  - Redundant clone in json! macro (stale → stale:1): Now using &references → **Counter incremented**
+
+**Result:** Maintenance complete - archived 3 items (2 completed + 1 stale:2), validated 3 strikethroughs
+
+---
+
 ### 2026-01-29 02:03:26 - Backlog Maintenance
 
 **Archive:**

@@ -146,5 +146,5 @@ _No active P3 items. Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 12 (9 excluded, 3 deferred to PRD)
 **Completed:** 10
-**Validated:** 72 strikethroughs (2026-01-29 x57) - 21 archived, 1 reactivated (moved to refactor as P1), 57 incremented
-**Last maintenance:** 2026-01-29 02:05 (archived 1 item)
+**Validated:** 75 strikethroughs (2026-01-29 x60) - 22 archived, 1 reactivated (moved to refactor as P1), 60 incremented
+**Last maintenance:** 2026-01-29 02:05 (archived 1 item, validated 3 strikethroughs: 1 archived, 2 incremented)
