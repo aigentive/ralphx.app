@@ -73,7 +73,7 @@ pub async fn start_step_http(
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response.clone(),
+                "step": &response,
                 "task_id": &response.task_id
             }),
         );
@@ -129,7 +129,7 @@ pub async fn complete_step_http(
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response.clone(),
+                "step": &response,
                 "task_id": &response.task_id
             }),
         );
@@ -185,7 +185,7 @@ pub async fn skip_step_http(
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response.clone(),
+                "step": &response,
                 "task_id": &response.task_id
             }),
         );
@@ -241,7 +241,7 @@ pub async fn fail_step_http(
         let _ = app_handle.emit(
             "step:updated",
             serde_json::json!({
-                "step": response.clone(),
+                "step": &response,
                 "task_id": &response.task_id
             }),
         );
@@ -300,19 +300,20 @@ pub async fn add_step_http(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    let response = StepResponse::from(step);
+
     // Emit event to frontend
     if let Some(app_handle) = &state.app_state.app_handle {
-        let response = StepResponse::from(step.clone());
         let _ = app_handle.emit(
             "step:created",
             serde_json::json!({
-                "step": response,
-                "task_id": step.task_id.as_str()
+                "step": &response,
+                "task_id": &response.task_id
             }),
         );
     }
 
-    Ok(Json(StepResponse::from(step)))
+    Ok(Json(response))
 }
 
 pub async fn get_step_progress_http(

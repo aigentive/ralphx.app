@@ -3,9 +3,8 @@
  * Root component with QueryClientProvider and EventProvider
  */
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { toast } from "sonner";
 import { getQueryClient } from "@/lib/queryClient";
 import { EventProvider } from "@/providers/EventProvider";
@@ -16,7 +15,7 @@ import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { TaskFullView } from "@/components/tasks/TaskFullView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
-import { KanbanSplitLayout } from "@/components/layout";
+import { KanbanSplitLayout, Navigation } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
@@ -30,7 +29,7 @@ import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
-import type { ChatContext, ViewType } from "@/types/chat";
+import type { ChatContext } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/types/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
@@ -47,6 +46,7 @@ import {
 } from "@/hooks/useIdeation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
+import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { api, getGitBranches } from "@/lib/tauri";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
@@ -58,11 +58,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  LayoutGrid,
-  Lightbulb,
-  Puzzle,
-  Activity,
-  SlidersHorizontal,
   MessageSquare,
   CheckCircle,
 } from "lucide-react";
@@ -73,21 +68,6 @@ import { Toaster } from "@/components/ui/sonner";
 const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 
 const queryClient = getQueryClient();
-
-
-// Navigation items configuration
-const NAV_ITEMS: {
-  view: ViewType;
-  label: string;
-  icon: React.ElementType;
-  shortcut: string;
-}[] = [
-  { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘1" },
-  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘2" },
-  { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘3" },
-  { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘4" },
-  { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘5" },
-];
 
 function AppContent() {
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
@@ -213,83 +193,13 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey) {
-        switch (e.key) {
-          case "1":
-            e.preventDefault();
-            setCurrentView("kanban");
-            break;
-          case "2":
-            e.preventDefault();
-            setCurrentView("ideation");
-            break;
-          case "3":
-            e.preventDefault();
-            setCurrentView("extensibility");
-            break;
-          case "4":
-            e.preventDefault();
-            setCurrentView("activity");
-            break;
-          case "5":
-          case ".":
-          case ",":
-            // Cmd+5, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
-            e.preventDefault();
-            setCurrentView("settings");
-            break;
-          case "k":
-          case "K": {
-            // Cmd+K to toggle chat panel (skip if in input/textarea or on ideation)
-            if (currentView === "ideation") {
-              return; // Ideation has built-in chat, no toggle needed
-            }
-            const activeElement = document.activeElement;
-            if (
-              activeElement instanceof HTMLInputElement ||
-              activeElement instanceof HTMLTextAreaElement
-            ) {
-              return;
-            }
-            e.preventDefault();
-            // Use split layout toggle for kanban, floating panel toggle for other views
-            if (currentView === "kanban") {
-              toggleChatCollapsed();
-            } else {
-              toggleChatPanel();
-            }
-            break;
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed]);
-
-  // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
-  const setCurrentViewRef = useRef(setCurrentView);
-  setCurrentViewRef.current = setCurrentView;
-
-  useEffect(() => {
-    const shortcut = "CommandOrControl+,";
-
-    register(shortcut, () => {
-      setCurrentViewRef.current("settings");
-    }).catch(() => {
-      // Ignore registration errors
-    });
-
-    return () => {
-      unregister(shortcut).catch(() => {
-        // Ignore unregister errors on cleanup
-      });
-    };
-  }, []);
+  // Keyboard shortcuts for view switching and chat toggle
+  useAppKeyboardShortcuts({
+    currentView,
+    setCurrentView,
+    toggleChatPanel,
+    toggleChatCollapsed,
+  });
 
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {
@@ -523,51 +433,7 @@ function AppContent() {
             </h1>
 
             {/* View Navigation */}
-            <nav
-              className="flex items-center gap-1"
-              role="navigation"
-              aria-label="Main views"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              {NAV_ITEMS.map(({ view, label, icon: Icon, shortcut }) => {
-                const isActive = currentView === view;
-                return (
-                  <Tooltip key={view}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setCurrentView(view)}
-                        className={cn(
-                          "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                          isActive ? "px-3" : "px-2 xl:px-3"
-                        )}
-                        style={{
-                          background: isActive
-                            ? "rgba(255,107,53,0.1)"
-                            : "transparent",
-                          border: isActive ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                          color: isActive ? "#ff6b35" : "rgba(255,255,255,0.5)",
-                        }}
-                        data-testid={`nav-${view}`}
-                        aria-current={isActive ? "page" : undefined}
-                      >
-                        <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                        <span className={cn(
-                          "text-sm font-medium whitespace-nowrap",
-                          isActive ? "inline" : "hidden xl:inline"
-                        )}>
-                          {label}
-                        </span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      {label} <kbd className="ml-1 opacity-70">{shortcut}</kbd>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </nav>
+            <Navigation currentView={currentView} onViewChange={setCurrentView} />
           </div>
 
           {/* Spacer */}
