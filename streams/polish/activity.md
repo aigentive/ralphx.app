@@ -1178,3 +1178,18 @@
 **Result:** Success (eliminated redundant clone and duplicate conversion)
 
 ---
+
+### 2026-01-29 22:22:00 - Remove redundant clones in permissions.rs
+**What:**
+- File: src-tauri/src/http_server/handlers/permissions.rs:22
+- Changed `serde_json::json!` macro to use references instead of cloning values
+- Updated field references: `request_id`, `input.tool_name`, `input.tool_input`, `input.context`
+- Changed from cloning to using `&` prefix for each field
+- Added comment clarifying the clone strategy (one clone for storage, references for event emission)
+
+**Commands:**
+- `cargo check --lib` (permissions.rs changes passed)
+
+**Result:** Success
+
+---
