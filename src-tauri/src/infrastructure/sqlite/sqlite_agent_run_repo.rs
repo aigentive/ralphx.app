@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId};
+use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation};
 use crate::domain::repositories::AgentRunRepository;
 use crate::error::{AppError, AppResult};
 
@@ -279,5 +279,14 @@ impl AgentRunRepository for SqliteAgentRunRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(changes as u32)
+    }
+
+    async fn get_interrupted_conversations(&self) -> AppResult<Vec<InterruptedConversation>> {
+        // TODO: Implement in Task 3 - SQL query for interrupted conversations
+        // Will join chat_conversations with agent_runs and filter by:
+        // - claude_session_id IS NOT NULL
+        // - status = 'cancelled'
+        // - error_message = 'Orphaned on app restart'
+        Ok(vec![])
     }
 }

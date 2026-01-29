@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId};
+use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation};
 use crate::domain::repositories::AgentRunRepository;
 use crate::error::AppResult;
 
@@ -145,6 +145,12 @@ impl AgentRunRepository for MemoryAgentRunRepository {
             }
         }
         Ok(count)
+    }
+
+    async fn get_interrupted_conversations(&self) -> AppResult<Vec<InterruptedConversation>> {
+        // Memory repo cannot implement this properly since it doesn't have access to conversations
+        // This is only used in production with SQLite
+        Ok(vec![])
     }
 }
 
