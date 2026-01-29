@@ -22,6 +22,11 @@
 
 - [x] [Backend] Missing migration: v26 for seed_task_id column never added - src-tauri/src/infrastructure/sqlite/migrations/mod.rs
 
+## From Phase 26 Verification (2026-01-29)
+
+- [ ] [Backend] Missing production implementation: TaskScheduler trait has no concrete implementation in application layer - src-tauri/src/application/
+- [ ] [Backend] Service not injected: TaskScheduler missing from AppState builder - src-tauri/src/application/app_state.rs
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

@@ -507,3 +507,44 @@ All Phase 25 features properly wired with no orphaned implementations:
 **Gaps Found:** 0
 
 **Result:** All completed phases verified. No work available. Entering IDLE state.
+
+---
+
+### 2026-01-29 03:53:42 - Phase 26 Partial Verification (Tasks 1-3)
+**Phases Checked:** 26
+
+**Checks Run:**
+- WIRING: 3 completed tasks verified (try_schedule_ready_tasks method, on_exit scheduling, on_enter(Ready) scheduling)
+- API: Backend-only phase, TaskScheduler trait service integration verified
+- STATE: StartExecution event transition from Ready → Executing verified
+- EVENTS: N/A (no new events in tasks 1-3)
+
+**Gaps Found:** 2
+
+**Gap Details:**
+1. [Backend] Missing production implementation: TaskScheduler trait has no concrete implementation in application layer
+   - File: src-tauri/src/application/
+   - Issue: Only MockTaskScheduler exists in domain/state_machine/mocks.rs
+   - Impact: TransitionHandler calls scheduler.try_schedule_ready_tasks().await but no production service exists
+   - Wiring status: Trait defined ✓, method calls present ✓, service injection pattern exists ✓, production implementation missing ✗
+
+2. [Backend] Service not injected: TaskScheduler missing from AppState builder
+   - File: src-tauri/src/application/app_state.rs
+   - Issue: TaskServices::builder() with_task_scheduler() method exists but never called from AppState
+   - Impact: Context always has task_scheduler = None, try_schedule_ready_tasks silently does nothing
+   - Wiring status: Service creation missing ✗, builder injection missing ✗
+
+**Verification Summary:**
+- ✓ WIRING: try_schedule_ready_tasks() method exists and is public (transition_handler/mod.rs:173-181)
+- ✓ WIRING: on_exit() calls scheduler after decrement_running() (transition_handler/mod.rs:116)
+- ✓ WIRING: on_enter(Ready) calls scheduler after QA prep (side_effects.rs:26)
+- ✓ STATE: StartExecution event transitions Ready → Executing (machine.rs:96-111)
+- ✓ ARCHITECTURE: Trait-based design with proper service injection pattern
+- ✗ PRODUCTION: No concrete TaskScheduler implementation (only mock)
+- ✗ INJECTION: TaskScheduler not wired into AppState
+
+**Tasks 1-3 Wiring Status:** Correctly implemented at domain layer, missing application layer integration
+
+**Result:** 2 P0 items added to features/backlog.md
+
+---
