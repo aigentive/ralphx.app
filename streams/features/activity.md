@@ -4,14 +4,14 @@
 
 ---
 
-### 2026-01-29 01:44:03 - Phase 26 Task 1: Add try_schedule_ready_tasks() method to TransitionHandler
+### 2026-01-29 01:44:03 - Phase 26 Tasks 1-2: Add try_schedule_ready_tasks() and wire from on_exit()
 **What:**
 - Added TaskScheduler trait to services.rs with try_schedule_ready_tasks() method
 - Implemented MockTaskScheduler in mocks.rs with call recording for testing
 - Added task_scheduler field to TaskServices in context.rs (optional Arc<dyn TaskScheduler>)
 - Added with_task_scheduler() builder method to TaskServices
 - Added try_schedule_ready_tasks() method to TransitionHandler that delegates to scheduler
-- Wired call from on_exit() when exiting agent-active states (slot freed)
+- Wired call from on_exit() when exiting agent-active states (slot freed) - completes Task 2
 - Updated mod.rs exports for TaskScheduler and MockTaskScheduler
 - Added unit tests for trait object safety and MockTaskScheduler functionality
 
@@ -25,7 +25,7 @@
 **Commands:**
 - `cargo clippy --lib -- -D warnings` - passed (lib only, pre-existing test compile errors in sqlite_task_repo)
 
-**Result:** Success
+**Result:** Success (Tasks 1 and 2 completed together)
 
 ---
 
