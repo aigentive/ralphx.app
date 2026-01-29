@@ -24,7 +24,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1:1:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1:1:1)
 
@@ -111,8 +111,6 @@ _No active P3 items. Completed items moved to archive._
 ### P3 - Low Impact
 
 - [x] [P3] [Backend] Dead code: Unused variable `_rx` never referenced - src-tauri/src/http_server/handlers/permissions.rs:18
-- [ ] ~~[P3] [Backend] Dead code: Unused variable `_session_link` never referenced~~ (stale:1 - variable already removed)
-- [ ] ~~[P3] [Backend] Redundant clone: Using `.clone()` in serde_json::json! macro (owned values unnecessary)~~ (stale:1 - already using &response)
 - [x] [P3] [Backend] Redundant clone: Unnecessary `response.clone()` when value is already moved - src-tauri/src/http_server/handlers/steps.rs:304
 - [x] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
 
@@ -134,9 +132,28 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P3] [Frontend] Console.error cleanup: Multiple console.error calls in error handlers - src/App.tsx:290
 - [x] [P3] [Frontend] Console.error cleanup: Error logging in chat handlers - src/hooks/useIntegratedChatHandlers.ts:98
 - [x] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
-- [ ] [P3] [Frontend] Code organization: Large component needing extraction - src/components/tasks/TaskDetailModal.tsx:690
+- [ ] ~~[P3] [Frontend] Code organization: Large component needing extraction~~ (stale - 690 LOC exceeds limit, P1 refactor work)
 - [ ] [P3] [Backend] Dead code marker: Query functions marked #[allow(dead_code)] - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs:20
 - [ ] [P3] [Frontend] Commented example code: console.log example in docs - src/hooks/useFileDrop.ts:74
+
+---
+
+## REFILL (Added 2026-01-29 23:15)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Frontend] Extract constants from ResizeablePanel.tsx - `useResizePanel` hook exported from component file violates react-refresh rule - src/components/Chat/ResizeablePanel.tsx:50
+- [ ] [P2] [Backend] Replace panic! with Result in supervisor events - Test assertions use panic! for pattern matching - src-tauri/src/domain/supervisor/events.rs:304
+- [ ] [P2] [Backend] Replace panic! with Result in artifact.rs - Test assertions use panic! for content validation - src-tauri/src/domain/entities/artifact.rs:849
+- [ ] [P2] [Backend] Replace expect() with Result handling in patterns.rs - Error handling uses expect() in production paths - src-tauri/src/domain/supervisor/patterns.rs:332
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Remove console.error calls from useIntegratedChatHandlers - Error logging without proper error handling context - src/hooks/useIntegratedChatHandlers.ts:131
+- [ ] [P3] [Frontend] Remove console.error from useEvents.task - Debug logging left in event handler - src/hooks/useEvents.task.ts:39
+- [ ] [P3] [Frontend] Remove console.error from useAgentEvents - Debug logging in agent event handler - src/hooks/useAgentEvents.ts:208
+- [ ] [P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers - src-tauri/src/domain/state_machine/machine.rs:1
+- [ ] [P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization - src-tauri/src/domain/supervisor/actions.rs:310
 
 ---
 
