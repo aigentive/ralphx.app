@@ -374,6 +374,7 @@ export function IntegratedChatPanel({
     ideationSessionId,
     storeContextKey,
     sendMessage,
+    messageCount: messagesData.length,
   });
 
   // Wrapper for handleEditLastQueued that provides the queued messages - unified queue
