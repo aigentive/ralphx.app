@@ -96,7 +96,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test tool registration with RALPHX_AGENT_TYPE=session-namer",
       "Commit: feat(mcp): add update_session_title tool"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "agent",

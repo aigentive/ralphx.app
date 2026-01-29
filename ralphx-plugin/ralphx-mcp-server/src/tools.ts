@@ -136,6 +136,25 @@ export const ALL_TOOLS: Tool[] = [
       required: ["proposal_id", "depends_on_id"],
     },
   },
+  {
+    name: "update_session_title",
+    description:
+      "Update the title of an ideation session. Used by session-namer agent to set auto-generated titles.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID to update",
+        },
+        title: {
+          type: "string",
+          description: "The new title for the session (3-6 words recommended)",
+        },
+      },
+      required: ["session_id", "title"],
+    },
+  },
 
   // ========================================================================
   // TASK TOOLS (chat-task agent)
@@ -442,6 +461,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "add_step",
     "get_step_progress",
   ],
+  // Session naming agent - generates titles for IDA sessions
+  "session-namer": ["update_session_title"],
   // These agents have NO MCP tools - they use filesystem tools only
   supervisor: [],
   "qa-prep": [],
