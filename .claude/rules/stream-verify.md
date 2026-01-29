@@ -13,7 +13,7 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 3. **ONE verification pass per iteration, then STOP**
 4. **No backlog** — this stream reads completed phases and outputs to features/backlog.md
 5. **Follow git workflow rules** — see `.claude/rules/git-workflow.md` (Recovery Check does not apply — this stream doesn't write code)
-6. **Skip already-verified phases** — if activity log shows "No gaps found" for a phase, do NOT re-verify
+6. **Skip already-verified phases SILENTLY** — if activity log shows "No gaps found" for a phase, do NOT re-verify, do NOT log, do NOT commit. Just skip it entirely.
 
 ## Workflow
 
@@ -23,10 +23,10 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 2. Find phases with status: "complete"
 
 3. Read streams/verify/activity.md to find already-verified phases
-   → Phase has "No gaps found" entry? → SKIP IT (already verified)
+   → Phase has "No gaps found" entry? → SKIP SILENTLY (no log, no commit, no output)
    → Only verify phases with NO prior "No gaps found" log entry
 
-4. No unverified phases remain? → Output IDLE signal → END
+4. No unverified phases remain? → Output IDLE signal → END (no log, no commit)
 
 5. For each UNVERIFIED completed phase:
    a. Read the phase PRD
