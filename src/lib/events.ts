@@ -1,0 +1,23 @@
+/**
+ * Event name constants for Tauri events
+ *
+ * Use these constants instead of hardcoding event strings to:
+ * - Prevent typos
+ * - Enable IDE autocomplete
+ * - Maintain consistency with backend event names
+ */
+
+// Unified events (new API - includes context_type in payload)
+export const AGENT_CHUNK = "agent:chunk";
+export const AGENT_TOOL_CALL = "agent:tool_call";
+export const AGENT_RUN_STARTED = "agent:run_started";
+export const AGENT_RUN_COMPLETED = "agent:run_completed";
+export const AGENT_MESSAGE_CREATED = "agent:message_created";
+export const AGENT_ERROR = "agent:error";
+export const AGENT_QUEUE_SENT = "agent:queue_sent";
+export const AGENT_MESSAGE = "agent:message";
+
+// Legacy events (unified - no longer context-type specific)
+export const CHAT_CHUNK = "chat:chunk";
+export const CHAT_TOOL_CALL = "chat:tool_call";
+export const CHAT_RUN_COMPLETED = "chat:run_completed";

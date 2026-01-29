@@ -20,7 +20,7 @@ use crate::infrastructure::agents::claude::{
     add_prompt_args, build_base_cli_command, configure_spawn, ContentBlockItem, ToolCall,
 };
 
-use super::chat_service_helpers::get_agent_name;
+use super::chat_service_helpers::resolve_agent;
 
 /// Resolve the project's working directory from a context
 pub async fn resolve_working_directory(
@@ -111,16 +111,27 @@ pub fn build_initial_prompt(
 }
 
 /// Create a Claude CLI command
+///
+/// `entity_status` is optional and enables dynamic agent resolution based on state.
+/// For example, a review context with status "review_passed" will use the review-chat agent.
 pub fn build_command(
     cli_path: &Path,
     plugin_dir: &Path,
     conversation: &ChatConversation,
     user_message: &str,
     working_directory: &Path,
+    entity_status: Option<&str>,
 ) -> Command {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir);
+    // Compute agent_name using the resolution system (context type + optional status)
+    let agent_name = resolve_agent(&conversation.context_type, entity_status);
+    eprintln!(
+        "[CMD] Setting RALPHX_AGENT_TYPE={} for context {:?} (status: {:?})",
+        agent_name, conversation.context_type, entity_status
+    );
 
-    let agent_name = get_agent_name(&conversation.context_type);
+    // Pass agent_type to build_base_cli_command so it can create dynamic MCP config
+    // with the agent type as CLI arg (env vars don't propagate to MCP servers)
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name));
     cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
     // Add task scope for task-related contexts
@@ -131,17 +142,23 @@ pub fn build_command(
         _ => {}
     }
 
-    let (prompt, resume_session, agent) =
-        if let Some(ref claude_session_id) = conversation.claude_session_id {
-            (user_message.to_string(), Some(claude_session_id.as_str()), None)
-        } else {
-            let initial_prompt = build_initial_prompt(
-                conversation.context_type,
-                &conversation.context_id,
-                user_message,
-            );
-            (initial_prompt, None, Some(agent_name))
-        };
+    // For Review context, ALWAYS start a fresh session. Resuming causes the model
+    // to see old "Review already submitted" messages and follow that pattern instead
+    // of calling complete_review again. Each review cycle needs a clean slate.
+    let should_resume = conversation.claude_session_id.is_some()
+        && conversation.context_type != ChatContextType::Review;
+
+    let (prompt, resume_session, agent) = if should_resume {
+        let session_id = conversation.claude_session_id.as_ref().unwrap();
+        (user_message.to_string(), Some(session_id.as_str()), None)
+    } else {
+        let initial_prompt = build_initial_prompt(
+            conversation.context_type,
+            &conversation.context_id,
+            user_message,
+        );
+        (initial_prompt, None, Some(agent_name))
+    };
 
     add_prompt_args(&mut cmd, &prompt, agent, resume_session);
     configure_spawn(&mut cmd, working_directory);

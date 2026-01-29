@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Command;
 use crate::domain::entities::{
-    AgentRun, ChatConversation, ChatConversationId, ChatContextType,
+    AgentRun, ChatConversation, ChatConversationId, ChatContextType, TaskId,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -40,8 +40,8 @@ pub use chat_service_helpers::{get_agent_name, get_assistant_role};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_streaming::process_stream_background;
 pub use chat_service_types::{
-    AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
-    AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
+    events, AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload,
+    AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
     ChatConversationWithMessages, ChatServiceError, SendResult,
 };
 
@@ -276,6 +276,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         conversation: &ChatConversation,
         user_message: &str,
         working_directory: &Path,
+        entity_status: Option<&str>,
     ) -> Command {
         chat_service_context::build_command(
             &self.cli_path,
@@ -283,7 +284,26 @@ impl<R: Runtime> ClaudeChatService<R> {
             conversation,
             user_message,
             working_directory,
+            entity_status,
         )
+    }
+
+    /// Fetch entity status for context types that support it
+    /// Used for dynamic agent resolution based on entity state
+    async fn get_entity_status(&self, context_type: ChatContextType, context_id: &str) -> Option<String> {
+        match context_type {
+            // Task-related contexts: look up task status
+            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
+                let task_id = TaskId::from_string(context_id.to_string());
+                if let Ok(Some(task)) = self.task_repo.get_by_id(&task_id).await {
+                    Some(task.internal_status.as_str().to_string())
+                } else {
+                    None
+                }
+            }
+            // Other contexts don't have status-based agent resolution yet
+            ChatContextType::Ideation | ChatContextType::Project => None,
+        }
     }
 
 }
@@ -383,8 +403,16 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .resolve_working_directory(context_type, context_id)
             .await;
 
+        // 6a. Fetch entity status for dynamic agent resolution
+        let entity_status = self.get_entity_status(context_type, context_id).await;
+
         // 7. Build and spawn command
-        let mut cmd = self.build_command(&conversation, message, &working_directory);
+        let mut cmd = self.build_command(
+            &conversation,
+            message,
+            &working_directory,
+            entity_status.as_deref(),
+        );
         let child = cmd
             .spawn()
             .map_err(|e| ChatServiceError::SpawnFailed(e.to_string()))?;

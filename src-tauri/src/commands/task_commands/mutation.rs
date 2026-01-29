@@ -143,7 +143,8 @@ pub async fn move_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    use crate::application::TaskTransitionService;
+    use crate::application::{TaskSchedulerService, TaskTransitionService};
+    use crate::domain::state_machine::services::TaskScheduler;
 
     tracing::info!(task_id = %task_id, to_status = %to_status, "move_task command invoked");
 
@@ -165,6 +166,20 @@ pub async fn move_task(
     let old_status = old_task.internal_status;
     let project_id = old_task.project_id.clone();
 
+    // Create the task scheduler for auto-scheduling Ready tasks
+    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&execution_state),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    ));
+
     // Create the transition service with all required dependencies
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
@@ -177,7 +192,8 @@ pub async fn move_task(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
-    );
+    )
+    .with_task_scheduler(task_scheduler);
 
     // Transition the task - this triggers entry actions like spawning workers!
     let task = transition_service

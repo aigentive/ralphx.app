@@ -133,6 +133,8 @@ pub fn run() {
             let startup_message_queue = Arc::clone(&app_state.message_queue);
             let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
             let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
+            // Clone app handle to enable event emission in startup tasks
+            let startup_app_handle = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
                 // Wait for HTTP server to be ready
@@ -152,7 +154,7 @@ pub fn run() {
                         startup_ideation_session_repo.clone(),
                         startup_message_queue.clone(),
                         startup_running_agent_registry.clone(),
-                        None, // No app_handle in background task
+                        Some(startup_app_handle.clone()),
                     ));
 
                 // Create TaskTransitionService for startup resumption
@@ -166,7 +168,7 @@ pub fn run() {
                     startup_message_queue,
                     startup_running_agent_registry,
                     Arc::clone(&startup_execution_state),
-                    None, // No app_handle in background task
+                    Some(startup_app_handle),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler));
 

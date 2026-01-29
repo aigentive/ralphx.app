@@ -7,7 +7,8 @@
  * All business logic lives in Rust - this server is a thin transport layer.
  *
  * Tool scoping:
- * - Reads RALPHX_AGENT_TYPE from environment (set by Rust backend when spawning)
+ * - Reads agent type from CLI args (--agent-type=<type>) or environment (RALPHX_AGENT_TYPE)
+ * - CLI args take precedence (because Claude CLI doesn't pass env vars to MCP servers)
  * - Filters available tools based on agent type (hard enforcement)
  * - Each agent only sees tools appropriate for its role
  */
@@ -26,14 +27,47 @@ import {
   getAllowedToolNames,
   logAllTools,
   getToolsByAgent,
+  setAgentType,
 } from "./tools.js";
 import {
   permissionRequestTool,
   handlePermissionRequest,
 } from "./permission-handler.js";
 
-// Agent type from environment (set by Rust backend when spawning Claude CLI)
-const AGENT_TYPE = process.env.RALPHX_AGENT_TYPE || "unknown";
+/**
+ * Parse command line arguments for --agent-type
+ * Returns the agent type if found, undefined otherwise
+ */
+function parseAgentTypeFromArgs(): string | undefined {
+  for (const arg of process.argv) {
+    if (arg.startsWith("--agent-type=")) {
+      return arg.substring("--agent-type=".length);
+    }
+    if (arg === "--agent-type") {
+      const idx = process.argv.indexOf(arg);
+      if (idx >= 0 && idx + 1 < process.argv.length) {
+        return process.argv[idx + 1];
+      }
+    }
+  }
+  return undefined;
+}
+
+// Agent type: prefer CLI args over environment (Claude CLI doesn't pass env to MCP servers)
+const cliAgentType = parseAgentTypeFromArgs();
+const AGENT_TYPE = cliAgentType || process.env.RALPHX_AGENT_TYPE || "unknown";
+
+// Set the agent type in tools module for filtering
+setAgentType(AGENT_TYPE);
+
+// Log how agent type was determined
+if (cliAgentType) {
+  console.error(`[RalphX MCP] Agent type from CLI args: ${AGENT_TYPE}`);
+} else if (process.env.RALPHX_AGENT_TYPE) {
+  console.error(`[RalphX MCP] Agent type from env: ${AGENT_TYPE}`);
+} else {
+  console.error(`[RalphX MCP] Agent type unknown (no CLI arg or env var)`);
+}
 
 // Task ID from environment (for task-level scoping enforcement)
 const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
@@ -54,19 +88,19 @@ function validateTaskScope(
   toolName: string,
   args: Record<string, unknown>
 ): string | null {
-  // Only validate tools that have task_id parameter
+  // Only validate tools that have task_id parameter directly
+  // Note: start_step, complete_step, skip_step, fail_step take step_id, not task_id
+  // The backend validates step ownership - we can't do it here without a DB lookup
   const taskScopedTools = [
     "complete_review",
+    "approve_task",
+    "request_task_changes",
     "update_task",
     "add_task_note",
     "get_task_details",
     "get_task_context",
     "get_review_notes",
     "get_task_steps",
-    "start_step",
-    "complete_step",
-    "skip_step",
-    "fail_step",
     "add_step",
     "get_step_progress",
   ];

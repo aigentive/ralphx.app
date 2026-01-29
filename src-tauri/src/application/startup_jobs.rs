@@ -74,6 +74,7 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// For each task in an agent-active state, re-executes entry actions to
     /// respawn the appropriate agent.
     pub async fn run(&self) {
+        eprintln!("[STARTUP] StartupJobRunner::run() called");
         // Clean up orphaned agent runs from previous sessions first
         // These are runs that were left in "running" status when the app was closed/crashed
         match self.agent_run_repo.cancel_all_running().await {
@@ -90,9 +91,11 @@ impl<R: Runtime> StartupJobRunner<R> {
 
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
+            eprintln!("[STARTUP] Execution paused, skipping task resumption");
             info!("Execution paused, skipping task resumption");
             return;
         }
+        eprintln!("[STARTUP] Execution NOT paused, continuing...");
 
         // Get all projects
         let projects = match self.project_repo.get_all().await {
@@ -105,8 +108,11 @@ impl<R: Runtime> StartupJobRunner<R> {
 
         let mut resumed = 0u32;
 
+        eprintln!("[STARTUP] Found {} projects", projects.len());
+
         // Iterate through all projects and their tasks in agent-active states
         for project in projects {
+            eprintln!("[STARTUP] Checking project: {}", project.id.as_str());
             for status in AGENT_ACTIVE_STATUSES {
                 // Get tasks in this status for this project
                 let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
@@ -122,7 +128,9 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
                 };
 
+                eprintln!("[STARTUP] Found {} tasks in {:?} status", tasks.len(), status);
                 for task in tasks {
+                    eprintln!("[STARTUP] Resuming task: {} ({})", task.id.as_str(), task.title);
                     // Check if we can start another task
                     if !self.execution_state.can_start_task() {
                         info!(

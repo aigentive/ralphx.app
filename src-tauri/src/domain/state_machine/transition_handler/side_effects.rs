@@ -169,7 +169,13 @@ impl<'a> super::TransitionHandler<'a> {
                 let task_id = &self.machine.context.task_id;
                 let prompt = format!("Review task: {}", task_id);
 
-                let _ = self
+                eprintln!("[REVIEWING] on_enter(Reviewing) called for task: {}", task_id);
+                tracing::info!(
+                    task_id = task_id,
+                    "on_enter(Reviewing): Spawning reviewer agent via ChatService"
+                );
+
+                let result = self
                     .machine
                     .context
                     .services
@@ -180,6 +186,17 @@ impl<'a> super::TransitionHandler<'a> {
                         &prompt,
                     )
                     .await;
+
+                match &result {
+                    Ok(_) => {
+                        eprintln!("[REVIEWING] Reviewer agent spawned successfully for task: {}", task_id);
+                        tracing::info!(task_id = task_id, "Reviewer agent spawned successfully");
+                    }
+                    Err(e) => {
+                        eprintln!("[REVIEWING] FAILED to spawn reviewer agent: {}", e);
+                        tracing::error!(task_id = task_id, error = %e, "Failed to spawn reviewer agent");
+                    }
+                }
             }
             State::ReviewPassed => {
                 // Emit 'review:ai_approved' event
