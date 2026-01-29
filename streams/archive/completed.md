@@ -13,6 +13,8 @@
 - [x] Split research.rs (1398 LOC → 351 LOC max) - extracted to research/{mod.rs (351), types.rs (324), tests.rs (740)} - src-tauri/src/domain/entities/research/mod.rs:1-50
 - [x] Split artifact_flow.rs (1389 LOC → 434 LOC max) - extracted to artifact_flow/{mod.rs (160), types.rs (434), tests.rs (816)} - src-tauri/src/domain/entities/artifact_flow/mod.rs:1-50
 - [x] Split methodology.rs (1363 LOC → 664 LOC max) - extracted to methodology/{mod.rs (664), tests.rs (698)} - src-tauri/src/domain/entities/methodology/mod.rs:1-50
+- [x] Split sqlite_task_repo.rs (1372 LOC → 466 LOC) - extracted to sqlite_task_repo/{mod.rs (466), helpers.rs (58), queries.rs (49), query_builder.rs (57), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
+- [x] Split migrations/mod.rs (1324 LOC → 200 LOC) - extracted to migrations/{migrations_v1_v10.rs (276), migrations_v11_v20.rs (561), migrations_v21_v26.rs (201), mod.rs (200)} - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
 
 ### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
 
@@ -23,6 +25,13 @@
 
 - [ ] ~~[P2] [Frontend] Error handling: Empty catch blocks without error logging - src/App.tsx:241~~ (stale:2 - already has toast.error)
 - [ ] ~~[P2] [Frontend] Error handling: Silent catch block in pause/stop handlers - src/App.tsx:257~~ (stale:2 - already has toast.error)
+
+### From polish/backlog.md (PRD-deferred - Validated 10+ times)
+
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21 - validated 10+ times, stable as future work)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21 - validated 10+ times, stable as future work)
+- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1 - validated 10+ times, stable as future work)
+- [ ] ~~[P3] [Frontend] Code organization: Large component needing extraction~~ (stale - unverifiable, no file reference)
 
 ---
 
