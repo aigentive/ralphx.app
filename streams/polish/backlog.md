@@ -24,8 +24,8 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1:1:1:1:1)
-- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1:1:1:1:1:1)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1:1:1:1)
 
 ### Backend
@@ -118,8 +118,6 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] ~~[P2] [Frontend] Error handling: Empty catch blocks without error logging - src/App.tsx:241~~ (stale:1 - already has toast.error)
-- [ ] ~~[P2] [Frontend] Error handling: Silent catch block in pause/stop handlers - src/App.tsx:257~~ (stale:1 - already has toast.error)
 - [x] [P2] [Frontend] Type safety: Unused parameter with underscore prefix - src/App.tsx:264
 - [x] [P2] [Backend] Naming: non_snake_case suppressions in command handlers - src-tauri/src/commands/task_commands/mutation.rs:71
 - [x] [P2] [Frontend] Lint suppression: eslint-disable-next-line for hook dependencies - src/hooks/useTaskExecutionState.ts:141
@@ -157,5 +155,5 @@ _Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 7 (9 excluded, 3 deferred to PRD)
 **Completed:** 10
-**Validated:** 80 strikethroughs (2026-01-29 x60, 2026-01-30 x5) - 24 archived, 1 reactivated (moved to refactor as P1), 65 incremented
-**Last maintenance:** 2026-01-30 (archived 2 items)
+**Validated:** 83 strikethroughs (2026-01-29 x60, 2026-01-30 x8) - 26 archived, 1 reactivated (moved to refactor as P1), 67 incremented
+**Last maintenance:** 2026-01-30 (archived 2 items, validated 3 strikethroughs)
