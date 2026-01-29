@@ -139,7 +139,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(startup): wire ChatResumptionRunner into app startup"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
