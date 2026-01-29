@@ -550,3 +550,20 @@ This P1 item requires a more careful, multi-step approach:
   - Verify compilation after each extraction
   - Incrementally extract remaining handlers
 
+
+### 2026-01-29 02:59:30 - Split sqlite_task_repo/mod.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs (578 LOC after initial tests extraction)
+- Extracted query constants and builders to reduce SQL duplication
+- Created files:
+  - queries.rs (49 LOC) - SQL column constants and base queries
+  - query_builder.rs (57 LOC) - Conditional query building for list_paginated, search, get_by_project_filtered
+  - helpers.rs (58 LOC) - Transaction helper for persist_status_change
+- Final size: 466 LOC (112 LOC reduction, 34 LOC under 500 limit)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/sqlite_task_repo/*.rs`
+- Cargo check passed (no sqlite_task_repo errors)
+
+**Result:** Success - mod.rs now 466 LOC (well under 500 LOC backend file limit)
