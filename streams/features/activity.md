@@ -4,6 +4,39 @@
 
 ---
 
+### 2026-01-29 21:30:00 - Phase 29 Task 6: Verify unit tests for resumption logic
+**What:**
+- Verified all required unit tests exist in codebase:
+  - 7 tests in chat_resumption.rs (priority ordering, deduplication, pause check)
+  - 6 tests in sqlite_agent_run_repo.rs (interrupted conversations query)
+- Fixed pre-existing compilation errors:
+  - Updated mock TaskRepository implementations to use Option<Vec<InternalStatus>> (not Option<InternalStatus>)
+  - Fixed imports in state_machine/machine/tests.rs, memory_task_repo/tests.rs, sqlite_task_repo/tests.rs
+- Fixed pre-existing migration bug:
+  - artifacts table was created twice (v5 and v14)
+  - Added DROP TABLE IF EXISTS before CREATE in v14 migration
+- All 13 Phase 29 tests pass
+
+**Files:**
+- src-tauri/src/application/apply_service/tests.rs (fixed mock signature)
+- src-tauri/src/application/review_service.rs (fixed mock signature)
+- src-tauri/src/application/task_context_service.rs (fixed mock signature)
+- src-tauri/src/domain/repositories/task_repository.rs (fixed mock signature)
+- src-tauri/src/domain/state_machine/machine/tests.rs (fixed imports)
+- src-tauri/src/infrastructure/memory/memory_task_repo/tests.rs (fixed imports)
+- src-tauri/src/infrastructure/sqlite/sqlite_task_repo/tests.rs (fixed imports)
+- src-tauri/src/infrastructure/sqlite/migrations/migrations_v11_v20.rs (fixed duplicate table)
+- src-tauri/src/application/chat_resumption.rs (removed unused import)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes (0 warnings)
+- `cargo test --lib chat_resumption` - 7 passed
+- `cargo test --lib interrupted_conversations` - 6 passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 21:00:00 - Phase 29 Task 5: Integrate ChatResumptionRunner into startup flow
 **What:**
 - Added ChatResumptionRunner import to lib.rs

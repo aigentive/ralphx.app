@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::infrastructure::memory::MemoryTaskRepository;
+    use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+    use crate::domain::repositories::TaskRepository;
 
     fn create_test_task(project_id: ProjectId, title: &str, priority: i32) -> Task {
         let mut task = Task::new(project_id, title.to_string());

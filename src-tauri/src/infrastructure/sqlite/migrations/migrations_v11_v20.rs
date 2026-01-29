@@ -227,7 +227,14 @@ pub(super) fn migrate_v13(conn: &Connection) -> AppResult<()> {
 }
 
 /// Migration v14: Create artifacts table for typed documents
+/// Note: Drops the old v5 artifacts table and creates a new schema with expanded fields
 pub(super) fn migrate_v14(conn: &Connection) -> AppResult<()> {
+    // Drop the old artifacts table from v5 (it had a simpler schema)
+    conn.execute("DROP TABLE IF EXISTS artifact_flows", [])
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    conn.execute("DROP TABLE IF EXISTS artifacts", [])
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
     conn.execute(
         "CREATE TABLE artifacts (
             id TEXT PRIMARY KEY,

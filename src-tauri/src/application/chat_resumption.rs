@@ -251,9 +251,7 @@ fn context_type_priority(context_type: ChatContextType) -> u8 {
 mod tests {
     use super::*;
     use crate::application::AppState;
-    use crate::domain::entities::{
-        AgentRun, AgentRunStatus, ChatConversation, InternalStatus, Project, Task,
-    };
+    use crate::domain::entities::{AgentRun, ChatConversation, InternalStatus, Project, Task};
 
     /// Helper to create test state
     async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {

@@ -358,7 +358,7 @@ mod tests {
         async fn list_paginated(
             &self,
             _project_id: &ProjectId,
-            _status: Option<InternalStatus>,
+            _statuses: Option<Vec<InternalStatus>>,
             _offset: u32,
             _limit: u32,
             _include_archived: bool,

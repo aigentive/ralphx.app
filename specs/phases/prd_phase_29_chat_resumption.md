@@ -154,7 +154,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: test(chat): add unit tests for chat resumption"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
