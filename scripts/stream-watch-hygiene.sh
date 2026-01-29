@@ -18,10 +18,13 @@ NC='\033[0m' # No Color
 cleanup() {
     echo ""
     echo -e "${YELLOW}[$STREAM] Shutting down...${NC}"
-    # Kill all child processes (fswatch, ralph-streams, claude)
+    # Kill ralph-streams processes for this stream first (they have their own cleanup)
+    pkill -INT -f "ralph-streams.sh $STREAM" 2>/dev/null || true
+    sleep 0.3
+    # Force kill if still running
+    pkill -9 -f "ralph-streams.sh $STREAM" 2>/dev/null || true
+    # Kill all remaining child processes (fswatch)
     pkill -9 -P $$ 2>/dev/null || true
-    # Kill any claude processes for this stream
-    pkill -9 -f "claude.*streams/$STREAM/PROMPT.md" 2>/dev/null || true
     exit 0
 }
 
