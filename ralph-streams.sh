@@ -20,18 +20,21 @@
 
 set -e
 
+# Track claude PID for cleanup
+CLAUDE_PID=""
+
 # Cleanup function to kill child processes for THIS stream only
 cleanup() {
   echo ""
   echo -e "${YELLOW}Cleaning up...${NC}"
 
-  # Kill all child processes of this script (stream-specific)
-  pkill -9 -P $$ 2>/dev/null || true
-
-  # Kill claude processes started with THIS stream's prompt file only
-  if [ -n "$PROMPT_FILE" ]; then
-    pkill -9 -f "claude.*$PROMPT_FILE" 2>/dev/null || true
+  # Kill the tracked claude process first
+  if [ -n "$CLAUDE_PID" ] && kill -0 "$CLAUDE_PID" 2>/dev/null; then
+    kill -9 "$CLAUDE_PID" 2>/dev/null || true
   fi
+
+  # Kill all child processes of this script
+  pkill -9 -P $$ 2>/dev/null || true
 
   echo -e "${YELLOW}Cleanup complete.${NC}"
 }
@@ -207,7 +210,13 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   # Run Claude with the prompt from the appropriate PROMPT file
   # Stream JSON output with verbose, parse for readable display
-  exec 3< <(claude -p "$(cat "$PROMPT_FILE")" $MODEL_FLAG --output-format stream-json --verbose --dangerously-skip-permissions 2>&1)
+  # Use a temp file to capture PID since process substitution runs in subshell
+  CLAUDE_FIFO=$(mktemp -u)
+  mkfifo "$CLAUDE_FIFO"
+  claude -p "$(cat "$PROMPT_FILE")" $MODEL_FLAG --output-format stream-json --verbose --dangerously-skip-permissions 2>&1 > "$CLAUDE_FIFO" &
+  CLAUDE_PID=$!
+  exec 3< "$CLAUDE_FIFO"
+  rm -f "$CLAUDE_FIFO"
 
   # State tracking for clean output formatting
   last_output_type=""  # "text", "tool", "result"
