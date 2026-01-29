@@ -23,7 +23,7 @@ _No active P1 items. Completed items moved to archive._
 
 ### Backend
 
-- [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale - now 84 LOC, handlers already extracted)
+- [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale:1 - now 84 LOC, handlers already extracted)
 - [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [ ] Split sqlite_task_repo.rs (1372 LOC) - extract query builders and mapping functions - src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs:1
 - [ ] Split migrations/mod.rs (1304 LOC) - extract migration functions to migrations_v*.rs - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
@@ -31,6 +31,24 @@ _No active P1 items. Completed items moved to archive._
 
 ---
 
+## REFILL (Added 2026-01-29 21:07)
+
+### Frontend
+
+- [ ] Split App.tsx (855 LOC) - extract sidebar/navigation logic - src/App.tsx:1
+- [ ] Split ChatPanel.tsx (776 LOC) - extract message rendering and handlers - src/components/Chat/ChatPanel.tsx:1
+- [ ] Split DiffViewer.tsx (740 LOC) - extract diff formatting utilities - src/components/diff/DiffViewer.tsx:1
+- [ ] Split TaskDetailModal.tsx (690 LOC) - extract form and step management - src/components/tasks/TaskDetailModal.tsx:1
+- [ ] Split ProjectCreationWizard.tsx (688 LOC) - extract wizard steps into separate components - src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx:1
+
+### Backend
+
+- [ ] Split sqlite_task_proposal_repo.rs (1190 LOC) - extract query operations to helpers - src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo.rs:1
+- [ ] Split artifact.rs (1147 LOC) - extract entity methods to artifact_impl.rs - src-tauri/src/domain/entities/artifact.rs:1
+- [ ] Split machine.rs (1114 LOC) - extract transition logic to machine_transitions.rs - src-tauri/src/domain/state_machine/machine.rs:1
+
+---
+
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 3 | **Completed:** 10 | **Archived:** 8
-**Last maintenance:** 2026-01-29 20:43 (archived 1 completed item)
+**Active items:** 11 | **Completed:** 10 | **Archived:** 8
+**Last maintenance:** 2026-01-29 21:07 (refilled 8 P1 items)
