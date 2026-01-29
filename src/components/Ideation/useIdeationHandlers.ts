@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { TaskProposal, IdeationSession } from "@/types/ideation";
 import type { ProactiveSyncNotification } from "@/stores/ideationStore";
+import { ideationApi } from "@/api/ideation";
 
 export function useIdeationHandlers(
   session: IdeationSession | null,
@@ -104,6 +105,13 @@ export function useIdeationHandlers(
         await fetchPlanArtifact(data.id);
         setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
         setTimeout(() => setImportStatus(null), 5000);
+
+        // Spawn session namer agent with plan content as context (fire-and-forget)
+        const contentPreview = content.slice(0, 500);
+        const context = `Plan imported: "${title}"\n\nContent preview:\n${contentPreview}`;
+        ideationApi.sessions.spawnSessionNamer(session.id, context).catch((err) => {
+          console.error("Failed to spawn session namer:", err);
+        });
       }
     } catch (error) {
       console.error("Plan import error:", error);
@@ -134,6 +142,13 @@ export function useIdeationHandlers(
         await fetchPlanArtifact(data.id);
         setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
         setTimeout(() => setImportStatus(null), 5000);
+
+        // Spawn session namer agent with plan content as context (fire-and-forget)
+        const contentPreview = content.slice(0, 500);
+        const context = `Plan imported: "${title}"\n\nContent preview:\n${contentPreview}`;
+        ideationApi.sessions.spawnSessionNamer(session.id, context).catch((err) => {
+          console.error("Failed to spawn session namer:", err);
+        });
       }
     } catch (error) {
       console.error("Plan import error:", error);
