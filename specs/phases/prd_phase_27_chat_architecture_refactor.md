@@ -72,7 +72,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(chat): add useTaskChat hook for context-aware conversations"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
