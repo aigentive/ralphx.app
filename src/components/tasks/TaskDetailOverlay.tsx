@@ -27,6 +27,7 @@ import {
   RotateCcw,
   Trash,
   Loader2,
+  Lightbulb,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -38,6 +39,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useCreateIdeationSession } from "@/hooks/useIdeation";
+import { toast } from "sonner";
 
 // ============================================================================
 // Priority Colors
@@ -184,6 +188,12 @@ interface TaskDetailOverlayProps {
 export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const setCurrentView = useUiStore((s) => s.setCurrentView);
+
+  // Ideation hooks
+  const addSession = useIdeationStore((state) => state.addSession);
+  const setActiveSession = useIdeationStore((state) => state.setActiveSession);
+  const createSession = useCreateIdeationSession();
 
   // Try to get task from store first, fall back to fetching from API
   const taskFromStore = useTaskStore((state) =>
@@ -297,6 +307,28 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
     });
   };
 
+  // Handle start ideation
+  const handleStartIdeation = async () => {
+    if (!task) return;
+    try {
+      // Create session with seedTaskId
+      const session = await createSession.mutateAsync({
+        projectId: task.projectId,
+        title: `Ideation: ${task.title}`,
+        seedTaskId: task.id,
+      });
+      // Add session to store and set as active
+      addSession(session);
+      setActiveSession(session.id);
+      // Close overlay and navigate to ideation view
+      handleClose();
+      setCurrentView("ideation");
+    } catch (error) {
+      console.error("Failed to start ideation:", error);
+      toast.error("Failed to start ideation session");
+    }
+  };
+
   // Don't render if no task is selected
   if (!selectedTaskId || !task) {
     return null;
@@ -319,6 +351,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   const isArchived = !!task.archivedAt;
   const isSystemControlled = systemControlledStatuses.includes(task.internalStatus);
   const canEdit = !isArchived && !isSystemControlled;
+  // "Backlog" is the equivalent of "draft" - tasks that haven't started execution yet
+  const isBacklog = task.internalStatus === "backlog";
 
   return (
     <>
@@ -408,6 +442,24 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   onTransition={handleStatusChange}
                   disabled={moveMutation.isPending}
                 />
+              )}
+              {/* Start Ideation button - only for backlog (draft) tasks */}
+              {isBacklog && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleStartIdeation}
+                  disabled={createSession.isPending}
+                  data-testid="task-overlay-ideation-button"
+                  aria-label="Start Ideation"
+                  className="hover:bg-white/5"
+                >
+                  {createSession.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Lightbulb className="w-4 h-4" />
+                  )}
+                </Button>
               )}
               {/* Edit button */}
               {canEdit && (
