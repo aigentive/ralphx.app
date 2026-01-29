@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-29 00:16:19 - P0 Fix: Missing v26 migration for seed_task_id
+**What:**
+- Added missing database migration v26 for Phase 25 Task 3
+- Task 3 was marked complete but migration never committed
+- Added ALTER TABLE to add seed_task_id column to ideation_sessions
+- Updated SCHEMA_VERSION from 25 to 26
+- Added version check and migrate_v26 function to run_migrations
+
+**Files:**
+- src-tauri/src/infrastructure/sqlite/migrations/mod.rs
+
+**Commands:**
+- Full linter blocked by uncommitted http_server changes from refactor stream
+- Migration syntax verified via rustfmt --check
+
+**Result:** Success
+
+---
+
 ### 2026-01-28 22:05:00 - P0 Fix: Regex pattern precision in fswatch cleanup
 **What:**
 - Fixed pkill regex in ralph-tmux.sh:185 that could match unintended processes

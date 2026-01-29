@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 25;
+pub const SCHEMA_VERSION: i32 = 26;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -143,6 +143,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 25 {
         migrate_v25(conn)?;
         set_schema_version(conn, 25)?;
+    }
+
+    if current_version < 26 {
+        migrate_v26(conn)?;
+        set_schema_version(conn, 26)?;
     }
 
     Ok(())
@@ -1292,6 +1297,21 @@ fn migrate_v25(conn: &Connection) -> AppResult<()> {
     // Seed default settings row
     conn.execute(
         "INSERT OR IGNORE INTO review_settings (id, updated_at) VALUES (1, datetime('now'))",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v26(conn: &Connection) -> AppResult<()> {
+    // ============================================================================
+    // Phase 25: Ideation UI Improvements
+    // Add seed_task_id to ideation_sessions for seeding sessions from draft tasks
+    // ============================================================================
+
+    conn.execute(
+        "ALTER TABLE ideation_sessions ADD COLUMN seed_task_id TEXT REFERENCES tasks(id)",
         [],
     )
     .map_err(|e| AppError::Database(e.to_string()))?;

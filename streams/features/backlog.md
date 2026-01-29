@@ -18,6 +18,10 @@
 
 - [x] [Infrastructure] Missing watch file: hygiene stream does not watch streams/features/backlog.md - scripts/stream-watch-hygiene.sh:10
 
+## From Phase 25 Verification (2026-01-29)
+
+- [x] [Backend] Missing migration: v26 for seed_task_id column never added - src-tauri/src/infrastructure/sqlite/migrations/mod.rs
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
