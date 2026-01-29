@@ -400,3 +400,5 @@ impl TaskRepository for MemoryTaskRepository {
     }
 }
 
+#[cfg(test)]
+mod tests;
