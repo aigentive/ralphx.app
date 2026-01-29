@@ -71,7 +71,7 @@ const DEFAULT_MAX_SIZE = 1024 * 1024; // 1MB
  * const { isDragging, dropProps, error } = useFileDrop({
  *   acceptedExtensions: [".md"],
  *   onFileDrop: (file, content) => {
- *     console.log("Dropped:", file.name, content.length);
+ *     // Handle file drop - file.name and content are available
  *   },
  *   onError: (err) => toast.error(err.message),
  * });

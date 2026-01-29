@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-29 02:19:54 - Remove console.log from JSDoc example
+**What:**
+- File: src/hooks/useFileDrop.ts:74
+- Removed console.log call from JSDoc example code
+- Replaced with comment explaining available variables
+- Keeps documentation clean without console pollution
+
+**Commands:**
+- `npm run lint -- src/hooks/useFileDrop.ts` (passed - 0 errors, 4 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 02:11:32 - Remove console.error from useIntegratedChatHandlers
 **What:**
 - File: src/hooks/useIntegratedChatHandlers.ts:98
