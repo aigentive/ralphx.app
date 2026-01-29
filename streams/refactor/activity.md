@@ -691,3 +691,22 @@ Marking item as blocked. Requires investigation of external processes before ret
 **Result:** Success - All linters passed, all type checks passed, App.tsx now 721 LOC (still exceeds 500 but significant reduction)
 
 ---
+
+---
+
+### 2026-01-29 22:51:00 - Split chat_service/mod.rs
+
+**What:**
+- Original file: src-tauri/src/application/chat_service/mod.rs (1263 LOC)
+- Extracted to:
+  - chat_service_context.rs (241 LOC) - context routing (working dir resolution, prompt building, command creation, message creation)
+  - chat_service_queue.rs (246 LOC) - message queue processing with retry loop
+- New size: 1081 LOC (14% reduction, 182 LOC removed)
+
+**Commands:**
+- `wc -l src-tauri/src/application/chat_service/mod.rs src-tauri/src/application/chat_service/chat_service_context.rs src-tauri/src/application/chat_service/chat_service_queue.rs`
+- `cargo check` (passed)
+- `cargo clippy --all-targets --all-features -- -D warnings` (chat_service modules clean, pre-existing issues in unrelated test files)
+
+**Result:** Success - Extracted 487 LOC to new modules, reduced main file by 14%. File still above 500 LOC limit (1081 LOC), may need further extraction.
+

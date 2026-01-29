@@ -11,8 +11,10 @@
 // - OrchestratorService (ideation, task, project contexts)
 // - ExecutionChatService (task_execution context)
 
+mod chat_service_context;
 mod chat_service_helpers;
 mod chat_service_mock;
+mod chat_service_queue;
 mod chat_service_streaming;
 mod chat_service_types;
 
@@ -25,8 +27,8 @@ use tokio::process::Command;
 
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::domain::entities::{
-    AgentRun, ChatConversation, ChatConversationId, ChatContextType, ChatMessage, ChatMessageId,
-    IdeationSessionId, InternalStatus, MessageRole, ProjectId, TaskId,
+    AgentRun, ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId,
+    InternalStatus, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -34,7 +36,7 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::{
-    add_prompt_args, build_base_cli_command, configure_spawn, ContentBlockItem, ToolCall,
+    add_prompt_args, build_base_cli_command, configure_spawn,
 };
 
 // Re-exports from extracted modules
@@ -260,86 +262,17 @@ impl<R: Runtime> ClaudeChatService<R> {
         context_type: ChatContextType,
         context_id: &str,
     ) -> PathBuf {
-        let project_id = match context_type {
-            ChatContextType::Project => Some(ProjectId::from_string(context_id.to_string())),
-            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
-                if let Ok(Some(task)) = self
-                    .task_repo
-                    .get_by_id(&TaskId::from_string(context_id.to_string()))
-                    .await
-                {
-                    Some(task.project_id)
-                } else {
-                    None
-                }
-            }
-            ChatContextType::Ideation => {
-                if let Ok(Some(session)) = self
-                    .ideation_session_repo
-                    .get_by_id(&IdeationSessionId::from_string(context_id))
-                    .await
-                {
-                    Some(session.project_id)
-                } else {
-                    None
-                }
-            }
-        };
-
-        if let Some(pid) = project_id {
-            if let Ok(Some(project)) = self.project_repo.get_by_id(&pid).await {
-                return PathBuf::from(&project.working_directory);
-            }
-        }
-
-        self.default_working_directory.clone()
+        chat_service_context::resolve_working_directory(
+            context_type,
+            context_id,
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.ideation_session_repo),
+            &self.default_working_directory,
+        )
+        .await
     }
 
-    /// Build the initial prompt for a context
-    fn build_initial_prompt(
-        context_type: ChatContextType,
-        context_id: &str,
-        user_message: &str,
-    ) -> String {
-        match context_type {
-            ChatContextType::Ideation => {
-                format!(
-                    "RalphX Ideation Session ID: {}\n\nUser's message: {}",
-                    context_id, user_message
-                )
-            }
-            ChatContextType::Task => {
-                format!(
-                    "RalphX Task ID: {}\n\n\
-                     You are helping the user with questions about this specific task.\n\n\
-                     User's message: {}",
-                    context_id, user_message
-                )
-            }
-            ChatContextType::Project => {
-                format!(
-                    "RalphX Project ID: {}\n\n\
-                     You are helping the user with project-level questions and suggestions.\n\n\
-                     User's message: {}",
-                    context_id, user_message
-                )
-            }
-            ChatContextType::TaskExecution => {
-                format!(
-                    "RalphX Task Execution ID: {}\n\n{}",
-                    context_id, user_message
-                )
-            }
-            ChatContextType::Review => {
-                format!(
-                    "RalphX Review Session. Task ID: {}.\n\n\
-                     You are reviewing this task. Examine the work, provide feedback, and determine if it meets quality standards.\n\n\
-                     User's message: {}",
-                    context_id, user_message
-                )
-            }
-        }
-    }
 
     /// Create a Claude CLI command
     fn build_command(
@@ -348,130 +281,15 @@ impl<R: Runtime> ClaudeChatService<R> {
         user_message: &str,
         working_directory: &Path,
     ) -> Command {
-        let mut cmd = build_base_cli_command(&self.cli_path, &self.plugin_dir);
-
-        let agent_name = get_agent_name(&conversation.context_type);
-        cmd.env("RALPHX_AGENT_TYPE", agent_name);
-
-        // Add task scope for task-related contexts
-        match conversation.context_type {
-            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
-                cmd.env("RALPHX_TASK_ID", &conversation.context_id);
-            }
-            _ => {}
-        }
-
-        let (prompt, resume_session, agent) =
-            if let Some(ref claude_session_id) = conversation.claude_session_id {
-                (user_message.to_string(), Some(claude_session_id.as_str()), None)
-            } else {
-                let initial_prompt = Self::build_initial_prompt(
-                    conversation.context_type,
-                    &conversation.context_id,
-                    user_message,
-                );
-                (initial_prompt, None, Some(agent_name))
-            };
-
-        add_prompt_args(&mut cmd, &prompt, agent, resume_session);
-        configure_spawn(&mut cmd, working_directory);
-
-        cmd
+        chat_service_context::build_command(
+            &self.cli_path,
+            &self.plugin_dir,
+            conversation,
+            user_message,
+            working_directory,
+        )
     }
 
-    /// Create a user message based on context type
-    fn create_user_message(
-        context_type: ChatContextType,
-        context_id: &str,
-        content: &str,
-        conversation_id: ChatConversationId,
-    ) -> ChatMessage {
-        let mut msg = match context_type {
-            ChatContextType::Ideation => {
-                ChatMessage::user_in_session(IdeationSessionId::from_string(context_id), content)
-            }
-            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
-                ChatMessage::user_about_task(TaskId::from_string(context_id.to_string()), content)
-            }
-            ChatContextType::Project => {
-                ChatMessage::user_in_project(ProjectId::from_string(context_id.to_string()), content)
-            }
-        };
-        msg.conversation_id = Some(conversation_id);
-        msg
-    }
-
-    /// Create an assistant message based on context type
-    fn create_assistant_message(
-        context_type: ChatContextType,
-        context_id: &str,
-        content: &str,
-        conversation_id: ChatConversationId,
-        tool_calls: &[ToolCall],
-        content_blocks: &[ContentBlockItem],
-    ) -> ChatMessage {
-        let mut msg = match context_type {
-            ChatContextType::Ideation => ChatMessage::orchestrator_in_session(
-                IdeationSessionId::from_string(context_id),
-                content,
-            ),
-            ChatContextType::Task => {
-                let mut m = ChatMessage::user_about_task(
-                    TaskId::from_string(context_id.to_string()),
-                    content,
-                );
-                m.role = MessageRole::Orchestrator;
-                m
-            }
-            ChatContextType::Project => {
-                let mut m = ChatMessage::user_in_project(
-                    ProjectId::from_string(context_id.to_string()),
-                    content,
-                );
-                m.role = MessageRole::Orchestrator;
-                m
-            }
-            ChatContextType::TaskExecution => ChatMessage {
-                id: ChatMessageId::new(),
-                session_id: None,
-                project_id: None,
-                task_id: Some(TaskId::from_string(context_id.to_string())),
-                conversation_id: Some(conversation_id),
-                role: MessageRole::Worker,
-                content: content.to_string(),
-                metadata: None,
-                parent_message_id: None,
-                tool_calls: None,
-                content_blocks: None,
-                created_at: chrono::Utc::now(),
-            },
-            ChatContextType::Review => ChatMessage {
-                id: ChatMessageId::new(),
-                session_id: None,
-                project_id: None,
-                task_id: Some(TaskId::from_string(context_id.to_string())),
-                conversation_id: Some(conversation_id),
-                role: MessageRole::Reviewer,
-                content: content.to_string(),
-                metadata: None,
-                parent_message_id: None,
-                tool_calls: None,
-                content_blocks: None,
-                created_at: chrono::Utc::now(),
-            },
-        };
-
-        msg.conversation_id = Some(conversation_id);
-
-        if !tool_calls.is_empty() {
-            msg.tool_calls = Some(serde_json::to_string(tool_calls).unwrap_or_default());
-        }
-        if !content_blocks.is_empty() {
-            msg.content_blocks = Some(serde_json::to_string(content_blocks).unwrap_or_default());
-        }
-
-        msg
-    }
 }
 
 #[async_trait]
@@ -524,7 +342,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         );
 
         // 4. Store user message
-        let user_msg = Self::create_user_message(
+        let user_msg = chat_service_context::create_user_message(
             context_type,
             context_id,
             message,
@@ -648,7 +466,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Persist assistant message
                     if !response_text.is_empty() || !tool_calls.is_empty() {
-                        let assistant_msg = ClaudeChatService::<R>::create_assistant_message(
+                        let assistant_msg = chat_service_context::create_assistant_message(
                             context_type_clone,
                             &context_id_clone,
                             &response_text,
@@ -851,7 +669,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             }
 
                             // Persist user message
-                            let user_msg = ClaudeChatService::<R>::create_user_message(
+                            let user_msg = chat_service_context::create_user_message(
                                 context_type_clone,
                                 &context_id_clone,
                                 &queued_msg.content,
@@ -905,7 +723,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                         Ok((response, tools, blocks, _)) => {
                                             if !response.is_empty() || !tools.is_empty() {
                                                 let assistant_msg =
-                                                    ClaudeChatService::<R>::create_assistant_message(
+                                                    chat_service_context::create_assistant_message(
                                                         context_type_clone,
                                                         &context_id_clone,
                                                         &response,
