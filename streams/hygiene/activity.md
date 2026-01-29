@@ -1,5 +1,25 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 02:23:45 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (ideation.rs split)
+- Moved 1 item from polish/backlog.md to archive (P3 dead code from REFILL 2026-01-29 20:43)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 11 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 5 active, polish: 9 active)
+
+**Validation:**
+- Checked 3 PRD-deferred strikethrough items
+- All 3 still valid (not implemented): TaskFullView.tsx pause/stop, useEvents.ts file change handling
+- Incremented validation counters: PRD:21:1:1:1:1:1:1:1 → :1:1:1, PRD:21:1:1:1:1:1 → :1:1, PRD:1:1:1:1:1 → :1:1:1
+
+**Result:** Maintenance complete - archived 2 items (1 refactor + 1 polish), validated 3 strikethroughs
+
+---
+
 ### 2026-01-29 02:18:21 - Backlog Maintenance
 
 **Archive:**
