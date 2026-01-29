@@ -125,7 +125,7 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
           data-testid="drop-hint"
           type="button"
           onClick={onBrowse}
-          className="flex flex-col items-center gap-2 mt-4 p-3 -m-3 rounded-lg transition-colors hover:bg-white/[0.03] cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ff6b35]/50"
+          className="w-full flex flex-col items-center gap-2 mt-4 p-3 rounded-lg transition-colors hover:bg-white/[0.03] cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ff6b35]/50"
         >
           <FileDown className="w-4 h-4 text-[var(--text-muted)]" />
           <p className="text-xs text-[var(--text-muted)] text-center leading-relaxed">

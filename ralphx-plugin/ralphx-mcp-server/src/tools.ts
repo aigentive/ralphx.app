@@ -149,7 +149,7 @@ export const ALL_TOOLS: Tool[] = [
         },
         title: {
           type: "string",
-          description: "The new title for the session (3-6 words recommended)",
+          description: "The new title for the session (exactly 2 words)",
         },
       },
       required: ["session_id", "title"],
