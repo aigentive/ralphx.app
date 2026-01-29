@@ -24,7 +24,7 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1:1)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1:1:1)
 - [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1:1:1)
 - [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1:1:1)
 
@@ -88,8 +88,7 @@ _No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
-- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+_Completed items moved to archive._
 
 ---
 
@@ -113,7 +112,7 @@ _No active P3 items. Completed items moved to archive._
 - [x] [P2] [Backend] Inconsistent error handling: Direct `.map_err(|_| StatusCode::...)` swallows error details; use tracing like in steps.rs - src-tauri/src/http_server/handlers/ideation.rs:58
 - [x] [P2] [Backend] Inconsistent error handling: Missing error logging in artifact handlers despite having tracing in steps.rs - src-tauri/src/http_server/handlers/artifacts.rs:31
 - [x] [P2] [Backend] Inconsistent error handling: Missing error logging in task handlers despite error pattern established elsewhere - src-tauri/src/http_server/handlers/tasks.rs:42
-- [ ] ~~[P2] [Backend] Inconsistent error handling: Missing error logging in review handlers despite tracing available - src-tauri/src/http_server/handlers/reviews.rs:27~~ (stale - handlers return error messages via Result<T, (StatusCode, String)> pattern)
+- [ ] ~~[P2] [Backend] Inconsistent error handling: Missing error logging in review handlers despite tracing available - src-tauri/src/http_server/handlers/reviews.rs:27~~ (stale:1 - handlers return error messages via Result<T, (StatusCode, String)> pattern)
 
 ### P3 - Low Impact
 

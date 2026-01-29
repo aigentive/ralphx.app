@@ -5,6 +5,19 @@
 
 ---
 
+## Archived 2026-01-29 (Twelfth Batch)
+
+### From refactor/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules~~ (stale:2 - now 84 LOC, already extracted to handlers/ directory)
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 18:30)
+
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
+
+---
+
 ## Archived 2026-01-29 (Eleventh Batch)
 
 ### From refactor/backlog.md (Backend)
