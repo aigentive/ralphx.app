@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TaskChatPanel } from "./TaskChatPanel";
 
@@ -21,9 +21,20 @@ vi.mock("@/hooks/useChat", () => ({
     switchConversation: vi.fn(),
     createConversation: vi.fn(),
   })),
+  useConversation: vi.fn(() => ({
+    data: { messages: [] },
+    isPending: false,
+  })),
   chatKeys: {
     conversationList: vi.fn((type, id) => ["conversations", type, id]),
+    conversation: vi.fn((id) => ["conversations", id]),
+    agentRun: vi.fn((id) => ["agent-run", id]),
   },
+}));
+
+// Mock useAgentEvents hook
+vi.mock("@/hooks/useAgentEvents", () => ({
+  useAgentEvents: vi.fn(),
 }));
 
 // Mock chat store
@@ -71,14 +82,17 @@ describe("TaskChatPanel", () => {
     expect(screen.getByTestId("task-chat-panel")).toBeInTheDocument();
   });
 
-  it("shows empty state when no messages", () => {
+  it("shows empty state when no messages", async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <TaskChatPanel taskId="test-task-1" contextType="task" />
+        <TaskChatPanel taskId="test-task-1" contextType="task" taskStatus="draft" />
       </QueryClientProvider>
     );
 
-    expect(screen.getByTestId("task-chat-empty")).toBeInTheDocument();
+    // Wait for the empty state to appear after loading completes
+    await waitFor(() => {
+      expect(screen.getByTestId("task-chat-empty")).toBeInTheDocument();
+    });
     expect(screen.getByText("Start a conversation")).toBeInTheDocument();
   });
 

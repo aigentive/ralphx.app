@@ -42,7 +42,7 @@ vi.mock("./useIdeation", () => ({
 // Mock the chat API
 vi.mock("@/api/chat", () => ({
   chatApi: {
-    sendContextMessage: vi.fn(),
+    sendAgentMessage: vi.fn(),
     listConversations: vi.fn(),
     getConversation: vi.fn(),
     createConversation: vi.fn(),
@@ -329,14 +329,14 @@ describe("useChat", () => {
   });
 
   it("should send context-aware message", async () => {
-    // sendContextMessage now returns SendContextMessageResult
+    // sendAgentMessage now returns SendContextMessageResult
     const mockResult = {
       responseText: "AI response",
       toolCalls: [],
       claudeSessionId: "claude-session-123",
       conversationId: "conv-1",
     };
-    vi.mocked(chatApi.sendContextMessage).mockResolvedValueOnce(mockResult);
+    vi.mocked(chatApi.sendAgentMessage).mockResolvedValueOnce(mockResult);
     vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
 
@@ -348,7 +348,7 @@ describe("useChat", () => {
       await result.current.sendMessage.mutateAsync("New message content");
     });
 
-    expect(chatApi.sendContextMessage).toHaveBeenCalledWith(
+    expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
       "ideation",
       "session-1",
       "New message content"
@@ -356,14 +356,14 @@ describe("useChat", () => {
   });
 
   it("should send message in task context", async () => {
-    // sendContextMessage now returns SendContextMessageResult
+    // sendAgentMessage now returns SendContextMessageResult
     const mockResult = {
       responseText: "AI response for task",
       toolCalls: [],
       claudeSessionId: "claude-session-456",
       conversationId: "conv-2",
     };
-    vi.mocked(chatApi.sendContextMessage).mockResolvedValueOnce(mockResult);
+    vi.mocked(chatApi.sendAgentMessage).mockResolvedValueOnce(mockResult);
     vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
 
@@ -375,7 +375,7 @@ describe("useChat", () => {
       await result.current.sendMessage.mutateAsync("Task message");
     });
 
-    expect(chatApi.sendContextMessage).toHaveBeenCalledWith(
+    expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
       "task",
       "task-1",
       "Task message"
@@ -440,7 +440,8 @@ describe("useChat", () => {
     });
 
     await waitFor(() => {
-      expect(mockStoreState.setAgentRunning).toHaveBeenCalledWith(true);
+      // setAgentRunning takes contextKey and isRunning
+      expect(mockStoreState.setAgentRunning).toHaveBeenCalledWith("session:session-1", true);
     });
   });
 
@@ -517,7 +518,7 @@ describe("useChat", () => {
 
   it("should handle send message error", async () => {
     const error = new Error("Failed to send message");
-    vi.mocked(chatApi.sendContextMessage).mockRejectedValueOnce(error);
+    vi.mocked(chatApi.sendAgentMessage).mockRejectedValueOnce(error);
     vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
 
