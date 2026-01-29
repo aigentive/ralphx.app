@@ -24,9 +24,9 @@ _No active P3 items. Completed items moved to archive._
 
 ### Frontend (PRD-deferred)
 
-- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1)
-- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1)
-- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1)
+- [ ] ~~Implement TODO: Pause execution - src/components/tasks/TaskFullView.tsx:221~~ (PRD:21:1:1:1:1)
+- [ ] ~~Implement TODO: Stop execution - src/components/tasks/TaskFullView.tsx:225~~ (PRD:21:1:1:1:1)
+- [ ] ~~Implement TODO: File change handling in useEvents - src/hooks/useEvents.ts:88~~ (PRD:1:1:1:1)
 
 ### Backend
 
@@ -131,7 +131,7 @@ _No active P3 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 10 (9 excluded, 7 deferred to PRD)
+**Active items:** 10 (9 excluded, 3 deferred to PRD)
 **Completed:** 10
-**Validated:** 69 strikethroughs (2026-01-29 x54) - 19 archived, 1 reactivated (moved to refactor as P1), 54 incremented
-**Last maintenance:** 2026-01-29 20:43 (archived 2 completed items + 3 validated PRD-deferred, refilled 10 items)
+**Validated:** 72 strikethroughs (2026-01-29 x57) - 19 archived, 1 reactivated (moved to refactor as P1), 57 incremented
+**Last maintenance:** 2026-01-29 21:07 (validated 3 PRD-deferred items)

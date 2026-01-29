@@ -627,3 +627,23 @@
 **Result:** Maintenance complete - 3 archived, 2 validated (total 51 validated)
 
 ---
+
+### 2026-01-29 21:07:15 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (both backlogs at exactly 10 completed items)
+
+**Refill:**
+- Added 8 P1 items to refactor/backlog.md (5 frontend, 3 backend)
+- No refill needed for polish/backlog.md (10 active items)
+
+**Validation:**
+- Checked 4 strikethrough items:
+  - http_server/mod.rs (stale → stale:1): Confirmed 84 LOC, under limit
+  - TaskFullView.tsx:221 Pause (PRD:21:1:1:1 → PRD:21:1:1:1:1): Stub still exists
+  - TaskFullView.tsx:225 Stop (PRD:21:1:1:1 → PRD:21:1:1:1:1): Stub still exists
+  - useEvents.ts:88 file change (PRD:1:1:1 → PRD:1:1:1:1): TODO still exists
+
+**Result:** Maintenance complete - refilled refactor backlog, validated 4 items (total 57 validated)
+
+---
