@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-29 17:15:00 - P0: Wire useIdeationEvents hook in IdeationView
+**What:**
+- Gap verification found useIdeationEvents hook was defined but never called
+- Added import and call to useIdeationEvents() in IdeationView.tsx
+- This enables real-time session title updates when session-namer agent generates titles
+- Complete event chain now wired: backend emits → hook listens → store updates → UI re-renders
+
+**Files:**
+- src/components/Ideation/IdeationView.tsx (added import and useIdeationEvents() call)
+- streams/features/backlog.md (added and marked P0 complete)
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 16:30:00 - Phase 28 Task 8: Add three-dot menu with rename option to SessionBrowser items
 **What:**
 - Added DropdownMenu to session items in SessionBrowser.tsx

@@ -40,6 +40,7 @@ import { ProposalsEmptyState } from "./ProposalsEmptyState";
 import { useIdeationHandlers } from "./useIdeationHandlers";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { DropZoneOverlay } from "./DropZoneOverlay";
+import { useIdeationEvents } from "@/hooks/useIdeationEvents";
 
 // ============================================================================
 // Types
@@ -88,6 +89,9 @@ export function IdeationView({
   onReorderProposals,
   onApply,
 }: IdeationViewProps) {
+  // Listen for ideation events (e.g., session title updates from session-namer agent)
+  useIdeationEvents();
+
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // 60/40 split like Kanban
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
