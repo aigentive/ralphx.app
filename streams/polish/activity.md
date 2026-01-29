@@ -1033,3 +1033,18 @@
 
 ---
 
+
+### 2026-01-29 21:15:00 - Replace Debug format with Display for enum serialization
+**What:**
+- File: src-tauri/src/http_server/types.rs:81-82
+- Replaced `format!("{:?}", proposal.category)` with `proposal.category.to_string()`
+- Replaced `format!("{:?}", proposal.suggested_priority)` with `proposal.suggested_priority.to_string()`
+- Both TaskCategory and Priority have proper Display implementations
+
+**Commands:**
+- Verified Display trait implementations exist for both enums
+- Pre-existing test compilation errors unrelated to this change
+
+**Result:** Success (idiomatic enum-to-string conversion)
+
+---
