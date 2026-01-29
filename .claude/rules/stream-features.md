@@ -48,8 +48,10 @@ Before starting normal workflow, check for incomplete work from a previous itera
    → P0 EXISTS? → Fix it → Mark [x] → Commit → STOP
 
 2. Read specs/manifest.json → find active phase (status: "active")
+   → NO ACTIVE PHASE? → Output IDLE signal → END
 
 3. Read the phase PRD → find first task with "passes": false
+   → NO FAILING TASKS? → Run gap verification, then Output IDLE signal → END
 
 4. Read FULL task (steps, acceptance_criteria, design_quality)
 
@@ -66,8 +68,10 @@ Before starting normal workflow, check for incomplete work from a previous itera
 
 9. Commit: feat|fix|docs: [description]
 
-10. STOP — one task per iteration
+10. STOP — end iteration (do NOT check for IDLE here, just end)
 ```
+
+**IMPORTANT:** IDLE detection happens ONLY at steps 2-3 (start of iteration). After completing a task (step 10), just end — the next iteration will check for more work.
 
 ## P0 Rules (CANNOT BE BYPASSED)
 
@@ -116,11 +120,15 @@ Output: `<promise>COMPLETE</promise>`
 
 ## IDLE Detection
 
-When **no work exists** (no P0 items AND no active phase with failing tasks):
+**When:** At the START of an iteration (steps 2-3), NOT after completing a task.
 
-Output: `<promise>IDLE</promise>`
+**Condition:** No work exists (no P0 items AND no active phase with failing tasks)
+
+**Action:** Output `<promise>IDLE</promise>`
 
 This signals the fswatch wrapper to take over and wait for file changes.
+
+**NEVER output IDLE after completing a task.** Just end the iteration — the next iteration will find the next task.
 
 ## Signal Output Rules
 
