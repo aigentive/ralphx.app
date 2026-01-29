@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-29 17:45:00 - Phase 28 Complete: IDA Session Auto-Naming
+**What:**
+- Verified P0 item was false positive (useIdeationEvents IS called in IdeationView.tsx:93)
+- Marked P0 as stale in backlog
+- Ran comprehensive gap verification on Phase 28
+- All 8 PRD tasks pass, all wiring verified complete
+- Updated manifest.json to mark Phase 28 as complete
+
+**Gap Verification Results:**
+- WIRING: First message detection triggers spawnSessionNamer correctly
+- API: All frontend-to-backend calls wired
+- EVENTS: ideation:session_title_updated emits and listens correctly
+- MCP: session-namer agent has access to update_session_title tool
+- No orphaned implementations found
+
+**Files:**
+- streams/features/backlog.md (marked P0 as stale)
+- specs/manifest.json (phase 28 status: complete)
+
+**Result:** Success - ALL PHASES COMPLETE
+
+---
+
 ### 2026-01-29 17:15:00 - P0: Wire useIdeationEvents hook in IdeationView
 **What:**
 - Gap verification found useIdeationEvents hook was defined but never called
