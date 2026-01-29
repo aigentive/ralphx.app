@@ -13,6 +13,31 @@ The refactor stream handles **P1 large file splits and architectural refactors o
 3. **Cannot skip to easier work** — there is no easier work in this stream
 4. **Must verify LOC limits** — reference `.claude/rules/code-quality-standards.md` before starting
 5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
+6. **Only recover YOUR work** — see Recovery Check below
+
+## Recovery Check (ALWAYS FIRST)
+
+Before starting normal workflow, check for incomplete work from a previous iteration:
+
+```
+1. Run: git status --porcelain
+   → No uncommitted changes? → Skip recovery, proceed to normal workflow
+
+2. Identify uncommitted files and check ownership:
+   a. Read streams/refactor/activity.md → scan ALL entries (not just last)
+   b. Read streams/refactor/backlog.md → get all P1 items
+   c. For each uncommitted file, check if it CORRELATES:
+      - File path matches an activity log entry (any entry, not just last)? → YES
+      - File path matches a backlog item? → YES
+      - File is part of an obvious P1 pattern (e.g., module split: {name}/mod.rs, {name}/types.rs)? → YES
+      - None of the above? → NO, belongs to another stream
+
+3. Correlated changes exist?
+   → YES: Complete the work if needed, commit ONLY correlated files, then proceed
+   → NO: Leave uncommitted files alone, proceed to normal workflow
+```
+
+**CRITICAL:** Only commit files that match your activity log or backlog. No match → not yours.
 
 ## Workflow
 

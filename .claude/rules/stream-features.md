@@ -20,18 +20,26 @@ The features stream handles **PRD tasks and P0 gap fixes**. It is the primary st
 Before starting normal workflow, check for incomplete work from a previous iteration:
 
 ```
-1. Read streams/features/activity.md → get LAST entry (task name, files mentioned)
-2. No recent entry or entry marked complete? → Skip recovery, proceed to normal workflow
-3. Entry exists and looks incomplete? → Run: git status --porcelain
-4. Check if uncommitted changes CORRELATE to the logged task:
-   - Files in streams/features/ or specs/phases/ → YES, correlates
-   - Files in src/ or src-tauri/ mentioned in activity log → YES, correlates
-   - Files in src/ or src-tauri/ NOT mentioned → NO, other stream's work
-5. Correlated changes exist? → Complete if needed, commit ONLY correlated files, proceed
-   No correlated changes? → Proceed to normal workflow
+1. Run: git status --porcelain
+   → No uncommitted changes? → Skip recovery, proceed to normal workflow
+
+2. Identify uncommitted files and check ownership:
+   a. Read streams/features/activity.md → scan ALL entries (not just last)
+   b. Read streams/features/backlog.md → get all P0 items
+   c. Read active PRD → get current task files
+   d. For each uncommitted file, check if it CORRELATES:
+      - File path matches an activity log entry (any entry, not just last)? → YES
+      - File path matches a P0 backlog item? → YES
+      - File path matches active PRD task? → YES
+      - Files in streams/features/ or specs/phases/? → YES
+      - None of the above? → NO, belongs to another stream
+
+3. Correlated changes exist?
+   → YES: Complete the work if needed, commit ONLY correlated files, then proceed
+   → NO: Leave uncommitted files alone, proceed to normal workflow
 ```
 
-**CRITICAL:** Only commit files that correlate to YOUR activity log entry. Leave other uncommitted files alone - they belong to other streams (refactor, polish, hygiene). If you cannot correlate changes to your own logged work, do not touch them.
+**CRITICAL:** Only commit files that match your activity log, backlog, or active PRD. No match → not yours.
 
 ## Workflow
 
