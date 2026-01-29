@@ -36,7 +36,7 @@ _No active P1 items. Completed items moved to archive._
 ### Backend
 
 - [x] Split sqlite_task_proposal_repo.rs (1190 LOC → 352 LOC) - extracted to sqlite_task_proposal_repo/{mod.rs (352), tests.rs (838)} - src-tauri/src/infrastructure/sqlite/sqlite_task_proposal_repo/mod.rs:1
-- [ ] Split artifact.rs (1147 LOC) - extract entity methods to artifact_impl.rs - src-tauri/src/domain/entities/artifact.rs:1
+- [x] Split artifact.rs (1147 LOC → 671 LOC) - extracted to artifact/{mod.rs (7), types.rs (671), tests.rs (480)} - src-tauri/src/domain/entities/artifact/mod.rs:1
 - [ ] Split machine.rs (1114 LOC) - extract transition logic to machine_transitions.rs - src-tauri/src/domain/state_machine/machine.rs:1
 
 ---
