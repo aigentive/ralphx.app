@@ -62,6 +62,7 @@ function buildTaskContextKey(contextType: TaskContextType, taskId: string): stri
 export function useTaskChat(taskId: string, contextType: TaskContextType) {
   const queryClient = useQueryClient();
   const contextKey = buildTaskContextKey(contextType, taskId);
+  console.log(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}`);
 
   const {
     activeConversationId,
@@ -72,7 +73,12 @@ export function useTaskChat(taskId: string, contextType: TaskContextType) {
   // Fetch conversations for this specific context type and task
   const conversations = useQuery<ChatConversation[], Error>({
     queryKey: chatKeys.conversationList(contextType, taskId),
-    queryFn: () => chatApi.listConversations(contextType, taskId),
+    queryFn: async () => {
+      console.log(`[useTaskChat] Fetching conversations: contextType=${contextType}, taskId=${taskId}`);
+      const result = await chatApi.listConversations(contextType, taskId);
+      console.log(`[useTaskChat] Fetched ${result.length} conversations`);
+      return result;
+    },
   });
 
   // Fetch active conversation with messages
@@ -121,6 +127,20 @@ export function useTaskChat(taskId: string, contextType: TaskContextType) {
   }, [contextType, taskId]);
 
   useEffect(() => {
+    // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
+    // The activeConversationId in the store is global - it persists across context switches.
+    // If it doesn't belong to the current context's conversations, it's stale and must be reset.
+    if (activeConversationId && conversations.data && conversations.data.length > 0) {
+      const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
+      if (!belongsToContext) {
+        console.log(`[useTaskChat] Stale activeConversationId=${activeConversationId} not in context ${contextKey}, resetting`);
+        // Reset both the ID and the flag so auto-select can run
+        hasAutoSelectedRef.current = false;
+        setActiveConversation(null);
+        return; // Will re-run on next render with null activeConversationId
+      }
+    }
+
     // Only auto-select once per context
     if (hasAutoSelectedRef.current) {
       return;
@@ -136,11 +156,12 @@ export function useTaskChat(taskId: string, contextType: TaskContextType) {
       const mostRecent = sorted[0];
 
       if (mostRecent) {
+        console.log(`[useTaskChat] Auto-selecting conversation ${mostRecent.id} for context ${contextKey}`);
         hasAutoSelectedRef.current = true;
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, conversations.data, setActiveConversation]);
+  }, [activeConversationId, conversations.data, setActiveConversation, contextKey]);
 
   // Sync agent running state based on backend status
   const isRunning = agentRunStatus.data?.status === "running";

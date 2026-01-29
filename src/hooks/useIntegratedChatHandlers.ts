@@ -9,12 +9,15 @@
  */
 
 import { useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore } from "@/stores/chatStore";
 import { chatApi, stopAgent } from "@/api/chat";
+import { chatKeys } from "@/hooks/useChat";
 import type { ContextType } from "@/types/chat-conversation";
 
 interface UseIntegratedChatHandlersProps {
   isExecutionMode: boolean;
+  isReviewMode: boolean;
   selectedTaskId: string | undefined;
   projectId: string;
   ideationSessionId: string | undefined;
@@ -27,30 +30,36 @@ interface UseIntegratedChatHandlersProps {
 
 export function useIntegratedChatHandlers({
   isExecutionMode,
+  isReviewMode,
   selectedTaskId,
   projectId,
   ideationSessionId,
   storeContextKey,
   sendMessage,
 }: UseIntegratedChatHandlersProps) {
+  const queryClient = useQueryClient();
   const {
     queueMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
+    setActiveConversation,
+    setAgentRunning,
   } = useChatStore();
 
   // Get current context type and ID for queue operations
   const getQueueContext = useCallback(() => {
     const ctxType: ContextType = isExecutionMode
       ? "task_execution"
-      : ideationSessionId
-        ? "ideation"
-        : selectedTaskId
-          ? "task"
-          : "project";
+      : isReviewMode
+        ? "review"
+        : ideationSessionId
+          ? "ideation"
+          : selectedTaskId
+            ? "task"
+            : "project";
     const ctxId = ideationSessionId || selectedTaskId || projectId;
     return { ctxType, ctxId } as const;
-  }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
+  }, [isExecutionMode, isReviewMode, ideationSessionId, selectedTaskId, projectId]);
 
   // Generate a unique ID for queued messages
   const generateQueuedMessageId = useCallback(() => {
@@ -58,17 +67,46 @@ export function useIntegratedChatHandlers({
   }, []);
 
   // Send message handler
+  // For review mode, we need to send with "review" context type, not "task"
   const handleSend = useCallback(
     async (content: string) => {
       if (!content.trim() || sendMessage.isPending) return;
 
       try {
-        await sendMessage.mutateAsync(content);
+        // For review mode, use the API directly with correct context type
+        if (isReviewMode && selectedTaskId) {
+          // Set agent running state immediately
+          setAgentRunning(storeContextKey, true);
+
+          const result = await chatApi.sendAgentMessage("review", selectedTaskId, content);
+
+          // Invalidate conversation queries to refresh the UI
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversationList("review", selectedTaskId),
+          });
+
+          // If a conversation was returned, invalidate it and ensure it's active
+          if (result.conversationId) {
+            queryClient.invalidateQueries({
+              queryKey: chatKeys.conversation(result.conversationId),
+            });
+
+            // If this is a new conversation or we don't have one selected, set it
+            if (result.isNewConversation) {
+              setActiveConversation(result.conversationId);
+            }
+          }
+        } else {
+          await sendMessage.mutateAsync(content);
+        }
       } catch {
-        // Error is handled by the mutation
+        // Reset agent running state on error
+        if (isReviewMode) {
+          setAgentRunning(storeContextKey, false);
+        }
       }
     },
-    [sendMessage]
+    [sendMessage, isReviewMode, selectedTaskId, storeContextKey, setAgentRunning, setActiveConversation, queryClient]
   );
 
   // Queue message handler (when agent is running)

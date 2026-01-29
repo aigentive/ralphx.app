@@ -14,7 +14,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
-import { useTaskStore } from "@/stores/taskStore";
+import { useTasks } from "@/hooks/useTasks";
 import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -80,11 +80,21 @@ export function IntegratedChatPanel({
 
   const activeConversationId = useChatStore(selectActiveConversationId);
 
-  // Detect execution mode based on selected task status
-  const selectedTask = useTaskStore((state) =>
-    selectedTaskId ? state.tasks[selectedTaskId] : undefined
+  // Get task data from React Query (useTasks) which has full task data
+  // Note: We can't use useTaskStore because it only has partial task data from events
+  const { data: tasks = [] } = useTasks(projectId);
+  const selectedTask = useMemo(
+    () => selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : undefined,
+    [tasks, selectedTaskId]
   );
-  const isExecutionMode = selectedTask?.internalStatus === "executing";
+
+  // Execution states: worker agent is running
+  const executionStatuses = ["executing", "re_executing", "qa_refining", "qa_testing", "qa_passed", "qa_failed"];
+  const isExecutionMode = selectedTask?.internalStatus ? executionStatuses.includes(selectedTask.internalStatus) : false;
+
+  // Review states: reviewer agent conversation
+  const reviewStatuses = ["reviewing", "review_passed"];
+  const isReviewMode = selectedTask?.internalStatus ? reviewStatuses.includes(selectedTask.internalStatus) : false;
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -99,7 +109,7 @@ export function IntegratedChatPanel({
     }
     if (selectedTaskId) {
       return {
-        view: isExecutionMode ? "task_detail" : "task_detail",
+        view: "task_detail",
         projectId,
         selectedTaskId,
       };
@@ -108,16 +118,19 @@ export function IntegratedChatPanel({
       view: "kanban",
       projectId,
     };
-  }, [selectedTaskId, isExecutionMode, projectId, ideationSessionId]);
+  }, [selectedTaskId, projectId, ideationSessionId]);
 
   // Compute store context key for queue/agent state operations
-  // Uses context-aware keys: "task_execution:id" for execution mode, otherwise standard keys
+  // Uses context-aware keys: "task_execution:id", "review:id", or standard keys
   const storeContextKey = useMemo(() => {
     if (isExecutionMode && selectedTaskId) {
       return `task_execution:${selectedTaskId}`;
     }
+    if (isReviewMode && selectedTaskId) {
+      return `review:${selectedTaskId}`;
+    }
     return getContextKey(chatContext);
-  }, [isExecutionMode, selectedTaskId, chatContext]);
+  }, [isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
@@ -134,23 +147,27 @@ export function IntegratedChatPanel({
   const contextKey = ideationSessionId
     ? `ideation:${ideationSessionId}`
     : selectedTaskId
-      ? `${isExecutionMode ? "execution" : "task"}:${selectedTaskId}`
+      ? `${isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
       : `project:${projectId}`;
   // Initialize with empty string to ensure cleanup runs on first mount
   // This prevents showing conversations from a different context
   const prevContextKeyRef = useRef("");
   const prevContextTypeRef = useRef<{ type: string; id: string } | null>(null);
 
+  // Auto-select the most recent conversation for this context
+  // Use a ref to track initialization and prevent infinite loops
+  const hasAutoSelectedRef = useRef(false);
+
   // Track the previous context type and id for cache invalidation
   useEffect(() => {
     const currentContextType = ideationSessionId
       ? "ideation"
       : selectedTaskId
-        ? (isExecutionMode ? "task_execution" : "task")
+        ? (isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
         : "project";
     const currentContextId = ideationSessionId || selectedTaskId || projectId;
     prevContextTypeRef.current = { type: currentContextType, id: currentContextId };
-  }, [selectedTaskId, isExecutionMode, projectId, ideationSessionId]);
+  }, [selectedTaskId, isExecutionMode, isReviewMode, projectId, ideationSessionId]);
 
   useEffect(() => {
     if (prevContextKeyRef.current !== contextKey) {
@@ -179,11 +196,14 @@ export function IntegratedChatPanel({
         });
       }
 
+      // Reset auto-select flag when context changes
+      hasAutoSelectedRef.current = false;
+
       prevContextKeyRef.current = contextKey;
     }
   }, [contextKey, setActiveConversation, queryClient]);
 
-  // For execution mode, fetch execution conversations directly
+  // For execution/review mode, fetch conversations directly with specific context type
   const regularChatData = useChat(chatContext);
 
   // Fetch execution conversations when in execution mode
@@ -193,10 +213,88 @@ export function IntegratedChatPanel({
     enabled: isExecutionMode && !!selectedTaskId,
   });
 
-  // Use execution conversations when in execution mode, otherwise regular conversations
+  // Fetch review conversations when in review mode
+  const reviewConversationsQuery = useQuery({
+    queryKey: chatKeys.conversationList("review", selectedTaskId ?? ""),
+    queryFn: () => chatApi.listConversations("review", selectedTaskId ?? ""),
+    enabled: isReviewMode && !!selectedTaskId,
+  });
+
+  // Use execution/review conversations when in those modes, otherwise regular conversations
   const conversations = isExecutionMode
     ? executionConversationsQuery
-    : regularChatData.conversations;
+    : isReviewMode
+      ? reviewConversationsQuery
+      : regularChatData.conversations;
+
+  // Auto-select the most recent conversation when:
+  // 1. We're in execution or review mode (these modes always have a specific conversation)
+  // 2. No conversation is currently selected
+  // 3. Conversations are loaded
+  useEffect(() => {
+    const isLoading = isExecutionMode
+      ? executionConversationsQuery.isLoading
+      : isReviewMode
+        ? reviewConversationsQuery.isLoading
+        : false;
+
+    console.log(`[IntegratedChatPanel] Auto-select effect: isExec=${isExecutionMode}, isReview=${isReviewMode}, activeId=${activeConversationId}, isLoading=${isLoading}, convCount=${conversations.data?.length ?? 0}, hasAutoSelected=${hasAutoSelectedRef.current}, contextKey=${contextKey}`);
+
+    // Only auto-select for execution/review modes where we want to show existing conversations
+    if (!isExecutionMode && !isReviewMode) {
+      return;
+    }
+
+    // Wait for conversations to load before any validation/selection
+    if (isLoading) {
+      console.log(`[IntegratedChatPanel] Waiting for conversations to load...`);
+      return;
+    }
+
+    // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
+    // The activeConversationId in the store is global - it persists across context switches.
+    // If it doesn't belong to the current context's conversations, it's stale and must be reset.
+    if (activeConversationId && conversations.data && conversations.data.length > 0) {
+      const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
+      if (!belongsToContext) {
+        console.log(`[IntegratedChatPanel] Stale activeConversationId=${activeConversationId} not in context ${contextKey}, resetting`);
+        // Reset both the ID and the flag so auto-select can run
+        hasAutoSelectedRef.current = false;
+        setActiveConversation(null);
+        return; // Will re-run on next render with null activeConversationId
+      }
+    }
+
+    // Reset the flag if we're in execution/review mode but have no active conversation
+    // This handles the case where a task is closed and reopened - we need to re-select
+    if (!activeConversationId && hasAutoSelectedRef.current) {
+      console.log(`[IntegratedChatPanel] Resetting auto-select flag: no active conversation in ${isReviewMode ? 'review' : 'execution'} mode`);
+      hasAutoSelectedRef.current = false;
+    }
+
+    // Only auto-select once per context change
+    if (hasAutoSelectedRef.current) {
+      return;
+    }
+
+    if (!activeConversationId && conversations.data && conversations.data.length > 0) {
+      // Sort by most recent activity
+      const sorted = [...conversations.data].sort((a, b) => {
+        const aTime = a.lastMessageAt || a.createdAt;
+        const bTime = b.lastMessageAt || b.createdAt;
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+      const mostRecent = sorted[0];
+
+      if (mostRecent) {
+        console.log(`[IntegratedChatPanel] Auto-selecting conversation: ${mostRecent.id} (${isReviewMode ? 'review' : 'execution'} mode)`);
+        hasAutoSelectedRef.current = true;
+        setActiveConversation(mostRecent.id);
+      }
+    } else if (!activeConversationId && conversations.data?.length === 0) {
+      console.log(`[IntegratedChatPanel] No conversations available to auto-select`);
+    }
+  }, [activeConversationId, conversations.data, isExecutionMode, isReviewMode, setActiveConversation, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading, contextKey]);
 
   // Fetch agent run status for the active conversation
   const agentRunQuery = useQuery({
@@ -226,7 +324,7 @@ export function IntegratedChatPanel({
   const currentContextType: ContextType = ideationSessionId
     ? "ideation"
     : selectedTaskId
-      ? (isExecutionMode ? "task_execution" : "task")
+      ? (isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
       : "project";
   const currentContextId = ideationSessionId || selectedTaskId || projectId;
 
@@ -266,6 +364,7 @@ export function IntegratedChatPanel({
     handleStopAgent,
   } = useIntegratedChatHandlers({
     isExecutionMode,
+    isReviewMode,
     selectedTaskId: selectedTaskId ?? undefined,
     projectId,
     ideationSessionId,
@@ -346,7 +445,7 @@ export function IntegratedChatPanel({
             background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
           }}
         >
-          {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} />}
+          {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
 
           {/* Active agent badge */}
           {(isSending || isAgentRunning || isExecutionMode) && (
@@ -364,9 +463,11 @@ export function IntegratedChatPanel({
                   ? "ideation"
                   : isExecutionMode
                     ? "task_execution"
-                    : selectedTaskId
-                      ? "task"
-                      : "project"
+                    : isReviewMode
+                      ? "review"
+                      : selectedTaskId
+                        ? "task"
+                        : "project"
               }
               contextId={ideationSessionId || selectedTaskId || projectId}
               conversations={conversations.data ?? []}

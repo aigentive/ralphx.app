@@ -203,6 +203,7 @@ export interface TaskChatPanelProps {
 }
 
 export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanelProps) {
+  console.log(`[TaskChatPanel] props: taskId=${taskId}, contextType=${contextType}, taskStatus=${taskStatus}`);
   const queryClient = useQueryClient();
   const {
     queueMessage,
