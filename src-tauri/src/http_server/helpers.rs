@@ -3,10 +3,12 @@
 //! Extracted from http_server.rs to manage file size and maintain separation of concerns.
 //! Contains parsing, transformation, and context aggregation functions.
 
+use std::str::FromStr;
+
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions};
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, IdeationSessionStatus,
-    Priority, TaskCategory, TaskContext, TaskId, TaskProposal, TaskProposalId,
+    InternalStatus, Priority, TaskCategory, TaskContext, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::error::{AppError, AppResult};
 
@@ -41,6 +43,11 @@ pub fn parse_priority(s: &str) -> Result<Priority, String> {
         "low" => Ok(Priority::Low),
         _ => Err(format!("Invalid priority: {}", s)),
     }
+}
+
+/// Parse an internal status string to InternalStatus enum
+pub fn parse_internal_status(s: &str) -> Result<InternalStatus, String> {
+    InternalStatus::from_str(s).map_err(|e| e.to_string())
 }
 
 /// Parse an artifact type string to ArtifactType enum

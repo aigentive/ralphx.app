@@ -1,4 +1,5 @@
 // SQL query constants for task repository operations
+// Some constants are defined for future use to maintain consistency
 
 /// Standard task SELECT columns
 pub(super) const TASK_COLUMNS: &str =
@@ -15,7 +16,8 @@ pub(super) const GET_BY_PROJECT: &str =
      FROM tasks WHERE project_id = ?1
      ORDER BY priority DESC, created_at ASC";
 
-/// Update task query
+/// Update task query (for future use)
+#[allow(dead_code)]
 pub(super) const UPDATE_TASK: &str =
     "UPDATE tasks SET
          project_id = ?1,
@@ -36,12 +38,14 @@ pub(super) const UPDATE_TASK: &str =
 /// Delete task query
 pub(super) const DELETE_TASK: &str = "DELETE FROM tasks WHERE id = ?1";
 
-/// Insert status history
+/// Insert status history (for future use)
+#[allow(dead_code)]
 pub(super) const INSERT_STATUS_HISTORY: &str =
     "INSERT INTO task_status_history (id, task_id, from_status, to_status, changed_at)
      VALUES (?1, ?2, ?3, ?4, ?5)";
 
-/// Get status history for a task
+/// Get status history for a task (for future use)
+#[allow(dead_code)]
 pub(super) const GET_STATUS_HISTORY: &str =
     "SELECT id, task_id, from_status, to_status, changed_at
      FROM task_status_history

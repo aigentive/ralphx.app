@@ -70,6 +70,28 @@ When splitting a file into multiple files or a module folder:
 
 4. **One extraction = one commit** - Don't split the work across multiple commits with the same message.
 
+5. **COPY, don't rewrite** - When extracting code to new files:
+   - **Read the original implementation first** using `git show HEAD:<file_path>` or `Read`
+   - **Copy the exact function signatures and implementations** - do NOT invent new APIs
+   - **Verify types and repos exist** before using them (e.g., check AppState, entity fields)
+   - **Verify compilation after each extraction** before proceeding to the next:
+     - Backend: `cargo check`
+     - Frontend: `npm run typecheck`
+
+   **Bad:** Writing `task.steps.clone()` without verifying Task has a `steps` field
+   **Bad:** Using `artifact_session_link_repo` without checking if it exists in AppState
+   **Good:** Reading original implementation, copying exact logic, verifying it compiles
+
+6. **Extraction validation** - Before committing any extraction:
+   ```bash
+   # Backend extractions
+   cargo check 2>&1 | head -20
+
+   # Frontend extractions
+   npm run typecheck 2>&1 | head -20
+   ```
+   If errors exist, do NOT commit. Fix or revert.
+
 ## References
 
 This file is the canonical source. Referenced by:

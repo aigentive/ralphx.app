@@ -5,7 +5,7 @@ use axum::{
 };
 
 use super::*;
-use crate::domain::entities::{InternalStatus, Priority, ProjectId};
+use crate::domain::entities::{InternalStatus, ProjectId};
 
 pub async fn list_tasks(
     State(state): State<HttpServerState>,
@@ -25,7 +25,7 @@ pub async fn list_tasks(
     let mut tasks = state
         .app_state
         .task_repo
-        .list_by_project(&project_id)
+        .get_by_project(&project_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -52,7 +52,7 @@ pub async fn suggest_task(
     let tasks = state
         .app_state
         .task_repo
-        .list_by_project(&project_id)
+        .get_by_project(&project_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -65,15 +65,10 @@ pub async fn suggest_task(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Find highest priority task
+    // Find highest priority task (higher i32 = higher priority)
     let suggested = backlog_tasks
         .iter()
-        .max_by_key(|t| match t.priority {
-            Priority::Critical => 4,
-            Priority::High => 3,
-            Priority::Medium => 2,
-            Priority::Low => 1,
-        })
+        .max_by_key(|t| t.priority)
         .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(SuggestTaskResponse {
