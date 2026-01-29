@@ -110,8 +110,7 @@ _Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [x] [P3] [Backend] Redundant clone: Unnecessary `response.clone()` when value is already moved - src-tauri/src/http_server/handlers/steps.rs:304
-- [x] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
+_Completed items moved to archive._
 
 ---
 
@@ -119,8 +118,8 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] ~~[P2] [Frontend] Error handling: Empty catch blocks without error logging - src/App.tsx:241~~ (stale - already has toast.error)
-- [ ] ~~[P2] [Frontend] Error handling: Silent catch block in pause/stop handlers - src/App.tsx:257~~ (stale - already has toast.error)
+- [ ] ~~[P2] [Frontend] Error handling: Empty catch blocks without error logging - src/App.tsx:241~~ (stale:1 - already has toast.error)
+- [ ] ~~[P2] [Frontend] Error handling: Silent catch block in pause/stop handlers - src/App.tsx:257~~ (stale:1 - already has toast.error)
 - [x] [P2] [Frontend] Type safety: Unused parameter with underscore prefix - src/App.tsx:264
 - [x] [P2] [Backend] Naming: non_snake_case suppressions in command handlers - src-tauri/src/commands/task_commands/mutation.rs:71
 - [x] [P2] [Frontend] Lint suppression: eslint-disable-next-line for hook dependencies - src/hooks/useTaskExecutionState.ts:141
@@ -156,7 +155,7 @@ _Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 9 (9 excluded, 3 deferred to PRD)
+**Active items:** 7 (9 excluded, 3 deferred to PRD)
 **Completed:** 10
-**Validated:** 78 strikethroughs (2026-01-29 x60, 2026-01-30 x3) - 22 archived, 1 reactivated (moved to refactor as P1), 63 incremented
-**Last maintenance:** 2026-01-30 (archived 1 item, validated 3 strikethroughs)
+**Validated:** 80 strikethroughs (2026-01-29 x60, 2026-01-30 x5) - 24 archived, 1 reactivated (moved to refactor as P1), 65 incremented
+**Last maintenance:** 2026-01-30 (archived 2 items)

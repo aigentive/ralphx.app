@@ -1,5 +1,23 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 02:32:45 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (transition_handler.rs split)
+- Moved 2 items from polish/backlog.md to archive (P3 redundant clones from REFILL 2026-01-29 20:43)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 12 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 4 active, polish: 7 active)
+
+**Validation:**
+- Checked 2 stale strikethrough items from polish backlog
+- Both still resolved: App.tsx:241 and App.tsx:257 have toast.error
+- Incremented validation counters: (stale) → (stale:1) for both items
+
+**Result:** Maintenance complete - archived 3 items (1 refactor + 2 polish), validated 2 strikethroughs
+
 ### 2026-01-29 02:23:45 - Backlog Maintenance
 
 **Archive:**

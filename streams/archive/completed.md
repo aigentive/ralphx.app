@@ -5,6 +5,19 @@
 
 ---
 
+## Archived 2026-01-30
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split transition_handler.rs (1474 LOC → 250 LOC max) - extracted to transition_handler/{mod.rs (160), side_effects.rs (250), tests.rs (1071)} - src-tauri/src/domain/state_machine/transition_handler.rs:1
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 20:43)
+
+- [x] [P3] [Backend] Redundant clone: Unnecessary `response.clone()` when value is already moved - src-tauri/src/http_server/handlers/steps.rs:304
+- [x] [P3] [Backend] Redundant clones: Excessive `.clone()` calls in request parameters - src-tauri/src/http_server/handlers/permissions.rs:22
+
+---
+
 ## Archived 2026-01-29 (Sixteenth Batch)
 
 ### From refactor/backlog.md (Backend)
