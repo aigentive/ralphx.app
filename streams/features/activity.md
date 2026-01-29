@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-29 18:50:00 - Phase 25 Task 8: Create useFileDrop hook
+**What:**
+- Created src/hooks/useFileDrop.ts - reusable drag-and-drop hook for file imports
+- Tracks isDragging state with proper nested element handling (dragCounterRef)
+- Handles dragenter, dragover, dragleave, drop events
+- Validates file type (configurable acceptedExtensions) and size (default 1MB max)
+- Returns { isDragging, dropProps, error, clearError }
+- Reads file content via file.text() and passes to onFileDrop callback
+- Created comprehensive test suite in useFileDrop.test.ts (19 tests)
+
+**Files:**
+- src/hooks/useFileDrop.ts (new)
+- src/hooks/useFileDrop.test.ts (new)
+
+**Commands:**
+- `npm run test:run -- src/hooks/useFileDrop.test.ts` - 19 tests passed
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 15:45:00 - Phase 25 Task 7: Add Seed from Draft Task link to StartSessionPanel
 **What:**
 - Added "Seed from Draft Task" link below the main "Start New Session" button
