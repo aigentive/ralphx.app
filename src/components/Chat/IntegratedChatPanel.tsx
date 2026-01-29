@@ -88,13 +88,17 @@ export function IntegratedChatPanel({
     [tasks, selectedTaskId]
   );
 
-  // Execution states: worker agent is running
+  // Execution states: worker agent is running (only when NOT in ideation mode)
   const executionStatuses = ["executing", "re_executing", "qa_refining", "qa_testing", "qa_passed", "qa_failed"];
-  const isExecutionMode = selectedTask?.internalStatus ? executionStatuses.includes(selectedTask.internalStatus) : false;
+  const isExecutionMode = !ideationSessionId && selectedTask?.internalStatus
+    ? executionStatuses.includes(selectedTask.internalStatus)
+    : false;
 
-  // Review states: reviewer agent conversation
+  // Review states: reviewer agent conversation (only when NOT in ideation mode)
   const reviewStatuses = ["reviewing", "review_passed"];
-  const isReviewMode = selectedTask?.internalStatus ? reviewStatuses.includes(selectedTask.internalStatus) : false;
+  const isReviewMode = !ideationSessionId && selectedTask?.internalStatus
+    ? reviewStatuses.includes(selectedTask.internalStatus)
+    : false;
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
