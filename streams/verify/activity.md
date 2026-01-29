@@ -408,3 +408,57 @@ All components properly wired and integrated:
 6. Process Management: tmux orchestration with proper cleanup ✓
 
 **Result:** No P0 items found. All completed phases are properly implemented with no critical wiring gaps.
+
+---
+
+### 2026-01-29 01:33:02 - Phase 25 Verification
+**Phases Checked:** 25
+
+**Checks Run:**
+- WIRING: 9 components checked (TaskCardContextMenu, TaskDetailOverlay, TaskCard, StartSessionPanel, TaskPickerDialog, IdeationView, useFileDrop, DropZoneOverlay, ProposalsEmptyState)
+- API: 2 features verified (seedTaskId flow, drag-and-drop file import)
+- STATE: seedTaskId field lifecycle verified across TypeScript → API → Rust → Database
+- EVENTS: N/A (no new backend events)
+
+**Gaps Found:** 0
+
+**Verification Details:**
+
+**Feature 1: Start Ideation from Draft Tasks**
+- Entry Point 1: TaskCardContextMenu "Start Ideation" menu item (line 132-138) ✓
+  - Conditionally renders for backlog tasks ✓
+  - Handler `onStartIdeation` properly wired through TaskCard (line 191-208, 220) ✓
+- Entry Point 2: TaskDetailOverlay "Start Ideation" button (line 447-462) ✓
+  - Renders for backlog tasks with Lightbulb icon ✓
+  - Handler `handleStartIdeation` creates session with seedTaskId (line 311-330) ✓
+- Entry Point 3: StartSessionPanel "Seed from Draft Task" link (line 87-103) ✓
+  - Opens TaskPickerDialog component ✓
+  - Handler `handleSeedFromTask` creates session with seedTaskId (line 26-42) ✓
+- TaskPickerDialog component exists and fully functional (TaskPickerDialog.tsx:40-193) ✓
+- No disabled flags preventing feature activation ✓
+- No components imported but not rendered ✓
+
+**Feature 2: Drag-and-Drop Markdown Import**
+- useFileDrop hook created (hooks/useFileDrop.ts) ✓
+  - Provides isDragging state, file validation, error handling ✓
+  - Properly exported and typed ✓
+- DropZoneOverlay component created (Ideation/DropZoneOverlay.tsx) ✓
+  - Renders only when isVisible=true (no disabled flag trap) ✓
+  - Pulsing orange border animation, centered message ✓
+- IdeationView integration verified (Ideation/IdeationView.tsx:207-211, 290, 293) ✓
+  - useFileDrop hook initialized with .md validation ✓
+  - dropProps spread onto proposals panel ✓
+  - DropZoneOverlay rendered with isDragging state ✓
+  - handleFileDrop callback wired to onFileDrop ✓
+- ProposalsEmptyState enhanced (Ideation/ProposalsEmptyState.tsx:97-129) ✓
+  - Divider with "or" and drop hint with FileDown icon ✓
+  - Displayed when no proposals exist ✓
+
+**API Surface Verification:**
+- Type definitions: seedTaskId in IdeationSessionSchema (types/ideation.ts:31) ✓
+- API wrapper: sessions.create accepts seedTaskId, passes as seed_task_id (api/ideation.ts:86-89) ✓
+- Backend command: create_ideation_session accepts seed_task_id parameter (ideation_commands_session.rs:21-46) ✓
+- Backend entity: seed_task_id field in IdeationSession (domain/entities/ideation/mod.rs:46, 109-111, 228-230) ✓
+- Database: seed_task_id column exists in migrations ✓
+
+**Result:** No gaps found. Phase 25 implementation is complete and properly wired with no P0 items to report.
