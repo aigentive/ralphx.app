@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use tracing::error;
 
 use crate::application::{CreateProposalOptions, UpdateProposalOptions};
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
@@ -22,7 +23,10 @@ pub async fn create_task_proposal(
     let session_id = IdeationSessionId::from_string(req.session_id);
 
     // Parse category
-    let category = parse_category(&req.category).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let category = parse_category(&req.category).map_err(|e| {
+        error!("Invalid category '{}': {}", req.category, e);
+        StatusCode::BAD_REQUEST
+    })?;
 
     // Parse priority (default to Medium if not provided)
     let priority = req
@@ -30,17 +34,26 @@ pub async fn create_task_proposal(
         .as_ref()
         .map(|s| parse_priority(s.as_str()))
         .transpose()
-        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .map_err(|e| {
+            error!("Invalid priority '{}': {}", req.priority.as_ref().unwrap(), e);
+            StatusCode::BAD_REQUEST
+        })?
         .unwrap_or(Priority::Medium);
 
     // Convert steps and acceptance criteria to JSON strings
     let steps = req
         .steps
-        .map(|s| serde_json::to_string(&s).map_err(|_| StatusCode::BAD_REQUEST))
+        .map(|s| serde_json::to_string(&s).map_err(|e| {
+            error!("Failed to serialize steps: {}", e);
+            StatusCode::BAD_REQUEST
+        }))
         .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
-        .map(|ac| serde_json::to_string(&ac).map_err(|_| StatusCode::BAD_REQUEST))
+        .map(|ac| serde_json::to_string(&ac).map_err(|e| {
+            error!("Failed to serialize acceptance_criteria: {}", e);
+            StatusCode::BAD_REQUEST
+        }))
         .transpose()?;
 
     let options = CreateProposalOptions {
@@ -55,7 +68,10 @@ pub async fn create_task_proposal(
     // Create proposal using IdeationService logic
     let proposal = create_proposal_impl(&state.app_state, session_id, options)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to create proposal for session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(ProposalResponse::from(proposal)))
 }
@@ -72,7 +88,10 @@ pub async fn update_task_proposal(
         .as_ref()
         .map(|s| parse_category(s.as_str()))
         .transpose()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+        .map_err(|e| {
+            error!("Invalid category '{}': {}", req.category.as_ref().unwrap(), e);
+            StatusCode::BAD_REQUEST
+        })?;
 
     // Parse priority if provided
     let user_priority = req
@@ -80,16 +99,25 @@ pub async fn update_task_proposal(
         .as_ref()
         .map(|s| parse_priority(s.as_str()))
         .transpose()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+        .map_err(|e| {
+            error!("Invalid priority '{}': {}", req.user_priority.as_ref().unwrap(), e);
+            StatusCode::BAD_REQUEST
+        })?;
 
     // Convert steps and acceptance criteria to JSON strings
     let steps = req
         .steps
-        .map(|s| serde_json::to_string(&s).map_err(|_| StatusCode::BAD_REQUEST))
+        .map(|s| serde_json::to_string(&s).map_err(|e| {
+            error!("Failed to serialize steps: {}", e);
+            StatusCode::BAD_REQUEST
+        }))
         .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
-        .map(|ac| serde_json::to_string(&ac).map_err(|_| StatusCode::BAD_REQUEST))
+        .map(|ac| serde_json::to_string(&ac).map_err(|e| {
+            error!("Failed to serialize acceptance_criteria: {}", e);
+            StatusCode::BAD_REQUEST
+        }))
         .transpose()?;
 
     let options = UpdateProposalOptions {
@@ -103,7 +131,10 @@ pub async fn update_task_proposal(
 
     let updated = update_proposal_impl(&state.app_state, &proposal_id, options)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to update proposal {}: {}", proposal_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(ProposalResponse::from(updated)))
 }
@@ -119,7 +150,10 @@ pub async fn delete_task_proposal(
         .task_proposal_repo
         .delete(&proposal_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to delete proposal {}: {}", proposal_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(SuccessResponse {
         success: true,
@@ -139,7 +173,10 @@ pub async fn add_proposal_dependency(
         .proposal_dependency_repo
         .add_dependency(&proposal_id, &depends_on_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to add dependency from {} to {}: {}", proposal_id.as_str(), depends_on_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(SuccessResponse {
         success: true,
