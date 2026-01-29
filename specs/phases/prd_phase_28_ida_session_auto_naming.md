@@ -75,10 +75,10 @@ After completing the task: update `"passes": true`, commit, and stop.
     "plan_section": "1. Backend - New HTTP Endpoint",
     "steps": [
       "Read specs/plans/ida-session-auto-naming.md section '1. Backend'",
+      "Add UpdateSessionTitleRequest struct in http_server/types.rs",
       "Add update_session_title handler in handlers/ideation.rs",
-      "Request body: { session_id: string, title: string }",
-      "Call session_repo.update_title() and emit event",
-      "Add route in http_server/mod.rs",
+      "Handler calls session_repo.update_title() and emits ideation:session_title_updated event",
+      "Add route .route('/api/update_session_title', post(update_session_title)) in http_server/mod.rs",
       "Run cargo clippy && cargo test",
       "Commit: feat(http): add update_session_title endpoint"
     ],
@@ -90,10 +90,10 @@ After completing the task: update `"passes": true`, commit, and stop.
     "plan_section": "2. MCP Server",
     "steps": [
       "Read specs/plans/ida-session-auto-naming.md section '2. MCP Server'",
-      "Add tool definition in ralphx-mcp-server/src/tools.ts",
-      "Add session-namer to agent allowlist with access to update_session_title",
-      "Add routing for new tool in index.ts to call HTTP endpoint",
-      "Test tool registration",
+      "Add tool definition to ALL_TOOLS array in ralphx-mcp-server/src/tools.ts",
+      "Add session-namer to TOOL_ALLOWLIST with access to update_session_title",
+      "No index.ts changes needed - uses default POST routing",
+      "Test tool registration with RALPHX_AGENT_TYPE=session-namer",
       "Commit: feat(mcp): add update_session_title tool"
     ],
     "passes": false
