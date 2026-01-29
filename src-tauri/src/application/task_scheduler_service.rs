@@ -73,46 +73,16 @@ impl<R: Runtime> TaskSchedulerService<R> {
 
     /// Find the oldest Ready task across all projects.
     ///
+    /// Uses the repository's optimized cross-project query for efficient FIFO scheduling.
     /// Returns None if no Ready tasks exist or if there's an error querying.
     async fn find_oldest_ready_task(&self) -> Option<crate::domain::entities::Task> {
-        // Get all projects
-        let projects = match self.project_repo.get_all().await {
-            Ok(projects) => projects,
+        match self.task_repo.get_oldest_ready_task().await {
+            Ok(task) => task,
             Err(e) => {
-                tracing::warn!(error = %e, "Failed to get projects for scheduling");
-                return None;
-            }
-        };
-
-        // Find Ready tasks across all projects, tracking the oldest
-        let mut oldest_task: Option<crate::domain::entities::Task> = None;
-
-        for project in projects {
-            let tasks = match self.task_repo.get_by_status(&project.id, InternalStatus::Ready).await {
-                Ok(tasks) => tasks,
-                Err(e) => {
-                    tracing::warn!(
-                        project_id = project.id.as_str(),
-                        error = %e,
-                        "Failed to get Ready tasks for project"
-                    );
-                    continue;
-                }
-            };
-
-            for task in tasks {
-                match &oldest_task {
-                    None => oldest_task = Some(task),
-                    Some(current_oldest) => {
-                        if task.created_at < current_oldest.created_at {
-                            oldest_task = Some(task);
-                        }
-                    }
-                }
+                tracing::warn!(error = %e, "Failed to get oldest Ready task for scheduling");
+                None
             }
         }
-
-        oldest_task
     }
 
     /// Build a TaskTransitionService for transitioning tasks.
