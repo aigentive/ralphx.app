@@ -22,6 +22,16 @@ pub struct HttpServerState {
 }
 
 // ============================================================================
+// Request/Response Types - Ideation (Sessions)
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSessionTitleRequest {
+    pub session_id: String,
+    pub title: String,
+}
+
+// ============================================================================
 // Request/Response Types - Ideation (Proposals)
 // ============================================================================
 
