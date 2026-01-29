@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-29 15:45:00 - Phase 25 Task 7: Add Seed from Draft Task link to StartSessionPanel
+**What:**
+- Added "Seed from Draft Task" link below the main "Start New Session" button
+- Link opens TaskPickerDialog to select a draft task
+- On task selection: creates ideation session with seedTaskId and title from task
+- Uses useCreateIdeationSession, useIdeationStore (addSession, setActiveSession)
+- Shows loading state with spinner while creating session
+- Styled with FileText icon, hover effect transitions to accent color
+
+**Files:**
+- src/components/Ideation/StartSessionPanel.tsx
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 02:48:00 - Phase 25 Task 6: Create TaskPickerDialog component
 **What:**
 - Created src/components/Ideation/TaskPickerDialog.tsx
