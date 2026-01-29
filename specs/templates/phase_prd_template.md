@@ -34,7 +34,7 @@ Each task follows this pattern:
 1. Read the relevant section in the implementation plan
 2. Implement according to the plan's specifications
 3. Write functional tests where appropriate
-4. Run `npm run lint && npm run typecheck` and `cargo clippy --all-targets --all-features -- -D warnings`
+4. Run linters for modified code only (backend: `cargo clippy`, frontend: `npm run lint && npm run typecheck`)
 5. Commit with descriptive message
 
 ---
@@ -90,14 +90,13 @@ After completing the task: update `"passes": true`, commit, and stop.
 ### Frontend - Run `npm run test`
 - [ ] {Verification item}
 
-### Build Verification
-- [ ] `npm run lint` passes
-- [ ] `npm run typecheck` passes
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes
-- [ ] `npm run build` succeeds
-- [ ] `cargo build --release` succeeds
+### Build Verification (run only for modified code)
+- [ ] Backend: `cargo clippy --all-targets --all-features -- -D warnings` passes
+- [ ] Backend: `cargo test` passes
+- [ ] Frontend: `npm run lint && npm run typecheck` passes
+- [ ] Build succeeds (`cargo build --release` / `npm run build`)
 
-### Integration Testing
+### Manual Testing
 - [ ] {End-to-end flow 1}
 - [ ] {End-to-end flow 2}
 
