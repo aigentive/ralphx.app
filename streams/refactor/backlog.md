@@ -24,7 +24,7 @@ _No active P1 items. Completed items moved to archive._
 
 ### Backend
 
-- [x] Split http_server.rs (2105 LOC → 1515 LOC max) - extracted to http_server/{types.rs (348), helpers.rs (333), mod.rs (1515)} - src-tauri/src/http_server/mod.rs:1
+- [ ] Split http_server/mod.rs (1515 LOC) - extract HTTP handler routes to separate handler modules (handlers/ideation.rs, artifacts.rs, tasks.rs, projects.rs, reviews.rs, worker.rs, permissions.rs, steps.rs) - src-tauri/src/http_server/mod.rs:1
 - [ ] Split transition_handler.rs (1474 LOC) - extract QA side effects and auto-transition logic to helpers - src-tauri/src/domain/state_machine/transition_handler.rs:1
 - [ ] Split sqlite_task_repo.rs (1372 LOC) - extract query builders and mapping functions - src-tauri/src/infrastructure/sqlite/sqlite_task_repo.rs:1
 - [ ] Split migrations/mod.rs (1304 LOC) - extract migration functions to migrations_v*.rs - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
