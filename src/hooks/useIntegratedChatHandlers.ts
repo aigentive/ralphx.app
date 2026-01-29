@@ -94,8 +94,7 @@ export function useIntegratedChatHandlers({
       // ALSO queue to backend so it gets processed when agent completes
       try {
         await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
-      } catch (error) {
-        console.error("Failed to queue message to backend:", error);
+      } catch {
         // Message is already in local store, which is fine - it just won't be processed by backend
       }
     },
