@@ -298,11 +298,10 @@ mod tests {
     fn test_supervisor_event_task_start() {
         let event = SupervisorEvent::task_start("task-123", "worker");
         assert_eq!(event.task_id(), "task-123");
-        if let SupervisorEvent::TaskStart { agent_role, .. } = &event {
-            assert_eq!(agent_role, "worker");
-        } else {
-            panic!("Expected TaskStart event");
-        }
+        assert!(
+            matches!(&event, SupervisorEvent::TaskStart { agent_role, .. } if agent_role == "worker"),
+            "Expected TaskStart event with agent_role 'worker'"
+        );
     }
 
     #[test]
@@ -310,11 +309,10 @@ mod tests {
         let info = ToolCallInfo::new("Write", "{}");
         let event = SupervisorEvent::tool_call("task-123", info.clone());
         assert_eq!(event.task_id(), "task-123");
-        if let SupervisorEvent::ToolCall { info: event_info, .. } = &event {
-            assert_eq!(event_info.tool_name, "Write");
-        } else {
-            panic!("Expected ToolCall event");
-        }
+        assert!(
+            matches!(&event, SupervisorEvent::ToolCall { info: event_info, .. } if event_info.tool_name == "Write"),
+            "Expected ToolCall event with tool_name 'Write'"
+        );
     }
 
     #[test]
@@ -335,24 +333,22 @@ mod tests {
     fn test_supervisor_event_token_threshold() {
         let event = SupervisorEvent::token_threshold("task-123", 60000, 50000);
         assert_eq!(event.task_id(), "task-123");
-        if let SupervisorEvent::TokenThreshold { tokens_used, threshold, .. } = &event {
-            assert_eq!(*tokens_used, 60000);
-            assert_eq!(*threshold, 50000);
-        } else {
-            panic!("Expected TokenThreshold event");
-        }
+        assert!(
+            matches!(&event, SupervisorEvent::TokenThreshold { tokens_used, threshold, .. }
+                if *tokens_used == 60000 && *threshold == 50000),
+            "Expected TokenThreshold event with tokens_used=60000, threshold=50000"
+        );
     }
 
     #[test]
     fn test_supervisor_event_time_threshold() {
         let event = SupervisorEvent::time_threshold("task-123", 15, 10);
         assert_eq!(event.task_id(), "task-123");
-        if let SupervisorEvent::TimeThreshold { elapsed_minutes, threshold_minutes, .. } = &event {
-            assert_eq!(*elapsed_minutes, 15);
-            assert_eq!(*threshold_minutes, 10);
-        } else {
-            panic!("Expected TimeThreshold event");
-        }
+        assert!(
+            matches!(&event, SupervisorEvent::TimeThreshold { elapsed_minutes, threshold_minutes, .. }
+                if *elapsed_minutes == 15 && *threshold_minutes == 10),
+            "Expected TimeThreshold event with elapsed_minutes=15, threshold_minutes=10"
+        );
     }
 
     #[test]
