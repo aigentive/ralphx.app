@@ -31,7 +31,7 @@ _No active P1 items. Completed items moved to archive._
 - [x] Split App.tsx (855 LOC → 721 LOC) - extracted Navigation.tsx (88 LOC), useAppKeyboardShortcuts.ts (102 LOC) - src/App.tsx:1
 - [x] Split ChatPanel.tsx (776 LOC → 480 LOC) - extracted useChatPanelHandlers.ts (368 LOC) - src/components/Chat/ChatPanel.tsx:1
 - [x] Split DiffViewer.tsx (740 LOC → 284 LOC) - extracted sub-components to DiffViewer.components.tsx (502 LOC) - src/components/diff/DiffViewer.tsx:1
-- [ ] Split TaskDetailModal.tsx (690 LOC) - extract form and step management - src/components/tasks/TaskDetailModal.tsx:1
+- [x] Split TaskDetailModal.tsx (690 LOC → 487 LOC) - extracted TaskDetailModal.constants.ts (116 LOC), TaskDetailModal.components.tsx (108 LOC) - src/components/tasks/TaskDetailModal.tsx:1
 - [ ] Split ProjectCreationWizard.tsx (688 LOC) - extract wizard steps into separate components - src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx:1
 
 ### Backend
