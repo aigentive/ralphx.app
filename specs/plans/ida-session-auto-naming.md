@@ -21,45 +21,126 @@ pub async fn update_ideation_session_title(
 - Emits `ideation:session_title_updated` event for real-time UI update
 
 **New HTTP Endpoint** (`src-tauri/src/http_server/`):
-- Route: `POST /api/update_session_title`
-- Handler in `handlers/ideation.rs`
-- Request: `{ session_id: string, title: string }`
 
-### 2. MCP Server (ralphx-plugin/ralphx-mcp-server/)
+Route: `POST /api/update_session_title`
 
-**New Tool** (`src/tools.ts`):
-```typescript
-{
-  name: "update_session_title",
-  description: "Update the title of an ideation session",
-  inputSchema: {
-    type: "object",
-    properties: {
-      session_id: { type: "string" },
-      title: { type: "string" }
-    },
-    required: ["session_id", "title"]
-  }
+**Request Type** (`src-tauri/src/http_server/types.rs`):
+```rust
+#[derive(Debug, Deserialize)]
+pub struct UpdateSessionTitleRequest {
+    pub session_id: String,
+    pub title: String,
 }
 ```
 
-**Agent Allowlist**: Add `session-namer` agent with access to `update_session_title`
+**Handler** (`src-tauri/src/http_server/handlers/ideation.rs`):
+```rust
+pub async fn update_session_title(
+    State(state): State<HttpServerState>,
+    Json(req): Json<UpdateSessionTitleRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    // Update title in database
+    state.app_state.session_repo
+        .update_title(&session_id, Some(req.title.clone()))
+        .await
+        .map_err(|e| {
+            error!("Failed to update session title: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Emit event for real-time UI update
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit("ideation:session_title_updated", serde_json::json!({
+            "session_id": req.session_id,
+            "title": req.title
+        }));
+    }
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Session title updated".to_string(),
+    }))
+}
+```
+
+**Route Registration** (`src-tauri/src/http_server/mod.rs`):
+```rust
+// Add after existing ideation routes
+.route("/api/update_session_title", post(update_session_title))
+```
+
+### 2. MCP Server (ralphx-plugin/ralphx-mcp-server/)
+
+**New Tool Definition** (`src/tools.ts`):
+```typescript
+// Add to ALL_TOOLS array (in IDEATION TOOLS section)
+{
+  name: "update_session_title",
+  description: "Update the title of an ideation session. Used by session-namer agent to set auto-generated titles.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      session_id: {
+        type: "string",
+        description: "The ideation session ID to update",
+      },
+      title: {
+        type: "string",
+        description: "The new title for the session (3-6 words recommended)",
+      },
+    },
+    required: ["session_id", "title"],
+  },
+},
+```
+
+**Agent Allowlist** (`src/tools.ts`):
+```typescript
+// Add to TOOL_ALLOWLIST object
+"session-namer": ["update_session_title"],
+```
+
+**Tool Routing** (`src/index.ts`):
+No changes needed - the tool uses the default POST routing:
+```typescript
+// Default case at line ~258 handles POST requests:
+result = await callTauri(name, (args as Record<string, unknown>) || {});
+// This will POST to /api/update_session_title with the args as JSON body
+```
 
 ### 3. Plugin Agent (ralphx-plugin/agents/)
 
-**New Agent** (`agents/session-namer.md`):
-```yaml
+**New Agent** (`ralphx-plugin/agents/session-namer.md`):
+```markdown
 ---
 name: session-namer
 description: Generates concise titles for ideation sessions based on user's first message
 model: haiku
 ---
-```
 
-System prompt:
-- Given user's first message, generate a concise (3-6 word) title
-- Call `update_session_title` with the generated title
-- No other tools needed
+You are a session title generator. Your job is to create a concise, descriptive title for an ideation session based on the user's first message.
+
+## Instructions
+
+1. Read the user's first message carefully
+2. Generate a title that captures the main topic or intent (3-6 words)
+3. Use title case (capitalize first letter of major words)
+4. Avoid generic titles like "New Session" or "Untitled"
+5. Call the `update_session_title` tool with the session_id and generated title
+
+## Examples
+
+- "I want to build a task management app" → "Task Management App"
+- "How do I implement authentication?" → "Authentication Implementation"
+- "Let's discuss the API design" → "API Design Discussion"
+- "I need help with database schema" → "Database Schema Design"
+
+## Context
+
+The session_id and user's first message will be provided in the prompt.
+```
 
 ### 4. Frontend (src/)
 
