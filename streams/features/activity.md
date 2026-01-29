@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-29 22:58:00 - Phase 25 Task 11: Enhance ProposalsEmptyState with drop hint
+**What:**
+- Added "or" divider with gradient lines after the "From chat" hint
+- Added drop hint section with FileDown icon and instructional text
+- Text: "Drag a markdown file here to import a plan"
+- Styled consistently with existing empty state design (muted colors, small text)
+- Created comprehensive test suite (7 tests) covering all new elements
+
+**Files:**
+- src/components/Ideation/ProposalsEmptyState.tsx (modified)
+- src/components/Ideation/ProposalsEmptyState.test.tsx (new)
+
+**Commands:**
+- `npm run test:run -- src/components/Ideation/ProposalsEmptyState.test.tsx` - 7 tests passed
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 21:55:00 - Phase 25 Task 10: Integrate drag-and-drop into IdeationView
 **What:**
 - Integrated useFileDrop hook into IdeationView proposals panel
