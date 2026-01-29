@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-29 04:53:00 - Split memory_task_repo.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/memory/memory_task_repo.rs (1149 LOC)
+- Extracted to:
+  - memory_task_repo/mod.rs (402 LOC) - main implementation
+  - memory_task_repo/tests.rs (747 LOC) - all tests
+- New size: 402 LOC (65% reduction, 98 LOC under 500 LOC limit)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/memory/memory_task_repo/*.rs`
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+- `cargo clippy --lib --all-features -- -D warnings`
+
+**Result:** Success - No clippy warnings, all files now under 500 LOC limit
+
+---
+
 ### 2026-01-29 02:40:02 - Split artifact.rs
 
 **What:**
