@@ -14,7 +14,6 @@ import {
   DialogPortal,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useReviewsByTaskId, useTaskStateHistory } from "@/hooks/useReviews";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
@@ -22,9 +21,17 @@ import { TaskContextPanel } from "./TaskContextPanel";
 import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
-import type { Task, InternalStatus } from "@/types/task";
-import { X, Bot, User, Wrench, Loader2, FileText, Pencil, Archive, RotateCcw, Trash } from "lucide-react";
+import type { Task } from "@/types/task";
+import { X, Loader2, FileText, Pencil, Archive, RotateCcw, Trash } from "lucide-react";
 import { useState } from "react";
+import {
+  PriorityBadge,
+  StatusBadge,
+  ReviewCard,
+  FixTaskIndicator,
+  SectionTitle,
+} from "./TaskDetailModal.components";
+import { SYSTEM_CONTROLLED_STATUSES } from "./TaskDetailModal.constants";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,203 +48,6 @@ interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   fixTaskCount?: number;
-}
-
-// Priority colors matching design spec
-const PRIORITY_COLORS: Record<number, { bg: string; text: string }> = {
-  1: { bg: "var(--status-error)", text: "white" },
-  2: { bg: "var(--accent-primary)", text: "white" },
-  3: { bg: "var(--status-warning)", text: "var(--bg-base)" },
-  4: { bg: "var(--bg-hover)", text: "var(--text-secondary)" },
-};
-
-// Status badge configuration matching design spec
-const STATUS_CONFIG: Record<
-  InternalStatus,
-  { label: string; bg: string; text: string }
-> = {
-  backlog: {
-    label: "Backlog",
-    bg: "var(--bg-hover)",
-    text: "var(--text-muted)",
-  },
-  ready: {
-    label: "Ready",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
-  },
-  blocked: {
-    label: "Blocked",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
-  },
-  executing: {
-    label: "Executing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
-  },
-  qa_refining: {
-    label: "QA Refining",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
-  },
-  qa_testing: {
-    label: "QA Testing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
-  },
-  qa_passed: {
-    label: "QA Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
-  },
-  qa_failed: {
-    label: "QA Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
-    text: "var(--status-error)",
-  },
-  pending_review: {
-    label: "Pending Review",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
-  },
-  revision_needed: {
-    label: "Revision Needed",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
-  },
-  approved: {
-    label: "Approved",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
-  },
-  failed: {
-    label: "Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
-    text: "var(--status-error)",
-  },
-  cancelled: {
-    label: "Cancelled",
-    bg: "var(--bg-hover)",
-    text: "var(--text-muted)",
-  },
-  reviewing: {
-    label: "AI Review in Progress",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
-  },
-  review_passed: {
-    label: "AI Review Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
-  },
-  re_executing: {
-    label: "Re-executing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
-  },
-};
-
-const DEFAULT_PRIORITY_COLOR = { bg: "var(--bg-hover)", text: "var(--text-secondary)" };
-
-function PriorityBadge({ priority }: { priority: number }) {
-  const colors = PRIORITY_COLORS[priority] ?? DEFAULT_PRIORITY_COLOR;
-  return (
-    <span
-      data-testid="task-detail-priority"
-      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium"
-      style={{ backgroundColor: colors.bg, color: colors.text }}
-    >
-      P{priority}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: InternalStatus }) {
-  const config = STATUS_CONFIG[status];
-  return (
-    <Badge
-      data-testid="task-detail-status"
-      data-status={status}
-      className="rounded px-1.5 py-0.5 text-[10px] font-medium border-0"
-      style={{ backgroundColor: config.bg, color: config.text }}
-    >
-      {config.label}
-    </Badge>
-  );
-}
-
-function ReviewCard({
-  reviewerType,
-  status,
-}: {
-  reviewerType: "ai" | "human";
-  status: string;
-}) {
-  const Icon = reviewerType === "ai" ? Bot : User;
-  const label = reviewerType === "ai" ? "AI Review" : "Human Review";
-
-  const defaultStatusColor = { bg: "rgba(255,255,255,0.05)", text: "rgba(255,255,255,0.5)" };
-  const statusColors: Record<string, { bg: string; text: string }> = {
-    pending: defaultStatusColor,
-    approved: {
-      bg: "rgba(16, 185, 129, 0.15)",
-      text: "var(--status-success)",
-    },
-    changes_requested: {
-      bg: "rgba(245, 158, 11, 0.15)",
-      text: "var(--status-warning)",
-    },
-    rejected: { bg: "rgba(239, 68, 68, 0.15)", text: "var(--status-error)" },
-  };
-
-  const statusColor = statusColors[status] ?? defaultStatusColor;
-
-  return (
-    <div
-      data-testid={`review-item-${reviewerType}`}
-      className="flex items-center justify-between p-2.5 rounded-lg"
-      style={{
-        background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
-        border: "1px solid rgba(255,255,255,0.06)",
-      }}
-    >
-      <div className="flex items-center gap-2">
-        <Icon className="w-3.5 h-3.5 text-white/50" />
-        <span className="text-[13px] font-medium text-white/80">
-          {label}
-        </span>
-      </div>
-      <Badge
-        className="rounded px-1.5 py-0.5 text-[10px] font-medium border-0 capitalize"
-        style={{ backgroundColor: statusColor.bg, color: statusColor.text }}
-      >
-        {status.replace("_", " ")}
-      </Badge>
-    </div>
-  );
-}
-
-function FixTaskIndicator({ count }: { count: number }) {
-  const label = count === 1 ? "1 fix task" : `${count} fix tasks`;
-  return (
-    <div
-      data-testid="fix-task-indicator"
-      className="flex items-center gap-2 text-sm mt-3"
-      style={{ color: "var(--status-warning)" }}
-    >
-      <Wrench className="w-4 h-4" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">
-      {children}
-    </h3>
-  );
 }
 
 export function TaskDetailModal({
@@ -274,21 +84,8 @@ export function TaskDetailModal({
 
   // Determine if task is editable
   // System-controlled statuses: executing, qa_*, pending_review, revision_needed, reviewing, review_passed, re_executing
-  const systemControlledStatuses: InternalStatus[] = [
-    "executing",
-    "qa_refining",
-    "qa_testing",
-    "qa_passed",
-    "qa_failed",
-    "pending_review",
-    "revision_needed",
-    "reviewing",
-    "review_passed",
-    "re_executing",
-  ];
-
   const isArchived = !!task.archivedAt;
-  const isSystemControlled = systemControlledStatuses.includes(task.internalStatus);
+  const isSystemControlled = SYSTEM_CONTROLLED_STATUSES.includes(task.internalStatus);
   const canEdit = !isArchived && !isSystemControlled;
 
   // Handle edit save
