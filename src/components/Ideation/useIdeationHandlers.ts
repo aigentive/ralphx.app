@@ -114,6 +114,34 @@ export function useIdeationHandlers(
     }
   }, [session, fetchPlanArtifact]);
 
+  // Handler for drag-and-drop file import (used with useFileDrop)
+  const handleFileDrop = useCallback(async (file: File, content: string) => {
+    if (!session) return;
+
+    try {
+      const title = file.name.replace(/\.md$/, "").replace(/_/g, " ");
+
+      const apiResponse = await fetch("http://localhost:3847/api/create_plan_artifact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: session.id, title, content }),
+      });
+
+      if (!apiResponse.ok) throw new Error("Failed to import plan");
+
+      const data = await apiResponse.json();
+      if (data.id) {
+        await fetchPlanArtifact(data.id);
+        setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
+        setTimeout(() => setImportStatus(null), 5000);
+      }
+    } catch (error) {
+      console.error("Plan import error:", error);
+      setImportStatus({ type: "error", message: error instanceof Error ? error.message : "Failed to import plan" });
+      setTimeout(() => setImportStatus(null), 5000);
+    }
+  }, [session, fetchPlanArtifact]);
+
   return {
     highlightedProposalIds,
     planHistoryDialog,
@@ -135,5 +163,6 @@ export function useIdeationHandlers(
     handleDismissSync,
     handleImportPlan,
     handleFileSelected,
+    handleFileDrop,
   };
 }

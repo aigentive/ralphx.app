@@ -38,6 +38,8 @@ import { ProposalsToolbar } from "./ProposalsToolbar";
 import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
 import { ProposalsEmptyState } from "./ProposalsEmptyState";
 import { useIdeationHandlers } from "./useIdeationHandlers";
+import { useFileDrop } from "@/hooks/useFileDrop";
+import { DropZoneOverlay } from "./DropZoneOverlay";
 
 // ============================================================================
 // Types
@@ -186,6 +188,7 @@ export function IdeationView({
     handleDismissSync,
     handleImportPlan,
     handleFileSelected,
+    handleFileDrop,
   } = useIdeationHandlers(
     session,
     proposals,
@@ -199,6 +202,21 @@ export function IdeationView({
   );
 
   const selectedCount = proposals.filter((p) => p.selected).length;
+
+  // File drop hook for drag-and-drop markdown import
+  const { isDragging, dropProps, error: fileDropError } = useFileDrop({
+    acceptedExtensions: [".md"],
+    onFileDrop: handleFileDrop,
+    onError: (err) => setImportStatus({ type: "error", message: err.message }),
+  });
+
+  // Show file drop error in import status
+  useEffect(() => {
+    if (fileDropError) {
+      setImportStatus({ type: "error", message: fileDropError.message });
+      setTimeout(() => setImportStatus(null), 5000);
+    }
+  }, [fileDropError, setImportStatus]);
 
   const sortedProposals = useMemo(() => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder), [proposals]);
 
@@ -267,9 +285,12 @@ export function IdeationView({
               {/* Proposals Panel (Left) */}
               <div
                 data-testid="proposals-panel"
-                className="flex flex-col border-r border-white/[0.06] bg-gradient-to-b from-black/10 to-transparent"
+                className="flex flex-col border-r border-white/[0.06] bg-gradient-to-b from-black/10 to-transparent relative"
                 style={{ width: `${leftPanelWidth}%`, minWidth: "360px" }}
+                {...dropProps}
               >
+                {/* Drop zone overlay - shown during drag */}
+                <DropZoneOverlay isVisible={isDragging} message="Drop to import plan" />
                 {/* Panel Header */}
                 <div className="flex items-center justify-between px-4 h-10 border-b border-white/[0.06] bg-black/20">
                   <div className="flex items-center gap-2">
