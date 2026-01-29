@@ -4,7 +4,12 @@
 
 import { Lightbulb, FileDown } from "lucide-react";
 
-export function ProposalsEmptyState() {
+interface ProposalsEmptyStateProps {
+  /** Called when user clicks the drop hint to browse for a file */
+  onBrowse?: () => void;
+}
+
+export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
   return (
     <div
       data-testid="proposals-empty-state"
@@ -115,18 +120,20 @@ export function ProposalsEmptyState() {
           />
         </div>
 
-        {/* Drop hint */}
-        <div
+        {/* Drop hint - clickable to open file browser */}
+        <button
           data-testid="drop-hint"
-          className="flex flex-col items-center gap-2 mt-4"
+          type="button"
+          onClick={onBrowse}
+          className="flex flex-col items-center gap-2 mt-4 p-3 -m-3 rounded-lg transition-colors hover:bg-white/[0.03] cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ff6b35]/50"
         >
           <FileDown className="w-4 h-4 text-[var(--text-muted)]" />
           <p className="text-xs text-[var(--text-muted)] text-center leading-relaxed">
             Drag a markdown file here
             <br />
-            to import a plan
+            or <span className="text-[#ff6b35]/80 underline underline-offset-2">click to browse</span>
           </p>
-        </div>
+        </button>
       </div>
     </div>
   );

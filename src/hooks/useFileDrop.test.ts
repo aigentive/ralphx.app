@@ -1,56 +1,66 @@
 /**
  * useFileDrop hook tests
+ *
+ * Tests the Tauri-based file drop hook.
+ * The hook uses Tauri's onDragDropEvent for actual file handling
+ * and HTML5 drag events for compatibility (though they can't access file content in Tauri).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useFileDrop, type FileDropConfig } from "./useFileDrop";
 
-// Helper to create a mock File with working text() method
-function createMockFile(
-  name: string,
-  content: string,
-  type = "text/plain"
-): File {
-  const blob = new Blob([content], { type });
-  const file = new File([blob], name, { type });
-  // Add text() method that works in test environment
-  // The native File.text() may not work in jsdom
-  Object.defineProperty(file, "text", {
-    value: () => Promise.resolve(content),
-    writable: true,
-    configurable: true,
-  });
-  return file;
-}
+// Mock Tauri APIs
+const mockOnDragDropEvent = vi.fn();
+const mockReadTextFile = vi.fn();
+let dragDropHandler: ((event: { payload: { type: string; paths?: string[]; position?: { x: number; y: number } } }) => void) | null = null;
 
-// Helper to create a mock DragEvent
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: (handler: typeof dragDropHandler) => {
+      dragDropHandler = handler;
+      mockOnDragDropEvent(handler);
+      return Promise.resolve(() => {
+        dragDropHandler = null;
+      });
+    },
+  }),
+}));
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  readTextFile: (path: string) => mockReadTextFile(path),
+}));
+
+// Helper to create a mock DragEvent (for HTML5 compatibility layer)
 function createDragEvent(
-  files: File[] = [],
   type: "dragenter" | "dragover" | "dragleave" | "drop" = "dragenter"
 ): React.DragEvent {
-  const dataTransfer = {
-    files: {
-      length: files.length,
-      item: (i: number) => files[i] ?? null,
-      [Symbol.iterator]: function* () {
-        for (let i = 0; i < files.length; i++) {
-          yield files[i];
-        }
-      },
-      ...files.reduce(
-        (acc, file, i) => ({ ...acc, [i]: file }),
-        {} as Record<number, File>
-      ),
-    } as FileList,
-  };
-
   return {
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
-    dataTransfer,
+    dataTransfer: {
+      files: { length: 0 } as FileList,
+    },
     type,
   } as unknown as React.DragEvent;
+}
+
+// Helper to simulate Tauri drag-drop events
+function simulateTauriDragEvent(
+  type: "enter" | "over" | "drop" | "leave",
+  paths: string[] = [],
+  position = { x: 100, y: 100 }
+) {
+  if (dragDropHandler) {
+    const payload: { type: string; paths?: string[]; position?: { x: number; y: number } } = { type };
+    if (type === "enter" || type === "drop") {
+      payload.paths = paths;
+      payload.position = position;
+    } else if (type === "over") {
+      payload.position = position;
+    }
+    dragDropHandler({ payload });
+  }
 }
 
 describe("useFileDrop", () => {
@@ -59,6 +69,8 @@ describe("useFileDrop", () => {
   let defaultConfig: FileDropConfig;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    dragDropHandler = null;
     onFileDrop = vi.fn();
     onError = vi.fn();
     defaultConfig = {
@@ -66,6 +78,10 @@ describe("useFileDrop", () => {
       onFileDrop,
       onError,
     };
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   describe("initial state", () => {
@@ -86,100 +102,96 @@ describe("useFileDrop", () => {
       expect(result.current.dropProps).toHaveProperty("onDragLeave");
       expect(result.current.dropProps).toHaveProperty("onDrop");
     });
-  });
 
-  describe("drag events", () => {
-    it("should set isDragging=true on dragenter", () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const event = createDragEvent([], "dragenter");
-
-      act(() => {
-        result.current.dropProps.onDragEnter(event);
+    it("should set up Tauri drag-drop listener on mount", async () => {
+      renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => {
+        expect(mockOnDragDropEvent).toHaveBeenCalled();
       });
-
-      expect(result.current.isDragging).toBe(true);
     });
 
-    it("should set isDragging=false on dragleave", () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const enterEvent = createDragEvent([], "dragenter");
-      const leaveEvent = createDragEvent([], "dragleave");
-
-      act(() => {
-        result.current.dropProps.onDragEnter(enterEvent);
-      });
-      expect(result.current.isDragging).toBe(true);
-
-      act(() => {
-        result.current.dropProps.onDragLeave(leaveEvent);
-      });
-      expect(result.current.isDragging).toBe(false);
-    });
-
-    it("should handle nested elements (multiple enter/leave)", () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const enterEvent = createDragEvent([], "dragenter");
-      const leaveEvent = createDragEvent([], "dragleave");
-
-      // Enter outer, enter inner
-      act(() => {
-        result.current.dropProps.onDragEnter(enterEvent);
-        result.current.dropProps.onDragEnter(enterEvent);
-      });
-      expect(result.current.isDragging).toBe(true);
-
-      // Leave inner (still dragging)
-      act(() => {
-        result.current.dropProps.onDragLeave(leaveEvent);
-      });
-      expect(result.current.isDragging).toBe(true);
-
-      // Leave outer (done dragging)
-      act(() => {
-        result.current.dropProps.onDragLeave(leaveEvent);
-      });
-      expect(result.current.isDragging).toBe(false);
-    });
-
-    it("should preventDefault on dragover", () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const event = createDragEvent([], "dragover");
-
-      act(() => {
-        result.current.dropProps.onDragOver(event);
-      });
-
-      expect(event.preventDefault).toHaveBeenCalled();
+    it("should not set up listener when disabled", async () => {
+      renderHook(() => useFileDrop({ ...defaultConfig, enabled: false }));
+      // Give time for effect to run
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockOnDragDropEvent).not.toHaveBeenCalled();
     });
   });
 
-  describe("file drop", () => {
+  describe("Tauri drag events", () => {
+    it("should set isDragging=true on Tauri enter event", async () => {
+      const { result } = renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
+
+      act(() => {
+        simulateTauriDragEvent("enter", ["/path/to/file.md"]);
+      });
+
+      expect(result.current.isDragging).toBe(true);
+    });
+
+    it("should set isDragging=true on Tauri over event", async () => {
+      const { result } = renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
+
+      act(() => {
+        simulateTauriDragEvent("over");
+      });
+
+      expect(result.current.isDragging).toBe(true);
+    });
+
+    it("should set isDragging=false on Tauri leave event", async () => {
+      const { result } = renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
+
+      act(() => {
+        simulateTauriDragEvent("enter", ["/path/to/file.md"]);
+      });
+      expect(result.current.isDragging).toBe(true);
+
+      act(() => {
+        simulateTauriDragEvent("leave");
+      });
+      expect(result.current.isDragging).toBe(false);
+    });
+  });
+
+  describe("file drop via Tauri", () => {
     it("should call onFileDrop with valid .md file", async () => {
+      mockReadTextFile.mockResolvedValue("# Hello World");
+
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const file = createMockFile("test.md", "# Hello World");
-      const event = createDragEvent([file], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.md"]);
+        // Wait for async file read
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
-      expect(onFileDrop).toHaveBeenCalledWith(file, "# Hello World");
+      expect(mockReadTextFile).toHaveBeenCalledWith("/path/to/test.md");
+      expect(onFileDrop).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "test.md" }),
+        "# Hello World"
+      );
       expect(result.current.isDragging).toBe(false);
     });
 
     it("should reset isDragging on drop", async () => {
+      mockReadTextFile.mockResolvedValue("content");
+
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const file = createMockFile("test.md", "content");
-      const enterEvent = createDragEvent([file], "dragenter");
-      const dropEvent = createDragEvent([file], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       act(() => {
-        result.current.dropProps.onDragEnter(enterEvent);
+        simulateTauriDragEvent("enter", ["/path/to/file.md"]);
       });
       expect(result.current.isDragging).toBe(true);
 
       await act(async () => {
-        await result.current.dropProps.onDrop(dropEvent);
+        simulateTauriDragEvent("drop", ["/path/to/test.md"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
       expect(result.current.isDragging).toBe(false);
     });
@@ -188,13 +200,14 @@ describe("useFileDrop", () => {
   describe("file validation", () => {
     it("should reject files with wrong extension", async () => {
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const file = createMockFile("test.txt", "content");
-      const event = createDragEvent([file], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.txt"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
+      expect(mockReadTextFile).not.toHaveBeenCalled();
       expect(onFileDrop).not.toHaveBeenCalled();
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ type: "invalid_type" })
@@ -207,12 +220,14 @@ describe("useFileDrop", () => {
         ...defaultConfig,
         maxSizeBytes: 10, // 10 bytes max
       };
+      mockReadTextFile.mockResolvedValue("This content is way too long for 10 bytes");
+
       const { result } = renderHook(() => useFileDrop(config));
-      const file = createMockFile("test.md", "This content is way too long for 10 bytes");
-      const event = createDragEvent([file], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.md"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
       expect(onFileDrop).not.toHaveBeenCalled();
@@ -223,12 +238,11 @@ describe("useFileDrop", () => {
 
     it("should reject multiple files", async () => {
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const file1 = createMockFile("test1.md", "content1");
-      const file2 = createMockFile("test2.md", "content2");
-      const event = createDragEvent([file1, file2], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test1.md", "/path/to/test2.md"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
       expect(onFileDrop).not.toHaveBeenCalled();
@@ -242,43 +256,50 @@ describe("useFileDrop", () => {
         ...defaultConfig,
         acceptedExtensions: [".md", ".txt"],
       };
-      const { result } = renderHook(() => useFileDrop(config));
-      const file = createMockFile("test.txt", "text content");
-      const event = createDragEvent([file], "drop");
+      mockReadTextFile.mockResolvedValue("text content");
+
+      renderHook(() => useFileDrop(config));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.txt"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
-      expect(onFileDrop).toHaveBeenCalledWith(file, "text content");
+      expect(onFileDrop).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "test.txt" }),
+        "text content"
+      );
     });
   });
 
   describe("error handling", () => {
-    it("should clear error on dragenter", async () => {
+    it("should clear error on Tauri enter event", async () => {
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const badFile = createMockFile("test.txt", "content");
-      const dropEvent = createDragEvent([badFile], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
+      // Trigger an error first
       await act(async () => {
-        await result.current.dropProps.onDrop(dropEvent);
+        simulateTauriDragEvent("drop", ["/path/to/test.txt"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
       expect(result.current.error).not.toBeNull();
 
-      const enterEvent = createDragEvent([], "dragenter");
+      // Enter should clear the error
       act(() => {
-        result.current.dropProps.onDragEnter(enterEvent);
+        simulateTauriDragEvent("enter", ["/path/to/test.md"]);
       });
       expect(result.current.error).toBeNull();
     });
 
     it("should clear error via clearError function", async () => {
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const badFile = createMockFile("test.txt", "content");
-      const event = createDragEvent([badFile], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
+      // Trigger an error
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.txt"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
       expect(result.current.error).not.toBeNull();
 
@@ -288,29 +309,56 @@ describe("useFileDrop", () => {
       expect(result.current.error).toBeNull();
     });
 
-    it("should set error state when validation fails", async () => {
+    it("should set error on file read failure", async () => {
+      mockReadTextFile.mockRejectedValue(new Error("Permission denied"));
+
       const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const file = createMockFile("test.txt", "content");
-      const event = createDragEvent([file], "drop");
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.md"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
       expect(result.current.error).toEqual({
-        type: "invalid_type",
-        message: "Only .md files are accepted",
+        type: "read_error",
+        message: "Failed to read file contents",
       });
+    });
+  });
+
+  describe("HTML5 drag events (compatibility)", () => {
+    it("should preventDefault on dragover", () => {
+      const { result } = renderHook(() => useFileDrop(defaultConfig));
+      const event = createDragEvent("dragover");
+
+      act(() => {
+        result.current.dropProps.onDragOver(event);
+      });
+
+      expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    it("should preventDefault on drop", () => {
+      const { result } = renderHook(() => useFileDrop(defaultConfig));
+      const event = createDragEvent("drop");
+
+      act(() => {
+        result.current.dropProps.onDrop(event);
+      });
+
+      expect(event.preventDefault).toHaveBeenCalled();
     });
   });
 
   describe("edge cases", () => {
     it("should handle empty drop (no files)", async () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const event = createDragEvent([], "drop");
+      renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", []);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
       expect(onFileDrop).not.toHaveBeenCalled();
@@ -318,35 +366,34 @@ describe("useFileDrop", () => {
     });
 
     it("should be case-insensitive for extensions", async () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
-      const file = createMockFile("test.MD", "content");
-      const event = createDragEvent([file], "drop");
+      mockReadTextFile.mockResolvedValue("content");
+
+      renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/path/to/test.MD"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
       expect(onFileDrop).toHaveBeenCalled();
     });
 
-    it("should use default max size (1MB) when not specified", async () => {
-      const configWithoutMaxSize: FileDropConfig = {
-        acceptedExtensions: [".md"],
-        onFileDrop,
-        onError,
-      };
-      const { result } = renderHook(() => useFileDrop(configWithoutMaxSize));
+    it("should extract filename from path correctly", async () => {
+      mockReadTextFile.mockResolvedValue("content");
 
-      // Create a file just under 1MB (should pass)
-      const content = "a".repeat(1024 * 1024 - 100);
-      const file = createMockFile("test.md", content);
-      const event = createDragEvent([file], "drop");
+      renderHook(() => useFileDrop(defaultConfig));
+      await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
-        await result.current.dropProps.onDrop(event);
+        simulateTauriDragEvent("drop", ["/Users/test/Documents/my-plan.md"]);
+        await new Promise(resolve => setTimeout(resolve, 10));
       });
 
-      expect(onFileDrop).toHaveBeenCalled();
+      expect(onFileDrop).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "my-plan.md" }),
+        "content"
+      );
     });
   });
 });

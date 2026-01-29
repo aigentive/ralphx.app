@@ -9,6 +9,7 @@ use tauri::Emitter;
 use tracing::error;
 
 use crate::application::{CreateProposalOptions, UpdateProposalOptions};
+use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 
 use super::super::helpers::{create_proposal_impl, parse_category, parse_priority, update_proposal_impl};
@@ -76,6 +77,17 @@ pub async fn create_task_proposal(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    // Emit event for real-time UI update
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let response = TaskProposalResponse::from(proposal.clone());
+        let _ = app_handle.emit(
+            "proposal:created",
+            serde_json::json!({
+                "proposal": response
+            }),
+        );
+    }
+
     Ok(Json(ProposalResponse::from(proposal)))
 }
 
@@ -139,6 +151,17 @@ pub async fn update_task_proposal(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    // Emit event for real-time UI update
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let response = TaskProposalResponse::from(updated.clone());
+        let _ = app_handle.emit(
+            "proposal:updated",
+            serde_json::json!({
+                "proposal": response
+            }),
+        );
+    }
+
     Ok(Json(ProposalResponse::from(updated)))
 }
 
@@ -146,7 +169,7 @@ pub async fn delete_task_proposal(
     State(state): State<HttpServerState>,
     Json(req): Json<DeleteProposalRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    let proposal_id = TaskProposalId::from_string(req.proposal_id);
+    let proposal_id = TaskProposalId::from_string(req.proposal_id.clone());
 
     state
         .app_state
@@ -157,6 +180,16 @@ pub async fn delete_task_proposal(
             error!("Failed to delete proposal {}: {}", proposal_id.as_str(), e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    // Emit event for real-time UI update
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "proposal:deleted",
+            serde_json::json!({
+                "proposalId": req.proposal_id
+            }),
+        );
+    }
 
     Ok(Json(SuccessResponse {
         success: true,

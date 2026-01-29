@@ -150,7 +150,9 @@ pub fn build_command(
 
     let (prompt, resume_session, agent) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
-        (user_message.to_string(), Some(session_id.as_str()), None)
+        // CRITICAL: Always pass agent even when resuming to enforce disallowedTools
+        // Without this, resumed sessions bypass tool restrictions (e.g., Write/Edit)
+        (user_message.to_string(), Some(session_id.as_str()), Some(agent_name))
     } else {
         let initial_prompt = build_initial_prompt(
             conversation.context_type,

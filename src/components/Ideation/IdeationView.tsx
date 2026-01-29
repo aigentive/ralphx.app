@@ -378,7 +378,7 @@ export function IdeationView({
                     </div>
                   )}
 
-                  {proposals.length === 0 && !(!planArtifact && ideationSettings?.planMode === "required") && <ProposalsEmptyState />}
+                  {proposals.length === 0 && !(!planArtifact && ideationSettings?.planMode === "required") && <ProposalsEmptyState onBrowse={handleImportPlan} />}
 
                   {proposals.length > 0 && (
                     <div className="space-y-3">

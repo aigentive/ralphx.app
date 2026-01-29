@@ -298,9 +298,14 @@ impl ClaudeCodeClient {
             args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
         }
 
-        // Resume session or use agent
+        // Resume session - always include agent to enforce tool restrictions
         if let Some(session_id) = resume_session_id {
             args.extend(["--resume".to_string(), session_id.to_string()]);
+            // CRITICAL: Also pass --agent to enforce disallowedTools on resume
+            // Without this, resumed sessions bypass tool restrictions
+            if let Some(agent) = &config.agent {
+                args.extend(["--agent".to_string(), agent.clone()]);
+            }
         } else if let Some(agent) = &config.agent {
             args.extend(["--agent".to_string(), agent.clone()]);
         }
@@ -514,11 +519,13 @@ mod tests {
 
         let args = client.build_cli_args(&config, Some("session-123"));
 
-        // When resuming, --resume is used instead of --agent
+        // When resuming, both --resume AND --agent should be present
+        // to ensure tool restrictions (disallowedTools) are enforced
         assert!(args.contains(&"--resume".to_string()));
         assert!(args.contains(&"session-123".to_string()));
-        // Agent should NOT be present when resuming
-        assert!(!args.contains(&"--agent".to_string()));
+        // Agent MUST be present when resuming to enforce disallowedTools
+        assert!(args.contains(&"--agent".to_string()));
+        assert!(args.contains(&"worker".to_string()));
     }
 
     #[test]
