@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-29 02:45:00 - Add Start Ideation button to TaskDetailOverlay
+**What:**
+- Added "Start Ideation" button to TaskDetailOverlay header for draft (backlog) tasks
+- Imported Lightbulb icon, useIdeationStore, useCreateIdeationSession, toast
+- Added setCurrentView from useUiStore for navigation
+- Added handleStartIdeation handler matching TaskCard implementation
+- Button appears before Edit button, only for backlog status tasks
+- Shows loading spinner while creating session
+
+**Files:**
+- src/components/tasks/TaskDetailOverlay.tsx
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 00:16:19 - P0 Fix: Missing v26 migration for seed_task_id
 **What:**
 - Added missing database migration v26 for Phase 25 Task 3
