@@ -38,6 +38,9 @@ import {
 import { TaskCardContextMenu } from "@/components/tasks/TaskCardContextMenu";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useCreateIdeationSession } from "@/hooks/useIdeation";
+import { toast } from "sonner";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { ReviewStateBadge } from "./ReviewStateBadge";
@@ -99,6 +102,12 @@ export function TaskCard({
 
   // UI Store - use selectedTaskId for split layout (TaskDetailOverlay handles rendering)
   const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
+  const setCurrentView = useUiStore((state) => state.setCurrentView);
+
+  // Ideation Store and mutation
+  const addSession = useIdeationStore((state) => state.addSession);
+  const setActiveSession = useIdeationStore((state) => state.setActiveSession);
+  const createSession = useCreateIdeationSession();
 
   // Execution state
   const executionState = useTaskExecutionState(task.id);
@@ -179,6 +188,25 @@ export function TaskCard({
     moveMutation.mutate({ taskId: task.id, toStatus: newStatus });
   };
 
+  const handleStartIdeation = async () => {
+    try {
+      // Create session with seedTaskId
+      const session = await createSession.mutateAsync({
+        projectId: task.projectId,
+        title: `Ideation: ${task.title}`,
+        seedTaskId: task.id,
+      });
+      // Add session to store and set as active
+      addSession(session);
+      setActiveSession(session.id);
+      // Navigate to ideation view
+      setCurrentView("ideation");
+    } catch (error) {
+      console.error("Failed to start ideation:", error);
+      toast.error("Failed to start ideation session");
+    }
+  };
+
   return (
     <>
       <TaskCardContextMenu
@@ -189,6 +217,7 @@ export function TaskCard({
         onRestore={handleRestore}
         onPermanentDelete={handlePermanentDelete}
         onStatusChange={handleStatusChange}
+        onStartIdeation={handleStartIdeation}
       >
         <div
           ref={setNodeRef}
