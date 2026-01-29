@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, TaskId,
 };
 
 use super::ideation_commands_types::{
@@ -23,11 +23,19 @@ pub async fn create_ideation_session(
     state: State<'_, AppState>,
 ) -> Result<IdeationSessionResponse, String> {
     let project_id = ProjectId::from_string(input.project_id);
-    let session = if let Some(title) = input.title {
-        IdeationSession::new_with_title(project_id, &title)
-    } else {
-        IdeationSession::new(project_id)
-    };
+    let seed_task_id = input.seed_task_id.map(TaskId::from_string);
+
+    let mut builder = IdeationSession::builder().project_id(project_id);
+
+    if let Some(title) = input.title {
+        builder = builder.title(title);
+    }
+
+    if let Some(task_id) = seed_task_id {
+        builder = builder.seed_task_id(task_id);
+    }
+
+    let session = builder.build();
 
     state
         .ideation_session_repo
