@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-29 03:35:42 - Add error logging to ideation handlers
+**What:**
+- File: src-tauri/src/http_server/handlers/ideation.rs
+- Change: Added tracing::error! logging to all .map_err handlers (4 locations)
+- Replaced `.map_err(|_| StatusCode::...)` with proper error logging pattern from steps.rs
+- Affected functions: create_task_proposal, update_task_proposal, delete_task_proposal, add_proposal_dependency
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (ideation.rs changes passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 01:32:52 - Replace Debug format with Display for enum serialization
 **What:**
 - File: src-tauri/src/http_server/types.rs:81-82
