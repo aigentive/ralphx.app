@@ -1,5 +1,24 @@
 # Hygiene Stream Activity
 
+### 2026-01-29 22:50:00 - Backlog Maintenance
+
+**Archive:**
+- Moved 1 item from refactor/backlog.md to archive (dependency_service.rs split)
+- Moved 5 items from polish/backlog.md to archive (console.warn/error cleanup items)
+- Refactor backlog: 11 → 10 completed items
+- Polish backlog: 15 → 10 completed items
+
+**Refill:**
+- Added 12 P2/P3 items to polish/backlog.md (6 P2, 6 P3)
+- Polish backlog: 0 → 12 active items
+
+**Validation:**
+- Skipped (archive and refill took priority)
+
+**Result:** Maintenance complete - archived 6 items, refilled polish backlog with 12 items
+
+---
+
 ### 2026-01-29 22:15:00 - Backlog Maintenance
 
 **Archive:**

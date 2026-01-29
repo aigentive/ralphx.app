@@ -9,7 +9,6 @@
 _No active P1 items. Completed items moved to archive._
 
 ## Backend (src-tauri/)
-- [x] Split dependency_service.rs (1435 LOC → 479 LOC) - extracted to dependency_service/{types.rs (57), tests.rs (908), mod.rs (479)} - src-tauri/src/application/dependency_service/mod.rs:1-50
 - [x] Split priority_service.rs (1300 LOC → 379 LOC) - extracted to priority_service/{tests.rs (924), mod.rs (379)} - src-tauri/src/application/priority_service/mod.rs:1-50
 - [x] Split migrations.rs (5694 LOC → 1304 LOC) - extracted to migrations/tests.rs (4390 LOC), migrations/mod.rs (1304 LOC) with all 25 migrations - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1-50
 - [x] Split ideation.rs (3982 LOC → 426 LOC max) - extracted to ideation/{mod.rs (234), types.rs (365), proposal.rs (201), assessment.rs (426), chat.rs (258), graph.rs (198), tests.rs (2345)} - src-tauri/src/domain/entities/ideation/mod.rs:1-50
@@ -48,5 +47,5 @@ _No active P1 items. Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 10 | **Completed:** 11 | **Archived:** 8
-**Last maintenance:** 2026-01-29 21:07 (refilled 8 P1 items)
+**Active items:** 8 | **Completed:** 10 | **Archived:** 9
+**Last maintenance:** 2026-01-29 22:50 (archived 1 item)

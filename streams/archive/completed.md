@@ -5,6 +5,22 @@
 
 ---
 
+## Archived 2026-01-29 (Eleventh Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split dependency_service.rs (1435 LOC → 479 LOC) - extracted to dependency_service/{types.rs (57), tests.rs (908), mod.rs (479)} - src-tauri/src/application/dependency_service/mod.rs:1-50
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 18:30)
+
+- [x] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:213
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221
+- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:225
+
+---
+
 ## Archived 2026-01-29 (Tenth Batch)
 
 ### From polish/backlog.md (REFILL - Added 2026-01-29 00:43)
