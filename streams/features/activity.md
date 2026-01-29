@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-29 23:15:00 - Phase 26 Task 3: Call scheduler from on_enter(Ready)
+**What:**
+- Added call to try_schedule_ready_tasks() in the State::Ready entry action
+- When a task transitions to Ready status, it now automatically tries to start execution if slots are available
+- Complements existing scheduler call from on_exit() (slot freed)
+
+**Files:**
+- src-tauri/src/domain/state_machine/transition_handler/side_effects.rs (modified)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 01:44:03 - Phase 26 Tasks 1-2: Add try_schedule_ready_tasks() and wire from on_exit()
 **What:**
 - Added TaskScheduler trait to services.rs with try_schedule_ready_tasks() method
