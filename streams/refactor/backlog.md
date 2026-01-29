@@ -16,8 +16,6 @@ _Completed items moved to archive._
 
 ### Backend
 
-- [x] Split sqlite_task_repo.rs (1372 LOC → 466 LOC) - extracted to sqlite_task_repo/{mod.rs (466), helpers.rs (58), queries.rs (49), query_builder.rs (57), tests.rs (796)} - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs:1
-- [x] Split migrations/mod.rs (1324 LOC → 200 LOC) - extracted to migrations/{migrations_v1_v10.rs (276), migrations_v11_v20.rs (561), migrations_v21_v26.rs (201), mod.rs (200)} - src-tauri/src/infrastructure/sqlite/migrations/mod.rs:1
 - [x] Split chat_service/mod.rs (1081 LOC → 611 LOC) - extracted background processing to chat_service_send_background.rs (524 LOC) - src-tauri/src/application/chat_service/mod.rs:1
 
 ---
@@ -60,5 +58,5 @@ _Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 10 | **Completed:** 10 | **Archived:** 16
-**Last maintenance:** 2026-01-30 (archived 3 items, refilled 9 items)
+**Active items:** 8 | **Completed:** 10 | **Archived:** 18
+**Last maintenance:** 2026-01-30 (archived 2 items)
