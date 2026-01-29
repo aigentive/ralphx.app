@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::domain::state_machine::context::TaskContext;
+    use crate::domain::state_machine::events::TaskEvent;
+    use crate::domain::state_machine::machine::{ParseStateError, Response, State, TaskStateMachine};
+    use crate::domain::state_machine::types::{Blocker, FailedData, QaFailedData, QaFailure};
 
     fn create_machine() -> TaskStateMachine {
         TaskStateMachine::new(TaskContext::new_test("task-1", "proj-1"))
@@ -99,7 +101,7 @@ mod tests {
         let mut machine = create_machine();
         machine
             .context
-            .add_blocker(super::super::types::Blocker::new("task-2"));
+            .add_blocker(Blocker::new("task-2"));
 
         let response = machine.blocked(&TaskEvent::BlockersResolved);
         assert_eq!(response, Response::Transition(State::Ready));
@@ -578,7 +580,7 @@ mod tests {
         // States with local data will lose that data when parsed from string
         // This is by design - the persistence layer stores data separately
         let qa_failed = State::QaFailed(QaFailedData::single(
-            super::super::types::QaFailure::new("test", "error"),
+            QaFailure::new("test", "error"),
         ));
         let s = qa_failed.to_string();
         let parsed: State = s.parse().unwrap();

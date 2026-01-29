@@ -1,6 +1,7 @@
 mod tests {
-    use super::*;
-    use crate::domain::entities::{ProjectId, Task};
+    use crate::infrastructure::sqlite::SqliteTaskRepository;
+    use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+    use crate::domain::repositories::TaskRepository;
     use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
     use rusqlite::Connection;
 

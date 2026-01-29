@@ -532,7 +532,7 @@ use std::sync::{Arc, Mutex};
         async fn list_paginated(
             &self,
             project_id: &ProjectId,
-            _status: Option<InternalStatus>,
+            _statuses: Option<Vec<InternalStatus>>,
             _offset: u32,
             _limit: u32,
             _include_archived: bool,
