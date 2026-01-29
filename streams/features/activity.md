@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-29 14:30:00 - Phase 28 Task 6: Add API wrappers and event listener for session title updates
+**What:**
+- Added `updateTitle` wrapper in src/api/ideation.ts sessions object
+- Added `spawnSessionNamer` wrapper in src/api/ideation.ts sessions object
+- Created src/hooks/useIdeationEvents.ts with `useIdeationEvents` hook
+- Hook listens for `ideation:session_title_updated` event from backend
+- On event, updates ideation store session with new title via `updateSession()`
+- Event schema validates sessionId (string) and title (string | null)
+
+**Files:**
+- src/api/ideation.ts (added updateTitle and spawnSessionNamer methods)
+- src/hooks/useIdeationEvents.ts (new file)
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 12:15:00 - Phase 28 Task 5: Add spawn_session_namer Tauri command
 **What:**
 - Added `spawn_session_namer` Tauri command in ideation_commands_session.rs
