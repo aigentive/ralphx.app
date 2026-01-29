@@ -88,11 +88,6 @@ _No active P2 items. Completed items moved to archive._
 
 ### P3 - Low Impact
 
-- [x] [P3] [Frontend] Remove console.error call - src/hooks/useAskUserQuestion.ts:95
-- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:213
-- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:217
-- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:221
-- [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/TaskFullView.tsx:225
 - [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/CompletedTaskDetail.tsx:257
 - [x] [P3] [Frontend] Remove console.warn call - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:365
 
@@ -130,8 +125,30 @@ _No active P3 items. Completed items moved to archive._
 
 ---
 
+## REFILL (Added 2026-01-29 22:50)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Frontend] Error handling: Empty catch blocks without error logging - src/App.tsx:241
+- [ ] [P2] [Frontend] Error handling: Silent catch block in pause/stop handlers - src/App.tsx:257
+- [ ] [P2] [Frontend] Type safety: Unused parameter with underscore prefix - src/App.tsx:264
+- [ ] [P2] [Backend] Naming: non_snake_case suppressions in command handlers - src-tauri/src/commands/task_commands/mutation.rs:71
+- [ ] [P2] [Frontend] Lint suppression: eslint-disable-next-line for hook dependencies - src/hooks/useTaskExecutionState.ts:141
+- [ ] [P2] [Frontend] Dead code: Prepared variables marked with @ts-expect-error never used - src/components/ExtensibilityView.ResearchPanel.tsx:38
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Console.error cleanup: Multiple console.error calls in error handlers - src/App.tsx:290
+- [ ] [P3] [Frontend] Console.error cleanup: Error logging in chat handlers - src/hooks/useIntegratedChatHandlers.ts:98
+- [ ] [P3] [Frontend] Console.error cleanup: Multiple console.error in event hooks - src/hooks/useSupervisorAlerts.listener.ts:44
+- [ ] [P3] [Frontend] Code organization: Large component needing extraction - src/components/tasks/TaskDetailModal.tsx:690
+- [ ] [P3] [Backend] Dead code marker: Query functions marked #[allow(dead_code)] - src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs:20
+- [ ] [P3] [Frontend] Commented example code: console.log example in docs - src/hooks/useFileDrop.ts:74
+
+---
+
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 7 (9 excluded, 3 deferred to PRD)
-**Completed:** 11
+**Active items:** 12 (9 excluded, 3 deferred to PRD)
+**Completed:** 10
 **Validated:** 72 strikethroughs (2026-01-29 x57) - 21 archived, 1 reactivated (moved to refactor as P1), 57 incremented
-**Last maintenance:** 2026-01-29 22:15 (archived 2 items)
+**Last maintenance:** 2026-01-29 22:50 (archived 5 items, refilled 12 P2/P3 items)
