@@ -210,7 +210,7 @@
       "phase": 28,
       "name": "IDA Session Auto-Naming",
       "prd": "specs/phases/prd_phase_28_ida_session_auto_naming.md",
-      "status": "active",
+      "status": "complete",
       "description": "Auto-generate session titles using Haiku agent with real-time updates and manual rename"
     }
   ]
