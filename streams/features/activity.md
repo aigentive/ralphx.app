@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 04:30:00 - Phase 27 Task 2: Migrate TaskChatPanel to useTaskChat hook
+**What:**
+- Replaced `useChat` hook with new `useTaskChat` hook
+- Removed 3 separate conversation queries (regular, execution, review) - now single hook call
+- Removed context memo and storeContextKey computation - using hook's contextKey
+- Removed directConversationQuery and activeConversation override logic
+- Removed auto-select effect (moved to hook)
+- Simplified loading state logic - using hook's unified isLoading
+- Updated all handlers to use contextKey from hook
+
+**Files:**
+- src/components/tasks/TaskChatPanel.tsx (refactored, ~85 LOC removed: 600 → 516)
+
+**Commands:**
+- `npm run lint` - passes (0 errors, 4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 03:15:00 - Phase 27 Task 1: Create useTaskChat hook
 **What:**
 - Created `src/hooks/useTaskChat.ts` with context-aware conversation fetching

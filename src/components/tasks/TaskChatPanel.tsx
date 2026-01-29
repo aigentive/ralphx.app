@@ -8,11 +8,10 @@
 import { useRef, useEffect, useCallback, useMemo } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { CHAT_TOOL_CALL, CHAT_RUN_COMPLETED } from "@/lib/events";
-import { useChat, chatKeys, useConversation } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectExecutionQueuedMessages, getContextKey } from "@/stores/chatStore";
-import type { ChatContext } from "@/types/chat";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatApi } from "@/api/chat";
+import { useTaskChat, type TaskContextType } from "@/hooks/useTaskChat";
+import { chatKeys } from "@/hooks/useChat";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectExecutionQueuedMessages } from "@/stores/chatStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -198,7 +197,7 @@ function ContextIndicator({ isExecutionMode, isReviewMode }: ContextIndicatorPro
 export interface TaskChatPanelProps {
   taskId: string;
   /** Context type - 'task' for regular chat, 'task_execution' for worker execution, 'review' for reviewer */
-  contextType: "task" | "task_execution" | "review";
+  contextType: TaskContextType;
   /** Current task internal status - used to determine if chat is live or historical */
   taskStatus: string;
 }
@@ -213,7 +212,18 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     queueExecutionMessage,
     deleteExecutionQueuedMessage,
   } = useChatStore();
-  const activeConversationId = useChatStore(selectActiveConversationId);
+
+  // Use the new useTaskChat hook - single hook call handles all context types
+  const {
+    conversations,
+    messages: messagesData,
+    isLoading: hookIsLoading,
+    activeConversationId,
+    contextKey,
+    sendMessage,
+    switchConversation: handleSelectConversation,
+    createConversation: handleNewConversation,
+  } = useTaskChat(taskId, contextType);
 
   const isExecutionMode = contextType === "task_execution";
   const isReviewMode = contextType === "review";
@@ -238,86 +248,11 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
   );
   const executionQueuedMessages = useChatStore(executionQueuedMessagesSelector);
 
-  // Build context for chat hook
-  const context: ChatContext = useMemo(() => ({
-    view: "task_detail",
-    projectId: "", // Will be populated by useChat
-    selectedTaskId: taskId,
-  }), [taskId]);
-
-  // Compute store context key for queue/agent state operations
-  // IMPORTANT: For review mode, events are emitted with context_type "review",
-  // so useAgentEvents stores running state under "review:taskId" not "task:taskId".
-  // We need to use the same key that useAgentEvents uses.
-  const storeContextKey = useMemo(() => {
-    if (isReviewMode) {
-      return `review:${taskId}`;
-    }
-    return getContextKey(context);
-  }, [context, isReviewMode, taskId]);
-
-  // Use context-aware selectors
-  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
+  // Use context-aware selectors with contextKey from hook
+  const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
-  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
+  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
-
-  // For execution mode, fetch execution conversations directly
-  // For regular chat, use the standard useChat hook
-  const regularChatData = useChat(context);
-
-  // Fetch execution conversations when in execution mode
-  const executionConversationsQuery = useQuery({
-    queryKey: chatKeys.conversationList("task_execution", taskId),
-    queryFn: () => chatApi.listConversations("task_execution", taskId),
-    enabled: isExecutionMode,
-  });
-
-  // Fetch review conversations when in review mode
-  const reviewConversationsQuery = useQuery({
-    queryKey: chatKeys.conversationList("review", taskId),
-    queryFn: () => chatApi.listConversations("review", taskId),
-    enabled: isReviewMode,
-  });
-
-  // Use execution/review conversations when in those modes, otherwise regular conversations
-  const conversations = isExecutionMode
-    ? executionConversationsQuery
-    : isReviewMode
-      ? reviewConversationsQuery
-      : regularChatData.conversations;
-
-  const {
-    messages: regularActiveConversation,
-    sendMessage,
-    switchConversation: handleSelectConversation,
-    createConversation: handleNewConversation,
-  } = regularChatData;
-
-  // For review/execution modes, fetch active conversation directly by ID
-  // This bypasses useChat's context type limitation (always returns "task")
-  const directConversationQuery = useConversation(
-    (isReviewMode || isExecutionMode) ? activeConversationId : null
-  );
-
-  // Use direct query for review/execution modes, regularChatData otherwise
-  const activeConversation = (isReviewMode || isExecutionMode)
-    ? directConversationQuery
-    : regularActiveConversation;
-
-  // Store selector for setting active conversation
-  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-
-  // Auto-select the latest conversation for review/execution modes
-  // This ensures the chat panel shows the active review/execution conversation
-  useEffect(() => {
-    if ((isReviewMode || isExecutionMode) && conversations.data && conversations.data.length > 0) {
-      const latestConversation = conversations.data[0]; // Most recent conversation
-      if (latestConversation && latestConversation.id !== activeConversationId) {
-        setActiveConversation(latestConversation.id);
-      }
-    }
-  }, [isReviewMode, isExecutionMode, conversations.data, activeConversationId, setActiveConversation]);
 
   // Streaming state - accumulates text chunks as they arrive
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -328,13 +263,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
-
-  // Extract messages array from active conversation - wrapped in useMemo to avoid
-  // creating new array reference on each render, which would trigger sortedMessages recalculation
-  const messagesData = useMemo(
-    () => activeConversation.data?.messages ?? [],
-    [activeConversation.data?.messages]
-  );
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -365,10 +293,10 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
       if (isExecutionMode) {
         queueExecutionMessage(taskId, content);
       } else {
-        queueMessage(storeContextKey, content);
+        queueMessage(contextKey, content);
       }
     },
-    [isExecutionMode, taskId, queueMessage, queueExecutionMessage, storeContextKey]
+    [isExecutionMode, taskId, queueMessage, queueExecutionMessage, contextKey]
   );
 
   // Edit last queued message
@@ -376,8 +304,8 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     const messagesToUse = isExecutionMode ? executionQueuedMessages : queuedMessages;
     const lastMessage = messagesToUse[messagesToUse.length - 1];
     if (!lastMessage) return;
-    startEditingQueuedMessage(storeContextKey, lastMessage.id);
-  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, storeContextKey]);
+    startEditingQueuedMessage(contextKey, lastMessage.id);
+  }, [isExecutionMode, executionQueuedMessages, queuedMessages, startEditingQueuedMessage, contextKey]);
 
   // Subscribe to Tauri events for real-time updates (only on mount)
   useEffect(() => {
@@ -437,20 +365,8 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     );
   }, [messagesData]);
 
-  // Loading states:
-  // 1. Conversations list is loading
-  // 2. Active conversation query is pending (enabled but no data yet)
-  // 3. In agent mode (review/execution) with conversations but no selection yet
-  const isConversationsLoading = conversations.isLoading;
-  const isConversationPending = activeConversation.isPending && !!activeConversationId;
-  const isWaitingForSelection =
-    (isReviewMode || isExecutionMode) &&
-    !activeConversationId &&
-    !conversations.isLoading &&
-    conversations.data &&
-    conversations.data.length > 0;
-
-  const isLoading = isConversationsLoading || isConversationPending || isWaitingForSelection;
+  // Use unified loading state from hook
+  const isLoading = hookIsLoading;
   const isSending = sendMessage.isPending;
   const isEmpty = !isLoading && sortedMessages.length === 0;
 
@@ -543,9 +459,9 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
                 const messagesToDisplay = isExecutionMode ? executionQueuedMessages : queuedMessages;
                 const deleteHandler = isExecutionMode
                   ? (id: string) => deleteExecutionQueuedMessage(taskId, id)
-                  : (id: string) => deleteQueuedMessage(storeContextKey, id);
+                  : (id: string) => deleteQueuedMessage(contextKey, id);
                 // Edit handler always needs context key
-                const editHandler = (id: string, content: string) => editQueuedMessage(storeContextKey, id, content);
+                const editHandler = (id: string, content: string) => editQueuedMessage(contextKey, id, content);
 
                 return messagesToDisplay.length > 0 && (
                   <div className="p-3 pb-0">
