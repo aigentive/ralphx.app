@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-29 15:45:00 - Phase 28 Task 7: Trigger session namer on first message send
+**What:**
+- Modified useIntegratedChatHandlers to accept `messageCount` parameter
+- Added first-message detection in `handleSend` function
+- When `ideationSessionId` is set and `messageCount === 0`, triggers auto-naming
+- After successful message send, calls `ideationApi.sessions.spawnSessionNamer`
+- Call is fire-and-forget (non-blocking) with error logging
+- Updated IntegratedChatPanel to pass `messagesData.length` as `messageCount`
+
+**Files:**
+- src/hooks/useIntegratedChatHandlers.ts (added messageCount param, import, trigger logic)
+- src/components/Chat/IntegratedChatPanel.tsx (added messageCount prop)
+
+**Commands:**
+- `npm run lint` - 0 errors (4 pre-existing warnings)
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 14:30:00 - Phase 28 Task 6: Add API wrappers and event listener for session title updates
 **What:**
 - Added `updateTitle` wrapper in src/api/ideation.ts sessions object

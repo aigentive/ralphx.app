@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore } from "@/stores/chatStore";
 import { chatApi, stopAgent } from "@/api/chat";
 import { chatKeys } from "@/hooks/useChat";
+import { ideationApi } from "@/api/ideation";
 import type { ContextType } from "@/types/chat-conversation";
 
 interface UseIntegratedChatHandlersProps {
@@ -26,6 +27,8 @@ interface UseIntegratedChatHandlersProps {
     isPending: boolean;
     mutateAsync: (content: string) => Promise<unknown>;
   };
+  /** Current message count in the conversation (used for first-message detection) */
+  messageCount?: number;
 }
 
 export function useIntegratedChatHandlers({
@@ -36,6 +39,7 @@ export function useIntegratedChatHandlers({
   ideationSessionId,
   storeContextKey,
   sendMessage,
+  messageCount = 0,
 }: UseIntegratedChatHandlersProps) {
   const queryClient = useQueryClient();
   const {
@@ -72,6 +76,9 @@ export function useIntegratedChatHandlers({
     async (content: string) => {
       if (!content.trim() || sendMessage.isPending) return;
 
+      // Capture first message state before sending (for auto-naming trigger)
+      const isFirstIdeationMessage = ideationSessionId && messageCount === 0;
+
       try {
         // For review mode, use the API directly with correct context type
         if (isReviewMode && selectedTaskId) {
@@ -99,6 +106,14 @@ export function useIntegratedChatHandlers({
         } else {
           await sendMessage.mutateAsync(content);
         }
+
+        // Trigger session auto-naming on first ideation message
+        // Fire-and-forget - don't await, don't block the user
+        if (isFirstIdeationMessage) {
+          ideationApi.sessions.spawnSessionNamer(ideationSessionId, content).catch((err) => {
+            console.error("Failed to spawn session namer:", err);
+          });
+        }
       } catch {
         // Reset agent running state on error
         if (isReviewMode) {
@@ -106,7 +121,7 @@ export function useIntegratedChatHandlers({
         }
       }
     },
-    [sendMessage, isReviewMode, selectedTaskId, storeContextKey, setAgentRunning, setActiveConversation, queryClient]
+    [sendMessage, isReviewMode, selectedTaskId, storeContextKey, setAgentRunning, setActiveConversation, queryClient, ideationSessionId, messageCount]
   );
 
   // Queue message handler (when agent is running)
