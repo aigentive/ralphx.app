@@ -13,6 +13,7 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 3. **ONE verification pass per iteration, then STOP**
 4. **No backlog** — this stream reads completed phases and outputs to features/backlog.md
 5. **Follow git workflow rules** — see `.claude/rules/git-workflow.md` (Recovery Check does not apply — this stream doesn't write code)
+6. **Skip already-verified phases** — if activity log shows "No gaps found" for a phase, do NOT re-verify
 
 ## Workflow
 
@@ -21,7 +22,13 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 
 2. Find phases with status: "complete"
 
-3. For each completed phase:
+3. Read streams/verify/activity.md to find already-verified phases
+   → Phase has "No gaps found" entry? → SKIP IT (already verified)
+   → Only verify phases with NO prior "No gaps found" log entry
+
+4. No unverified phases remain? → Output IDLE signal → END
+
+5. For each UNVERIFIED completed phase:
    a. Read the phase PRD
    b. For each feature/component implemented, run verification checks:
       - WIRING: Is it invoked from entry point?
@@ -30,13 +37,13 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
       - EVENTS: Are events emitted AND listened?
    c. Document any gaps found
 
-4. Gaps found? → Append to streams/features/backlog.md as P0 items
+6. Gaps found? → Append to streams/features/backlog.md as P0 items
 
-5. Log findings to streams/verify/activity.md
+7. Log findings to streams/verify/activity.md
 
-6. Commit if changes made: chore(verify): add P0 items from phase N verification
+8. Commit if changes made: chore(verify): add P0 items from phase N verification
 
-7. STOP
+9. STOP
 ```
 
 ## Verification Checks
@@ -152,11 +159,11 @@ This signals that verification completed successfully with no new P0 items.
 
 ## IDLE Detection
 
-When there are **no completed phases to verify** (all phases are pending or active):
+When there are **no unverified phases** (all completed phases already have "No gaps found" in activity log, OR all phases are pending/active):
 
 Output: `<promise>IDLE</promise>`
 
-This signals the fswatch wrapper to take over and wait for manifest.json changes (phase completions).
+This signals the fswatch wrapper to take over and wait for manifest.json changes (new phase completions).
 
 ## Signal Output Rules
 
