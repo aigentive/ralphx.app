@@ -162,6 +162,7 @@ mod tests {
             title: Some("Test Session".to_string()),
             status: IdeationSessionStatus::Active,
             plan_artifact_id: None,
+            seed_task_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,

@@ -19,6 +19,7 @@ pub use crate::commands::chat_responses::ChatMessageResponse;
 pub struct CreateSessionInput {
     pub project_id: String,
     pub title: Option<String>,
+    pub seed_task_id: Option<String>,
 }
 
 /// Response wrapper for ideation session operations
@@ -29,6 +30,7 @@ pub struct IdeationSessionResponse {
     pub title: Option<String>,
     pub status: String,
     pub plan_artifact_id: Option<String>,
+    pub seed_task_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -43,6 +45,7 @@ impl From<IdeationSession> for IdeationSessionResponse {
             title: session.title,
             status: session.status.to_string(),
             plan_artifact_id: session.plan_artifact_id.map(|id| id.as_str().to_string()),
+            seed_task_id: session.seed_task_id.map(|id| id.as_str().to_string()),
             created_at: session.created_at.to_rfc3339(),
             updated_at: session.updated_at.to_rfc3339(),
             archived_at: session.archived_at.map(|dt| dt.to_rfc3339()),

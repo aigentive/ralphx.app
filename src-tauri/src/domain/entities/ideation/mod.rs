@@ -27,7 +27,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{ArtifactId, IdeationSessionId, ProjectId};
+use crate::domain::entities::{ArtifactId, IdeationSessionId, ProjectId, TaskId};
 
 /// An ideation session - a brainstorming conversation that produces task proposals
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +42,8 @@ pub struct IdeationSession {
     pub status: IdeationSessionStatus,
     /// The implementation plan artifact for this session
     pub plan_artifact_id: Option<ArtifactId>,
+    /// Optional reference to a draft task that seeded this session
+    pub seed_task_id: Option<TaskId>,
     /// When the session was created
     pub created_at: DateTime<Utc>,
     /// When the session was last updated
@@ -60,6 +62,7 @@ pub struct IdeationSessionBuilder {
     title: Option<String>,
     status: Option<IdeationSessionStatus>,
     plan_artifact_id: Option<ArtifactId>,
+    seed_task_id: Option<TaskId>,
     created_at: Option<DateTime<Utc>>,
     updated_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
@@ -102,6 +105,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the seed task ID
+    pub fn seed_task_id(mut self, seed_task_id: TaskId) -> Self {
+        self.seed_task_id = Some(seed_task_id);
+        self
+    }
+
     /// Set the created_at timestamp
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
@@ -136,6 +145,7 @@ impl IdeationSessionBuilder {
             title: self.title,
             status: self.status.unwrap_or_default(),
             plan_artifact_id: self.plan_artifact_id,
+            seed_task_id: self.seed_task_id,
             created_at: self.created_at.unwrap_or(now),
             updated_at: self.updated_at.unwrap_or(now),
             archived_at: self.archived_at,
@@ -202,7 +212,7 @@ impl IdeationSession {
     }
 
     /// Deserialize an IdeationSession from a SQLite row
-    /// Expects columns: id, project_id, title, status, plan_artifact_id, created_at, updated_at, archived_at, converted_at
+    /// Expects columns: id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: IdeationSessionId::from_string(row.get::<_, String>("id")?),
@@ -215,6 +225,9 @@ impl IdeationSession {
             plan_artifact_id: row
                 .get::<_, Option<String>>("plan_artifact_id")?
                 .map(ArtifactId::from_string),
+            seed_task_id: row
+                .get::<_, Option<String>>("seed_task_id")?
+                .map(TaskId::from_string),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
             archived_at: row
