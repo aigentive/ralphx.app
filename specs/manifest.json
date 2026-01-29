@@ -189,7 +189,7 @@
       "phase": 25,
       "name": "Ideation UI Improvements",
       "prd": "specs/phases/prd_phase_25_ideation_ui_improvements.md",
-      "status": "active",
+      "status": "complete",
       "description": "Start ideation from draft tasks, drag-and-drop markdown import to proposals"
     }
   ]
