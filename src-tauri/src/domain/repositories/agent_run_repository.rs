@@ -60,6 +60,13 @@ pub trait AgentRunRepository: Send + Sync {
         conversation_id: &ChatConversationId,
         status: AgentRunStatus,
     ) -> AppResult<u32>;
+
+    /// Cancel all runs currently in "running" status
+    ///
+    /// Used on startup to clean up orphaned agent runs from previous sessions
+    /// that didn't complete properly (e.g., app crash or force quit).
+    /// Returns the number of runs cancelled.
+    async fn cancel_all_running(&self) -> AppResult<u32>;
 }
 
 #[cfg(test)]
@@ -162,6 +169,11 @@ mod tests {
                 .iter()
                 .filter(|r| r.conversation_id == *conversation_id && r.status == status)
                 .count() as u32)
+        }
+
+        async fn cancel_all_running(&self) -> AppResult<u32> {
+            // Mock just returns 0 - not needed for mock tests
+            Ok(0)
         }
     }
 
