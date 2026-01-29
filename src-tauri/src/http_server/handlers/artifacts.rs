@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use tracing::error;
 
 use super::*;
 use crate::domain::entities::{
@@ -22,7 +23,10 @@ pub async fn create_plan_artifact(
         .ideation_session_repo
         .get_by_id(&session_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get session {} for plan artifact creation: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Create the specification artifact
@@ -42,7 +46,10 @@ pub async fn create_plan_artifact(
         .artifact_repo
         .create(artifact)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to create plan artifact for session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     // Link artifact to session
     state
@@ -50,7 +57,10 @@ pub async fn create_plan_artifact(
         .ideation_session_repo
         .update_plan_artifact_id(&session_id, Some(created.id.to_string()))
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to link artifact {} to session {}: {}", created.id.as_str(), session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(ArtifactResponse::from(created)))
 }
@@ -67,7 +77,10 @@ pub async fn update_plan_artifact(
         .artifact_repo
         .get_by_id(&artifact_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get artifact {} for update: {}", artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Update content and increment version
@@ -80,7 +93,10 @@ pub async fn update_plan_artifact(
         .artifact_repo
         .update(&artifact)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            error!("Failed to update artifact {}: {}", artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(ArtifactResponse::from(artifact)))
 }
@@ -96,7 +112,10 @@ pub async fn get_plan_artifact(
         .artifact_repo
         .get_by_id(&artifact_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get artifact {}: {}", artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(ArtifactResponse::from(artifact)))
@@ -114,7 +133,10 @@ pub async fn link_proposals_to_plan(
         .artifact_repo
         .get_by_id(&artifact_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get artifact {} for linking proposals: {}", artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Update each proposal
@@ -126,7 +148,10 @@ pub async fn link_proposals_to_plan(
             .task_proposal_repo
             .get_by_id(&proposal_id)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .map_err(|e| {
+                error!("Failed to get proposal {} for linking: {}", proposal_id.as_str(), e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
             .ok_or(StatusCode::NOT_FOUND)?;
 
         proposal.plan_artifact_id = Some(artifact_id.clone());
@@ -137,7 +162,10 @@ pub async fn link_proposals_to_plan(
             .task_proposal_repo
             .update(&proposal)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|e| {
+                error!("Failed to update proposal {} with plan link: {}", proposal_id.as_str(), e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
     }
 
     Ok(Json(SuccessResponse {
@@ -157,7 +185,10 @@ pub async fn get_session_plan(
         .ideation_session_repo
         .get_by_id(&session_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get session {} for plan retrieval: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     if let Some(artifact_id) = session.plan_artifact_id {
@@ -166,7 +197,10 @@ pub async fn get_session_plan(
             .artifact_repo
             .get_by_id(&artifact_id)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .map_err(|e| {
+                error!("Failed to get plan artifact {} for session {}: {}", artifact_id.as_str(), session_id.as_str(), e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
             .ok_or(StatusCode::NOT_FOUND)?;
 
         Ok(Json(Some(ArtifactResponse::from(artifact))))

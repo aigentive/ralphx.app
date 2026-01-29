@@ -1077,3 +1077,18 @@
 **Result:** Success (all error handlers now log details before returning status codes)
 
 ---
+
+### 2026-01-29 21:29:00 - Add error logging to artifact handlers
+**What:**
+- File: src-tauri/src/http_server/handlers/artifacts.rs
+- Added `use tracing::error;` import
+- Replaced all `.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)` with proper error logging
+- Added contextual error messages for all database operations (get, create, update)
+- Follows same pattern as steps.rs and ideation.rs handlers
+
+**Commands:**
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+
+**Result:** Success (artifacts.rs compiles without errors, pre-existing clippy errors in other files)
+
+---
