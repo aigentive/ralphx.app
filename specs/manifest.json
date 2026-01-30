@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": null,
+  "currentPhase": 39,
   "phases": [
     {
       "phase": 0,
@@ -282,6 +282,13 @@
       "prd": "specs/phases/prd_phase_38_dependency_priority_integration.md",
       "status": "complete",
       "description": "Wire up priority assessment, AI dependency suggestions, dependency UI badges, chat agent tools"
+    },
+    {
+      "phase": 39,
+      "name": "Dependency Reason Field",
+      "prd": "specs/phases/prd_phase_39_dependency_reason.md",
+      "status": "active",
+      "description": "Persist and display AI reasoning for proposal dependencies in tooltips"
     }
   ]
 }
