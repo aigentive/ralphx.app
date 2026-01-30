@@ -44,12 +44,14 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         &self,
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
+        _reason: Option<&str>,
     ) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
         let id = Uuid::new_v4().to_string();
 
         // INSERT OR IGNORE to handle UNIQUE constraint gracefully
+        // TODO: Task 3 will add reason to INSERT statement
         conn.execute(
             "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
              VALUES (?1, ?2, ?3)",
@@ -130,13 +132,14 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
     async fn get_all_for_session(
         &self,
         session_id: &IdeationSessionId,
-    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId)>> {
+    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>> {
         let conn = self.conn.lock().await;
 
         // Join with task_proposals to filter by session
+        // TODO: Task 3 will add reason column to SELECT
         let mut stmt = conn
             .prepare(
-                "SELECT pd.proposal_id, pd.depends_on_proposal_id
+                "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason
                  FROM proposal_dependencies pd
                  INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
                  WHERE tp.session_id = ?1",
@@ -147,7 +150,8 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
             .query_map([session_id.as_str()], |row| {
                 let from_id: String = row.get(0)?;
                 let to_id: String = row.get(1)?;
-                Ok((Self::string_to_proposal_id(from_id), Self::string_to_proposal_id(to_id)))
+                let reason: Option<String> = row.get(2)?;
+                Ok((Self::string_to_proposal_id(from_id), Self::string_to_proposal_id(to_id), reason))
             })
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()

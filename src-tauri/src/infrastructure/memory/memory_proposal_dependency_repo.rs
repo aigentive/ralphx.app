@@ -50,8 +50,10 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
         &self,
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
+        _reason: Option<&str>,
     ) -> AppResult<()> {
         // Without session context, we use empty session_id
+        // TODO: Store reason when needed for tests
         self.dependencies.write().unwrap().push((
             proposal_id.to_string(),
             depends_on_id.to_string(),
@@ -96,7 +98,7 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
     async fn get_all_for_session(
         &self,
         session_id: &IdeationSessionId,
-    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId)>> {
+    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>> {
         Ok(self
             .dependencies
             .read()
@@ -107,6 +109,7 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
                 (
                     TaskProposalId::from_string(p.clone()),
                     TaskProposalId::from_string(d.clone()),
+                    None, // TODO: Store and return reason when needed for tests
                 )
             })
             .collect())
@@ -166,7 +169,7 @@ mod tests {
         let p1 = TaskProposalId::new();
         let p2 = TaskProposalId::new();
 
-        repo.add_dependency(&p1, &p2).await.unwrap();
+        repo.add_dependency(&p1, &p2, None).await.unwrap();
 
         let deps = repo.get_dependencies(&p1).await.unwrap();
         assert_eq!(deps.len(), 1);
@@ -179,7 +182,7 @@ mod tests {
         let p1 = TaskProposalId::new();
         let p2 = TaskProposalId::new();
 
-        repo.add_dependency(&p1, &p2).await.unwrap();
+        repo.add_dependency(&p1, &p2, None).await.unwrap();
 
         let dependents = repo.get_dependents(&p2).await.unwrap();
         assert_eq!(dependents.len(), 1);
@@ -192,7 +195,7 @@ mod tests {
         let p1 = TaskProposalId::new();
         let p2 = TaskProposalId::new();
 
-        repo.add_dependency(&p1, &p2).await.unwrap();
+        repo.add_dependency(&p1, &p2, None).await.unwrap();
         repo.remove_dependency(&p1, &p2).await.unwrap();
 
         let deps = repo.get_dependencies(&p1).await.unwrap();
@@ -206,8 +209,8 @@ mod tests {
         let p2 = TaskProposalId::new();
         let p3 = TaskProposalId::new();
 
-        repo.add_dependency(&p1, &p2).await.unwrap();
-        repo.add_dependency(&p3, &p1).await.unwrap();
+        repo.add_dependency(&p1, &p2, None).await.unwrap();
+        repo.add_dependency(&p3, &p1, None).await.unwrap();
 
         repo.clear_dependencies(&p1).await.unwrap();
 

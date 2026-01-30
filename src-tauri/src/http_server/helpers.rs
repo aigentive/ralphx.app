@@ -433,7 +433,7 @@ pub async fn maybe_trigger_dependency_analysis(
         } else {
             existing_deps
                 .iter()
-                .map(|(from, to)| format!("{} → {}", from.as_str(), to.as_str()))
+                .map(|(from, to, _reason)| format!("{} → {}", from.as_str(), to.as_str()))
                 .collect::<Vec<_>>()
                 .join(", ")
         };

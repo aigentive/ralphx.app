@@ -439,6 +439,7 @@ use std::sync::{Arc, Mutex};
             &self,
             proposal_id: &TaskProposalId,
             depends_on_id: &TaskProposalId,
+            _reason: Option<&str>,
         ) -> AppResult<()> {
             self.dependencies
                 .lock()
@@ -483,7 +484,7 @@ use std::sync::{Arc, Mutex};
         async fn get_all_for_session(
             &self,
             _session_id: &IdeationSessionId,
-        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId)>> {
+        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>> {
             Ok(self
                 .dependencies
                 .lock()
@@ -493,6 +494,7 @@ use std::sync::{Arc, Mutex};
                     (
                         TaskProposalId::from_string(p.clone()),
                         TaskProposalId::from_string(d.clone()),
+                        None,
                     )
                 })
                 .collect())

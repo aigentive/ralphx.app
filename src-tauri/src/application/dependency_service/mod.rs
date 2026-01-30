@@ -69,7 +69,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
     pub fn build_graph_from_data(
         &self,
         proposals: &[TaskProposal],
-        dependencies: &[(TaskProposalId, TaskProposalId)],
+        dependencies: &[(TaskProposalId, TaskProposalId, Option<String>)],
     ) -> AppResult<DependencyGraph> {
         // Build adjacency lists
         // from_map: proposal_id -> list of proposals it depends on
@@ -77,7 +77,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
         let mut from_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
         let mut to_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
 
-        for (from, to) in dependencies {
+        for (from, to, _reason) in dependencies {
             from_map.entry(from.clone()).or_default().push(to.clone());
             to_map.entry(to.clone()).or_default().push(from.clone());
         }
@@ -94,9 +94,10 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
         }
 
         // Build edges
+        // TODO: Task 5 will add reason to DependencyGraphEdge
         let edges: Vec<DependencyGraphEdge> = dependencies
             .iter()
-            .map(|(from, to)| DependencyGraphEdge::new(from.clone(), to.clone()))
+            .map(|(from, to, _reason)| DependencyGraphEdge::new(from.clone(), to.clone()))
             .collect();
 
         // Detect cycles using DFS

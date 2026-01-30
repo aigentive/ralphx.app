@@ -162,6 +162,7 @@ use std::sync::{Arc, Mutex};
             &self,
             proposal_id: &TaskProposalId,
             depends_on_id: &TaskProposalId,
+            _reason: Option<&str>,
         ) -> AppResult<()> {
             self.dependencies
                 .lock()
@@ -218,13 +219,13 @@ use std::sync::{Arc, Mutex};
         async fn get_all_for_session(
             &self,
             _session_id: &IdeationSessionId,
-        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId)>> {
+        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>> {
             Ok(self
                 .dependencies
                 .lock()
                 .unwrap()
                 .iter()
-                .flat_map(|(from, tos)| tos.iter().map(|to| (from.clone(), to.clone())))
+                .flat_map(|(from, tos)| tos.iter().map(|to| (from.clone(), to.clone(), None)))
                 .collect())
         }
 

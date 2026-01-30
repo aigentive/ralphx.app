@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-01-31 10:45:00 - Phase 39 Task 2: Update ProposalDependencyRepository trait with reason parameter
+**What:**
+- Updated ProposalDependencyRepository trait: add_dependency now accepts reason: Option<&str>
+- Updated get_all_for_session return type to Vec<(TaskProposalId, TaskProposalId, Option<String>)>
+- Updated mock implementations in trait tests, dependency_service/tests.rs, priority_service/tests.rs, ideation_service/tests.rs, apply_service/tests.rs
+- Updated SQLite implementation signatures (reason column selection, parameter passing)
+- Updated MemoryProposalDependencyRepository for test compatibility
+- Updated all call sites: HTTP handlers, commands, services to pass None for reason (Task 4 will wire the actual reason)
+- Updated helper functions in apply_service/helpers.rs to accept 3-tuple
+- Fixed test assertions for 3-tuple return type
+
+**Files:**
+- src-tauri/src/domain/repositories/proposal_dependency_repository.rs (trait + mock)
+- src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs
+- src-tauri/src/infrastructure/memory/memory_proposal_dependency_repo.rs
+- src-tauri/src/http_server/handlers/ideation.rs
+- src-tauri/src/http_server/helpers.rs
+- src-tauri/src/commands/ideation_commands/*.rs
+- src-tauri/src/application/*/mod.rs and tests.rs
+- src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo_tests.rs
+
+**Commands:**
+- `cargo test` (all passed)
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 22:58:00 - Phase 39 Task 1: Add database migration for reason column
 **What:**
 - Created v2_add_dependency_reason.rs migration file
