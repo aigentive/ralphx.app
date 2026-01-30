@@ -167,14 +167,9 @@ export function useChatPanelContext({
       ? executionLoading
       : isReviewMode
         ? reviewLoading
-        : false;
+        : conversations.isLoading;
 
     console.log(`[useChatPanelContext] Auto-select check: isExec=${isExecutionMode}, isReview=${isReviewMode}, activeId=${activeConversationId}, isLoading=${isLoading}, convCount=${conversations.data?.length ?? 0}, hasAutoSelected=${hasAutoSelectedRef.current}, contextKey=${contextKey}`);
-
-    // Only auto-select for execution/review modes where we want to show existing conversations
-    if (!isExecutionMode && !isReviewMode) {
-      return;
-    }
 
     // Wait for conversations to load before any validation/selection
     if (isLoading) {
@@ -214,14 +209,15 @@ export function useChatPanelContext({
       const mostRecent = sorted[0];
 
       if (mostRecent) {
-        console.log(`[useChatPanelContext] Auto-selecting conversation: ${mostRecent.id} (${isReviewMode ? 'review' : 'execution'} mode)`);
+        const contextDescription = isReviewMode ? 'review' : isExecutionMode ? 'execution' : ideationSessionId ? 'ideation' : selectedTaskId ? 'task' : 'project';
+        console.log(`[useChatPanelContext] Auto-selecting conversation: ${mostRecent.id} (${contextDescription} context)`);
         hasAutoSelectedRef.current = true;
         setActiveConversation(mostRecent.id);
       }
     } else if (!activeConversationId && conversations.data?.length === 0) {
       console.log(`[useChatPanelContext] No conversations available to auto-select`);
     }
-  }, [activeConversationId, isExecutionMode, isReviewMode, contextKey, setActiveConversation]);
+  }, [activeConversationId, isExecutionMode, isReviewMode, ideationSessionId, selectedTaskId, contextKey, setActiveConversation]);
 
   return {
     chatContext,
