@@ -152,7 +152,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: chore(ideation): delete unused PlanHistoryDialog"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

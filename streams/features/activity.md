@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-30 15:59:00 - Phase 36 Task 4: Delete unused PlanHistoryDialog
+**What:**
+- Verified no remaining imports of PlanHistoryDialog in codebase (only self-references)
+- Deleted src/components/Ideation/PlanHistoryDialog.tsx (171 LOC removed)
+
+**Files:**
+- src/components/Ideation/PlanHistoryDialog.tsx (deleted)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 04:15:00 - Phase 36 Task 3: Remove plan history modal state
 **What:**
 - Modified src/components/ideation/useIdeationHandlers.ts
