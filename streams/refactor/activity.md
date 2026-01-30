@@ -1060,3 +1060,16 @@ Pattern: Files get automatically restored within seconds of deletion attempts, d
 **Result:** Success - 56% reduction in largest module (242 LOC vs 1114 LOC), all modules well under 500 LOC limit, no clippy warnings
 
 ---
+
+### 2026-01-30 15:42:00 - Split sqlite_proposal_dependency_repo.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs (1078 LOC)
+- Extracted tests to: src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo_tests.rs (813 LOC)
+- New size: 277 LOC
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo_tests.rs`
+- `cargo test --lib sqlite_proposal_dependency`
+
+**Result:** Success (all 30 tests pass)
