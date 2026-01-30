@@ -43,7 +43,7 @@ _Completed items moved to archive._
 ### Backend
 
 - [x] Split memory_task_repo.rs (1149 LOC → 402 LOC) - extracted to memory_task_repo/{mod.rs (402), tests.rs (747)} - src-tauri/src/infrastructure/memory/memory_task_repo/mod.rs:1
-- [ ] Split research_service.rs (1109 LOC) - extract helper functions and validation - src-tauri/src/domain/services/research_service.rs:1
+- [x] Split research_service.rs (1109 LOC → 311 LOC) - extracted tests to research_service_tests.rs (800 LOC) - src-tauri/src/domain/services/research_service.rs:1
 - [ ] Split sqlite_chat_message_repo.rs (1065 LOC) - extract query builders and result mapping - src-tauri/src/infrastructure/sqlite/sqlite_chat_message_repo.rs:1
 - [ ] Split sqlite_proposal_dependency_repo.rs (1062 LOC) - extract query logic and helpers - src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs:1
 
