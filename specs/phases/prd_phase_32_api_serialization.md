@@ -377,7 +377,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Include: NEVER use rename_all = camelCase, Rust default is correct",
       "Commit: docs: add response serialization convention to backend CLAUDE.md"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

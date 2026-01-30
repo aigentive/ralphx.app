@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-30 09:32:00 - Phase 32 Task 17: Add response serialization convention to backend CLAUDE.md
+**What:**
+- Added "Response Serialization (CRITICAL)" section to src-tauri/CLAUDE.md
+- Documents: NEVER use rename_all = camelCase on response structs
+- Notes that Rust's default snake_case is correct, frontend handles conversion
+
+**Files:**
+- src-tauri/CLAUDE.md
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 09:15:00 - Phase 32 Task 16: Add API schema convention to frontend CLAUDE.md
 **What:**
 - Added "API Schema Convention (CRITICAL)" section to src/CLAUDE.md
