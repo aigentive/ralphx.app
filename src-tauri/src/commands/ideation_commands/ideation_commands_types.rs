@@ -93,7 +93,6 @@ pub struct UpdateProposalInput {
 
 /// Response for TaskProposal
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TaskProposalResponse {
     pub id: String,
     pub session_id: String,
