@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-01-31 00:15:00 - Phase 35 Task 2: Create TerminalCanvas and ParticleField subcomponents
+**What:**
+- Created src/components/WelcomeScreen/TerminalCanvas.tsx (~100 LOC)
+  - Extracted terminal component with traffic lights header, typing cursor, code output
+  - Added additional floating code fragments (3 total) with varied colors and delays
+  - Applied CSS classes for animations: terminal-cursor, code-fragment
+- Created src/components/WelcomeScreen/ParticleField.tsx (~80 LOC)
+  - Extracted particle field with seeded random positions
+  - 25 particles with warm orange and white colors
+  - Applied particle CSS class for particleDrift animation
+- Created src/components/WelcomeScreen/index.tsx
+  - Re-exports default and named exports for WelcomeScreen, TerminalCanvas, ParticleField
+- Updated WelcomeScreen.tsx (~210 LOC)
+  - Now imports TerminalCanvas and ParticleField from separate files
+  - CSS animations centralized and applied via class selectors
+
+**Files:**
+- src/components/WelcomeScreen/TerminalCanvas.tsx (new)
+- src/components/WelcomeScreen/ParticleField.tsx (new)
+- src/components/WelcomeScreen/index.tsx (new)
+- src/components/WelcomeScreen/WelcomeScreen.tsx (updated)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 23:30:00 - Phase 35 Task 1: Create WelcomeScreen component with hero section and animations
 **What:**
 - Created src/components/WelcomeScreen/WelcomeScreen.tsx (~300 LOC)
