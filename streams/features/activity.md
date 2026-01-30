@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 15:45:00 - Phase 31 Task 1: Add virtualization with react-virtuoso
+**What:**
+- Activated Phase 31 (Ideation Performance Optimization)
+- Installed react-virtuoso package
+- Updated IntegratedChatPanel.tsx to use Virtuoso instead of ScrollArea with .map()
+- Updated ChatMessages.tsx to use Virtuoso with Header/Footer components
+- Removed useIntegratedChatScroll hook (Virtuoso handles scrolling with followOutput="smooth")
+- Removed unused scrollAreaRef from ChatPanel.tsx
+
+**Files:**
+- src/components/Chat/IntegratedChatPanel.tsx - replaced ScrollArea with Virtuoso
+- src/components/Chat/ChatMessages.tsx - replaced ScrollArea with Virtuoso
+- src/components/Chat/ChatPanel.tsx - removed unused scrollAreaRef
+
+**Commands:**
+- `npm install react-virtuoso`
+- `npm run typecheck` - passes
+- `npm run lint` (modified files only) - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 15:00:00 - Phase 30 Complete: Gap Verification Passed
 **What:**
 - Ran comprehensive gap verification on Phase 30 (Ideation Artifacts Fix)

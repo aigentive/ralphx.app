@@ -259,7 +259,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [isExiting, setIsExiting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
 
   // Resize panel hook
@@ -432,7 +431,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
           messagesEndRef={messagesEndRef}
-          scrollAreaRef={scrollAreaRef}
         />
 
         {/* Input Area */}

@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -19,7 +20,6 @@ import type { ContextType } from "@/types/chat-conversation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2 } from "lucide-react";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -36,7 +36,6 @@ import {
   ContextIndicator,
   animationStyles,
 } from "./IntegratedChatPanel.components";
-import { useIntegratedChatScroll } from "@/hooks/useIntegratedChatScroll";
 import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
 import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
 
@@ -315,7 +314,8 @@ export function IntegratedChatPanel({
     createConversation: handleNewConversation,
   } = regularChatData;
 
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Determine current context type and ID for validation
   const currentContextType: ContextType = ideationSessionId
@@ -343,14 +343,6 @@ export function IntegratedChatPanel({
         : [],
     [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
   );
-
-  // Use custom hooks for extracted logic
-  const { messagesEndRef } = useIntegratedChatScroll({
-    messagesData,
-    isAgentRunning,
-    streamingToolCallsLength: streamingToolCalls.length,
-    activeConversationId,
-  });
 
   const {
     handleSend,
@@ -475,47 +467,65 @@ export function IntegratedChatPanel({
             {emptyState ?? <EmptyState />}
           </div>
         ) : (
-          <ScrollArea
-            ref={scrollAreaRef}
-            className="flex-1"
-            data-testid="integrated-chat-messages"
-          >
-            <div
-              className="p-3 w-full"
-              style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-            >
-              {/* Show failed run banner if last run failed */}
-              {showFailedBanner && failedRun?.errorMessage && (
-                <FailedRunBanner
-                  errorMessage={failedRun.errorMessage}
-                  onDismiss={() => setDismissedErrorId(failedRun.id)}
-                />
-              )}
+          <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
+            <Virtuoso
+              ref={virtuosoRef}
+              data={sortedMessages}
+              followOutput="smooth"
+              alignToBottom
+              className="h-full"
+              components={{
+                Header: () => (
+                  <div
+                    className="px-3 pt-3 w-full"
+                    style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
+                  >
+                    {/* Show failed run banner if last run failed */}
+                    {showFailedBanner && failedRun?.errorMessage && (
+                      <FailedRunBanner
+                        errorMessage={failedRun.errorMessage}
+                        onDismiss={() => setDismissedErrorId(failedRun.id)}
+                      />
+                    )}
 
-              {/* Show worker executing indicator when in execution mode */}
-              {isExecutionMode && <WorkerExecutingIndicator />}
-
-              {sortedMessages.map((msg) => (
-                <MessageItem
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  createdAt={msg.createdAt}
-                  toolCalls={msg.toolCalls}
-                  contentBlocks={msg.contentBlocks}
-                />
-              ))}
-              {/* Show streaming tool calls or typing indicator while agent is working */}
-              {(isSending || isAgentRunning) && (
-                streamingToolCalls.length > 0 ? (
-                  <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-                ) : (
-                  <TypingIndicator />
-                )
+                    {/* Show worker executing indicator when in execution mode */}
+                    {isExecutionMode && <WorkerExecutingIndicator />}
+                  </div>
+                ),
+                Footer: () => (
+                  <div
+                    className="px-3 pb-3 w-full"
+                    style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
+                  >
+                    {/* Show streaming tool calls or typing indicator while agent is working */}
+                    {(isSending || isAgentRunning) && (
+                      streamingToolCalls.length > 0 ? (
+                        <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
+                      ) : (
+                        <TypingIndicator />
+                      )
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                ),
+              }}
+              itemContent={(_, msg) => (
+                <div
+                  className="px-3 w-full"
+                  style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
+                >
+                  <MessageItem
+                    key={msg.id}
+                    role={msg.role}
+                    content={msg.content}
+                    createdAt={msg.createdAt}
+                    toolCalls={msg.toolCalls}
+                    contentBlocks={msg.contentBlocks}
+                  />
+                </div>
               )}
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
+            />
+          </div>
         )}
 
         {/* Input Area */}

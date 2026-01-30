@@ -2,8 +2,8 @@
  * ChatMessages - Message rendering and display logic
  */
 
-import { useMemo, type RefObject } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useMemo, useRef, type RefObject } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { type ToolCall } from "./ToolCallIndicator";
@@ -173,7 +173,6 @@ export interface ChatMessagesProps {
   failedErrorMessage: string | undefined;
   onDismissError: (() => void) | undefined;
   messagesEndRef: RefObject<HTMLDivElement | null>;
-  scrollAreaRef: RefObject<HTMLDivElement | null>;
 }
 
 export function ChatMessages({
@@ -186,8 +185,9 @@ export function ChatMessages({
   failedErrorMessage,
   onDismissError,
   messagesEndRef,
-  scrollAreaRef,
 }: ChatMessagesProps) {
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+
   // Sort messages by createdAt - render in chronological order
   const sortedMessages = useMemo(() => {
     return [...messages].sort((a, b) =>
@@ -197,53 +197,73 @@ export function ChatMessages({
 
   const isEmpty = !isLoading && sortedMessages.length === 0;
 
-  return (
-    <ScrollArea
-      ref={scrollAreaRef}
-      className="flex-1"
-      data-testid="chat-panel-messages"
-    >
-      <div className="p-3">
-        {/* Show failed run banner if provided */}
-        {failedErrorMessage && (
-          <FailedRunBanner
-            errorMessage={failedErrorMessage}
-            onDismiss={onDismissError}
-          />
-        )}
-
-        {/* Show worker executing indicator when in execution mode */}
-        {isExecutionMode && <WorkerExecutingIndicator />}
-
-        {isLoading ? (
-          <LoadingState />
-        ) : isEmpty ? (
-          <EmptyState />
-        ) : (
-          <>
-            {sortedMessages.map((msg) => (
-              <MessageItem
-                key={msg.id}
-                role={msg.role}
-                content={msg.content}
-                createdAt={msg.createdAt}
-                toolCalls={msg.toolCalls ?? null}
-                contentBlocks={msg.contentBlocks ?? null}
-              />
-            ))}
-            {/* Show streaming tool calls or typing indicator while agent is working */}
-            {(isSending || isAgentRunning) && (
-              streamingToolCalls.length > 0 ? (
-                <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-              ) : (
-                <TypingIndicator />
-              )
-            )}
-            <div ref={messagesEndRef} />
-          </>
-        )}
+  if (isLoading) {
+    return (
+      <div className="flex-1 p-3" data-testid="chat-panel-messages">
+        <LoadingState />
       </div>
-    </ScrollArea>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <div className="flex-1 p-3" data-testid="chat-panel-messages">
+        <EmptyState />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-hidden" data-testid="chat-panel-messages">
+      <Virtuoso
+        ref={virtuosoRef}
+        data={sortedMessages}
+        followOutput="smooth"
+        alignToBottom
+        className="h-full"
+        components={{
+          Header: () => (
+            <div className="px-3 pt-3">
+              {/* Show failed run banner if provided */}
+              {failedErrorMessage && (
+                <FailedRunBanner
+                  errorMessage={failedErrorMessage}
+                  onDismiss={onDismissError}
+                />
+              )}
+
+              {/* Show worker executing indicator when in execution mode */}
+              {isExecutionMode && <WorkerExecutingIndicator />}
+            </div>
+          ),
+          Footer: () => (
+            <div className="px-3 pb-3">
+              {/* Show streaming tool calls or typing indicator while agent is working */}
+              {(isSending || isAgentRunning) && (
+                streamingToolCalls.length > 0 ? (
+                  <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
+                ) : (
+                  <TypingIndicator />
+                )
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          ),
+        }}
+        itemContent={(_, msg) => (
+          <div className="px-3">
+            <MessageItem
+              key={msg.id}
+              role={msg.role}
+              content={msg.content}
+              createdAt={msg.createdAt}
+              toolCalls={msg.toolCalls ?? null}
+              contentBlocks={msg.contentBlocks ?? null}
+            />
+          </div>
+        )}
+      />
+    </div>
   );
 }
 
