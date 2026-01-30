@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-30 08:42:00 - Phase 32 Task 15: Add API serialization convention to code quality standards
+**What:**
+- Added "API Serialization Convention" section to .claude/rules/code-quality-standards.md
+- Documented the snake_case Boundary Pattern (Backend → Schema → Transform → Types)
+- Added Backend Rules (NEVER use rename_all = camelCase on response structs)
+- Added Frontend Rules (schemas expect snake_case, transforms convert to camelCase)
+
+**Files:**
+- .claude/rules/code-quality-standards.md
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 07:15:00 - Phase 32 Task 14: Audit and add missing transform functions
 **What:**
 - Audited all API modules for snake_case schema + transform coverage

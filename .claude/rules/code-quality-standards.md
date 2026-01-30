@@ -43,3 +43,25 @@
 | **Shared style constants** | Repeated inline styles → `const style: React.CSSProperties = {...}` |
 | **Co-locate dependencies** | Component owns its CSS/animations via `<style>` tag, not parent injection |
 | **Complete loading states** | Cover entire async window: fetch + auto-select + settling |
+
+## API Serialization Convention
+
+### The snake_case Boundary Pattern
+
+| Layer | Convention | Example |
+|-------|-----------|---------|
+| Rust backend | snake_case | `session_id`, `created_at` |
+| Frontend Zod schema | snake_case | `z.object({ session_id: z.string() })` |
+| Transform function | converts | `sessionId: raw.session_id` |
+| Frontend types | camelCase | `interface { sessionId: string }` |
+
+### Backend Rules
+- **NEVER** use `#[serde(rename_all = "camelCase")]` on response structs
+- Rust structs serialize to snake_case by default (correct)
+- Input structs may use `#[serde(rename_all = "camelCase")]` for Tauri param convenience
+
+### Frontend Rules
+- API schemas in `src/api/*.schemas.ts` expect **snake_case**
+- Display types in `src/types/*.ts` use **camelCase**
+- Transform functions in `src/api/*.transforms.ts` bridge the gap
+- Every API wrapper must apply transforms before returning

@@ -342,7 +342,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "  - Frontend Rules (schemas expect snake_case, transforms convert)",
       "Commit: docs: add API serialization convention to code quality standards"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 16,
