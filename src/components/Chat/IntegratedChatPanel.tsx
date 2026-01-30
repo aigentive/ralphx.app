@@ -10,29 +10,23 @@
  */
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTasks } from "@/hooks/useTasks";
-import type { ChatContext } from "@/types/chat";
-import type { ContextType } from "@/types/chat-conversation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useChatPanelContext } from "@/hooks/useChatPanelContext";
+import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
-import { type ToolCall } from "./ToolCallIndicator";
-import { StreamingToolIndicator } from "./StreamingToolIndicator";
-import { MessageItem } from "./MessageItem";
+import { ChatMessageList } from "./ChatMessageList";
 import {
-  TypingIndicator,
   EmptyState,
   LoadingState,
-  WorkerExecutingIndicator,
-  FailedRunBanner,
   ContextIndicator,
   animationStyles,
 } from "./IntegratedChatPanel.components";
@@ -69,13 +63,9 @@ export function IntegratedChatPanel({
   headerContent,
   onClose,
 }: IntegratedChatPanelProps) {
-  const queryClient = useQueryClient();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
 
-  const activeConversationId = useChatStore(selectActiveConversationId);
-
   // Get task data from React Query (useTasks) which has full task data
-  // Note: We can't use useTaskStore because it only has partial task data from events
   const { data: tasks = [] } = useTasks(projectId);
   const selectedTask = useMemo(
     () => selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : undefined,
@@ -94,119 +84,29 @@ export function IntegratedChatPanel({
     ? reviewStatuses.includes(selectedTask.internalStatus)
     : false;
 
-  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-  const clearMessages = useChatStore((s) => s.clearMessages);
-
-  // Build chat context based on selected task or ideation session
-  const chatContext: ChatContext = useMemo(() => {
-    if (ideationSessionId) {
-      return {
-        view: "ideation",
-        projectId,
-        ideationSessionId,
-      };
-    }
-    if (selectedTaskId) {
-      return {
-        view: "task_detail",
-        projectId,
-        selectedTaskId,
-      };
-    }
-    return {
-      view: "kanban",
-      projectId,
-    };
-  }, [selectedTaskId, projectId, ideationSessionId]);
-
-  // Compute store context key for queue/agent state operations
-  // Uses context-aware keys: "task_execution:id", "review:id", or standard keys
-  const storeContextKey = useMemo(() => {
-    if (isExecutionMode && selectedTaskId) {
-      return `task_execution:${selectedTaskId}`;
-    }
-    if (isReviewMode && selectedTaskId) {
-      return `review:${selectedTaskId}`;
-    }
-    return getContextKey(chatContext);
-  }, [isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
+  // Use extracted context management hook
+  const {
+    chatContext,
+    storeContextKey,
+    currentContextType,
+    currentContextId,
+    activeConversationId,
+    streamingToolCalls,
+    setStreamingToolCalls,
+    autoSelectConversation,
+  } = useChatPanelContext({
+    projectId,
+    ideationSessionId,
+    selectedTaskId: selectedTaskId ?? undefined,
+    isExecutionMode,
+    isReviewMode,
+  });
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
-
-
-  // Streaming tool calls - accumulated during agent execution (defined early for context change effect)
-  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
-
-  // Reset active conversation when context changes
-  // This ensures we load the correct conversations for the new context
-  const contextKey = ideationSessionId
-    ? `ideation:${ideationSessionId}`
-    : selectedTaskId
-      ? `${isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
-      : `project:${projectId}`;
-  // Initialize with empty string to ensure cleanup runs on first mount
-  // This prevents showing conversations from a different context
-  const prevContextKeyRef = useRef("");
-  const prevContextTypeRef = useRef<{ type: string; id: string } | null>(null);
-
-  // Auto-select the most recent conversation for this context
-  // Use a ref to track initialization and prevent infinite loops
-  const hasAutoSelectedRef = useRef(false);
-
-  // Track the previous context type and id for cache invalidation
-  useEffect(() => {
-    const currentContextType = ideationSessionId
-      ? "ideation"
-      : selectedTaskId
-        ? (isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
-        : "project";
-    const currentContextId = ideationSessionId || selectedTaskId || projectId;
-    prevContextTypeRef.current = { type: currentContextType, id: currentContextId };
-  }, [selectedTaskId, isExecutionMode, isReviewMode, projectId, ideationSessionId]);
-
-  useEffect(() => {
-    if (prevContextKeyRef.current !== contextKey) {
-      // Context changed - get the current conversation ID and context before clearing
-      const currentConversationId = useChatStore.getState().activeConversationId;
-      const oldContext = prevContextTypeRef.current;
-
-      // Clear the active conversation immediately
-      setActiveConversation(null);
-
-      // Clear streaming tool calls
-      setStreamingToolCalls([]);
-
-      // Clear the query cache for the old conversation to prevent stale data
-      if (currentConversationId) {
-        queryClient.removeQueries({
-          queryKey: chatKeys.conversation(currentConversationId),
-        });
-      }
-
-      // Also clear the old context's conversation list to prevent initialization
-      // from picking up stale conversations
-      if (oldContext) {
-        queryClient.removeQueries({
-          queryKey: chatKeys.conversationList(oldContext.type as ContextType, oldContext.id),
-        });
-      }
-
-      // Clear messages from Zustand store for the old context to free memory
-      // Uses the previous context key (before the switch)
-      if (prevContextKeyRef.current) {
-        clearMessages(prevContextKeyRef.current);
-      }
-
-      // Reset auto-select flag when context changes
-      hasAutoSelectedRef.current = false;
-
-      prevContextKeyRef.current = contextKey;
-    }
-  }, [contextKey, setActiveConversation, queryClient, clearMessages]);
 
   // For execution/review mode, fetch conversations directly with specific context type
   const regularChatData = useChat(chatContext);
@@ -232,74 +132,14 @@ export function IntegratedChatPanel({
       ? reviewConversationsQuery
       : regularChatData.conversations;
 
-  // Auto-select the most recent conversation when:
-  // 1. We're in execution or review mode (these modes always have a specific conversation)
-  // 2. No conversation is currently selected
-  // 3. Conversations are loaded
+  // Auto-select the most recent conversation in execution/review modes
   useEffect(() => {
-    const isLoading = isExecutionMode
-      ? executionConversationsQuery.isLoading
-      : isReviewMode
-        ? reviewConversationsQuery.isLoading
-        : false;
-
-    console.log(`[IntegratedChatPanel] Auto-select effect: isExec=${isExecutionMode}, isReview=${isReviewMode}, activeId=${activeConversationId}, isLoading=${isLoading}, convCount=${conversations.data?.length ?? 0}, hasAutoSelected=${hasAutoSelectedRef.current}, contextKey=${contextKey}`);
-
-    // Only auto-select for execution/review modes where we want to show existing conversations
-    if (!isExecutionMode && !isReviewMode) {
-      return;
-    }
-
-    // Wait for conversations to load before any validation/selection
-    if (isLoading) {
-      console.log(`[IntegratedChatPanel] Waiting for conversations to load...`);
-      return;
-    }
-
-    // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
-    // The activeConversationId in the store is global - it persists across context switches.
-    // If it doesn't belong to the current context's conversations, it's stale and must be reset.
-    if (activeConversationId && conversations.data && conversations.data.length > 0) {
-      const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
-      if (!belongsToContext) {
-        console.log(`[IntegratedChatPanel] Stale activeConversationId=${activeConversationId} not in context ${contextKey}, resetting`);
-        // Reset both the ID and the flag so auto-select can run
-        hasAutoSelectedRef.current = false;
-        setActiveConversation(null);
-        return; // Will re-run on next render with null activeConversationId
-      }
-    }
-
-    // Reset the flag if we're in execution/review mode but have no active conversation
-    // This handles the case where a task is closed and reopened - we need to re-select
-    if (!activeConversationId && hasAutoSelectedRef.current) {
-      console.log(`[IntegratedChatPanel] Resetting auto-select flag: no active conversation in ${isReviewMode ? 'review' : 'execution'} mode`);
-      hasAutoSelectedRef.current = false;
-    }
-
-    // Only auto-select once per context change
-    if (hasAutoSelectedRef.current) {
-      return;
-    }
-
-    if (!activeConversationId && conversations.data && conversations.data.length > 0) {
-      // Sort by most recent activity
-      const sorted = [...conversations.data].sort((a, b) => {
-        const aTime = a.lastMessageAt || a.createdAt;
-        const bTime = b.lastMessageAt || b.createdAt;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
-      const mostRecent = sorted[0];
-
-      if (mostRecent) {
-        console.log(`[IntegratedChatPanel] Auto-selecting conversation: ${mostRecent.id} (${isReviewMode ? 'review' : 'execution'} mode)`);
-        hasAutoSelectedRef.current = true;
-        setActiveConversation(mostRecent.id);
-      }
-    } else if (!activeConversationId && conversations.data?.length === 0) {
-      console.log(`[IntegratedChatPanel] No conversations available to auto-select`);
-    }
-  }, [activeConversationId, conversations.data, isExecutionMode, isReviewMode, setActiveConversation, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading, contextKey]);
+    autoSelectConversation(
+      conversations,
+      executionConversationsQuery.isLoading,
+      reviewConversationsQuery.isLoading
+    );
+  }, [autoSelectConversation, conversations, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading]);
 
   // Fetch agent run status for the active conversation
   const agentRunQuery = useQuery({
@@ -324,19 +164,8 @@ export function IntegratedChatPanel({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Determine current context type and ID for validation
-  const currentContextType: ContextType = ideationSessionId
-    ? "ideation"
-    : selectedTaskId
-      ? (isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
-      : "project";
-  const currentContextId = ideationSessionId || selectedTaskId || projectId;
-
   // Extract messages array from active conversation
-  // Only show messages if:
-  // 1. We have an active conversation ID
-  // 2. The conversation belongs to the CURRENT context (not stale from previous context)
-  // This prevents showing messages from a previous session when switching contexts
+  // Only show messages if conversation belongs to current context
   const conversationContext = activeConversation.data?.conversation;
   const isConversationInCurrentContext =
     conversationContext?.contextType === currentContextType &&
@@ -369,7 +198,7 @@ export function IntegratedChatPanel({
     messageCount: messagesData.length,
   });
 
-  // Wrapper for handleEditLastQueued that provides the queued messages - unified queue
+  // Wrapper for handleEditLastQueued that provides the queued messages
   const handleEditLastQueuedWrapper = () => {
     handleEditLastQueued(queuedMessages);
   };
@@ -474,65 +303,17 @@ export function IntegratedChatPanel({
             {emptyState ?? <EmptyState />}
           </div>
         ) : (
-          <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
-            <Virtuoso
-              ref={virtuosoRef}
-              data={sortedMessages}
-              followOutput="smooth"
-              alignToBottom
-              className="h-full"
-              components={{
-                Header: () => (
-                  <div
-                    className="px-3 pt-3 w-full"
-                    style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-                  >
-                    {/* Show failed run banner if last run failed */}
-                    {showFailedBanner && failedRun?.errorMessage && (
-                      <FailedRunBanner
-                        errorMessage={failedRun.errorMessage}
-                        onDismiss={() => setDismissedErrorId(failedRun.id)}
-                      />
-                    )}
-
-                    {/* Show worker executing indicator when in execution mode */}
-                    {isExecutionMode && <WorkerExecutingIndicator />}
-                  </div>
-                ),
-                Footer: () => (
-                  <div
-                    className="px-3 pb-3 w-full"
-                    style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-                  >
-                    {/* Show streaming tool calls or typing indicator while agent is working */}
-                    {(isSending || isAgentRunning) && (
-                      streamingToolCalls.length > 0 ? (
-                        <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-                      ) : (
-                        <TypingIndicator />
-                      )
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                ),
-              }}
-              itemContent={(_, msg) => (
-                <div
-                  className="px-3 w-full"
-                  style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-                >
-                  <MessageItem
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    createdAt={msg.createdAt}
-                    toolCalls={msg.toolCalls}
-                    contentBlocks={msg.contentBlocks}
-                  />
-                </div>
-              )}
-            />
-          </div>
+          <ChatMessageList
+            ref={virtuosoRef}
+            messages={sortedMessages}
+            isExecutionMode={isExecutionMode}
+            failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
+            onDismissFailedRun={setDismissedErrorId}
+            isSending={isSending}
+            isAgentRunning={isAgentRunning}
+            streamingToolCalls={streamingToolCalls}
+            messagesEndRef={messagesEndRef}
+          />
         )}
 
         {/* Input Area */}

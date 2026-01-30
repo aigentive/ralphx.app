@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-01-30 19:15:00 - Phase 31 Task 7: Extract oversized files to meet LOC limits
+**What:**
+- Extracted CodeBlock and markdownComponents from MessageItem.tsx to MessageItem.markdown.tsx (~234 LOC)
+- Extracted formatTimestamp utility to MessageItem.utils.ts (~22 LOC)
+- MessageItem.tsx reduced from 398 LOC to 161 LOC (target: ~200 LOC)
+- Extracted context management logic to useChatPanelContext.ts hook (~237 LOC)
+- Extracted virtualized message list to ChatMessageList.tsx component (~133 LOC)
+- IntegratedChatPanel.tsx reduced from 581 LOC to 362 LOC (target: ~300 LOC)
+
+**Files:**
+- src/components/Chat/MessageItem.tsx - refactored main component (161 LOC)
+- src/components/Chat/MessageItem.markdown.tsx - new file with CodeBlock + markdownComponents
+- src/components/Chat/MessageItem.utils.ts - new file with formatTimestamp utility
+- src/components/Chat/IntegratedChatPanel.tsx - refactored main component (362 LOC)
+- src/components/Chat/ChatMessageList.tsx - new virtualized message list component
+- src/hooks/useChatPanelContext.ts - new context management hook
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint --quiet [all modified files]` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 18:30:00 - Phase 31 Task 6: Extract markdown components to module-level constant
 **What:**
 - Verified markdownComponents is already extracted to module level (lines 117-266)
