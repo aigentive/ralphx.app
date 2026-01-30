@@ -240,6 +240,13 @@
       "prd": "specs/phases/prd_phase_32_api_serialization.md",
       "status": "active",
       "description": "Standardize snake_case boundary: remove camelCase serde renames, fix frontend schemas"
+    },
+    {
+      "phase": 33,
+      "name": "Proposal Edit Modal Redesign",
+      "prd": "specs/phases/prd_phase_33_proposal_edit_modal_redesign.md",
+      "status": "pending",
+      "description": "Transform ProposalEditModal with glass morphism, two-column metadata, visual complexity selector, and animations"
     }
   ]
 }

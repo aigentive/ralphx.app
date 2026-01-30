@@ -72,7 +72,7 @@ Create a new file at `specs/phases/prd_phase_<N>_<short_name>.md` using the temp
 - Key architecture decisions from the plan
 - Verification checklist from the plan's verification section
 
-### Step 8: Confirm with User
+### Step 8: Ask User About Activation
 
 Show the user:
 1. Where the plan was copied: `specs/plans/<name>.md`
@@ -81,8 +81,74 @@ Show the user:
 4. Number of tasks generated
 
 Ask if they want to:
-- Activate this phase in the manifest (update `specs/manifest.json`)
-- Just create the files without activating
+- **Activate now** - Set phase status to "active" (requires current active phase to be complete)
+- **Save for later** - Set phase status to "pending" (default)
+
+### Step 9: Update Manifest
+
+**ALWAYS add the new phase to `specs/manifest.json`** regardless of user choice.
+
+**If user chose "Activate now":**
+1. Set the current active phase's status to "complete"
+2. Update `currentPhase` to the new phase number
+3. Add the new phase with `"status": "active"`
+
+**If user chose "Save for later" (default):**
+1. Keep `currentPhase` unchanged
+2. Add the new phase with `"status": "pending"`
+
+**New phase entry format:**
+```json
+{
+  "phase": <N>,
+  "name": "<Phase Name from plan title>",
+  "prd": "specs/phases/prd_phase_<N>_<short_name>.md",
+  "status": "active" | "pending",
+  "description": "<Brief 1-line description>"
+}
+```
+
+### Step 10: Commit All Changes
+
+**ALWAYS commit the plan, PRD, and manifest using the commit lock protocol.**
+
+Reference: `.claude/rules/commit-lock.md`
+
+```bash
+# 1. Establish project root
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+
+# 2. Acquire commit lock
+if [ -f "$PROJECT_ROOT/.commit-lock" ]; then
+  # Wait and retry per protocol (see commit-lock.md)
+fi
+echo "plan-to-prd $(date -u +%Y-%m-%dT%H:%M:%S)" > "$PROJECT_ROOT/.commit-lock"
+
+# 3. Stage files
+git -C "$PROJECT_ROOT" add specs/plans/<plan_name>.md
+git -C "$PROJECT_ROOT" add specs/phases/prd_phase_<N>_<short_name>.md
+git -C "$PROJECT_ROOT" add specs/manifest.json
+
+# 4. Commit
+git -C "$PROJECT_ROOT" commit -m "docs: add Phase <N> PRD for <phase name>
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+
+# 5. Release lock (ALWAYS, even on failure)
+rm -f "$PROJECT_ROOT/.commit-lock"
+```
+
+**Commit message format:**
+- If activating: `docs: add and activate Phase <N> PRD for <phase name>`
+- If pending: `docs: add Phase <N> PRD for <phase name>`
+
+### Step 11: Report Results
+
+Report to the user:
+1. Files created/modified
+2. Phase status (active or pending)
+3. Commit hash
+4. Next steps (e.g., "Run `/activate-prd` when ready to start this phase")
 
 ### Task Conversion Guidelines
 
