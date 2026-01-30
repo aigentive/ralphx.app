@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-30 16:40:28 - Phase 37 Task 1: Add tool definitions for list_session_proposals and get_proposal
+**What:**
+- Added list_session_proposals tool definition to ALL_TOOLS in tools.ts (IDEATION TOOLS section)
+- Added get_proposal tool definition after list_session_proposals
+- Updated TOOL_ALLOWLIST["orchestrator-ideation"] to include both new tools
+
+**Files:**
+- ralphx-plugin/ralphx-mcp-server/src/tools.ts (modified)
+
+**Commands:**
+- `npm run build` in ralphx-mcp-server
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 16:00:00 - Phase 36 Complete: Gap Verification Passed
 **What:**
 - Ran gap verification for Phase 36 (Inline Version Selector for Plan History)
