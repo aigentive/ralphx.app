@@ -91,6 +91,11 @@ QaPassed→PendingReview | RevisionNeeded→Executing (retry)
 | Struct | `input: CreateInput` | `{ input: { context_type } }` (serde exact-match) |
 | Struct+rename | `#[serde(rename_all="camelCase")]` | `{ input: { contextType } }` |
 
+### Response Serialization (CRITICAL)
+- **NEVER** use `#[serde(rename_all = "camelCase")]` on response structs
+- Rust's default snake_case serialization is correct
+- Frontend handles case conversion via transform layer
+
 ### Command Handlers (THIN)
 Commands must be 5-10 lines max — extract, delegate, return:
 ```rust
