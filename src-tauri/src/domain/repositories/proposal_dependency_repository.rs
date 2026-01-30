@@ -55,6 +55,9 @@ pub trait ProposalDependencyRepository: Send + Sync {
     /// Clear all dependencies for a proposal (both directions)
     async fn clear_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<()>;
 
+    /// Clear all dependencies for all proposals in a session
+    async fn clear_session_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()>;
+
     /// Count dependencies for a proposal (how many it depends on)
     async fn count_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<u32>;
 
@@ -175,6 +178,10 @@ mod tests {
         }
 
         async fn clear_dependencies(&self, _proposal_id: &TaskProposalId) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn clear_session_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
             Ok(())
         }
 

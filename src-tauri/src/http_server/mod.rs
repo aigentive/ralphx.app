@@ -35,6 +35,8 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/delete_task_proposal", post(delete_task_proposal))
         .route("/api/add_proposal_dependency", post(add_proposal_dependency))
+        // Dependency suggester tools (dependency-suggester agent)
+        .route("/api/apply_proposal_dependencies", post(apply_proposal_dependencies))
         // Proposal query tools (orchestrator-ideation agent)
         .route("/api/list_session_proposals/:session_id", get(list_session_proposals))
         .route("/api/proposal/:proposal_id", get(get_proposal))
