@@ -1,11 +1,13 @@
 # Git Workflow Rules
 
+**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/commit-lock.md
+
 > Shared git rules for all streams. Stream-specific ownership rules are defined in each stream file.
 
 ## Critical Rules
 
 1. **NEVER use git stash** — parallel agents run simultaneously; stashing causes conflicts and lost work
-2. **Use commit lock protocol** — see `.claude/rules/commit-lock.md` for full details
+2. **Use commit lock protocol** — see @.claude/rules/commit-lock.md for full details
 3. **Only recover YOUR work** — uncommitted files belong to the stream whose backlog/PRD mentions them
 
 ## Commit Lock Summary
@@ -87,5 +89,5 @@ Match if: File path matches a backlog item's file:line reference
 
 ## Reference
 
-- Full commit lock protocol: `.claude/rules/commit-lock.md`
-- Code quality standards: `.claude/rules/code-quality-standards.md`
+- Full commit lock protocol: @.claude/rules/commit-lock.md
+- Code quality standards: @.claude/rules/code-quality-standards.md

@@ -1,5 +1,7 @@
 # Verify Stream
 
+**Required Context:** @.claude/rules/gap-verification.md | @.claude/rules/git-workflow.md
+
 ## Overview
 
 The verify stream handles **gap detection in completed phases**. It scans for bugs where code exists but isn't properly wired up, then produces P0 items for the features stream to fix.
@@ -12,7 +14,7 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 2. **Output P0 items to streams/features/backlog.md** — verify produces, features consumes
 3. **ONE verification pass per iteration, then STOP**
 4. **No backlog** — this stream reads completed phases and outputs to features/backlog.md
-5. **Follow git workflow rules** — see `.claude/rules/git-workflow.md` (Recovery Check does not apply — this stream doesn't write code)
+5. **Follow git workflow rules** — see @.claude/rules/git-workflow.md (Recovery Check does not apply — this stream doesn't write code)
 6. **Skip already-verified phases SILENTLY** — if activity log shows "No gaps found" for a phase, do NOT re-verify, do NOT log, do NOT commit. Just skip it entirely.
 
 ## Workflow
@@ -48,7 +50,7 @@ The verify stream handles **gap detection in completed phases**. It scans for bu
 
 ## Verification Checks
 
-Reference: `.claude/rules/gap-verification.md`
+Reference: @.claude/rules/gap-verification.md
 
 ### Check 1: WIRING (Critical)
 
@@ -195,5 +197,5 @@ Log entries go in `streams/verify/activity.md`:
 
 ## Reference
 
-- Detailed verification workflow: `.claude/rules/gap-verification.md`
-- Features stream (consumes P0s): `.claude/rules/stream-features.md`
+- Detailed verification workflow: @.claude/rules/gap-verification.md
+- Features stream (consumes P0s): @.claude/rules/stream-features.md
