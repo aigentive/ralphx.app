@@ -746,3 +746,49 @@ get_oldest_ready_task() → transition_task(Executing) → worker spawned
 **Result:** No gaps found. Phase 29 implementation complete and fully wired with zero P0 items.
 
 ---
+
+### 2026-01-30 20:01:22 - Phase 30 Verification
+**Phases Checked:** 30
+
+**Checks Run:**
+- WIRING: 7 components checked (toggle_proposal_selection, set_proposal_selection, reorder_proposals, ProposalEditModal, useProposalEvents)
+- API: Event emission in 3 backend commands verified
+- STATE: editingProposalId state and modal rendering verified
+- EVENTS: proposal:updated and proposals:reordered listener integration verified
+
+**Gaps Found:** 0
+
+**Verification Details:**
+
+1. WIRING - Backend Event Emission:
+   - toggle_proposal_selection emits proposal:updated (lines 281-286) ✓
+   - set_proposal_selection emits proposal:updated (lines 313-318) ✓
+   - reorder_proposals emits proposals:reordered (lines 350-356) ✓
+
+2. WIRING - Edit Modal Integration:
+   - editingProposalId state defined in App.tsx (line 132) ✓
+   - ProposalEditModal imported and rendered (lines 20, 747-752) ✓
+   - handleEditProposal wired to setEditingProposalId (lines 372-374) ✓
+   - handleSaveProposal wired to updateProposal.mutateAsync (lines 376-388) ✓
+   - No disabled flags blocking invocation ✓
+
+3. EVENTS - Frontend Listeners:
+   - useProposalEvents listens for proposal:updated (lines 79-120) ✓
+   - useProposalEvents listens for proposals:reordered (lines 137-179) ✓
+   - Hook actively used in EventProvider (line 57) ✓
+   - EventProvider wraps App (line 771) ✓
+
+4. Complete Call Chains Verified:
+   - Selection checkbox: UI → mutation → backend → event → listener → store → UI update ✓
+   - Edit modal: click edit → modal opens → save → backend → event → listener → UI update ✓
+   - Reorder: sort button → backend → event → listener → proposal cards reorder ✓
+
+**Common Failure Patterns:**
+- ✓ No optional props defaulting to false/disabled
+- ✓ No components imported but not rendered
+- ✓ No functions exported but never called
+- ✓ No dead hooks
+
+**Result:** No gaps found. Phase 30 implementation complete and fully wired with zero P0 items.
+
+---
