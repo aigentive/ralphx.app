@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import type { TaskProposal, IdeationSession } from "@/types/ideation";
+import { PRIORITY_VALUES, type TaskProposal, type IdeationSession } from "@/types/ideation";
 import { useIdeationStore, type ProactiveSyncNotification } from "@/stores/ideationStore";
 import { ideationApi } from "@/api/ideation";
 
@@ -44,7 +44,13 @@ export function useIdeationHandlers(
 
   const handleSortByPriority = useCallback(() => {
     collapsePlan();
-    const sorted = [...proposals].sort((a, b) => b.priorityScore - a.priorityScore);
+    // Sort by suggestedPriority (critical > high > medium > low)
+    // PRIORITY_VALUES is ordered by importance, so lower index = higher priority
+    const sorted = [...proposals].sort((a, b) => {
+      const aIndex = PRIORITY_VALUES.indexOf(a.suggestedPriority);
+      const bIndex = PRIORITY_VALUES.indexOf(b.suggestedPriority);
+      return aIndex - bIndex;
+    });
     onReorderProposals(sorted.map((p) => p.id));
   }, [proposals, onReorderProposals, collapsePlan]);
 
