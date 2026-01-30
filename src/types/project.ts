@@ -10,23 +10,57 @@ export const GitModeSchema = z.enum(["local", "worktree"]);
 export type GitMode = z.infer<typeof GitModeSchema>;
 
 /**
- * Project schema matching Rust backend serialization
- * Note: field names use camelCase as that's what serde_json produces with rename_all
+ * Backend response schema - expects snake_case from Rust serialization
  */
-export const ProjectSchema = z.object({
+export const ProjectResponseSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  workingDirectory: z.string().min(1),
-  gitMode: GitModeSchema,
-  worktreePath: z.string().nullable(),
-  worktreeBranch: z.string().nullable(),
-  baseBranch: z.string().nullable(),
+  working_directory: z.string().min(1),
+  git_mode: GitModeSchema,
+  worktree_path: z.string().nullable(),
+  worktree_branch: z.string().nullable(),
+  base_branch: z.string().nullable(),
   // Accept RFC3339 timestamps with offset (e.g., +00:00) not just Z
-  createdAt: z.string().datetime({ offset: true }),
-  updatedAt: z.string().datetime({ offset: true }),
+  created_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
 });
 
-export type Project = z.infer<typeof ProjectSchema>;
+/**
+ * Frontend Project interface - uses camelCase
+ */
+export interface Project {
+  id: string;
+  name: string;
+  workingDirectory: string;
+  gitMode: GitMode;
+  worktreePath: string | null;
+  worktreeBranch: string | null;
+  baseBranch: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Transform snake_case backend response to camelCase frontend type
+ */
+export function transformProject(
+  response: z.infer<typeof ProjectResponseSchema>
+): Project {
+  return {
+    id: response.id,
+    name: response.name,
+    workingDirectory: response.working_directory,
+    gitMode: response.git_mode,
+    worktreePath: response.worktree_path,
+    worktreeBranch: response.worktree_branch,
+    baseBranch: response.base_branch,
+    createdAt: response.created_at,
+    updatedAt: response.updated_at,
+  };
+}
+
+// Legacy export for backward compatibility - use ProjectResponseSchema instead
+export const ProjectSchema = ProjectResponseSchema;
 
 /**
  * Schema for creating a new project

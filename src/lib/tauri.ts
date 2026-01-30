@@ -15,9 +15,11 @@ import {
   type TaskListResponse,
 } from "@/types/task";
 import {
-  ProjectSchema,
+  ProjectResponseSchema,
+  transformProject,
   type CreateProject,
   type UpdateProject,
+  type Project,
 } from "@/types/project";
 import { WorkflowSchemaZ } from "@/types/workflow";
 import {
@@ -81,9 +83,18 @@ export const HealthResponseSchema = z.object({
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
 /**
- * Project list schema for array responses
+ * Project list schema for array responses (snake_case from backend)
  */
-const ProjectListSchema = z.array(ProjectSchema);
+const ProjectListResponseSchema = z.array(ProjectResponseSchema);
+
+/**
+ * Transform project list from snake_case to camelCase
+ */
+function transformProjectList(
+  response: z.infer<typeof ProjectListResponseSchema>
+): Project[] {
+  return response.map(transformProject);
+}
 
 /**
  * Workflow list schema for array responses
@@ -550,7 +561,13 @@ export const api = {
      * List all projects
      * @returns Array of projects
      */
-    list: () => typedInvoke("list_projects", {}, ProjectListSchema),
+    list: () =>
+      typedInvokeWithTransform(
+        "list_projects",
+        {},
+        ProjectListResponseSchema,
+        transformProjectList
+      ),
 
     /**
      * Get a single project by ID
@@ -558,7 +575,12 @@ export const api = {
      * @returns The project
      */
     get: (projectId: string) =>
-      typedInvoke("get_project", { projectId }, ProjectSchema),
+      typedInvokeWithTransform(
+        "get_project",
+        { projectId },
+        ProjectResponseSchema,
+        transformProject
+      ),
 
     /**
      * Create a new project
@@ -566,7 +588,12 @@ export const api = {
      * @returns The created project
      */
     create: (input: CreateProject) =>
-      typedInvoke("create_project", { input }, ProjectSchema),
+      typedInvokeWithTransform(
+        "create_project",
+        { input },
+        ProjectResponseSchema,
+        transformProject
+      ),
 
     /**
      * Update an existing project
@@ -575,7 +602,12 @@ export const api = {
      * @returns The updated project
      */
     update: (projectId: string, input: UpdateProject) =>
-      typedInvoke("update_project", { projectId, input }, ProjectSchema),
+      typedInvokeWithTransform(
+        "update_project",
+        { projectId, input },
+        ProjectResponseSchema,
+        transformProject
+      ),
 
     /**
      * Delete a project
