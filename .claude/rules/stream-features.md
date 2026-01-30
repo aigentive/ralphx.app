@@ -1,5 +1,7 @@
 # Features Stream
 
+**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md | @.claude/rules/gap-verification.md
+
 ## Overview
 
 The features stream handles **PRD tasks and P0 gap fixes**. It is the primary stream for shipping new functionality.
@@ -13,7 +15,7 @@ The features stream handles **PRD tasks and P0 gap fixes**. It is the primary st
 3. **No quality improvement work** — that's other streams' job (refactor, polish)
 4. **TDD mandatory** — tests FIRST
 5. **Document patterns inline** — new architectural patterns go in src/CLAUDE.md or src-tauri/CLAUDE.md
-6. **Follow git workflow rules** — see `.claude/rules/git-workflow.md`
+6. **Follow git workflow rules** — see @.claude/rules/git-workflow.md
 
 ## Recovery Check (ALWAYS FIRST)
 
@@ -93,7 +95,7 @@ When fixed:
 
 When all PRD tasks have `"passes": true`:
 
-1. Run gap verification (see `.claude/rules/gap-verification.md`)
+1. Run gap verification (see @.claude/rules/gap-verification.md)
 2. Gaps found? → Add to streams/features/backlog.md as P0 → Continue iterations
 3. No gaps? → Update manifest.json:
    - Set current phase `"status": "complete"`
@@ -144,6 +146,6 @@ Log entries go in `streams/features/activity.md`:
 
 ## Reference
 
-- Gap verification workflow: `.claude/rules/gap-verification.md`
-- Code quality standards: `.claude/rules/code-quality-standards.md`
+- Gap verification workflow: @.claude/rules/gap-verification.md
+- Code quality standards: @.claude/rules/code-quality-standards.md
 - Manifest and phases: `specs/manifest.json`

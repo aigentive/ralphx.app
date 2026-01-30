@@ -1,5 +1,7 @@
 # Polish Stream
 
+**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md
+
 ## Overview
 
 The polish stream handles **P2/P3 cleanup, type fixes, lint fixes, and small extractions**. It ensures incremental code quality improvements get done consistently.
@@ -13,7 +15,7 @@ The polish stream handles **P2/P3 cleanup, type fixes, lint fixes, and small ext
 3. **Cannot skip to other work** — work items in order
 4. **Verify issue still exists** — check file:line before starting
 5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
-6. **Follow git workflow rules** — see `.claude/rules/git-workflow.md`
+6. **Follow git workflow rules** — see @.claude/rules/git-workflow.md
 
 ## Recovery Check (ALWAYS FIRST)
 
@@ -153,5 +155,5 @@ Log entries go in `streams/polish/activity.md`:
 
 ## Reference
 
-- Code quality standards: `.claude/rules/code-quality-standards.md`
-- Hygiene refills this backlog: `.claude/rules/stream-hygiene.md`
+- Code quality standards: @.claude/rules/code-quality-standards.md
+- Hygiene refills this backlog: @.claude/rules/stream-hygiene.md

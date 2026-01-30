@@ -1,5 +1,7 @@
 # Gap Verification Workflow
 
+**Required Context:** @.claude/rules/stream-features.md | @.claude/rules/stream-verify.md
+
 ## When to Run
 
 **Trigger:** All tasks in a phase have `"passes": true`
@@ -179,5 +181,5 @@ Gap verification feeds into the features stream:
 2. Gap items are picked FIRST regardless of task size
 3. A phase is NOT complete until all P0 items are resolved
 
-See `.claude/rules/stream-features.md` for the features stream workflow.
-See `.claude/rules/stream-verify.md` for the verify stream that produces P0s.
+See @.claude/rules/stream-features.md for the features stream workflow.
+See @.claude/rules/stream-verify.md for the verify stream that produces P0s.
