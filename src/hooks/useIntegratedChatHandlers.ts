@@ -110,8 +110,8 @@ export function useIntegratedChatHandlers({
         // Trigger session auto-naming on first ideation message
         // Fire-and-forget - don't await, don't block the user
         if (isFirstIdeationMessage) {
-          ideationApi.sessions.spawnSessionNamer(ideationSessionId, content).catch((err) => {
-            console.error("Failed to spawn session namer:", err);
+          ideationApi.sessions.spawnSessionNamer(ideationSessionId, content).catch(() => {
+            // Silently ignore - session namer is optional
           });
         }
       } catch {
@@ -170,8 +170,8 @@ export function useIntegratedChatHandlers({
       // Delete from backend using the same ID
       try {
         await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
-      } catch (error) {
-        console.error("Failed to delete queued message from backend:", error);
+      } catch {
+        // Silently ignore - local state already updated (optimistic)
       }
     },
     [deleteQueuedMessage, getQueueContext, storeContextKey]
@@ -185,8 +185,8 @@ export function useIntegratedChatHandlers({
       // Delete old message from backend
       try {
         await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
-      } catch (error) {
-        console.error("Failed to delete old queued message:", error);
+      } catch {
+        // Silently ignore - will clean up local state regardless
       }
 
       // Delete from local store - unified queue with context-aware keys
@@ -201,8 +201,8 @@ export function useIntegratedChatHandlers({
       // Queue to backend with same ID
       try {
         await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
-      } catch (error) {
-        console.error("Failed to queue edited message to backend:", error);
+      } catch {
+        // Silently ignore - local state already updated (optimistic)
       }
     },
     [deleteQueuedMessage, queueMessage, getQueueContext, generateQueuedMessageId, storeContextKey]
@@ -221,8 +221,8 @@ export function useIntegratedChatHandlers({
 
     try {
       await stopAgent(ctxType, ctxId);
-    } catch (error) {
-      console.error("Failed to stop agent:", error);
+    } catch {
+      // Silently ignore - agent stop is fire-and-forget
     }
   }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
 
