@@ -7,21 +7,40 @@
  * Anti-AI-Slop: No purple/blue gradients, warm orange #ff6b35, SF Pro typography
  */
 
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import TerminalCanvas from "./TerminalCanvas";
 import ParticleField from "./ParticleField";
 
 interface WelcomeScreenProps {
   onCreateProject: () => void;
+  /** Optional callback when closing manually-opened welcome screen (via ⌘⇧W or Escape) */
+  onClose?: (() => void) | undefined;
 }
 
-export default function WelcomeScreen({ onCreateProject }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScreenProps) {
   return (
     <div
       className="flex-1 flex flex-col items-center justify-center relative overflow-hidden"
       style={{ backgroundColor: "var(--bg-base)" }}
       data-testid="welcome-screen"
     >
+      {/* Close button - only shown when manually opened (onClose provided) */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 z-20 p-2 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+          style={{
+            backgroundColor: "rgba(255, 255, 255, 0.05)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            color: "var(--text-secondary)",
+          }}
+          aria-label="Close welcome screen"
+          data-testid="close-welcome-screen"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      )}
+
       {/* Particle field background */}
       <ParticleField />
 

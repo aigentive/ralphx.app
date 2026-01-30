@@ -90,6 +90,11 @@ function AppContent() {
   // Split layout chat state (for kanban view)
   const chatCollapsed = useUiStore((s) => s.chatCollapsed);
   const toggleChatCollapsed = useUiStore((s) => s.toggleChatCollapsed);
+  // Welcome screen overlay state
+  const showWelcomeOverlay = useUiStore((s) => s.showWelcomeOverlay);
+  const welcomeOverlayReturnView = useUiStore((s) => s.welcomeOverlayReturnView);
+  const openWelcomeOverlay = useUiStore((s) => s.openWelcomeOverlay);
+  const closeWelcomeOverlay = useUiStore((s) => s.closeWelcomeOverlay);
 
 
   // Chat panel state (for non-kanban views)
@@ -467,6 +472,14 @@ function AppContent() {
     }
   }, []);
 
+  // Handler for closing manually-opened welcome screen
+  const handleCloseWelcomeOverlay = useCallback(() => {
+    if (welcomeOverlayReturnView) {
+      setCurrentView(welcomeOverlayReturnView);
+    }
+    closeWelcomeOverlay();
+  }, [welcomeOverlayReturnView, setCurrentView, closeWelcomeOverlay]);
+
   // Keyboard shortcuts for view switching, chat toggle, and project creation
   useAppKeyboardShortcuts({
     currentView,
@@ -475,6 +488,10 @@ function AppContent() {
     toggleChatCollapsed,
     openProjectWizard: handleOpenProjectWizard,
     hasProjects: !hasNoProjects,
+    showWelcomeOverlay,
+    openWelcomeOverlay,
+    closeWelcomeOverlay,
+    welcomeOverlayReturnView,
   });
 
   return (
@@ -631,9 +648,12 @@ function AppContent() {
       <div className="h-14 flex-shrink-0" />
 
       {/* Main content area - shows WelcomeScreen or normal content */}
-      {hasNoProjects ? (
-        /* Empty state: animated welcome screen */
-        <WelcomeScreen onCreateProject={handleOpenProjectWizard} />
+      {(hasNoProjects || showWelcomeOverlay) ? (
+        /* Empty state or manual overlay: animated welcome screen */
+        <WelcomeScreen
+          onCreateProject={handleOpenProjectWizard}
+          onClose={showWelcomeOverlay ? handleCloseWelcomeOverlay : undefined}
+        />
       ) : (
         /* Normal content with view-specific content and optional panels */
         <div className="flex-1 flex overflow-hidden">
