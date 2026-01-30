@@ -44,6 +44,21 @@ const DependencyEventSchema = z.object({
 });
 
 /**
+ * Schema for dependency analysis started event payload
+ */
+const DependencyAnalysisStartedEventSchema = z.object({
+  sessionId: z.string(),
+});
+
+/**
+ * Schema for dependency suggestions applied event payload
+ */
+const DependencySuggestionsAppliedEventSchema = z.object({
+  sessionId: z.string(),
+  appliedCount: z.number(),
+});
+
+/**
  * Hook to listen for ideation events from the backend
  *
  * Listens to 'ideation:session_title_updated' events and updates the
@@ -153,6 +168,40 @@ export function useIdeationEvents() {
 
         // Invalidate dependency graph query
         queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+      })
+    );
+
+    // Listen for dependency analysis started (AI suggestion in progress)
+    unlistenFns.push(
+      listen<unknown>("dependencies:analysis_started", (event) => {
+        console.log("[IdeationEvents] Received dependencies:analysis_started:", event.payload);
+        const parsed = DependencyAnalysisStartedEventSchema.safeParse(event.payload);
+
+        if (!parsed.success) {
+          console.error("Invalid dependencies:analysis_started event:", parsed.error.message);
+          return;
+        }
+
+        // UI components can listen for this to show loading state
+        // The event is emitted for components to handle via their own listeners
+      })
+    );
+
+    // Listen for dependency suggestions applied (AI suggestion completed)
+    unlistenFns.push(
+      listen<unknown>("dependencies:suggestions_applied", (event) => {
+        console.log("[IdeationEvents] Received dependencies:suggestions_applied:", event.payload);
+        const parsed = DependencySuggestionsAppliedEventSchema.safeParse(event.payload);
+
+        if (!parsed.success) {
+          console.error("Invalid dependencies:suggestions_applied event:", parsed.error.message);
+          return;
+        }
+
+        // Invalidate dependency graph query to show new dependencies
+        queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+        // Also invalidate proposals since their dependency counts may have changed
+        queryClient.invalidateQueries({ queryKey: ideationKeys.proposals() });
       })
     );
 
