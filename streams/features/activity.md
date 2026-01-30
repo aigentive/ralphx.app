@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-30 16:00:00 - Phase 36 Complete: Gap Verification Passed
+**What:**
+- Ran gap verification for Phase 36 (Inline Version Selector for Plan History)
+- Verified all 4 tasks properly wired:
+  - Inline version selector dropdown works in PlanDisplay (not behind disabled flag)
+  - Historical content fetches via artifactApi.getAtVersion
+  - Auto-expand plan effect triggers when planArtifact && proposals.length === 0
+  - PlanHistoryDialog completely removed (file deleted, no references)
+- No orphaned implementations found
+- No P0 gaps detected
+- Updated manifest.json: Phase 36 status → "complete"
+
+**Result:** Phase 36 COMPLETE - All 36 phases finished
+
+---
+
 ### 2026-01-30 15:59:00 - Phase 36 Task 4: Delete unused PlanHistoryDialog
 **What:**
 - Verified no remaining imports of PlanHistoryDialog in codebase (only self-references)
