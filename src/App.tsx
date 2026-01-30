@@ -21,6 +21,7 @@ import { IdeationView, ProposalEditModal } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import { SettingsView } from "@/components/settings";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
 import { useUiStore } from "@/stores/uiStore";
@@ -227,14 +228,6 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
-
-  // Keyboard shortcuts for view switching and chat toggle
-  useAppKeyboardShortcuts({
-    currentView,
-    setCurrentView,
-    toggleChatPanel,
-    toggleChatCollapsed,
-  });
 
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {
@@ -474,6 +467,16 @@ function AppContent() {
     }
   }, []);
 
+  // Keyboard shortcuts for view switching, chat toggle, and project creation
+  useAppKeyboardShortcuts({
+    currentView,
+    setCurrentView,
+    toggleChatPanel,
+    toggleChatCollapsed,
+    openProjectWizard: handleOpenProjectWizard,
+    hasProjects: !hasNoProjects,
+  });
+
   return (
     <main
       className="h-screen flex flex-col overflow-hidden"
@@ -627,39 +630,10 @@ function AppContent() {
       {/* Spacer for fixed header */}
       <div className="h-14 flex-shrink-0" />
 
-      {/* Main content area - shows empty state wizard or normal content */}
+      {/* Main content area - shows WelcomeScreen or normal content */}
       {hasNoProjects ? (
-        /* Empty state: centered project creation wizard */
-        <div
-          className="flex-1 flex items-center justify-center"
-          data-testid="empty-state"
-        >
-          <div className="text-center">
-            <h2
-              className="text-xl font-semibold mb-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Welcome to RalphX
-            </h2>
-            <p
-              className="text-sm mb-6"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Get started by creating your first project
-            </p>
-            <button
-              onClick={handleOpenProjectWizard}
-              className="px-6 py-3 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: "var(--accent-primary)",
-                color: "#fff",
-              }}
-              data-testid="create-first-project-button"
-            >
-              Create Project
-            </button>
-          </div>
-        </div>
+        /* Empty state: animated welcome screen */
+        <WelcomeScreen onCreateProject={handleOpenProjectWizard} />
       ) : (
         /* Normal content with view-specific content and optional panels */
         <div className="flex-1 flex overflow-hidden">

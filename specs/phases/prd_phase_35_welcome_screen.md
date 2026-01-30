@@ -176,7 +176,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(app): integrate WelcomeScreen and keyboard shortcuts"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

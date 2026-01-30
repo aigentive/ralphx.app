@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 01:45:00 - Phase 35 Task 5: Integrate WelcomeScreen into App.tsx
+**What:**
+- Modified src/App.tsx
+  - Imported WelcomeScreen component from @/components/WelcomeScreen
+  - Replaced plain empty state (centered text + button) with `<WelcomeScreen onCreateProject={handleOpenProjectWizard} />`
+  - Wired `openProjectWizard` and `hasProjects` props to useAppKeyboardShortcuts hook
+  - Moved useAppKeyboardShortcuts call after handleOpenProjectWizard definition to fix TypeScript error
+
+**Files:**
+- src/App.tsx (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 01:15:00 - Phase 35 Task 4: Fix Create Project modal close behavior
 **What:**
 - Modified src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx
