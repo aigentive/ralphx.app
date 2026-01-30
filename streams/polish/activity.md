@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-30 18:07:03 - Remove console.error from useAgentEvents
+**What:**
+- File: src/hooks/useAgentEvents.ts:216
+- Removed console.error call from agent:error event handler
+- Removed unused error field from payload destructuring
+- Error already propagated via agent state change and query invalidation
+
+**Commands:**
+- `npm run lint -- src/hooks/useAgentEvents.ts` (passed - warnings are pre-existing)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 18:04:08 - Remove console.error from useEvents.task
 **What:**
 - File: src/hooks/useEvents.task.ts:40
