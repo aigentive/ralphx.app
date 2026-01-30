@@ -10,6 +10,8 @@ pub mod sqlite_artifact_flow_repo;
 pub mod sqlite_artifact_repo;
 pub mod sqlite_chat_conversation_repo;
 pub mod sqlite_chat_message_repo;
+#[cfg(test)]
+mod sqlite_chat_message_repo_tests;
 pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
 pub mod sqlite_methodology_repo;
