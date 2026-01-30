@@ -38,6 +38,7 @@ import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
 import { ProposalsEmptyState } from "./ProposalsEmptyState";
 import { useIdeationHandlers } from "./useIdeationHandlers";
 import { useFileDrop } from "@/hooks/useFileDrop";
+import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
 
 // ============================================================================
@@ -99,6 +100,30 @@ export function IdeationView({
   const showSyncNotification = useIdeationStore((state) => state.showSyncNotification);
   const syncNotification = useIdeationStore((state) => state.syncNotification);
   const dismissSyncNotification = useIdeationStore((state) => state.dismissSyncNotification);
+
+  // Fetch dependency graph for the session
+  const { data: dependencyGraph } = useDependencyGraph(session?.id ?? "");
+
+  // Build dependency counts map and critical path set from the graph
+  const { dependencyCounts, criticalPathSet } = useMemo(() => {
+    if (!dependencyGraph) {
+      return { dependencyCounts: {}, criticalPathSet: new Set<string>() };
+    }
+
+    // Build counts from graph nodes
+    const counts: Record<string, { dependsOn: number; blocks: number }> = {};
+    for (const node of dependencyGraph.nodes) {
+      counts[node.proposalId] = {
+        dependsOn: node.inDegree,  // inDegree = number of proposals this depends on
+        blocks: node.outDegree,     // outDegree = number of proposals blocked by this
+      };
+    }
+
+    // Build critical path set
+    const criticalSet = new Set(dependencyGraph.criticalPath);
+
+    return { dependencyCounts: counts, criticalPathSet: criticalSet };
+  }, [dependencyGraph]);
 
   useEffect(() => {
     if (session?.planArtifactId) {
@@ -384,18 +409,29 @@ export function IdeationView({
 
                   {proposals.length > 0 && (
                     <div className="space-y-3">
-                      {sortedProposals.map((proposal, index) => (
-                        <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
-                          <ProposalCard
-                            proposal={proposal}
-                            onSelect={handleSelectProposal}
-                            onEdit={onEditProposal}
-                            onRemove={onRemoveProposal}
-                            isHighlighted={highlightedProposalIds.has(proposal.id)}
-                            currentPlanVersion={planArtifact?.metadata.version ?? undefined}
-                          />
-                        </div>
-                      ))}
+                      {sortedProposals.map((proposal, index) => {
+                        const deps = dependencyCounts[proposal.id];
+                        const isOnCriticalPath = criticalPathSet.has(proposal.id);
+                        // Build optional props conditionally for exactOptionalPropertyTypes
+                        const dependencyProps = {
+                          ...(deps?.dependsOn !== undefined && { dependsOnCount: deps.dependsOn }),
+                          ...(deps?.blocks !== undefined && { blocksCount: deps.blocks }),
+                          ...(isOnCriticalPath && { isOnCriticalPath }),
+                        };
+                        return (
+                          <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
+                            <ProposalCard
+                              proposal={proposal}
+                              onSelect={handleSelectProposal}
+                              onEdit={onEditProposal}
+                              onRemove={onRemoveProposal}
+                              isHighlighted={highlightedProposalIds.has(proposal.id)}
+                              currentPlanVersion={planArtifact?.metadata.version ?? undefined}
+                              {...dependencyProps}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

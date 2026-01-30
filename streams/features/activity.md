@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 19:15:00 - Phase 38 Task 2: Add dependency badges and critical path indicators
+**What:**
+- Added `dependsOnCount`, `blocksCount`, and `isOnCriticalPath` props to ProposalCard interface
+- Display compact badges in tags row: ←N for dependsOn (muted), →M for blocks (orange)
+- Added tooltip on badges showing dependency counts
+- Added critical path indicator: orange bottom border, "On critical path" tooltip on priority badge
+- Wired IdeationView to fetch dependency graph via useDependencyGraph hook
+- Built dependency counts map from graph nodes (inDegree/outDegree) and critical path set
+- Passed dependency props to ProposalCard using exactOptionalPropertyTypes-compliant spread pattern
+
+**Files:**
+- src/components/Ideation/ProposalCard.tsx (modified)
+- src/components/Ideation/IdeationView.tsx (modified)
+- specs/phases/prd_phase_38_dependency_priority_integration.md (updated passes: true)
+
+**Commands:**
+- `npm run lint` (0 errors, 8 pre-existing warnings)
+- `npm run typecheck` (passes)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 18:45:00 - Phase 38 Task 1: Wire up priority assessment commands
 **What:**
 - Fixed `assess_proposal_priority` command to build dependency graph, calculate factors, store assessment, emit event

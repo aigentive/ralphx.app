@@ -35,6 +35,12 @@ export interface ProposalCardProps {
   isHighlighted?: boolean;
   currentPlanVersion?: number | undefined;
   onViewHistoricalPlan?: (artifactId: string, version: number) => void | undefined;
+  /** Number of proposals this proposal depends on */
+  dependsOnCount?: number;
+  /** Number of proposals blocked by this proposal */
+  blocksCount?: number;
+  /** Whether this proposal is on the critical path */
+  isOnCriticalPath?: boolean;
 }
 
 // ============================================================================
@@ -49,6 +55,9 @@ export const ProposalCard = React.memo(function ProposalCard({
   isHighlighted = false,
   currentPlanVersion,
   onViewHistoricalPlan,
+  dependsOnCount,
+  blocksCount,
+  isOnCriticalPath,
 }: ProposalCardProps) {
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
   const isSelected = proposal.selected;
@@ -79,7 +88,8 @@ export const ProposalCard = React.memo(function ProposalCard({
           : isSelected
             ? "border-[#ff6b35]/40 shadow-[0_0_20px_rgba(255,107,53,0.1)]"
             : "border-white/[0.06] hover:border-white/[0.1] hover:shadow-md hover:shadow-black/15",
-        config.glow
+        config.glow,
+        isOnCriticalPath && "border-b-2 border-b-[#ff6b35]/40"
       )}
       onClick={() => onSelect(proposal.id)}
     >
@@ -145,25 +155,65 @@ export const ProposalCard = React.memo(function ProposalCard({
           </p>
 
           {/* Tags */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <span className={cn(
-              "px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wider",
-              effectivePriority === "critical" && "bg-red-500/20 text-red-400",
-              effectivePriority === "high" && "bg-[#ff6b35]/20 text-[#ff6b35]",
-              effectivePriority === "medium" && "bg-amber-500/20 text-amber-400",
-              effectivePriority === "low" && "bg-slate-500/20 text-slate-400"
-            )}>
-              {config.label}
-            </span>
-            <span className="px-1.5 py-px rounded text-[9px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
-              {proposal.category}
-            </span>
-            {proposal.userModified && (
-              <span className="px-1.5 py-px rounded text-[9px] font-medium bg-purple-500/20 text-purple-400 italic">
-                Modified
+          <TooltipProvider>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {isOnCriticalPath ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className={cn(
+                      "px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wider cursor-default",
+                      effectivePriority === "critical" && "bg-red-500/20 text-red-400",
+                      effectivePriority === "high" && "bg-[#ff6b35]/20 text-[#ff6b35]",
+                      effectivePriority === "medium" && "bg-amber-500/20 text-amber-400",
+                      effectivePriority === "low" && "bg-slate-500/20 text-slate-400"
+                    )}>
+                      {config.label}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>On critical path</TooltipContent>
+                </Tooltip>
+              ) : (
+                <span className={cn(
+                  "px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wider",
+                  effectivePriority === "critical" && "bg-red-500/20 text-red-400",
+                  effectivePriority === "high" && "bg-[#ff6b35]/20 text-[#ff6b35]",
+                  effectivePriority === "medium" && "bg-amber-500/20 text-amber-400",
+                  effectivePriority === "low" && "bg-slate-500/20 text-slate-400"
+                )}>
+                  {config.label}
+                </span>
+              )}
+              <span className="px-1.5 py-px rounded text-[9px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
+                {proposal.category}
               </span>
-            )}
-          </div>
+              {proposal.userModified && (
+                <span className="px-1.5 py-px rounded text-[9px] font-medium bg-purple-500/20 text-purple-400 italic">
+                  Modified
+                </span>
+              )}
+              {/* Dependency count badges */}
+              {(dependsOnCount !== undefined && dependsOnCount > 0) && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="px-1 py-px rounded text-[9px] font-medium text-[var(--text-muted)] cursor-default">
+                      ←{dependsOnCount}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Depends on {dependsOnCount} proposal{dependsOnCount !== 1 ? "s" : ""}</TooltipContent>
+                </Tooltip>
+              )}
+              {(blocksCount !== undefined && blocksCount > 0) && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="px-1 py-px rounded text-[9px] font-medium text-[#ff6b35] cursor-default">
+                      →{blocksCount}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Blocks {blocksCount} proposal{blocksCount !== 1 ? "s" : ""}</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </TooltipProvider>
 
           {showHistoricalPlanLink && (
             <button
