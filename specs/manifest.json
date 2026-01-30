@@ -273,7 +273,7 @@
       "phase": 37,
       "name": "Proposal Query Tools",
       "prd": "specs/phases/prd_phase_37_proposal_query_tools.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add list_session_proposals and get_proposal MCP tools for orchestrator-ideation agent"
     }
   ]
