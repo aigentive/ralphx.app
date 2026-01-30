@@ -43,7 +43,7 @@ import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
 import { ideationApi } from "@/api/ideation";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ============================================================================
 // Types
@@ -390,22 +390,24 @@ export function IdeationView({
                   </div>
                   <div className="flex items-center gap-2">
                     {proposals.length >= 2 && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={handleReanalyzeDependencies}
-                            disabled={isAnalyzingDependencies}
-                            className="h-7 w-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] disabled:opacity-50"
-                          >
-                            <Network className="w-3.5 h-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p>Re-analyze dependencies</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={handleReanalyzeDependencies}
+                              disabled={isAnalyzingDependencies}
+                              className="h-7 w-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] disabled:opacity-50"
+                            >
+                              <Network className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p>Re-analyze dependencies</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                     {proposals.length > 0 && (
                       <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
