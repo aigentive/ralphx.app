@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 04:15:00 - Phase 36 Task 3: Remove plan history modal state
+**What:**
+- Modified src/components/ideation/useIdeationHandlers.ts
+  - Removed planHistoryDialog state
+  - Removed handleViewHistoricalPlan callback
+  - Removed handleClosePlanHistoryDialog callback
+  - Removed from return object
+- Modified src/components/Ideation/IdeationView.tsx
+  - Removed handleViewHistoricalPlan from destructure
+  - Removed onViewHistoricalPlan prop from ProposalCard
+
+**Files:**
+- src/components/ideation/useIdeationHandlers.ts (modified)
+- src/components/Ideation/IdeationView.tsx (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 03:45:00 - Phase 36 Task 2: Remove PlanHistoryDialog, add auto-expand
 **What:**
 - Modified src/components/ideation/IdeationView.tsx
