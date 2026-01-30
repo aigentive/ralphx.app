@@ -16,7 +16,8 @@ use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 
 use super::super::helpers::{create_proposal_impl, parse_category, parse_priority, update_proposal_impl};
 use super::super::types::{
-    AddDependencyRequest, CreateProposalRequest, DeleteProposalRequest,
+    AddDependencyRequest, ApplyDependenciesResponse, ApplyDependencySuggestionsRequest,
+    CreateProposalRequest, DeleteProposalRequest,
     HttpServerState, ListProposalsResponse, ProposalDetailResponse, ProposalResponse,
     ProposalSummary, SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
 };
@@ -377,4 +378,158 @@ pub async fn get_proposal(
         plan_artifact_id,
         created_at,
     }))
+}
+
+/// Apply AI-suggested dependencies: clear existing, add new (skip cycles)
+/// Used by dependency-suggester agent
+pub async fn apply_proposal_dependencies(
+    State(state): State<HttpServerState>,
+    Json(req): Json<ApplyDependencySuggestionsRequest>,
+) -> Result<Json<ApplyDependenciesResponse>, StatusCode> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    // Get existing proposals to validate IDs belong to session
+    let proposals = state
+        .app_state
+        .task_proposal_repo
+        .get_by_session(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get proposals for session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let valid_ids: std::collections::HashSet<String> = proposals
+        .iter()
+        .map(|p| p.id.to_string())
+        .collect();
+
+    // Step 1: Clear all existing dependencies for this session
+    state
+        .app_state
+        .proposal_dependency_repo
+        .clear_session_dependencies(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to clear dependencies for session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Step 2: Add each suggested dependency (skip if would create cycle or invalid)
+    let mut applied_count = 0;
+    let mut skipped_count = 0;
+
+    for suggestion in &req.dependencies {
+        // Validate both IDs belong to this session
+        if !valid_ids.contains(&suggestion.proposal_id) || !valid_ids.contains(&suggestion.depends_on_id) {
+            skipped_count += 1;
+            continue;
+        }
+
+        // Skip self-dependency
+        if suggestion.proposal_id == suggestion.depends_on_id {
+            skipped_count += 1;
+            continue;
+        }
+
+        let proposal_id = TaskProposalId::from_string(suggestion.proposal_id.clone());
+        let depends_on_id = TaskProposalId::from_string(suggestion.depends_on_id.clone());
+
+        // Check if adding this would create a cycle
+        // Simple check: would depends_on_id eventually reach proposal_id?
+        let would_cycle = would_create_cycle(
+            &state.app_state,
+            &session_id,
+            &proposal_id,
+            &depends_on_id,
+        ).await;
+
+        if would_cycle {
+            skipped_count += 1;
+            continue;
+        }
+
+        // Add the dependency
+        match state
+            .app_state
+            .proposal_dependency_repo
+            .add_dependency(&proposal_id, &depends_on_id)
+            .await
+        {
+            Ok(_) => applied_count += 1,
+            Err(e) => {
+                error!("Failed to add dependency {} -> {}: {}", proposal_id.as_str(), depends_on_id.as_str(), e);
+                skipped_count += 1;
+            }
+        }
+    }
+
+    // Emit event for real-time UI update
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "dependencies:suggestions_applied",
+            serde_json::json!({
+                "sessionId": req.session_id,
+                "appliedCount": applied_count,
+                "skippedCount": skipped_count
+            }),
+        );
+    }
+
+    Ok(Json(ApplyDependenciesResponse {
+        success: true,
+        applied_count,
+        skipped_count,
+        message: format!("Applied {} dependencies, skipped {} (cycles/invalid)", applied_count, skipped_count),
+    }))
+}
+
+/// Check if adding proposal_id -> depends_on_id would create a cycle
+/// (i.e., if depends_on_id can already reach proposal_id through existing deps)
+async fn would_create_cycle(
+    app_state: &crate::application::AppState,
+    session_id: &IdeationSessionId,
+    proposal_id: &TaskProposalId,
+    depends_on_id: &TaskProposalId,
+) -> bool {
+    // Get all existing dependencies for the session
+    let deps = match app_state
+        .proposal_dependency_repo
+        .get_all_for_session(session_id)
+        .await
+    {
+        Ok(deps) => deps,
+        Err(_) => return false, // If we can't check, allow the dependency
+    };
+
+    // Build adjacency list: from_id -> [to_ids]
+    let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for (from, to) in &deps {
+        adj.entry(from.to_string()).or_default().push(to.to_string());
+    }
+
+    // DFS from depends_on_id to see if we can reach proposal_id
+    let mut visited = std::collections::HashSet::new();
+    let mut stack = vec![depends_on_id.to_string()];
+
+    while let Some(current) = stack.pop() {
+        if current == proposal_id.to_string() {
+            return true; // Found a path, adding would create cycle
+        }
+
+        if visited.contains(&current) {
+            continue;
+        }
+        visited.insert(current.clone());
+
+        if let Some(neighbors) = adj.get(&current) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    stack.push(neighbor.clone());
+                }
+            }
+        }
+    }
+
+    false // No path found, safe to add
 }

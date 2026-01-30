@@ -68,6 +68,31 @@ pub struct AddDependencyRequest {
     pub depends_on_id: String,
 }
 
+/// Single dependency suggestion from AI
+#[derive(Debug, Deserialize)]
+pub struct DependencySuggestion {
+    pub proposal_id: String,
+    pub depends_on_id: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Request to apply AI-suggested dependencies (replaces all existing)
+#[derive(Debug, Deserialize)]
+pub struct ApplyDependencySuggestionsRequest {
+    pub session_id: String,
+    pub dependencies: Vec<DependencySuggestion>,
+}
+
+/// Response for apply_proposal_dependencies
+#[derive(Debug, Serialize)]
+pub struct ApplyDependenciesResponse {
+    pub success: bool,
+    pub applied_count: usize,
+    pub skipped_count: usize,
+    pub message: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ProposalResponse {
     pub id: String,

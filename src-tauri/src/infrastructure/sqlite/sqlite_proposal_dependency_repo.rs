@@ -227,6 +227,22 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         Ok(())
     }
 
+    async fn clear_session_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+
+        // Delete all dependencies for proposals in this session
+        conn.execute(
+            "DELETE FROM proposal_dependencies
+             WHERE proposal_id IN (
+                 SELECT id FROM task_proposals WHERE session_id = ?1
+             )",
+            [session_id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn count_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<u32> {
         let conn = self.conn.lock().await;
 

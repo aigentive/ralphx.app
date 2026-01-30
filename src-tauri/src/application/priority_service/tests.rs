@@ -267,6 +267,11 @@ struct MockTaskProposalRepository {
             Ok(())
         }
 
+        async fn clear_session_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
+            self.dependencies.lock().unwrap().clear();
+            Ok(())
+        }
+
         async fn count_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<u32> {
             Ok(self
                 .dependencies

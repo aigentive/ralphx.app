@@ -128,6 +128,13 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
         Ok(())
     }
 
+    async fn clear_session_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()> {
+        self.dependencies.write().unwrap().retain(|(_, _, s)| {
+            s != &session_id.to_string()
+        });
+        Ok(())
+    }
+
     async fn count_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<u32> {
         Ok(self
             .dependencies
