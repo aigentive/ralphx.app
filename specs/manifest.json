@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 36,
+  "currentPhase": 37,
   "phases": [
     {
       "phase": 0,
@@ -268,6 +268,13 @@
       "prd": "specs/phases/prd_phase_36_inline_version_selector.md",
       "status": "complete",
       "description": "Inline version selector dropdown in PlanDisplay, auto-expand plan when no proposals"
+    },
+    {
+      "phase": 37,
+      "name": "Proposal Query Tools",
+      "prd": "specs/phases/prd_phase_37_proposal_query_tools.md",
+      "status": "active",
+      "description": "Add list_session_proposals and get_proposal MCP tools for orchestrator-ideation agent"
     }
   ]
 }
