@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-01-30 22:15:00 - Phase 34 Complete: Test fixes and phase completion
+**What:**
+- Added aria-label="Add step" to steps add button for accessibility/tests
+- Added aria-label="Add criterion" to acceptance criteria add button for accessibility/tests
+- Updated tests to match Phase 34 redesign:
+  - "Steps" → "Implementation Steps"
+  - "No steps added" → "No steps defined yet"
+  - "No acceptance criteria added" → "No acceptance criteria defined yet"
+  - Complexity selector: dropdown tests → visual 5-dot selector tests
+  - Modal width: max-w-lg → max-w-2xl
+- All 61 tests pass
+- Ran gap verification: all wiring confirmed
+- Updated manifest.json: Phase 34 complete, Phase 35 active
+
+**Files:**
+- src/components/Ideation/ProposalEditModal.tsx
+- src/components/Ideation/ProposalEditModal.test.tsx
+- specs/manifest.json
+
+**Commands:**
+- `npm run test -- --run src/components/Ideation/ProposalEditModal.test.tsx`
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 22:00:00 - Phase 34 Task 8: Add micro-interactions and ambient corner glow
 **What:**
 - Added hover:scale-[1.01] and focus:scale-[1.01] to inputClasses for subtle input micro-interaction

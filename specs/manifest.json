@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 34,
+  "currentPhase": 35,
   "phases": [
     {
       "phase": 0,
@@ -252,14 +252,14 @@
       "phase": 34,
       "name": "Proposal Edit Modal Redesign",
       "prd": "specs/phases/prd_phase_34_proposal_edit_modal_redesign.md",
-      "status": "active",
+      "status": "complete",
       "description": "Transform ProposalEditModal with glass morphism, two-column metadata, visual complexity selector, and animations"
     },
     {
       "phase": 35,
       "name": "Welcome Screen & Project Creation Redesign",
       "prd": "specs/phases/prd_phase_35_welcome_screen.md",
-      "status": "pending",
+      "status": "active",
       "description": "Impressive animated welcome screen with Terminal Symphony design, keyboard shortcuts, modal UX fixes"
     }
   ]

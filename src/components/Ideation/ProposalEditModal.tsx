@@ -367,6 +367,7 @@ export function ProposalEditModal({
                   type="button"
                   onClick={handleAddStep}
                   disabled={isSaving}
+                  aria-label="Add step"
                   className="mt-4 w-full py-2 px-4 rounded-md border border-dashed border-white/20 hover:border-[#ff6b35]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
@@ -419,6 +420,7 @@ export function ProposalEditModal({
                   type="button"
                   onClick={handleAddCriterion}
                   disabled={isSaving}
+                  aria-label="Add criterion"
                   className="mt-4 w-full py-2 px-4 rounded-md border border-dashed border-white/20 hover:border-[#ff6b35]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />

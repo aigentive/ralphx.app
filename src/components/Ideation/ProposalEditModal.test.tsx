@@ -151,7 +151,7 @@ describe("ProposalEditModal", () => {
   describe("Steps Editor", () => {
     it("renders steps section with label", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByText("Steps")).toBeInTheDocument();
+      expect(screen.getByText("Implementation Steps")).toBeInTheDocument();
     });
 
     it("shows all steps from proposal", () => {
@@ -201,7 +201,7 @@ describe("ProposalEditModal", () => {
     it("shows empty state when no steps", () => {
       const proposalNoSteps = { ...mockProposal, steps: [] };
       render(<ProposalEditModal {...defaultProps} proposal={proposalNoSteps} />);
-      expect(screen.getByText("No steps added")).toBeInTheDocument();
+      expect(screen.getByText("No steps defined yet")).toBeInTheDocument();
     });
   });
 
@@ -251,7 +251,7 @@ describe("ProposalEditModal", () => {
     it("shows empty state when no acceptance criteria", () => {
       const proposalNoCriteria = { ...mockProposal, acceptanceCriteria: [] };
       render(<ProposalEditModal {...defaultProps} proposal={proposalNoCriteria} />);
-      expect(screen.getByText("No acceptance criteria added")).toBeInTheDocument();
+      expect(screen.getByText("No acceptance criteria defined yet")).toBeInTheDocument();
     });
   });
 
@@ -302,31 +302,31 @@ describe("ProposalEditModal", () => {
   describe("Complexity Selector", () => {
     it("renders complexity selector with label", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByLabelText("Complexity")).toBeInTheDocument();
+      expect(screen.getByText("Complexity")).toBeInTheDocument();
     });
 
-    it("shows all complexity options", () => {
+    it("shows all complexity options as visual dots", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      const select = screen.getByLabelText("Complexity") as HTMLSelectElement;
-      expect(select.querySelector('option[value="trivial"]')).toBeInTheDocument();
-      expect(select.querySelector('option[value="simple"]')).toBeInTheDocument();
-      expect(select.querySelector('option[value="moderate"]')).toBeInTheDocument();
-      expect(select.querySelector('option[value="complex"]')).toBeInTheDocument();
-      expect(select.querySelector('option[value="very_complex"]')).toBeInTheDocument();
+      // Visual 5-dot selector shows all complexity levels as clickable buttons
+      expect(screen.getByLabelText("Set complexity to Trivial")).toBeInTheDocument();
+      expect(screen.getByLabelText("Set complexity to Simple")).toBeInTheDocument();
+      expect(screen.getByLabelText("Set complexity to Moderate")).toBeInTheDocument();
+      expect(screen.getByLabelText("Set complexity to Complex")).toBeInTheDocument();
+      expect(screen.getByLabelText("Set complexity to Very Complex")).toBeInTheDocument();
     });
 
     it("shows current complexity selected", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      const select = screen.getByLabelText("Complexity") as HTMLSelectElement;
-      expect(select.value).toBe("moderate");
+      // Visual selector shows label below dots
+      expect(screen.getByText("Moderate")).toBeInTheDocument();
     });
 
     it("allows changing complexity", async () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} />);
-      const select = screen.getByLabelText("Complexity");
-      await user.selectOptions(select, "complex");
-      expect(select).toHaveValue("complex");
+      const complexDot = screen.getByLabelText("Set complexity to Complex");
+      await user.click(complexDot);
+      expect(screen.getByText("Complex")).toBeInTheDocument();
     });
   });
 
@@ -440,7 +440,8 @@ describe("ProposalEditModal", () => {
       expect(screen.getByLabelText("Description")).toBeInTheDocument();
       expect(screen.getByLabelText("Category")).toBeInTheDocument();
       expect(screen.getByLabelText("Priority Override")).toBeInTheDocument();
-      expect(screen.getByLabelText("Complexity")).toBeInTheDocument();
+      // Complexity is now a visual 5-dot selector, verified by text label
+      expect(screen.getByText("Complexity")).toBeInTheDocument();
     });
 
     it("step inputs have proper aria-labels", () => {
@@ -464,7 +465,8 @@ describe("ProposalEditModal", () => {
     it("modal uses shadcn Dialog with correct max-width", () => {
       render(<ProposalEditModal {...defaultProps} />);
       const modal = screen.getByTestId("proposal-edit-modal");
-      expect(modal).toHaveClass("max-w-lg");
+      // Phase 34 redesign expanded modal from max-w-lg to max-w-2xl
+      expect(modal).toHaveClass("max-w-2xl");
     });
 
     it("renders modal overlay with blur effect", () => {
