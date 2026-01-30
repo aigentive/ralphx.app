@@ -8,7 +8,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions};
-use crate::domain::agents::{AgentConfig, AgentRole};
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, IdeationSessionId,
     IdeationSessionStatus, InternalStatus, Priority, TaskCategory, TaskContext, TaskId,
@@ -380,7 +379,6 @@ pub async fn maybe_trigger_dependency_analysis(
     let session_id_str = session_id.as_str().to_string();
     let task_proposal_repo = Arc::clone(&app_state.task_proposal_repo);
     let proposal_dependency_repo = Arc::clone(&app_state.proposal_dependency_repo);
-    let agent_client = Arc::clone(&app_state.agent_client);
 
     // Spawn with debounce delay
     tokio::spawn(async move {
@@ -454,42 +452,86 @@ pub async fn maybe_trigger_dependency_analysis(
             }),
         );
 
-        // Get the working directory (project root)
-        let working_directory = std::env::current_dir()
-            .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-            .unwrap_or_else(|_| PathBuf::from("."));
-
+        // Find working directory (project root where ralphx-plugin exists)
+        let working_directory = find_project_root();
         let plugin_dir = working_directory.join("ralphx-plugin");
 
-        // Set RALPHX_AGENT_TYPE so MCP server grants access to apply_proposal_dependencies tool
-        let mut env = std::collections::HashMap::new();
-        env.insert(
-            "RALPHX_AGENT_TYPE".to_string(),
-            "dependency-suggester".to_string(),
-        );
-
-        let config = AgentConfig {
-            role: AgentRole::Custom("dependency-suggester".to_string()),
-            prompt,
-            working_directory,
-            plugin_dir: Some(plugin_dir),
-            agent: Some("dependency-suggester".to_string()),
-            model: None,
-            max_tokens: None,
-            timeout_secs: Some(60),
-            env,
+        // Find Claude CLI
+        let cli_path = match crate::infrastructure::agents::claude::find_claude_cli() {
+            Some(path) => path,
+            None => {
+                tracing::warn!("Failed to spawn dependency suggester: Claude CLI not found");
+                return;
+            }
         };
 
+        // Build command using the established pattern (creates dynamic MCP config with --agent-type)
+        let agent_name = "dependency-suggester";
+        let mut cmd = crate::infrastructure::agents::claude::build_base_cli_command(
+            &cli_path,
+            &plugin_dir,
+            Some(agent_name),
+        );
+
+        // Add agent and prompt args
+        crate::infrastructure::agents::claude::add_prompt_args(
+            &mut cmd,
+            &prompt,
+            Some(agent_name),
+            None, // No resume session
+        );
+
+        // Configure working dir and stdio capture
+        crate::infrastructure::agents::claude::configure_spawn(&mut cmd, &working_directory);
+
         // Spawn the agent
-        match agent_client.spawn_agent(config).await {
-            Ok(handle) => {
-                if let Err(e) = agent_client.wait_for_completion(&handle).await {
-                    tracing::warn!("Dependency suggester agent failed: {}", e);
-                }
+        match cmd.spawn() {
+            Ok(mut child) => {
+                // Wait for completion (fire-and-forget style, but log errors)
+                tokio::spawn(async move {
+                    match child.wait().await {
+                        Ok(status) => {
+                            if !status.success() {
+                                tracing::warn!("Dependency suggester agent exited with status: {}", status);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to wait for dependency suggester agent: {}", e);
+                        }
+                    }
+                });
             }
             Err(e) => {
                 tracing::warn!("Failed to spawn dependency suggester agent: {}", e);
             }
         }
     });
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Find the project root directory where ralphx-plugin exists
+///
+/// Checks the current directory and parent for the presence of ralphx-plugin.
+/// Falls back to current directory if not found.
+fn find_project_root() -> PathBuf {
+    std::env::current_dir()
+        .map(|cwd| {
+            // Check if we're in project root (ralphx-plugin exists)
+            if cwd.join("ralphx-plugin").exists() {
+                cwd
+            // Check if we're in src-tauri (parent has ralphx-plugin)
+            } else if let Some(parent) = cwd.parent() {
+                if parent.join("ralphx-plugin").exists() {
+                    parent.to_path_buf()
+                } else {
+                    cwd
+                }
+            } else {
+                cwd
+            }
+        })
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
