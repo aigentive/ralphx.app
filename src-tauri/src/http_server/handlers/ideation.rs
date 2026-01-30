@@ -1,7 +1,9 @@
 // Ideation tool handlers for MCP orchestrator-ideation agent
 
+use std::collections::HashMap;
+
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     Json,
 };
@@ -15,8 +17,8 @@ use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 use super::super::helpers::{create_proposal_impl, parse_category, parse_priority, update_proposal_impl};
 use super::super::types::{
     AddDependencyRequest, CreateProposalRequest, DeleteProposalRequest,
-    HttpServerState, ProposalResponse, SuccessResponse, UpdateProposalRequest,
-    UpdateSessionTitleRequest,
+    HttpServerState, ListProposalsResponse, ProposalDetailResponse, ProposalResponse,
+    ProposalSummary, SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
 };
 
 pub async fn create_task_proposal(
@@ -251,5 +253,128 @@ pub async fn update_session_title(
     Ok(Json(SuccessResponse {
         success: true,
         message: "Session title updated".to_string(),
+    }))
+}
+
+pub async fn list_session_proposals(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<ListProposalsResponse>, StatusCode> {
+    let session_id = IdeationSessionId::from_string(session_id);
+
+    // Get all proposals for session
+    let proposals = state
+        .app_state
+        .task_proposal_repo
+        .get_by_session(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to list proposals: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Get all dependencies for the session
+    let all_deps = state
+        .app_state
+        .proposal_dependency_repo
+        .get_all_for_session(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get dependencies: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Build dependency map: proposal_id -> [depends_on_ids]
+    let mut dep_map: HashMap<String, Vec<String>> = HashMap::new();
+    for (from, to) in all_deps {
+        dep_map
+            .entry(from.to_string())
+            .or_default()
+            .push(to.to_string());
+    }
+
+    let count = proposals.len();
+    let summaries: Vec<ProposalSummary> = proposals
+        .into_iter()
+        .map(|p| {
+            let id_str = p.id.to_string();
+            let priority = p.effective_priority().to_string();
+            let category = p.category.to_string();
+            let plan_artifact_id = p.plan_artifact_id.map(|id| id.to_string());
+            ProposalSummary {
+                id: id_str.clone(),
+                title: p.title,
+                category,
+                priority,
+                depends_on: dep_map.remove(&id_str).unwrap_or_default(),
+                plan_artifact_id,
+            }
+        })
+        .collect();
+
+    Ok(Json(ListProposalsResponse {
+        proposals: summaries,
+        count,
+    }))
+}
+
+pub async fn get_proposal(
+    State(state): State<HttpServerState>,
+    Path(proposal_id): Path<String>,
+) -> Result<Json<ProposalDetailResponse>, StatusCode> {
+    let proposal_id = TaskProposalId::from_string(proposal_id);
+
+    let proposal = state
+        .app_state
+        .task_proposal_repo
+        .get_by_id(&proposal_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get proposal: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Get dependencies for this proposal
+    let deps = state
+        .app_state
+        .proposal_dependency_repo
+        .get_dependencies(&proposal_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get dependencies: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Parse steps and acceptance_criteria from JSON strings
+    let steps: Vec<String> = proposal
+        .steps
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let acceptance_criteria: Vec<String> = proposal
+        .acceptance_criteria
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    // Compute values before moving fields
+    let priority = proposal.effective_priority().to_string();
+    let category = proposal.category.to_string();
+    let created_at = proposal.created_at.to_rfc3339();
+    let plan_artifact_id = proposal.plan_artifact_id.map(|id| id.to_string());
+
+    Ok(Json(ProposalDetailResponse {
+        id: proposal.id.to_string(),
+        session_id: proposal.session_id.to_string(),
+        title: proposal.title,
+        description: proposal.description,
+        category,
+        priority,
+        steps,
+        acceptance_criteria,
+        depends_on: deps.iter().map(|d| d.to_string()).collect(),
+        plan_artifact_id,
+        created_at,
     }))
 }

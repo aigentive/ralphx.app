@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-30 16:48:03 - Phase 37 Task 3: Add HTTP handlers for list_session_proposals and get_proposal
+**What:**
+- Added list_session_proposals handler: fetches proposals by session, builds dependency map, returns ProposalSummary list
+- Added get_proposal handler: fetches single proposal by ID, parses JSON steps/acceptance_criteria, returns ProposalDetailResponse
+- Added necessary imports (HashMap, Path from axum, response types)
+- Fixed borrow checker issues by computing derived values before moving struct fields
+
+**Files:**
+- src-tauri/src/http_server/handlers/ideation.rs (modified)
+
+**Commands:**
+- `cargo build --lib` (compiles with expected dead-code warnings - routes added in Task 4)
+- `cargo test` (3235 tests passing)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 16:43:42 - Phase 37 Task 2: Add proposal query response types to HTTP server
 **What:**
 - Added ProposalSummary struct for lightweight list endpoint (id, title, category, priority, depends_on, plan_artifact_id)

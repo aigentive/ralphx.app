@@ -132,7 +132,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(http_server): add list_session_proposals and get_proposal handlers"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
