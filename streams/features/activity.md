@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-31 03:45:00 - Phase 36 Task 2: Remove PlanHistoryDialog, add auto-expand
+**What:**
+- Modified src/components/ideation/IdeationView.tsx
+  - Removed PlanHistoryDialog import
+  - Removed planHistoryDialog and handleClosePlanHistoryDialog from useIdeationHandlers destructure
+  - Deleted PlanHistoryDialog render block (lines 442-448)
+  - Removed onViewHistory prop from PlanDisplay component
+  - Added auto-expand useEffect: expands plan when planArtifact exists and proposals.length === 0
+
+**Files:**
+- src/components/ideation/IdeationView.tsx (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 03:15:00 - Phase 36 Task 1: Add inline version selector to PlanDisplay
 **What:**
 - Modified src/components/ideation/PlanDisplay.tsx
