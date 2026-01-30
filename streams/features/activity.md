@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-30 23:30:00 - Phase 35 Task 1: Create WelcomeScreen component with hero section and animations
+**What:**
+- Created src/components/WelcomeScreen/WelcomeScreen.tsx (~300 LOC)
+- Implemented hero section with "RalphX" title and warm orange accent, tagline
+- Added TerminalCanvas placeholder with terminal header (traffic lights), typing cursor animation, syntax-highlighted code output, floating code fragment
+- Added ParticleField placeholder with 25 CSS-animated particles using seeded pseudo-random positions
+- Implemented CTA button with glowPulse animation and keyboard shortcut hint (⌘N)
+- Added CSS keyframes: terminalBlink, fadeSlideIn, codeFloat, particleDrift, glowPulse
+- Used deterministic seeded random (mulberry32) for particle positions to satisfy React purity rules
+
+**Files:**
+- src/components/WelcomeScreen/WelcomeScreen.tsx (new)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 22:15:00 - Phase 34 Complete: Test fixes and phase completion
 **What:**
 - Added aria-label="Add step" to steps add button for accessibility/tests
