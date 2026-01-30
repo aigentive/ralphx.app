@@ -559,7 +559,7 @@ mod tests {
 
         state
             .proposal_dependency_repo
-            .add_dependency(&proposal_id, &proposal2_id)
+            .add_dependency(&proposal_id, &proposal2_id, None)
             .await
             .unwrap();
 

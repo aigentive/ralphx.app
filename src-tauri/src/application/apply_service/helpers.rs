@@ -61,13 +61,13 @@ fn dfs_cycle_detect(
 /// Build validation result from cycle detection
 pub fn build_validation_result(
     cycles: Vec<Vec<TaskProposalId>>,
-    all_deps: &[(TaskProposalId, TaskProposalId)],
+    all_deps: &[(TaskProposalId, TaskProposalId, Option<String>)],
     selected_set: &HashSet<String>,
 ) -> SelectionValidation {
     let mut warnings = Vec::new();
 
     // Check for missing dependencies (deps outside selection)
-    for (from, to) in all_deps {
+    for (from, to, _reason) in all_deps {
         if selected_set.contains(&from.to_string()) && !selected_set.contains(&to.to_string()) {
             warnings.push(format!(
                 "Proposal {} depends on {} which is not selected",

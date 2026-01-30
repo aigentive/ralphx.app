@@ -519,7 +519,7 @@ mod tests {
         // Add dependency: p1 depends on p2
         state
             .proposal_dependency_repo
-            .add_dependency(&p1.id, &p2.id)
+            .add_dependency(&p1.id, &p2.id, None)
             .await
             .expect("Failed to add dependency in test");
 
@@ -561,7 +561,7 @@ mod tests {
         // Add then remove dependency
         state
             .proposal_dependency_repo
-            .add_dependency(&p1.id, &p2.id)
+            .add_dependency(&p1.id, &p2.id, None)
             .await
             .expect("Failed to add dependency in test");
         state
@@ -607,7 +607,7 @@ mod tests {
         // p1 depends on p2, so p2 should have p1 as a dependent
         state
             .proposal_dependency_repo
-            .add_dependency(&p1.id, &p2.id)
+            .add_dependency(&p1.id, &p2.id, None)
             .await
             .expect("Failed to add dependency in test");
 

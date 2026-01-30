@@ -32,7 +32,7 @@ pub async fn add_proposal_dependency(
 
     state
         .proposal_dependency_repo
-        .add_dependency(&from_id, &to_id)
+        .add_dependency(&from_id, &to_id, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -147,13 +147,13 @@ pub async fn analyze_dependencies(
 /// Build a dependency graph from proposals and their dependencies
 pub fn build_dependency_graph(
     proposals: &[TaskProposal],
-    dependencies: &[(TaskProposalId, TaskProposalId)],
+    dependencies: &[(TaskProposalId, TaskProposalId, Option<String>)],
 ) -> DependencyGraph {
     // Build adjacency lists
     let mut from_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
     let mut to_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
 
-    for (from, to) in dependencies {
+    for (from, to, _reason) in dependencies {
         from_map.entry(from.clone()).or_default().push(to.clone());
         to_map.entry(to.clone()).or_default().push(from.clone());
     }
@@ -171,9 +171,10 @@ pub fn build_dependency_graph(
     }
 
     // Build edges
+    // TODO: Task 5 will add reason to DependencyGraphEdge
     let edges: Vec<DependencyGraphEdge> = dependencies
         .iter()
-        .map(|(from, to)| DependencyGraphEdge::new(from.clone(), to.clone()))
+        .map(|(from, to, _reason)| DependencyGraphEdge::new(from.clone(), to.clone()))
         .collect();
 
     // Detect cycles using DFS

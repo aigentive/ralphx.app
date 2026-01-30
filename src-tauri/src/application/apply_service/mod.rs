@@ -95,14 +95,14 @@ where
         // Filter dependencies to only those between selected proposals
         let relevant_deps: Vec<_> = all_deps
             .iter()
-            .filter(|(from, to)| {
+            .filter(|(from, to, _reason)| {
                 selected_set.contains(&from.to_string()) && selected_set.contains(&to.to_string())
             })
             .collect();
 
         // Build adjacency list for cycle detection
         let mut adj: HashMap<String, Vec<String>> = HashMap::new();
-        for (from, to) in &relevant_deps {
+        for (from, to, _reason) in &relevant_deps {
             adj.entry(from.to_string())
                 .or_default()
                 .push(to.to_string());
@@ -211,7 +211,7 @@ where
         if options.preserve_dependencies {
             let all_deps = self.proposal_dep_repo.get_all_for_session(session_id).await?;
 
-            for (from_proposal, to_proposal) in all_deps {
+            for (from_proposal, to_proposal, _reason) in all_deps {
                 // Only create dependency if both proposals were converted
                 if let (Some(from_task), Some(to_task)) = (
                     proposal_to_task.get(&from_proposal.to_string()),

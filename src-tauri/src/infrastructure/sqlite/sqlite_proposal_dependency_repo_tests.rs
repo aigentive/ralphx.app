@@ -82,7 +82,7 @@ async fn test_add_dependency_creates_record() {
 
     let repo = SqliteProposalDependencyRepository::new(conn);
 
-    let result = repo.add_dependency(&proposal_a.id, &proposal_b.id).await;
+    let result = repo.add_dependency(&proposal_a.id, &proposal_b.id, None).await;
 
     assert!(result.is_ok());
 
@@ -104,10 +104,10 @@ async fn test_add_dependency_duplicate_is_ignored() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // Add same dependency twice
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    let result = repo.add_dependency(&proposal_a.id, &proposal_b.id).await;
+    let result = repo.add_dependency(&proposal_a.id, &proposal_b.id, None).await;
 
     assert!(result.is_ok());
 
@@ -129,10 +129,10 @@ async fn test_add_multiple_dependencies() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B and C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
         .await
         .unwrap();
 
@@ -155,7 +155,7 @@ async fn test_remove_dependency_deletes_record() {
 
     let repo = SqliteProposalDependencyRepository::new(conn);
 
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
     let result = repo.remove_dependency(&proposal_a.id, &proposal_b.id).await;
@@ -194,10 +194,10 @@ async fn test_remove_only_specified_dependency() {
 
     let repo = SqliteProposalDependencyRepository::new(conn);
 
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
         .await
         .unwrap();
 
@@ -239,7 +239,7 @@ async fn test_get_dependencies_returns_correct_direction() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
 
@@ -281,7 +281,7 @@ async fn test_get_dependents_returns_correct_direction() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B (B blocks A)
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
 
@@ -308,10 +308,10 @@ async fn test_get_dependents_multiple() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A and B both depend on C
-    repo.add_dependency(&proposal_a.id, &proposal_c.id)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_b.id, &proposal_c.id)
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None)
         .await
         .unwrap();
 
@@ -349,17 +349,18 @@ async fn test_get_all_for_session_returns_all_deps() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B, B -> C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_b.id, &proposal_c.id)
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None)
         .await
         .unwrap();
 
     let all = repo.get_all_for_session(&session.id).await.unwrap();
     assert_eq!(all.len(), 2);
-    assert!(all.contains(&(proposal_a.id.clone(), proposal_b.id.clone())));
-    assert!(all.contains(&(proposal_b.id.clone(), proposal_c.id.clone())));
+    // Check that the dependencies exist (reason is None since we passed None)
+    assert!(all.iter().any(|(from, to, _)| from == &proposal_a.id && to == &proposal_b.id));
+    assert!(all.iter().any(|(from, to, _)| from == &proposal_b.id && to == &proposal_c.id));
 }
 
 #[tokio::test]
@@ -387,22 +388,22 @@ async fn test_get_all_for_session_filters_by_session() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // Create deps in both sessions
-    repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id)
+    repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&s2_proposal_a.id, &s2_proposal_b.id)
+    repo.add_dependency(&s2_proposal_a.id, &s2_proposal_b.id, None)
         .await
         .unwrap();
 
     // Should only get session 1 deps
     let s1_all = repo.get_all_for_session(&session1.id).await.unwrap();
     assert_eq!(s1_all.len(), 1);
-    assert!(s1_all.contains(&(s1_proposal_a.id.clone(), s1_proposal_b.id.clone())));
+    assert!(s1_all.iter().any(|(from, to, _)| from == &s1_proposal_a.id && to == &s1_proposal_b.id));
 
     // Should only get session 2 deps
     let s2_all = repo.get_all_for_session(&session2_id).await.unwrap();
     assert_eq!(s2_all.len(), 1);
-    assert!(s2_all.contains(&(s2_proposal_a.id.clone(), s2_proposal_b.id.clone())));
+    assert!(s2_all.iter().any(|(from, to, _)| from == &s2_proposal_a.id && to == &s2_proposal_b.id));
 }
 
 // ==================== WOULD CREATE CYCLE TESTS ====================
@@ -434,7 +435,7 @@ async fn test_would_create_cycle_direct_cycle() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B depends on A
-    repo.add_dependency(&proposal_b.id, &proposal_a.id)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None)
         .await
         .unwrap();
 
@@ -457,10 +458,10 @@ async fn test_would_create_cycle_indirect_cycle() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B -> C, C -> A (existing chain)
-    repo.add_dependency(&proposal_b.id, &proposal_c.id)
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
         .await
         .unwrap();
 
@@ -483,7 +484,7 @@ async fn test_would_create_cycle_no_cycle() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B (existing)
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
 
@@ -525,10 +526,10 @@ async fn test_clear_dependencies_removes_outgoing() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B, A -> C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
         .await
         .unwrap();
 
@@ -551,10 +552,10 @@ async fn test_clear_dependencies_removes_incoming() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B -> A, C -> A
-    repo.add_dependency(&proposal_b.id, &proposal_a.id)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
         .await
         .unwrap();
 
@@ -584,10 +585,10 @@ async fn test_clear_dependencies_removes_both_directions() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B (A depends on B), C -> A (C depends on A)
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
         .await
         .unwrap();
 
@@ -635,10 +636,10 @@ async fn test_count_dependencies_multiple() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B and C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
         .await
         .unwrap();
 
@@ -673,10 +674,10 @@ async fn test_count_dependents_multiple() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B and C depend on A
-    repo.add_dependency(&proposal_b.id, &proposal_a.id)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
         .await
         .unwrap();
 
@@ -698,7 +699,7 @@ async fn test_from_shared_works_correctly() {
     let shared_conn = Arc::new(Mutex::new(conn));
     let repo = SqliteProposalDependencyRepository::from_shared(shared_conn);
 
-    repo.add_dependency(&proposal_a.id, &proposal_b.id)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
 

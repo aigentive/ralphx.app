@@ -17,6 +17,7 @@ pub trait ProposalDependencyRepository: Send + Sync {
         &self,
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
+        reason: Option<&str>,
     ) -> AppResult<()>;
 
     /// Remove a dependency
@@ -39,11 +40,11 @@ pub trait ProposalDependencyRepository: Send + Sync {
     ) -> AppResult<Vec<TaskProposalId>>;
 
     /// Get all dependency relationships for a session
-    /// Returns tuples of (proposal_id, depends_on_proposal_id)
+    /// Returns tuples of (proposal_id, depends_on_proposal_id, reason)
     async fn get_all_for_session(
         &self,
         session_id: &IdeationSessionId,
-    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId)>>;
+    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>>;
 
     /// Check if adding a dependency would create a cycle
     async fn would_create_cycle(
@@ -107,6 +108,7 @@ mod tests {
             &self,
             _proposal_id: &TaskProposalId,
             _depends_on_id: &TaskProposalId,
+            _reason: Option<&str>,
         ) -> AppResult<()> {
             Ok(())
         }
@@ -151,11 +153,11 @@ mod tests {
         async fn get_all_for_session(
             &self,
             _session_id: &IdeationSessionId,
-        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId)>> {
+        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>> {
             Ok(self
                 .dependencies
                 .iter()
-                .flat_map(|(from, tos)| tos.iter().map(|to| (from.clone(), to.clone())))
+                .flat_map(|(from, tos)| tos.iter().map(|to| (from.clone(), to.clone(), None)))
                 .collect())
         }
 
@@ -216,7 +218,7 @@ mod tests {
         let proposal_id = TaskProposalId::new();
         let depends_on_id = TaskProposalId::new();
 
-        let result = repo.add_dependency(&proposal_id, &depends_on_id).await;
+        let result = repo.add_dependency(&proposal_id, &depends_on_id, None).await;
         assert!(result.is_ok());
     }
 
@@ -467,7 +469,7 @@ mod tests {
         let proposal_a = TaskProposalId::new();
         let proposal_b = TaskProposalId::new();
 
-        let add_result = repo.add_dependency(&proposal_a, &proposal_b).await;
+        let add_result = repo.add_dependency(&proposal_a, &proposal_b, None).await;
         assert!(add_result.is_ok());
 
         let remove_result = repo.remove_dependency(&proposal_a, &proposal_b).await;

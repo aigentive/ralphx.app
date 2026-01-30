@@ -236,7 +236,7 @@ pub async fn add_proposal_dependency(
     state
         .app_state
         .proposal_dependency_repo
-        .add_dependency(&proposal_id, &depends_on_id)
+        .add_dependency(&proposal_id, &depends_on_id, None)
         .await
         .map_err(|e| {
             error!("Failed to add dependency from {} to {}: {}", proposal_id.as_str(), depends_on_id.as_str(), e);
@@ -313,7 +313,7 @@ pub async fn list_session_proposals(
 
     // Build dependency map: proposal_id -> [depends_on_ids]
     let mut dep_map: HashMap<String, Vec<String>> = HashMap::new();
-    for (from, to) in all_deps {
+    for (from, to, _reason) in all_deps {
         dep_map
             .entry(from.to_string())
             .or_default()
@@ -476,10 +476,11 @@ pub async fn apply_proposal_dependencies(
         }
 
         // Add the dependency
+        // TODO: Task 4 will change None to suggestion.reason.as_deref()
         match state
             .app_state
             .proposal_dependency_repo
-            .add_dependency(&proposal_id, &depends_on_id)
+            .add_dependency(&proposal_id, &depends_on_id, None)
             .await
         {
             Ok(_) => applied_count += 1,
@@ -556,7 +557,7 @@ pub async fn analyze_session_dependencies(
     let mut from_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
     let mut to_map: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
 
-    for (from, to) in &dependencies {
+    for (from, to, _reason) in &dependencies {
         from_map.entry(from.clone()).or_default().push(to.clone());
         to_map.entry(to.clone()).or_default().push(from.clone());
     }
@@ -573,9 +574,10 @@ pub async fn analyze_session_dependencies(
     }
 
     // Build edges
+    // TODO: Task 5 will add reason to DependencyGraphEdge
     let edges: Vec<DependencyGraphEdge> = dependencies
         .iter()
-        .map(|(from, to)| DependencyGraphEdge::new(from.clone(), to.clone()))
+        .map(|(from, to, _reason)| DependencyGraphEdge::new(from.clone(), to.clone()))
         .collect();
 
     // Simple cycle detection using DFS
@@ -834,7 +836,7 @@ async fn would_create_cycle(
 
     // Build adjacency list: from_id -> [to_ids]
     let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for (from, to) in &deps {
+    for (from, to, _reason) in &deps {
         adj.entry(from.to_string()).or_default().push(to.to_string());
     }
 
