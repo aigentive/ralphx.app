@@ -11,11 +11,9 @@
 
 import React from "react";
 import { Bot } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
-import { markdownComponents } from "./MessageItem.markdown";
+import { TextBubble } from "./TextBubble";
 import { formatTimestamp } from "./MessageItem.utils";
 
 // ============================================================================
@@ -62,39 +60,6 @@ export const MessageItem = React.memo(function MessageItem({
   const parsedToolCalls = toolCalls ?? [];
   const hasContentBlocks = parsedContentBlocks.length > 0;
 
-  // Render a text bubble
-  const renderTextBubble = (text: string, key: string) => (
-    <div
-      key={key}
-      className={cn(
-        "px-3 py-2 text-[13px] leading-relaxed",
-        isUser
-          ? "rounded-[10px_10px_4px_10px]"
-          : "rounded-[10px_10px_10px_4px]"
-      )}
-      style={{
-        background: isUser
-          ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
-          : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
-        color: isUser ? "white" : "var(--text-primary)",
-        border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
-        boxShadow: isUser
-          ? "0 2px 8px rgba(255,107,53,0.2)"
-          : "0 1px 4px rgba(0,0,0,0.15)",
-      }}
-    >
-      {isUser ? (
-        <p className="whitespace-pre-wrap break-words overflow-hidden">{text}</p>
-      ) : (
-        <div className="prose prose-sm prose-invert max-w-none overflow-hidden">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {text}
-          </ReactMarkdown>
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div
       className={cn(
@@ -112,7 +77,7 @@ export const MessageItem = React.memo(function MessageItem({
           // Render content blocks in order (interleaved text and tool calls)
           parsedContentBlocks.map((block, index) => {
             if (block.type === "text" && block.text) {
-              return renderTextBubble(block.text, `block-${index}`);
+              return <TextBubble key={`block-${index}`} text={block.text} isUser={isUser} />;
             } else if (block.type === "tool_use" && block.name) {
               const toolCall: ToolCall = {
                 id: block.id || `tool-${index}`,
@@ -134,7 +99,7 @@ export const MessageItem = React.memo(function MessageItem({
                 ))}
               </div>
             )}
-            {renderTextBubble(content, "content")}
+            <TextBubble text={content} isUser={isUser} />
           </>
         )}
 
