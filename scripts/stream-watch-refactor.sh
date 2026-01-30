@@ -6,7 +6,8 @@
 # Zero API calls when idle - only runs when work exists.
 
 STREAM="refactor"
-MODEL="sonnet"
+DEFAULT_MODEL="sonnet"
+MODEL="${RALPH_MODEL:-$DEFAULT_MODEL}"
 WATCH_FILES=("streams/refactor/backlog.md")
 
 # Colors for output
