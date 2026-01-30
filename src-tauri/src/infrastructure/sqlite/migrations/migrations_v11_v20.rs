@@ -374,6 +374,13 @@ pub(super) fn migrate_v17(conn: &Connection) -> AppResult<()> {
 
 /// Migration v18: Add extensibility columns to tasks table for methodology support
 pub(super) fn migrate_v18(conn: &Connection) -> AppResult<()> {
+    // Add category for task categorization (feature, bug, etc.)
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN category TEXT NOT NULL DEFAULT 'feature'",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
     // Add external_status for custom workflow column mapping
     conn.execute(
         "ALTER TABLE tasks ADD COLUMN external_status TEXT",
