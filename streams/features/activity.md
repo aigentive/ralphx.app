@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-30 18:00:00 - Phase 31 Task 5: Fix selector stability with memoized empty arrays
+**What:**
+- Added EMPTY_MESSAGES constant for ChatMessage[] type to chatStore.ts
+- Updated selectMessagesForContext selector to use EMPTY_MESSAGES instead of []
+- Reviewed other selectors (selectQueuedMessages already had EMPTY_QUEUED_MESSAGES)
+- Reviewed workflowStore.ts and methodologyStore.ts selectors - they have similar patterns but are out of scope for this task
+
+**Files:**
+- src/stores/chatStore.ts - added EMPTY_MESSAGES constant, updated selectMessagesForContext selector
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint --quiet src/stores/chatStore.ts` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 17:30:00 - Phase 31 Task 4: Move JSON parsing to API layer
 **What:**
 - Added parseContentBlocks and parseToolCalls functions to src/api/chat.ts

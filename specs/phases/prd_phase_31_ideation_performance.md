@@ -178,7 +178,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(stores): stabilize selectors with memoized empty arrays"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

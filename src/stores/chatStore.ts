@@ -290,7 +290,7 @@ export function getContextKey(context: ChatContext): string {
 export const selectMessagesForContext =
   (contextKey: string) =>
   (state: ChatState): ChatMessage[] =>
-    state.messages[contextKey] ?? [];
+    state.messages[contextKey] ?? EMPTY_MESSAGES;
 
 /**
  * Select message count for a specific context key
@@ -330,5 +330,6 @@ export const selectActiveConversationId = (
   state: ChatState & ChatActions
 ): string | null => state.activeConversationId;
 
-// Stable empty array to avoid creating new references
+// Stable empty arrays to avoid creating new references
+const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = [];
