@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-30 14:30:00 - Phase 33 Task 7: Consolidate tauri.ts with domain re-exports
+**What:**
+- Reduced src/lib/tauri.ts from 1068 lines to 171 lines
+- Removed all extracted code (QA/review/execution/task schemas, api methods)
+- Kept typedInvoke, typedInvokeWithTransform utilities
+- Kept HealthResponseSchema and health check
+- Added re-exports from all domain API modules (execution, test-data, projects, qa-api, reviews-api, tasks)
+- Created aggregate api object that composes all domain APIs for backward compatibility
+- All 54+ importing files continue working unchanged
+
+**Files:**
+- src/lib/tauri.ts (modified, 1068 → 171 lines)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 13:45:00 - Phase 33 Task 6: Create tasks API module
 **What:**
 - Created src/api/tasks.schemas.ts with InjectTaskResponseSchemaRaw
