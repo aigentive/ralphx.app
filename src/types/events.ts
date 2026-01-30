@@ -249,6 +249,41 @@ export const ProposalEventSchema = z.discriminatedUnion("type", [
 
 export type ProposalEvent = z.infer<typeof ProposalEventSchema>;
 
+/**
+ * Schema for proposals:reordered event
+ * Emitted when proposals are reordered within a session
+ */
+export const ProposalsReorderedEventSchema = z.object({
+  sessionId: z.string(),
+  proposals: z.array(
+    z.object({
+      id: z.string(),
+      sessionId: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+      category: z.string(),
+      steps: z.array(z.string()),
+      acceptanceCriteria: z.array(z.string()),
+      suggestedPriority: z.string(),
+      priorityScore: z.number(),
+      priorityReason: z.string().nullable(),
+      estimatedComplexity: z.string(),
+      userPriority: z.string().nullable(),
+      userModified: z.boolean(),
+      status: z.string(),
+      selected: z.boolean(),
+      createdTaskId: z.string().nullable(),
+      planArtifactId: z.string().nullable(),
+      planVersionAtCreation: z.number().nullable(),
+      sortOrder: z.number(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    })
+  ),
+});
+
+export type ProposalsReorderedEvent = z.infer<typeof ProposalsReorderedEventSchema>;
+
 // ============================================================================
 // Plan Artifact Events
 // ============================================================================

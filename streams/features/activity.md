@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-30 13:15:00 - Phase 30 Task 3: Add event emission to reorder_proposals
+**What:**
+- Added event emission to `reorder_proposals` command in ideation_commands_proposals.rs
+- After reordering, fetch all proposals for the session and emit `proposals:reordered` event
+- Event payload includes sessionId and array of all proposals with updated sortOrder
+- Added `ProposalsReorderedEventSchema` to src/types/events.ts for event validation
+- Added listener for `proposals:reordered` in useProposalEvents hook
+- Listener updates each proposal in the store and invalidates session query
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_proposals.rs (lines 299-335)
+- src/types/events.ts (added ProposalsReorderedEventSchema)
+- src/hooks/useEvents.proposal.ts (added reordered event listener)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 12:45:00 - Phase 30 Task 2: Add event emission to set_proposal_selection
 **What:**
 - Added event emission to `set_proposal_selection` command in ideation_commands_proposals.rs

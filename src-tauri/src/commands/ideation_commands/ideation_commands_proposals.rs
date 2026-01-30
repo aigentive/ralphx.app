@@ -303,7 +303,7 @@ pub async fn reorder_proposals(
     proposal_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let session_id = IdeationSessionId::from_string(session_id);
+    let session_id = IdeationSessionId::from_string(session_id.clone());
     let proposal_ids: Vec<TaskProposalId> = proposal_ids
         .into_iter()
         .map(TaskProposalId::from_string)
@@ -313,7 +313,25 @@ pub async fn reorder_proposals(
         .task_proposal_repo
         .reorder(&session_id, proposal_ids)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Emit event with updated proposals so frontend can update its state
+    if let Some(app_handle) = &state.app_handle {
+        // Fetch all proposals for this session with their new order
+        if let Ok(proposals) = state.task_proposal_repo.get_by_session(&session_id).await {
+            let responses: Vec<TaskProposalResponse> =
+                proposals.into_iter().map(TaskProposalResponse::from).collect();
+            let _ = app_handle.emit(
+                "proposals:reordered",
+                serde_json::json!({
+                    "sessionId": session_id.as_str(),
+                    "proposals": responses
+                }),
+            );
+        }
+    }
+
+    Ok(())
 }
 
 /// Assess priority for a single proposal (stub - real implementation in PriorityService)
