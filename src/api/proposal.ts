@@ -55,6 +55,7 @@ const DependencyGraphNodeResponseSchema = z.object({
 const DependencyGraphEdgeResponseSchema = z.object({
   from: z.string(),
   to: z.string(),
+  reason: z.string().nullable(),
 });
 
 const DependencyGraphResponseSchema = z.object({
@@ -164,7 +165,11 @@ function transformDependencyGraph(raw: RawGraph): DependencyGraphResponse {
       inDegree: n.in_degree,
       outDegree: n.out_degree,
     })),
-    edges: raw.edges,
+    edges: raw.edges.map((e) => ({
+      from: e.from,
+      to: e.to,
+      reason: e.reason,
+    })),
     criticalPath: raw.critical_path,
     hasCycles: raw.has_cycles,
     cycles: raw.cycles,
