@@ -323,3 +323,27 @@ export function computeDependencyTiers(graph: DependencyGraph | null | undefined
 export function useDependencyTiers(graph: DependencyGraph | null | undefined): TierAssignment {
   return useMemo(() => computeDependencyTiers(graph), [graph]);
 }
+
+/**
+ * Get the reason text for a dependency edge.
+ *
+ * @param graph - The dependency graph
+ * @param fromId - The proposal that is depended on
+ * @param toId - The proposal that has the dependency
+ * @returns The reason string if found, undefined otherwise
+ *
+ * @example
+ * ```tsx
+ * const reason = getDependencyReason(graph, "proposal-1", "proposal-2");
+ * // Returns "Needs API types defined first" or undefined
+ * ```
+ */
+export function getDependencyReason(
+  graph: DependencyGraph | null | undefined,
+  fromId: string,
+  toId: string
+): string | undefined {
+  if (!graph) return undefined;
+  const edge = graph.edges.find((e) => e.from === fromId && e.to === toId);
+  return edge?.reason ?? undefined;
+}
