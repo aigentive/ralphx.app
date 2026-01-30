@@ -5,6 +5,15 @@
 
 ---
 
+## Archived 2026-01-30 (Third Batch)
+
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P2] [Backend] Replace panic! with Result in artifact.rs - Test assertions use panic! for content validation~~ (stale:2 - file refactored)
+- [ ] ~~[P2] [Backend] Replace expect() with Result handling in patterns.rs - Error handling uses expect() in production paths~~ (stale:2 - only test code)
+
+---
+
 ## Archived 2026-01-30 (Second Batch)
 
 ### From features/backlog.md (Phase Gaps)
