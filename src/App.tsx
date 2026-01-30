@@ -116,6 +116,7 @@ function AppContent() {
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
   const addSession = useIdeationStore((s) => s.addSession);
+  const selectSession = useIdeationStore((s) => s.selectSession);
   const removeSession = useIdeationStore((s) => s.removeSession);
   const activeSessionId = activeSession?.id ?? "";
   // Get raw proposals from store and memoize the filtered/sorted version
@@ -339,13 +340,12 @@ function AppContent() {
   }, [deleteSession, confirm, allSessions, activeSession, setActiveSession, removeSession, clearMessages]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
-    // Find the session in allSessions and add to store if not already there
+    // Find the session in allSessions and select it atomically
     const session = allSessions.find((s) => s.id === sessionId);
     if (session) {
-      addSession(session);
-      setActiveSession(sessionId);
+      selectSession(session);
     }
-  }, [allSessions, addSession, setActiveSession]);
+  }, [allSessions, selectSession]);
 
   const handleSelectProposal = useCallback((proposalId: string) => {
     toggleSelection.mutate(proposalId);
