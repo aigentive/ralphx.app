@@ -52,6 +52,7 @@ interface IdeationViewProps {
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
   onSelectProposal: (proposalId: string) => void;
   onEditProposal: (proposalId: string) => void;
   onRemoveProposal: (proposalId: string) => void;
@@ -82,6 +83,7 @@ export function IdeationView({
   onNewSession,
   onSelectSession,
   onArchiveSession,
+  onDeleteSession,
   onSelectProposal,
   onEditProposal,
   onRemoveProposal,
@@ -237,6 +239,7 @@ export function IdeationView({
           currentSessionId={session?.id ?? null}
           onSelectSession={onSelectSession}
           onNewSession={onNewSession}
+          {...(onDeleteSession !== undefined && { onDeleteSession })}
         />
 
         {/* Main Content */}
