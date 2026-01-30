@@ -96,7 +96,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: feat(migrations): add reason column to proposal_dependencies"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

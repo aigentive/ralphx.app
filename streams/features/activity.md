@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-30 22:58:00 - Phase 39 Task 1: Add database migration for reason column
+**What:**
+- Created v2_add_dependency_reason.rs migration file
+- Uses helpers::add_column_if_not_exists for idempotent column addition
+- Added reason column as TEXT DEFAULT NULL to proposal_dependencies table
+- Registered migration in mod.rs with version 2
+- Bumped SCHEMA_VERSION from 1 to 2
+- Added 2 new tests: test_v2_adds_reason_column_to_proposal_dependencies, test_v2_reason_column_allows_null
+- Updated test_schema_version_constant to expect version 2
+
+**Files:**
+- src-tauri/src/infrastructure/sqlite/migrations/v2_add_dependency_reason.rs (NEW)
+- src-tauri/src/infrastructure/sqlite/migrations/mod.rs (modified)
+- src-tauri/src/infrastructure/sqlite/migrations/tests.rs (modified)
+- specs/phases/prd_phase_39_dependency_reason.md (updated passes: true)
+
+**Commands:**
+- `cargo test --lib -- migrations` (30 passed)
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 00:15:00 - Phase 38 Gap Verification & Completion
 **What:**
 - Ran gap verification on all Phase 38 implementations
