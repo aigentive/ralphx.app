@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Edit3, Plus, X, Loader2 } from "lucide-react";
+import { Edit3, Plus, X, Loader2, Layers } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,9 @@ const COMPLEXITIES: { value: Complexity; label: string }[] = [
   { value: "complex", label: "Complex" },
   { value: "very_complex", label: "Very Complex" },
 ];
+
+// Circled numbers for step prefixes (supports up to 10 steps)
+const CIRCLED_NUMBERS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
 
 /**
  * ComplexitySelector - Visual 5-dot complexity picker
@@ -317,52 +320,58 @@ export function ProposalEditModal({
               </div>
             </div>
 
-            {/* Steps Editor */}
+            {/* Steps Editor with Glass Container */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-[var(--text-primary)]">Steps</Label>
-                <Button
+              <Label className="text-[var(--text-primary)]">Implementation Steps</Label>
+              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-4">
+                {steps.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <Layers className="w-8 h-8 text-[var(--text-muted)] mb-2" />
+                    <p className="text-sm text-[var(--text-muted)]">No steps defined yet</p>
+                    <p className="text-xs text-[var(--text-muted)]/60 mt-1">Add steps to outline the implementation</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {steps.map((step, index) => (
+                      <div key={index} className="group flex items-center gap-3">
+                        <span className="text-[#ff6b35] text-lg font-medium w-6 flex-shrink-0">
+                          {CIRCLED_NUMBERS[index] ?? `${index + 1}.`}
+                        </span>
+                        <Input
+                          data-testid="step-input"
+                          type="text"
+                          value={step}
+                          onChange={(e) => handleStepChange(index, e.target.value)}
+                          aria-label={`Step ${index + 1}`}
+                          className={`${inputClasses} flex-1`}
+                          disabled={isSaving}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleRemoveStep(index)}
+                          aria-label={`Remove step ${index + 1}`}
+                          disabled={isSaving}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Centered dashed-border add button */}
+                <button
                   type="button"
-                  variant="ghost"
-                  size="icon-sm"
                   onClick={handleAddStep}
-                  aria-label="Add step"
                   disabled={isSaving}
-                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                  className="mt-4 w-full py-2 px-4 rounded-md border border-dashed border-white/20 hover:border-[#ff6b35]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
-                </Button>
+                  <span className="text-sm">Add another step</span>
+                </button>
               </div>
-              {steps.length === 0 ? (
-                <p className="text-sm italic text-[var(--text-muted)]">No steps added</p>
-              ) : (
-                <div className="space-y-2">
-                  {steps.map((step, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input
-                        data-testid="step-input"
-                        type="text"
-                        value={step}
-                        onChange={(e) => handleStepChange(index, e.target.value)}
-                        aria-label={`Step ${index + 1}`}
-                        className={`${inputClasses} flex-1`}
-                        disabled={isSaving}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleRemoveStep(index)}
-                        aria-label={`Remove step ${index + 1}`}
-                        disabled={isSaving}
-                        className="text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Acceptance Criteria Editor */}
