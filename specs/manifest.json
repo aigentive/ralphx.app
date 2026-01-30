@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 29,
+  "currentPhase": 30,
   "phases": [
     {
       "phase": 0,
@@ -219,6 +219,13 @@
       "prd": "specs/phases/prd_phase_29_chat_resumption.md",
       "status": "complete",
       "description": "Wire execution_state to unified chat commands, add ChatResumptionRunner for startup resumption"
+    },
+    {
+      "phase": 30,
+      "name": "Ideation Artifacts Fix",
+      "prd": "specs/phases/prd_phase_30_ideation_artifacts_fix.md",
+      "status": "active",
+      "description": "Fix broken ideation artifact interactions: selection events, edit modal wiring"
     }
   ]
 }
