@@ -27,6 +27,12 @@ import { PRIORITY_CONFIG } from "./IdeationView.constants";
 // Types
 // ============================================================================
 
+export interface DependencyDetail {
+  proposalId: string;
+  title: string;
+  reason?: string;
+}
+
 export interface ProposalCardProps {
   proposal: TaskProposal;
   onSelect: (proposalId: string) => void;
@@ -37,6 +43,8 @@ export interface ProposalCardProps {
   onViewHistoricalPlan?: (artifactId: string, version: number) => void | undefined;
   /** Number of proposals this proposal depends on */
   dependsOnCount?: number;
+  /** Details of proposals this proposal depends on (for rich tooltips) */
+  dependsOnDetails?: DependencyDetail[];
   /** Number of proposals blocked by this proposal */
   blocksCount?: number;
   /** Whether this proposal is on the critical path */
@@ -56,6 +64,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   currentPlanVersion,
   onViewHistoricalPlan,
   dependsOnCount,
+  dependsOnDetails,
   blocksCount,
   isOnCriticalPath,
 }: ProposalCardProps) {
@@ -199,7 +208,22 @@ export const ProposalCard = React.memo(function ProposalCard({
                       ←{dependsOnCount}
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>Depends on {dependsOnCount} proposal{dependsOnCount !== 1 ? "s" : ""}</TooltipContent>
+                  <TooltipContent>
+                    {dependsOnDetails && dependsOnDetails.length > 0 ? (
+                      <div className="space-y-1 text-xs">
+                        <div className="font-medium">
+                          Depends on {dependsOnDetails.length} proposal{dependsOnDetails.length !== 1 ? "s" : ""}:
+                        </div>
+                        {dependsOnDetails.map((dep) => (
+                          <div key={dep.proposalId} className="text-[var(--text-muted)]">
+                            • {dep.title}{dep.reason && `: ${dep.reason}`}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      `Depends on ${dependsOnCount} proposal${dependsOnCount !== 1 ? "s" : ""}`
+                    )}
+                  </TooltipContent>
                 </Tooltip>
               )}
               {(blocksCount !== undefined && blocksCount > 0) && (

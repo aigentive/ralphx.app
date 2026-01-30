@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 12:05:00 - Phase 39 Task 9: Update ProposalCard to display dependency reasons in tooltip
+**What:**
+- Added DependencyDetail interface with proposalId, title, and optional reason fields
+- Added dependsOnDetails prop to ProposalCardProps
+- Enhanced dependency tooltip to show proposal titles and reasons when available
+- Fallback to count-only display when details not provided (backward compatible)
+
+**Files:**
+- src/components/Ideation/ProposalCard.tsx
+
+**Commands:**
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 11:35:00 - Phase 39 Task 8: Update frontend transform to pass through reason
 **What:**
 - Updated transformDependencyGraph in ideation.transforms.ts to map edges with reason field
