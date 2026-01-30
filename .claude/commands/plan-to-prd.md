@@ -1,7 +1,7 @@
 ---
 description: Convert a plan file into a phase PRD using the project template
 argument-hint: <path-to-plan-file>
-allowed-tools: Read, Write, Glob, Bash
+allowed-tools: Read, Write, Edit, Glob, Bash, Grep, AskUserQuestion
 ---
 
 # Plan to PRD Converter
@@ -90,36 +90,103 @@ When converting plan steps to PRD tasks:
 
 1. **One major implementation step = one task**
 2. **Include the plan section reference** so the agent knows where to look
-3. **Add standard steps:**
+3. **Extract dependencies** from plan step relationships
+4. **Add standard steps:**
    - "Read specs/plans/<name>.md section '<Section>'"
    - Implementation steps from the plan
    - Linting step (cargo clippy for backend, npm run lint for frontend)
    - Commit step with appropriate prefix
 
-**Example conversion:**
+### Dependency Detection
+
+Look for these patterns in plan steps to extract dependencies:
+
+**Keywords to detect:**
+- "depends on", "requires", "after" → task is blockedBy the referenced task
+- "blocking", "blocks", "(BLOCKING)" → task blocks the referenced task
+- Step order → earlier steps typically block later ones
+- Explicit markers like `**Dependencies:** Task N`
+
+**When converting steps, populate:**
+- `"id"`: Sequential integer starting at 1
+- `"blocking"`: IDs of tasks that cannot start until this one completes
+- `"blockedBy"`: IDs of tasks that must complete before this one starts
+- `"atomic_commit"`: Commit message for this task
+
+**Example conversion with dependencies:**
 
 Plan step:
-```
-### Step 1: Wire execution_state to Unified Commands
+```markdown
+### Step 1: Wire execution_state to Unified Commands (BLOCKING)
+**Dependencies:** None
+**Atomic Commit:** `fix(chat): wire execution_state to unified commands`
+
 Modify create_chat_service() to accept execution_state...
+
+### Step 2: Update chat panel to use new API
+**Dependencies:** Step 1
+**Atomic Commit:** `feat(chat): update panel to use unified API`
+
+Connect the ChatPanel component...
 ```
 
-Becomes PRD task:
+Becomes PRD tasks:
 ```json
-{
-  "category": "backend",
-  "description": "Wire execution_state to unified chat commands",
-  "plan_section": "Step 1: Wire execution_state to Unified Commands",
-  "steps": [
-    "Read specs/plans/chat_resumption_unified.md section 'Step 1'",
-    "Modify create_chat_service() to accept execution_state parameter",
-    "...",
-    "Run cargo clippy && cargo test",
-    "Commit: fix(chat): wire execution_state to unified chat commands"
-  ],
-  "passes": false
-}
+[
+  {
+    "id": 1,
+    "category": "backend",
+    "description": "Wire execution_state to unified chat commands",
+    "plan_section": "Step 1: Wire execution_state to Unified Commands",
+    "blocking": [2],
+    "blockedBy": [],
+    "atomic_commit": "fix(chat): wire execution_state to unified commands",
+    "steps": [
+      "Read specs/plans/chat_resumption_unified.md section 'Step 1'",
+      "Modify create_chat_service() to accept execution_state parameter",
+      "...",
+      "Run cargo clippy && cargo test",
+      "Commit: fix(chat): wire execution_state to unified commands"
+    ],
+    "passes": false
+  },
+  {
+    "id": 2,
+    "category": "frontend",
+    "description": "Update chat panel to use unified API",
+    "plan_section": "Step 2: Update chat panel to use new API",
+    "blocking": [],
+    "blockedBy": [1],
+    "atomic_commit": "feat(chat): update panel to use unified API",
+    "steps": [
+      "Read specs/plans/chat_resumption_unified.md section 'Step 2'",
+      "Connect the ChatPanel component...",
+      "Run npm run lint && npm run typecheck",
+      "Commit: feat(chat): update panel to use unified API"
+    ],
+    "passes": false
+  }
+]
 ```
+
+### Deriving Commit Messages
+
+If the plan doesn't have explicit `atomic_commit` annotations, derive them:
+
+| Files Modified | Scope |
+|----------------|-------|
+| `src-tauri/**` | backend service/module name |
+| `src/**` | frontend component/feature name |
+| `ralphx-mcp-server/**` | mcp |
+| `ralphx-plugin/**` | plugin |
+
+| Task Description Contains | Type |
+|---------------------------|------|
+| "create", "add", "implement", "new" | feat |
+| "fix", "repair", "correct", "resolve" | fix |
+| "update", "modify", "change" | feat |
+| "refactor", "extract", "split" | refactor |
+| "document", "readme", "template" | docs |
 
 ### Category Detection
 

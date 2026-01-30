@@ -39,6 +39,28 @@ Each task follows this pattern:
 
 ---
 
+## Git Workflow (Parallel Agent Coordination)
+
+**Before each commit, follow the commit lock protocol:**
+
+Reference: `.claude/rules/commit-lock.md`
+
+1. Establish project root: `PROJECT_ROOT="$(git rev-parse --show-toplevel)"`
+2. Acquire lock before `git add` (see commit-lock.md § Protocol)
+3. Stage and commit using `git -C "$PROJECT_ROOT"`
+4. Release lock after commit: `rm -f "$PROJECT_ROOT/.commit-lock"`
+
+**Commit message conventions** (see `.claude/rules/git-workflow.md`):
+- Features stream: `feat:` / `fix:` / `docs:`
+- Refactor stream: `refactor(scope):`
+
+**Task Execution Order:**
+- Tasks with `"blockedBy": []` can start immediately
+- Before starting a task, check `blockedBy` - all listed tasks must have `"passes": true`
+- Execute tasks in ID order when dependencies are satisfied
+
+---
+
 ## Task List
 
 **IMPORTANT: Work on ONE task per iteration.**
@@ -54,9 +76,13 @@ After completing the task: update `"passes": true`, commit, and stop.
 ```json
 [
   {
+    "id": 1,
     "category": "backend|frontend|mcp|agent|documentation",
     "description": "{What this task accomplishes}",
     "plan_section": "{Section name in the detailed plan}",
+    "blocking": [2, 3],
+    "blockedBy": [],
+    "atomic_commit": "feat(scope): description",
     "steps": [
       "Read specs/plans/{plan_name}.md section '{Section}'",
       "{Step 1}",
@@ -65,9 +91,32 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Commit: {type}({scope}): {message}"
     ],
     "passes": false
+  },
+  {
+    "id": 2,
+    "category": "frontend",
+    "description": "{Depends on task 1}",
+    "plan_section": "{Section name}",
+    "blocking": [],
+    "blockedBy": [1],
+    "atomic_commit": "feat(scope): wire component",
+    "steps": [
+      "Read specs/plans/{plan_name}.md section '{Section}'",
+      "{Step 1}",
+      "{Step 2}",
+      "Run npm run lint && npm run typecheck",
+      "Commit: feat(scope): wire component"
+    ],
+    "passes": false
   }
 ]
 ```
+
+**Task field definitions:**
+- `id`: Sequential integer starting at 1
+- `blocking`: Task IDs that cannot start until THIS task completes
+- `blockedBy`: Task IDs that must complete before THIS task can start (inverse of blocking)
+- `atomic_commit`: Commit message for this task
 
 ---
 
