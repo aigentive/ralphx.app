@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-30 19:15:00 - Phase 34 Task 3: Implement visual 5-dot ComplexitySelector
+**What:**
+- Created inline ComplexitySelector component with ComplexitySelectorProps interface
+- Renders 5 circles for trivial → very_complex using COMPLEXITIES array
+- Orange fill (#ff6b35) for selected dots (fills all dots up to selection)
+- Transparent with border-white/30 for unselected, hover:border-[#ff6b35]/50
+- Added hover:scale-125 transition and cursor-pointer
+- Shows complexity label below dots (e.g., "Moderate")
+- Added title attribute for tooltip on hover showing full label
+- Wired to existing complexity state via value/onChange props
+- Replaced dropdown in right column of metadata panel
+
+**Files:**
+- src/components/Ideation/ProposalEditModal.tsx
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 18:30:00 - Phase 34 Task 2: Create two-column metadata panel
 **What:**
 - Created two-column metadata panel with glass effect (border-white/[0.08], bg-white/[0.03], backdrop-blur-xl)
