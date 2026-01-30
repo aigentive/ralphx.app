@@ -1,13 +1,10 @@
 /**
  * ProposalEditModal - Modal for editing task proposal details
- * Allows editing title, description, category, steps, acceptance criteria,
- * priority override, and complexity.
- *
- * Uses shadcn/ui Dialog, Input, Textarea, Select, Button, Label components.
+ * Clean single-column layout with proper scrolling
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Edit3, Plus, X, Loader2, Layers, CheckCircle } from "lucide-react";
+import { Edit3, Plus, X, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { TaskProposal, UpdateProposalInput, Priority, Complexity } from "@/types/ideation";
 
 const CATEGORIES = [
@@ -47,14 +43,6 @@ const COMPLEXITIES: { value: Complexity; label: string }[] = [
   { value: "very_complex", label: "Very Complex" },
 ];
 
-// Circled numbers for step prefixes (supports up to 10 steps)
-const CIRCLED_NUMBERS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
-
-/**
- * ComplexitySelector - Visual 5-dot complexity picker
- * Displays 5 circles representing trivial → very_complex
- * Orange fill for selected, transparent for others
- */
 interface ComplexitySelectorProps {
   value: Complexity;
   onChange: (value: Complexity) => void;
@@ -65,8 +53,8 @@ function ComplexitySelector({ value, onChange, disabled }: ComplexitySelectorPro
   const selectedIndex = COMPLEXITIES.findIndex((c) => c.value === value);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5">
         {COMPLEXITIES.map((c, index) => {
           const isSelected = index <= selectedIndex;
           return (
@@ -78,18 +66,18 @@ function ComplexitySelector({ value, onChange, disabled }: ComplexitySelectorPro
               title={c.label}
               aria-label={`Set complexity to ${c.label}`}
               className={`
-                w-4 h-4 rounded-full border transition-all duration-150
+                w-3 h-3 rounded-full transition-colors duration-150
                 ${isSelected
-                  ? "bg-[#ff6b35] border-[#ff6b35]"
-                  : "bg-transparent border-white/30 hover:border-[#ff6b35]/50"
+                  ? "bg-[#ff6b35]"
+                  : "bg-white/20 hover:bg-[#ff6b35]/40"
                 }
-                ${!disabled ? "cursor-pointer hover:scale-125" : "cursor-not-allowed opacity-50"}
+                ${!disabled ? "cursor-pointer" : "cursor-not-allowed opacity-50"}
               `}
             />
           );
         })}
       </div>
-      <span className="text-sm text-[var(--text-muted)] capitalize">
+      <span className="text-sm text-[var(--text-secondary)]">
         {COMPLEXITIES[selectedIndex]?.label ?? "Moderate"}
       </span>
     </div>
@@ -119,7 +107,6 @@ export function ProposalEditModal({
 
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize form state when proposal changes
   useEffect(() => {
     if (proposal) {
       setTitle(proposal.title);
@@ -132,7 +119,6 @@ export function ProposalEditModal({
     }
   }, [proposal]);
 
-  // Focus title input when modal opens
   useEffect(() => {
     if (proposal && titleInputRef.current) {
       titleInputRef.current.focus();
@@ -202,34 +188,40 @@ export function ProposalEditModal({
 
   const canSave = title.trim().length > 0 && !isSaving;
 
-  // Glass effect styling for inputs - per Task 6 design specs + Task 8 micro-interactions
-  const inputClasses = "bg-black/30 border border-white/[0.08] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all duration-200 focus:border-[#ff6b35]/50 focus:ring-2 focus:ring-[#ff6b35]/10 focus:outline-none hover:scale-[1.01] focus:scale-[1.01]";
-  const selectClasses = "w-full h-9 rounded-lg border px-3 py-2 text-sm bg-black/30 border-white/[0.08] text-[var(--text-primary)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/10 focus:border-[#ff6b35]/50 hover:scale-[1.01] focus:scale-[1.01]";
+  const inputClasses = "bg-white/[0.03] border border-white/[0.08] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-colors duration-150 focus:border-[#ff6b35]/40 focus:outline-none h-10 px-3";
+  const selectClasses = "w-full h-10 rounded-md border px-3 text-sm bg-white/[0.03] border-white/[0.08] text-[var(--text-primary)] transition-colors duration-150 focus:outline-none focus:border-[#ff6b35]/40";
 
   return (
     <Dialog open={!!proposal} onOpenChange={handleOpenChange}>
       <DialogContent
         data-testid="proposal-edit-modal"
-        className="max-w-2xl max-h-[90vh] animate-modal-slide-up"
+        className="max-w-3xl !flex !flex-col overflow-hidden"
+        style={{ maxHeight: "85vh" }}
         aria-labelledby="modal-title"
       >
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="bg-[#ff6b35]/10 rounded-full p-1.5">
+        {/* Header */}
+        <DialogHeader className="flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-[#ff6b35]/10 flex items-center justify-center flex-shrink-0">
               <Edit3 className="w-5 h-5 text-[#ff6b35]" />
             </div>
-            <div className="flex flex-col">
-              <DialogTitle id="modal-title">Edit Proposal</DialogTitle>
-              <p className="text-sm text-[var(--text-muted)]">Refine your task proposal</p>
+            <div>
+              <DialogTitle id="modal-title" className="text-lg font-medium">
+                Edit Proposal
+              </DialogTitle>
+              <p className="text-sm text-[var(--text-muted)] mt-0.5">
+                Refine the details of your task proposal
+              </p>
             </div>
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh]">
-          <div data-testid="modal-content" className="px-6 py-4 space-y-4">
-            {/* Title Input */}
-            <div className="space-y-2 animate-stagger-fade-in" style={{ animationDelay: "0ms" }}>
-              <Label htmlFor="proposal-title" className="text-[var(--text-primary)]">
+        {/* Scrollable Content */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6">
+          <div className="py-6 space-y-8">
+            {/* Title */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-title" className="text-sm font-medium text-[var(--text-secondary)]">
                 Title
               </Label>
               <Input
@@ -240,12 +232,13 @@ export function ProposalEditModal({
                 onChange={(e) => setTitle(e.target.value)}
                 className={inputClasses}
                 disabled={isSaving}
+                placeholder="What needs to be done?"
               />
             </div>
 
-            {/* Description Textarea */}
-            <div className="space-y-2 animate-stagger-fade-in" style={{ animationDelay: "50ms" }}>
-              <Label htmlFor="proposal-description" className="text-[var(--text-primary)]">
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="proposal-description" className="text-sm font-medium text-[var(--text-secondary)]">
                 Description
               </Label>
               <Textarea
@@ -253,65 +246,60 @@ export function ProposalEditModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className={`${inputClasses} resize-none`}
+                className={`${inputClasses} resize-none h-auto py-2.5`}
                 disabled={isSaving}
+                placeholder="Describe the task in detail..."
               />
             </div>
 
-            {/* Two-Column Metadata Panel with Glass Effect */}
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-4 animate-stagger-fade-in" style={{ animationDelay: "100ms" }}>
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
-                {/* Left Column: Category + Priority Override */}
-                <div className="space-y-4">
-                  {/* Category Selector */}
-                  <div className="space-y-2">
-                    <Label htmlFor="proposal-category" className="text-[var(--text-primary)] text-sm">
-                      Category
-                    </Label>
-                    <select
-                      id="proposal-category"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className={selectClasses}
-                      disabled={isSaving}
-                    >
-                      {CATEGORIES.map((cat) => (
-                        <option key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+            {/* Metadata Row */}
+            <div className="grid grid-cols-3 gap-6">
+              {/* Category */}
+              <div className="space-y-2">
+                <Label htmlFor="proposal-category" className="text-sm font-medium text-[var(--text-secondary)]">
+                  Category
+                </Label>
+                <select
+                  id="proposal-category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className={selectClasses}
+                  disabled={isSaving}
+                >
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  {/* Priority Override Selector */}
-                  <div className="space-y-2">
-                    <Label htmlFor="proposal-priority" className="text-[var(--text-primary)] text-sm">
-                      Priority Override
-                    </Label>
-                    <select
-                      id="proposal-priority"
-                      value={userPriority}
-                      onChange={(e) => setUserPriority(e.target.value as Priority | "")}
-                      className={selectClasses}
-                      disabled={isSaving}
-                    >
-                      {PRIORITIES.map((p) => (
-                        <option key={p.value || "auto"} value={p.value}>
-                          {p.value === "" ? `Auto (${proposal.suggestedPriority})` : p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+              {/* Priority */}
+              <div className="space-y-2">
+                <Label htmlFor="proposal-priority" className="text-sm font-medium text-[var(--text-secondary)]">
+                  Priority
+                </Label>
+                <select
+                  id="proposal-priority"
+                  value={userPriority}
+                  onChange={(e) => setUserPriority(e.target.value as Priority | "")}
+                  className={selectClasses}
+                  disabled={isSaving}
+                >
+                  {PRIORITIES.map((p) => (
+                    <option key={p.value || "auto"} value={p.value}>
+                      {p.value === "" ? `Auto (${proposal.suggestedPriority})` : p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                {/* Vertical Divider */}
-                <div className="w-px self-stretch bg-white/[0.08]" />
-
-                {/* Right Column: Visual Complexity Selector */}
-                <div className="space-y-2">
-                  <Label className="text-[var(--text-primary)] text-sm">
-                    Complexity
-                  </Label>
+              {/* Complexity */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-[var(--text-secondary)]">
+                  Complexity
+                </Label>
+                <div className="h-10 flex items-center">
                   <ComplexitySelector
                     value={complexity}
                     onChange={setComplexity}
@@ -321,124 +309,120 @@ export function ProposalEditModal({
               </div>
             </div>
 
-            {/* Steps Editor with Glass Container */}
-            <div className="space-y-2 animate-stagger-fade-in" style={{ animationDelay: "150ms" }}>
-              <Label className="text-[var(--text-primary)]">Implementation Steps</Label>
-              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-4">
-                {steps.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-center">
-                    <Layers className="w-8 h-8 text-[var(--text-muted)] mb-2" />
-                    <p className="text-sm text-[var(--text-muted)]">No steps defined yet</p>
-                    <p className="text-xs text-[var(--text-muted)]/60 mt-1">Add steps to outline the implementation</p>
+            {/* Implementation Steps */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-[var(--text-secondary)]">
+                  Implementation Steps
+                </Label>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {steps.length} step{steps.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {steps.map((step, index) => (
+                  <div key={index} className="group flex items-center gap-3">
+                    <span className="text-sm text-[#ff6b35] font-mono w-6 flex-shrink-0 text-right">
+                      {index + 1}.
+                    </span>
+                    <Input
+                      data-testid="step-input"
+                      type="text"
+                      value={step}
+                      onChange={(e) => handleStepChange(index, e.target.value)}
+                      aria-label={`Step ${index + 1}`}
+                      className={`${inputClasses} flex-1 h-9 text-sm`}
+                      disabled={isSaving}
+                      placeholder="Describe this step..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStep(index)}
+                      aria-label={`Remove step ${index + 1}`}
+                      disabled={isSaving}
+                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {steps.map((step, index) => (
-                      <div key={index} className="group flex items-center gap-3">
-                        <span className="text-[#ff6b35] text-lg font-medium w-6 flex-shrink-0">
-                          {CIRCLED_NUMBERS[index] ?? `${index + 1}.`}
-                        </span>
-                        <Input
-                          data-testid="step-input"
-                          type="text"
-                          value={step}
-                          onChange={(e) => handleStepChange(index, e.target.value)}
-                          aria-label={`Step ${index + 1}`}
-                          className={`${inputClasses} flex-1`}
-                          disabled={isSaving}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => handleRemoveStep(index)}
-                          aria-label={`Remove step ${index + 1}`}
-                          disabled={isSaving}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Centered dashed-border add button */}
+                ))}
+
                 <button
                   type="button"
                   onClick={handleAddStep}
                   disabled={isSaving}
-                  aria-label="Add step"
-                  className="mt-4 w-full py-2 px-4 rounded-md border border-dashed border-white/20 hover:border-[#ff6b35]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-10 rounded-md border border-dashed border-white/10 hover:border-[#ff6b35]/30 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
-                  <span className="text-sm">Add another step</span>
+                  Add step
                 </button>
               </div>
             </div>
 
-            {/* Acceptance Criteria Editor with Glass Container */}
-            <div className="space-y-2 animate-stagger-fade-in" style={{ animationDelay: "200ms" }}>
-              <Label className="text-[var(--text-primary)]">Acceptance Criteria</Label>
-              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-4">
-                {acceptanceCriteria.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-center">
-                    <CheckCircle className="w-8 h-8 text-[var(--text-muted)] mb-2" />
-                    <p className="text-sm text-[var(--text-muted)]">No acceptance criteria defined yet</p>
-                    <p className="text-xs text-[var(--text-muted)]/60 mt-1">Add criteria to define success conditions</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {acceptanceCriteria.map((criterion, index) => (
-                      <div key={index} className="group flex items-center gap-3">
-                        <span className="text-[#ff6b35] text-lg font-medium w-6 flex-shrink-0">✓</span>
-                        <Input
-                          data-testid="criterion-input"
-                          type="text"
-                          value={criterion}
-                          onChange={(e) => handleCriterionChange(index, e.target.value)}
-                          aria-label={`Acceptance criterion ${index + 1}`}
-                          className={`${inputClasses} flex-1`}
-                          disabled={isSaving}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => handleRemoveCriterion(index)}
-                          aria-label={`Remove criterion ${index + 1}`}
-                          disabled={isSaving}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+            {/* Acceptance Criteria */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-[var(--text-secondary)]">
+                  Acceptance Criteria
+                </Label>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {acceptanceCriteria.length} criteri{acceptanceCriteria.length !== 1 ? "a" : "on"}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {acceptanceCriteria.map((criterion, index) => (
+                  <div key={index} className="group flex items-center gap-3">
+                    <div className="w-6 flex justify-center flex-shrink-0">
+                      <div className="w-4 h-4 rounded border border-[#ff6b35]/40 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-sm bg-[#ff6b35]/60" />
                       </div>
-                    ))}
+                    </div>
+                    <Input
+                      data-testid="criterion-input"
+                      type="text"
+                      value={criterion}
+                      onChange={(e) => handleCriterionChange(index, e.target.value)}
+                      aria-label={`Acceptance criterion ${index + 1}`}
+                      className={`${inputClasses} flex-1 h-9 text-sm`}
+                      disabled={isSaving}
+                      placeholder="Define success condition..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCriterion(index)}
+                      aria-label={`Remove criterion ${index + 1}`}
+                      disabled={isSaving}
+                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
-                {/* Centered dashed-border add button */}
+                ))}
+
                 <button
                   type="button"
                   onClick={handleAddCriterion}
                   disabled={isSaving}
-                  aria-label="Add criterion"
-                  className="mt-4 w-full py-2 px-4 rounded-md border border-dashed border-white/20 hover:border-[#ff6b35]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-10 rounded-md border border-dashed border-white/10 hover:border-[#ff6b35]/30 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
-                  <span className="text-sm">Add acceptance criterion</span>
+                  Add criterion
                 </button>
               </div>
             </div>
-
           </div>
-        </ScrollArea>
+        </div>
 
-        <DialogFooter>
+        {/* Footer */}
+        <DialogFooter className="flex-shrink-0">
           <Button
             data-testid="cancel-button"
             variant="ghost"
             onClick={onCancel}
             disabled={isSaving}
-            className="text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.04]"
           >
             Cancel
           </Button>
@@ -446,72 +430,13 @@ export function ProposalEditModal({
             data-testid="confirm-button"
             onClick={handleSave}
             disabled={!canSave}
-            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white active:scale-[0.98] transition-all hover:-translate-y-px hover:shadow-lg"
+            className="bg-[#ff6b35] hover:bg-[#ff6b35]/90 text-white px-6"
           >
             {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? "Saving..." : "Save Changes"}
           </Button>
         </DialogFooter>
       </DialogContent>
-
-      {/* Modal entry animations */}
-      <style>{`
-        @keyframes modal-slide-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.98);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes stagger-fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .animate-modal-slide-up {
-          animation: modal-slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        .animate-stagger-fade-in {
-          opacity: 0;
-          animation: stagger-fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        /* Ambient warm glow at modal corners - Task 8 */
-        [data-testid="proposal-edit-modal"]::before {
-          content: '';
-          position: absolute;
-          top: -50px;
-          right: -50px;
-          width: 200px;
-          height: 200px;
-          background: radial-gradient(circle, rgba(255, 107, 53, 0.08) 0%, transparent 70%);
-          pointer-events: none;
-          z-index: -1;
-        }
-
-        [data-testid="proposal-edit-modal"]::after {
-          content: '';
-          position: absolute;
-          bottom: -50px;
-          left: -50px;
-          width: 200px;
-          height: 200px;
-          background: radial-gradient(circle, rgba(255, 107, 53, 0.05) 0%, transparent 70%);
-          pointer-events: none;
-          z-index: -1;
-        }
-      `}</style>
     </Dialog>
   );
 }
