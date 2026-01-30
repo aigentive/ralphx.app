@@ -114,3 +114,17 @@ fn test_creates_table() {
 - [ ] Registered in `MIGRATIONS`
 - [ ] `SCHEMA_VERSION` bumped
 - [ ] Tests added
+
+## Datetime Format (SQLite)
+
+**Standard:** RFC3339 with UTC timezone (`2026-01-31T10:30:45+00:00`)
+
+| Wrong | Correct |
+|-------|---------|
+| `DATETIME DEFAULT CURRENT_TIMESTAMP` | `TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))` |
+| `datetime('now')` | `strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')` |
+
+**Rules:**
+- Column type: `TEXT` (not `DATETIME`)
+- Always include timezone: `+00:00`
+- Use `parse_datetime` helper for reading (handles legacy formats gracefully)
