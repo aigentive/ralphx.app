@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 14:43:00 - Phase 40 Task 2: Verify DependencyGraphEdge reason field and add helper
+**What:**
+- Verified Phase 39 types already in place:
+  - `src/types/ideation.ts:174` - `DependencyGraphEdgeSchema` has `reason: z.string().optional()`
+  - `src/api/ideation.schemas.ts:98` - `DependencyGraphEdgeResponseSchema` has `reason: z.string().nullable()`
+  - `src/api/ideation.transforms.ts:146-149` - `transformDependencyGraph` passes `reason` through
+- Added `getDependencyReason(graph, fromId, toId)` helper function
+- Added 8 unit tests for the helper function
+
+**Files:**
+- src/hooks/useDependencyGraph.ts (added getDependencyReason helper)
+- src/hooks/useDependencyGraph.test.ts (added 8 new tests)
+
+**Commands:**
+- `npm run test src/hooks/useDependencyGraph.test.ts` (34 tests passed)
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 13:41:00 - Phase 40 Task 1: Add useDependencyTiers hook for topological grouping
 **What:**
 - Added `computeDependencyTiers()` function to compute topological tiers from dependency graph

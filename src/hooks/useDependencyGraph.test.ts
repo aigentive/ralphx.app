@@ -14,6 +14,7 @@ import {
   useDependencyMutations,
   useDependencyTiers,
   computeDependencyTiers,
+  getDependencyReason,
   dependencyKeys,
 } from "./useDependencyGraph";
 import { ideationApi } from "@/api/ideation";
@@ -38,8 +39,8 @@ const mockGraph: DependencyGraphResponse = {
     { proposalId: "proposal-3", title: "Build UI", inDegree: 1, outDegree: 0 },
   ],
   edges: [
-    { from: "proposal-1", to: "proposal-2" },
-    { from: "proposal-2", to: "proposal-3" },
+    { from: "proposal-1", to: "proposal-2", reason: "API needs database schema" },
+    { from: "proposal-2", to: "proposal-3", reason: "UI requires API endpoints" },
   ],
   criticalPath: ["proposal-1", "proposal-2", "proposal-3"],
   hasCycles: false,
@@ -491,5 +492,67 @@ describe("useDependencyTiers", () => {
 
     // Same reference if input unchanged
     expect(firstResult).toBe(secondResult);
+  });
+});
+
+describe("getDependencyReason", () => {
+  it("should return reason for existing edge", () => {
+    const reason = getDependencyReason(mockGraph, "proposal-1", "proposal-2");
+    expect(reason).toBe("API needs database schema");
+  });
+
+  it("should return reason for another existing edge", () => {
+    const reason = getDependencyReason(mockGraph, "proposal-2", "proposal-3");
+    expect(reason).toBe("UI requires API endpoints");
+  });
+
+  it("should return undefined for non-existent edge", () => {
+    const reason = getDependencyReason(mockGraph, "proposal-1", "proposal-3");
+    expect(reason).toBeUndefined();
+  });
+
+  it("should return undefined for reversed edge direction", () => {
+    // Edge exists from proposal-1 to proposal-2, not the reverse
+    const reason = getDependencyReason(mockGraph, "proposal-2", "proposal-1");
+    expect(reason).toBeUndefined();
+  });
+
+  it("should return undefined for null graph", () => {
+    const reason = getDependencyReason(null, "proposal-1", "proposal-2");
+    expect(reason).toBeUndefined();
+  });
+
+  it("should return undefined for undefined graph", () => {
+    const reason = getDependencyReason(undefined, "proposal-1", "proposal-2");
+    expect(reason).toBeUndefined();
+  });
+
+  it("should return undefined when edge has no reason field", () => {
+    const graphWithNoReasons: DependencyGraphResponse = {
+      ...mockGraphWithCycles,
+      edges: [
+        { from: "proposal-1", to: "proposal-2" },
+        { from: "proposal-2", to: "proposal-1" },
+      ],
+    };
+    const reason = getDependencyReason(graphWithNoReasons, "proposal-1", "proposal-2");
+    expect(reason).toBeUndefined();
+  });
+
+  it("should return undefined when edge reason is null", () => {
+    const graphWithNullReason: DependencyGraphResponse = {
+      nodes: [
+        { proposalId: "A", title: "Task A", inDegree: 0, outDegree: 1 },
+        { proposalId: "B", title: "Task B", inDegree: 1, outDegree: 0 },
+      ],
+      edges: [
+        { from: "A", to: "B", reason: null },
+      ],
+      criticalPath: [],
+      hasCycles: false,
+      cycles: null,
+    };
+    const reason = getDependencyReason(graphWithNullReason, "A", "B");
+    expect(reason).toBeUndefined();
   });
 });
