@@ -18,6 +18,7 @@ import {
   useExecutionErrorEvents,
 } from "@/hooks/useEvents";
 import { useIdeationEvents } from "@/hooks/useIdeationEvents";
+import { usePlanArtifactEvents } from "@/hooks/useEvents.planArtifact";
 
 interface EventProviderProps {
   children: ReactNode;
@@ -61,6 +62,7 @@ export function EventProvider({ children }: EventProviderProps) {
   useAgentEvents(); // Listen to agent:message events for Activity view
   useExecutionErrorEvents(); // Handle agent execution errors and unstick UI
   useIdeationEvents(); // Listen to ideation events (session title updates)
+  usePlanArtifactEvents(); // Listen to plan artifact events for real-time updates
 
   return <>{children}</>;
 }
