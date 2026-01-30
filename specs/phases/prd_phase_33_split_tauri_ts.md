@@ -150,7 +150,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(api): extract QA API from tauri.ts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
