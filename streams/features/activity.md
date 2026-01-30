@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 11:15:00 - Phase 39 Task 6: Update frontend Zod schemas for reason field
+**What:**
+- Added `reason: z.string().nullable()` to DependencyGraphEdgeResponseSchema
+- Schema now matches backend DependencyEdgeResponse struct
+
+**Files:**
+- src/api/ideation.schemas.ts
+
+**Commands:**
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 23:20:28 - Phase 39 Task 4+5: Update HTTP handler to pass and return reason
 **What:**
 - Updated apply_proposal_dependencies to pass suggestion.reason.as_deref() to add_dependency (Task 4)
