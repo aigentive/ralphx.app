@@ -151,8 +151,8 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] [P2] [Backend] Error handling: Replace unwrap() in test setup - src-tauri/src/commands/health.rs:33
-- [ ] [P2] [Backend] Error handling: Multiple unwrap() calls in test helpers - src-tauri/src/commands/task_step_commands.rs:multiple
+- [ ] ~~[P2] [Backend] Error handling: Replace unwrap() in test setup~~ (stale - unwrap in test assertions is acceptable)
+- [ ] ~~[P2] [Backend] Error handling: Multiple unwrap() calls in test helpers~~ (stale - unwrap in test helpers is acceptable)
 - [ ] [P2] [Frontend] Type safety: Replace `any` type with proper DTO type - src/App.tsx:378
 - [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! statements - src-tauri/src/application/task_transition_service.rs:429,432
 - [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! logging - src-tauri/src/application/chat_service/chat_service_context.rs:127
