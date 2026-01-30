@@ -1,12 +1,14 @@
 // Application state container for dependency injection
 // Holds repository trait objects that can be swapped for testing
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use crate::application::PermissionState;
+use crate::domain::entities::IdeationSessionId;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -95,6 +97,8 @@ pub struct AppState {
     pub message_queue: Arc<MessageQueue>,
     /// Registry for tracking running agent processes
     pub running_agent_registry: Arc<RunningAgentRegistry>,
+    /// Sessions currently undergoing dependency analysis (for status reporting in MCP tools)
+    pub analyzing_dependencies: Arc<tokio::sync::RwLock<HashSet<IdeationSessionId>>>,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
 }
@@ -180,6 +184,7 @@ impl AppState {
             permission_state: Arc::new(PermissionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: Some(app_handle),
         })
     }
@@ -262,6 +267,7 @@ impl AppState {
             permission_state: Arc::new(PermissionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: Some(app_handle),
         })
     }
@@ -302,6 +308,7 @@ impl AppState {
             permission_state: Arc::new(PermissionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: None,
         }
     }
@@ -344,6 +351,7 @@ impl AppState {
             permission_state: Arc::new(PermissionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: None,
         }
     }

@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-01-30 22:15:00 - Phase 38 Task 6: Add analyze_session_dependencies tool for chat agent integration
+**What:**
+- Added `analyze_session_dependencies` MCP tool definition in tools.ts
+- Added tool to `orchestrator-ideation` TOOL_ALLOWLIST
+- Added `analyzing_dependencies: HashSet<IdeationSessionId>` to AppState for tracking in-progress analysis
+- Created HTTP handler in ideation.rs with full dependency graph analysis (nodes, edges, critical path, cycles)
+- Added route `/api/analyze_dependencies/:session_id` in http_server/mod.rs
+- Added GET dispatch in MCP server index.ts
+- Handler includes cycle detection (DFS) and critical path calculation (topological sort + longest path DP)
+- Response includes `analysis_in_progress` flag and summary statistics
+
+**Files:**
+- ralphx-plugin/ralphx-mcp-server/src/tools.ts (modified)
+- ralphx-plugin/ralphx-mcp-server/src/index.ts (modified)
+- src-tauri/src/application/app_state.rs (modified)
+- src-tauri/src/http_server/handlers/ideation.rs (modified)
+- src-tauri/src/http_server/types.rs (modified)
+- src-tauri/src/http_server/mod.rs (modified)
+- specs/phases/prd_phase_38_dependency_priority_integration.md (updated passes: true)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` (passes)
+- `npm run --prefix ralphx-plugin/ralphx-mcp-server build` (passes)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 21:30:00 - Phase 38 Task 5: Add loading states and manual re-trigger button for dependency analysis
 **What:**
 - Added `isAnalyzingDependencies` state to IdeationView component

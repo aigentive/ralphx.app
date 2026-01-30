@@ -156,6 +156,52 @@ pub struct ProposalDetailResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Dependency Analysis
+// ============================================================================
+
+/// Node in dependency analysis response
+#[derive(Debug, Serialize)]
+pub struct DependencyNodeResponse {
+    pub id: String,
+    pub title: String,
+    pub in_degree: usize,
+    pub out_degree: usize,
+    pub is_root: bool,
+    pub is_blocker: bool,
+}
+
+/// Edge in dependency analysis response
+#[derive(Debug, Serialize)]
+pub struct DependencyEdgeResponse {
+    pub from: String,
+    pub to: String,
+}
+
+/// Summary statistics for dependency analysis
+#[derive(Debug, Serialize)]
+pub struct DependencyAnalysisSummary {
+    pub total_proposals: usize,
+    pub root_count: usize,
+    pub leaf_count: usize,
+    pub max_depth: usize,
+}
+
+/// Response for analyze_session_dependencies endpoint
+#[derive(Debug, Serialize)]
+pub struct AnalyzeDependenciesResponse {
+    pub nodes: Vec<DependencyNodeResponse>,
+    pub edges: Vec<DependencyEdgeResponse>,
+    pub critical_path: Vec<String>,
+    pub critical_path_length: usize,
+    pub has_cycles: bool,
+    pub cycles: Option<Vec<Vec<String>>>,
+    pub analysis_in_progress: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    pub summary: DependencyAnalysisSummary,
+}
+
+// ============================================================================
 // Request/Response Types - Tasks
 // ============================================================================
 
