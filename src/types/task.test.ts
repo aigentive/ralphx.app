@@ -9,18 +9,21 @@ import {
 } from "./task";
 
 describe("TaskSchema", () => {
+  // This matches the backend TaskResponse (snake_case, no source_proposal_id/plan_artifact_id)
   const validTask = {
     id: "550e8400-e29b-41d4-a716-446655440000",
-    projectId: "project-123",
+    project_id: "project-123",
     category: "feature",
     title: "Test Task",
     description: "A test task description",
     priority: 5,
-    internalStatus: "backlog" as const,
-    createdAt: "2026-01-24T12:00:00Z",
-    updatedAt: "2026-01-24T12:00:00Z",
-    startedAt: null,
-    completedAt: null,
+    internal_status: "backlog" as const,
+    needs_review_point: false,
+    created_at: "2026-01-24T12:00:00+00:00",
+    updated_at: "2026-01-24T12:00:00+00:00",
+    started_at: null,
+    completed_at: null,
+    archived_at: null,
   };
 
   it("should parse a valid task", () => {
@@ -30,8 +33,8 @@ describe("TaskSchema", () => {
   it("should parse a task with timestamps", () => {
     const taskWithTimestamps = {
       ...validTask,
-      startedAt: "2026-01-24T13:00:00Z",
-      completedAt: "2026-01-24T14:00:00Z",
+      started_at: "2026-01-24T13:00:00+00:00",
+      completed_at: "2026-01-24T14:00:00+00:00",
     };
     expect(() => TaskSchema.parse(taskWithTimestamps)).not.toThrow();
   });

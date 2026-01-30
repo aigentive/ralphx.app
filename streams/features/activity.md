@@ -1660,3 +1660,52 @@
 **Result:** Success
 
 ---
+
+### 2026-01-30 06:32:41 - Phase 32 Task 10: Fix TaskResponse schema to expect snake_case
+
+**What:**
+- Updated TaskSchema to use snake_case fields matching backend TaskResponse
+- Removed `source_proposal_id` and `plan_artifact_id` from schema (not in backend response)
+- Created `transformTask()` and `transformTaskListResponse()` functions
+- Created `typedInvokeWithTransform()` helper for API calls with automatic transformation
+- Updated all task API methods to parse snake_case and transform to camelCase
+- Updated `useTaskEvents` to transform snake_case task events to camelCase
+- Made `sourceProposalId` and `planArtifactId` optional fields in Task interface (fetch via get_task_context)
+- Updated task.test.ts to use snake_case test data with RFC3339 timestamps
+
+**Files:**
+- src/types/task.ts (schema + transform functions + Task interface)
+- src/types/task.test.ts (updated test data)
+- src/lib/tauri.ts (added typedInvokeWithTransform, updated task API methods)
+- src/hooks/useEvents.task.ts (added transform for task events)
+
+**Commands:**
+- `npm run typecheck` - 0 errors
+- `npm run lint` - 0 errors, 6 warnings (shadcn/ui only)
+
+**Result:** Success
+
+### 2026-01-30 06:32:55 - Phase 32 Task 10: Update TaskResponse schema to expect snake_case
+**What:**
+- Updated TaskSchema in src/types/task.ts to expect snake_case fields from backend
+- Changed field names: projectId → project_id, internalStatus → internal_status, needsReviewPoint → needs_review_point, createdAt → created_at, etc.
+- Added Task interface with camelCase fields for frontend use
+- Added transformTask() function to convert snake_case → camelCase
+- Added transformTaskListResponse() for TaskListResponse transformation  
+- Updated src/lib/tauri.ts task API wrappers to apply transforms (list, get, create, update, archive, restore, move, search)
+- Added typedInvokeWithTransform helper for consistent transform application
+- Note: sourceProposalId and planArtifactId are NOT in TaskResponse (backend doesn't serialize them) - must use get_task_context to fetch
+
+**Files:**
+- src/types/task.ts - updated schema, added Task interface, added transform functions
+- src/lib/tauri.ts - imported transforms, updated task API wrappers to apply transformTask/transformTaskListResponse
+- src/hooks/useEvents.task.ts - auto-updated by linter
+- src/types/task.test.ts - auto-updated by linter
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - passes (6 pre-existing warnings, 0 errors)
+
+**Result:** Success
+
+---
