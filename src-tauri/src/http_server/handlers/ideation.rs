@@ -475,12 +475,11 @@ pub async fn apply_proposal_dependencies(
             continue;
         }
 
-        // Add the dependency
-        // TODO: Task 4 will change None to suggestion.reason.as_deref()
+        // Add the dependency with reason from AI suggestion
         match state
             .app_state
             .proposal_dependency_repo
-            .add_dependency(&proposal_id, &depends_on_id, None)
+            .add_dependency(&proposal_id, &depends_on_id, suggestion.reason.as_deref())
             .await
         {
             Ok(_) => applied_count += 1,
@@ -573,8 +572,7 @@ pub async fn analyze_session_dependencies(
         nodes.push(node);
     }
 
-    // Build edges
-    // TODO: Task 5 will add reason to DependencyGraphEdge
+    // Build edges for internal graph operations (reason stored separately in response)
     let edges: Vec<DependencyGraphEdge> = dependencies
         .iter()
         .map(|(from, to, _reason)| DependencyGraphEdge::new(from.clone(), to.clone()))
@@ -611,12 +609,13 @@ pub async fn analyze_session_dependencies(
         })
         .collect();
 
-    let response_edges: Vec<DependencyEdgeResponse> = graph
-        .edges
+    // Build response edges directly from dependencies to include reason
+    let response_edges: Vec<DependencyEdgeResponse> = dependencies
         .iter()
-        .map(|e| DependencyEdgeResponse {
-            from: e.from.to_string(),
-            to: e.to.to_string(),
+        .map(|(from, to, reason)| DependencyEdgeResponse {
+            from: from.to_string(),
+            to: to.to_string(),
+            reason: reason.clone(),
         })
         .collect();
 
