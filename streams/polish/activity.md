@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-30 18:04:08 - Remove console.error from useEvents.task
+**What:**
+- File: src/hooks/useEvents.task.ts:40
+- Removed console.error call from invalid task event validation handler
+- Validation failures now silently return without logging
+
+**Commands:**
+- `npm run lint` (passed - warnings are pre-existing)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 18:01:34 - Remove console.error calls from useIntegratedChatHandlers
 **What:**
 - File: src/hooks/useIntegratedChatHandlers.ts
