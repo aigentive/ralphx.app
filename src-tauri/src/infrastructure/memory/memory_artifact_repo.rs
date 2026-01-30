@@ -201,6 +201,33 @@ impl ArtifactRepository for MemoryArtifactRepository {
         relations.remove(&key);
         Ok(())
     }
+
+    async fn create_with_previous_version(
+        &self,
+        artifact: Artifact,
+        _previous_version_id: ArtifactId,
+    ) -> AppResult<Artifact> {
+        // Memory implementation doesn't track previous_version_id, just create normally
+        self.create(artifact).await
+    }
+
+    async fn get_version_history(
+        &self,
+        id: &ArtifactId,
+    ) -> AppResult<Vec<crate::domain::repositories::ArtifactVersionSummary>> {
+        // Memory implementation just returns single artifact summary if it exists
+        let artifacts = self.artifacts.read().await;
+        if let Some(artifact) = artifacts.get(id) {
+            Ok(vec![crate::domain::repositories::ArtifactVersionSummary {
+                id: artifact.id.clone(),
+                version: artifact.metadata.version,
+                name: artifact.name.clone(),
+                created_at: artifact.metadata.created_at,
+            }])
+        } else {
+            Ok(vec![])
+        }
+    }
 }
 
 #[cfg(test)]

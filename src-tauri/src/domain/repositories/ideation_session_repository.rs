@@ -46,6 +46,10 @@ pub trait IdeationSessionRepository: Send + Sync {
         project_id: &ProjectId,
         status: IdeationSessionStatus,
     ) -> AppResult<u32>;
+
+    /// Get sessions that have a specific plan artifact ID
+    /// Used when updating a plan artifact to find sessions to re-link
+    async fn get_by_plan_artifact_id(&self, plan_artifact_id: &str) -> AppResult<Vec<IdeationSession>>;
 }
 
 #[cfg(test)]
@@ -152,6 +156,18 @@ mod tests {
                 .iter()
                 .filter(|s| &s.project_id == project_id && s.status == status)
                 .count() as u32)
+        }
+
+        async fn get_by_plan_artifact_id(
+            &self,
+            plan_artifact_id: &str,
+        ) -> AppResult<Vec<IdeationSession>> {
+            Ok(self
+                .sessions
+                .iter()
+                .filter(|s| s.plan_artifact_id.as_ref().map(|id| id.as_str()) == Some(plan_artifact_id))
+                .cloned()
+                .collect())
         }
     }
 

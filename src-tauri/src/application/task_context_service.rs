@@ -596,6 +596,21 @@ mod tests {
         ) -> AppResult<()> {
             Ok(())
         }
+
+        async fn create_with_previous_version(
+            &self,
+            artifact: Artifact,
+            _previous_version_id: ArtifactId,
+        ) -> AppResult<Artifact> {
+            Ok(artifact)
+        }
+
+        async fn get_version_history(
+            &self,
+            _id: &ArtifactId,
+        ) -> AppResult<Vec<crate::domain::repositories::ArtifactVersionSummary>> {
+            Ok(vec![])
+        }
     }
 
     struct MockTaskStepRepository {

@@ -357,6 +357,7 @@ export function IdeationView({
                         onEdit={() => {}}
                         isExpanded={isPlanExpanded}
                         onExpandedChange={setIsPlanExpanded}
+                        onViewHistory={() => handleViewHistoricalPlan(planArtifact.id, 1)}
                       />
                     </div>
                   )}

@@ -71,6 +71,27 @@ pub trait ArtifactRepository: Send + Sync {
         from_id: &ArtifactId,
         to_id: &ArtifactId,
     ) -> AppResult<()>;
+
+    /// Create a new artifact with a link to the previous version
+    /// This is used for version chaining in plan artifacts
+    async fn create_with_previous_version(
+        &self,
+        artifact: Artifact,
+        previous_version_id: ArtifactId,
+    ) -> AppResult<Artifact>;
+
+    /// Get version history for an artifact by walking the previous_version_id chain
+    /// Returns summaries in order from newest to oldest
+    async fn get_version_history(&self, id: &ArtifactId) -> AppResult<Vec<ArtifactVersionSummary>>;
+}
+
+/// Summary of an artifact version for history display
+#[derive(Debug, Clone)]
+pub struct ArtifactVersionSummary {
+    pub id: ArtifactId,
+    pub version: u32,
+    pub name: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[cfg(test)]
@@ -181,6 +202,18 @@ mod tests {
             _to_id: &ArtifactId,
         ) -> AppResult<()> {
             Ok(())
+        }
+
+        async fn create_with_previous_version(
+            &self,
+            artifact: Artifact,
+            _previous_version_id: ArtifactId,
+        ) -> AppResult<Artifact> {
+            Ok(artifact)
+        }
+
+        async fn get_version_history(&self, _id: &ArtifactId) -> AppResult<Vec<ArtifactVersionSummary>> {
+            Ok(vec![])
         }
     }
 

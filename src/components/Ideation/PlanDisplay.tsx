@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ export interface PlanDisplayProps {
   isExpanded?: boolean;
   /** Callback when expanded state changes */
   onExpandedChange?: (expanded: boolean) => void;
+  /** Callback when history button is clicked (only shown when version > 1) */
+  onViewHistory?: () => void;
 }
 
 // ============================================================================
@@ -189,6 +191,7 @@ export function PlanDisplay({
   isApproved = false,
   isExpanded,
   onExpandedChange,
+  onViewHistory,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -235,6 +238,10 @@ export function PlanDisplay({
                 {plan.name}
               </span>
 
+              <span className="text-xs text-text-muted px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
+                v{plan.metadata.version}
+              </span>
+
               {linkedProposalsCount > 0 && (
                 <span className="text-xs text-text-muted">
                   · {linkedProposalsCount} linked
@@ -269,6 +276,18 @@ export function PlanDisplay({
                 <CheckCircle2 className="w-3 h-3" />
                 Approved
               </span>
+            )}
+
+            {plan.metadata.version > 1 && onViewHistory && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onViewHistory}
+                className="h-6 w-6 p-0 text-text-muted hover:text-text-primary"
+                title="View version history"
+              >
+                <History className="w-3.5 h-3.5" />
+              </Button>
             )}
 
             <Button

@@ -123,6 +123,20 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .filter(|s| &s.project_id == project_id && s.status == status)
             .count() as u32)
     }
+
+    async fn get_by_plan_artifact_id(
+        &self,
+        plan_artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| s.plan_artifact_id.as_ref().map(|id| id.as_str()) == Some(plan_artifact_id))
+            .cloned()
+            .collect())
+    }
 }
 
 #[cfg(test)]

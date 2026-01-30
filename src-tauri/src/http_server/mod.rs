@@ -41,6 +41,7 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .route("/api/create_plan_artifact", post(create_plan_artifact))
         .route("/api/update_plan_artifact", post(update_plan_artifact))
         .route("/api/get_plan_artifact/:artifact_id", get(get_plan_artifact))
+        .route("/api/get_plan_artifact/:artifact_id/history", get(get_plan_artifact_history))
         .route("/api/link_proposals_to_plan", post(link_proposals_to_plan))
         .route("/api/get_session_plan/:session_id", get(get_session_plan))
         // Task tools (chat-task agent)
