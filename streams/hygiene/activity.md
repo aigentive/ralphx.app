@@ -1,5 +1,27 @@
 # Hygiene Stream Activity
 
+### 2026-01-30 21:21:37 - Backlog Maintenance
+
+**Archive:**
+- Moved 2 items from refactor/backlog.md to archive (chat_service split, App.tsx split)
+- Moved 3 items from polish/backlog.md to archive (completed items from 2026-01-29 refill)
+- Moved 2 validated strikethroughs to archive (machine.rs size, supervisor actions unwrap)
+- Refactor backlog: 12 → 10 completed items
+- Polish backlog: 13 → 10 completed items
+
+**Refill:**
+- No refill needed (refactor: 6 active, polish: 12 active)
+
+**Validation:**
+- Checked 3 strikethrough items (oldest non-excluded):
+  - machine.rs 1114 LOC (stale:1 → stale:2): Confirmed refactored into module → **Archived**
+  - supervisor actions unwrap (stale:1 → stale:2): Confirmed in test code only → **Archived**
+  - health.rs unwrap (stale → stale:1): Confirmed in test assertions → **Counter incremented**
+
+**Result:** Maintenance complete - archived 5 completed + 2 validated, validated 3 strikethroughs (2 archived, 1 incremented)
+
+---
+
 ### 2026-01-30 20:13:14 - Backlog Maintenance
 
 **Archive:**

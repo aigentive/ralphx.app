@@ -5,6 +5,29 @@
 
 ---
 
+## Archived 2026-01-30 (Fourth Batch)
+
+### From refactor/backlog.md (Backend)
+
+- [x] Split chat_service/mod.rs (1081 LOC → 611 LOC) - extracted background processing to chat_service_send_background.rs (524 LOC) - src-tauri/src/application/chat_service/mod.rs:1
+
+### From refactor/backlog.md (Frontend)
+
+- [x] Split App.tsx (855 LOC → 721 LOC) - extracted Navigation.tsx (88 LOC), useAppKeyboardShortcuts.ts (102 LOC) - src/App.tsx:1
+
+### From polish/backlog.md (REFILL - Added 2026-01-29 22:50)
+
+- [x] [P2] [Frontend] Type safety: Unused parameter with underscore prefix - src/App.tsx:264
+- [x] [P2] [Backend] Naming: non_snake_case suppressions in command handlers - src-tauri/src/commands/task_commands/mutation.rs:71
+- [x] [P2] [Frontend] Lint suppression: eslint-disable-next-line for hook dependencies - src/hooks/useTaskExecutionState.ts:141
+
+### From polish/backlog.md (Strikethrough Validation - stale:2)
+
+- [ ] ~~[P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers~~ (stale:2 - file refactored into module)
+- [ ] ~~[P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization~~ (stale:2 - unwrap in tests is acceptable)
+
+---
+
 ## Archived 2026-01-30 (Third Batch)
 
 ### From polish/backlog.md (Strikethrough Validation - stale:2)
