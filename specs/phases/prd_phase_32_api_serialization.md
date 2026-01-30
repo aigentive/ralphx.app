@@ -110,7 +110,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(api): remove camelCase serialization from task_commands types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
