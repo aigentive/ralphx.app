@@ -209,6 +209,7 @@ export function PlanDisplay({
   const [selectedVersion, setSelectedVersion] = useState(plan.metadata.version);
   const [historicalContent, setHistoricalContent] = useState<string | null>(null);
   const [isLoadingVersion, setIsLoadingVersion] = useState(false);
+  const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
 
   // Reset to latest when plan changes (new artifact or version update)
   useEffect(() => {
@@ -254,6 +255,14 @@ export function PlanDisplay({
   const handleBackToLatest = useCallback(() => {
     setSelectedVersion(plan.metadata.version);
   }, [plan.metadata.version]);
+
+  const handleVersionSelect = useCallback((version: number) => {
+    setSelectedVersion(version);
+    // Auto-expand when selecting a version
+    if (!isOpen) {
+      setIsOpen(true);
+    }
+  }, [isOpen, setIsOpen]);
 
   const handleExport = useCallback(() => {
     if (onExport) {
@@ -311,8 +320,11 @@ export function PlanDisplay({
             </button>
           </CollapsibleTrigger>
 
-          {/* Actions - appear on hover */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Actions - appear on hover, stay visible when dropdown is open */}
+          <div className={cn(
+            "flex items-center gap-1 transition-opacity",
+            isVersionDropdownOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}>
             {showApprove && !isApproved && (
               <Button
                 variant="ghost"
@@ -333,7 +345,7 @@ export function PlanDisplay({
             )}
 
             {plan.metadata.version > 1 && (
-              <DropdownMenu>
+              <DropdownMenu open={isVersionDropdownOpen} onOpenChange={setIsVersionDropdownOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
@@ -353,7 +365,7 @@ export function PlanDisplay({
                     return (
                       <DropdownMenuItem
                         key={version}
-                        onClick={() => setSelectedVersion(version)}
+                        onClick={() => handleVersionSelect(version)}
                         className={cn(
                           "text-xs cursor-pointer px-3 py-2",
                           isSelected && "bg-[var(--accent-muted)] border-l-2 border-[var(--accent-primary)]"
