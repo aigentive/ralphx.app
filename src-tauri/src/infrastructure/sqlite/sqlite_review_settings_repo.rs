@@ -71,7 +71,7 @@ impl ReviewSettingsRepository for SqliteReviewSettingsRepository {
                  require_human_review = ?4,
                  max_fix_attempts = ?5,
                  max_revision_cycles = ?6,
-                 updated_at = datetime('now')
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
              WHERE id = 1",
             rusqlite::params![
                 settings.ai_review_enabled as i64,

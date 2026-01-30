@@ -21,7 +21,7 @@ fn setup_test_db() -> Connection {
 fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
     conn.execute(
         "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'single_branch', datetime('now'), datetime('now'))",
+         VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         rusqlite::params![id.as_str(), name, path],
     )
     .unwrap();
@@ -35,7 +35,7 @@ fn create_test_session(conn: &Connection, project_id: &ProjectId) -> IdeationSes
 
     conn.execute(
         "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'active', datetime('now'), datetime('now'))",
+         VALUES (?1, ?2, ?3, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         rusqlite::params![session.id.as_str(), project_id.as_str(), session.title],
     )
     .unwrap();
@@ -61,7 +61,7 @@ fn create_test_proposal(
             priority_score, estimated_complexity, user_modified, status, selected,
             sort_order, created_at, updated_at
         ) VALUES (?1, ?2, ?3, '', 'feature', 'medium', 50, 'moderate', 0, 'pending', 1, 0,
-            datetime('now'), datetime('now'))",
+            strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         rusqlite::params![proposal.id.as_str(), session_id.as_str(), title],
     )
     .unwrap();
@@ -374,7 +374,7 @@ async fn test_get_all_for_session_filters_by_session() {
     // Create another session manually
     conn.execute(
         "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-         VALUES (?1, ?2, 'Session 2', 'active', datetime('now'), datetime('now'))",
+         VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         rusqlite::params![session2_id.as_str(), project_id.as_str()],
     )
     .unwrap();

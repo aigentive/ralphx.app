@@ -17,7 +17,7 @@ mod tests {
     fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
         conn.execute(
             "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'single_branch', datetime('now'), datetime('now'))",
+             VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
             rusqlite::params![id.as_str(), name, path],
         )
         .unwrap();
@@ -26,7 +26,7 @@ mod tests {
     fn create_test_session(conn: &Connection, session_id: &IdeationSessionId, project_id: &ProjectId) {
         conn.execute(
             "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at)
-             VALUES (?1, ?2, 'active', datetime('now'), datetime('now'))",
+             VALUES (?1, ?2, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
             rusqlite::params![session_id.as_str(), project_id.as_str()],
         )
         .unwrap();
@@ -467,7 +467,7 @@ mod tests {
     fn create_test_task(conn: &Connection, task_id: &TaskId, project_id: &ProjectId, title: &str) {
         conn.execute(
             "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'feature', 'Ready', datetime('now'), datetime('now'))",
+             VALUES (?1, ?2, ?3, 'feature', 'Ready', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
             rusqlite::params![task_id.as_str(), project_id.as_str(), title],
         )
         .unwrap();
