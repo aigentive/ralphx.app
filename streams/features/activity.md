@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-30 12:15:00 - Phase 33 Task 3: Create projects API module
+**What:**
+- Created src/api/projects.ts with projectsApi and workflowsApi objects
+- Extracted projects methods: list, get, create, update, delete
+- Extracted workflows methods: get, list, seedBuiltin
+- Extracted getGitBranches function
+- Imports transforms from @/types/project, @/types/workflow
+- Uses typedInvoke, typedInvokeWithTransform from @/lib/tauri
+
+**Files:**
+- src/api/projects.ts (new, 131 lines)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 11:45:00 - Phase 33 Task 2: Create test-data API module
 **What:**
 - Created src/api/test-data.ts with testDataApi object
