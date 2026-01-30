@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-30 09:15:00 - Phase 32 Task 16: Add API schema convention to frontend CLAUDE.md
+**What:**
+- Added "API Schema Convention (CRITICAL)" section to src/CLAUDE.md
+- Documents that Zod schemas use snake_case, transforms convert to camelCase
+- References code-quality-standards.md for full pattern
+
+**Files:**
+- src/CLAUDE.md
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 08:42:00 - Phase 32 Task 15: Add API serialization convention to code quality standards
 **What:**
 - Added "API Serialization Convention" section to .claude/rules/code-quality-standards.md
