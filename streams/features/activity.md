@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-30 22:00:00 - Phase 34 Task 8: Add micro-interactions and ambient corner glow
+**What:**
+- Added hover:scale-[1.01] and focus:scale-[1.01] to inputClasses for subtle input micro-interaction
+- Added hover:scale-[1.01] and focus:scale-[1.01] to selectClasses for dropdown micro-interaction
+- Added hover:-translate-y-px hover:shadow-lg to Save button for lift effect
+- Added ambient warm glow to modal corners via CSS pseudo-elements:
+  - Top-right corner: radial-gradient with rgba(255, 107, 53, 0.08)
+  - Bottom-left corner: radial-gradient with rgba(255, 107, 53, 0.05)
+- Verified delete buttons already have fade-in on row hover (opacity-0 group-hover:opacity-100)
+- Verified complexity dots already have hover:scale-125
+- All data-testid attributes preserved for tests
+
+**Files:**
+- src/components/Ideation/ProposalEditModal.tsx
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 21:30:00 - Phase 34 Task 7: Add modal entry animations with staggered content reveal
 **What:**
 - Added @keyframes modal-slide-up animation (opacity 0→1, translateY 20px→0, scale 0.98→1)
