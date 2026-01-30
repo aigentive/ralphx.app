@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-30 23:15:43 - Phase 39 Task 3: Implement reason storage in SQLite repository
+**What:**
+- Updated add_dependency to use reason parameter in INSERT statement (was previously unused with `_reason`)
+- Added reason column to INSERT: `INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id, reason) VALUES (?1, ?2, ?3, ?4)`
+- Removed obsolete TODO comments from get_all_for_session (reason column SELECT was already implemented in Task 2)
+
+**Files:**
+- src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs
+
+**Commands:**
+- `cargo test` (all 3116+ tests passed)
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 10:45:00 - Phase 39 Task 2: Update ProposalDependencyRepository trait with reason parameter
 **What:**
 - Updated ProposalDependencyRepository trait: add_dependency now accepts reason: Option<&str>

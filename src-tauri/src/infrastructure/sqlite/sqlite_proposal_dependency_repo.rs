@@ -44,18 +44,17 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         &self,
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
-        _reason: Option<&str>,
+        reason: Option<&str>,
     ) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
         let id = Uuid::new_v4().to_string();
 
         // INSERT OR IGNORE to handle UNIQUE constraint gracefully
-        // TODO: Task 3 will add reason to INSERT statement
         conn.execute(
-            "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
-             VALUES (?1, ?2, ?3)",
-            rusqlite::params![id, proposal_id.as_str(), depends_on_id.as_str()],
+            "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id, reason)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, proposal_id.as_str(), depends_on_id.as_str(), reason],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -136,7 +135,6 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         let conn = self.conn.lock().await;
 
         // Join with task_proposals to filter by session
-        // TODO: Task 3 will add reason column to SELECT
         let mut stmt = conn
             .prepare(
                 "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason
