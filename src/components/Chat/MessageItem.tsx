@@ -200,6 +200,17 @@ const markdownComponents = {
       {children}
     </em>
   ),
+  hr: ({ ...props }: React.HTMLAttributes<HTMLHRElement>) => (
+    <hr
+      className="border-t"
+      style={{
+        borderColor: "var(--border-subtle)",
+        marginTop: "8px",
+        marginBottom: "8px",
+      }}
+      {...props}
+    />
+  ),
   // Table support
   table: ({ children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
     <div className="overflow-x-auto my-2">
