@@ -9,7 +9,7 @@
  * - Code blocks with copy functionality
  */
 
-import { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { Bot, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -267,7 +267,7 @@ const markdownComponents = {
 // Message Component
 // ============================================================================
 
-export function MessageItem({
+export const MessageItem = React.memo(function MessageItem({
   role,
   content,
   createdAt,
@@ -412,4 +412,11 @@ export function MessageItem({
       </div>
     </div>
   );
-}
+}, (prev, next) => {
+  // Custom equality function - only re-render if these props change
+  return prev.role === next.role
+    && prev.content === next.content
+    && prev.createdAt === next.createdAt
+    && prev.toolCalls === next.toolCalls
+    && prev.contentBlocks === next.contentBlocks;
+});
