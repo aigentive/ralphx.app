@@ -5,12 +5,32 @@
  * Used when conversations are loading or switching contexts.
  */
 
+const shimmerStyles = `
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.03) 0%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+`;
+
 export function MessageListSkeleton() {
   return (
-    <div
-      data-testid="chat-panel-loading"
-      className="flex flex-col gap-3 p-3 h-full justify-end"
-    >
+    <>
+      <style>{shimmerStyles}</style>
+      <div
+        data-testid="chat-panel-loading"
+        className="flex flex-col gap-3 p-3 h-full justify-end"
+      >
       {/* Skeleton message bubbles - mimics a conversation */}
       {/* User message skeleton */}
       <div className="flex justify-end">
@@ -48,6 +68,7 @@ export function MessageListSkeleton() {
           style={{ border: "1px solid rgba(255,255,255,0.04)" }}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

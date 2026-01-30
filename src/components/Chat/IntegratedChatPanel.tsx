@@ -164,6 +164,34 @@ export function IntegratedChatPanel({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Track scroll settling period - hide messages until scroll animation completes
+  const [isScrollSettling, setIsScrollSettling] = useState(false);
+  const prevConversationIdRef = useRef<string | null>(null);
+
+  // When conversation changes, enter settling mode until scroll completes
+  useEffect(() => {
+    // Only trigger settling when conversation actually changes to a new one
+    if (activeConversationId === prevConversationIdRef.current) {
+      return undefined;
+    }
+
+    prevConversationIdRef.current = activeConversationId;
+
+    // If we have a new conversation with messages, enter settling mode
+    if (!activeConversationId || activeConversation.isLoading) {
+      return undefined;
+    }
+
+    setIsScrollSettling(true);
+
+    // Match the scroll delay in ChatMessageList (300ms) + small buffer
+    const timeoutId = setTimeout(() => {
+      setIsScrollSettling(false);
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [activeConversationId, activeConversation.isLoading]);
+
   // Extract messages array from active conversation
   // Only show messages if conversation belongs to current context
   const conversationContext = activeConversation.data?.conversation;
@@ -238,10 +266,10 @@ export function IntegratedChatPanel({
   }, [messagesData]);
 
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading
-  // This prevents the empty state flash when switching contexts
+  // OR scroll is settling (hides the scroll animation when switching conversations)
   const isConversationsLoading = conversations.isLoading;
   const isActiveConversationLoading = activeConversationId ? activeConversation.isLoading : false;
-  const isLoading = isConversationsLoading || isActiveConversationLoading;
+  const isLoading = isConversationsLoading || isActiveConversationLoading || isScrollSettling;
 
   const isSending = sendMessage.isPending;
 
