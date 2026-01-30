@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-30 18:30:00 - Phase 31 Task 6: Extract markdown components to module-level constant
+**What:**
+- Verified markdownComponents is already extracted to module level (lines 117-266)
+- CodeBlock component also already extracted (lines 55-111)
+- ReactMarkdown already references the module-level constant
+- No changes needed - task was implicitly completed during earlier refactoring
+
+**Files:**
+- src/components/Chat/MessageItem.tsx - verified structure (no changes needed)
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint --quiet src/components/Chat/MessageItem.tsx` - passes
+
+**Result:** Success (already implemented)
+
+---
+
 ### 2026-01-30 18:00:00 - Phase 31 Task 5: Fix selector stability with memoized empty arrays
 **What:**
 - Added EMPTY_MESSAGES constant for ChatMessage[] type to chatStore.ts
