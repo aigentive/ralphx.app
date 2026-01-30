@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-30 10:47:15 - Backlog Verification
+
+**What:**
+- Verified P3 item: State machine file size (machine.rs)
+  - File: src-tauri/src/domain/state_machine/machine.rs
+  - Status: Already refactored into module (machine/mod.rs, machine/transitions.rs, machine/types.rs, machine/tests.rs)
+  - Marked as stale - issue resolved
+
+- Verified P3 item: Test panics in supervisor actions
+  - File: src-tauri/src/domain/supervisor/actions.rs:310
+  - Status: unwrap() in test code is acceptable Rust practice
+  - Marked as stale - not an issue
+
+**Commands:**
+- `wc -l src-tauri/src/domain/state_machine/machine.rs` (file not found - refactored)
+- `ls -la src-tauri/src/domain/state_machine/machine/` (confirmed module structure)
+- `grep` to count remaining active items (0 found)
+
+**Result:** Both items marked as stale. Backlog now empty.
+
+---
+
 ### 2026-01-30 18:07:03 - Remove console.error from useAgentEvents
 **What:**
 - File: src/hooks/useAgentEvents.ts:216
