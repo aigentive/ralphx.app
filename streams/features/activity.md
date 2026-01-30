@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-30 06:24:00 - Phase 32 Task 9: Verify TaskProposalResponse schema expects snake_case
+**What:**
+- Verified TaskProposalResponseSchema in src/api/ideation.schemas.ts already uses snake_case fields
+- All fields use snake_case: session_id, suggested_priority, acceptance_criteria, etc.
+- Verified transformProposal function exists in src/api/ideation.transforms.ts
+- Confirmed all proposal API methods (create, get, list, update) apply transform correctly
+- Task was already complete as noted in implementation plan
+
+**Files:**
+- src/api/ideation.schemas.ts (verified, no changes needed)
+- src/api/ideation.transforms.ts (verified, no changes needed)
+- src/api/ideation.ts (verified, no changes needed)
+
+**Commands:**
+- `npm run typecheck` - passes
+
+**Result:** Success (already implemented)
+
+---
+
 ### 2026-01-30 04:22:06 - Phase 32 Task 8: Remove camelCase serialization from workflow_commands
 **What:**
 - Removed `#[serde(rename_all = "camelCase")]` from 3 response structs:
