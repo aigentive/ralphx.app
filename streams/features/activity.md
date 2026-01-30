@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-31 11:35:00 - Phase 39 Task 8: Update frontend transform to pass through reason
+**What:**
+- Updated transformDependencyGraph in ideation.transforms.ts to map edges with reason field
+- Updated transformDependencyGraph in proposal.ts to map edges with reason field
+- Added reason field to DependencyGraphEdgeResponse interface in ideation.types.ts
+- Added reason field to DependencyGraphEdgeResponseSchema in proposal.ts
+
+**Files:**
+- src/api/ideation.transforms.ts
+- src/api/ideation.types.ts
+- src/api/proposal.ts
+
+**Commands:**
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 11:25:00 - Phase 39 Task 7: Update frontend TypeScript types
 **What:**
 - Added `reason: z.string().optional()` to DependencyGraphEdgeSchema

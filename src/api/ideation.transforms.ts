@@ -143,7 +143,11 @@ export function transformDependencyGraph(raw: z.infer<typeof DependencyGraphResp
       inDegree: n.in_degree,
       outDegree: n.out_degree,
     })),
-    edges: raw.edges,
+    edges: raw.edges.map((e) => ({
+      from: e.from,
+      to: e.to,
+      reason: e.reason,
+    })),
     criticalPath: raw.critical_path,
     hasCycles: raw.has_cycles,
     cycles: raw.cycles,

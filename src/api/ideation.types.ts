@@ -75,6 +75,7 @@ export interface DependencyGraphNodeResponse {
 export interface DependencyGraphEdgeResponse {
   from: string;
   to: string;
+  reason: string | null;
 }
 
 export interface DependencyGraphResponse {
