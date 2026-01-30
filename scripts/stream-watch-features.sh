@@ -6,7 +6,8 @@
 # Zero API calls when idle - only runs when work exists.
 
 STREAM="features"
-MODEL="opus"
+DEFAULT_MODEL="opus"
+MODEL="${RALPH_MODEL:-$DEFAULT_MODEL}"
 WATCH_FILES=("streams/features/backlog.md" "specs/manifest.json")
 
 # Colors for output

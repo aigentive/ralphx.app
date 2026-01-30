@@ -6,7 +6,8 @@
 # reacting to accumulated changes automatically.
 
 STREAM="hygiene"
-MODEL="sonnet"
+DEFAULT_MODEL="sonnet"
+MODEL="${RALPH_MODEL:-$DEFAULT_MODEL}"
 WATCH_FILES=("streams/refactor/backlog.md" "streams/polish/backlog.md" "streams/features/backlog.md" "streams/archive/completed.md")
 
 # Colors for output
