@@ -217,7 +217,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update Do Not section with passive/stopping behaviors to avoid",
       "Commit: docs(plugin): enhance orchestrator-ideation agent with proactive behaviors"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
