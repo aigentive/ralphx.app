@@ -2,7 +2,7 @@
 
 ## Project: RalphX
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
-Full spec: `specs/plan.md`
+Full spec: `specs/plan.md` | Code quality: @.claude/rules/code-quality-standards.md
 
 ## Structure
 ```
