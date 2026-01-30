@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-30 18:30:00 - Phase 34 Task 2: Create two-column metadata panel
+**What:**
+- Created two-column metadata panel with glass effect (border-white/[0.08], bg-white/[0.03], backdrop-blur-xl)
+- Implemented CSS Grid layout: grid-cols-[1fr_auto_1fr] for left/divider/right columns
+- Left column: Category + Priority Override dropdowns stacked vertically
+- Added subtle vertical divider (w-px bg-white/[0.08])
+- Right column: Complexity selector (placeholder for Task 3's visual 5-dot selector)
+- Removed duplicate standalone Category, Priority, and Complexity sections
+
+**Files:**
+- src/components/Ideation/ProposalEditModal.tsx
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 17:15:00 - Phase 34 Task 1: Expand modal width and add header subtitle
 **What:**
 - Expanded DialogContent from max-w-lg to max-w-2xl
