@@ -7,6 +7,8 @@ import type {
   AgentRun,
   ContextType,
 } from "../types/chat-conversation";
+import type { ToolCall } from "../components/Chat/ToolCallIndicator";
+import type { ContentBlockItem } from "../components/Chat/MessageItem";
 
 // ============================================================================
 // Typed Invoke Helper
@@ -26,7 +28,7 @@ async function typedInvoke<T>(
 // ============================================================================
 
 /**
- * Chat message response from backend
+ * Chat message response from backend - with pre-parsed toolCalls and contentBlocks
  */
 export interface ChatMessageResponse {
   id: string;
@@ -38,9 +40,62 @@ export interface ChatMessageResponse {
   metadata: string | null;
   parentMessageId: string | null;
   conversationId: string | null;
-  toolCalls: string | null;
-  contentBlocks: string | null;
+  /** Pre-parsed tool calls array (parsed from JSON at API layer) */
+  toolCalls: ToolCall[] | null;
+  /** Pre-parsed content blocks array (parsed from JSON at API layer) */
+  contentBlocks: ContentBlockItem[] | null;
   createdAt: string;
+}
+
+// ============================================================================
+// Parsing Utilities
+// ============================================================================
+
+/**
+ * Parse content blocks from raw JSON data
+ * @param raw The raw data from backend (could be string, array, or null)
+ * @returns Parsed content blocks array
+ */
+export function parseContentBlocks(raw: unknown): ContentBlockItem[] {
+  if (!raw) return [];
+
+  // If it's already an array, use it directly
+  const data = typeof raw === "string" ? safeJsonParse(raw) : raw;
+  if (!Array.isArray(data)) return [];
+
+  return data as ContentBlockItem[];
+}
+
+/**
+ * Parse tool calls from raw JSON data
+ * @param raw The raw data from backend (could be string, array, or null)
+ * @returns Parsed tool calls array
+ */
+export function parseToolCalls(raw: unknown): ToolCall[] {
+  if (!raw) return [];
+
+  // If it's already an array, use it directly
+  const data = typeof raw === "string" ? safeJsonParse(raw) : raw;
+  if (!Array.isArray(data)) return [];
+
+  return data.map((tc, idx) => ({
+    id: tc.id ?? `tool-${idx}`,
+    name: tc.name ?? "unknown",
+    arguments: tc.arguments ?? {},
+    result: tc.result,
+    error: tc.error,
+  }));
+}
+
+/**
+ * Safely parse JSON, returning null on failure
+ */
+function safeJsonParse(str: string): unknown {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -130,8 +185,9 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     metadata: null,
     parentMessageId: null,
     conversationId: null,
-    toolCalls: raw.toolCalls ? JSON.stringify(raw.toolCalls) : null,
-    contentBlocks: raw.contentBlocks ? JSON.stringify(raw.contentBlocks) : null,
+    // Parse at API layer to avoid redundant parsing in components
+    toolCalls: parseToolCalls(raw.toolCalls),
+    contentBlocks: parseContentBlocks(raw.contentBlocks),
     createdAt: raw.createdAt,
   };
 }

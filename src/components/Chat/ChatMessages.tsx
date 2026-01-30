@@ -4,7 +4,7 @@
 
 import { useMemo, useRef, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { MessageItem } from "./MessageItem";
+import { MessageItem, type ContentBlockItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { type ToolCall } from "./ToolCallIndicator";
 import { Bot, MessageSquare, Loader2, Activity, Hammer, X } from "lucide-react";
@@ -16,8 +16,10 @@ interface Message {
   role: string;
   content: string;
   createdAt: string;
-  toolCalls: string | null | undefined;
-  contentBlocks: string | null | undefined;
+  /** Pre-parsed tool calls array (parsed at API layer) */
+  toolCalls: ToolCall[] | null | undefined;
+  /** Pre-parsed content blocks array (parsed at API layer) */
+  contentBlocks: ContentBlockItem[] | null | undefined;
 }
 
 // ============================================================================
