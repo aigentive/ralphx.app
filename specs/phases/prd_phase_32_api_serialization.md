@@ -360,7 +360,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Reference the code-quality-standards.md for full pattern",
       "Commit: docs: add API schema convention to frontend CLAUDE.md"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 17,

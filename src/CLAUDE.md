@@ -72,6 +72,11 @@ EventProvider wraps app with hooks: `useTaskEvents()`, `useSupervisorAlerts()`, 
 
 Add `#[serde(rename_all="camelCase")]` to Rust struct for camelCase in JS struct fields.
 
+### API Schema Convention (CRITICAL)
+- Zod schemas for backend responses use **snake_case** (match Rust)
+- Transform functions convert to **camelCase** for components
+- See `.claude/rules/code-quality-standards.md` for full pattern
+
 ### TS Config (strict)
 ```json
 { "strict":true, "noUncheckedIndexedAccess":true, "noImplicitReturns":true, "exactOptionalPropertyTypes":true }
