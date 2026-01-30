@@ -7,8 +7,8 @@
  * - Warm accent integration
  */
 
-import { useState, useCallback } from "react";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +43,7 @@ export interface PlanDisplayProps {
   isExpanded?: boolean;
   /** Callback when expanded state changes */
   onExpandedChange?: (expanded: boolean) => void;
-  /** Callback when history button is clicked (only shown when version > 1) */
+  /** @deprecated No longer used - version selection is now inline. Will be removed in Task 2. */
   onViewHistory?: () => void;
 }
 
@@ -191,7 +198,6 @@ export function PlanDisplay({
   isApproved = false,
   isExpanded,
   onExpandedChange,
-  onViewHistory,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -199,7 +205,55 @@ export function PlanDisplay({
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
+  // Version selector state
+  const [selectedVersion, setSelectedVersion] = useState(plan.metadata.version);
+  const [historicalContent, setHistoricalContent] = useState<string | null>(null);
+  const [isLoadingVersion, setIsLoadingVersion] = useState(false);
+
+  // Reset to latest when plan changes (new artifact or version update)
+  useEffect(() => {
+    setSelectedVersion(plan.metadata.version);
+    setHistoricalContent(null);
+  }, [plan.id, plan.metadata.version]);
+
+  // Fetch historical version when selection changes
+  useEffect(() => {
+    if (selectedVersion === plan.metadata.version) {
+      setHistoricalContent(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingVersion(true);
+
+    artifactApi.getAtVersion(plan.id, selectedVersion)
+      .then((artifact) => {
+        if (cancelled) return;
+        if (artifact?.content.type === "inline") {
+          setHistoricalContent(artifact.content.text);
+        } else {
+          setHistoricalContent(null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to fetch historical version:", err);
+        setHistoricalContent(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingVersion(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [plan.id, selectedVersion, plan.metadata.version]);
+
   const planContent = plan.content.type === "inline" ? plan.content.text : "";
+  const displayContent = historicalContent ?? planContent;
+  const isViewingHistorical = selectedVersion !== plan.metadata.version;
+
+  const handleBackToLatest = useCallback(() => {
+    setSelectedVersion(plan.metadata.version);
+  }, [plan.metadata.version]);
 
   const handleExport = useCallback(() => {
     if (onExport) {
@@ -278,16 +332,43 @@ export function PlanDisplay({
               </span>
             )}
 
-            {plan.metadata.version > 1 && onViewHistory && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onViewHistory}
-                className="h-6 w-6 p-0 text-text-muted hover:text-text-primary"
-                title="View version history"
-              >
-                <History className="w-3.5 h-3.5" />
-              </Button>
+            {plan.metadata.version > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs gap-1 text-text-muted hover:text-text-primary"
+                    title="View version history"
+                  >
+                    <History className="w-3 h-3" />
+                    v{selectedVersion}
+                    <ChevronDown className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36 bg-[#1a1a1a] border-white/[0.1]">
+                  {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
+                    const isSelected = version === selectedVersion;
+                    const isLatest = version === plan.metadata.version;
+                    return (
+                      <DropdownMenuItem
+                        key={version}
+                        onClick={() => setSelectedVersion(version)}
+                        className={cn(
+                          "text-xs cursor-pointer px-3 py-2",
+                          isSelected && "bg-[var(--accent-muted)] border-l-2 border-[var(--accent-primary)]"
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />}
+                          <span>v{version}</span>
+                          {isLatest && <span className="text-text-muted ml-auto">(latest)</span>}
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             <Button
@@ -318,10 +399,33 @@ export function PlanDisplay({
               "border-l border-white/[0.04] ml-2.5"
             )}
           >
-            {planContent ? (
+            {/* Version banner when viewing historical */}
+            {isViewingHistorical && (
+              <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/20">
+                <span className="text-xs text-amber-400">
+                  Viewing version {selectedVersion} of {plan.metadata.version}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBackToLatest}
+                  className="h-6 px-2 text-xs gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  Back to latest
+                </Button>
+              </div>
+            )}
+
+            {/* Loading state */}
+            {isLoadingVersion ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
+              </div>
+            ) : displayContent ? (
               <div className="text-sm">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {planContent}
+                  {displayContent}
                 </ReactMarkdown>
               </div>
             ) : (
