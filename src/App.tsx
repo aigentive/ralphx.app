@@ -43,9 +43,7 @@ import {
   useIdeationSessions,
   useCreateIdeationSession,
   useArchiveIdeationSession,
-  useDeleteIdeationSession,
 } from "@/hooks/useIdeation";
-import { useConfirmation } from "@/hooks/useConfirmation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
@@ -156,8 +154,6 @@ function AppContent() {
   const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
   const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
-  const deleteSession = useDeleteIdeationSession();
-  const { confirm, ConfirmationDialog } = useConfirmation();
   const { toggleSelection, deleteProposal, reorder, updateProposal } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
 
@@ -306,29 +302,6 @@ function AppContent() {
       toast.error("Failed to archive session");
     }
   }, [archiveSession, setActiveSession]);
-
-  const handleDeleteSession = useCallback(async (sessionId: string) => {
-    const sessionToDelete = allSessions.find(s => s.id === sessionId);
-
-    const confirmed = await confirm({
-      title: "Delete session?",
-      description: `This will permanently delete "${sessionToDelete?.title || 'this session'}" and all its messages. This action cannot be undone.`,
-      confirmText: "Delete",
-      variant: "destructive",
-    });
-
-    if (!confirmed) return;
-
-    try {
-      await deleteSession.mutateAsync(sessionId);
-      if (activeSession?.id === sessionId) {
-        setActiveSession(null);
-      }
-      toast.success("Session deleted");
-    } catch {
-      toast.error("Failed to delete session");
-    }
-  }, [deleteSession, confirm, allSessions, activeSession, setActiveSession]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
     // Find the session in allSessions and add to store if not already there
@@ -659,7 +632,6 @@ function AppContent() {
                   onNewSession={handleNewSession}
                   onSelectSession={handleSelectSession}
                   onArchiveSession={handleArchiveSession}
-                  onDeleteSession={handleDeleteSession}
                   onSelectProposal={handleSelectProposal}
                   onEditProposal={handleEditProposal}
                   onRemoveProposal={handleRemoveProposal}
@@ -748,9 +720,6 @@ function AppContent() {
       {taskFullViewId && (
         <TaskFullView taskId={taskFullViewId} onClose={closeTaskFullView} />
       )}
-
-      {/* Confirmation Dialog */}
-      <ConfirmationDialog />
 
       {/* Toast notifications */}
       <Toaster />
