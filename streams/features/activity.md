@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-01-31 16:35:00 - Phase 40 Task 4: Display dependency names and reasons in ProposalCard
+**What:**
+- Replaced `←N` count badge with inline dependency names (`← Title1, Title2`)
+- Truncates with "+N more" when more than 2 dependencies
+- Added expandable section with chevron to show full dependency list + reasons
+- Kept tooltip showing full list with reasons on hover
+- Kept blocksCount display as simple `→N` badge (unchanged)
+
+**Tests Added:**
+- 14 new tests for inline dependency display:
+  - No dependencies → no section shown
+  - Single/two dependencies shown inline
+  - Truncation with +N more
+  - Expand/collapse toggle behavior
+  - Reason text in expanded view
+  - Blocks count badge behavior
+
+**Files:**
+- src/components/Ideation/ProposalCard.tsx (modified, 299 LOC)
+- src/components/Ideation/ProposalCard.test.tsx (14 new tests)
+
+**Commands:**
+- `npm run test src/components/Ideation/ProposalCard.test.tsx` (14 new tests passed)
+- `npm run lint` (0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 15:46:00 - Phase 40 Task 3: Create ProposalTierGroup collapsible tier component
 **What:**
 - Created `ProposalTierGroup` component for collapsible tier sections

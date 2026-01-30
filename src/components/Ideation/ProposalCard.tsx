@@ -6,10 +6,11 @@
  * - Priority gradient background
  * - Edit/Remove actions on hover
  * - Category and modification badges
+ * - Inline dependency names with expandable details
  * - Historical plan link when applicable
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -18,7 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { FileEdit, Trash2, Eye } from "lucide-react";
+import { FileEdit, Trash2, Eye, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskProposal } from "@/types/ideation";
 import { PRIORITY_CONFIG } from "./IdeationView.constants";
@@ -55,6 +56,9 @@ export interface ProposalCardProps {
 // Component
 // ============================================================================
 
+/** Max number of dependency names to show inline before truncating */
+const MAX_INLINE_DEPS = 2;
+
 export const ProposalCard = React.memo(function ProposalCard({
   proposal,
   onSelect,
@@ -63,14 +67,21 @@ export const ProposalCard = React.memo(function ProposalCard({
   isHighlighted = false,
   currentPlanVersion,
   onViewHistoricalPlan,
-  dependsOnCount,
+  dependsOnCount: _dependsOnCount,
   dependsOnDetails,
   blocksCount,
   isOnCriticalPath,
 }: ProposalCardProps) {
+  const [isDepsExpanded, setIsDepsExpanded] = useState(false);
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
   const isSelected = proposal.selected;
   const config = PRIORITY_CONFIG[effectivePriority];
+
+  // Compute inline dependency display
+  const hasDependencies = dependsOnDetails && dependsOnDetails.length > 0;
+  const visibleDeps = hasDependencies ? dependsOnDetails.slice(0, MAX_INLINE_DEPS) : [];
+  const overflowCount = hasDependencies ? Math.max(0, dependsOnDetails.length - MAX_INLINE_DEPS) : 0;
+  const inlineText = visibleDeps.map((d) => d.title).join(", ");
 
   const showHistoricalPlanLink =
     proposal.planArtifactId &&
@@ -200,36 +211,14 @@ export const ProposalCard = React.memo(function ProposalCard({
                   Modified
                 </span>
               )}
-              {/* Dependency count badges */}
-              {(dependsOnCount !== undefined && dependsOnCount > 0) && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="px-1 py-px rounded text-[9px] font-medium text-[var(--text-muted)] cursor-default">
-                      ←{dependsOnCount}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {dependsOnDetails && dependsOnDetails.length > 0 ? (
-                      <div className="space-y-1 text-xs">
-                        <div className="font-medium">
-                          Depends on {dependsOnDetails.length} proposal{dependsOnDetails.length !== 1 ? "s" : ""}:
-                        </div>
-                        {dependsOnDetails.map((dep) => (
-                          <div key={dep.proposalId} className="text-[var(--text-muted)]">
-                            • {dep.title}{dep.reason && `: ${dep.reason}`}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      `Depends on ${dependsOnCount} proposal${dependsOnCount !== 1 ? "s" : ""}`
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              {/* Blocks count badge */}
               {(blocksCount !== undefined && blocksCount > 0) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="px-1 py-px rounded text-[9px] font-medium text-[#ff6b35] cursor-default">
+                    <span
+                      data-testid="blocks-count"
+                      className="px-1 py-px rounded text-[9px] font-medium text-[#ff6b35] cursor-default"
+                    >
                       →{blocksCount}
                     </span>
                   </TooltipTrigger>
@@ -238,6 +227,67 @@ export const ProposalCard = React.memo(function ProposalCard({
               )}
             </div>
           </TooltipProvider>
+
+          {/* Inline dependency display */}
+          {hasDependencies && (
+            <div className="mt-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      data-testid="depends-on-inline"
+                      onClick={(e) => { e.stopPropagation(); setIsDepsExpanded(!isDepsExpanded); }}
+                      className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                    >
+                      <span
+                        data-testid="expand-dependencies"
+                        className="flex items-center"
+                      >
+                        {isDepsExpanded ? (
+                          <ChevronDown className="w-3 h-3" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3" />
+                        )}
+                      </span>
+                      <span>← {inlineText}</span>
+                      {overflowCount > 0 && (
+                        <span className="text-[var(--text-muted)]">+{overflowCount} more</span>
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <div className="space-y-1 text-xs">
+                      <div className="font-medium">
+                        Depends on {dependsOnDetails!.length} proposal{dependsOnDetails!.length !== 1 ? "s" : ""}:
+                      </div>
+                      {dependsOnDetails!.map((dep) => (
+                        <div key={dep.proposalId} className="text-[var(--text-muted)]">
+                          • {dep.title}{dep.reason && `: ${dep.reason}`}
+                        </div>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Expanded dependency details */}
+              {isDepsExpanded && (
+                <div
+                  data-testid="dependencies-expanded"
+                  className="mt-2 pl-4 border-l-2 border-white/[0.06] space-y-1"
+                >
+                  {dependsOnDetails!.map((dep) => (
+                    <div key={dep.proposalId} className="text-[10px]">
+                      <div className="text-[var(--text-secondary)] font-medium">{dep.title}</div>
+                      {dep.reason && (
+                        <div className="text-[var(--text-muted)] italic">{dep.reason}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {showHistoricalPlanLink && (
             <button
