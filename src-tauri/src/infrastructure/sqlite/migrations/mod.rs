@@ -17,7 +17,7 @@ use migrations_v11_v20::*;
 use migrations_v21_v26::*;
 
 /// Current schema version
-pub const SCHEMA_VERSION: i32 = 26;
+pub const SCHEMA_VERSION: i32 = 27;
 
 /// Run all pending migrations on the database
 pub fn run_migrations(conn: &Connection) -> AppResult<()> {
@@ -156,6 +156,11 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     if current_version < 26 {
         migrate_v26(conn)?;
         set_schema_version(conn, 26)?;
+    }
+
+    if current_version < 27 {
+        migrate_v27(conn)?;
+        set_schema_version(conn, 27)?;
     }
 
     Ok(())
