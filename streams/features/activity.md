@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-30 17:15:00 - Phase 34 Task 1: Expand modal width and add header subtitle
+**What:**
+- Expanded DialogContent from max-w-lg to max-w-2xl
+- Added subtitle "Refine your task proposal" in muted text below title
+- Wrapped Edit3 icon in orange background pill (bg-[#ff6b35]/10 rounded-full p-1.5)
+- Changed icon color from CSS variable to explicit #ff6b35
+
+**Files:**
+- src/components/Ideation/ProposalEditModal.tsx
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 15:35:00 - Phase 33 Task 8: Verify extraction with full test suite
 **What:**
 - Ran npm run typecheck - passed, no type errors
