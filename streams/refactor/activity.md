@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-30 18:18:14 - Split sqlite_chat_message_repo.rs
+
+**What:**
+- Original file: src-tauri/src/infrastructure/sqlite/sqlite_chat_message_repo.rs (1065 LOC)
+- Extracted to:
+  - sqlite_chat_message_repo_tests.rs (835 LOC) - all tests
+  - sqlite_chat_message_repo.rs (243 LOC) - implementation only
+- New size: 243 LOC (77% reduction, 257 LOC under 500 LOC limit)
+
+**Commands:**
+- `wc -l src-tauri/src/infrastructure/sqlite/sqlite_chat_message_repo*.rs`
+- `cargo test sqlite_chat_message_repo`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+
+**Result:** Success - all 36 tests pass, no clippy warnings for this file
+
+---
+
 ### 2026-01-30 18:06:58 - Split research_service.rs
 
 **What:**
