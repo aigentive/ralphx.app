@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-30 14:30:00 - Phase 30 Task 4: Wire up ProposalEditModal in App.tsx
+**What:**
+- Added `editingProposalId` state and derived `editingProposal` from proposal store
+- Added `updateProposal` to the `useProposalMutations` destructuring
+- Implemented `handleEditProposal` callback to set editing proposal ID
+- Implemented `handleSaveProposal` callback that calls `updateProposal.mutateAsync`
+- Imported and rendered `ProposalEditModal` component with proper props
+- Used eslint-disable for `any` type due to Zod's `exactOptionalPropertyTypes` incompatibility
+
+**Files:**
+- src/App.tsx (lines 20, 33, 120-131, 153, 319-335, 715-721)
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint -- --quiet` (App.tsx only) - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 13:15:00 - Phase 30 Task 3: Add event emission to reorder_proposals
 **What:**
 - Added event emission to `reorder_proposals` command in ideation_commands_proposals.rs
