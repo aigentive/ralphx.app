@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-01-30 17:00:00 - Phase 31 Task 3: Fix memory leaks with context cleanup and LRU eviction
+**What:**
+- chatStore.ts already had clearMessages action (no changes needed)
+- Added context cleanup on switch in IntegratedChatPanel.tsx
+  - When context changes, calls clearMessages for the old context key
+  - Frees memory from previous session's messages
+- Added session cleanup on archive/delete in App.tsx
+  - handleArchiveSession: calls removeSession and clearMessages
+  - handleDeleteSession: calls removeSession and clearMessages
+- Added LRU eviction to ideationStore.ts
+  - MAX_CACHED_SESSIONS = 20
+  - addSession now evicts oldest session (by updatedAt) when over limit
+  - Protects activeSessionId from eviction
+
+**Files:**
+- src/components/Chat/IntegratedChatPanel.tsx - added clearMessages call on context switch
+- src/App.tsx - added removeSession and clearMessages to archive/delete handlers
+- src/stores/ideationStore.ts - added MAX_CACHED_SESSIONS constant and LRU eviction logic
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint --quiet` (modified files only) - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 16:15:00 - Phase 31 Task 2: Memoize message and proposal components
 **What:**
 - Wrapped MessageItem with React.memo + custom equality function (comparing role, content, createdAt, toolCalls, contentBlocks)

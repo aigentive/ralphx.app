@@ -95,6 +95,7 @@ function AppContent() {
   const chatWidth = useChatStore((s) => s.width);
   const toggleChatPanel = useChatStore((s) => s.togglePanel);
   const setChatWidth = useChatStore((s) => s.setWidth);
+  const clearMessages = useChatStore((s) => s.clearMessages);
 
   // Project state
   const projects = useProjectStore((s) => s.projects);
@@ -115,6 +116,7 @@ function AppContent() {
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
   const addSession = useIdeationStore((s) => s.addSession);
+  const removeSession = useIdeationStore((s) => s.removeSession);
   const activeSessionId = activeSession?.id ?? "";
   // Get raw proposals from store and memoize the filtered/sorted version
   const allProposals = useProposalStore((s) => s.proposals);
@@ -301,11 +303,14 @@ function AppContent() {
   const handleArchiveSession = useCallback(async (sessionId: string) => {
     try {
       await archiveSession.mutateAsync(sessionId);
+      // Clean up stores to free memory
+      removeSession(sessionId);
+      clearMessages(`session:${sessionId}`);
       setActiveSession(null);
     } catch {
       toast.error("Failed to archive session");
     }
-  }, [archiveSession, setActiveSession]);
+  }, [archiveSession, setActiveSession, removeSession, clearMessages]);
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
     const sessionToDelete = allSessions.find(s => s.id === sessionId);
@@ -321,6 +326,9 @@ function AppContent() {
 
     try {
       await deleteSession.mutateAsync(sessionId);
+      // Clean up stores to free memory
+      removeSession(sessionId);
+      clearMessages(`session:${sessionId}`);
       if (activeSession?.id === sessionId) {
         setActiveSession(null);
       }
@@ -328,7 +336,7 @@ function AppContent() {
     } catch {
       toast.error("Failed to delete session");
     }
-  }, [deleteSession, confirm, allSessions, activeSession, setActiveSession]);
+  }, [deleteSession, confirm, allSessions, activeSession, setActiveSession, removeSession, clearMessages]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
     // Find the session in allSessions and add to store if not already there
