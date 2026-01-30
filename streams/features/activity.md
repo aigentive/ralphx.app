@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 07:15:00 - Phase 32 Task 14: Audit and add missing transform functions
+**What:**
+- Audited all API modules for snake_case schema + transform coverage
+- Fixed TaskStepSchema/StepProgressSummarySchema to use snake_case with transforms
+- Fixed InjectTaskResponseSchema to use snake_case with transform
+- Fixed chat API schemas (ChatConversationResponse, AgentRunResponse, AgentMessage, QueuedMessage, SendAgentMessageResponse)
+- Fixed workflow schemas (StateGroup, WorkflowColumn, WorkflowResponse) with transforms
+- All API wrappers now use typedInvokeWithTransform for proper snake_case → camelCase conversion
+
+**Files:**
+- src/types/task-step.ts (TaskStepResponseSchema, StepProgressSummaryResponseSchema + transforms)
+- src/types/workflow.ts (WorkflowResponseSchema, transforms)
+- src/lib/tauri.ts (steps API, inject API, workflow API)
+- src/api/chat.ts (all response schemas + transforms)
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - passes (6 pre-existing warnings, 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 04:41:22 - Phase 32 Task 13: Fix ProjectResponse schema to expect snake_case
 **What:**
 - Changed ProjectSchema to ProjectResponseSchema with snake_case fields (working_directory, git_mode, etc.)

@@ -19,46 +19,125 @@ export const TaskStepStatusSchema = z.enum([
 export type TaskStepStatus = z.infer<typeof TaskStepStatusSchema>;
 
 /**
- * Task step schema matching Rust backend serialization
- * Note: field names use camelCase as that's what serde_json produces with rename_all
+ * Task step response schema matching Rust backend serialization (snake_case)
+ * Backend outputs snake_case (Rust default). Transform layer converts to camelCase for UI.
  */
-export const TaskStepSchema = z.object({
+export const TaskStepResponseSchema = z.object({
   id: z.string().min(1),
-  taskId: z.string().min(1),
+  task_id: z.string().min(1),
   title: z.string().min(1),
   description: z.string().nullable(),
   status: TaskStepStatusSchema,
-  sortOrder: z.number().int(),
-  dependsOn: z.string().nullable(),
-  createdBy: z.string().min(1),
-  completionNote: z.string().nullable(),
+  sort_order: z.number().int(),
+  depends_on: z.string().nullable(),
+  created_by: z.string().min(1),
+  completion_note: z.string().nullable(),
   // Accept RFC3339 timestamps with offset (e.g., +00:00)
-  createdAt: z.string().datetime({ offset: true }),
-  updatedAt: z.string().datetime({ offset: true }),
-  startedAt: z.string().datetime({ offset: true }).nullable(),
-  completedAt: z.string().datetime({ offset: true }).nullable(),
+  created_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
+  started_at: z.string().datetime({ offset: true }).nullable(),
+  completed_at: z.string().datetime({ offset: true }).nullable(),
 });
 
-export type TaskStep = z.infer<typeof TaskStepSchema>;
+/**
+ * Frontend TaskStep type (camelCase)
+ * This is what components and stores use. Transformed from snake_case API responses.
+ */
+export interface TaskStep {
+  id: string;
+  taskId: string;
+  title: string;
+  description: string | null;
+  status: TaskStepStatus;
+  sortOrder: number;
+  dependsOn: string | null;
+  createdBy: string;
+  completionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
 
 /**
- * Step progress summary schema
- * Provides aggregated statistics and current/next step info
+ * Transform function to convert snake_case API response to camelCase frontend type
  */
-export const StepProgressSummarySchema = z.object({
-  taskId: z.string().min(1),
+export function transformTaskStep(raw: z.infer<typeof TaskStepResponseSchema>): TaskStep {
+  return {
+    id: raw.id,
+    taskId: raw.task_id,
+    title: raw.title,
+    description: raw.description,
+    status: raw.status,
+    sortOrder: raw.sort_order,
+    dependsOn: raw.depends_on,
+    createdBy: raw.created_by,
+    completionNote: raw.completion_note,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+    startedAt: raw.started_at,
+    completedAt: raw.completed_at,
+  };
+}
+
+// Legacy export for backward compatibility
+export const TaskStepSchema = TaskStepResponseSchema;
+
+/**
+ * Step progress summary response schema (snake_case from Rust)
+ * Backend outputs snake_case (Rust default). Transform layer converts to camelCase for UI.
+ */
+export const StepProgressSummaryResponseSchema = z.object({
+  task_id: z.string().min(1),
   total: z.number().int().min(0),
   completed: z.number().int().min(0),
-  inProgress: z.number().int().min(0),
+  in_progress: z.number().int().min(0),
   pending: z.number().int().min(0),
   skipped: z.number().int().min(0),
   failed: z.number().int().min(0),
-  currentStep: TaskStepSchema.nullable(),
-  nextStep: TaskStepSchema.nullable(),
-  percentComplete: z.number().min(0).max(100),
+  current_step: TaskStepResponseSchema.nullable(),
+  next_step: TaskStepResponseSchema.nullable(),
+  percent_complete: z.number().min(0).max(100),
 });
 
-export type StepProgressSummary = z.infer<typeof StepProgressSummarySchema>;
+/**
+ * Frontend StepProgressSummary type (camelCase)
+ */
+export interface StepProgressSummary {
+  taskId: string;
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+  skipped: number;
+  failed: number;
+  currentStep: TaskStep | null;
+  nextStep: TaskStep | null;
+  percentComplete: number;
+}
+
+/**
+ * Transform function for StepProgressSummary
+ */
+export function transformStepProgressSummary(
+  raw: z.infer<typeof StepProgressSummaryResponseSchema>
+): StepProgressSummary {
+  return {
+    taskId: raw.task_id,
+    total: raw.total,
+    completed: raw.completed,
+    inProgress: raw.in_progress,
+    pending: raw.pending,
+    skipped: raw.skipped,
+    failed: raw.failed,
+    currentStep: raw.current_step ? transformTaskStep(raw.current_step) : null,
+    nextStep: raw.next_step ? transformTaskStep(raw.next_step) : null,
+    percentComplete: raw.percent_complete,
+  };
+}
+
+// Legacy export for backward compatibility
+export const StepProgressSummarySchema = StepProgressSummaryResponseSchema;
 
 /**
  * Status helpers

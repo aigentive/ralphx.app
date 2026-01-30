@@ -21,7 +21,11 @@ import {
   type UpdateProject,
   type Project,
 } from "@/types/project";
-import { WorkflowSchemaZ } from "@/types/workflow";
+import {
+  WorkflowResponseSchema,
+  transformWorkflow,
+  type WorkflowSchema,
+} from "@/types/workflow";
 import {
   QASettingsSchema,
   AcceptanceCriteriaTypeSchema,
@@ -32,8 +36,12 @@ import {
   ReviewOutcomeSchema,
 } from "@/types";
 import {
-  TaskStepSchema,
-  StepProgressSummarySchema,
+  TaskStepResponseSchema,
+  StepProgressSummaryResponseSchema,
+  transformTaskStep,
+  transformStepProgressSummary,
+  type TaskStep as TaskStepType,
+  type StepProgressSummary as StepProgressSummaryType,
 } from "@/types/task-step";
 
 /**
@@ -99,7 +107,7 @@ function transformProjectList(
 /**
  * Workflow list schema for array responses
  */
-const WorkflowListSchema = z.array(WorkflowSchemaZ);
+const WorkflowListResponseSchema = z.array(WorkflowResponseSchema);
 
 // ============================================================================
 // QA Response Schemas (matching Rust responses)
@@ -265,7 +273,7 @@ export type FixTaskAttemptsResponse = z.infer<typeof FixTaskAttemptsResponseSche
  */
 const ReviewListResponseSchema = z.array(ReviewResponseSchema);
 const ReviewNoteListResponseSchema = z.array(ReviewNoteResponseSchema);
-const TaskStepListSchema = z.array(TaskStepSchema);
+const TaskStepListResponseSchema = z.array(TaskStepResponseSchema);
 
 /**
  * Input types for review operations
@@ -371,17 +379,39 @@ export function transformExecutionCommand(
 // ============================================================================
 
 /**
- * Inject task response from Rust
- * Note: field names use camelCase as that's what Rust serde produces with rename_all
+ * Inject task response schema from Rust (snake_case)
+ * Backend outputs snake_case (Rust default). Transform layer converts to camelCase for UI.
  */
-export const InjectTaskResponseSchema = z.object({
+const InjectTaskResponseSchemaRaw = z.object({
   task: TaskSchema,
   target: z.enum(["backlog", "planned"]),
   priority: z.number().int(),
-  makeNextApplied: z.boolean(),
+  make_next_applied: z.boolean(),
 });
 
-export type InjectTaskResponse = z.infer<typeof InjectTaskResponseSchema>;
+/**
+ * Frontend InjectTaskResponse type (camelCase)
+ */
+export interface InjectTaskResponse {
+  task: Task;
+  target: "backlog" | "planned";
+  priority: number;
+  makeNextApplied: boolean;
+}
+
+/**
+ * Transform InjectTaskResponseSchemaRaw to InjectTaskResponse
+ */
+function transformInjectTaskResponse(
+  raw: z.infer<typeof InjectTaskResponseSchemaRaw>
+): InjectTaskResponse {
+  return {
+    task: transformTask(raw.task),
+    target: raw.target,
+    priority: raw.priority,
+    makeNextApplied: raw.make_next_applied,
+  };
+}
 
 /**
  * Input type for injecting a task mid-loop
@@ -552,8 +582,13 @@ export const api = {
      * @param input Inject task input
      * @returns The inject task response with created task and injection details
      */
-    inject: (input: InjectTaskInput) =>
-      typedInvoke("inject_task", { input }, InjectTaskResponseSchema),
+    inject: (input: InjectTaskInput): Promise<InjectTaskResponse> =>
+      typedInvokeWithTransform(
+        "inject_task",
+        { input },
+        InjectTaskResponseSchemaRaw,
+        transformInjectTaskResponse
+      ),
   },
 
   projects: {
@@ -624,19 +659,27 @@ export const api = {
      * @param workflowId The workflow ID
      * @returns The workflow
      */
-    get: (workflowId: string) =>
-      typedInvoke("get_workflow", { id: workflowId }, WorkflowSchemaZ.nullable()).then(
-        (result) => {
-          if (!result) throw new Error(`Workflow not found: ${workflowId}`);
-          return result;
-        }
-      ),
+    get: async (workflowId: string): Promise<WorkflowSchema> => {
+      const raw = await typedInvoke(
+        "get_workflow",
+        { id: workflowId },
+        WorkflowResponseSchema.nullable()
+      );
+      if (!raw) throw new Error(`Workflow not found: ${workflowId}`);
+      return transformWorkflow(raw);
+    },
 
     /**
      * List all workflows
      * @returns Array of workflows
      */
-    list: () => typedInvoke("list_workflows", {}, WorkflowListSchema),
+    list: (): Promise<WorkflowSchema[]> =>
+      typedInvokeWithTransform(
+        "list_workflows",
+        {},
+        WorkflowListResponseSchema,
+        (workflows) => workflows.map(transformWorkflow)
+      ),
 
     /**
      * Seed builtin workflows if they don't exist
@@ -843,8 +886,13 @@ export const api = {
      * @param taskId The task ID
      * @returns Array of task steps
      */
-    getByTask: (taskId: string) =>
-      typedInvoke("get_task_steps", { taskId }, TaskStepListSchema),
+    getByTask: (taskId: string): Promise<TaskStepType[]> =>
+      typedInvokeWithTransform(
+        "get_task_steps",
+        { taskId },
+        TaskStepListResponseSchema,
+        (steps) => steps.map(transformTaskStep)
+      ),
 
     /**
      * Create a new task step
@@ -855,8 +903,13 @@ export const api = {
     create: (
       taskId: string,
       data: { title: string; description?: string; sortOrder?: number }
-    ) =>
-      typedInvoke("create_task_step", { taskId, ...data }, TaskStepSchema),
+    ): Promise<TaskStepType> =>
+      typedInvokeWithTransform(
+        "create_task_step",
+        { taskId, ...data },
+        TaskStepResponseSchema,
+        transformTaskStep
+      ),
 
     /**
      * Update an existing task step
@@ -867,8 +920,13 @@ export const api = {
     update: (
       stepId: string,
       data: { title?: string; description?: string; sortOrder?: number }
-    ) =>
-      typedInvoke("update_task_step", { stepId, ...data }, TaskStepSchema),
+    ): Promise<TaskStepType> =>
+      typedInvokeWithTransform(
+        "update_task_step",
+        { stepId, ...data },
+        TaskStepResponseSchema,
+        transformTaskStep
+      ),
 
     /**
      * Delete a task step
@@ -884,24 +942,39 @@ export const api = {
      * @param stepIds Array of step IDs in desired order
      * @returns Array of reordered task steps
      */
-    reorder: (taskId: string, stepIds: string[]) =>
-      typedInvoke("reorder_task_steps", { taskId, stepIds }, TaskStepListSchema),
+    reorder: (taskId: string, stepIds: string[]): Promise<TaskStepType[]> =>
+      typedInvokeWithTransform(
+        "reorder_task_steps",
+        { taskId, stepIds },
+        TaskStepListResponseSchema,
+        (steps) => steps.map(transformTaskStep)
+      ),
 
     /**
      * Get step progress summary for a task
      * @param taskId The task ID
      * @returns Step progress summary with counts and percentages
      */
-    getProgress: (taskId: string) =>
-      typedInvoke("get_step_progress", { taskId }, StepProgressSummarySchema),
+    getProgress: (taskId: string): Promise<StepProgressSummaryType> =>
+      typedInvokeWithTransform(
+        "get_step_progress",
+        { taskId },
+        StepProgressSummaryResponseSchema,
+        transformStepProgressSummary
+      ),
 
     /**
      * Start a task step (marks as in_progress)
      * @param stepId The step ID
      * @returns The updated task step
      */
-    start: (stepId: string) =>
-      typedInvoke("start_step", { stepId }, TaskStepSchema),
+    start: (stepId: string): Promise<TaskStepType> =>
+      typedInvokeWithTransform(
+        "start_step",
+        { stepId },
+        TaskStepResponseSchema,
+        transformTaskStep
+      ),
 
     /**
      * Complete a task step (marks as completed)
@@ -909,8 +982,13 @@ export const api = {
      * @param note Optional completion note
      * @returns The updated task step
      */
-    complete: (stepId: string, note?: string) =>
-      typedInvoke("complete_step", { stepId, note }, TaskStepSchema),
+    complete: (stepId: string, note?: string): Promise<TaskStepType> =>
+      typedInvokeWithTransform(
+        "complete_step",
+        { stepId, note },
+        TaskStepResponseSchema,
+        transformTaskStep
+      ),
 
     /**
      * Skip a task step (marks as skipped)
@@ -918,8 +996,13 @@ export const api = {
      * @param reason Reason for skipping
      * @returns The updated task step
      */
-    skip: (stepId: string, reason: string) =>
-      typedInvoke("skip_step", { stepId, reason }, TaskStepSchema),
+    skip: (stepId: string, reason: string): Promise<TaskStepType> =>
+      typedInvokeWithTransform(
+        "skip_step",
+        { stepId, reason },
+        TaskStepResponseSchema,
+        transformTaskStep
+      ),
 
     /**
      * Fail a task step (marks as failed)
@@ -927,8 +1010,13 @@ export const api = {
      * @param error Error message
      * @returns The updated task step
      */
-    fail: (stepId: string, error: string) =>
-      typedInvoke("fail_step", { stepId, error }, TaskStepSchema),
+    fail: (stepId: string, error: string): Promise<TaskStepType> =>
+      typedInvokeWithTransform(
+        "fail_step",
+        { stepId, error },
+        TaskStepResponseSchema,
+        transformTaskStep
+      ),
   },
 
   testData: {
