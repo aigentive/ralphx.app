@@ -2,7 +2,7 @@
  * StartSessionPanel - Empty state panel for starting a new ideation session
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Lightbulb, Zap, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,34 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const createSession = useCreateIdeationSession();
   const addSession = useIdeationStore((state) => state.addSession);
   const setActiveSession = useIdeationStore((state) => state.setActiveSession);
+
+  // Keyboard shortcuts for welcome screen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "n" || e.key === "N") {
+          e.preventDefault();
+          onNewSession();
+        }
+        if (e.key === "d" || e.key === "D") {
+          e.preventDefault();
+          setShowTaskPicker(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onNewSession]);
 
   const handleSeedFromTask = async (task: Task) => {
     setIsCreatingFromTask(true);
@@ -104,7 +132,15 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
 
           {/* Hint */}
           <p className="text-[11px] text-[var(--text-muted)] mt-4">
-            Press <kbd className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[10px] font-mono">⌘ N</kbd> to quickly start
+            Press{" "}
+            <kbd className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[10px] font-mono">
+              ⌘ N
+            </kbd>{" "}
+            to quickly start or{" "}
+            <kbd className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[10px] font-mono">
+              ⌘ D
+            </kbd>{" "}
+            to pick draft
           </p>
         </div>
       </div>
