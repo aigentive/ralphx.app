@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-30 03:55:00 - Phase 32 Task 1: Remove camelCase serialization from TaskProposalResponse
+**What:**
+- Removed `#[serde(rename_all = "camelCase")]` from TaskProposalResponse struct
+- This is the ROOT CAUSE fix for the ideation proposals parsing failure
+- Backend now outputs snake_case (Rust default), frontend transform layer handles conversion
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_types.rs
+
+**Commands:**
+- `cargo check` - passes
+- `cargo test proposal` - passes (pre-existing seed_task_id test failures unrelated to change)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 19:45:00 - Phase 31 Complete
 **What:**
 - Ran gap verification for Phase 31 (Ideation Performance Optimization)
