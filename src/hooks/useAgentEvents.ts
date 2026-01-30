@@ -194,7 +194,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         conversation_id: string;
         error: string;
       }>("agent:error", (event) => {
-        const { conversation_id, error, context_type, context_id: eventContextId } = event.payload;
+        const { conversation_id, context_type, context_id: eventContextId } = event.payload;
 
         // Build context key from the event payload
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
@@ -212,8 +212,7 @@ export function useAgentEvents(activeConversationId: string | null) {
           });
         }
 
-        // Log error for debugging
-        console.error(`[agent:error] context=${context_type}, conversation=${conversation_id}:`, error);
+        // Error already propagated via agent state change and query invalidation
       });
       unlisteners.push(errorUnlisten);
     })();
