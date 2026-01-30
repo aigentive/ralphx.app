@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Edit3, Plus, X, Loader2, Layers } from "lucide-react";
+import { Edit3, Plus, X, Loader2, Layers, CheckCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -374,52 +374,56 @@ export function ProposalEditModal({
               </div>
             </div>
 
-            {/* Acceptance Criteria Editor */}
+            {/* Acceptance Criteria Editor with Glass Container */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-[var(--text-primary)]">Acceptance Criteria</Label>
-                <Button
+              <Label className="text-[var(--text-primary)]">Acceptance Criteria</Label>
+              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-4">
+                {acceptanceCriteria.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <CheckCircle className="w-8 h-8 text-[var(--text-muted)] mb-2" />
+                    <p className="text-sm text-[var(--text-muted)]">No acceptance criteria defined yet</p>
+                    <p className="text-xs text-[var(--text-muted)]/60 mt-1">Add criteria to define success conditions</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {acceptanceCriteria.map((criterion, index) => (
+                      <div key={index} className="group flex items-center gap-3">
+                        <span className="text-[#ff6b35] text-lg font-medium w-6 flex-shrink-0">✓</span>
+                        <Input
+                          data-testid="criterion-input"
+                          type="text"
+                          value={criterion}
+                          onChange={(e) => handleCriterionChange(index, e.target.value)}
+                          aria-label={`Acceptance criterion ${index + 1}`}
+                          className={`${inputClasses} flex-1`}
+                          disabled={isSaving}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleRemoveCriterion(index)}
+                          aria-label={`Remove criterion ${index + 1}`}
+                          disabled={isSaving}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Centered dashed-border add button */}
+                <button
                   type="button"
-                  variant="ghost"
-                  size="icon-sm"
                   onClick={handleAddCriterion}
-                  aria-label="Add criterion"
                   disabled={isSaving}
-                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                  className="mt-4 w-full py-2 px-4 rounded-md border border-dashed border-white/20 hover:border-[#ff6b35]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
-                </Button>
+                  <span className="text-sm">Add acceptance criterion</span>
+                </button>
               </div>
-              {acceptanceCriteria.length === 0 ? (
-                <p className="text-sm italic text-[var(--text-muted)]">No acceptance criteria added</p>
-              ) : (
-                <div className="space-y-2">
-                  {acceptanceCriteria.map((criterion, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input
-                        data-testid="criterion-input"
-                        type="text"
-                        value={criterion}
-                        onChange={(e) => handleCriterionChange(index, e.target.value)}
-                        aria-label={`Acceptance criterion ${index + 1}`}
-                        className={`${inputClasses} flex-1`}
-                        disabled={isSaving}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleRemoveCriterion(index)}
-                        aria-label={`Remove criterion ${index + 1}`}
-                        disabled={isSaving}
-                        className="text-[var(--text-secondary)] hover:text-[var(--status-error)] hover:bg-[var(--status-error)]/10"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
           </div>
