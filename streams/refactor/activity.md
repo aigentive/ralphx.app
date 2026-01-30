@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-30 18:06:58 - Split research_service.rs
+
+**What:**
+- Original file: src-tauri/src/domain/services/research_service.rs (1109 LOC)
+- Extracted to:
+  - research_service_tests.rs (800 LOC) - all tests and mock repository
+  - research_service.rs (311 LOC) - service implementation only
+- New size: 311 LOC (72% reduction, 189 LOC under 500 LOC limit)
+
+**Commands:**
+- `wc -l src-tauri/src/domain/services/research_service*.rs`
+- `cargo test --lib domain::services::research_service::tests`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+
+**Result:** Success - all 40 tests pass, no clippy warnings
+
+---
+
 ### 2026-01-29 04:53:00 - Split memory_task_repo.rs
 
 **What:**
