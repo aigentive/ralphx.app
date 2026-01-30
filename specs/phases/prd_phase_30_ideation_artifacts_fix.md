@@ -69,7 +69,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(ideation): emit proposal:updated event on selection toggle"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",
@@ -83,7 +83,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(ideation): emit proposal:updated event on selection set"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "backend",

@@ -276,7 +276,24 @@ pub async fn set_proposal_selection(
         .task_proposal_repo
         .update_selection(&proposal_id, selected)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Fetch updated proposal and emit event
+    if let Some(app_handle) = &state.app_handle {
+        if let Ok(Some(updated_proposal)) =
+            state.task_proposal_repo.get_by_id(&proposal_id).await
+        {
+            let response = TaskProposalResponse::from(updated_proposal);
+            let _ = app_handle.emit(
+                "proposal:updated",
+                serde_json::json!({
+                    "proposal": response
+                }),
+            );
+        }
+    }
+
+    Ok(())
 }
 
 /// Reorder proposals within a session
