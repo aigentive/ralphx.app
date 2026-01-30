@@ -30,7 +30,6 @@ impl Default for TestDataProfile {
 
 /// Response for seed operations
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SeedDataResponse {
     pub profile: String,
     pub project_id: String,
