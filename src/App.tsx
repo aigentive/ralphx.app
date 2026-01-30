@@ -32,6 +32,7 @@ import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
 import type { ChatContext } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/types/ideation";
+import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
 import { usePendingReviews } from "@/hooks/useReviews";
@@ -374,8 +375,7 @@ function AppContent() {
   }, []);
 
   const handleSaveProposal = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async (proposalId: string, data: any) => {
+    async (proposalId: string, data: UpdateProposalInput) => {
       try {
         await updateProposal.mutateAsync({ proposalId, changes: data });
         setEditingProposalId(null);

@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-30 23:05:00 - Type safety: Replace `any` type in handleSaveProposal
+
+**What:**
+- File: src/App.tsx:378, src/components/Ideation/ProposalEditModal.tsx
+- Change: Replaced `any` type with proper `UpdateProposalInput` from `@/api/ideation`
+- Fixed type source mismatch: App.tsx and ProposalEditModal.tsx were importing from `@/types/ideation` (Zod-derived) which caused issues with `exactOptionalPropertyTypes`
+- Updated imports to use the plain interface from `@/api/ideation.types` (same as `useProposals.ts`)
+- Simplified ProposalEditModal's handleSave to use conditional object construction
+
+**Commands:**
+- `npm run lint -- src/App.tsx src/components/Ideation/ProposalEditModal.tsx` (passed - 0 errors, 8 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 10:47:15 - Backlog Verification
 
 **What:**
