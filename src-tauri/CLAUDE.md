@@ -153,7 +153,14 @@ pub async fn transition_task(&self, task_id: &TaskId, event: TaskEvent) -> AppRe
 Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
 
 ## Database
-`ralphx.db` (dev) | Migrations in `infrastructure/sqlite/migrations.rs`
+`ralphx.db` (dev) | Migrations in `infrastructure/sqlite/migrations/`
+
+**Migration system:** See `.claude/rules/code-quality-standards.md` → "Database Migrations"
+
+Quick reference:
+- Add new migration: create `vN_description.rs`, register in `MIGRATIONS` array, bump `SCHEMA_VERSION`
+- Use `IF NOT EXISTS` for idempotency
+- Use `helpers::add_column_if_not_exists()` for ALTER TABLE
 
 ## Commands
 ```bash

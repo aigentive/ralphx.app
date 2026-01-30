@@ -44,14 +44,15 @@ use rusqlite::Connection;
     fn create_test_task(conn: &Connection, project_id: &ProjectId) -> TaskId {
         let task_id = TaskId::new();
         conn.execute(
-            "INSERT INTO tasks (id, project_id, title, description, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'), datetime('now'))",
+            "INSERT INTO tasks (id, project_id, category, title, description, internal_status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), datetime('now'))",
             rusqlite::params![
                 task_id.as_str(),
                 project_id.as_str(),
+                "feature",
                 "Test Task",
                 "",
-                "Backlog",
+                "backlog",
             ],
         )
         .unwrap();
