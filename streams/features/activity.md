@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 04:41:22 - Phase 32 Task 13: Fix ProjectResponse schema to expect snake_case
+**What:**
+- Changed ProjectSchema to ProjectResponseSchema with snake_case fields (working_directory, git_mode, etc.)
+- Created Project interface with camelCase for frontend use
+- Added transformProject() function to convert snake_case → camelCase
+- Added transformProjectList() for list endpoint
+- Updated all project API wrappers (list, get, create, update) to use typedInvokeWithTransform
+- Kept legacy ProjectSchema export for backward compatibility
+
+**Files:**
+- src/types/project.ts (schema + transform)
+- src/lib/tauri.ts (API wrappers)
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - passes (6 pre-existing warnings, 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 06:36:29 - Phase 32 Task 12: Fix ExecutionStatusResponse schema to expect snake_case
 **What:**
 - Updated ExecutionStatusResponseSchema in src/lib/tauri.ts to expect snake_case fields
