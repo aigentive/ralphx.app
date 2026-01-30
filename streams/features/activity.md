@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-30 21:00:00 - Phase 34 Task 6: Apply glass effect styling to all input fields
+**What:**
+- Updated inputClasses with glass effect styling (bg-black/30, border-white/[0.08], rounded-lg)
+- Added transition-all duration-200 for smooth focus state transitions
+- Implemented orange focus states (focus:border-[#ff6b35]/50, focus:ring-2 focus:ring-[#ff6b35]/10)
+- Updated selectClasses with matching glass styling for Category and Priority Override dropdowns
+- Both inputs and selects now have consistent rounded-lg border radius per design specs
+
+**Files:**
+- src/components/Ideation/ProposalEditModal.tsx
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 20:30:00 - Phase 34 Task 5: Redesign acceptance criteria list with checkmarks
 **What:**
 - Wrapped acceptance criteria editor in glass card container (border-white/[0.08], bg-white/[0.03], backdrop-blur-xl)
