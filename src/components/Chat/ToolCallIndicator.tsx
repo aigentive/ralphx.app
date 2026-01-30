@@ -8,7 +8,7 @@
  * - Compact, readable design
  */
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
 import { createSummary, formatValue, isArtifactContextTool, renderArtifactPreview } from "./ToolCallIndicator.helpers";
 
@@ -67,7 +67,7 @@ function ToolIcon({ name, hasError }: { name: string; hasError: boolean }) {
   }
 }
 
-export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicatorProps) {
+export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicatorProps) {
   // Bash tool calls are expanded by default for that terminal feel
   const [isExpanded, setIsExpanded] = useState(toolCall.name.toLowerCase() === "bash");
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
@@ -242,4 +242,4 @@ export function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicato
       )}
     </div>
   );
-}
+});

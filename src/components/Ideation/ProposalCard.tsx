@@ -9,6 +9,7 @@
  * - Historical plan link when applicable
  */
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -40,7 +41,7 @@ export interface ProposalCardProps {
 // Component
 // ============================================================================
 
-export function ProposalCard({
+export const ProposalCard = React.memo(function ProposalCard({
   proposal,
   onSelect,
   onEdit,
@@ -178,4 +179,4 @@ export function ProposalCard({
       </div>
     </div>
   );
-}
+});

@@ -11,7 +11,7 @@
  * - Empty state when no proposals
  */
 
-import { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -151,7 +151,7 @@ interface SortableProposalCardProps {
   blocksCount?: number;
 }
 
-function SortableProposalCard({
+const SortableProposalCard = React.memo(function SortableProposalCard({
   proposal,
   onSelect,
   onEdit,
@@ -197,7 +197,7 @@ function SortableProposalCard({
       />
     </div>
   );
-}
+});
 
 // ============================================================================
 // Empty State

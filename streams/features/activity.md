@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-30 16:15:00 - Phase 31 Task 2: Memoize message and proposal components
+**What:**
+- Wrapped MessageItem with React.memo + custom equality function (comparing role, content, createdAt, toolCalls, contentBlocks)
+- Wrapped ToolCallIndicator with React.memo
+- Wrapped ProposalCard with React.memo
+- Wrapped SortableProposalCard with React.memo (internal component in ProposalList)
+- ProposalList already had useCallback for handlers (handleDragEnd, handleSelect, handleCardSelect)
+
+**Files:**
+- src/components/Chat/MessageItem.tsx - added React.memo with custom equality
+- src/components/Chat/ToolCallIndicator.tsx - added React.memo
+- src/components/Ideation/ProposalCard.tsx - added React.memo
+- src/components/Ideation/ProposalList.tsx - added React.memo to SortableProposalCard
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint --quiet` (modified files only) - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 15:45:00 - Phase 31 Task 1: Add virtualization with react-virtuoso
 **What:**
 - Activated Phase 31 (Ideation Performance Optimization)
