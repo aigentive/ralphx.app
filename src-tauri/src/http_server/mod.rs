@@ -17,7 +17,7 @@ use crate::error::AppResult;
 // ============================================================================
 
 mod types;
-mod helpers;
+pub mod helpers;
 mod handlers;
 
 pub use types::*;
