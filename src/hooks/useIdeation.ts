@@ -26,6 +26,12 @@ export const ideationKeys = {
  * @param sessionId - The session ID to fetch
  * @returns TanStack Query result with session data, proposals, and messages
  *
+ * @remarks
+ * This hook explicitly disables placeholder data to prevent a "flash" bug when
+ * switching between sessions. The global queryClient config uses the previous
+ * query data as placeholder, but for session switching we need clean transitions.
+ * See resolvedSession in App.tsx for the full solution.
+ *
  * @example
  * ```tsx
  * const { data, isLoading, error } = useIdeationSession("session-123");
@@ -48,6 +54,15 @@ export function useIdeationSession(sessionId: string) {
     queryKey: ideationKeys.sessionWithData(sessionId),
     queryFn: () => ideationApi.sessions.getWithData(sessionId),
     enabled: Boolean(sessionId),
+    /**
+     * Explicitly return null instead of using global placeholderData.
+     *
+     * The global config preserves previous query data as placeholder, which causes
+     * a flash when switching sessions: old session data briefly appears before
+     * the new session loads. By returning null, we force clean transitions where
+     * the consumer falls back to the store's activeSession.
+     */
+    placeholderData: () => null,
   });
 }
 

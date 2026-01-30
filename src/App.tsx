@@ -164,6 +164,31 @@ function AppContent() {
   const { toggleSelection, deleteProposal, reorder, updateProposal } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
 
+  /**
+   * Resolved session for IdeationView.
+   *
+   * When switching sessions, there's a race between:
+   * 1. Zustand updating activeSession (instant)
+   * 2. TanStack Query fetching the new session data (async)
+   *
+   * During this window, sessionData contains stale data from the previous session.
+   * We only use sessionData.session when its ID matches the active session,
+   * otherwise we fall back to activeSession from the store.
+   *
+   * This prevents "flash" where the old session briefly appears before the new one loads.
+   */
+  const resolvedSession = useMemo(() => {
+    const fetchedSession = sessionData?.session;
+    const isFetchedSessionCurrent = fetchedSession?.id === activeSession?.id;
+
+    if (isFetchedSessionCurrent && fetchedSession) {
+      // Fetched data matches the active session - use it (has full data)
+      return fetchedSession;
+    }
+    // Fetched data is stale or missing - use store's activeSession as placeholder
+    return activeSession;
+  }, [sessionData?.session, activeSession]);
+
   // Sync proposals from sessionData to the store
   useEffect(() => {
     if (sessionData?.proposals) {
@@ -661,7 +686,7 @@ function AppContent() {
               )}
               {currentView === "ideation" && (
                 <IdeationView
-                  session={sessionData?.session ?? activeSession}
+                  session={resolvedSession}
                   sessions={allSessions}
                   proposals={proposals}
                   onNewSession={handleNewSession}
