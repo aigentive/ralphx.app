@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
+import { dependencyKeys } from "./useDependencyGraph";
 
 /**
  * Schema for session title updated event payload
@@ -151,7 +152,7 @@ export function useIdeationEvents() {
         }
 
         // Invalidate dependency graph query
-        queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+        queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
       })
     );
 
@@ -167,7 +168,7 @@ export function useIdeationEvents() {
         }
 
         // Invalidate dependency graph query
-        queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+        queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
       })
     );
 
@@ -199,7 +200,7 @@ export function useIdeationEvents() {
         }
 
         // Invalidate dependency graph query to show new dependencies
-        queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+        queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
         // Also invalidate proposals since their dependency counts may have changed
         queryClient.invalidateQueries({ queryKey: ideationKeys.proposals() });
       })
