@@ -17,7 +17,7 @@ import { TaskFullView } from "@/components/tasks/TaskFullView";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { KanbanSplitLayout, Navigation } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
-import { IdeationView } from "@/components/Ideation";
+import { IdeationView, ProposalEditModal } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import { SettingsView } from "@/components/settings";
@@ -123,6 +123,10 @@ function AppContent() {
       .filter((p) => p.sessionId === activeSessionId)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [allProposals, activeSessionId]);
+  const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
+  const editingProposal = editingProposalId
+    ? allProposals[editingProposalId] ?? null
+    : null;
 
   // Extract task from modal context for task-detail modal
   const selectedTask = activeModal === "task-detail" && modalContext?.task
@@ -150,7 +154,7 @@ function AppContent() {
   const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
   const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
-  const { toggleSelection, deleteProposal, reorder } = useProposalMutations();
+  const { toggleSelection, deleteProposal, reorder, updateProposal } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
 
   // Sync proposals from sessionData to the store
@@ -312,9 +316,23 @@ function AppContent() {
     toggleSelection.mutate(proposalId);
   }, [toggleSelection]);
 
-  const handleEditProposal = useCallback((_proposalId: string) => {
-    // TODO: Open edit modal for proposal
+  const handleEditProposal = useCallback((proposalId: string) => {
+    setEditingProposalId(proposalId);
   }, []);
+
+  const handleSaveProposal = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (proposalId: string, data: any) => {
+      try {
+        await updateProposal.mutateAsync({ proposalId, changes: data });
+        setEditingProposalId(null);
+        toast.success("Proposal updated");
+      } catch {
+        toast.error("Failed to update proposal");
+      }
+    },
+    [updateProposal]
+  );
 
   const handleRemoveProposal = useCallback((proposalId: string) => {
     deleteProposal.mutate(proposalId);
@@ -689,6 +707,14 @@ function AppContent() {
 
       {/* Permission Dialog - Global UI-based permission approval */}
       <PermissionDialog />
+
+      {/* Proposal Edit Modal - Edit ideation proposals */}
+      <ProposalEditModal
+        proposal={editingProposal}
+        onSave={handleSaveProposal}
+        onCancel={() => setEditingProposalId(null)}
+        isSaving={updateProposal.isPending}
+      />
 
       {/* TaskFullView - Full-screen task view (rendered when taskFullViewId is set) */}
       {taskFullViewId && (
