@@ -18,6 +18,32 @@ const SessionTitleUpdatedEventSchema = z.object({
 });
 
 /**
+ * Schema for proposal priority assessed event payload
+ */
+const ProposalPriorityAssessedEventSchema = z.object({
+  proposalId: z.string(),
+  priority: z.string(),
+  score: z.number(),
+  reason: z.string(),
+});
+
+/**
+ * Schema for session priorities assessed event payload
+ */
+const SessionPrioritiesAssessedEventSchema = z.object({
+  sessionId: z.string(),
+  count: z.number(),
+});
+
+/**
+ * Schema for dependency added/removed event payload
+ */
+const DependencyEventSchema = z.object({
+  proposalId: z.string(),
+  dependsOnId: z.string(),
+});
+
+/**
  * Hook to listen for ideation events from the backend
  *
  * Listens to 'ideation:session_title_updated' events and updates the
@@ -37,13 +63,13 @@ export function useIdeationEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    console.log("[IdeationEvents] Setting up session_title_updated listener");
+    console.log("[IdeationEvents] Setting up event listeners");
+    const unlistenFns: Promise<UnlistenFn>[] = [];
 
     // Listen for session title updates (from session-namer agent)
-    const unlistenTitleUpdated: Promise<UnlistenFn> = listen<unknown>(
-      "ideation:session_title_updated",
-      (event) => {
-        console.log("[IdeationEvents] Received event:", event.payload);
+    unlistenFns.push(
+      listen<unknown>("ideation:session_title_updated", (event) => {
+        console.log("[IdeationEvents] Received session_title_updated:", event.payload);
         const parsed = SessionTitleUpdatedEventSchema.safeParse(event.payload);
 
         if (!parsed.success) {
@@ -55,15 +81,83 @@ export function useIdeationEvents() {
         }
 
         console.log("[IdeationEvents] Updating session title:", parsed.data.sessionId, "->", parsed.data.title);
-        // Update the session in the store with the new title
         updateSession(parsed.data.sessionId, { title: parsed.data.title });
-        // Also invalidate React Query cache so components using useIdeationSessions re-render
         queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
-      }
+      })
+    );
+
+    // Listen for single proposal priority assessment
+    unlistenFns.push(
+      listen<unknown>("proposal:priority_assessed", (event) => {
+        console.log("[IdeationEvents] Received proposal:priority_assessed:", event.payload);
+        const parsed = ProposalPriorityAssessedEventSchema.safeParse(event.payload);
+
+        if (!parsed.success) {
+          console.error(
+            "Invalid proposal:priority_assessed event:",
+            parsed.error.message
+          );
+          return;
+        }
+
+        // Invalidate proposals query to refetch with updated priority
+        queryClient.invalidateQueries({ queryKey: ideationKeys.proposals() });
+      })
+    );
+
+    // Listen for batch session priorities assessment
+    unlistenFns.push(
+      listen<unknown>("session:priorities_assessed", (event) => {
+        console.log("[IdeationEvents] Received session:priorities_assessed:", event.payload);
+        const parsed = SessionPrioritiesAssessedEventSchema.safeParse(event.payload);
+
+        if (!parsed.success) {
+          console.error(
+            "Invalid session:priorities_assessed event:",
+            parsed.error.message
+          );
+          return;
+        }
+
+        // Invalidate proposals query to refetch with updated priorities
+        queryClient.invalidateQueries({ queryKey: ideationKeys.proposals() });
+      })
+    );
+
+    // Listen for dependency added
+    unlistenFns.push(
+      listen<unknown>("dependency:added", (event) => {
+        console.log("[IdeationEvents] Received dependency:added:", event.payload);
+        const parsed = DependencyEventSchema.safeParse(event.payload);
+
+        if (!parsed.success) {
+          console.error("Invalid dependency:added event:", parsed.error.message);
+          return;
+        }
+
+        // Invalidate dependency graph query
+        queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+      })
+    );
+
+    // Listen for dependency removed
+    unlistenFns.push(
+      listen<unknown>("dependency:removed", (event) => {
+        console.log("[IdeationEvents] Received dependency:removed:", event.payload);
+        const parsed = DependencyEventSchema.safeParse(event.payload);
+
+        if (!parsed.success) {
+          console.error("Invalid dependency:removed event:", parsed.error.message);
+          return;
+        }
+
+        // Invalidate dependency graph query
+        queryClient.invalidateQueries({ queryKey: ideationKeys.dependencyGraph() });
+      })
     );
 
     return () => {
-      unlistenTitleUpdated.then((fn) => fn());
+      unlistenFns.forEach((unlisten) => unlisten.then((fn) => fn()));
     };
   }, [updateSession, queryClient]);
 }

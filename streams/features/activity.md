@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-30 18:45:00 - Phase 38 Task 1: Wire up priority assessment commands
+**What:**
+- Fixed `assess_proposal_priority` command to build dependency graph, calculate factors, store assessment, emit event
+- Fixed `assess_all_priorities` command to compute scores for all proposals and emit batch event
+- Added helper functions: `build_dependency_graph`, `calculate_proposal_assessment`, `detect_cycles`, `find_critical_path`
+- Added event emissions: `proposal:priority_assessed`, `session:priorities_assessed`, `dependency:added`, `dependency:removed`
+- Added frontend event handlers in `useIdeationEvents.ts` for TanStack Query invalidation
+- Added `proposals()` and `dependencyGraph()` keys to `ideationKeys`
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_proposals.rs (modified)
+- src-tauri/src/commands/ideation_commands/ideation_commands_dependencies.rs (modified)
+- src/hooks/useIdeationEvents.ts (modified)
+- src/hooks/useIdeation.ts (modified)
+- specs/phases/prd_phase_38_dependency_priority_integration.md (updated passes: true)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` (passes)
+- `cargo test assess --lib` (22 tests pass)
+- `npm run lint` (0 errors, pre-existing warnings)
+- `npm run typecheck` (passes)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 17:01:15 - Phase 37 Task 5: Add GET dispatch for proposal query tools in MCP server
 **What:**
 - Added else-if branch for `list_session_proposals` calling `callTauriGet` with `list_session_proposals/${session_id}`
