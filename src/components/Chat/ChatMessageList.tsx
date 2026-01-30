@@ -21,6 +21,23 @@ import type { ToolCall } from "./ToolCallIndicator";
 import type { ContentBlockItem } from "./MessageItem";
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Delay for markdown content to render and expand before scroll correction */
+const MARKDOWN_RENDER_DELAY_MS = 300;
+
+/** Delay for footer to render new tool calls before scrolling */
+const FOOTER_RENDER_DELAY_MS = 50;
+
+/** Shared styles for content containers to handle long text */
+const contentContainerStyle: React.CSSProperties = {
+  maxWidth: "100%",
+  overflowWrap: "break-word",
+  wordBreak: "break-word",
+};
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -77,18 +94,28 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
 
+    /** Scroll to absolute bottom of the list */
+    const scrollToBottom = () => {
+      virtuosoRef.current?.scrollTo({ top: Number.MAX_SAFE_INTEGER });
+    };
+
     // Delayed scroll correction to handle markdown rendering height changes
     // Markdown content can expand after initial render, throwing off scroll position
     useEffect(() => {
       if (!conversationId || messages.length === 0) return;
 
-      // Wait for markdown to render and expand, then scroll to absolute bottom
-      const timeoutId = setTimeout(() => {
-        virtuosoRef.current?.scrollTo({ top: Number.MAX_SAFE_INTEGER });
-      }, 300);
-
+      const timeoutId = setTimeout(scrollToBottom, MARKDOWN_RENDER_DELAY_MS);
       return () => clearTimeout(timeoutId);
     }, [conversationId, messages.length]);
+
+    // Scroll to bottom when streaming tool calls change (footer height changes)
+    // Virtuoso's followOutput only tracks data changes, not footer expansion
+    useEffect(() => {
+      if (streamingToolCalls.length === 0) return;
+
+      const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
+      return () => clearTimeout(timeoutId);
+    }, [streamingToolCalls.length]);
 
     return (
       <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
@@ -104,10 +131,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           className="h-full"
           components={{
             Header: () => (
-              <div
-                className="px-3 pt-3 w-full"
-                style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-              >
+              <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
                 {/* Show failed run banner if last run failed */}
                 {failedRun?.errorMessage && onDismissFailedRun && (
                   <FailedRunBanner
@@ -121,10 +145,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               </div>
             ),
             Footer: () => (
-              <div
-                className="px-3 pb-3 w-full"
-                style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-              >
+              <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
                 {/* Show streaming tool calls or typing indicator while agent is working */}
                 {(isSending || isAgentRunning) && (
                   streamingToolCalls.length > 0 ? (
@@ -138,10 +159,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             ),
           }}
           itemContent={(_, msg) => (
-            <div
-              className="px-3 w-full"
-              style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
-            >
+            <div className="px-3 w-full" style={contentContainerStyle}>
               <MessageItem
                 key={msg.id}
                 role={msg.role}
