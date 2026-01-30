@@ -25,8 +25,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             worktree_path TEXT,
             worktree_branch TEXT,
             base_branch TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -41,8 +41,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             description TEXT,
             priority INTEGER DEFAULT 0,
             internal_status TEXT NOT NULL DEFAULT 'backlog',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             started_at DATETIME,
             completed_at DATETIME,
             needs_qa BOOLEAN DEFAULT NULL,
@@ -102,7 +102,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             id TEXT PRIMARY KEY,
             task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
             depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             UNIQUE(task_id, depends_on_task_id),
             CHECK(task_id != depends_on_task_id)
         )",
@@ -126,7 +126,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
         "CREATE TABLE IF NOT EXISTS task_blockers (
             task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
             blocker_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             PRIMARY KEY (task_id, blocker_id)
         )",
         [],
@@ -156,8 +156,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             depends_on TEXT REFERENCES task_steps(id) ON DELETE SET NULL,
             created_by TEXT NOT NULL DEFAULT 'user',
             completion_note TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             started_at TEXT,
             completed_at TEXT
         )",
@@ -190,7 +190,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             changed_by TEXT NOT NULL,
             reason TEXT,
             metadata JSON,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -207,7 +207,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
             state_type TEXT NOT NULL,
             data TEXT NOT NULL,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -240,7 +240,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             screenshots TEXT,
             test_agent_id TEXT,
             test_completed_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -264,7 +264,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             reviewer_type TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             notes TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             completed_at DATETIME
         )",
         [],
@@ -295,7 +295,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
             action_type TEXT NOT NULL,
             target_task_id TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -320,7 +320,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             reviewer TEXT NOT NULL,
             outcome TEXT NOT NULL,
             notes TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -341,7 +341,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             require_human_review INTEGER NOT NULL DEFAULT 0,
             max_fix_attempts INTEGER NOT NULL DEFAULT 3,
             max_revision_cycles INTEGER NOT NULL DEFAULT 5,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -349,7 +349,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
 
     // Seed default review settings
     conn.execute(
-        "INSERT OR IGNORE INTO review_settings (id, updated_at) VALUES (1, datetime('now'))",
+        "INSERT OR IGNORE INTO review_settings (id, updated_at) VALUES (1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         [],
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
@@ -364,8 +364,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             title TEXT,
             status TEXT NOT NULL DEFAULT 'active',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             archived_at DATETIME,
             converted_at DATETIME,
             plan_artifact_id TEXT,
@@ -407,8 +407,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             selected INTEGER DEFAULT 1,
             created_task_id TEXT REFERENCES tasks(id),
             sort_order INTEGER NOT NULL DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             plan_artifact_id TEXT,
             plan_version_at_creation INTEGER
         )",
@@ -433,7 +433,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             id TEXT PRIMARY KEY,
             proposal_id TEXT NOT NULL REFERENCES task_proposals(id) ON DELETE CASCADE,
             depends_on_proposal_id TEXT NOT NULL REFERENCES task_proposals(id) ON DELETE CASCADE,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             UNIQUE(proposal_id, depends_on_proposal_id),
             CHECK(proposal_id != depends_on_proposal_id)
         )",
@@ -460,7 +460,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             require_plan_approval INTEGER NOT NULL DEFAULT 0,
             suggest_plans_for_complex INTEGER NOT NULL DEFAULT 1,
             auto_link_proposals INTEGER NOT NULL DEFAULT 1,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -468,7 +468,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
 
     // Seed default ideation settings
     conn.execute(
-        "INSERT OR IGNORE INTO ideation_settings (id, updated_at) VALUES (1, datetime('now'))",
+        "INSERT OR IGNORE INTO ideation_settings (id, updated_at) VALUES (1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         [],
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
@@ -486,8 +486,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             title TEXT,
             message_count INTEGER NOT NULL DEFAULT 0,
             last_message_at TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -518,7 +518,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             tool_calls TEXT,
             content_blocks TEXT,
             parent_message_id TEXT REFERENCES chat_messages(id),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -583,7 +583,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             UPDATE chat_conversations
             SET message_count = message_count + 1,
                 last_message_at = NEW.created_at,
-                updated_at = datetime('now')
+                updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
             WHERE id = NEW.conversation_id;
         END",
         [],
@@ -600,7 +600,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             name TEXT NOT NULL,
             config_json TEXT NOT NULL,
             is_system INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -627,7 +627,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             version INTEGER DEFAULT 1,
             previous_version_id TEXT REFERENCES artifacts(id),
             metadata_json TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -657,7 +657,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             from_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
             to_artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
             relation_type TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             UNIQUE(from_artifact_id, to_artifact_id, relation_type)
         )",
         [],
@@ -683,7 +683,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             trigger_json TEXT NOT NULL,
             steps_json TEXT NOT NULL,
             is_active INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -706,7 +706,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             description TEXT,
             schema_json TEXT NOT NULL,
             is_default INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -726,7 +726,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             config_json TEXT NOT NULL,
             status TEXT NOT NULL,
             current_iteration INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
             started_at DATETIME,
             completed_at DATETIME
         )",
@@ -753,7 +753,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             description TEXT,
             config_json TEXT NOT NULL,
             is_active INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )
@@ -772,8 +772,8 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             role TEXT NOT NULL,
             profile_json TEXT NOT NULL,
             is_builtin INTEGER NOT NULL DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         )",
         [],
     )

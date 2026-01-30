@@ -15,7 +15,7 @@ use rusqlite::Connection;
     fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
         conn.execute(
             "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'single_branch', datetime('now'), datetime('now'))",
+             VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
             rusqlite::params![id.as_str(), name, path],
         )
         .unwrap();
@@ -29,7 +29,7 @@ use rusqlite::Connection;
 
         conn.execute(
             "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'active', datetime('now'), datetime('now'))",
+             VALUES (?1, ?2, ?3, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
             rusqlite::params![
                 session.id.as_str(),
                 project_id.as_str(),
@@ -45,7 +45,7 @@ use rusqlite::Connection;
         let task_id = TaskId::new();
         conn.execute(
             "INSERT INTO tasks (id, project_id, category, title, description, internal_status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), datetime('now'))",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
             rusqlite::params![
                 task_id.as_str(),
                 project_id.as_str(),

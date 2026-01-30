@@ -655,13 +655,13 @@ mod tests {
             let c = repo.conn.lock().await;
             c.execute(
                 "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-                 VALUES ('proj-1', 'Test Project', '/test', datetime('now'), datetime('now'))",
+                 VALUES ('proj-1', 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                 [],
             )
             .unwrap();
             c.execute(
                 "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
-                 VALUES ('task-123', 'proj-1', 'Test Task', 'feature', 'backlog', datetime('now'), datetime('now'))",
+                 VALUES ('task-123', 'proj-1', 'Test Task', 'feature', 'backlog', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                 [],
             )
             .unwrap();
@@ -843,13 +843,13 @@ mod tests {
             let c = repo.conn.lock().await;
             c.execute(
                 "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-                 VALUES ('proj-1', 'Test Project', '/test', datetime('now'), datetime('now'))",
+                 VALUES ('proj-1', 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                 [],
             )
             .unwrap();
             c.execute(
                 "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
-                 VALUES ('task-123', 'proj-1', 'Test Task', 'feature', 'backlog', datetime('now'), datetime('now'))",
+                 VALUES ('task-123', 'proj-1', 'Test Task', 'feature', 'backlog', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                 [],
             )
             .unwrap();

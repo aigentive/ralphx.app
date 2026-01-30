@@ -105,7 +105,7 @@ impl TaskStateMachineRepository {
         // Update internal_status in tasks table
         let affected = conn
             .execute(
-                "UPDATE tasks SET internal_status = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+                "UPDATE tasks SET internal_status = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now') WHERE id = ?2",
                 [state.as_str(), task_id.as_str()],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -120,7 +120,7 @@ impl TaskStateMachineRepository {
             if let Some(state_data) = StateData::from_state(state) {
                 conn.execute(
                     "INSERT OR REPLACE INTO task_state_data (task_id, state_type, data, updated_at)
-                     VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)",
+                     VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                     [task_id.as_str(), &state_data.state_type, &state_data.data],
                 )
                 .map_err(|e| AppError::Database(e.to_string()))?;

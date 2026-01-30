@@ -77,7 +77,7 @@ impl IdeationSettingsRepository for SqliteIdeationSettingsRepository {
                  require_plan_approval = ?2,
                  suggest_plans_for_complex = ?3,
                  auto_link_proposals = ?4,
-                 updated_at = datetime('now')
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
              WHERE id = 1",
             rusqlite::params![
                 plan_mode_str,

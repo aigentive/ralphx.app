@@ -416,7 +416,7 @@ fn test_creates_chat_conversations_table() {
 
     let result = conn.execute(
         "INSERT INTO chat_conversations (id, context_type, context_id, created_at, updated_at)
-         VALUES ('c1', 'ideation', 's1', datetime('now'), datetime('now'))",
+         VALUES ('c1', 'ideation', 's1', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         [],
     );
     assert!(result.is_ok());

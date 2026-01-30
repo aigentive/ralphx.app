@@ -208,7 +208,7 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
         conn.execute(
-            "UPDATE agent_profiles SET name = ?2, role = ?3, profile_json = ?4, updated_at = CURRENT_TIMESTAMP
+            "UPDATE agent_profiles SET name = ?2, role = ?3, profile_json = ?4, updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
              WHERE id = ?1",
             rusqlite::params![
                 id.as_str(),
