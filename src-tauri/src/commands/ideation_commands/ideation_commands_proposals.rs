@@ -1,12 +1,9 @@
 // Proposal CRUD and management commands
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
-use std::sync::Arc;
 use tauri::{Emitter, State};
 
 use crate::application::AppState;
-use crate::domain::agents::{AgentConfig, AgentRole};
 use crate::domain::entities::{
     BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor,
     DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode,
@@ -14,6 +11,7 @@ use crate::domain::entities::{
     PriorityAssessmentFactors, TaskCategory, TaskProposal, TaskProposalId,
     UserHintFactor,
 };
+use crate::http_server::helpers::maybe_trigger_dependency_analysis;
 
 use super::ideation_commands_types::{
     CreateProposalInput, PriorityAssessmentResponse, TaskProposalResponse,
@@ -93,7 +91,7 @@ pub async fn create_task_proposal(
     }
 
     // Auto-trigger dependency analysis when we have 2+ proposals
-    maybe_trigger_dependency_analysis(&created_proposal.session_id, &state).await;
+    maybe_trigger_dependency_analysis(&created_proposal.session_id, state.inner()).await;
 
     Ok(TaskProposalResponse::from(created_proposal))
 }
@@ -206,7 +204,7 @@ pub async fn update_task_proposal(
     }
 
     // Auto-trigger dependency analysis when proposals change
-    maybe_trigger_dependency_analysis(&proposal.session_id, &state).await;
+    maybe_trigger_dependency_analysis(&proposal.session_id, state.inner()).await;
 
     Ok(TaskProposalResponse::from(proposal))
 }
@@ -242,7 +240,7 @@ pub async fn delete_task_proposal(id: String, state: State<'_, AppState>) -> Res
 
     // Auto-trigger dependency analysis after deletion (if we still have 2+ proposals)
     if let Some(sess_id) = session_id {
-        maybe_trigger_dependency_analysis(&sess_id, &state).await;
+        maybe_trigger_dependency_analysis(&sess_id, state.inner()).await;
     }
 
     Ok(())
@@ -467,147 +465,6 @@ pub async fn assess_all_priorities(
     }
 
     Ok(assessments)
-}
-
-// ============================================================================
-// Helper Functions for Auto-Trigger Dependency Analysis
-// ============================================================================
-
-/// Auto-trigger dependency analysis if session has 2+ proposals
-///
-/// This is called after create/update/delete proposal operations.
-/// Uses a 2-second debounce delay to avoid rapid re-triggers.
-async fn maybe_trigger_dependency_analysis(
-    session_id: &IdeationSessionId,
-    state: &State<'_, AppState>,
-) {
-    // Get proposal count
-    let count = match state.task_proposal_repo.get_by_session(session_id).await {
-        Ok(proposals) => proposals.len(),
-        Err(e) => {
-            tracing::warn!("Failed to get proposals for auto-trigger: {}", e);
-            return;
-        }
-    };
-
-    // Only trigger if we have 2+ proposals
-    if count < 2 {
-        return;
-    }
-
-    // Get the app handle for emitting events
-    let app_handle = match &state.app_handle {
-        Some(handle) => handle.clone(),
-        None => return, // No app handle (test environment)
-    };
-
-    // Clone what we need for the async spawn
-    let session_id_str = session_id.as_str().to_string();
-    let task_proposal_repo = Arc::clone(&state.task_proposal_repo);
-    let proposal_dependency_repo = Arc::clone(&state.proposal_dependency_repo);
-    let agent_client = Arc::clone(&state.agent_client);
-
-    // Spawn with debounce delay
-    tokio::spawn(async move {
-        // Debounce: wait 2 seconds before triggering
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-        // Re-fetch proposals after the delay (they may have changed)
-        let proposals = match task_proposal_repo.get_by_session(&IdeationSessionId::from_string(session_id_str.clone())).await {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!("Failed to get proposals for dependency analysis: {}", e);
-                return;
-            }
-        };
-
-        // Still need 2+ proposals
-        if proposals.len() < 2 {
-            return;
-        }
-
-        // Get existing dependencies
-        let existing_deps = match proposal_dependency_repo.get_all_for_session(&IdeationSessionId::from_string(session_id_str.clone())).await {
-            Ok(deps) => deps,
-            Err(e) => {
-                tracing::warn!("Failed to get dependencies for analysis: {}", e);
-                Vec::new()
-            }
-        };
-
-        // Build proposal summaries for the prompt
-        let mut proposal_summaries = String::new();
-        for (i, proposal) in proposals.iter().enumerate() {
-            proposal_summaries.push_str(&format!(
-                "{}. ID: {}\n   Title: \"{}\"\n   Category: {}\n   Description: {}\n\n",
-                i + 1,
-                proposal.id.as_str(),
-                proposal.title,
-                proposal.category,
-                proposal.description.as_deref().unwrap_or("(none)")
-            ));
-        }
-
-        // Build existing dependencies summary
-        let existing_deps_summary = if existing_deps.is_empty() {
-            "None".to_string()
-        } else {
-            existing_deps
-                .iter()
-                .map(|(from, to)| format!("{} → {}", from.as_str(), to.as_str()))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-
-        // Build the prompt
-        let prompt = format!(
-            "Session ID: {}\n\nProposals:\n{}\nExisting dependencies: {}\n\nAnalyze these proposals and identify logical dependencies based on their content. Call the apply_proposal_dependencies tool with your findings.",
-            session_id_str, proposal_summaries, existing_deps_summary
-        );
-
-        // Emit analysis started event
-        let _ = app_handle.emit(
-            "dependencies:analysis_started",
-            serde_json::json!({
-                "sessionId": session_id_str,
-            }),
-        );
-
-        // Get the working directory (project root)
-        let working_directory = std::env::current_dir()
-            .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-            .unwrap_or_else(|_| PathBuf::from("."));
-
-        let plugin_dir = working_directory.join("ralphx-plugin");
-
-        // Set RALPHX_AGENT_TYPE so MCP server grants access to apply_proposal_dependencies tool
-        let mut env = std::collections::HashMap::new();
-        env.insert("RALPHX_AGENT_TYPE".to_string(), "dependency-suggester".to_string());
-
-        let config = AgentConfig {
-            role: AgentRole::Custom("dependency-suggester".to_string()),
-            prompt,
-            working_directory,
-            plugin_dir: Some(plugin_dir),
-            agent: Some("dependency-suggester".to_string()),
-            model: None,
-            max_tokens: None,
-            timeout_secs: Some(60),
-            env,
-        };
-
-        // Spawn the agent
-        match agent_client.spawn_agent(config).await {
-            Ok(handle) => {
-                if let Err(e) = agent_client.wait_for_completion(&handle).await {
-                    tracing::warn!("Dependency suggester agent failed: {}", e);
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to spawn dependency suggester agent: {}", e);
-            }
-        }
-    });
 }
 
 // ============================================================================

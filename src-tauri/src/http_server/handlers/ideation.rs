@@ -14,7 +14,10 @@ use crate::application::{CreateProposalOptions, UpdateProposalOptions};
 use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 
-use super::super::helpers::{create_proposal_impl, parse_category, parse_priority, update_proposal_impl};
+use super::super::helpers::{
+    create_proposal_impl, maybe_trigger_dependency_analysis, parse_category, parse_priority,
+    update_proposal_impl,
+};
 use super::super::types::{
     AddDependencyRequest, ApplyDependenciesResponse, ApplyDependencySuggestionsRequest,
     CreateProposalRequest, DeleteProposalRequest,
@@ -91,6 +94,9 @@ pub async fn create_task_proposal(
         );
     }
 
+    // Auto-trigger dependency analysis when we have 2+ proposals
+    maybe_trigger_dependency_analysis(&proposal.session_id, &state.app_state).await;
+
     Ok(Json(ProposalResponse::from(proposal)))
 }
 
@@ -165,6 +171,9 @@ pub async fn update_task_proposal(
         );
     }
 
+    // Auto-trigger dependency analysis when proposals change
+    maybe_trigger_dependency_analysis(&updated.session_id, &state.app_state).await;
+
     Ok(Json(ProposalResponse::from(updated)))
 }
 
@@ -173,6 +182,20 @@ pub async fn delete_task_proposal(
     Json(req): Json<DeleteProposalRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
     let proposal_id = TaskProposalId::from_string(req.proposal_id.clone());
+
+    // Fetch proposal first to get session_id (needed for auto-trigger)
+    let proposal = state
+        .app_state
+        .task_proposal_repo
+        .get_by_id(&proposal_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get proposal {}: {}", proposal_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let session_id = proposal.session_id.clone();
 
     state
         .app_state
@@ -193,6 +216,9 @@ pub async fn delete_task_proposal(
             }),
         );
     }
+
+    // Auto-trigger dependency analysis after deletion (if we still have 2+ proposals)
+    maybe_trigger_dependency_analysis(&session_id, &state.app_state).await;
 
     Ok(Json(SuccessResponse {
         success: true,
