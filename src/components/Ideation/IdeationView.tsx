@@ -8,7 +8,7 @@
  * - Clean, minimal aesthetic
  */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import {
   MessageSquare,
   ListTodo,
@@ -97,6 +97,7 @@ export function IdeationView({
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // 60/40 split like Kanban
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const proposalsScrollRef = useRef<HTMLDivElement>(null);
 
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
@@ -302,6 +303,17 @@ export function IdeationView({
     }
   }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded]);
 
+  // Auto-scroll to bottom when new proposals arrive
+  const proposalCount = proposals.length;
+  useLayoutEffect(() => {
+    if (proposalCount > 0 && proposalsScrollRef.current) {
+      proposalsScrollRef.current.scrollTo({
+        top: proposalsScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [proposalCount]);
+
   const sortedProposals = useMemo(() => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder), [proposals]);
 
   const activeSessions = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
@@ -430,7 +442,7 @@ export function IdeationView({
                 )}
 
                 {/* Proposals List */}
-                <div className="flex-1 overflow-y-auto p-4">
+                <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
                   {importStatus && (
                     <div className={cn(
                       "mb-4 p-4 rounded-xl border",
