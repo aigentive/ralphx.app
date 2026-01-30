@@ -500,6 +500,12 @@ export function ProjectCreationWizard({
 
         {/* Footer */}
         <DialogFooter className="px-6 py-4 border-t border-[var(--border-subtle)] gap-3 sm:gap-3">
+          {/* ESC key hint when modal can be closed */}
+          {!isFirstRun && !isCreating && (
+            <span className="mr-auto text-xs text-[var(--text-muted)]">
+              Press <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-base)] border border-[var(--border-subtle)] font-mono text-[10px]">ESC</kbd> to cancel
+            </span>
+          )}
           {/* Cancel button hidden in first-run mode */}
           {!isFirstRun && (
             <Button

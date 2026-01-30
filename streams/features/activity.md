@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-31 01:15:00 - Phase 35 Task 4: Fix Create Project modal close behavior
+**What:**
+- Modified src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx
+  - Added ESC key hint in footer when `isFirstRun=false` and not creating
+  - Shows styled `<kbd>ESC</kbd>` hint: "Press ESC to cancel"
+  - Hint appears left-aligned with `mr-auto`, Cancel and Create buttons right-aligned
+- Verified existing close button visibility: `hideCloseButton={isFirstRun}` already ensures X button shows when `isFirstRun=false`
+- Verified `onClose` wiring: `onEscapeKeyDown` already allows ESC when not first-run
+
+**Files:**
+- src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 00:45:00 - Phase 35 Task 3: Add keyboard shortcuts for project creation
 **What:**
 - Modified src/hooks/useAppKeyboardShortcuts.ts

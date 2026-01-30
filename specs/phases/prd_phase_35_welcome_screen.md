@@ -157,7 +157,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(wizard): add ESC hint and verify close button visibility"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
