@@ -19,7 +19,6 @@ export function useIdeationHandlers(
   syncNotification: ProactiveSyncNotification | null
 ) {
   const [highlightedProposalIds, setHighlightedProposalIds] = useState<Set<string>>(new Set());
-  const [planHistoryDialog, setPlanHistoryDialog] = useState<{ isOpen: boolean; artifactId: string; version: number } | null>(null);
   const [isPlanExpanded, setIsPlanExpanded] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,12 +56,6 @@ export function useIdeationHandlers(
   const handleClearAll = useCallback(() => {
     proposals.forEach((p) => onRemoveProposal(p.id));
   }, [proposals, onRemoveProposal]);
-
-  const handleViewHistoricalPlan = useCallback((artifactId: string, version: number) => {
-    setPlanHistoryDialog({ isOpen: true, artifactId, version });
-  }, []);
-
-  const handleClosePlanHistoryDialog = useCallback(() => setPlanHistoryDialog(null), []);
 
   const handleReviewSync = useCallback(() => {
     if (syncNotification) {
@@ -164,7 +157,6 @@ export function useIdeationHandlers(
 
   return {
     highlightedProposalIds,
-    planHistoryDialog,
     isPlanExpanded,
     setIsPlanExpanded,
     importStatus,
@@ -176,8 +168,6 @@ export function useIdeationHandlers(
     handleSortByPriority,
     handleSelectProposal,
     handleClearAll,
-    handleViewHistoricalPlan,
-    handleClosePlanHistoryDialog,
     handleReviewSync,
     handleUndoSync,
     handleDismissSync,
