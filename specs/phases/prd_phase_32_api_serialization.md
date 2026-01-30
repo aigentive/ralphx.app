@@ -231,7 +231,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: chore(api): verify TaskProposalResponse schema uses snake_case"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 10,
