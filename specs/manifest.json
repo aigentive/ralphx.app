@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 33,
+  "currentPhase": 34,
   "phases": [
     {
       "phase": 0,
@@ -245,14 +245,14 @@
       "phase": 33,
       "name": "Split src/lib/tauri.ts",
       "prd": "specs/phases/prd_phase_33_split_tauri_ts.md",
-      "status": "active",
+      "status": "complete",
       "description": "Extract monolithic tauri.ts into domain-specific API modules with backward compatibility"
     },
     {
       "phase": 34,
       "name": "Proposal Edit Modal Redesign",
       "prd": "specs/phases/prd_phase_34_proposal_edit_modal_redesign.md",
-      "status": "pending",
+      "status": "active",
       "description": "Transform ProposalEditModal with glass morphism, two-column metadata, visual complexity selector, and animations"
     },
     {

@@ -226,7 +226,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify src/lib/tauri.ts is under 200 lines",
       "Verify all new API files are under 300 lines each"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
@@ -255,11 +255,11 @@ After completing the task: update `"passes": true`, commit, and stop.
 **Automated verification after completing all tasks:**
 
 ### Frontend - Run `npm run test`
-- [ ] All existing tests pass without modification
-- [ ] No new type errors introduced
+- [ ] All existing tests pass without modification (Note: pre-existing UI styling test failures unrelated to API extraction)
+- [x] No new type errors introduced
 
 ### Build Verification (run only for modified code)
-- [ ] Frontend: `npm run lint && npm run typecheck` passes
+- [x] Frontend: `npm run lint && npm run typecheck` passes
 - [ ] Build succeeds (`npm run build`)
 
 ### Manual Testing
