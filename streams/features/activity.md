@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 06:36:29 - Phase 32 Task 12: Fix ExecutionStatusResponse schema to expect snake_case
+**What:**
+- Updated ExecutionStatusResponseSchema in src/lib/tauri.ts to expect snake_case fields
+- Changed schema fields: isPaused → is_paused, runningCount → running_count, maxConcurrent → max_concurrent, queuedCount → queued_count, canStartTask → can_start_task
+- Created ExecutionStatusResponse interface with camelCase for frontend use
+- Added transformExecutionStatus() function to convert snake_case → camelCase
+- Updated ExecutionCommandResponseSchema and added transformExecutionCommand()
+- Updated all execution API wrappers (getStatus, pause, resume, stop) to use typedInvokeWithTransform
+- Verified events still use camelCase (manual JSON construction in backend, not serde serialization)
+
+**Files:**
+- src/lib/tauri.ts (updated schemas, added transforms, updated API wrappers)
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - passes (6 pre-existing warnings, 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 06:24:00 - Phase 32 Task 9: Verify TaskProposalResponse schema expects snake_case
 **What:**
 - Verified TaskProposalResponseSchema in src/api/ideation.schemas.ts already uses snake_case fields
@@ -1709,3 +1730,23 @@
 **Result:** Success
 
 ---
+### 2026-01-30 - Phase 32 Task 12: Verify ExecutionStatusResponse schema expects snake_case
+**What:**
+- Verified ExecutionStatusResponseSchema in src/lib/tauri.ts already uses snake_case fields
+- Schema fields: is_paused, running_count, max_concurrent, queued_count, can_start_task
+- Verified transformExecutionStatus function exists
+- Verified transformExecutionCommand function exists for nested status field
+- Confirmed all execution API methods (getStatus, pause, resume, stop) apply transforms correctly
+- Task was already complete
+
+**Files:**
+- src/lib/tauri.ts (verified, no changes needed)
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - passes
+
+**Result:** Success (already implemented)
+
+---
+
