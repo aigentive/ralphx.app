@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 17:30:00 - Phase 31 Task 4: Move JSON parsing to API layer
+**What:**
+- Added parseContentBlocks and parseToolCalls functions to src/api/chat.ts
+- Updated transformAgentMessage to use parsing functions instead of JSON.stringify
+- Updated ChatMessageResponse interface to use parsed types (ToolCall[] | null, ContentBlockItem[] | null)
+- Updated MessageItemProps to accept pre-parsed arrays instead of JSON strings
+- Removed useMemo JSON parsing from MessageItem.tsx component
+- Updated ChatMessages.tsx Message interface to use parsed types
+- Messages are now parsed once at API layer, eliminating redundant parsing on every render
+
+**Files:**
+- src/api/chat.ts - added parseContentBlocks, parseToolCalls functions; updated ChatMessageResponse interface
+- src/components/Chat/MessageItem.tsx - updated props types, removed useMemo parsing
+- src/components/Chat/ChatMessages.tsx - updated Message interface
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` (modified files only) - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 17:00:00 - Phase 31 Task 3: Fix memory leaks with context cleanup and LRU eviction
 **What:**
 - chatStore.ts already had clearMessages action (no changes needed)

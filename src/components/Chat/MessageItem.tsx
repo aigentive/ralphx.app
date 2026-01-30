@@ -9,7 +9,7 @@
  * - Code blocks with copy functionality
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 import { Bot, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,8 +37,10 @@ export interface MessageItemProps {
   role: string;
   content: string;
   createdAt: string;
-  toolCalls?: string | null;
-  contentBlocks?: string | null;
+  /** Pre-parsed tool calls array (parsed at API layer) */
+  toolCalls?: ToolCall[] | null;
+  /** Pre-parsed content blocks array (parsed at API layer) */
+  contentBlocks?: ContentBlockItem[] | null;
 }
 
 // ============================================================================
@@ -276,7 +278,8 @@ export const MessageItem = React.memo(function MessageItem({
 }: MessageItemProps) {
   const isUser = role === "user";
 
-  const timestamp = useMemo(() => {
+  // Format timestamp - computed once per render (createdAt rarely changes)
+  const formatTimestamp = (): string => {
     const date = new Date(createdAt);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -289,39 +292,11 @@ export const MessageItem = React.memo(function MessageItem({
       hour: "numeric",
       minute: "2-digit",
     });
-  }, [createdAt]);
+  };
 
-  // Parse content blocks for interleaved rendering
-  const parsedContentBlocks = useMemo((): ContentBlockItem[] => {
-    if (!contentBlocks) return [];
-    try {
-      const parsed = JSON.parse(contentBlocks);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }, [contentBlocks]);
-
-  // Parse tool calls from JSON string (fallback for legacy messages)
-  const parsedToolCalls = useMemo((): ToolCall[] => {
-    if (!toolCalls) return [];
-    try {
-      const parsed = JSON.parse(toolCalls);
-      if (Array.isArray(parsed)) {
-        return parsed.map((tc, idx) => ({
-          id: tc.id ?? `tool-${idx}`,
-          name: tc.name ?? "unknown",
-          arguments: tc.arguments ?? {},
-          result: tc.result,
-          error: tc.error,
-        }));
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  }, [toolCalls]);
-
+  // Use pre-parsed data directly (parsing now happens at API layer)
+  const parsedContentBlocks = contentBlocks ?? [];
+  const parsedToolCalls = toolCalls ?? [];
   const hasContentBlocks = parsedContentBlocks.length > 0;
 
   // Render a text bubble
@@ -407,13 +382,14 @@ export const MessageItem = React.memo(function MessageItem({
           )}
           style={{ color: "rgba(255,255,255,0.4)" }}
         >
-          {timestamp}
+          {formatTimestamp()}
         </span>
       </div>
     </div>
   );
 }, (prev, next) => {
   // Custom equality function - only re-render if these props change
+  // For arrays, compare by reference (they're parsed once at API layer)
   return prev.role === next.role
     && prev.content === next.content
     && prev.createdAt === next.createdAt
