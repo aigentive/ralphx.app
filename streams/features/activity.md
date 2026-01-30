@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-31 00:45:00 - Phase 35 Task 3: Add keyboard shortcuts for project creation
+**What:**
+- Modified src/hooks/useAppKeyboardShortcuts.ts
+  - Added `openProjectWizard` callback to hook props interface (optional)
+  - Added `hasProjects` boolean to hook props interface (optional)
+  - Added case for 'n'/'N' key with two behaviors:
+    - ⌘⇧N (Cmd+Shift+N): Always open wizard (global shortcut)
+    - ⌘N (Cmd+N): Open wizard only on welcome screen (when hasProjects=false)
+  - Skip shortcut if focus is in input/textarea
+  - Updated dependency array to include new props
+
+**Files:**
+- src/hooks/useAppKeyboardShortcuts.ts (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 00:15:00 - Phase 35 Task 2: Create TerminalCanvas and ParticleField subcomponents
 **What:**
 - Created src/components/WelcomeScreen/TerminalCanvas.tsx (~100 LOC)

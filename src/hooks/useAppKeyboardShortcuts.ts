@@ -11,6 +11,8 @@ interface UseAppKeyboardShortcutsProps {
   setCurrentView: (view: ViewType) => void;
   toggleChatPanel: () => void;
   toggleChatCollapsed: () => void;
+  openProjectWizard?: () => void;
+  hasProjects?: boolean;
 }
 
 export function useAppKeyboardShortcuts({
@@ -18,6 +20,8 @@ export function useAppKeyboardShortcuts({
   setCurrentView,
   toggleChatPanel,
   toggleChatCollapsed,
+  openProjectWizard,
+  hasProjects,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
   useEffect(() => {
@@ -69,13 +73,38 @@ export function useAppKeyboardShortcuts({
             }
             break;
           }
+          case "n":
+          case "N": {
+            // Cmd+Shift+N: Always open project wizard (global)
+            // Cmd+N: Open project wizard only on welcome screen (no projects)
+            if (!openProjectWizard) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            if (e.shiftKey) {
+              // Cmd+Shift+N: Always available
+              e.preventDefault();
+              openProjectWizard();
+            } else if (!hasProjects) {
+              // Cmd+N: Only on welcome screen (no projects)
+              e.preventDefault();
+              openProjectWizard();
+            }
+            break;
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed]);
+  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed, openProjectWizard, hasProjects]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
