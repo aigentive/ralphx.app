@@ -1,5 +1,25 @@
 # Hygiene Stream Activity
 
+### 2026-01-30 20:13:14 - Backlog Maintenance
+
+**Archive:**
+- No archiving needed (refactor: 10 completed, polish: 10 completed - both at threshold)
+
+**Refill:**
+- Added 14 P2/P3 items to polish/backlog.md (6 P2: error handling, debug cleanup; 8 P3: TODOs, file size warnings)
+- Polish backlog: 0 → 14 active items (refill threshold met)
+- No refill needed for refactor/backlog.md (8 active items)
+
+**Validation:**
+- Checked 3 strikethrough items (oldest first):
+  - artifact.rs panic! in tests (stale:1 → stale:2): File refactored into module structure → **Archived**
+  - patterns.rs expect() in production (stale:1 → stale:2): All expect() calls are in #[test] functions → **Archived**
+  - machine.rs 1114 LOC (stale → stale:1): File refactored into module (types.rs 242 LOC) → **Counter incremented**
+
+**Result:** Maintenance complete - refilled polish backlog with 14 items, validated 3 strikethroughs (2 archived, 1 incremented)
+
+---
+
 ### 2026-01-30 02:15:43 - Backlog Maintenance
 
 **Archive:**

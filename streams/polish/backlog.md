@@ -136,21 +136,43 @@ _Completed items moved to archive._
 
 - [x] [P2] [Frontend] Extract constants from ResizeablePanel.tsx - `useResizePanel` hook exported from component file violates react-refresh rule - src/components/Chat/ResizeablePanel.tsx:50
 - [x] [P2] [Backend] Replace panic! with Result in supervisor events - Test assertions use panic! for pattern matching - src-tauri/src/domain/supervisor/events.rs:304
-- [ ] ~~[P2] [Backend] Replace panic! with Result in artifact.rs - Test assertions use panic! for content validation~~ (stale:1 - file refactored)
-- [ ] ~~[P2] [Backend] Replace expect() with Result handling in patterns.rs - Error handling uses expect() in production paths~~ (stale:1 - only test code)
 
 ### P3 - Low Impact
 
 - [x] [P3] [Frontend] Remove console.error calls from useIntegratedChatHandlers - Error logging without proper error handling context - src/hooks/useIntegratedChatHandlers.ts:131
 - [x] [P3] [Frontend] Remove console.error from useEvents.task - Debug logging left in event handler - src/hooks/useEvents.task.ts:39
 - [x] [P3] [Frontend] Remove console.error from useAgentEvents - Debug logging in agent event handler - src/hooks/useAgentEvents.ts:208
-- [ ] ~~[P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers~~ (stale - file refactored into module)
-- [ ] ~~[P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization~~ (stale - unwrap in tests is acceptable)
+- [ ] ~~[P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers~~ (stale:1 - file refactored into module)
+- [ ] ~~[P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization~~ (stale:1 - unwrap in tests is acceptable)
+
+---
+
+## REFILL (Added 2026-01-30)
+
+### P2 - Medium Impact
+
+- [ ] [P2] [Backend] Error handling: Replace unwrap() in test setup - src-tauri/src/commands/health.rs:33
+- [ ] [P2] [Backend] Error handling: Multiple unwrap() calls in test helpers - src-tauri/src/commands/task_step_commands.rs:multiple
+- [ ] [P2] [Frontend] Type safety: Replace `any` type with proper DTO type - src/App.tsx:378
+- [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! statements - src-tauri/src/application/task_transition_service.rs:429,432
+- [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! logging - src-tauri/src/application/chat_service/chat_service_context.rs:127
+- [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! in startup - src-tauri/src/application/startup_jobs.rs:multiple
+
+### P3 - Low Impact
+
+- [ ] [P3] [Frontend] Dead code: TODO comment (deferred feature) - src/App.tsx:column group diff viewer task
+- [ ] [P3] [Frontend] Dead code: TODO comment - src/components/tasks/detail-views/HumanReviewTaskDetail.tsx:review modal task
+- [ ] [P3] [Frontend] Dead code: TODO comment - src/components/ExtensibilityView.ResearchPanel.tsx:command implementation
+- [ ] [P3] [Frontend] Dead code: TODO comment - src/hooks/useEvents.ts:file change handling
+- [ ] [P3] [Frontend] File size: TaskDetailOverlay exceeds 500 LOC limit (604 LOC) - src/components/tasks/TaskDetailOverlay.tsx:entire file
+- [ ] [P3] [Frontend] File size: TaskDetailPanel near limit (446 LOC) - src/components/tasks/TaskDetailPanel.tsx:entire file
+- [ ] [P3] [Backend] File size: SqliteArtifactRepository exceeds 500 LOC (1137 LOC) - src-tauri/src/infrastructure/sqlite/sqlite_artifact_repo.rs:extract helpers
+- [ ] [P3] [Backend] File size: SqliteProposalDependencyRepository exceeds 500 LOC (1078 LOC) - src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs:extract helpers
 
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 7 (9 excluded, 0 deferred to PRD)
+**Active items:** 19 (9 excluded, 0 deferred to PRD)
 **Completed:** 10
-**Validated:** 87 strikethroughs (2026-01-29 x60, 2026-01-30 x12) - 30 archived, 1 reactivated (moved to refactor as P1), 67 incremented
-**Last maintenance:** 2026-01-30 (archived 4 strikethrough items)
+**Validated:** 90 strikethroughs (2026-01-29 x60, 2026-01-30 x15) - 32 archived, 1 reactivated (moved to refactor as P1), 69 incremented
+**Last maintenance:** 2026-01-30 (refilled polish backlog with 14 items, validated 3 strikethroughs, archived 2)
