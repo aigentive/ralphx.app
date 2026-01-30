@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-30 04:22:06 - Phase 32 Task 8: Remove camelCase serialization from workflow_commands
+**What:**
+- Removed `#[serde(rename_all = "camelCase")]` from 3 response structs:
+  - StateGroupResponse
+  - WorkflowColumnResponse
+  - WorkflowResponse
+- Updated test_workflow_response_serialization to verify snake_case output
+- Backend now outputs snake_case (Rust default), frontend transform layer handles conversion
+
+**Files:**
+- src-tauri/src/commands/workflow_commands.rs
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo test workflow_commands::tests` - 10 passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 06:18:57 - Phase 32 Task 7: Remove camelCase serialization from unified_chat_commands
 **What:**
 - Removed `#[serde(rename_all = "camelCase")]` from 6 response structs:
