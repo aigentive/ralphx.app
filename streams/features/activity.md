@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 02:30:00 - Phase 35 Complete: Gap Verification Passed
+**What:**
+- Ran gap verification for Phase 35 (Welcome Screen & Project Creation Redesign)
+- Verified all 5 tasks properly wired:
+  - WelcomeScreen rendered in App.tsx (not behind disabled flag)
+  - TerminalCanvas and ParticleField rendered in WelcomeScreen
+  - Keyboard shortcuts (⌘N, ⌘⇧N) properly wired via useAppKeyboardShortcuts
+  - ESC hint and X button visibility in modal correctly implemented
+- No orphaned implementations found
+- No P0 gaps detected
+- Updated manifest.json: Phase 35 status → "complete"
+
+**Result:** Phase 35 COMPLETE - All 35 phases finished
+
+---
+
 ### 2026-01-31 01:45:00 - Phase 35 Task 5: Integrate WelcomeScreen into App.tsx
 **What:**
 - Modified src/App.tsx
