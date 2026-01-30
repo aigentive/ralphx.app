@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 39,
+  "currentPhase": 40,
   "phases": [
     {
       "phase": 0,
@@ -287,14 +287,14 @@
       "phase": 39,
       "name": "Dependency Reason Field",
       "prd": "specs/phases/prd_phase_39_dependency_reason.md",
-      "status": "active",
+      "status": "complete",
       "description": "Persist and display AI reasoning for proposal dependencies in tooltips"
     },
     {
       "phase": 40,
       "name": "Tiered Proposal View",
       "prd": "specs/phases/prd_phase_40_tiered_proposal_view.md",
-      "status": "pending",
+      "status": "active",
       "description": "Reorganize proposals into topological tiers with inline dependency names and reasons"
     },
     {
