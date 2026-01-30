@@ -195,7 +195,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Test', 'todo')",
             [],
         )
         .unwrap();
@@ -296,7 +296,7 @@
 
         // Insert minimal task
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Test', 'todo')",
             [],
         )
         .unwrap();
@@ -344,13 +344,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
@@ -409,13 +409,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
@@ -449,13 +449,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
@@ -495,13 +495,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
@@ -541,19 +541,19 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-3', 'proj-1', 'feature', 'Task 3')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-3', 'proj-1', 'feature', 'Task 3', 'todo')",
             [],
         )
         .unwrap();
@@ -662,7 +662,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -696,7 +696,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -736,7 +736,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -774,7 +774,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -819,7 +819,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1120,7 +1120,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1178,7 +1178,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1218,7 +1218,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1256,7 +1256,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1294,7 +1294,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1331,7 +1331,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1391,8 +1391,8 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title)
-             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1453,8 +1453,8 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title)
-             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1515,8 +1515,8 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title)
-             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1546,8 +1546,8 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title)
-             VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1677,7 +1677,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1753,7 +1753,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1791,7 +1791,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1831,7 +1831,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1877,7 +1877,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1921,7 +1921,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1959,7 +1959,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -1997,7 +1997,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2035,7 +2035,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2087,7 +2087,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2171,13 +2171,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Fix Task')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Fix Task', 'todo')",
             [],
         )
         .unwrap();
@@ -2244,7 +2244,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2291,7 +2291,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2342,7 +2342,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2387,7 +2387,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2432,13 +2432,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-fix', 'proj-1', 'feature', 'Fix Task')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-fix', 'proj-1', 'feature', 'Fix Task', 'todo')",
             [],
         )
         .unwrap();
@@ -2490,13 +2490,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-fix', 'proj-1', 'feature', 'Fix Task')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-fix', 'proj-1', 'feature', 'Fix Task', 'todo')",
             [],
         )
         .unwrap();
@@ -2562,7 +2562,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2606,7 +2606,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2646,7 +2646,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2692,7 +2692,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2736,7 +2736,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2774,7 +2774,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2812,7 +2812,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -2864,7 +2864,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -3392,7 +3392,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Test', 'todo')",
             [],
         )
         .unwrap();
@@ -3505,13 +3505,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
@@ -3539,13 +3539,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
@@ -3581,7 +3581,7 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
@@ -3633,13 +3633,13 @@
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Task 1')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-1', 'proj-1', 'feature', 'Task 1', 'todo')",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
+            "INSERT INTO tasks (id, project_id, category, title, status) VALUES ('task-2', 'proj-1', 'feature', 'Task 2', 'todo')",
             [],
         )
         .unwrap();
