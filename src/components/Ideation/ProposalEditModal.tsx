@@ -160,13 +160,18 @@ export function ProposalEditModal({
     <Dialog open={!!proposal} onOpenChange={handleOpenChange}>
       <DialogContent
         data-testid="proposal-edit-modal"
-        className="max-w-lg max-h-[90vh]"
+        className="max-w-2xl max-h-[90vh]"
         aria-labelledby="modal-title"
       >
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <Edit3 className="w-5 h-5 text-[var(--accent-primary)]" />
-            <DialogTitle id="modal-title">Edit Proposal</DialogTitle>
+            <div className="bg-[#ff6b35]/10 rounded-full p-1.5">
+              <Edit3 className="w-5 h-5 text-[#ff6b35]" />
+            </div>
+            <div className="flex flex-col">
+              <DialogTitle id="modal-title">Edit Proposal</DialogTitle>
+              <p className="text-sm text-[var(--text-muted)]">Refine your task proposal</p>
+            </div>
           </div>
         </DialogHeader>
 
