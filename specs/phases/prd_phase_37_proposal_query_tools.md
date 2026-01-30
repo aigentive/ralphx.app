@@ -96,7 +96,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run build in ralphx-plugin/ralphx-mcp-server to verify compilation",
       "Commit: feat(mcp): add list_session_proposals and get_proposal tool definitions"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

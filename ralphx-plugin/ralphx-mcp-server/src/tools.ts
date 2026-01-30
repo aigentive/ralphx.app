@@ -155,6 +155,36 @@ export const ALL_TOOLS: Tool[] = [
       required: ["session_id", "title"],
     },
   },
+  {
+    name: "list_session_proposals",
+    description:
+      "List all task proposals in an ideation session. Returns summary info (id, title, category, priority, dependencies). Use get_proposal for full details including steps and acceptance criteria.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
+    name: "get_proposal",
+    description:
+      "Get full details of a task proposal including steps and acceptance criteria. Use after list_session_proposals to get complete information for a specific proposal.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        proposal_id: {
+          type: "string",
+          description: "The proposal ID to fetch",
+        },
+      },
+      required: ["proposal_id"],
+    },
+  },
 
   // ========================================================================
   // TASK TOOLS (chat-task agent)
@@ -435,6 +465,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "update_task_proposal",
     "delete_task_proposal",
     "add_proposal_dependency",
+    "list_session_proposals",
+    "get_proposal",
     "create_plan_artifact",
     "update_plan_artifact",
     "get_plan_artifact",
