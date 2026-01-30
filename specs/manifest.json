@@ -289,6 +289,13 @@
       "prd": "specs/phases/prd_phase_39_dependency_reason.md",
       "status": "active",
       "description": "Persist and display AI reasoning for proposal dependencies in tooltips"
+    },
+    {
+      "phase": 40,
+      "name": "Tiered Proposal View",
+      "prd": "specs/phases/prd_phase_40_tiered_proposal_view.md",
+      "status": "pending",
+      "description": "Reorganize proposals into topological tiers with inline dependency names and reasons"
     }
   ]
 }
