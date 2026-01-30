@@ -144,8 +144,8 @@ _Completed items moved to archive._
 - [x] [P3] [Frontend] Remove console.error calls from useIntegratedChatHandlers - Error logging without proper error handling context - src/hooks/useIntegratedChatHandlers.ts:131
 - [x] [P3] [Frontend] Remove console.error from useEvents.task - Debug logging left in event handler - src/hooks/useEvents.task.ts:39
 - [x] [P3] [Frontend] Remove console.error from useAgentEvents - Debug logging in agent event handler - src/hooks/useAgentEvents.ts:208
-- [ ] [P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers - src-tauri/src/domain/state_machine/machine.rs:1
-- [ ] [P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization - src-tauri/src/domain/supervisor/actions.rs:310
+- [ ] ~~[P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers~~ (stale - file refactored into module)
+- [ ] ~~[P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization~~ (stale - unwrap in tests is acceptable)
 
 ---
 
