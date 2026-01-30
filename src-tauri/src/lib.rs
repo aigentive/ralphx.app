@@ -290,6 +290,7 @@ pub fn run() {
             commands::ideation_commands::delete_ideation_session,
             commands::ideation_commands::update_ideation_session_title,
             commands::ideation_commands::spawn_session_namer,
+            commands::ideation_commands::spawn_dependency_suggester,
             // Task proposal commands
             commands::ideation_commands::create_task_proposal,
             commands::ideation_commands::get_task_proposal,

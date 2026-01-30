@@ -4,6 +4,64 @@
 
 ---
 
+### 2026-01-30 20:15:00 - Phase 38 Task 4: Add spawn command and auto-trigger logic for dependency suggester
+**What:**
+- Added spawn_dependency_suggester Tauri command to spawn the dependency-suggester agent
+- Added auto-trigger logic to create/update/delete proposal commands with 2s debounce
+- Auto-triggers when session has 2+ proposals after proposal changes
+- Added spawnDependencySuggester API wrapper in src/api/ideation.ts
+- Added event listeners for dependencies:analysis_started and dependencies:suggestions_applied in useIdeationEvents.ts
+- Events invalidate TanStack Query cache for dependency graph and proposals
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_session.rs (modified)
+- src-tauri/src/commands/ideation_commands/ideation_commands_proposals.rs (modified)
+- src-tauri/src/lib.rs (modified)
+- src/api/ideation.ts (modified)
+- src/hooks/useIdeationEvents.ts (modified)
+- specs/phases/prd_phase_38_dependency_priority_integration.md (updated passes: true)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` (passes)
+- `npm run lint && npm run typecheck` (passes with pre-existing warnings)
+- `cargo test proposal` (177 tests pass)
+
+**Result:** Success
+
+---
+
+### 2026-01-30 19:36:00 - Phase 38 Task 3: Create dependency-suggester agent and MCP tool
+**What:**
+- Created dependency-suggester agent definition at ralphx-plugin/agents/dependency-suggester.md
+- Added apply_proposal_dependencies tool definition in tools.ts with session_id and dependencies array
+- Added HTTP handler in ideation.rs with cycle detection using DFS
+- Implemented clear_session_dependencies in ProposalDependencyRepository trait and all implementations
+- Added request/response types in http_server/types.rs
+- Added route /api/apply_proposal_dependencies in http_server/mod.rs
+- Removed add_proposal_dependency from orchestrator-ideation TOOL_ALLOWLIST
+- Added dependency-suggester to TOOL_ALLOWLIST with apply_proposal_dependencies
+
+**Files:**
+- ralphx-plugin/agents/dependency-suggester.md (created)
+- ralphx-plugin/ralphx-mcp-server/src/tools.ts (modified)
+- src-tauri/src/http_server/types.rs (modified)
+- src-tauri/src/http_server/handlers/ideation.rs (modified)
+- src-tauri/src/http_server/mod.rs (modified)
+- src-tauri/src/domain/repositories/proposal_dependency_repository.rs (modified)
+- src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs (modified)
+- src-tauri/src/infrastructure/memory/memory_proposal_dependency_repo.rs (modified)
+- Multiple test files (added mock implementations)
+- specs/phases/prd_phase_38_dependency_priority_integration.md (updated passes: true)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passes)
+- `cargo test proposal_dependency` (58 tests pass)
+- `npm run --prefix ralphx-plugin/ralphx-mcp-server build` (passes)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 19:15:00 - Phase 38 Task 2: Add dependency badges and critical path indicators
 **What:**
 - Added `dependsOnCount`, `blocksCount`, and `isOnCriticalPath` props to ProposalCard interface

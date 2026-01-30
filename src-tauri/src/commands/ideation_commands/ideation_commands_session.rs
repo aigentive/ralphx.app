@@ -254,3 +254,124 @@ pub async fn spawn_session_namer(
 
     Ok(())
 }
+
+/// Spawn the dependency-suggester agent to analyze proposals and suggest dependencies
+///
+/// This is a fire-and-forget operation that spawns a background agent.
+/// The agent will call the apply_proposal_dependencies MCP tool when complete,
+/// which will update dependencies and emit events for real-time UI updates.
+///
+/// Requires at least 2 proposals in the session to provide meaningful suggestions.
+#[tauri::command]
+pub async fn spawn_dependency_suggester(
+    session_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use crate::domain::agents::{AgentConfig, AgentRole};
+
+    let session_id_typed = IdeationSessionId::from_string(session_id.clone());
+
+    // Get all proposals for the session
+    let proposals = state
+        .task_proposal_repo
+        .get_by_session(&session_id_typed)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Require at least 2 proposals for meaningful analysis
+    if proposals.len() < 2 {
+        return Err("At least 2 proposals are required for dependency analysis".to_string());
+    }
+
+    // Get existing dependencies
+    let existing_deps = state
+        .proposal_dependency_repo
+        .get_all_for_session(&session_id_typed)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Build proposal summaries for the prompt
+    let mut proposal_summaries = String::new();
+    for (i, proposal) in proposals.iter().enumerate() {
+        proposal_summaries.push_str(&format!(
+            "{}. ID: {}\n   Title: \"{}\"\n   Category: {}\n   Description: {}\n\n",
+            i + 1,
+            proposal.id.as_str(),
+            proposal.title,
+            proposal.category,
+            proposal.description.as_deref().unwrap_or("(none)")
+        ));
+    }
+
+    // Build existing dependencies summary
+    let existing_deps_summary = if existing_deps.is_empty() {
+        "None".to_string()
+    } else {
+        existing_deps
+            .iter()
+            .map(|(from, to)| format!("{} → {}", from.as_str(), to.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    // Build the prompt
+    let prompt = format!(
+        "Session ID: {}\n\nProposals:\n{}\nExisting dependencies: {}\n\nAnalyze these proposals and identify logical dependencies based on their content. Call the apply_proposal_dependencies tool with your findings.",
+        session_id, proposal_summaries, existing_deps_summary
+    );
+
+    // Emit analysis started event
+    let _ = app.emit(
+        "dependencies:analysis_started",
+        serde_json::json!({
+            "sessionId": session_id,
+        }),
+    );
+
+    // Get the working directory (project root)
+    let working_directory = std::env::current_dir()
+        .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    let plugin_dir = working_directory.join("ralphx-plugin");
+
+    // Set RALPHX_AGENT_TYPE so MCP server grants access to apply_proposal_dependencies tool
+    let mut env = std::collections::HashMap::new();
+    env.insert("RALPHX_AGENT_TYPE".to_string(), "dependency-suggester".to_string());
+
+    let config = AgentConfig {
+        role: AgentRole::Custom("dependency-suggester".to_string()),
+        prompt,
+        working_directory,
+        plugin_dir: Some(plugin_dir),
+        agent: Some("dependency-suggester".to_string()),
+        model: None, // Agent file specifies haiku
+        max_tokens: None,
+        timeout_secs: Some(60), // 60 second timeout for dependency analysis
+        env,
+    };
+
+    // Clone the agent client for the background task
+    let agent_client = Arc::clone(&state.agent_client);
+
+    // Spawn in background (fire-and-forget)
+    tokio::spawn(async move {
+        match agent_client.spawn_agent(config).await {
+            Ok(handle) => {
+                // Wait for completion in the background
+                if let Err(e) = agent_client.wait_for_completion(&handle).await {
+                    tracing::warn!("Dependency suggester agent failed: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to spawn dependency suggester agent: {}", e);
+            }
+        }
+    });
+
+    Ok(())
+}

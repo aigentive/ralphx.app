@@ -174,6 +174,16 @@ export const ideationApi = {
     spawnSessionNamer: async (sessionId: string, firstMessage: string): Promise<void> => {
       await invoke("spawn_session_namer", { sessionId, firstMessage });
     },
+
+    /**
+     * Spawn a dependency-suggester agent to analyze proposals and suggest dependencies
+     * Runs in background and returns immediately (fire-and-forget)
+     * Requires at least 2 proposals in the session.
+     * @param sessionId The session ID
+     */
+    spawnDependencySuggester: async (sessionId: string): Promise<void> => {
+      await invoke("spawn_dependency_suggester", { sessionId });
+    },
   },
 
   /**
