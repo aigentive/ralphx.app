@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import type { TaskProposal, UpdateProposalInput, Priority, Complexity } from "@/types/ideation";
+import type { TaskProposal, Priority, Complexity } from "@/types/ideation";
+import type { UpdateProposalInput } from "@/api/ideation";
 
 const CATEGORIES = [
   { value: "setup", label: "Setup" },
@@ -161,15 +162,24 @@ export function ProposalEditModal({
   const handleSave = useCallback(() => {
     if (!proposal || !title.trim()) return;
 
-    const data: UpdateProposalInput = {
+    const trimmedDescription = description.trim();
+    const baseData = {
       title: title.trim(),
-      description: description.trim() || undefined,
       category,
       steps: steps.filter((s) => s.trim() !== ""),
       acceptanceCriteria: acceptanceCriteria.filter((c) => c.trim() !== ""),
-      userPriority: userPriority || undefined,
       complexity,
     };
+
+    // Build final data - conditionally add optional fields to avoid undefined values
+    // with exactOptionalPropertyTypes
+    const data: UpdateProposalInput = trimmedDescription && userPriority
+      ? { ...baseData, description: trimmedDescription, userPriority }
+      : trimmedDescription
+        ? { ...baseData, description: trimmedDescription }
+        : userPriority
+          ? { ...baseData, userPriority }
+          : baseData;
 
     onSave(proposal.id, data);
   }, [

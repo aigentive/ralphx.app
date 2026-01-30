@@ -116,9 +116,6 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [x] [P2] [Frontend] Type safety: Unused parameter with underscore prefix - src/App.tsx:264
-- [x] [P2] [Backend] Naming: non_snake_case suppressions in command handlers - src-tauri/src/commands/task_commands/mutation.rs:71
-- [x] [P2] [Frontend] Lint suppression: eslint-disable-next-line for hook dependencies - src/hooks/useTaskExecutionState.ts:141
 - [x] [P2] [Frontend] Dead code: Prepared variables marked with @ts-expect-error never used - src/components/ExtensibilityView.ResearchPanel.tsx:38
 
 ### P3 - Low Impact
@@ -142,8 +139,6 @@ _Completed items moved to archive._
 - [x] [P3] [Frontend] Remove console.error calls from useIntegratedChatHandlers - Error logging without proper error handling context - src/hooks/useIntegratedChatHandlers.ts:131
 - [x] [P3] [Frontend] Remove console.error from useEvents.task - Debug logging left in event handler - src/hooks/useEvents.task.ts:39
 - [x] [P3] [Frontend] Remove console.error from useAgentEvents - Debug logging in agent event handler - src/hooks/useAgentEvents.ts:208
-- [ ] ~~[P3] [Backend] State machine file exceeds recommended size - machine.rs at 1114 LOC, consider extracting transition helpers~~ (stale:1 - file refactored into module)
-- [ ] ~~[P3] [Backend] Remove test panics in supervisor actions - Unwrap calls in test serialization~~ (stale:1 - unwrap in tests is acceptable)
 
 ---
 
@@ -151,9 +146,9 @@ _Completed items moved to archive._
 
 ### P2 - Medium Impact
 
-- [ ] ~~[P2] [Backend] Error handling: Replace unwrap() in test setup~~ (stale - unwrap in test assertions is acceptable)
+- [ ] ~~[P2] [Backend] Error handling: Replace unwrap() in test setup~~ (stale:1 - unwrap in test assertions is acceptable)
 - [ ] ~~[P2] [Backend] Error handling: Multiple unwrap() calls in test helpers~~ (stale - unwrap in test helpers is acceptable)
-- [ ] [P2] [Frontend] Type safety: Replace `any` type with proper DTO type - src/App.tsx:378
+- [x] [P2] [Frontend] Type safety: Replace `any` type with proper DTO type - src/App.tsx:378
 - [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! statements - src-tauri/src/application/task_transition_service.rs:429,432
 - [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! logging - src-tauri/src/application/chat_service/chat_service_context.rs:127
 - [ ] [P2] [Backend] Debug output cleanup: Remove eprintln! in startup - src-tauri/src/application/startup_jobs.rs:multiple
@@ -174,5 +169,5 @@ _Completed items moved to archive._
 **Migrated from:** logs/code-quality.md (2026-01-28)
 **Active items:** 19 (9 excluded, 0 deferred to PRD)
 **Completed:** 10
-**Validated:** 90 strikethroughs (2026-01-29 x60, 2026-01-30 x15) - 32 archived, 1 reactivated (moved to refactor as P1), 69 incremented
-**Last maintenance:** 2026-01-30 (refilled polish backlog with 14 items, validated 3 strikethroughs, archived 2)
+**Validated:** 94 strikethroughs (2026-01-29 x60, 2026-01-30 x19) - 34 archived, 1 reactivated (moved to refactor as P1), 71 incremented
+**Last maintenance:** 2026-01-30 (archived 3 completed + 2 validated, validated 3 strikethroughs)
