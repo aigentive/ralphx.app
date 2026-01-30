@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 11:25:00 - Phase 39 Task 7: Update frontend TypeScript types
+**What:**
+- Added `reason: z.string().optional()` to DependencyGraphEdgeSchema
+- Type DependencyGraphEdge now includes optional reason field via z.infer
+
+**Files:**
+- src/types/ideation.ts
+
+**Commands:**
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 11:15:00 - Phase 39 Task 6: Update frontend Zod schemas for reason field
 **What:**
 - Added `reason: z.string().nullable()` to DependencyGraphEdgeResponseSchema
