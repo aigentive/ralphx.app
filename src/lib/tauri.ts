@@ -290,28 +290,70 @@ export interface RejectFixTaskInput {
 // ============================================================================
 
 /**
- * Execution status response from Rust
- * Note: field names use camelCase as that's what Rust serde produces with rename_all
+ * Execution status response from Rust (snake_case)
+ * Backend outputs snake_case by default (no rename_all annotation)
  */
 export const ExecutionStatusResponseSchema = z.object({
-  isPaused: z.boolean(),
-  runningCount: z.number().int().nonnegative(),
-  maxConcurrent: z.number().int().nonnegative(),
-  queuedCount: z.number().int().nonnegative(),
-  canStartTask: z.boolean(),
+  is_paused: z.boolean(),
+  running_count: z.number().int().nonnegative(),
+  max_concurrent: z.number().int().nonnegative(),
+  queued_count: z.number().int().nonnegative(),
+  can_start_task: z.boolean(),
 });
 
-export type ExecutionStatusResponse = z.infer<typeof ExecutionStatusResponseSchema>;
+/**
+ * Frontend representation with camelCase (after transform)
+ */
+export interface ExecutionStatusResponse {
+  isPaused: boolean;
+  runningCount: number;
+  maxConcurrent: number;
+  queuedCount: number;
+  canStartTask: boolean;
+}
 
 /**
- * Execution command response from Rust (for pause/resume/stop)
+ * Transform ExecutionStatusResponseSchema (snake_case) → ExecutionStatusResponse (camelCase)
+ */
+export function transformExecutionStatus(
+  raw: z.infer<typeof ExecutionStatusResponseSchema>
+): ExecutionStatusResponse {
+  return {
+    isPaused: raw.is_paused,
+    runningCount: raw.running_count,
+    maxConcurrent: raw.max_concurrent,
+    queuedCount: raw.queued_count,
+    canStartTask: raw.can_start_task,
+  };
+}
+
+/**
+ * Execution command response from Rust (for pause/resume/stop) (snake_case)
  */
 export const ExecutionCommandResponseSchema = z.object({
   success: z.boolean(),
   status: ExecutionStatusResponseSchema,
 });
 
-export type ExecutionCommandResponse = z.infer<typeof ExecutionCommandResponseSchema>;
+/**
+ * Frontend representation with camelCase status
+ */
+export interface ExecutionCommandResponse {
+  success: boolean;
+  status: ExecutionStatusResponse;
+}
+
+/**
+ * Transform ExecutionCommandResponseSchema → ExecutionCommandResponse
+ */
+export function transformExecutionCommand(
+  raw: z.infer<typeof ExecutionCommandResponseSchema>
+): ExecutionCommandResponse {
+  return {
+    success: raw.success,
+    status: transformExecutionStatus(raw.status),
+  };
+}
 
 // ============================================================================
 // Task Injection Response Schemas (matching Rust responses)
@@ -719,28 +761,48 @@ export const api = {
      * @returns Execution status with pause state, running count, queued count
      */
     getStatus: () =>
-      typedInvoke("get_execution_status", {}, ExecutionStatusResponseSchema),
+      typedInvokeWithTransform(
+        "get_execution_status",
+        {},
+        ExecutionStatusResponseSchema,
+        transformExecutionStatus
+      ),
 
     /**
      * Pause execution (stops picking up new tasks)
      * @returns Command response with success and current status
      */
     pause: () =>
-      typedInvoke("pause_execution", {}, ExecutionCommandResponseSchema),
+      typedInvokeWithTransform(
+        "pause_execution",
+        {},
+        ExecutionCommandResponseSchema,
+        transformExecutionCommand
+      ),
 
     /**
      * Resume execution (allows picking up new tasks)
      * @returns Command response with success and current status
      */
     resume: () =>
-      typedInvoke("resume_execution", {}, ExecutionCommandResponseSchema),
+      typedInvokeWithTransform(
+        "resume_execution",
+        {},
+        ExecutionCommandResponseSchema,
+        transformExecutionCommand
+      ),
 
     /**
      * Stop execution (cancels current tasks and pauses)
      * @returns Command response with success and current status
      */
     stop: () =>
-      typedInvoke("stop_execution", {}, ExecutionCommandResponseSchema),
+      typedInvokeWithTransform(
+        "stop_execution",
+        {},
+        ExecutionCommandResponseSchema,
+        transformExecutionCommand
+      ),
   },
 
   steps: {
