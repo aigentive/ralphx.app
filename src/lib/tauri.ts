@@ -7,8 +7,12 @@ import {
   TaskListSchema,
   TaskListResponseSchema,
   StatusTransitionSchema,
+  transformTask,
+  transformTaskListResponse,
   type CreateTask,
   type UpdateTask,
+  type Task,
+  type TaskListResponse,
 } from "@/types/task";
 import {
   ProjectSchema,
@@ -45,6 +49,26 @@ export async function typedInvoke<T>(
 ): Promise<T> {
   const result = await invoke(cmd, args);
   return schema.parse(result);
+}
+
+/**
+ * Generic invoke wrapper with runtime Zod validation and transform
+ * @param cmd The Tauri command name
+ * @param args The arguments to pass to the command
+ * @param schema The Zod schema to validate the response (snake_case from backend)
+ * @param transform Transform function to convert validated response to camelCase
+ * @returns The transformed response
+ * @throws If the response doesn't match the schema
+ */
+export async function typedInvokeWithTransform<TRaw, TResult>(
+  cmd: string,
+  args: Record<string, unknown>,
+  schema: z.ZodType<TRaw>,
+  transform: (raw: TRaw) => TResult
+): Promise<TResult> {
+  const result = await invoke(cmd, args);
+  const validated = schema.parse(result);
+  return transform(validated);
 }
 
 /**
@@ -363,7 +387,8 @@ export const api = {
       offset?: number;
       limit?: number;
       includeArchived?: boolean;
-    }) => typedInvoke("list_tasks", params, TaskListResponseSchema),
+    }): Promise<TaskListResponse> =>
+      typedInvokeWithTransform("list_tasks", params, TaskListResponseSchema, transformTaskListResponse),
 
     /**
      * Search tasks by query string
@@ -372,11 +397,12 @@ export const api = {
      * @param includeArchived Optional flag to include archived tasks (default false)
      * @returns Array of matching tasks
      */
-    search: (projectId: string, query: string, includeArchived?: boolean) =>
-      typedInvoke(
+    search: (projectId: string, query: string, includeArchived?: boolean): Promise<Task[]> =>
+      typedInvokeWithTransform(
         "search_tasks",
         { projectId, query, includeArchived },
-        TaskListSchema
+        TaskListSchema,
+        (tasks) => tasks.map(transformTask)
       ),
 
     /**
@@ -384,15 +410,16 @@ export const api = {
      * @param taskId The task ID
      * @returns The task
      */
-    get: (taskId: string) => typedInvoke("get_task", { id: taskId }, TaskSchema),
+    get: (taskId: string): Promise<Task> =>
+      typedInvokeWithTransform("get_task", { id: taskId }, TaskSchema, transformTask),
 
     /**
      * Create a new task
      * @param input Task creation data
      * @returns The created task
      */
-    create: (input: CreateTask) =>
-      typedInvoke("create_task", { input }, TaskSchema),
+    create: (input: CreateTask): Promise<Task> =>
+      typedInvokeWithTransform("create_task", { input }, TaskSchema, transformTask),
 
     /**
      * Update an existing task
@@ -400,8 +427,8 @@ export const api = {
      * @param input Partial task data to update
      * @returns The updated task
      */
-    update: (taskId: string, input: UpdateTask) =>
-      typedInvoke("update_task", { taskId, input }, TaskSchema),
+    update: (taskId: string, input: UpdateTask): Promise<Task> =>
+      typedInvokeWithTransform("update_task", { taskId, input }, TaskSchema, transformTask),
 
     /**
      * Delete a task
@@ -416,16 +443,16 @@ export const api = {
      * @param taskId The task ID
      * @returns The archived task
      */
-    archive: (taskId: string) =>
-      typedInvoke("archive_task", { taskId }, TaskSchema),
+    archive: (taskId: string): Promise<Task> =>
+      typedInvokeWithTransform("archive_task", { taskId }, TaskSchema, transformTask),
 
     /**
      * Restore an archived task
      * @param taskId The task ID
      * @returns The restored task
      */
-    restore: (taskId: string) =>
-      typedInvoke("restore_task", { taskId }, TaskSchema),
+    restore: (taskId: string): Promise<Task> =>
+      typedInvokeWithTransform("restore_task", { taskId }, TaskSchema, transformTask),
 
     /**
      * Permanently delete a task (only works on archived tasks)
@@ -461,8 +488,8 @@ export const api = {
      * @param toStatus The target status
      * @returns The updated task
      */
-    move: (taskId: string, toStatus: string) =>
-      typedInvoke("move_task", { taskId, toStatus }, TaskSchema),
+    move: (taskId: string, toStatus: string): Promise<Task> =>
+      typedInvokeWithTransform("move_task", { taskId, toStatus }, TaskSchema, transformTask),
 
     /**
      * Inject a task mid-loop
