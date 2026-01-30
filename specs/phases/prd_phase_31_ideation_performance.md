@@ -140,7 +140,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(stores): add cleanup and LRU eviction for memory management"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

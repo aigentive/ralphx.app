@@ -95,6 +95,7 @@ export function IntegratedChatPanel({
     : false;
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const clearMessages = useChatStore((s) => s.clearMessages);
 
   // Build chat context based on selected task or ideation session
   const chatContext: ChatContext = useMemo(() => {
@@ -194,12 +195,18 @@ export function IntegratedChatPanel({
         });
       }
 
+      // Clear messages from Zustand store for the old context to free memory
+      // Uses the previous context key (before the switch)
+      if (prevContextKeyRef.current) {
+        clearMessages(prevContextKeyRef.current);
+      }
+
       // Reset auto-select flag when context changes
       hasAutoSelectedRef.current = false;
 
       prevContextKeyRef.current = contextKey;
     }
-  }, [contextKey, setActiveConversation, queryClient]);
+  }, [contextKey, setActiveConversation, queryClient, clearMessages]);
 
   // For execution/review mode, fetch conversations directly with specific context type
   const regularChatData = useChat(chatContext);

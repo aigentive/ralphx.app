@@ -12,6 +12,13 @@ import type { Artifact } from "@/types/artifact";
 import type { IdeationSettings } from "@/types/ideation-config";
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Maximum number of sessions to keep in memory before LRU eviction */
+const MAX_CACHED_SESSIONS = 20;
+
+// ============================================================================
 // State Interface
 // ============================================================================
 
@@ -104,6 +111,21 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     addSession: (session) =>
       set((state) => {
         state.sessions[session.id] = session;
+        // LRU eviction: remove oldest session if over limit
+        const sessionIds = Object.keys(state.sessions);
+        if (sessionIds.length > MAX_CACHED_SESSIONS) {
+          // Find the oldest session (by updatedAt) that's not the active session
+          const oldest = sessionIds
+            .filter((id) => id !== state.activeSessionId)
+            .sort((a, b) => {
+              const aTime = new Date(state.sessions[a]?.updatedAt ?? 0).getTime();
+              const bTime = new Date(state.sessions[b]?.updatedAt ?? 0).getTime();
+              return aTime - bTime;
+            })[0];
+          if (oldest) {
+            delete state.sessions[oldest];
+          }
+        }
       }),
 
     setSessions: (sessions) =>
