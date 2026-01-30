@@ -19,7 +19,6 @@ export const ideationKeys = {
   sessionDetail: (sessionId: string) => [...ideationKeys.sessionDetails(), sessionId] as const,
   sessionWithData: (sessionId: string) => [...ideationKeys.sessionDetail(sessionId), "with-data"] as const,
   proposals: () => [...ideationKeys.all, "proposals"] as const,
-  dependencyGraph: () => [...ideationKeys.all, "dependency-graph"] as const,
 };
 
 /**
