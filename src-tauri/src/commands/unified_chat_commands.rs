@@ -37,7 +37,6 @@ pub struct SendAgentMessageInput {
 
 /// Response from send_agent_message command
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SendAgentMessageResponse {
     pub conversation_id: String,
     pub agent_run_id: String,
@@ -67,7 +66,6 @@ pub struct QueueAgentMessageInput {
 
 /// Response for queued message
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct QueuedMessageResponse {
     pub id: String,
     pub content: String,
@@ -88,7 +86,6 @@ impl From<QueuedMessage> for QueuedMessageResponse {
 
 /// Response for conversation listing
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AgentConversationResponse {
     pub id: String,
     pub context_type: String,
@@ -119,7 +116,6 @@ impl From<ChatConversation> for AgentConversationResponse {
 
 /// Response for conversation with messages
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AgentConversationWithMessagesResponse {
     pub conversation: AgentConversationResponse,
     pub messages: Vec<AgentMessageResponse>,
@@ -127,7 +123,6 @@ pub struct AgentConversationWithMessagesResponse {
 
 /// Response for a single message
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AgentMessageResponse {
     pub id: String,
     pub role: String,
@@ -139,7 +134,6 @@ pub struct AgentMessageResponse {
 
 /// Response for agent run status
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AgentRunStatusResponse {
     pub id: String,
     pub conversation_id: String,
@@ -559,8 +553,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("conversationId")); // camelCase
-        assert!(json.contains("agentRunId"));
-        assert!(json.contains("isNewConversation"));
+        assert!(json.contains("conversation_id")); // snake_case (Rust default)
+        assert!(json.contains("agent_run_id"));
+        assert!(json.contains("is_new_conversation"));
     }
 }

@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 06:18:57 - Phase 32 Task 7: Remove camelCase serialization from unified_chat_commands
+**What:**
+- Removed `#[serde(rename_all = "camelCase")]` from 6 response structs:
+  - SendAgentMessageResponse
+  - QueuedMessageResponse
+  - AgentConversationResponse
+  - AgentConversationWithMessagesResponse
+  - AgentMessageResponse
+  - AgentRunStatusResponse
+- Input structs (SendAgentMessageInput, QueueAgentMessageInput, CreateAgentConversationInput) retain camelCase for Tauri param convenience
+- Updated test_response_serialization test to expect snake_case
+
+**Files:**
+- src-tauri/src/commands/unified_chat_commands.rs
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo test unified_chat_commands` - 4 passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 23:10:00 - Phase 32 Task 5: Remove camelCase serialization from ProjectResponse
 **What:**
 - Removed `#[serde(rename_all = "camelCase")]` from ProjectResponse struct
