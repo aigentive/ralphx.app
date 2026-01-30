@@ -199,3 +199,40 @@ pub(super) fn migrate_v26(conn: &Connection) -> AppResult<()> {
 
     Ok(())
 }
+
+/// Migration v27: Agent profiles table
+pub(super) fn migrate_v27(conn: &Connection) -> AppResult<()> {
+    // ============================================================================
+    // Agent Profiles: Store customizable agent configurations
+    // ============================================================================
+
+    conn.execute(
+        "CREATE TABLE agent_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            profile_json TEXT NOT NULL,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Create index for role lookup
+    conn.execute(
+        "CREATE INDEX idx_agent_profiles_role ON agent_profiles(role)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    // Create index for builtin lookup
+    conn.execute(
+        "CREATE INDEX idx_agent_profiles_is_builtin ON agent_profiles(is_builtin)",
+        [],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}

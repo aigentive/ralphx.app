@@ -373,6 +373,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
                 title TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
                 plan_artifact_id TEXT,
+                seed_task_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 archived_at TEXT,
