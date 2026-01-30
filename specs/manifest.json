@@ -243,15 +243,22 @@
     },
     {
       "phase": 33,
-      "name": "Proposal Edit Modal Redesign",
-      "prd": "specs/phases/prd_phase_33_proposal_edit_modal_redesign.md",
+      "name": "Split src/lib/tauri.ts",
+      "prd": "specs/phases/prd_phase_33_split_tauri_ts.md",
       "status": "active",
-      "description": "Transform ProposalEditModal with glass morphism, two-column metadata, visual complexity selector, and animations"
+      "description": "Extract monolithic tauri.ts into domain-specific API modules with backward compatibility"
     },
     {
       "phase": 34,
+      "name": "Proposal Edit Modal Redesign",
+      "prd": "specs/phases/prd_phase_34_proposal_edit_modal_redesign.md",
+      "status": "pending",
+      "description": "Transform ProposalEditModal with glass morphism, two-column metadata, visual complexity selector, and animations"
+    },
+    {
+      "phase": 35,
       "name": "Welcome Screen & Project Creation Redesign",
-      "prd": "specs/phases/prd_phase_34_welcome_screen.md",
+      "prd": "specs/phases/prd_phase_35_welcome_screen.md",
       "status": "pending",
       "description": "Impressive animated welcome screen with Terminal Symphony design, keyboard shortcuts, modal UX fixes"
     }
