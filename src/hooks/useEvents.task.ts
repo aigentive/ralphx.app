@@ -37,7 +37,6 @@ export function useTaskEvents() {
       const parsed = TaskEventSchema.safeParse(event.payload);
 
       if (!parsed.success) {
-        console.error("Invalid task event:", parsed.error.message);
         return;
       }
 
