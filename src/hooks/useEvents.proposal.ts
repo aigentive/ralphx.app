@@ -5,7 +5,7 @@
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
-import { ProposalEventSchema } from "@/types/events";
+import { ProposalEventSchema, ProposalsReorderedEventSchema } from "@/types/events";
 import { useProposalStore } from "@/stores/proposalStore";
 import { ideationKeys } from "./useIdeation";
 import type { TaskProposal } from "@/types/ideation";
@@ -131,10 +131,56 @@ export function useProposalEvents() {
       }
     });
 
+    // Listen for reordered events
+    const unlistenReordered: Promise<UnlistenFn> = listen<unknown>("proposals:reordered", (event) => {
+      const parsed = ProposalsReorderedEventSchema.safeParse(event.payload);
+
+      if (!parsed.success) {
+        console.error("Invalid proposals:reordered event:", parsed.error.message);
+        return;
+      }
+
+      // Update each proposal with the new sortOrder from the backend
+      for (const p of parsed.data.proposals) {
+        const proposal: TaskProposal = {
+          id: p.id,
+          sessionId: p.sessionId,
+          title: p.title,
+          description: p.description,
+          category: p.category as TaskProposal["category"],
+          steps: p.steps,
+          acceptanceCriteria: p.acceptanceCriteria,
+          suggestedPriority: p.suggestedPriority as TaskProposal["suggestedPriority"],
+          priorityScore: p.priorityScore,
+          priorityReason: p.priorityReason,
+          estimatedComplexity: p.estimatedComplexity as TaskProposal["estimatedComplexity"],
+          userPriority: p.userPriority as TaskProposal["userPriority"],
+          userModified: p.userModified,
+          status: p.status as TaskProposal["status"],
+          selected: p.selected,
+          createdTaskId: p.createdTaskId,
+          planArtifactId: p.planArtifactId,
+          planVersionAtCreation: p.planVersionAtCreation,
+          sortOrder: p.sortOrder,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+        };
+        updateProposal(proposal.id, proposal);
+      }
+
+      // Invalidate session query to ensure data consistency
+      if (parsed.data.sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: ideationKeys.sessionWithData(parsed.data.sessionId),
+        });
+      }
+    });
+
     return () => {
       unlistenCreated.then((fn) => fn());
       unlistenUpdated.then((fn) => fn());
       unlistenDeleted.then((fn) => fn());
+      unlistenReordered.then((fn) => fn());
     };
   }, [addProposal, updateProposal, removeProposal, queryClient]);
 }

@@ -97,7 +97,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(ideation): emit event on proposal reorder"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend",
