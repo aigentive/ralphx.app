@@ -33,14 +33,27 @@ If no plans found in `~/.claude/plans/`, use AskUserQuestion to ask:
 
 ## Copy Logic
 
-If the plan file is **outside** `specs/plans/`:
-1. Derive a name from the plan's title (first `#` heading) or filename
-2. Convert to snake_case (e.g., `my-plan.md` → `my_plan.md`)
-3. Copy to `specs/plans/<derived_name>.md`
-4. Enhance the copy (not the original)
+**Always copy first, then modify the copy.** This is simpler and safer.
 
-If the plan file is **inside** `specs/plans/`:
-- Enhance in place
+### Step 1: Ensure target directory exists
+```bash
+mkdir -p specs/plans
+```
+
+### Step 2: Derive target filename
+1. Read the first `#` heading from the plan to get the title
+2. Convert to snake_case (e.g., "My Feature Plan" → `my_feature_plan.md`)
+3. If no title found, use the original filename converted to snake_case
+
+### Step 3: Copy using bash
+```bash
+cp "<source_plan_path>" "specs/plans/<derived_name>.md"
+```
+
+### Step 4: Enhance the copy
+All modifications happen on `specs/plans/<derived_name>.md`, never the original.
+
+**Exception:** If the source is already inside `specs/plans/`, enhance in place (no copy needed).
 
 ## Enhancement Steps
 
