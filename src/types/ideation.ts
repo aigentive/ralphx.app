@@ -171,6 +171,7 @@ export type DependencyGraphNode = z.infer<typeof DependencyGraphNodeSchema>;
 export const DependencyGraphEdgeSchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
+  reason: z.string().optional(),
 });
 
 export type DependencyGraphEdge = z.infer<typeof DependencyGraphEdgeSchema>;
