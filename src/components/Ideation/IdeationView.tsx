@@ -181,7 +181,6 @@ export function IdeationView({
     handleSortByPriority,
     handleSelectProposal,
     handleClearAll,
-    handleViewHistoricalPlan,
     handleReviewSync,
     handleUndoSync,
     handleDismissSync,
@@ -394,7 +393,6 @@ export function IdeationView({
                             onRemove={onRemoveProposal}
                             isHighlighted={highlightedProposalIds.has(proposal.id)}
                             currentPlanVersion={planArtifact?.metadata.version ?? undefined}
-                            onViewHistoricalPlan={handleViewHistoricalPlan}
                           />
                         </div>
                       ))}
