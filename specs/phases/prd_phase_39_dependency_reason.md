@@ -151,7 +151,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: feat(http): pass dependency reason through API layer"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
@@ -169,7 +169,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: feat(http): add reason field to DependencyEdgeResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

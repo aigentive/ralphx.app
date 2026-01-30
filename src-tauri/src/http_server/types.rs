@@ -175,6 +175,7 @@ pub struct DependencyNodeResponse {
 pub struct DependencyEdgeResponse {
     pub from: String,
     pub to: String,
+    pub reason: Option<String>,
 }
 
 /// Summary statistics for dependency analysis
