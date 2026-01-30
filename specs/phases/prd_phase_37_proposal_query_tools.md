@@ -167,7 +167,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run build in ralphx-plugin/ralphx-mcp-server",
       "Commit: feat(mcp): add GET dispatch for proposal query tools"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

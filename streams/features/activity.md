@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-30 17:01:15 - Phase 37 Task 5: Add GET dispatch for proposal query tools in MCP server
+**What:**
+- Added else-if branch for `list_session_proposals` calling `callTauriGet` with `list_session_proposals/${session_id}`
+- Added else-if branch for `get_proposal` calling `callTauriGet` with `proposal/${proposal_id}`
+
+**Files:**
+- ralphx-plugin/ralphx-mcp-server/src/index.ts (modified)
+
+**Commands:**
+- `npm run build` (compiles successfully)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 16:50:52 - Phase 37 Task 4: Register proposal query routes in HTTP server
 **What:**
 - Added route `/api/list_session_proposals/:session_id` with GET handler
