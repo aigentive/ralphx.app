@@ -253,6 +253,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // GET /api/review_notes/:task_id
       const { task_id } = args as { task_id: string };
       result = await callTauriGet(`review_notes/${task_id}`);
+    } else if (name === "list_session_proposals") {
+      // GET /api/list_session_proposals/:session_id
+      const { session_id } = args as { session_id: string };
+      result = await callTauriGet(`list_session_proposals/${session_id}`);
+    } else if (name === "get_proposal") {
+      // GET /api/proposal/:proposal_id
+      const { proposal_id } = args as { proposal_id: string };
+      result = await callTauriGet(`proposal/${proposal_id}`);
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});
