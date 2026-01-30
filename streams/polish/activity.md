@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-30 18:01:34 - Remove console.error calls from useIntegratedChatHandlers
+**What:**
+- File: src/hooks/useIntegratedChatHandlers.ts
+- Removed 5 console.error calls in catch blocks
+- Replaced with silent catches with explanatory comments (fire-and-forget/optimistic updates)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 02:30:02 - Replace panic! with assert!(matches!()) in supervisor events tests
 **What:**
 - File: src-tauri/src/domain/supervisor/events.rs
