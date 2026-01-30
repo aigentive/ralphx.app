@@ -86,6 +86,9 @@ export function SessionBrowser({
   // Inline edit state
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+
+  // Track which session's dropdown menu is open
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when entering edit mode
@@ -188,15 +191,18 @@ export function SessionBrowser({
           sortedSessions.map((session, index) => {
             const isSelected = session.id === currentSessionId;
             const isEditing = editingSessionId === session.id;
+            const isMenuOpen = openMenuId === session.id;
 
             return (
               <div
                 key={session.id}
                 data-testid={`session-item-${session.id}`}
                 className={cn(
-                  "session-card-enter group w-full p-2.5 rounded-lg text-left transition-all duration-180 relative",
+                  "session-card-enter group w-full p-2.5 rounded-lg text-left transition-all duration-180 relative cursor-pointer",
                   "border border-transparent",
-                  "hover:bg-white/[0.03] hover:border-white/[0.06]"
+                  // Force hover styling when menu is open
+                  isMenuOpen && "bg-white/[0.03] border-white/[0.06]",
+                  !isMenuOpen && "hover:bg-white/[0.03] hover:border-white/[0.06]"
                 )}
                 style={{
                   animationDelay: `${index * 50}ms`,
@@ -205,11 +211,9 @@ export function SessionBrowser({
                     borderColor: "rgba(255,107,53,0.25)",
                   }),
                 }}
+                onClick={() => !isEditing && onSelectSession(session.id)}
               >
-                <div
-                  className="flex items-start gap-2.5 cursor-pointer"
-                  onClick={() => !isEditing && onSelectSession(session.id)}
-                >
+                <div className="flex items-start gap-2.5">
                   {/* Session indicator */}
                   <div
                     className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 transition-colors"
@@ -255,14 +259,14 @@ export function SessionBrowser({
 
                   {/* Three-dot menu (replaces arrow indicator) */}
                   {!isEditing && (
-                    <DropdownMenu>
+                    <DropdownMenu onOpenChange={(open) => setOpenMenuId(open ? session.id : null)}>
                       <DropdownMenuTrigger asChild>
                         <button
                           className={cn(
                             "w-6 h-6 rounded flex items-center justify-center flex-shrink-0 transition-all duration-200",
                             "hover:bg-white/[0.08]",
-                            "opacity-0 group-hover:opacity-100",
-                            isSelected && "opacity-100"
+                            // Always visible when menu open or selected
+                            (isMenuOpen || isSelected) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                           )}
                           onClick={(e) => e.stopPropagation()}
                         >
