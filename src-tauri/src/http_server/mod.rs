@@ -40,6 +40,8 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         // Proposal query tools (orchestrator-ideation agent)
         .route("/api/list_session_proposals/:session_id", get(list_session_proposals))
         .route("/api/proposal/:proposal_id", get(get_proposal))
+        // Dependency analysis tools (orchestrator-ideation agent)
+        .route("/api/analyze_dependencies/:session_id", get(analyze_session_dependencies))
         // Session tools (session-namer agent)
         .route("/api/update_session_title", post(update_session_title))
         // Plan artifact tools (orchestrator-ideation agent)

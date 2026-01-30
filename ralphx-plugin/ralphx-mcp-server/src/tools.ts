@@ -222,6 +222,23 @@ export const ALL_TOOLS: Tool[] = [
       required: ["proposal_id"],
     },
   },
+  {
+    name: "analyze_session_dependencies",
+    description:
+      "Get full dependency graph analysis including critical path, cycle detection, and blocking relationships. " +
+      "Use to provide intelligent recommendations about proposal execution order. " +
+      "If analysis_in_progress is true in the response, wait 2-3 seconds and retry for complete results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID to analyze",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
 
   // ========================================================================
   // TASK TOOLS (chat-task agent)
@@ -504,6 +521,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Note: add_proposal_dependency removed - dependencies are now auto-suggested by dependency-suggester agent
     "list_session_proposals",
     "get_proposal",
+    "analyze_session_dependencies",
     "create_plan_artifact",
     "update_plan_artifact",
     "get_plan_artifact",
