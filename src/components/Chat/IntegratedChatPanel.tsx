@@ -237,9 +237,19 @@ export function IntegratedChatPanel({
     );
   }, [messagesData]);
 
-  const isLoading = activeConversation.isLoading;
+  // Loading state: show skeleton when conversations list is loading OR active conversation is loading
+  // This prevents the empty state flash when switching contexts
+  const isConversationsLoading = conversations.isLoading;
+  const isActiveConversationLoading = activeConversationId ? activeConversation.isLoading : false;
+  const isLoading = isConversationsLoading || isActiveConversationLoading;
+
   const isSending = sendMessage.isPending;
-  const isEmpty = !isLoading && sortedMessages.length === 0;
+
+  // Empty state: only show when we KNOW there are no messages (not while loading)
+  // Also don't show empty if conversations are loading - we might auto-select one
+  const hasNoConversations = !isConversationsLoading && (conversations.data?.length ?? 0) === 0;
+  const hasEmptyConversation = !isLoading && activeConversationId && sortedMessages.length === 0;
+  const isEmpty = hasNoConversations || hasEmptyConversation;
 
   return (
     <>
@@ -306,6 +316,7 @@ export function IntegratedChatPanel({
           <ChatMessageList
             ref={virtuosoRef}
             messages={sortedMessages}
+            conversationId={activeConversationId}
             isExecutionMode={isExecutionMode}
             failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
             onDismissFailedRun={setDismissedErrorId}
