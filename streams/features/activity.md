@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-31 03:15:00 - Phase 36 Task 1: Add inline version selector to PlanDisplay
+**What:**
+- Modified src/components/ideation/PlanDisplay.tsx
+  - Added imports: useEffect, DropdownMenu components, artifactApi, Loader2, ArrowLeft icons
+  - Added version selector state: selectedVersion, historicalContent, isLoadingVersion
+  - Added useEffect to reset state when plan changes
+  - Added useEffect to fetch historical version via artifactApi.getAtVersion when selection changes
+  - Replaced History button with inline DropdownMenu version selector (ConversationSelector pattern)
+  - Added version banner with "Back to latest" button when viewing historical version
+  - Updated content display to use displayContent (historicalContent ?? planContent)
+  - Added loading state spinner during version fetch
+  - Marked onViewHistory prop as deprecated (to be removed in Task 2)
+
+**Files:**
+- src/components/ideation/PlanDisplay.tsx (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 02:30:00 - Phase 35 Complete: Gap Verification Passed
 **What:**
 - Ran gap verification for Phase 35 (Welcome Screen & Project Creation Redesign)
