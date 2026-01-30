@@ -12,6 +12,8 @@ import { createElement } from "react";
 import {
   useDependencyGraph,
   useDependencyMutations,
+  useDependencyTiers,
+  computeDependencyTiers,
   dependencyKeys,
 } from "./useDependencyGraph";
 import { ideationApi } from "@/api/ideation";
@@ -282,5 +284,212 @@ describe("useDependencyMutations", () => {
         })
       ).rejects.toThrow("Failed to remove dependency");
     });
+  });
+});
+
+describe("computeDependencyTiers", () => {
+  it("should return empty tiers for null graph", () => {
+    const result = computeDependencyTiers(null);
+
+    expect(result.tierMap.size).toBe(0);
+    expect(result.maxTier).toBe(0);
+    expect(result.tierGroups.size).toBe(0);
+  });
+
+  it("should return empty tiers for undefined graph", () => {
+    const result = computeDependencyTiers(undefined);
+
+    expect(result.tierMap.size).toBe(0);
+    expect(result.maxTier).toBe(0);
+    expect(result.tierGroups.size).toBe(0);
+  });
+
+  it("should return empty tiers for empty graph", () => {
+    const result = computeDependencyTiers(emptyGraph);
+
+    expect(result.tierMap.size).toBe(0);
+    expect(result.maxTier).toBe(0);
+    expect(result.tierGroups.size).toBe(0);
+  });
+
+  it("should assign tier 0 to nodes with no dependencies", () => {
+    // Graph: A (independent)
+    const graph: DependencyGraphResponse = {
+      nodes: [
+        { proposalId: "A", title: "Task A", inDegree: 0, outDegree: 0 },
+      ],
+      edges: [],
+      criticalPath: [],
+      hasCycles: false,
+      cycles: null,
+    };
+
+    const result = computeDependencyTiers(graph);
+
+    expect(result.tierMap.get("A")).toBe(0);
+    expect(result.maxTier).toBe(0);
+    expect(result.tierGroups.get(0)).toEqual(["A"]);
+  });
+
+  it("should compute tiers for linear dependency chain", () => {
+    // Graph: A → B → C (linear chain)
+    // Expected: A=0, B=1, C=2
+    const result = computeDependencyTiers(mockGraph);
+
+    expect(result.tierMap.get("proposal-1")).toBe(0); // Setup database
+    expect(result.tierMap.get("proposal-2")).toBe(1); // Create API
+    expect(result.tierMap.get("proposal-3")).toBe(2); // Build UI
+    expect(result.maxTier).toBe(2);
+  });
+
+  it("should group multiple independent proposals in tier 0", () => {
+    // Graph: A, B (independent) → C depends on both
+    // Edge semantics: from → to means "to depends on from"
+    const graph: DependencyGraphResponse = {
+      nodes: [
+        { proposalId: "A", title: "Task A", inDegree: 0, outDegree: 1 },
+        { proposalId: "B", title: "Task B", inDegree: 0, outDegree: 1 },
+        { proposalId: "C", title: "Task C", inDegree: 2, outDegree: 0 },
+      ],
+      edges: [
+        { from: "A", to: "C" }, // C depends on A
+        { from: "B", to: "C" }, // C depends on B
+      ],
+      criticalPath: ["A", "C"],
+      hasCycles: false,
+      cycles: null,
+    };
+
+    const result = computeDependencyTiers(graph);
+
+    expect(result.tierMap.get("A")).toBe(0);
+    expect(result.tierMap.get("B")).toBe(0);
+    expect(result.tierMap.get("C")).toBe(1); // max(0, 0) + 1 = 1
+    expect(result.maxTier).toBe(1);
+    expect(result.tierGroups.get(0)).toContain("A");
+    expect(result.tierGroups.get(0)).toContain("B");
+    expect(result.tierGroups.get(0)?.length).toBe(2);
+  });
+
+  it("should handle diamond dependency pattern", () => {
+    // Graph: A → B, A → C, B → D, C → D (diamond)
+    // Edge semantics: from → to means "to depends on from"
+    // Expected: A=0, B=1, C=1, D=2
+    const graph: DependencyGraphResponse = {
+      nodes: [
+        { proposalId: "A", title: "Task A", inDegree: 0, outDegree: 2 },
+        { proposalId: "B", title: "Task B", inDegree: 1, outDegree: 1 },
+        { proposalId: "C", title: "Task C", inDegree: 1, outDegree: 1 },
+        { proposalId: "D", title: "Task D", inDegree: 2, outDegree: 0 },
+      ],
+      edges: [
+        { from: "A", to: "B" }, // B depends on A
+        { from: "A", to: "C" }, // C depends on A
+        { from: "B", to: "D" }, // D depends on B
+        { from: "C", to: "D" }, // D depends on C
+      ],
+      criticalPath: ["A", "B", "D"],
+      hasCycles: false,
+      cycles: null,
+    };
+
+    const result = computeDependencyTiers(graph);
+
+    expect(result.tierMap.get("A")).toBe(0);
+    expect(result.tierMap.get("B")).toBe(1);
+    expect(result.tierMap.get("C")).toBe(1);
+    expect(result.tierMap.get("D")).toBe(2); // max(1, 1) + 1 = 2
+    expect(result.maxTier).toBe(2);
+  });
+
+  it("should handle cycles gracefully", () => {
+    // Graph with cycle: A ↔ B (both depend on each other)
+    const result = computeDependencyTiers(mockGraphWithCycles);
+
+    // Both should be assigned a tier (don't crash)
+    expect(result.tierMap.has("proposal-1")).toBe(true);
+    expect(result.tierMap.has("proposal-2")).toBe(true);
+    // Exact tier values may vary, but function should complete
+    expect(result.maxTier).toBeGreaterThanOrEqual(0);
+  });
+
+  it("should handle partial cycles with non-cyclic nodes", () => {
+    // Graph: A (independent) → B ↔ C (B and C form a cycle)
+    const graph: DependencyGraphResponse = {
+      nodes: [
+        { proposalId: "A", title: "Task A", inDegree: 0, outDegree: 1 },
+        { proposalId: "B", title: "Task B", inDegree: 2, outDegree: 1 },
+        { proposalId: "C", title: "Task C", inDegree: 1, outDegree: 1 },
+      ],
+      edges: [
+        { from: "B", to: "A" }, // B depends on A
+        { from: "B", to: "C" }, // B depends on C (cycle)
+        { from: "C", to: "B" }, // C depends on B (cycle)
+      ],
+      criticalPath: [],
+      hasCycles: true,
+      cycles: [["B", "C", "B"]],
+    };
+
+    const result = computeDependencyTiers(graph);
+
+    // A should be tier 0 (no dependencies)
+    expect(result.tierMap.get("A")).toBe(0);
+    // B and C should have tiers (don't crash)
+    expect(result.tierMap.has("B")).toBe(true);
+    expect(result.tierMap.has("C")).toBe(true);
+  });
+
+  it("should create tier groups correctly", () => {
+    const result = computeDependencyTiers(mockGraph);
+
+    // Tier 0: proposal-1
+    expect(result.tierGroups.get(0)).toEqual(["proposal-1"]);
+    // Tier 1: proposal-2
+    expect(result.tierGroups.get(1)).toEqual(["proposal-2"]);
+    // Tier 2: proposal-3
+    expect(result.tierGroups.get(2)).toEqual(["proposal-3"]);
+    // Should have exactly 3 tier groups
+    expect(result.tierGroups.size).toBe(3);
+  });
+});
+
+describe("useDependencyTiers", () => {
+  it("should return tier assignment using useMemo", () => {
+    const { result } = renderHook(() => useDependencyTiers(mockGraph), {
+      wrapper: createWrapper(),
+    });
+
+    expect(result.current.tierMap.get("proposal-1")).toBe(0);
+    expect(result.current.tierMap.get("proposal-2")).toBe(1);
+    expect(result.current.tierMap.get("proposal-3")).toBe(2);
+    expect(result.current.maxTier).toBe(2);
+  });
+
+  it("should handle null graph", () => {
+    const { result } = renderHook(() => useDependencyTiers(null), {
+      wrapper: createWrapper(),
+    });
+
+    expect(result.current.tierMap.size).toBe(0);
+    expect(result.current.maxTier).toBe(0);
+    expect(result.current.tierGroups.size).toBe(0);
+  });
+
+  it("should memoize result", () => {
+    const { result, rerender } = renderHook(
+      ({ graph }) => useDependencyTiers(graph),
+      {
+        wrapper: createWrapper(),
+        initialProps: { graph: mockGraph },
+      }
+    );
+
+    const firstResult = result.current;
+    rerender({ graph: mockGraph });
+    const secondResult = result.current;
+
+    // Same reference if input unchanged
+    expect(firstResult).toBe(secondResult);
   });
 });
