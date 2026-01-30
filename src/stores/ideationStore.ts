@@ -59,6 +59,8 @@ interface IdeationActions {
   setActiveSession: (sessionId: string | null) => void;
   /** Add a single session to the store */
   addSession: (session: IdeationSession) => void;
+  /** Select a session atomically (adds to store + sets active in one update) */
+  selectSession: (session: IdeationSession) => void;
   /** Replace all sessions with new array (converts to Record) */
   setSessions: (sessions: IdeationSession[]) => void;
   /** Update a specific session with partial changes */
@@ -117,6 +119,35 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
           // Find the oldest session (by updatedAt) that's not the active session
           const oldest = sessionIds
             .filter((id) => id !== state.activeSessionId)
+            .sort((a, b) => {
+              const aTime = new Date(state.sessions[a]?.updatedAt ?? 0).getTime();
+              const bTime = new Date(state.sessions[b]?.updatedAt ?? 0).getTime();
+              return aTime - bTime;
+            })[0];
+          if (oldest) {
+            delete state.sessions[oldest];
+          }
+        }
+      }),
+
+    selectSession: (session) =>
+      set((state) => {
+        // Add session to store
+        state.sessions[session.id] = session;
+
+        // Set as active
+        state.activeSessionId = session.id;
+
+        // Clear session-specific state
+        state.planArtifact = null;
+        state.syncNotification = null;
+        state.error = null;
+
+        // LRU eviction if needed
+        const sessionIds = Object.keys(state.sessions);
+        if (sessionIds.length > MAX_CACHED_SESSIONS) {
+          const oldest = sessionIds
+            .filter((id) => id !== session.id)
             .sort((a, b) => {
               const aTime = new Date(state.sessions[a]?.updatedAt ?? 0).getTime();
               const bTime = new Date(state.sessions[b]?.updatedAt ?? 0).getTime();
