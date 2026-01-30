@@ -9,6 +9,7 @@ STREAM="verify"
 DEFAULT_MODEL="sonnet"
 MODEL="${RALPH_MODEL:-$DEFAULT_MODEL}"
 WATCH_FILES=("specs/manifest.json" "specs/phases")
+LOCK_FILE=".stream-${STREAM}-lock"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -22,6 +23,8 @@ PAD="  "
 cleanup() {
     echo ""
     echo -e "${PAD}${YELLOW}[$STREAM] Shutting down...${NC}"
+    # Remove lock file
+    rm -f "$LOCK_FILE"
     # Kill ralph-streams processes for this stream first (they have their own cleanup)
     pkill -INT -f "ralph-streams.sh $STREAM" 2>/dev/null || true
     sleep 0.3
@@ -32,7 +35,33 @@ cleanup() {
     exit 0
 }
 
+# Run a cycle with lock protection
+run_cycle() {
+    local trigger="$1"
+
+    # Check if already running
+    if [ -f "$LOCK_FILE" ]; then
+        echo -e "${PAD}${BLUE}[$STREAM] Already running, skipping trigger from $trigger${NC}"
+        return 0
+    fi
+
+    # Acquire lock
+    echo $$ > "$LOCK_FILE"
+
+    echo -e "${PAD}${YELLOW}[$STREAM] Starting cycle ($trigger)...${NC}"
+    ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
+
+    # Release lock
+    rm -f "$LOCK_FILE"
+
+    echo ""
+    echo -e "${PAD}${GREEN}[$STREAM] IDLE - watching for file changes...${NC}"
+}
+
 trap cleanup SIGINT SIGTERM EXIT
+
+# Clean up stale lock from previous run
+rm -f "$LOCK_FILE"
 
 echo ""
 echo -e "${PAD}${GREEN}[$STREAM] Starting with fswatch...${NC}"
@@ -40,26 +69,19 @@ echo -e "${PAD}${BLUE}[$STREAM] Model: $MODEL${NC}"
 echo -e "${PAD}${BLUE}[$STREAM] Watching: ${WATCH_FILES[*]}${NC}"
 echo ""
 
-# Start fswatch FIRST to avoid race condition with initial cycle
 # Use latency to debounce rapid changes (wait 3s after last change)
 fswatch -o -l 3 "${WATCH_FILES[@]}" | while read; do
     echo ""
-    echo -e "${PAD}${YELLOW}[$STREAM] File change detected, starting cycle...${NC}"
-    ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
-    echo ""
-    echo -e "${PAD}${GREEN}[$STREAM] IDLE - watching for file changes...${NC}"
+    run_cycle "file change"
 done &
 
 # Give fswatch time to initialize before initial cycle
 sleep 0.5
 
 # Initial run (fswatch is already watching, so changes will be caught)
-echo -e "${PAD}${YELLOW}[$STREAM] Running initial cycle...${NC}"
-ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50
+run_cycle "initial"
 
-# After initial cycle, show idle status and wait for fswatch
-echo ""
-echo -e "${PAD}${GREEN}[$STREAM] IDLE - watching for file changes...${NC}"
+# After initial cycle, show watching status
 echo -e "${PAD}${BLUE}[$STREAM] Watching: ${WATCH_FILES[*]}${NC}"
 echo -e "${PAD}${BLUE}[$STREAM] Will auto-start when files change...${NC}"
 echo ""
