@@ -77,7 +77,6 @@ pub struct UpdateWorkflowInput {
 
 /// Response wrapper for state group within a column
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct StateGroupResponse {
     pub id: String,
     pub label: String,
@@ -94,7 +93,6 @@ pub struct StateGroupResponse {
 
 /// Response wrapper for workflow column
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WorkflowColumnResponse {
     pub id: String,
     pub name: String,
@@ -150,7 +148,6 @@ impl From<&WorkflowColumn> for WorkflowColumnResponse {
 
 /// Response wrapper for workflow operations
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WorkflowResponse {
     pub id: String,
     pub name: String,
@@ -508,9 +505,10 @@ mod tests {
         assert_eq!(response.columns.len(), 1);
         assert_eq!(response.columns[0].color, Some("#ff0000".to_string()));
 
-        // Verify JSON serialization
+        // Verify JSON serialization uses snake_case (Rust default)
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"name\":\"Response Test\""));
+        assert!(json.contains("\"is_default\""), "Expected snake_case field is_default");
     }
 
     #[tokio::test]
