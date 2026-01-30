@@ -40,6 +40,7 @@ describe("proposalStore", () => {
       proposals: {},
       isLoading: false,
       error: null,
+      lastProposalAddedAt: null,
     });
   });
 
@@ -164,6 +165,22 @@ describe("proposalStore", () => {
 
       const state = useProposalStore.getState();
       expect(Object.keys(state.proposals)).toHaveLength(2);
+    });
+
+    it("updates lastProposalAddedAt timestamp when adding proposal", () => {
+      const proposal = createTestProposal({ id: "proposal-1" });
+
+      // Initially null
+      expect(useProposalStore.getState().lastProposalAddedAt).toBeNull();
+
+      const beforeAdd = Date.now();
+      useProposalStore.getState().addProposal(proposal);
+      const afterAdd = Date.now();
+
+      const state = useProposalStore.getState();
+      expect(state.lastProposalAddedAt).not.toBeNull();
+      expect(state.lastProposalAddedAt).toBeGreaterThanOrEqual(beforeAdd);
+      expect(state.lastProposalAddedAt).toBeLessThanOrEqual(afterAdd);
     });
   });
 

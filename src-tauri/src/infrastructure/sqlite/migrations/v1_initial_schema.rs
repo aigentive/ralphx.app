@@ -404,7 +404,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             user_priority TEXT,
             user_modified INTEGER DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'pending',
-            selected INTEGER DEFAULT 1,
+            selected INTEGER DEFAULT 0,
             created_task_id TEXT REFERENCES tasks(id),
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),

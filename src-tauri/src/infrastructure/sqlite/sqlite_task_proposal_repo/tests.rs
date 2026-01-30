@@ -425,19 +425,21 @@ mod tests {
 
         let repo = SqliteTaskProposalRepository::new(conn);
         let proposal = create_test_proposal(&session_id, "Selection Test");
-        // Default is selected = true
+        // Default is selected = false
 
         repo.create(proposal.clone()).await.unwrap();
-
-        // Deselect
-        repo.update_selection(&proposal.id, false).await.unwrap();
         let found = repo.get_by_id(&proposal.id).await.unwrap().unwrap();
         assert!(!found.selected);
 
-        // Select again
+        // Select
         repo.update_selection(&proposal.id, true).await.unwrap();
         let found = repo.get_by_id(&proposal.id).await.unwrap().unwrap();
         assert!(found.selected);
+
+        // Deselect again
+        repo.update_selection(&proposal.id, false).await.unwrap();
+        let found = repo.get_by_id(&proposal.id).await.unwrap().unwrap();
+        assert!(!found.selected);
     }
 
     #[tokio::test]

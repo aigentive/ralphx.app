@@ -81,7 +81,7 @@ impl TaskProposal {
             user_priority: None,
             user_modified: false,
             status: ProposalStatus::default(),
-            selected: true,
+            selected: false,
             created_task_id: None,
             plan_artifact_id: None,
             plan_version_at_creation: None,
