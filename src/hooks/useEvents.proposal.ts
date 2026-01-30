@@ -43,28 +43,29 @@ export function useProposalEvents() {
 
       if (parsed.data.type === "created") {
         // Transform the proposal data from snake_case to camelCase
+        const p = parsed.data.proposal;
         const proposal: TaskProposal = {
-          id: parsed.data.proposal.id,
-          sessionId: parsed.data.proposal.sessionId,
-          title: parsed.data.proposal.title,
-          description: parsed.data.proposal.description,
-          category: parsed.data.proposal.category as TaskProposal["category"],
-          steps: parsed.data.proposal.steps,
-          acceptanceCriteria: parsed.data.proposal.acceptanceCriteria,
-          suggestedPriority: parsed.data.proposal.suggestedPriority as TaskProposal["suggestedPriority"],
-          priorityScore: parsed.data.proposal.priorityScore,
-          priorityReason: parsed.data.proposal.priorityReason,
-          estimatedComplexity: parsed.data.proposal.estimatedComplexity as TaskProposal["estimatedComplexity"],
-          userPriority: parsed.data.proposal.userPriority as TaskProposal["userPriority"],
-          userModified: parsed.data.proposal.userModified,
-          status: parsed.data.proposal.status as TaskProposal["status"],
-          selected: parsed.data.proposal.selected,
-          createdTaskId: parsed.data.proposal.createdTaskId,
-          planArtifactId: parsed.data.proposal.planArtifactId,
-          planVersionAtCreation: parsed.data.proposal.planVersionAtCreation,
-          sortOrder: parsed.data.proposal.sortOrder,
-          createdAt: parsed.data.proposal.createdAt,
-          updatedAt: parsed.data.proposal.updatedAt,
+          id: p.id,
+          sessionId: p.session_id,
+          title: p.title,
+          description: p.description,
+          category: p.category as TaskProposal["category"],
+          steps: p.steps,
+          acceptanceCriteria: p.acceptance_criteria,
+          suggestedPriority: p.suggested_priority as TaskProposal["suggestedPriority"],
+          priorityScore: p.priority_score,
+          priorityReason: p.priority_reason,
+          estimatedComplexity: p.estimated_complexity as TaskProposal["estimatedComplexity"],
+          userPriority: p.user_priority as TaskProposal["userPriority"],
+          userModified: p.user_modified,
+          status: p.status as TaskProposal["status"],
+          selected: p.selected,
+          createdTaskId: p.created_task_id,
+          planArtifactId: p.plan_artifact_id,
+          planVersionAtCreation: p.plan_version_at_creation,
+          sortOrder: p.sort_order,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at,
         };
         addProposal(proposal);
         // Invalidate session query to ensure data consistency
@@ -85,28 +86,29 @@ export function useProposalEvents() {
 
       if (parsed.data.type === "updated") {
         // Transform the proposal data from snake_case to camelCase
+        const p = parsed.data.proposal;
         const proposal: TaskProposal = {
-          id: parsed.data.proposal.id,
-          sessionId: parsed.data.proposal.sessionId,
-          title: parsed.data.proposal.title,
-          description: parsed.data.proposal.description,
-          category: parsed.data.proposal.category as TaskProposal["category"],
-          steps: parsed.data.proposal.steps,
-          acceptanceCriteria: parsed.data.proposal.acceptanceCriteria,
-          suggestedPriority: parsed.data.proposal.suggestedPriority as TaskProposal["suggestedPriority"],
-          priorityScore: parsed.data.proposal.priorityScore,
-          priorityReason: parsed.data.proposal.priorityReason,
-          estimatedComplexity: parsed.data.proposal.estimatedComplexity as TaskProposal["estimatedComplexity"],
-          userPriority: parsed.data.proposal.userPriority as TaskProposal["userPriority"],
-          userModified: parsed.data.proposal.userModified,
-          status: parsed.data.proposal.status as TaskProposal["status"],
-          selected: parsed.data.proposal.selected,
-          createdTaskId: parsed.data.proposal.createdTaskId,
-          planArtifactId: parsed.data.proposal.planArtifactId,
-          planVersionAtCreation: parsed.data.proposal.planVersionAtCreation,
-          sortOrder: parsed.data.proposal.sortOrder,
-          createdAt: parsed.data.proposal.createdAt,
-          updatedAt: parsed.data.proposal.updatedAt,
+          id: p.id,
+          sessionId: p.session_id,
+          title: p.title,
+          description: p.description,
+          category: p.category as TaskProposal["category"],
+          steps: p.steps,
+          acceptanceCriteria: p.acceptance_criteria,
+          suggestedPriority: p.suggested_priority as TaskProposal["suggestedPriority"],
+          priorityScore: p.priority_score,
+          priorityReason: p.priority_reason,
+          estimatedComplexity: p.estimated_complexity as TaskProposal["estimatedComplexity"],
+          userPriority: p.user_priority as TaskProposal["userPriority"],
+          userModified: p.user_modified,
+          status: p.status as TaskProposal["status"],
+          selected: p.selected,
+          createdTaskId: p.created_task_id,
+          planArtifactId: p.plan_artifact_id,
+          planVersionAtCreation: p.plan_version_at_creation,
+          sortOrder: p.sort_order,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at,
         };
         // Use updateProposal to merge changes (or replace the whole proposal)
         updateProposal(proposal.id, proposal);
@@ -144,34 +146,34 @@ export function useProposalEvents() {
       for (const p of parsed.data.proposals) {
         const proposal: TaskProposal = {
           id: p.id,
-          sessionId: p.sessionId,
+          sessionId: p.session_id,
           title: p.title,
           description: p.description,
           category: p.category as TaskProposal["category"],
           steps: p.steps,
-          acceptanceCriteria: p.acceptanceCriteria,
-          suggestedPriority: p.suggestedPriority as TaskProposal["suggestedPriority"],
-          priorityScore: p.priorityScore,
-          priorityReason: p.priorityReason,
-          estimatedComplexity: p.estimatedComplexity as TaskProposal["estimatedComplexity"],
-          userPriority: p.userPriority as TaskProposal["userPriority"],
-          userModified: p.userModified,
+          acceptanceCriteria: p.acceptance_criteria,
+          suggestedPriority: p.suggested_priority as TaskProposal["suggestedPriority"],
+          priorityScore: p.priority_score,
+          priorityReason: p.priority_reason,
+          estimatedComplexity: p.estimated_complexity as TaskProposal["estimatedComplexity"],
+          userPriority: p.user_priority as TaskProposal["userPriority"],
+          userModified: p.user_modified,
           status: p.status as TaskProposal["status"],
           selected: p.selected,
-          createdTaskId: p.createdTaskId,
-          planArtifactId: p.planArtifactId,
-          planVersionAtCreation: p.planVersionAtCreation,
-          sortOrder: p.sortOrder,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
+          createdTaskId: p.created_task_id,
+          planArtifactId: p.plan_artifact_id,
+          planVersionAtCreation: p.plan_version_at_creation,
+          sortOrder: p.sort_order,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at,
         };
         updateProposal(proposal.id, proposal);
       }
 
       // Invalidate session query to ensure data consistency
-      if (parsed.data.sessionId) {
+      if (parsed.data.session_id) {
         queryClient.invalidateQueries({
-          queryKey: ideationKeys.sessionWithData(parsed.data.sessionId),
+          queryKey: ideationKeys.sessionWithData(parsed.data.session_id),
         });
       }
     });

@@ -188,58 +188,41 @@ export type QATestEvent = z.infer<typeof QATestEventSchema>;
  * Schema for task proposal events
  * Emitted when proposals are created, updated, or deleted in ideation sessions
  */
+/**
+ * Raw proposal schema for events (snake_case from backend)
+ */
+const ProposalEventPayloadSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  category: z.string(),
+  steps: z.array(z.string()),
+  acceptance_criteria: z.array(z.string()),
+  suggested_priority: z.string(),
+  priority_score: z.number(),
+  priority_reason: z.string().nullable(),
+  estimated_complexity: z.string(),
+  user_priority: z.string().nullable(),
+  user_modified: z.boolean(),
+  status: z.string(),
+  selected: z.boolean(),
+  created_task_id: z.string().nullable(),
+  plan_artifact_id: z.string().nullable(),
+  plan_version_at_creation: z.number().nullable(),
+  sort_order: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 export const ProposalEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("created"),
-    proposal: z.object({
-      id: z.string(),
-      sessionId: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-      category: z.string(),
-      steps: z.array(z.string()),
-      acceptanceCriteria: z.array(z.string()),
-      suggestedPriority: z.string(),
-      priorityScore: z.number(),
-      priorityReason: z.string().nullable(),
-      estimatedComplexity: z.string(),
-      userPriority: z.string().nullable(),
-      userModified: z.boolean(),
-      status: z.string(),
-      selected: z.boolean(),
-      createdTaskId: z.string().nullable(),
-      planArtifactId: z.string().nullable(),
-      planVersionAtCreation: z.number().nullable(),
-      sortOrder: z.number(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    }),
+    proposal: ProposalEventPayloadSchema,
   }),
   z.object({
     type: z.literal("updated"),
-    proposal: z.object({
-      id: z.string(),
-      sessionId: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-      category: z.string(),
-      steps: z.array(z.string()),
-      acceptanceCriteria: z.array(z.string()),
-      suggestedPriority: z.string(),
-      priorityScore: z.number(),
-      priorityReason: z.string().nullable(),
-      estimatedComplexity: z.string(),
-      userPriority: z.string().nullable(),
-      userModified: z.boolean(),
-      status: z.string(),
-      selected: z.boolean(),
-      createdTaskId: z.string().nullable(),
-      planArtifactId: z.string().nullable(),
-      planVersionAtCreation: z.number().nullable(),
-      sortOrder: z.number(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    }),
+    proposal: ProposalEventPayloadSchema,
   }),
   z.object({
     type: z.literal("deleted"),
@@ -254,32 +237,8 @@ export type ProposalEvent = z.infer<typeof ProposalEventSchema>;
  * Emitted when proposals are reordered within a session
  */
 export const ProposalsReorderedEventSchema = z.object({
-  sessionId: z.string(),
-  proposals: z.array(
-    z.object({
-      id: z.string(),
-      sessionId: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-      category: z.string(),
-      steps: z.array(z.string()),
-      acceptanceCriteria: z.array(z.string()),
-      suggestedPriority: z.string(),
-      priorityScore: z.number(),
-      priorityReason: z.string().nullable(),
-      estimatedComplexity: z.string(),
-      userPriority: z.string().nullable(),
-      userModified: z.boolean(),
-      status: z.string(),
-      selected: z.boolean(),
-      createdTaskId: z.string().nullable(),
-      planArtifactId: z.string().nullable(),
-      planVersionAtCreation: z.number().nullable(),
-      sortOrder: z.number(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    })
-  ),
+  session_id: z.string(),
+  proposals: z.array(ProposalEventPayloadSchema),
 });
 
 export type ProposalsReorderedEvent = z.infer<typeof ProposalsReorderedEventSchema>;
