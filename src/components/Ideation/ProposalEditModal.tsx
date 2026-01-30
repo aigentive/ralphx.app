@@ -47,6 +47,52 @@ const COMPLEXITIES: { value: Complexity; label: string }[] = [
   { value: "very_complex", label: "Very Complex" },
 ];
 
+/**
+ * ComplexitySelector - Visual 5-dot complexity picker
+ * Displays 5 circles representing trivial → very_complex
+ * Orange fill for selected, transparent for others
+ */
+interface ComplexitySelectorProps {
+  value: Complexity;
+  onChange: (value: Complexity) => void;
+  disabled?: boolean;
+}
+
+function ComplexitySelector({ value, onChange, disabled }: ComplexitySelectorProps) {
+  const selectedIndex = COMPLEXITIES.findIndex((c) => c.value === value);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        {COMPLEXITIES.map((c, index) => {
+          const isSelected = index <= selectedIndex;
+          return (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => !disabled && onChange(c.value)}
+              disabled={disabled}
+              title={c.label}
+              aria-label={`Set complexity to ${c.label}`}
+              className={`
+                w-4 h-4 rounded-full border transition-all duration-150
+                ${isSelected
+                  ? "bg-[#ff6b35] border-[#ff6b35]"
+                  : "bg-transparent border-white/30 hover:border-[#ff6b35]/50"
+                }
+                ${!disabled ? "cursor-pointer hover:scale-125" : "cursor-not-allowed opacity-50"}
+              `}
+            />
+          );
+        })}
+      </div>
+      <span className="text-sm text-[var(--text-muted)] capitalize">
+        {COMPLEXITIES[selectedIndex]?.label ?? "Moderate"}
+      </span>
+    </div>
+  );
+}
+
 interface ProposalEditModalProps {
   proposal: TaskProposal | null;
   onSave: (proposalId: string, data: UpdateProposalInput) => void;
@@ -257,24 +303,16 @@ export function ProposalEditModal({
                 {/* Vertical Divider */}
                 <div className="w-px self-stretch bg-white/[0.08]" />
 
-                {/* Right Column: Complexity (placeholder for visual selector in Task 3) */}
+                {/* Right Column: Visual Complexity Selector */}
                 <div className="space-y-2">
-                  <Label htmlFor="proposal-complexity" className="text-[var(--text-primary)] text-sm">
+                  <Label className="text-[var(--text-primary)] text-sm">
                     Complexity
                   </Label>
-                  <select
-                    id="proposal-complexity"
+                  <ComplexitySelector
                     value={complexity}
-                    onChange={(e) => setComplexity(e.target.value as Complexity)}
-                    className={selectClasses}
+                    onChange={setComplexity}
                     disabled={isSaving}
-                  >
-                    {COMPLEXITIES.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
             </div>
