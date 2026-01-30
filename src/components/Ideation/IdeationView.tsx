@@ -25,7 +25,6 @@ import type {
 } from "@/types/ideation";
 import { Button } from "@/components/ui/button";
 import { PlanDisplay } from "./PlanDisplay";
-import { PlanHistoryDialog } from "./PlanHistoryDialog";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { cn } from "@/lib/utils";
@@ -171,7 +170,6 @@ export function IdeationView({
 
   const {
     highlightedProposalIds,
-    planHistoryDialog,
     isPlanExpanded,
     setIsPlanExpanded,
     importStatus,
@@ -184,7 +182,6 @@ export function IdeationView({
     handleSelectProposal,
     handleClearAll,
     handleViewHistoricalPlan,
-    handleClosePlanHistoryDialog,
     handleReviewSync,
     handleUndoSync,
     handleDismissSync,
@@ -219,6 +216,13 @@ export function IdeationView({
       setTimeout(() => setImportStatus(null), 5000);
     }
   }, [fileDropError, setImportStatus]);
+
+  // Auto-expand plan when there are no proposals
+  useEffect(() => {
+    if (planArtifact && proposals.length === 0 && !isPlanExpanded) {
+      setIsPlanExpanded(true);
+    }
+  }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded]);
 
   const sortedProposals = useMemo(() => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder), [proposals]);
 
@@ -360,7 +364,6 @@ export function IdeationView({
                         onEdit={() => {}}
                         isExpanded={isPlanExpanded}
                         onExpandedChange={setIsPlanExpanded}
-                        onViewHistory={() => handleViewHistoricalPlan(planArtifact.id, 1)}
                       />
                     </div>
                   )}
@@ -437,15 +440,6 @@ export function IdeationView({
               </div>
             </div>
           </div>
-        )}
-
-        {planHistoryDialog && (
-          <PlanHistoryDialog
-            isOpen={planHistoryDialog.isOpen}
-            onClose={handleClosePlanHistoryDialog}
-            artifactId={planHistoryDialog.artifactId}
-            version={planHistoryDialog.version}
-          />
         )}
 
         <input
