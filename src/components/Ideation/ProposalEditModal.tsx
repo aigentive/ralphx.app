@@ -202,8 +202,9 @@ export function ProposalEditModal({
 
   const canSave = title.trim().length > 0 && !isSaving;
 
-  const inputClasses = "bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]";
-  const selectClasses = "w-full h-9 rounded-md border px-3 py-2 text-sm bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent";
+  // Glass effect styling for inputs - per Task 6 design specs
+  const inputClasses = "bg-black/30 border border-white/[0.08] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all duration-200 focus:border-[#ff6b35]/50 focus:ring-2 focus:ring-[#ff6b35]/10 focus:outline-none";
+  const selectClasses = "w-full h-9 rounded-lg border px-3 py-2 text-sm bg-black/30 border-white/[0.08] text-[var(--text-primary)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/10 focus:border-[#ff6b35]/50";
 
   return (
     <Dialog open={!!proposal} onOpenChange={handleOpenChange}>
