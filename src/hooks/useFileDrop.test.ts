@@ -222,7 +222,7 @@ describe("useFileDrop", () => {
       };
       mockReadTextFile.mockResolvedValue("This content is way too long for 10 bytes");
 
-      const { result } = renderHook(() => useFileDrop(config));
+      const { result: _result } = renderHook(() => useFileDrop(config));
       await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
@@ -237,7 +237,7 @@ describe("useFileDrop", () => {
     });
 
     it("should reject multiple files", async () => {
-      const { result } = renderHook(() => useFileDrop(defaultConfig));
+      const { result: _result } = renderHook(() => useFileDrop(defaultConfig));
       await waitFor(() => expect(dragDropHandler).not.toBeNull());
 
       await act(async () => {
