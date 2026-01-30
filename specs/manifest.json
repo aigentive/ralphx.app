@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 38,
+  "currentPhase": null,
   "phases": [
     {
       "phase": 0,
@@ -280,7 +280,7 @@
       "phase": 38,
       "name": "Dependency Graph & Priority Assessment Integration",
       "prd": "specs/phases/prd_phase_38_dependency_priority_integration.md",
-      "status": "active",
+      "status": "complete",
       "description": "Wire up priority assessment, AI dependency suggestions, dependency UI badges, chat agent tools"
     }
   ]
