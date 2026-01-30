@@ -5,7 +5,15 @@
 
 ---
 
-## Archived 2026-01-30
+## Archived 2026-01-30 (Second Batch)
+
+### From features/backlog.md (Phase Gaps)
+
+- [x] [Infrastructure] Orphaned Process: verify stream fswatch not killed on stop - ralph-tmux.sh:169
+
+---
+
+## Archived 2026-01-30 (First Batch)
 
 ### From refactor/backlog.md (Backend)
 
