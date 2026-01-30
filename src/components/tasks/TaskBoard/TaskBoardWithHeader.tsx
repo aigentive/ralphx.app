@@ -6,12 +6,11 @@
  * - Compact sizing for application UI
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { WorkflowSelector } from "@/components/workflows/WorkflowSelector";
 import { TaskBoard } from "./TaskBoard";
 import type { WorkflowSchema } from "@/types/workflow";
-import type { WorkflowResponse } from "@/lib/api/workflows";
 
 // ============================================================================
 // Types
@@ -22,45 +21,14 @@ interface TaskBoardWithHeaderProps {
 }
 
 // ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Convert WorkflowResponse (snake_case from API) to WorkflowSchema (camelCase)
- */
-function toWorkflowSchema(response: WorkflowResponse): WorkflowSchema {
-  return {
-    id: response.id,
-    name: response.name,
-    description: response.description ?? undefined,
-    columns: response.columns.map((col) => ({
-      id: col.id,
-      name: col.name,
-      mapsTo: col.mapsTo,
-      color: col.color ?? undefined,
-      icon: col.icon ?? undefined,
-      behavior: {
-        skipReview: col.skipReview ?? undefined,
-        autoAdvance: col.autoAdvance ?? undefined,
-        agentProfile: col.agentProfile ?? undefined,
-      },
-    })),
-    isDefault: response.isDefault,
-  };
-}
-
-// ============================================================================
 // Component
 // ============================================================================
 
 export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
   const { data: workflowsResponse, isLoading: isLoadingWorkflows } = useWorkflows();
 
-  // Convert API responses to WorkflowSchema format
-  const workflows = useMemo(
-    () => (workflowsResponse ?? []).map(toWorkflowSchema),
-    [workflowsResponse]
-  );
+  // API now returns WorkflowSchema directly (transforms applied in API layer)
+  const workflows: WorkflowSchema[] = workflowsResponse ?? [];
 
   // Find default workflow
   const defaultWorkflow = workflows.find((w) => w.isDefault);

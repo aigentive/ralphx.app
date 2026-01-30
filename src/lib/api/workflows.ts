@@ -2,75 +2,34 @@
  * Tauri API wrappers for workflow operations
  *
  * Provides type-safe functions for workflow CRUD with Zod validation.
+ * Uses snake_case response schemas from @/types/workflow and applies
+ * transforms to return camelCase display types.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import { InternalStatusSchema } from "@/types/status";
+import {
+  WorkflowResponseSchema,
+  WorkflowColumnResponseSchema,
+  transformWorkflow,
+  transformWorkflowColumn,
+  type WorkflowSchema,
+  type WorkflowColumn,
+} from "@/types/workflow";
+
+// Re-export schemas for consumers that import from this module
+export { WorkflowResponseSchema, WorkflowColumnResponseSchema };
+
+// Backward-compatible type aliases (these are now camelCase display types)
+export type WorkflowResponse = WorkflowSchema;
+export type WorkflowColumnResponse = WorkflowColumn;
 
 // ============================================================================
-// Response Schemas (matching Rust WorkflowResponse structures)
+// Internal Response Schema Arrays (for parsing lists)
 // ============================================================================
 
-/**
- * Schema for state group response from Rust backend
- * Groups allow columns to contain multiple internal statuses
- * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
- */
-export const StateGroupResponseSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  statuses: z.array(InternalStatusSchema),
-  icon: z.string().optional(),
-  accentColor: z.string().optional(),
-  canDragFrom: z.boolean().optional(),
-  canDropTo: z.boolean().optional(),
-});
-
-export type StateGroupResponse = z.infer<typeof StateGroupResponseSchema>;
-
-/**
- * Schema for workflow column response from Rust backend
- * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
- */
-export const WorkflowColumnResponseSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  mapsTo: InternalStatusSchema,
-  color: z.string().optional(),
-  icon: z.string().optional(),
-  skipReview: z.boolean().optional(),
-  autoAdvance: z.boolean().optional(),
-  agentProfile: z.string().optional(),
-  groups: z.array(StateGroupResponseSchema).optional(),
-});
-
-export type WorkflowColumnResponse = z.infer<typeof WorkflowColumnResponseSchema>;
-
-/**
- * Schema for workflow response from Rust backend
- * Note: Uses camelCase to match Rust serde serialization (rename_all = "camelCase")
- */
-export const WorkflowResponseSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string().optional(),
-  columns: z.array(WorkflowColumnResponseSchema).min(1),
-  isDefault: z.boolean(),
-  workerProfile: z.string().optional(),
-  reviewerProfile: z.string().optional(),
-});
-
-export type WorkflowResponse = z.infer<typeof WorkflowResponseSchema>;
-
-/**
- * Schema for array of workflow responses
- */
 const WorkflowListResponseSchema = z.array(WorkflowResponseSchema);
-
-/**
- * Schema for array of column responses
- */
 const ColumnListResponseSchema = z.array(WorkflowColumnResponseSchema);
 
 // ============================================================================
@@ -127,51 +86,55 @@ export type UpdateWorkflowInput = z.infer<typeof UpdateWorkflowInputSchema>;
 
 /**
  * List all workflows
- * @returns Array of workflow responses
+ * @returns Array of workflows (camelCase display types)
  */
-export async function getWorkflows(): Promise<WorkflowResponse[]> {
+export async function getWorkflows(): Promise<WorkflowSchema[]> {
   const result = await invoke("get_workflows", {});
-  return WorkflowListResponseSchema.parse(result);
+  const parsed = WorkflowListResponseSchema.parse(result);
+  return parsed.map(transformWorkflow);
 }
 
 /**
  * Get a single workflow by ID
  * @param id The workflow ID
- * @returns The workflow or null if not found
+ * @returns The workflow or null if not found (camelCase display type)
  */
-export async function getWorkflow(id: string): Promise<WorkflowResponse | null> {
+export async function getWorkflow(id: string): Promise<WorkflowSchema | null> {
   const result = await invoke("get_workflow", { id });
-  return WorkflowResponseSchema.nullable().parse(result);
+  const parsed = WorkflowResponseSchema.nullable().parse(result);
+  return parsed ? transformWorkflow(parsed) : null;
 }
 
 /**
  * Create a new workflow
  * @param input Workflow creation data
- * @returns The created workflow
+ * @returns The created workflow (camelCase display type)
  * @throws ZodError if input validation fails
  */
-export async function createWorkflow(input: CreateWorkflowInput): Promise<WorkflowResponse> {
+export async function createWorkflow(input: CreateWorkflowInput): Promise<WorkflowSchema> {
   // Validate input before sending
   const validatedInput = CreateWorkflowInputSchema.parse(input);
   const result = await invoke("create_workflow", { input: validatedInput });
-  return WorkflowResponseSchema.parse(result);
+  const parsed = WorkflowResponseSchema.parse(result);
+  return transformWorkflow(parsed);
 }
 
 /**
  * Update an existing workflow
  * @param id The workflow ID
  * @param input Partial workflow data to update
- * @returns The updated workflow
+ * @returns The updated workflow (camelCase display type)
  * @throws ZodError if input validation fails
  */
 export async function updateWorkflow(
   id: string,
   input: UpdateWorkflowInput
-): Promise<WorkflowResponse> {
+): Promise<WorkflowSchema> {
   // Validate input before sending
   const validatedInput = UpdateWorkflowInputSchema.parse(input);
   const result = await invoke("update_workflow", { id, input: validatedInput });
-  return WorkflowResponseSchema.parse(result);
+  const parsed = WorkflowResponseSchema.parse(result);
+  return transformWorkflow(parsed);
 }
 
 /**
@@ -185,27 +148,30 @@ export async function deleteWorkflow(id: string): Promise<void> {
 /**
  * Set a workflow as the default
  * @param id The workflow ID to set as default
- * @returns The updated workflow
+ * @returns The updated workflow (camelCase display type)
  */
-export async function setDefaultWorkflow(id: string): Promise<WorkflowResponse> {
+export async function setDefaultWorkflow(id: string): Promise<WorkflowSchema> {
   const result = await invoke("set_default_workflow", { id });
-  return WorkflowResponseSchema.parse(result);
+  const parsed = WorkflowResponseSchema.parse(result);
+  return transformWorkflow(parsed);
 }
 
 /**
  * Get the columns for the currently active/default workflow
- * @returns Array of workflow columns
+ * @returns Array of workflow columns (camelCase display types)
  */
-export async function getActiveWorkflowColumns(): Promise<WorkflowColumnResponse[]> {
+export async function getActiveWorkflowColumns(): Promise<WorkflowColumn[]> {
   const result = await invoke("get_active_workflow_columns", {});
-  return ColumnListResponseSchema.parse(result);
+  const parsed = ColumnListResponseSchema.parse(result);
+  return parsed.map(transformWorkflowColumn);
 }
 
 /**
  * Get the built-in workflow definitions (RalphX Default, Jira Compatible)
- * @returns Array of built-in workflow responses
+ * @returns Array of built-in workflows (camelCase display types)
  */
-export async function getBuiltinWorkflows(): Promise<WorkflowResponse[]> {
+export async function getBuiltinWorkflows(): Promise<WorkflowSchema[]> {
   const result = await invoke("get_builtin_workflows", {});
-  return WorkflowListResponseSchema.parse(result);
+  const parsed = WorkflowListResponseSchema.parse(result);
+  return parsed.map(transformWorkflow);
 }
