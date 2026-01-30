@@ -1,0 +1,378 @@
+// Tauri invoke wrappers for tasks and steps with type safety using Zod schemas
+
+import { invoke } from "@tauri-apps/api/core";
+import { z } from "zod";
+import {
+  TaskSchema,
+  TaskListSchema,
+  TaskListResponseSchema,
+  StatusTransitionSchema,
+  transformTask,
+  transformTaskListResponse,
+  type CreateTask,
+  type UpdateTask,
+  type Task,
+  type TaskListResponse,
+} from "@/types/task";
+import {
+  TaskStepResponseSchema,
+  StepProgressSummaryResponseSchema,
+  transformTaskStep,
+  transformStepProgressSummary,
+  type TaskStep,
+  type StepProgressSummary,
+} from "@/types/task-step";
+import { InjectTaskResponseSchemaRaw } from "./tasks.schemas";
+import { transformInjectTaskResponse, type InjectTaskResponse } from "./tasks.transforms";
+
+// Re-export types for convenience
+export type { InjectTaskResponse } from "./tasks.transforms";
+
+// Re-export schemas for consumers that need validation
+export { InjectTaskResponseSchemaRaw } from "./tasks.schemas";
+
+// Re-export transforms for consumers that need manual transformation
+export { transformInjectTaskResponse } from "./tasks.transforms";
+
+// ============================================================================
+// Input Types
+// ============================================================================
+
+/**
+ * Input type for injecting a task mid-loop
+ */
+export interface InjectTaskInput {
+  /** The project ID to inject the task into */
+  projectId: string;
+  /** Title of the task */
+  title: string;
+  /** Optional description */
+  description?: string;
+  /** Category (defaults to "feature") */
+  category?: string;
+  /** Where to inject: "backlog" (deferred) or "planned" (immediate queue) */
+  target?: "backlog" | "planned";
+  /** If true and target is "planned", make this task the highest priority */
+  makeNext?: boolean;
+}
+
+// ============================================================================
+// Typed Invoke Helpers
+// ============================================================================
+
+async function typedInvoke<T>(
+  cmd: string,
+  args: Record<string, unknown>,
+  schema: z.ZodType<T>
+): Promise<T> {
+  const result = await invoke(cmd, args);
+  return schema.parse(result);
+}
+
+async function typedInvokeWithTransform<TRaw, TResult>(
+  cmd: string,
+  args: Record<string, unknown>,
+  schema: z.ZodType<TRaw>,
+  transform: (raw: TRaw) => TResult
+): Promise<TResult> {
+  const result = await invoke(cmd, args);
+  const validated = schema.parse(result);
+  return transform(validated);
+}
+
+// ============================================================================
+// List Schemas
+// ============================================================================
+
+const TaskStepListResponseSchema = z.array(TaskStepResponseSchema);
+
+// ============================================================================
+// Tasks API Object
+// ============================================================================
+
+/**
+ * Tasks API wrappers for Tauri commands
+ */
+export const tasksApi = {
+  /**
+   * List all tasks for a project with optional pagination and filtering
+   * @param params Parameters for listing tasks
+   * @param params.projectId The project ID
+   * @param params.statuses Optional status filter (array of statuses, matches any)
+   * @param params.offset Optional pagination offset (default 0)
+   * @param params.limit Optional pagination limit (default 20)
+   * @param params.includeArchived Optional flag to include archived tasks (default false)
+   * @returns Paginated task list response
+   */
+  list: (params: {
+    projectId: string;
+    statuses?: string[];
+    offset?: number;
+    limit?: number;
+    includeArchived?: boolean;
+  }): Promise<TaskListResponse> =>
+    typedInvokeWithTransform("list_tasks", params, TaskListResponseSchema, transformTaskListResponse),
+
+  /**
+   * Search tasks by query string
+   * @param projectId The project ID
+   * @param query The search query (searches title and description)
+   * @param includeArchived Optional flag to include archived tasks (default false)
+   * @returns Array of matching tasks
+   */
+  search: (projectId: string, query: string, includeArchived?: boolean): Promise<Task[]> =>
+    typedInvokeWithTransform(
+      "search_tasks",
+      { projectId, query, includeArchived },
+      TaskListSchema,
+      (tasks) => tasks.map(transformTask)
+    ),
+
+  /**
+   * Get a single task by ID
+   * @param taskId The task ID
+   * @returns The task
+   */
+  get: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("get_task", { id: taskId }, TaskSchema, transformTask),
+
+  /**
+   * Create a new task
+   * @param input Task creation data
+   * @returns The created task
+   */
+  create: (input: CreateTask): Promise<Task> =>
+    typedInvokeWithTransform("create_task", { input }, TaskSchema, transformTask),
+
+  /**
+   * Update an existing task
+   * @param taskId The task ID
+   * @param input Partial task data to update
+   * @returns The updated task
+   */
+  update: (taskId: string, input: UpdateTask): Promise<Task> =>
+    typedInvokeWithTransform("update_task", { taskId, input }, TaskSchema, transformTask),
+
+  /**
+   * Delete a task
+   * @param taskId The task ID
+   * @returns true if deleted
+   */
+  delete: (taskId: string) =>
+    typedInvoke("delete_task", { taskId }, z.boolean()),
+
+  /**
+   * Archive a task (soft delete)
+   * @param taskId The task ID
+   * @returns The archived task
+   */
+  archive: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("archive_task", { taskId }, TaskSchema, transformTask),
+
+  /**
+   * Restore an archived task
+   * @param taskId The task ID
+   * @returns The restored task
+   */
+  restore: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("restore_task", { taskId }, TaskSchema, transformTask),
+
+  /**
+   * Permanently delete a task (only works on archived tasks)
+   * @param taskId The task ID
+   * @returns void on success
+   */
+  permanentlyDelete: (taskId: string) =>
+    typedInvoke("permanently_delete_task", { taskId }, z.void()),
+
+  /**
+   * Get count of archived tasks for a project
+   * @param projectId The project ID
+   * @returns Count of archived tasks
+   */
+  getArchivedCount: (projectId: string) =>
+    typedInvoke("get_archived_count", { projectId }, z.number()),
+
+  /**
+   * Get valid status transitions for a task
+   * @param taskId The task ID
+   * @returns Array of valid status transitions
+   */
+  getValidTransitions: (taskId: string) =>
+    typedInvoke(
+      "get_valid_transitions",
+      { taskId },
+      z.array(StatusTransitionSchema)
+    ),
+
+  /**
+   * Move a task to a new status
+   * @param taskId The task ID
+   * @param toStatus The target status
+   * @returns The updated task
+   */
+  move: (taskId: string, toStatus: string): Promise<Task> =>
+    typedInvokeWithTransform("move_task", { taskId, toStatus }, TaskSchema, transformTask),
+
+  /**
+   * Inject a task mid-loop
+   * Tasks can be sent to backlog (deferred) or planned (immediate queue).
+   * If makeNext is true and target is "planned", the task gets the highest priority.
+   * Emits a task:created event on success.
+   * @param input Inject task input
+   * @returns The inject task response with created task and injection details
+   */
+  inject: (input: InjectTaskInput): Promise<InjectTaskResponse> =>
+    typedInvokeWithTransform(
+      "inject_task",
+      { input },
+      InjectTaskResponseSchemaRaw,
+      transformInjectTaskResponse
+    ),
+} as const;
+
+// ============================================================================
+// Steps API Object
+// ============================================================================
+
+/**
+ * Task steps API wrappers for Tauri commands
+ */
+export const stepsApi = {
+  /**
+   * Get all steps for a task
+   * @param taskId The task ID
+   * @returns Array of task steps
+   */
+  getByTask: (taskId: string): Promise<TaskStep[]> =>
+    typedInvokeWithTransform(
+      "get_task_steps",
+      { taskId },
+      TaskStepListResponseSchema,
+      (steps) => steps.map(transformTaskStep)
+    ),
+
+  /**
+   * Create a new task step
+   * @param taskId The task ID
+   * @param data Step creation data (title, description, sortOrder)
+   * @returns The created task step
+   */
+  create: (
+    taskId: string,
+    data: { title: string; description?: string; sortOrder?: number }
+  ): Promise<TaskStep> =>
+    typedInvokeWithTransform(
+      "create_task_step",
+      { taskId, ...data },
+      TaskStepResponseSchema,
+      transformTaskStep
+    ),
+
+  /**
+   * Update an existing task step
+   * @param stepId The step ID
+   * @param data Partial step data to update (title, description, sortOrder)
+   * @returns The updated task step
+   */
+  update: (
+    stepId: string,
+    data: { title?: string; description?: string; sortOrder?: number }
+  ): Promise<TaskStep> =>
+    typedInvokeWithTransform(
+      "update_task_step",
+      { stepId, ...data },
+      TaskStepResponseSchema,
+      transformTaskStep
+    ),
+
+  /**
+   * Delete a task step
+   * @param stepId The step ID
+   * @returns void on success
+   */
+  delete: (stepId: string) =>
+    typedInvoke("delete_task_step", { stepId }, z.void()),
+
+  /**
+   * Reorder task steps
+   * @param taskId The task ID
+   * @param stepIds Array of step IDs in desired order
+   * @returns Array of reordered task steps
+   */
+  reorder: (taskId: string, stepIds: string[]): Promise<TaskStep[]> =>
+    typedInvokeWithTransform(
+      "reorder_task_steps",
+      { taskId, stepIds },
+      TaskStepListResponseSchema,
+      (steps) => steps.map(transformTaskStep)
+    ),
+
+  /**
+   * Get step progress summary for a task
+   * @param taskId The task ID
+   * @returns Step progress summary with counts and percentages
+   */
+  getProgress: (taskId: string): Promise<StepProgressSummary> =>
+    typedInvokeWithTransform(
+      "get_step_progress",
+      { taskId },
+      StepProgressSummaryResponseSchema,
+      transformStepProgressSummary
+    ),
+
+  /**
+   * Start a task step (marks as in_progress)
+   * @param stepId The step ID
+   * @returns The updated task step
+   */
+  start: (stepId: string): Promise<TaskStep> =>
+    typedInvokeWithTransform(
+      "start_step",
+      { stepId },
+      TaskStepResponseSchema,
+      transformTaskStep
+    ),
+
+  /**
+   * Complete a task step (marks as completed)
+   * @param stepId The step ID
+   * @param note Optional completion note
+   * @returns The updated task step
+   */
+  complete: (stepId: string, note?: string): Promise<TaskStep> =>
+    typedInvokeWithTransform(
+      "complete_step",
+      { stepId, note },
+      TaskStepResponseSchema,
+      transformTaskStep
+    ),
+
+  /**
+   * Skip a task step (marks as skipped)
+   * @param stepId The step ID
+   * @param reason Reason for skipping
+   * @returns The updated task step
+   */
+  skip: (stepId: string, reason: string): Promise<TaskStep> =>
+    typedInvokeWithTransform(
+      "skip_step",
+      { stepId, reason },
+      TaskStepResponseSchema,
+      transformTaskStep
+    ),
+
+  /**
+   * Fail a task step (marks as failed)
+   * @param stepId The step ID
+   * @param error Error message
+   * @returns The updated task step
+   */
+  fail: (stepId: string, error: string): Promise<TaskStep> =>
+    typedInvokeWithTransform(
+      "fail_step",
+      { stepId, error },
+      TaskStepResponseSchema,
+      transformTaskStep
+    ),
+} as const;

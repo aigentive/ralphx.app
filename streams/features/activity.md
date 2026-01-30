@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-30 13:45:00 - Phase 33 Task 6: Create tasks API module
+**What:**
+- Created src/api/tasks.schemas.ts with InjectTaskResponseSchemaRaw
+- Created src/api/tasks.transforms.ts with transformInjectTaskResponse and InjectTaskResponse interface
+- Created src/api/tasks.ts with tasksApi and stepsApi objects (~310 lines)
+- Extracted all task CRUD operations: list, search, get, create, update, delete, archive, restore
+- Extracted getValidTransitions, move, and inject methods
+- Extracted all step operations: getByTask, create, update, delete, reorder, getProgress
+- Extracted step state operations: start, complete, skip, fail
+- Exported InjectTaskInput and InjectTaskResponse types
+- Follows established domain API pattern with snake_case schemas
+
+**Files:**
+- src/api/tasks.schemas.ts (new, 15 lines)
+- src/api/tasks.transforms.ts (new, 27 lines)
+- src/api/tasks.ts (new, 310 lines)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 13:15:00 - Phase 33 Task 5: Create reviews API module
 **What:**
 - Created src/api/reviews-api.schemas.ts with all review response schemas
