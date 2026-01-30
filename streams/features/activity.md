@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-30 12:45:00 - Phase 30 Task 2: Add event emission to set_proposal_selection
+**What:**
+- Added event emission to `set_proposal_selection` command in ideation_commands_proposals.rs
+- After updating selection, fetch the updated proposal from repo
+- Emit `proposal:updated` event with proposal data (same pattern as toggle_proposal_selection)
+- This fixes bulk select/deselect operations that weren't reflecting in UI
+- Also marked Task 1 as complete (was already implemented in commit 29283e0)
+
+**Files:**
+- src-tauri/src/commands/ideation_commands/ideation_commands_proposals.rs (lines 267-295)
+- specs/phases/prd_phase_30_ideation_artifacts_fix.md (tasks 1-2 marked passes: true)
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo build --lib` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-01-29 21:50:00 - Phase 29 Complete: Gap Verification Passed
 **What:**
 - Ran comprehensive gap verification on Phase 29 (Unified Chat Resumption)
