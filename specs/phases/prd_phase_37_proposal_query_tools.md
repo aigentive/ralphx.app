@@ -150,7 +150,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo build to verify compilation",
       "Commit: feat(http_server): register proposal query routes"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,

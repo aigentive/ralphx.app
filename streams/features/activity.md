@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-30 16:50:52 - Phase 37 Task 4: Register proposal query routes in HTTP server
+**What:**
+- Added route `/api/list_session_proposals/:session_id` with GET handler
+- Added route `/api/proposal/:proposal_id` with GET handler
+- Routes registered in Proposal query tools section after existing ideation tools
+
+**Files:**
+- src-tauri/src/http_server/mod.rs (modified)
+
+**Commands:**
+- `cargo build --lib` (compiles successfully)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 16:48:03 - Phase 37 Task 3: Add HTTP handlers for list_session_proposals and get_proposal
 **What:**
 - Added list_session_proposals handler: fetches proposals by session, builds dependency map, returns ProposalSummary list
