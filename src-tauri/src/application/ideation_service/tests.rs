@@ -891,16 +891,16 @@ use std::sync::{Arc, Mutex};
             .await
             .unwrap();
 
-        // Initially selected (default)
-        assert!(proposal.selected);
+        // Initially not selected (default is false)
+        assert!(!proposal.selected);
 
-        // Toggle off
-        let new_state = service.toggle_proposal_selection(&proposal.id).await.unwrap();
-        assert!(!new_state);
-
-        // Toggle back on
+        // Toggle on
         let new_state = service.toggle_proposal_selection(&proposal.id).await.unwrap();
         assert!(new_state);
+
+        // Toggle back off
+        let new_state = service.toggle_proposal_selection(&proposal.id).await.unwrap();
+        assert!(!new_state);
     }
 
     #[tokio::test]
@@ -914,13 +914,13 @@ use std::sync::{Arc, Mutex};
             .create_proposal(session_id.clone(), create_proposal_options())
             .await
             .unwrap();
-        let proposal2 = service
+        let _proposal2 = service
             .create_proposal(session_id.clone(), create_proposal_options())
             .await
             .unwrap();
 
-        // Deselect proposal2
-        service.set_proposal_selection(&proposal2.id, false).await.unwrap();
+        // Select proposal1 only (proposals start unselected by default)
+        service.set_proposal_selection(&proposal1.id, true).await.unwrap();
 
         let selected = service.get_selected_proposals(&session_id).await.unwrap();
         assert_eq!(selected.len(), 1);
@@ -961,14 +961,18 @@ use std::sync::{Arc, Mutex};
         let session_id = session.id.clone();
         let service = create_service_with_session(session);
 
-        service
+        let p1 = service
             .create_proposal(session_id.clone(), create_proposal_options())
             .await
             .unwrap();
-        service
+        let p2 = service
             .create_proposal(session_id.clone(), create_proposal_options())
             .await
             .unwrap();
+
+        // First select both (default is unselected)
+        service.set_proposal_selection(&p1.id, true).await.unwrap();
+        service.set_proposal_selection(&p2.id, true).await.unwrap();
 
         let count = service.deselect_all_proposals(&session_id).await.unwrap();
         assert_eq!(count, 2);
@@ -1123,16 +1127,16 @@ use std::sync::{Arc, Mutex};
         let session_id = session.id.clone();
         let service = create_service_with_session(session);
 
-        // Add 2 proposals, deselect 1
-        let proposal1 = service
-            .create_proposal(session_id.clone(), create_proposal_options())
-            .await
-            .unwrap();
+        // Add 2 proposals, select 1 (default is unselected)
         service
             .create_proposal(session_id.clone(), create_proposal_options())
             .await
             .unwrap();
-        service.set_proposal_selection(&proposal1.id, false).await.unwrap();
+        let proposal2 = service
+            .create_proposal(session_id.clone(), create_proposal_options())
+            .await
+            .unwrap();
+        service.set_proposal_selection(&proposal2.id, true).await.unwrap();
 
         // Add 3 messages
         service

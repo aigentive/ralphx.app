@@ -28,6 +28,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { PlanDisplay } from "./PlanDisplay";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useProposalStore } from "@/stores/proposalStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { cn } from "@/lib/utils";
 import { ConversationEmptyState } from "./EmptyStates";
@@ -302,6 +303,14 @@ export function IdeationView({
       setIsPlanExpanded(true);
     }
   }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded]);
+
+  // Auto-collapse plan when new proposal arrives
+  const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
+  useEffect(() => {
+    if (lastProposalAddedAt !== null && isPlanExpanded) {
+      setIsPlanExpanded(false);
+    }
+  }, [lastProposalAddedAt, isPlanExpanded, setIsPlanExpanded]);
 
   // Auto-scroll to bottom when new proposals arrive
   const proposalCount = proposals.length;

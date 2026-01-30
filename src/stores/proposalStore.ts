@@ -21,6 +21,8 @@ interface ProposalState {
   isLoading: boolean;
   /** Error message, or null if no error */
   error: string | null;
+  /** Timestamp when last proposal was added (for triggering UI effects) */
+  lastProposalAddedAt: number | null;
 }
 
 // ============================================================================
@@ -62,6 +64,7 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
     proposals: {},
     isLoading: false,
     error: null,
+    lastProposalAddedAt: null,
 
     // Actions
     setProposals: (proposals) =>
@@ -72,6 +75,7 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
     addProposal: (proposal) =>
       set((state) => {
         state.proposals[proposal.id] = proposal;
+        state.lastProposalAddedAt = Date.now();
       }),
 
     updateProposal: (proposalId, changes) =>

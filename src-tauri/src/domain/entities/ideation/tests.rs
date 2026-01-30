@@ -735,7 +735,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
         assert_eq!(proposal.priority_score, 50);
         assert_eq!(proposal.estimated_complexity, Complexity::Moderate);
         assert_eq!(proposal.status, ProposalStatus::Pending);
-        assert!(proposal.selected);
+        assert!(!proposal.selected);
         assert!(!proposal.user_modified);
         assert!(proposal.description.is_none());
         assert!(proposal.created_task_id.is_none());
@@ -858,13 +858,13 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
             TaskCategory::Feature,
             Priority::Medium,
         );
-        assert!(proposal.selected);
-
-        proposal.toggle_selection();
         assert!(!proposal.selected);
 
         proposal.toggle_selection();
         assert!(proposal.selected);
+
+        proposal.toggle_selection();
+        assert!(!proposal.selected);
     }
 
     #[test]

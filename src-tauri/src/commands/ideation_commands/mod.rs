@@ -402,13 +402,13 @@ mod tests {
         );
         let created = state.task_proposal_repo.create(proposal).await.expect("Failed to create task proposal in test");
 
-        // Initial state should be selected (true)
-        assert!(created.selected);
+        // Initial state should be selected (false)
+        assert!(!created.selected);
 
-        // Toggle to false
+        // Toggle to true
         state
             .task_proposal_repo
-            .update_selection(&created.id, false)
+            .update_selection(&created.id, true)
             .await
             .expect("Failed to update selection in test");
 
@@ -418,7 +418,7 @@ mod tests {
             .await
             .expect("Failed to get by id in test")
             .expect("Expected to find entity");
-        assert!(!retrieved.selected);
+        assert!(retrieved.selected);
     }
 
     #[tokio::test]
