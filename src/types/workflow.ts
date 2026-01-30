@@ -3,10 +3,13 @@
  *
  * WorkflowSchema defines how external columns map to internal statuses,
  * enabling custom kanban workflows while preserving state machine behavior.
+ *
+ * Note: Backend outputs snake_case (Rust default). Response schemas validate
+ * the raw data, then transform functions convert to camelCase for frontend.
  */
 
 import { z } from "zod";
-import { InternalStatusSchema } from "./status";
+import { InternalStatusSchema, type InternalStatus } from "./status";
 
 // ============================================
 // External Sync Configuration Types (future)
@@ -187,6 +190,116 @@ export const WorkflowSchemaZ = z.object({
 });
 
 export type WorkflowSchema = z.infer<typeof WorkflowSchemaZ>;
+
+// ============================================
+// Response Schemas (snake_case from Rust backend)
+// ============================================
+
+/**
+ * State group response schema (snake_case from Rust)
+ */
+export const StateGroupResponseSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  statuses: z.array(z.string()),
+  icon: z.string().optional(),
+  accent_color: z.string().optional(),
+  can_drag_from: z.boolean().optional(),
+  can_drop_to: z.boolean().optional(),
+});
+
+/**
+ * Workflow column response schema (snake_case from Rust)
+ */
+export const WorkflowColumnResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  maps_to: z.string(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
+  skip_review: z.boolean().optional(),
+  auto_advance: z.boolean().optional(),
+  agent_profile: z.string().optional(),
+  groups: z.array(StateGroupResponseSchema).optional(),
+});
+
+/**
+ * Workflow response schema (snake_case from Rust)
+ */
+export const WorkflowResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  columns: z.array(WorkflowColumnResponseSchema),
+  is_default: z.boolean(),
+  worker_profile: z.string().optional(),
+  reviewer_profile: z.string().optional(),
+});
+
+// ============================================
+// Transform Functions
+// ============================================
+
+/**
+ * Transform state group from snake_case response to camelCase frontend type
+ */
+export function transformStateGroup(
+  raw: z.infer<typeof StateGroupResponseSchema>
+): StateGroup {
+  return {
+    id: raw.id,
+    label: raw.label,
+    statuses: raw.statuses as InternalStatus[],
+    icon: raw.icon,
+    accentColor: raw.accent_color,
+    canDragFrom: raw.can_drag_from,
+    canDropTo: raw.can_drop_to,
+  };
+}
+
+/**
+ * Transform workflow column from snake_case response to camelCase frontend type
+ */
+export function transformWorkflowColumn(
+  raw: z.infer<typeof WorkflowColumnResponseSchema>
+): WorkflowColumn {
+  return {
+    id: raw.id,
+    name: raw.name,
+    mapsTo: raw.maps_to as InternalStatus,
+    color: raw.color,
+    icon: raw.icon,
+    behavior: (raw.skip_review !== undefined || raw.auto_advance !== undefined || raw.agent_profile !== undefined)
+      ? {
+          skipReview: raw.skip_review,
+          autoAdvance: raw.auto_advance,
+          agentProfile: raw.agent_profile,
+        }
+      : undefined,
+    groups: raw.groups?.map(transformStateGroup),
+  };
+}
+
+/**
+ * Transform workflow from snake_case response to camelCase frontend type
+ */
+export function transformWorkflow(
+  raw: z.infer<typeof WorkflowResponseSchema>
+): WorkflowSchema {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description,
+    columns: raw.columns.map(transformWorkflowColumn),
+    isDefault: raw.is_default,
+    defaults: (raw.worker_profile !== undefined || raw.reviewer_profile !== undefined)
+      ? {
+          workerProfile: raw.worker_profile,
+          reviewerProfile: raw.reviewer_profile,
+        }
+      : undefined,
+  };
+}
 
 /**
  * Default RalphX workflow with 5 columns

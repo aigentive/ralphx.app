@@ -109,29 +109,29 @@ export interface QueuedMessageResponse {
 }
 
 // ============================================================================
-// Response Schemas (camelCase via serde)
+// Response Schemas (snake_case from Rust backend)
 // ============================================================================
 
-// Response schemas for backend (camelCase via serde)
+// Response schemas for backend (snake_case - Rust default serialization)
 const ChatConversationResponseSchema = z.object({
   id: z.string(),
-  contextType: z.string(),
-  contextId: z.string(),
-  claudeSessionId: z.string().nullable(),
+  context_type: z.string(),
+  context_id: z.string(),
+  claude_session_id: z.string().nullable(),
   title: z.string().nullable(),
-  messageCount: z.number(),
-  lastMessageAt: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  message_count: z.number(),
+  last_message_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
 });
 
 const AgentRunResponseSchema = z.object({
   id: z.string(),
-  conversationId: z.string(),
+  conversation_id: z.string(),
   status: z.string(),
-  startedAt: z.string(),
-  completedAt: z.string().nullable(),
-  errorMessage: z.string().nullable(),
+  started_at: z.string(),
+  completed_at: z.string().nullable(),
+  error_message: z.string().nullable(),
 });
 
 type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
@@ -140,36 +140,36 @@ type RawAgentRun = z.infer<typeof AgentRunResponseSchema>;
 function transformConversation(raw: RawConversation): ChatConversation {
   return {
     id: raw.id,
-    contextType: raw.contextType as ContextType,
-    contextId: raw.contextId,
-    claudeSessionId: raw.claudeSessionId,
+    contextType: raw.context_type as ContextType,
+    contextId: raw.context_id,
+    claudeSessionId: raw.claude_session_id,
     title: raw.title,
-    messageCount: raw.messageCount,
-    lastMessageAt: raw.lastMessageAt,
-    createdAt: raw.createdAt,
-    updatedAt: raw.updatedAt,
+    messageCount: raw.message_count,
+    lastMessageAt: raw.last_message_at,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
   };
 }
 
 function transformAgentRun(raw: RawAgentRun): AgentRun {
   return {
     id: raw.id,
-    conversationId: raw.conversationId,
+    conversationId: raw.conversation_id,
     status: raw.status as AgentRun["status"],
-    startedAt: raw.startedAt,
-    completedAt: raw.completedAt,
-    errorMessage: raw.errorMessage,
+    startedAt: raw.started_at,
+    completedAt: raw.completed_at,
+    errorMessage: raw.error_message,
   };
 }
 
-// Schema for AgentMessageResponse from unified_chat_commands (camelCase)
+// Schema for AgentMessageResponse from unified_chat_commands (snake_case)
 const AgentMessageSchema = z.object({
   id: z.string(),
   role: z.string(),
   content: z.string(),
-  toolCalls: z.any().nullable(),
-  contentBlocks: z.any().nullable(),
-  createdAt: z.string(),
+  tool_calls: z.any().nullable(),
+  content_blocks: z.any().nullable(),
+  created_at: z.string(),
 });
 
 type RawAgentMessage = z.infer<typeof AgentMessageSchema>;
@@ -186,9 +186,9 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     parentMessageId: null,
     conversationId: null,
     // Parse at API layer to avoid redundant parsing in components
-    toolCalls: parseToolCalls(raw.toolCalls),
-    contentBlocks: parseContentBlocks(raw.contentBlocks),
-    createdAt: raw.createdAt,
+    toolCalls: parseToolCalls(raw.tool_calls),
+    contentBlocks: parseContentBlocks(raw.content_blocks),
+    createdAt: raw.created_at,
   };
 }
 
@@ -279,8 +279,8 @@ export async function getAgentRunStatus(
 const QueuedMessageResponseSchema = z.object({
   id: z.string(),
   content: z.string(),
-  createdAt: z.string(),
-  isEditing: z.boolean(),
+  created_at: z.string(),
+  is_editing: z.boolean(),
 });
 
 type RawQueuedMessage = z.infer<typeof QueuedMessageResponseSchema>;
@@ -289,8 +289,8 @@ function transformQueuedMessage(raw: RawQueuedMessage): QueuedMessageResponse {
   return {
     id: raw.id,
     content: raw.content,
-    createdAt: raw.createdAt,
-    isEditing: raw.isEditing,
+    createdAt: raw.created_at,
+    isEditing: raw.is_editing,
   };
 }
 
@@ -332,10 +332,20 @@ export interface SendAgentMessageResult {
 }
 
 const SendAgentMessageResponseSchema = z.object({
-  conversationId: z.string(),
-  agentRunId: z.string(),
-  isNewConversation: z.boolean(),
+  conversation_id: z.string(),
+  agent_run_id: z.string(),
+  is_new_conversation: z.boolean(),
 });
+
+type RawSendAgentMessageResponse = z.infer<typeof SendAgentMessageResponseSchema>;
+
+function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): SendAgentMessageResult {
+  return {
+    conversationId: raw.conversation_id,
+    agentRunId: raw.agent_run_id,
+    isNewConversation: raw.is_new_conversation,
+  };
+}
 
 /**
  * Send a message using the unified agent API
@@ -351,7 +361,7 @@ export async function sendAgentMessage(
   contextId: string,
   content: string
 ): Promise<SendAgentMessageResult> {
-  return typedInvoke(
+  const raw = await typedInvoke(
     "send_agent_message",
     {
       input: {
@@ -362,6 +372,7 @@ export async function sendAgentMessage(
     },
     SendAgentMessageResponseSchema
   );
+  return transformSendAgentMessageResponse(raw);
 }
 
 /**
