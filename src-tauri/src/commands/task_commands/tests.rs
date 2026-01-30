@@ -236,10 +236,10 @@ use super::*;
 
         let json = serde_json::to_string(&response).unwrap();
 
-        // Verify camelCase serialization
-        assert!(json.contains("\"taskId\":\"task-789\""));
-        assert!(json.contains("\"resumedStatus\":\"ready\""));
-        assert!(json.contains("\"answerRecorded\":true"));
+        // Verify snake_case serialization (backend convention)
+        assert!(json.contains("\"task_id\":\"task-789\""));
+        assert!(json.contains("\"resumed_status\":\"ready\""));
+        assert!(json.contains("\"answer_recorded\":true"));
     }
 
     // ========================================
@@ -297,10 +297,10 @@ use super::*;
 
         let json = serde_json::to_string(&response).unwrap();
 
-        // Verify camelCase serialization
+        // Verify snake_case serialization (backend convention)
         assert!(json.contains("\"target\":\"planned\""));
         assert!(json.contains("\"priority\":1000"));
-        assert!(json.contains("\"makeNextApplied\":true"));
+        assert!(json.contains("\"make_next_applied\":true"));
     }
 
     #[tokio::test]
@@ -576,9 +576,9 @@ use super::*;
         // Verify archived_at is in response
         assert!(response.archived_at.is_some());
 
-        // Verify it serializes correctly
+        // Verify it serializes correctly (snake_case backend convention)
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"archivedAt\":"));
+        assert!(json.contains("\"archived_at\":"));
     }
 
     #[tokio::test]
@@ -591,9 +591,9 @@ use super::*;
         // Verify archived_at is null
         assert!(response.archived_at.is_none());
 
-        // Verify it serializes correctly
+        // Verify it serializes correctly (snake_case backend convention)
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"archivedAt\":null"));
+        assert!(json.contains("\"archived_at\":null"));
     }
 
     // ========================================
@@ -826,10 +826,10 @@ use super::*;
 
         let json = serde_json::to_string(&response).unwrap();
 
-        // Verify camelCase serialization
+        // Verify snake_case serialization (backend convention)
         assert!(json.contains("\"tasks\":"));
         assert!(json.contains("\"total\":10"));
-        assert!(json.contains("\"hasMore\":true"));
+        assert!(json.contains("\"has_more\":true"));
         assert!(json.contains("\"offset\":0"));
     }
 

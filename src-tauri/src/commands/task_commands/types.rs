@@ -38,7 +38,6 @@ pub struct AnswerUserQuestionInput {
 
 /// Response for the answer_user_question command
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AnswerUserQuestionResponse {
     pub task_id: String,
     pub resumed_status: String,
@@ -69,7 +68,6 @@ pub struct InjectTaskInput {
 
 /// Response for the inject_task command
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct InjectTaskResponse {
     pub task: TaskResponse,
     pub target: String,
@@ -79,7 +77,6 @@ pub struct InjectTaskResponse {
 
 /// Response wrapper for task operations
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TaskResponse {
     pub id: String,
     pub project_id: String,
@@ -118,7 +115,6 @@ impl From<Task> for TaskResponse {
 
 /// Response for paginated task list
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TaskListResponse {
     pub tasks: Vec<TaskResponse>,
     pub total: u32,
@@ -128,7 +124,6 @@ pub struct TaskListResponse {
 
 /// Response for status transition options
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct StatusTransition {
     /// The internal status string (e.g., "ready", "cancelled")
     pub status: String,

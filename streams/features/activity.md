@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-30 21:45:00 - Phase 32 Task 2: Remove camelCase serialization from task_commands types
+**What:**
+- Removed `#[serde(rename_all = "camelCase")]` from 5 response structs:
+  - AnswerUserQuestionResponse
+  - InjectTaskResponse
+  - TaskResponse
+  - TaskListResponse
+  - StatusTransition
+- Updated corresponding serialization tests to expect snake_case
+- Input structs (Deserialize) retain camelCase for Tauri param convenience
+
+**Files:**
+- src-tauri/src/commands/task_commands/types.rs
+- src-tauri/src/commands/task_commands/tests.rs
+
+**Commands:**
+- `cargo clippy -- -D warnings` - passes
+- `cargo test task_commands::tests` - 51 passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 03:55:00 - Phase 32 Task 1: Remove camelCase serialization from TaskProposalResponse
 **What:**
 - Removed `#[serde(rename_all = "camelCase")]` from TaskProposalResponse struct
