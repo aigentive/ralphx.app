@@ -4,6 +4,38 @@
 
 ---
 
+### 2026-01-31 13:41:00 - Phase 40 Task 1: Add useDependencyTiers hook for topological grouping
+**What:**
+- Added `computeDependencyTiers()` function to compute topological tiers from dependency graph
+- Added `useDependencyTiers()` hook with memoization for React components
+- Added `TierAssignment` interface with tierMap, maxTier, and tierGroups
+- Tier 0 = Foundation (no dependencies, inDegree === 0)
+- Tier N = max(tier of dependencies) + 1
+- Handles cycles gracefully by assigning to highest possible tier based on non-cyclic deps
+
+**Tests Added:**
+- Empty/null/undefined graph handling
+- Single node tier 0 assignment
+- Linear chain tier computation
+- Multiple independent proposals at tier 0
+- Diamond dependency pattern
+- Cycle handling (pure cycles and partial cycles)
+- Tier group creation
+- useDependencyTiers hook with memoization
+
+**Files:**
+- src/hooks/useDependencyGraph.ts (added hook and computation function)
+- src/hooks/useDependencyGraph.test.ts (added 14 new tests)
+
+**Commands:**
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+- `npm run test src/hooks/useDependencyGraph.test.ts` (26 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 12:45:00 - Phase 39 Complete, Phase 40 Activated
 **What:**
 - Ran gap verification on Phase 39 (Dependency Reason Field)
