@@ -97,7 +97,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ideation): wire up priority assessment commands"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

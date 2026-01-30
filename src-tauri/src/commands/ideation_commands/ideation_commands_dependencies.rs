@@ -1,7 +1,7 @@
 // Dependency analysis commands and graph building utilities
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
@@ -22,19 +22,32 @@ pub async fn add_proposal_dependency(
     depends_on_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let proposal_id = TaskProposalId::from_string(proposal_id);
-    let depends_on_id = TaskProposalId::from_string(depends_on_id);
+    let from_id = TaskProposalId::from_string(proposal_id.clone());
+    let to_id = TaskProposalId::from_string(depends_on_id.clone());
 
     // Prevent self-dependency
-    if proposal_id == depends_on_id {
+    if from_id == to_id {
         return Err("A proposal cannot depend on itself".to_string());
     }
 
     state
         .proposal_dependency_repo
-        .add_dependency(&proposal_id, &depends_on_id)
+        .add_dependency(&from_id, &to_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let _ = app_handle.emit(
+            "dependency:added",
+            serde_json::json!({
+                "proposalId": proposal_id,
+                "dependsOnId": depends_on_id
+            }),
+        );
+    }
+
+    Ok(())
 }
 
 /// Remove a dependency between proposals
@@ -44,14 +57,27 @@ pub async fn remove_proposal_dependency(
     depends_on_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let proposal_id = TaskProposalId::from_string(proposal_id);
-    let depends_on_id = TaskProposalId::from_string(depends_on_id);
+    let from_id = TaskProposalId::from_string(proposal_id.clone());
+    let to_id = TaskProposalId::from_string(depends_on_id.clone());
 
     state
         .proposal_dependency_repo
-        .remove_dependency(&proposal_id, &depends_on_id)
+        .remove_dependency(&from_id, &to_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Emit event to frontend
+    if let Some(app_handle) = &state.app_handle {
+        let _ = app_handle.emit(
+            "dependency:removed",
+            serde_json::json!({
+                "proposalId": proposal_id,
+                "dependsOnId": depends_on_id
+            }),
+        );
+    }
+
+    Ok(())
 }
 
 /// Get dependencies for a proposal
