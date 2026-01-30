@@ -259,7 +259,7 @@
       "phase": 35,
       "name": "Welcome Screen & Project Creation Redesign",
       "prd": "specs/phases/prd_phase_35_welcome_screen.md",
-      "status": "active",
+      "status": "complete",
       "description": "Impressive animated welcome screen with Terminal Symphony design, keyboard shortcuts, modal UX fixes"
     }
   ]
