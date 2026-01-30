@@ -4,8 +4,10 @@
 
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useQueryClient } from "@tanstack/react-query";
 import { ProposalEventSchema } from "@/types/events";
 import { useProposalStore } from "@/stores/proposalStore";
+import { ideationKeys } from "./useIdeation";
 import type { TaskProposal } from "@/types/ideation";
 
 /**
@@ -27,6 +29,7 @@ export function useProposalEvents() {
   const addProposal = useProposalStore((s) => s.addProposal);
   const updateProposal = useProposalStore((s) => s.updateProposal);
   const removeProposal = useProposalStore((s) => s.removeProposal);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Listen for created events
@@ -64,6 +67,10 @@ export function useProposalEvents() {
           updatedAt: parsed.data.proposal.updatedAt,
         };
         addProposal(proposal);
+        // Invalidate session query to ensure data consistency
+        queryClient.invalidateQueries({
+          queryKey: ideationKeys.sessionWithData(proposal.sessionId),
+        });
       }
     });
 
@@ -103,6 +110,10 @@ export function useProposalEvents() {
         };
         // Use updateProposal to merge changes (or replace the whole proposal)
         updateProposal(proposal.id, proposal);
+        // Invalidate session query to ensure data consistency
+        queryClient.invalidateQueries({
+          queryKey: ideationKeys.sessionWithData(proposal.sessionId),
+        });
       }
     });
 
@@ -125,5 +136,5 @@ export function useProposalEvents() {
       unlistenUpdated.then((fn) => fn());
       unlistenDeleted.then((fn) => fn());
     };
-  }, [addProposal, updateProposal, removeProposal]);
+  }, [addProposal, updateProposal, removeProposal, queryClient]);
 }

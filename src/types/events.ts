@@ -248,3 +248,36 @@ export const ProposalEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export type ProposalEvent = z.infer<typeof ProposalEventSchema>;
+
+// ============================================================================
+// Plan Artifact Events
+// ============================================================================
+
+/**
+ * Schema for plan artifact events
+ * Emitted when plan artifacts are created or updated in ideation sessions
+ */
+export const PlanArtifactEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("created"),
+    sessionId: z.string(),
+    artifact: z.object({
+      id: z.string(),
+      name: z.string(),
+      content: z.string(),
+      version: z.number(),
+    }),
+  }),
+  z.object({
+    type: z.literal("updated"),
+    artifactId: z.string(),
+    artifact: z.object({
+      id: z.string(),
+      name: z.string(),
+      content: z.string(),
+      version: z.number(),
+    }),
+  }),
+]);
+
+export type PlanArtifactEvent = z.infer<typeof PlanArtifactEventSchema>;
