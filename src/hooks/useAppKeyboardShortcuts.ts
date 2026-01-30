@@ -13,6 +13,10 @@ interface UseAppKeyboardShortcutsProps {
   toggleChatCollapsed: () => void;
   openProjectWizard?: () => void;
   hasProjects?: boolean;
+  showWelcomeOverlay?: boolean;
+  openWelcomeOverlay?: () => void;
+  closeWelcomeOverlay?: () => void;
+  welcomeOverlayReturnView?: ViewType | null;
 }
 
 export function useAppKeyboardShortcuts({
@@ -22,10 +26,24 @@ export function useAppKeyboardShortcuts({
   toggleChatCollapsed,
   openProjectWizard,
   hasProjects,
+  showWelcomeOverlay,
+  openWelcomeOverlay,
+  closeWelcomeOverlay,
+  welcomeOverlayReturnView,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to close welcome overlay (no modifier required)
+      if (e.key === "Escape" && showWelcomeOverlay && closeWelcomeOverlay) {
+        e.preventDefault();
+        if (welcomeOverlayReturnView) {
+          setCurrentView(welcomeOverlayReturnView);
+        }
+        closeWelcomeOverlay();
+        return;
+      }
+
       if (e.metaKey || e.ctrlKey) {
         switch (e.key) {
           case "1":
@@ -98,13 +116,39 @@ export function useAppKeyboardShortcuts({
             }
             break;
           }
+          case "w":
+          case "W": {
+            // Cmd+Shift+W: Toggle welcome screen overlay
+            if (!e.shiftKey || !openWelcomeOverlay || !hasProjects) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            if (showWelcomeOverlay && closeWelcomeOverlay) {
+              // Already showing - close it
+              if (welcomeOverlayReturnView) {
+                setCurrentView(welcomeOverlayReturnView);
+              }
+              closeWelcomeOverlay();
+            } else {
+              // Open welcome overlay
+              openWelcomeOverlay();
+            }
+            break;
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed, openProjectWizard, hasProjects]);
+  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);

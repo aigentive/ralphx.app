@@ -86,6 +86,10 @@ interface UiState {
   taskCreationContext: { projectId: string; defaultTitle?: string } | null;
   /** Whether the integrated chat panel is collapsed (hidden) */
   chatCollapsed: boolean;
+  /** Whether the welcome screen is manually shown (vs. empty state) */
+  showWelcomeOverlay: boolean;
+  /** View to return to when closing manually-opened welcome screen */
+  welcomeOverlayReturnView: ViewType | null;
 }
 
 // ============================================================================
@@ -149,6 +153,10 @@ interface UiActions {
   closeTaskCreation: () => void;
   /** Toggle chat panel collapsed state */
   toggleChatCollapsed: () => void;
+  /** Open welcome screen overlay, saving current view */
+  openWelcomeOverlay: () => void;
+  /** Close welcome screen overlay, restoring previous view */
+  closeWelcomeOverlay: () => void;
 }
 
 // ============================================================================
@@ -181,6 +189,8 @@ export const useUiStore = create<UiState & UiActions>()(
     selectedTaskId: null,
     taskCreationContext: null,
     chatCollapsed: false,
+    showWelcomeOverlay: false,
+    welcomeOverlayReturnView: null,
 
     // Actions
     toggleSidebar: () =>
@@ -326,6 +336,17 @@ export const useUiStore = create<UiState & UiActions>()(
     toggleChatCollapsed: () =>
       set((state) => {
         state.chatCollapsed = !state.chatCollapsed;
+      }),
+
+    openWelcomeOverlay: () =>
+      set((state) => {
+        state.welcomeOverlayReturnView = state.currentView;
+        state.showWelcomeOverlay = true;
+      }),
+
+    closeWelcomeOverlay: () =>
+      set((state) => {
+        state.showWelcomeOverlay = false;
       }),
   }))
 );
