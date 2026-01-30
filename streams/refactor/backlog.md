@@ -16,7 +16,7 @@ _Completed items moved to archive._
 
 ### Backend
 
-- [x] Split chat_service/mod.rs (1081 LOC → 611 LOC) - extracted background processing to chat_service_send_background.rs (524 LOC) - src-tauri/src/application/chat_service/mod.rs:1
+_Completed items moved to archive._
 
 ---
 
@@ -24,7 +24,6 @@ _Completed items moved to archive._
 
 ### Frontend
 
-- [x] Split App.tsx (855 LOC → 721 LOC) - extracted Navigation.tsx (88 LOC), useAppKeyboardShortcuts.ts (102 LOC) - src/App.tsx:1
 - [x] Split ChatPanel.tsx (776 LOC → 480 LOC) - extracted useChatPanelHandlers.ts (368 LOC) - src/components/Chat/ChatPanel.tsx:1
 - [x] Split DiffViewer.tsx (740 LOC → 284 LOC) - extracted sub-components to DiffViewer.components.tsx (502 LOC) - src/components/diff/DiffViewer.tsx:1
 - [x] Split TaskDetailModal.tsx (690 LOC → 487 LOC) - extracted TaskDetailModal.constants.ts (116 LOC), TaskDetailModal.components.tsx (108 LOC) - src/components/tasks/TaskDetailModal.tsx:1
@@ -45,7 +44,7 @@ _Completed items moved to archive._
 - [x] Split memory_task_repo.rs (1149 LOC → 402 LOC) - extracted to memory_task_repo/{mod.rs (402), tests.rs (747)} - src-tauri/src/infrastructure/memory/memory_task_repo/mod.rs:1
 - [x] Split research_service.rs (1109 LOC → 311 LOC) - extracted tests to research_service_tests.rs (800 LOC) - src-tauri/src/domain/services/research_service.rs:1
 - [x] Split sqlite_chat_message_repo.rs (1065 LOC → 243 LOC) - extracted tests to sqlite_chat_message_repo_tests.rs (835 LOC) - src-tauri/src/infrastructure/sqlite/sqlite_chat_message_repo.rs:1
-- [ ] Split sqlite_proposal_dependency_repo.rs (1062 LOC) - extract query logic and helpers - src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs:1
+- [x] Split sqlite_proposal_dependency_repo.rs (1078 LOC → 277 LOC) - extracted tests to sqlite_proposal_dependency_repo_tests.rs (813 LOC) - src-tauri/src/infrastructure/sqlite/sqlite_proposal_dependency_repo.rs:1
 
 ### Frontend
 
@@ -58,5 +57,5 @@ _Completed items moved to archive._
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
-**Active items:** 8 | **Completed:** 10 | **Archived:** 18
-**Last maintenance:** 2026-01-30 (archived 2 items)
+**Active items:** 6 | **Completed:** 10 | **Archived:** 20
+**Last maintenance:** 2026-01-30 (archived 2 items from 2026-01-29 refills)
