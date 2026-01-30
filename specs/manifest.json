@@ -266,7 +266,7 @@
       "phase": 36,
       "name": "Inline Version Selector for Plan History",
       "prd": "specs/phases/prd_phase_36_inline_version_selector.md",
-      "status": "active",
+      "status": "complete",
       "description": "Inline version selector dropdown in PlanDisplay, auto-expand plan when no proposals"
     }
   ]
