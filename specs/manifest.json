@@ -224,7 +224,7 @@
       "phase": 30,
       "name": "Ideation Artifacts Fix",
       "prd": "specs/phases/prd_phase_30_ideation_artifacts_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix broken ideation artifact interactions: selection events, edit modal wiring"
     }
   ]
