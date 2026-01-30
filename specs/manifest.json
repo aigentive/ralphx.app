@@ -226,6 +226,13 @@
       "prd": "specs/phases/prd_phase_30_ideation_artifacts_fix.md",
       "status": "complete",
       "description": "Fix broken ideation artifact interactions: selection events, edit modal wiring"
+    },
+    {
+      "phase": 31,
+      "name": "Ideation Performance Optimization",
+      "prd": "specs/phases/prd_phase_31_ideation_performance.md",
+      "status": "pending",
+      "description": "Virtualization, memoization, memory leak fixes, and file extractions for ideation performance"
     }
   ]
 }
