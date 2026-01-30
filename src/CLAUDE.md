@@ -1,5 +1,7 @@
 # src/CLAUDE.md — Frontend
 
+Quality standards: @../.claude/rules/code-quality-standards.md
+
 ## Stack
 React 19.1 | TS 5.8 | Zustand 5.0+immer | TanStack Query 5.90 | Tailwind 4.1 | Zod 4.3
 dnd-kit 6.3 | Vite 7.0 | Vitest 4.0 | Testing Library 16.3 | Tauri API 2.x

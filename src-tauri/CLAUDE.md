@@ -1,5 +1,7 @@
 # src-tauri/CLAUDE.md — Backend
 
+Quality standards: @../.claude/rules/code-quality-standards.md
+
 ## Stack
 Rust 2021 | Tauri 2.0 | rusqlite 0.32 | statig 0.3 (async state machine)
 tokio 1.x | serde 1.x | chrono 0.4 | thiserror 1.x | async-trait 0.1 | tracing 0.1
