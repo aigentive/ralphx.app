@@ -245,7 +245,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ideation): add micro-interactions and ambient glow"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

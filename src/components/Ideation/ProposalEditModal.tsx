@@ -202,9 +202,9 @@ export function ProposalEditModal({
 
   const canSave = title.trim().length > 0 && !isSaving;
 
-  // Glass effect styling for inputs - per Task 6 design specs
-  const inputClasses = "bg-black/30 border border-white/[0.08] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all duration-200 focus:border-[#ff6b35]/50 focus:ring-2 focus:ring-[#ff6b35]/10 focus:outline-none";
-  const selectClasses = "w-full h-9 rounded-lg border px-3 py-2 text-sm bg-black/30 border-white/[0.08] text-[var(--text-primary)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/10 focus:border-[#ff6b35]/50";
+  // Glass effect styling for inputs - per Task 6 design specs + Task 8 micro-interactions
+  const inputClasses = "bg-black/30 border border-white/[0.08] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all duration-200 focus:border-[#ff6b35]/50 focus:ring-2 focus:ring-[#ff6b35]/10 focus:outline-none hover:scale-[1.01] focus:scale-[1.01]";
+  const selectClasses = "w-full h-9 rounded-lg border px-3 py-2 text-sm bg-black/30 border-white/[0.08] text-[var(--text-primary)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/10 focus:border-[#ff6b35]/50 hover:scale-[1.01] focus:scale-[1.01]";
 
   return (
     <Dialog open={!!proposal} onOpenChange={handleOpenChange}>
@@ -444,7 +444,7 @@ export function ProposalEditModal({
             data-testid="confirm-button"
             onClick={handleSave}
             disabled={!canSave}
-            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white active:scale-[0.98] transition-all"
+            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white active:scale-[0.98] transition-all hover:-translate-y-px hover:shadow-lg"
           >
             {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isSaving ? "Saving..." : "Save"}
@@ -483,6 +483,31 @@ export function ProposalEditModal({
         .animate-stagger-fade-in {
           opacity: 0;
           animation: stagger-fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Ambient warm glow at modal corners - Task 8 */
+        [data-testid="proposal-edit-modal"]::before {
+          content: '';
+          position: absolute;
+          top: -50px;
+          right: -50px;
+          width: 200px;
+          height: 200px;
+          background: radial-gradient(circle, rgba(255, 107, 53, 0.08) 0%, transparent 70%);
+          pointer-events: none;
+          z-index: -1;
+        }
+
+        [data-testid="proposal-edit-modal"]::after {
+          content: '';
+          position: absolute;
+          bottom: -50px;
+          left: -50px;
+          width: 200px;
+          height: 200px;
+          background: radial-gradient(circle, rgba(255, 107, 53, 0.05) 0%, transparent 70%);
+          pointer-events: none;
+          z-index: -1;
         }
       `}</style>
     </Dialog>
