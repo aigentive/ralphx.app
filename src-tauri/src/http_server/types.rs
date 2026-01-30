@@ -97,6 +97,39 @@ impl From<TaskProposal> for ProposalResponse {
     }
 }
 
+/// Lightweight proposal summary for list endpoint
+#[derive(Debug, Serialize)]
+pub struct ProposalSummary {
+    pub id: String,
+    pub title: String,
+    pub category: String,
+    pub priority: String,
+    pub depends_on: Vec<String>,
+    pub plan_artifact_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListProposalsResponse {
+    pub proposals: Vec<ProposalSummary>,
+    pub count: usize,
+}
+
+/// Full proposal details for get endpoint
+#[derive(Debug, Serialize)]
+pub struct ProposalDetailResponse {
+    pub id: String,
+    pub session_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub category: String,
+    pub priority: String,
+    pub steps: Vec<String>,
+    pub acceptance_criteria: Vec<String>,
+    pub depends_on: Vec<String>,
+    pub plan_artifact_id: Option<String>,
+    pub created_at: String,
+}
+
 // ============================================================================
 // Request/Response Types - Tasks
 // ============================================================================

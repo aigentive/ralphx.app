@@ -114,7 +114,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: feat(http_server): add proposal query response types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

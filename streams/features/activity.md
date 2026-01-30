@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-30 16:43:42 - Phase 37 Task 2: Add proposal query response types to HTTP server
+**What:**
+- Added ProposalSummary struct for lightweight list endpoint (id, title, category, priority, depends_on, plan_artifact_id)
+- Added ListProposalsResponse struct with proposals vec and count
+- Added ProposalDetailResponse struct with full proposal fields including steps and acceptance_criteria as Vec<String>
+
+**Files:**
+- src-tauri/src/http_server/types.rs (modified)
+
+**Commands:**
+- `cargo clippy --lib --bins -- -D warnings`
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 16:40:28 - Phase 37 Task 1: Add tool definitions for list_session_proposals and get_proposal
 **What:**
 - Added list_session_proposals tool definition to ALL_TOOLS in tools.ts (IDEATION TOOLS section)
