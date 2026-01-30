@@ -307,5 +307,5 @@ impl<R: ProcessRepository> ResearchService<R> {
 }
 
 #[cfg(test)]
+#[path = "research_service_tests.rs"]
 mod tests;
-pub use tests::MockProcessRepository;
