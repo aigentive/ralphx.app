@@ -349,6 +349,7 @@ export function IntegratedChatPanel({
     messagesData,
     isAgentRunning,
     streamingToolCallsLength: streamingToolCalls.length,
+    activeConversationId,
   });
 
   const {

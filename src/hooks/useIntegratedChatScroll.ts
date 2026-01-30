@@ -12,22 +12,27 @@ interface UseIntegratedChatScrollProps {
   messagesData: unknown[];
   isAgentRunning: boolean;
   streamingToolCallsLength: number;
+  activeConversationId?: string | null;
 }
 
 export function useIntegratedChatScroll({
   messagesData,
   isAgentRunning,
   streamingToolCallsLength,
+  activeConversationId,
 }: UseIntegratedChatScrollProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRAFRef = useRef<number | null>(null);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change or conversation switches
   useEffect(() => {
-    if (messagesEndRef.current && messagesData.length) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current && messagesData.length > 0) {
+      // Use setTimeout to ensure DOM has updated after conversation switch
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 0);
     }
-  }, [messagesData.length]);
+  }, [activeConversationId, messagesData.length, messagesData]);
 
   // Auto-scroll during streaming (tool calls and agent running)
   // Use requestAnimationFrame to debounce rapid updates
