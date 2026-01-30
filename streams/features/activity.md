@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-30 23:10:00 - Phase 32 Task 5: Remove camelCase serialization from ProjectResponse
+**What:**
+- Removed `#[serde(rename_all = "camelCase")]` from ProjectResponse struct
+- Updated serialization test to expect snake_case (working_directory, git_mode)
+- Input structs (CreateProjectInput, UpdateProjectInput) retain camelCase for Tauri param convenience
+
+**Files:**
+- src-tauri/src/commands/project_commands.rs
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo test project_commands::tests` - 7 passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 22:45:00 - Phase 32 Task 4: Remove camelCase serialization from execution_commands
 **What:**
 - Removed `#[serde(rename_all = "camelCase")]` from 2 response structs:
