@@ -16,8 +16,10 @@ import {
   Loader2,
   Upload,
   Sparkles,
+  Network,
 } from "lucide-react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import type {
   IdeationSession,
   TaskProposal,
@@ -40,6 +42,8 @@ import { useIdeationHandlers } from "./useIdeationHandlers";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
+import { ideationApi } from "@/api/ideation";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ============================================================================
 // Types
@@ -124,6 +128,56 @@ export function IdeationView({
 
     return { dependencyCounts: counts, criticalPathSet: criticalSet };
   }, [dependencyGraph]);
+
+  // Dependency analysis loading state
+  const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
+
+  // Listen for dependency analysis events
+  useEffect(() => {
+    const sessionId = session?.id;
+    if (!sessionId) return;
+
+    const unlistenFns: Promise<UnlistenFn>[] = [];
+
+    // Listen for analysis started
+    unlistenFns.push(
+      listen<{ session_id: string }>("dependencies:analysis_started", (event) => {
+        if (event.payload.session_id === sessionId) {
+          setIsAnalyzingDependencies(true);
+        }
+      })
+    );
+
+    // Listen for suggestions applied
+    unlistenFns.push(
+      listen<{ session_id: string; applied_count: number }>("dependencies:suggestions_applied", (event) => {
+        if (event.payload.session_id === sessionId) {
+          setIsAnalyzingDependencies(false);
+          const count = event.payload.applied_count;
+          if (count > 0) {
+            toast.success(`${count} ${count === 1 ? "dependency" : "dependencies"} added`);
+          } else {
+            toast.info("No new dependencies found");
+          }
+        }
+      })
+    );
+
+    return () => {
+      unlistenFns.forEach((unlisten) => unlisten.then((fn) => fn()));
+    };
+  }, [session?.id]);
+
+  // Manual re-trigger dependency analysis
+  const handleReanalyzeDependencies = useCallback(async () => {
+    if (!session || isAnalyzingDependencies || proposals.length < 2) return;
+    try {
+      await ideationApi.sessions.spawnDependencySuggester(session.id);
+    } catch (err) {
+      console.error("Failed to spawn dependency suggester:", err);
+      toast.error("Failed to analyze dependencies");
+    }
+  }, [session, isAnalyzingDependencies, proposals.length]);
 
   useEffect(() => {
     if (session?.planArtifactId) {
@@ -327,12 +381,38 @@ export function IdeationView({
                   <div className="flex items-center gap-2">
                     <ListTodo className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                     <h2 className="text-[13px] font-medium text-[var(--text-primary)]">Proposals</h2>
+                    {isAnalyzingDependencies && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#ff6b35]">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Analyzing...</span>
+                      </div>
+                    )}
                   </div>
-                  {proposals.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
-                      {proposals.length}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {proposals.length >= 2 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleReanalyzeDependencies}
+                            disabled={isAnalyzingDependencies}
+                            className="h-7 w-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] disabled:opacity-50"
+                          >
+                            <Network className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Re-analyze dependencies</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {proposals.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
+                        {proposals.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {proposals.length > 0 && (

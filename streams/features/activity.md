@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-30 21:30:00 - Phase 38 Task 5: Add loading states and manual re-trigger button for dependency analysis
+**What:**
+- Added `isAnalyzingDependencies` state to IdeationView component
+- Added event listeners for `dependencies:analysis_started` and `dependencies:suggestions_applied` events
+- Show loading spinner with "Analyzing..." text in proposals header during dependency analysis
+- Show toast notification on completion with dependency count
+- Added Network icon button for manual re-trigger of dependency analysis (shows when 2+ proposals)
+- Button disabled during analysis, shows tooltip "Re-analyze dependencies"
+
+**Files:**
+- src/components/Ideation/IdeationView.tsx (modified)
+- specs/phases/prd_phase_38_dependency_priority_integration.md (updated passes: true)
+
+**Commands:**
+- `npm run lint` (0 errors, 8 pre-existing warnings)
+- `npm run typecheck` (passes)
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 20:15:00 - Phase 38 Task 4: Add spawn command and auto-trigger logic for dependency suggester
 **What:**
 - Added spawn_dependency_suggester Tauri command to spawn the dependency-suggester agent
