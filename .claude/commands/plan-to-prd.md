@@ -144,11 +144,51 @@ rm -f "$PROJECT_ROOT/.commit-lock"
 
 ### Step 11: Report Results
 
-Report to the user:
-1. Files created/modified
-2. Phase status (active or pending)
-3. Commit hash
-4. Next steps (e.g., "Run `/activate-prd` when ready to start this phase")
+**Generate an enhanced summary table with project-wide task status.**
+
+#### 11.1: Gather Task Counts
+
+1. **Active phase tasks:** If there's an active phase in the manifest:
+   - Read its PRD file
+   - Parse the JSON task list
+   - Count tasks where `"passes": false`
+
+2. **Upcoming phases:** Count all phases with `"status": "pending"` (including the newly added one)
+
+3. **Total pending tasks:** For each pending phase:
+   - Read its PRD file
+   - Parse the JSON task list
+   - Sum all tasks (all are pending since phase hasn't started)
+   - Add to total
+
+#### 11.2: Display Summary Table
+
+Output a markdown table with all information:
+
+```markdown
+| Item | Value |
+|------|-------|
+| **Plan copied to** | `specs/plans/<name>.md` |
+| **PRD created at** | `specs/phases/prd_phase_<N>_<short_name>.md` |
+| **Phase number** | N |
+| **Status** | `pending` or `active` |
+| **Tasks in new phase** | X |
+| **Commit** | `<hash>` |
+
+### Project Task Summary
+
+| Category | Count |
+|----------|-------|
+| **Active phase (N)** | X tasks remaining |
+| **Upcoming phases** | Y phases pending |
+| **Total tasks to do** | Z tasks |
+```
+
+#### 11.3: Next Steps
+
+After the table, provide:
+- Next steps (e.g., "Run `/activate-prd` when ready to start this phase")
+- If there are many pending tasks, note the backlog size
 
 ### Task Conversion Guidelines
 
