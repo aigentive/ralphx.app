@@ -196,7 +196,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(chat): extract markdown components to module constant"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,
