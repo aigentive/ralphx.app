@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 37,
+  "currentPhase": 38,
   "phases": [
     {
       "phase": 0,
@@ -275,6 +275,13 @@
       "prd": "specs/phases/prd_phase_37_proposal_query_tools.md",
       "status": "complete",
       "description": "Add list_session_proposals and get_proposal MCP tools for orchestrator-ideation agent"
+    },
+    {
+      "phase": 38,
+      "name": "Dependency Graph & Priority Assessment Integration",
+      "prd": "specs/phases/prd_phase_38_dependency_priority_integration.md",
+      "status": "active",
+      "description": "Wire up priority assessment, AI dependency suggestions, dependency UI badges, chat agent tools"
     }
   ]
 }
