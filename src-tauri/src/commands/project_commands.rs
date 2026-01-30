@@ -34,7 +34,6 @@ pub struct UpdateProjectInput {
 
 /// Response wrapper for project operations
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ProjectResponse {
     pub id: String,
     pub name: String,
@@ -355,10 +354,10 @@ mod tests {
         assert_eq!(response.working_directory, "/test/path");
         assert_eq!(response.git_mode, "local");
 
-        // Verify it serializes to JSON with camelCase
+        // Verify it serializes to JSON with snake_case (Rust default)
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"name\":\"Test Project\""));
-        assert!(json.contains("\"workingDirectory\":\"/test/path\""));
-        assert!(json.contains("\"gitMode\":\"local\""));
+        assert!(json.contains("\"working_directory\":\"/test/path\""));
+        assert!(json.contains("\"git_mode\":\"local\""));
     }
 }
