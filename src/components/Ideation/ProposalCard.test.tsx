@@ -212,37 +212,119 @@ describe("ProposalCard", () => {
   });
 
   // ============================================================================
-  // Dependency Info Tests
+  // Inline Dependency Display Tests (Phase 40 - Task 4)
   // ============================================================================
 
-  describe("dependency info", () => {
-    it("does not show dependency info when no dependencies", () => {
+  describe("inline dependency display", () => {
+    const singleDep = [
+      { proposalId: "dep-1", title: "Setup Database", reason: "Needs schema first" },
+    ];
+
+    const twoDeps = [
+      { proposalId: "dep-1", title: "Setup Database", reason: "Needs schema first" },
+      { proposalId: "dep-2", title: "Define Types" },
+    ];
+
+    const threeDeps = [
+      { proposalId: "dep-1", title: "Setup Database", reason: "Needs schema first" },
+      { proposalId: "dep-2", title: "Define Types" },
+      { proposalId: "dep-3", title: "Create Config", reason: "Config required" },
+    ];
+
+    const fiveDeps = [
+      { proposalId: "dep-1", title: "Setup Database" },
+      { proposalId: "dep-2", title: "Define Types" },
+      { proposalId: "dep-3", title: "Create Config" },
+      { proposalId: "dep-4", title: "Add Middleware" },
+      { proposalId: "dep-5", title: "Setup Auth" },
+    ];
+
+    it("does not show dependency section when no dependencies", () => {
       render(<ProposalCard {...defaultProps} />);
-      expect(screen.queryByTestId("dependency-info")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("depends-on-inline")).not.toBeInTheDocument();
     });
 
-    it("shows depends on count when provided", () => {
-      render(<ProposalCard {...defaultProps} dependsOnCount={2} />);
-      expect(screen.getByTestId("dependency-info")).toHaveTextContent("Depends on 2");
+    it("shows single dependency name inline with arrow", () => {
+      render(<ProposalCard {...defaultProps} dependsOnDetails={singleDep} dependsOnCount={1} />);
+      const inline = screen.getByTestId("depends-on-inline");
+      expect(inline).toHaveTextContent("← Setup Database");
     });
 
-    it("shows blocks count when provided", () => {
+    it("shows two dependency names comma-separated", () => {
+      render(<ProposalCard {...defaultProps} dependsOnDetails={twoDeps} dependsOnCount={2} />);
+      const inline = screen.getByTestId("depends-on-inline");
+      expect(inline).toHaveTextContent("← Setup Database, Define Types");
+    });
+
+    it("truncates with +N more when more than 2 dependencies", () => {
+      render(<ProposalCard {...defaultProps} dependsOnDetails={threeDeps} dependsOnCount={3} />);
+      const inline = screen.getByTestId("depends-on-inline");
+      expect(inline).toHaveTextContent("← Setup Database, Define Types");
+      expect(inline).toHaveTextContent("+1 more");
+    });
+
+    it("shows correct count for 5 dependencies (+3 more)", () => {
+      render(<ProposalCard {...defaultProps} dependsOnDetails={fiveDeps} dependsOnCount={5} />);
+      const inline = screen.getByTestId("depends-on-inline");
+      expect(inline).toHaveTextContent("+3 more");
+    });
+
+    it("renders expand button when dependencies exist", () => {
+      render(<ProposalCard {...defaultProps} dependsOnDetails={twoDeps} dependsOnCount={2} />);
+      expect(screen.getByTestId("expand-dependencies")).toBeInTheDocument();
+    });
+
+    it("expands to show full dependency list on click", async () => {
+      const user = userEvent.setup();
+      render(<ProposalCard {...defaultProps} dependsOnDetails={threeDeps} dependsOnCount={3} />);
+
+      const expandBtn = screen.getByTestId("expand-dependencies");
+      await user.click(expandBtn);
+
+      const expanded = screen.getByTestId("dependencies-expanded");
+      expect(expanded).toBeInTheDocument();
+      expect(expanded).toHaveTextContent("Setup Database");
+      expect(expanded).toHaveTextContent("Define Types");
+      expect(expanded).toHaveTextContent("Create Config");
+    });
+
+    it("shows reason text in expanded view when available", async () => {
+      const user = userEvent.setup();
+      render(<ProposalCard {...defaultProps} dependsOnDetails={threeDeps} dependsOnCount={3} />);
+
+      const expandBtn = screen.getByTestId("expand-dependencies");
+      await user.click(expandBtn);
+
+      const expanded = screen.getByTestId("dependencies-expanded");
+      expect(expanded).toHaveTextContent("Needs schema first");
+      expect(expanded).toHaveTextContent("Config required");
+    });
+
+    it("collapses expanded section on second click", async () => {
+      const user = userEvent.setup();
+      render(<ProposalCard {...defaultProps} dependsOnDetails={twoDeps} dependsOnCount={2} />);
+
+      const expandBtn = screen.getByTestId("expand-dependencies");
+      await user.click(expandBtn);
+      expect(screen.getByTestId("dependencies-expanded")).toBeInTheDocument();
+
+      await user.click(expandBtn);
+      expect(screen.queryByTestId("dependencies-expanded")).not.toBeInTheDocument();
+    });
+
+    it("shows blocks count badge (unchanged from before)", () => {
       render(<ProposalCard {...defaultProps} blocksCount={3} />);
-      expect(screen.getByTestId("dependency-info")).toHaveTextContent("Blocks 3");
+      expect(screen.getByTestId("blocks-count")).toHaveTextContent("→3");
     });
 
-    it("shows both counts when both provided", () => {
-      render(<ProposalCard {...defaultProps} dependsOnCount={2} blocksCount={3} />);
-      const depInfo = screen.getByTestId("dependency-info");
-      expect(depInfo).toHaveTextContent("Depends on 2");
-      expect(depInfo).toHaveTextContent("Blocks 3");
+    it("does not show blocks badge when blocksCount is 0", () => {
+      render(<ProposalCard {...defaultProps} blocksCount={0} />);
+      expect(screen.queryByTestId("blocks-count")).not.toBeInTheDocument();
     });
 
-    it("uses singular form for count of 1", () => {
-      render(<ProposalCard {...defaultProps} dependsOnCount={1} blocksCount={1} />);
-      const depInfo = screen.getByTestId("dependency-info");
-      expect(depInfo).toHaveTextContent("Depends on 1");
-      expect(depInfo).toHaveTextContent("Blocks 1");
+    it("does not show blocks badge when blocksCount is undefined", () => {
+      render(<ProposalCard {...defaultProps} />);
+      expect(screen.queryByTestId("blocks-count")).not.toBeInTheDocument();
     });
   });
 
