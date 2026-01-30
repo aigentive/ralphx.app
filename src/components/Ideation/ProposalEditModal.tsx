@@ -208,24 +208,75 @@ export function ProposalEditModal({
               />
             </div>
 
-            {/* Category Selector - using native select for better test compatibility */}
-            <div className="space-y-2">
-              <Label htmlFor="proposal-category" className="text-[var(--text-primary)]">
-                Category
-              </Label>
-              <select
-                id="proposal-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={selectClasses}
-                disabled={isSaving}
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
+            {/* Two-Column Metadata Panel with Glass Effect */}
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-4">
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
+                {/* Left Column: Category + Priority Override */}
+                <div className="space-y-4">
+                  {/* Category Selector */}
+                  <div className="space-y-2">
+                    <Label htmlFor="proposal-category" className="text-[var(--text-primary)] text-sm">
+                      Category
+                    </Label>
+                    <select
+                      id="proposal-category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className={selectClasses}
+                      disabled={isSaving}
+                    >
+                      {CATEGORIES.map((cat) => (
+                        <option key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Priority Override Selector */}
+                  <div className="space-y-2">
+                    <Label htmlFor="proposal-priority" className="text-[var(--text-primary)] text-sm">
+                      Priority Override
+                    </Label>
+                    <select
+                      id="proposal-priority"
+                      value={userPriority}
+                      onChange={(e) => setUserPriority(e.target.value as Priority | "")}
+                      className={selectClasses}
+                      disabled={isSaving}
+                    >
+                      {PRIORITIES.map((p) => (
+                        <option key={p.value || "auto"} value={p.value}>
+                          {p.value === "" ? `Auto (${proposal.suggestedPriority})` : p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Vertical Divider */}
+                <div className="w-px self-stretch bg-white/[0.08]" />
+
+                {/* Right Column: Complexity (placeholder for visual selector in Task 3) */}
+                <div className="space-y-2">
+                  <Label htmlFor="proposal-complexity" className="text-[var(--text-primary)] text-sm">
+                    Complexity
+                  </Label>
+                  <select
+                    id="proposal-complexity"
+                    value={complexity}
+                    onChange={(e) => setComplexity(e.target.value as Complexity)}
+                    className={selectClasses}
+                    disabled={isSaving}
+                  >
+                    {COMPLEXITIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Steps Editor */}
@@ -324,45 +375,6 @@ export function ProposalEditModal({
               )}
             </div>
 
-            {/* Priority Override Selector */}
-            <div className="space-y-2">
-              <Label htmlFor="proposal-priority" className="text-[var(--text-primary)]">
-                Priority Override
-              </Label>
-              <select
-                id="proposal-priority"
-                value={userPriority}
-                onChange={(e) => setUserPriority(e.target.value as Priority | "")}
-                className={selectClasses}
-                disabled={isSaving}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p.value || "auto"} value={p.value}>
-                    {p.value === "" ? `Auto (${proposal.suggestedPriority})` : p.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Complexity Selector */}
-            <div className="space-y-2">
-              <Label htmlFor="proposal-complexity" className="text-[var(--text-primary)]">
-                Complexity
-              </Label>
-              <select
-                id="proposal-complexity"
-                value={complexity}
-                onChange={(e) => setComplexity(e.target.value as Complexity)}
-                className={selectClasses}
-                disabled={isSaving}
-              >
-                {COMPLEXITIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
         </ScrollArea>
 
