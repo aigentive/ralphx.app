@@ -217,6 +217,28 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         Ok(count as u32)
     }
+
+    async fn get_by_plan_artifact_id(
+        &self,
+        plan_artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
+                 FROM ideation_sessions WHERE plan_artifact_id = ?1",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let sessions = stmt
+            .query_map([plan_artifact_id], IdeationSession::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(sessions)
+    }
 }
 
 #[cfg(test)]

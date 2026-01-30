@@ -181,6 +181,32 @@ impl ArtifactRepository for MockArtifactRepository {
         relations.retain(|r| r.from_artifact_id != *from_id || r.to_artifact_id != *to_id);
         Ok(())
     }
+
+    async fn create_with_previous_version(
+        &self,
+        artifact: Artifact,
+        _previous_version_id: ArtifactId,
+    ) -> AppResult<Artifact> {
+        self.add_artifact(artifact.clone()).await;
+        Ok(artifact)
+    }
+
+    async fn get_version_history(
+        &self,
+        id: &ArtifactId,
+    ) -> AppResult<Vec<crate::domain::repositories::ArtifactVersionSummary>> {
+        let artifacts = self.artifacts.lock().await;
+        if let Some(artifact) = artifacts.get(id.as_str()) {
+            Ok(vec![crate::domain::repositories::ArtifactVersionSummary {
+                id: artifact.id.clone(),
+                version: artifact.metadata.version,
+                name: artifact.name.clone(),
+                created_at: artifact.metadata.created_at,
+            }])
+        } else {
+            Ok(vec![])
+        }
+    }
 }
 
 // ==================== Mock Bucket Repository ====================

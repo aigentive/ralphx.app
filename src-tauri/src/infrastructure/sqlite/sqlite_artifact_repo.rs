@@ -472,6 +472,99 @@ impl ArtifactRepository for SqliteArtifactRepository {
 
         Ok(())
     }
+
+    async fn create_with_previous_version(
+        &self,
+        artifact: Artifact,
+        previous_version_id: ArtifactId,
+    ) -> AppResult<Artifact> {
+        let conn = self.conn.lock().await;
+
+        let (content_type, content_text, content_path) = match &artifact.content {
+            ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
+            ArtifactContent::File { path } => ("file", None, Some(path.clone())),
+        };
+
+        let created_at = artifact.metadata.created_at.to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
+             bucket_id, task_id, process_id, created_by, version, previous_version_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                artifact.id.as_str(),
+                artifact.artifact_type.as_str(),
+                artifact.name,
+                content_type,
+                content_text,
+                content_path,
+                artifact.bucket_id.as_ref().map(|b| b.as_str()),
+                artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
+                artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
+                artifact.metadata.created_by,
+                artifact.metadata.version as i32,
+                previous_version_id.as_str(),
+                created_at,
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(artifact)
+    }
+
+    async fn get_version_history(
+        &self,
+        id: &ArtifactId,
+    ) -> AppResult<Vec<crate::domain::repositories::ArtifactVersionSummary>> {
+        let conn = self.conn.lock().await;
+        let mut history = Vec::new();
+        let mut current_id = id.clone();
+
+        loop {
+            let result = conn.query_row(
+                "SELECT id, version, name, previous_version_id, created_at
+                 FROM artifacts WHERE id = ?1",
+                [current_id.as_str()],
+                |row| {
+                    let id_str: String = row.get(0)?;
+                    let version: i32 = row.get(1)?;
+                    let name: String = row.get(2)?;
+                    let previous_version_id: Option<String> = row.get(3)?;
+                    let created_at_str: String = row.get(4)?;
+
+                    let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now());
+
+                    Ok((
+                        crate::domain::repositories::ArtifactVersionSummary {
+                            id: ArtifactId::from_string(id_str),
+                            version: version as u32,
+                            name,
+                            created_at,
+                        },
+                        previous_version_id,
+                    ))
+                },
+            );
+
+            match result {
+                Ok((summary, previous_version_id)) => {
+                    history.push(summary);
+
+                    if let Some(prev_id) = previous_version_id {
+                        current_id = ArtifactId::from_string(prev_id);
+                    } else {
+                        break;
+                    }
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => break,
+                Err(e) => return Err(AppError::Database(e.to_string())),
+            }
+        }
+
+        Ok(history)
+    }
 }
 
 #[cfg(test)]

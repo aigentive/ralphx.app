@@ -308,6 +308,26 @@ pub struct SearchArtifactsRequest {
     pub artifact_types: Option<Vec<String>>,
 }
 
+/// Summary of an artifact version for history display
+#[derive(Debug, Serialize)]
+pub struct ArtifactVersionSummaryResponse {
+    pub id: String,
+    pub version: u32,
+    pub name: String,
+    pub created_at: String,
+}
+
+impl From<crate::domain::repositories::ArtifactVersionSummary> for ArtifactVersionSummaryResponse {
+    fn from(summary: crate::domain::repositories::ArtifactVersionSummary) -> Self {
+        Self {
+            id: summary.id.to_string(),
+            version: summary.version,
+            name: summary.name,
+            created_at: summary.created_at.to_rfc3339(),
+        }
+    }
+}
+
 // ============================================================================
 // Request/Response Types - Task Steps
 // ============================================================================

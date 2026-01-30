@@ -29,7 +29,7 @@ pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
 pub use agent_run_repository::AgentRunRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;
 pub use artifact_flow_repository::ArtifactFlowRepository;
-pub use artifact_repository::ArtifactRepository;
+pub use artifact_repository::{ArtifactRepository, ArtifactVersionSummary};
 pub use chat_conversation_repository::ChatConversationRepository;
 pub use chat_message_repository::ChatMessageRepository;
 pub use ideation_session_repository::IdeationSessionRepository;
