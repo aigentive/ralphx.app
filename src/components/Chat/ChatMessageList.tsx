@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef } from "react";
+import React, { forwardRef, useEffect, useRef, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -35,6 +35,8 @@ export interface ChatMessageData {
 
 interface ChatMessageListProps {
   messages: ChatMessageData[];
+  /** Conversation ID - used as key to force remount on conversation switch */
+  conversationId: string | null;
   /** Show worker executing indicator in header */
   isExecutionMode: boolean;
   /** Show failed run banner */
@@ -58,6 +60,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
   function ChatMessageList(
     {
       messages,
+      conversationId,
       isExecutionMode,
       failedRun,
       onDismissFailedRun,
@@ -68,11 +71,34 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     },
     ref
   ) {
+    // Internal ref for scroll operations
+    const virtuosoRef = useRef<VirtuosoHandle>(null);
+
+    // Forward the ref to parent
+    useImperativeHandle(ref, () => virtuosoRef.current!, []);
+
+    // Delayed scroll correction to handle markdown rendering height changes
+    // Markdown content can expand after initial render, throwing off scroll position
+    useEffect(() => {
+      if (!conversationId || messages.length === 0) return;
+
+      // Wait for markdown to render and expand, then scroll to absolute bottom
+      const timeoutId = setTimeout(() => {
+        virtuosoRef.current?.scrollTo({ top: Number.MAX_SAFE_INTEGER });
+      }, 300);
+
+      return () => clearTimeout(timeoutId);
+    }, [conversationId, messages.length]);
+
     return (
       <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
         <Virtuoso
-          ref={ref}
+          // Key forces complete remount when conversation changes - prevents scroll animation conflicts
+          key={conversationId ?? "empty"}
+          ref={virtuosoRef}
           data={messages}
+          // Start at the last message on mount
+          initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
           followOutput="smooth"
           alignToBottom
           className="h-full"

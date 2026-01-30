@@ -2,7 +2,7 @@
  * IntegratedChatPanel.components - Sub-components for IntegratedChatPanel
  */
 
-import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, Loader2 } from "lucide-react";
+import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
@@ -23,6 +23,22 @@ export const animationStyles = `
 
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.03) 0%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
 `;
 
 // ============================================================================
@@ -78,16 +94,9 @@ export function EmptyState() {
   );
 }
 
-export function LoadingState() {
-  return (
-    <div
-      data-testid="chat-panel-loading"
-      className="flex items-center justify-center p-6"
-    >
-      <Loader2 className="w-5 h-5 animate-spin text-[#ff6b35]" />
-    </div>
-  );
-}
+// LoadingState is now extracted to MessageListSkeleton.tsx
+// Re-export for backwards compatibility
+export { MessageListSkeleton as LoadingState } from "./MessageListSkeleton";
 
 export function WorkerExecutingIndicator() {
   const setCurrentView = useUiStore((s) => s.setCurrentView);
