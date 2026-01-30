@@ -35,7 +35,7 @@ import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./IdeationView.constants";
 import { SessionBrowser } from "./SessionBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
-import { ProposalCard } from "./ProposalCard";
+import { ProposalCard, type DependencyDetail } from "./ProposalCard";
 import { ProposalsToolbar } from "./ProposalsToolbar";
 import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
 import { ProposalsEmptyState } from "./ProposalsEmptyState";
@@ -110,10 +110,10 @@ export function IdeationView({
   // Fetch dependency graph for the session
   const { data: dependencyGraph } = useDependencyGraph(session?.id ?? "");
 
-  // Build dependency counts map and critical path set from the graph
-  const { dependencyCounts, criticalPathSet } = useMemo(() => {
+  // Build dependency counts map, dependency details, and critical path set from the graph
+  const { dependencyCounts, dependencyDetails, criticalPathSet } = useMemo(() => {
     if (!dependencyGraph) {
-      return { dependencyCounts: {}, criticalPathSet: new Set<string>() };
+      return { dependencyCounts: {}, dependencyDetails: {}, criticalPathSet: new Set<string>() };
     }
 
     // Build counts from graph nodes
@@ -125,11 +125,27 @@ export function IdeationView({
       };
     }
 
+    // Build dependency details from edges
+    // edge.from = the proposal that depends on edge.to
+    const details: Record<string, DependencyDetail[]> = {};
+    for (const edge of dependencyGraph.edges) {
+      const targetProposal = proposals.find(p => p.id === edge.to);
+      const existing = details[edge.from] ?? [];
+      // Build detail object conditionally for exactOptionalPropertyTypes
+      const detail: DependencyDetail = {
+        proposalId: edge.to,
+        title: targetProposal?.title ?? "Unknown",
+        ...(edge.reason !== null && { reason: edge.reason }),
+      };
+      existing.push(detail);
+      details[edge.from] = existing;
+    }
+
     // Build critical path set
     const criticalSet = new Set(dependencyGraph.criticalPath);
 
-    return { dependencyCounts: counts, criticalPathSet: criticalSet };
-  }, [dependencyGraph]);
+    return { dependencyCounts: counts, dependencyDetails: details, criticalPathSet: criticalSet };
+  }, [dependencyGraph, proposals]);
 
   // Dependency analysis loading state
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
@@ -514,11 +530,13 @@ export function IdeationView({
                     <div className="space-y-3">
                       {sortedProposals.map((proposal, index) => {
                         const deps = dependencyCounts[proposal.id];
+                        const depDetails = dependencyDetails[proposal.id];
                         const isOnCriticalPath = criticalPathSet.has(proposal.id);
                         // Build optional props conditionally for exactOptionalPropertyTypes
                         const dependencyProps = {
                           ...(deps?.dependsOn !== undefined && { dependsOnCount: deps.dependsOn }),
                           ...(deps?.blocks !== undefined && { blocksCount: deps.blocks }),
+                          ...(depDetails !== undefined && depDetails.length > 0 && { dependsOnDetails: depDetails }),
                           ...(isOnCriticalPath && { isOnCriticalPath }),
                         };
                         return (

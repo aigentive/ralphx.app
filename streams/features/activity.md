@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 12:25:00 - Phase 39 Task 10: Wire dependency details from IdeationView to ProposalCard
+**What:**
+- Updated useMemo to build dependencyDetails map from dependency graph edges
+- Pass dependsOnDetails to each ProposalCard with proposal title and reason
+- Handle exactOptionalPropertyTypes by conditionally spreading reason field
+- Import DependencyDetail type from ProposalCard
+
+**Files:**
+- src/components/Ideation/IdeationView.tsx
+
+**Commands:**
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 12:05:00 - Phase 39 Task 9: Update ProposalCard to display dependency reasons in tooltip
 **What:**
 - Added DependencyDetail interface with proposalId, title, and optional reason fields
