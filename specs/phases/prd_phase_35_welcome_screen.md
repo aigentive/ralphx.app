@@ -119,7 +119,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(welcome): add TerminalCanvas and ParticleField subcomponents"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
