@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-30 22:45:00 - Phase 32 Task 4: Remove camelCase serialization from execution_commands
+**What:**
+- Removed `#[serde(rename_all = "camelCase")]` from 2 response structs:
+  - ExecutionStatusResponse
+  - ExecutionCommandResponse
+- Updated serialization tests to expect snake_case
+- Backend now outputs snake_case (Rust default), frontend transform layer handles conversion
+
+**Files:**
+- src-tauri/src/commands/execution_commands.rs
+
+**Commands:**
+- `cargo clippy --lib -- -D warnings` - passes
+- `cargo test execution_commands::tests` - 26 passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-30 22:15:00 - Phase 32 Task 3: Remove camelCase serialization from TaskStepResponse
 **What:**
 - Removed `#[serde(rename_all = "camelCase")]` from TaskStepResponse struct

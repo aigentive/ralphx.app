@@ -129,7 +129,6 @@ impl Default for ExecutionState {
 
 /// Response for execution status queries
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ExecutionStatusResponse {
     /// Whether execution is paused
     pub is_paused: bool,
@@ -145,7 +144,6 @@ pub struct ExecutionStatusResponse {
 
 /// Response for pause/resume/stop commands
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ExecutionCommandResponse {
     /// Whether the command succeeded
     pub success: bool,
@@ -518,12 +516,12 @@ mod tests {
 
         let json = serde_json::to_string(&response).unwrap();
 
-        // Verify camelCase serialization
-        assert!(json.contains("\"isPaused\":true"));
-        assert!(json.contains("\"runningCount\":1"));
-        assert!(json.contains("\"maxConcurrent\":2"));
-        assert!(json.contains("\"queuedCount\":5"));
-        assert!(json.contains("\"canStartTask\":false"));
+        // Verify snake_case serialization (Rust default, frontend transform handles conversion)
+        assert!(json.contains("\"is_paused\":true"));
+        assert!(json.contains("\"running_count\":1"));
+        assert!(json.contains("\"max_concurrent\":2"));
+        assert!(json.contains("\"queued_count\":5"));
+        assert!(json.contains("\"can_start_task\":false"));
     }
 
     #[test]
@@ -541,9 +539,10 @@ mod tests {
 
         let json = serde_json::to_string(&response).unwrap();
 
+        // Verify snake_case serialization (Rust default, frontend transform handles conversion)
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"status\":"));
-        assert!(json.contains("\"isPaused\":false"));
+        assert!(json.contains("\"is_paused\":false"));
     }
 
     // ========================================
