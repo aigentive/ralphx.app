@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-01-31 15:46:00 - Phase 40 Task 3: Create ProposalTierGroup collapsible tier component
+**What:**
+- Created `ProposalTierGroup` component for collapsible tier sections
+- Tier labels: Foundation (tier 0), Core (tier 1), Integration (tier 2+)
+- Auto-collapse when proposalCount >= 5 proposals
+- Warm accent border-left styling (#ff6b35)
+- Controlled and uncontrolled modes with expand/collapse toggle
+- Added `getTierLabel(tier)` helper exported for reuse
+
+**Tests Added:**
+- getTierLabel helper function tests (4 tests)
+- Rendering tests: tier number, labels, proposal counts (9 tests)
+- Expand/collapse behavior tests: auto-collapse, toggle, override (6 tests)
+- Controlled mode tests: isExpanded prop, onExpandedChange callback (4 tests)
+- Styling tests: className, chevron icon (2 tests)
+- Edge cases: zero proposals, large tier numbers, large counts (3 tests)
+
+**Files:**
+- src/components/Ideation/ProposalTierGroup.tsx (new, 145 LOC)
+- src/components/Ideation/ProposalTierGroup.test.tsx (new, 29 tests)
+
+**Commands:**
+- `npm run test src/components/Ideation/ProposalTierGroup.test.tsx` (29 tests passed)
+- `npm run lint` (passed, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 14:43:00 - Phase 40 Task 2: Verify DependencyGraphEdge reason field and add helper
 **What:**
 - Verified Phase 39 types already in place:
