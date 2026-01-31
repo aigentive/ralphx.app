@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 48,
+  "currentPhase": 49,
   "phases": [
     {
       "phase": 0,
@@ -350,14 +350,14 @@
       "phase": 48,
       "name": "Activity Screen Enhancement",
       "prd": "specs/phases/prd_phase_48_activity_screen_enhancement.md",
-      "status": "active",
+      "status": "complete",
       "description": "Persistent activity events, server-side pagination, infinite scroll, unified status widget"
     },
     {
       "phase": 49,
       "name": "Fix Escalation Reason Not Displaying",
       "prd": "specs/phases/prd_phase_49_escalation_display_fix.md",
-      "status": "pending",
+      "status": "active",
       "description": "Fix Tauri command to parse issues from notes like HTTP endpoint"
     },
     {
