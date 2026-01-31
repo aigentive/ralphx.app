@@ -35,10 +35,9 @@ import type { ApplyProposalsInput } from "@/types/ideation";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
-import { usePendingReviews } from "@/hooks/useReviews";
+import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
-import { useTasks } from "@/hooks/useTasks";
 import { useProjects } from "@/hooks/useProjects";
 import {
   useIdeationSession,
@@ -152,12 +151,11 @@ function AppContent() {
   // Use active project ID (queries are disabled when null)
   const currentProjectId = activeProjectId ?? "";
 
-  const { count: pendingReviewCount } = usePendingReviews(currentProjectId);
-  const { data: tasks = [] } = useTasks(currentProjectId);
+  const { totalCount: pendingReviewCount } = useTasksAwaitingReview(currentProjectId);
 
   // Real-time execution status updates via Tauri events
   useExecutionEvents();
-  const { approve: approveReview, requestChanges: requestChangesReview, isApproving, isRequestingChanges } = useReviewMutations();
+  const { isApproving, isRequestingChanges } = useReviewMutations();
 
   // Ideation hooks
   const { data: sessionData } = useIdeationSession(activeSession?.id ?? "");
@@ -407,15 +405,6 @@ function AppContent() {
       toast.error("Failed to apply proposals");
     }
   }, [applyProposalsMutation]);
-
-  // Build task titles lookup
-  const taskTitles = useMemo(() => {
-    const titles: Record<string, string> = {};
-    for (const task of tasks) {
-      titles[task.id] = task.title;
-    }
-    return titles;
-  }, [tasks]);
 
   // Project wizard handlers
   const handleOpenProjectWizard = useCallback(() => {
@@ -712,20 +701,7 @@ function AppContent() {
             >
               <ReviewsPanel
                 projectId={currentProjectId}
-                taskTitles={taskTitles}
                 onClose={() => setReviewsPanelOpen(false)}
-                onApprove={(reviewId) => {
-                  approveReview.mutate({ reviewId });
-                }}
-                onRequestChanges={(reviewId, notes) => {
-                  // Use provided notes or a default message
-                  // Note: ReviewDetailModal (PRD task 37) will provide proper notes input
-                  const reviewNotes = notes || "Changes requested";
-                  requestChangesReview.mutate({ reviewId, notes: reviewNotes });
-                }}
-                onViewDiff={(_reviewId) => {
-                  // TODO: Open diff viewer (task in PRD - ColumnGroup component)
-                }}
                 isApproving={isApproving}
                 isRequestingChanges={isRequestingChanges}
               />

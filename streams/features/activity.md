@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 20:00:00 - Phase 47 Task 5: Update useReviews hook and ReviewsPanel to use task-based query
+**What:**
+- Added `useTasksAwaitingReview` hook to src/hooks/useReviews.ts
+- Hook fetches tasks awaiting review via `tasksApi.getTasksAwaitingReview`
+- Returns tasks grouped by review type: `aiTasks` (pending_review, reviewing) and `humanTasks` (review_passed, escalated)
+- Added query key `tasksAwaitingReviewByProject` for React Query caching
+- Rewrote `ReviewsPanel.tsx` to use task-based hook instead of `usePendingReviews`
+- Created `TaskReviewCard` component to display tasks with status badges
+- Tab filtering now uses task status: AI tab = pending_review/reviewing, Human tab = review_passed/escalated
+- Updated `ReviewDetailModal` to use task-based approval APIs (`approveTask`, `requestTaskChanges`)
+- Made `reviewId` prop optional (deprecated) in ReviewDetailModal
+- Updated App.tsx to use `useTasksAwaitingReview` for navbar badge count
+- Removed deprecated props (taskTitles, onApprove, onRequestChanges) from ReviewsPanel usage
+- Removed unused `useTasks` import and `taskTitles` lookup from App.tsx
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 19:00:00 - Phase 47 Task 4: Add getTasksAwaitingReview API wrapper
 **What:**
 - Added `getTasksAwaitingReview` method to tasksApi in src/api/tasks.ts
