@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-31 21:45:00 - Phase 41 Task 1: Use backend tool_id for streaming deduplication
+**What:**
+- Added `tool_id?: string` to the TypeScript event payload interface in useChatPanelHandlers.ts
+- Updated `setStreamingToolCalls` to use backend-provided `tool_id` as unique identifier
+- Implemented deduplication logic: if tool_id exists, update existing entry; else append new
+- Fallback to timestamp-based ID (`streaming-${Date.now()}`) if `tool_id` is null
+- Uses `.find()` and `.map()` pattern for type-safe updates
+
+**Files:**
+- src/hooks/useChatPanelHandlers.ts (modified: event payload interface, deduplication logic)
+
+**Commands:**
+- `npm run lint` (0 errors, 9 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 20:12:00 - Phase 40 Task 7: Add SVG tier connectors with critical path highlight
 **What:**
 - Added `TierConnector` component for SVG connectors between tiers
