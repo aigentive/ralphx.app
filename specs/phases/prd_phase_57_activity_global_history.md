@@ -299,7 +299,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(activity): add history hint to live mode empty state"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 12,

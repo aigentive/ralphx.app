@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-01 13:45:00 - Phase 57 Task 11: Improve empty state with History hint
+**What:**
+- Added `isLiveMode` optional prop to `EmptyState` component interface
+- Updated `EmptyState` to show context-aware messages with a helper function
+- When in Live mode with empty state, shows "No live activity" with a hint to switch to History
+- Hint includes History icon and styled call-to-action directing user to browse past events
+- Updated `ActivityView` to pass `isLiveMode` prop to the real-time empty state
+
+**Files:**
+- `src/components/activity/ActivityFilters.tsx` (modified - added isLiveMode prop and History hint)
+- `src/components/activity/ActivityView.tsx` (modified - pass isLiveMode to EmptyState)
+
+**Commands:**
+- `npx eslint src/components/activity/ActivityFilters.tsx src/components/activity/ActivityView.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 13:30:00 - Phase 57 Task 10: Add pulsating Live indicator
 **What:**
 - Added `lastEventTime` field to activityStore to track when events arrive
