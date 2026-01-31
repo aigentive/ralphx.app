@@ -46,4 +46,6 @@ export interface ActivityEventFilter {
   eventTypes?: ActivityEventType[];
   roles?: ActivityEventRole[];
   statuses?: string[];
+  taskId?: string;
+  sessionId?: string;
 }

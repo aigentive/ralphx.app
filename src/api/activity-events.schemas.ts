@@ -49,4 +49,6 @@ export const ActivityEventFilterInputSchema = z.object({
   event_types: z.array(z.string()).optional(),
   roles: z.array(z.string()).optional(),
   statuses: z.array(z.string()).optional(),
+  task_id: z.string().optional(),
+  session_id: z.string().optional(),
 });
