@@ -4,6 +4,40 @@
 
 ---
 
+### 2026-01-31 17:02:00 - Phase 40 Task 5: Create TieredProposalList orchestration component
+**What:**
+- Created `TieredProposalList` component that groups proposals by topological tier
+- Uses `useDependencyTiers()` hook to compute tier assignments
+- Renders `ProposalTierGroup` for each tier (Foundation, Core, Integration)
+- Passes dependency details and blocks count to each `ProposalCard`
+- Maintains sortOrder as tiebreaker within same tier
+- Preserves selection, highlight, and critical path functionality
+
+**Tests Added:**
+- 21 tests covering:
+  - Empty state handling
+  - Basic proposal rendering
+  - Tier grouping based on dependencies
+  - Sort order preservation within tiers
+  - Dependency details passing to ProposalCard
+  - Blocks count display
+  - Critical path and highlighting
+  - Callback propagation (onSelect, onEdit, onRemove)
+  - Edge cases (missing graph, empty graph)
+
+**Files:**
+- src/components/Ideation/TieredProposalList.tsx (new, 213 LOC)
+- src/components/Ideation/TieredProposalList.test.tsx (new, 21 tests)
+
+**Commands:**
+- `npm run test src/components/Ideation/TieredProposalList.test.tsx` (21 tests passed)
+- `npm run lint` (0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 16:35:00 - Phase 40 Task 4: Display dependency names and reasons in ProposalCard
 **What:**
 - Replaced `←N` count badge with inline dependency names (`← Title1, Title2`)
