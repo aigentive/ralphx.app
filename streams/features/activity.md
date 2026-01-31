@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-01 04:30:00 - Phase 43 Task 5: Remove deprecated chatCollapsed/toggleChatCollapsed from uiStore
+**What:**
+- Updated KanbanSplitLayout.tsx to use chatVisibleByView.kanban instead of chatCollapsed
+- Replaced toggleChatCollapsed with toggleChatVisible("kanban") for onClose handler
+- Inverted logic (chatCollapsed=false was visible, chatVisibleByView=true is visible)
+- Removed chatCollapsed: boolean from UiState interface in uiStore.ts
+- Removed toggleChatCollapsed() from UiActions interface
+- Removed chatCollapsed initialization from store
+- Removed toggleChatCollapsed implementation
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed for modified files)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 03:10:00 - Phase 43 Task 4: Remove deprecated isOpen/togglePanel/setOpen from chatStore
 **What:**
 - Updated ChatPanel to use chatVisibleByView from uiStore instead of isOpen from chatStore

@@ -39,8 +39,8 @@ interface KanbanSplitLayoutProps {
 }
 
 export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLayoutProps) {
-  const chatCollapsed = useUiStore((s) => s.chatCollapsed);
-  const toggleChatCollapsed = useUiStore((s) => s.toggleChatCollapsed);
+  const chatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
+  const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
 
@@ -103,7 +103,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         data-testid="kanban-split-left"
         className="relative flex flex-col overflow-hidden"
         style={{
-          width: chatCollapsed ? "100%" : `${leftPanelWidth}%`,
+          width: chatVisible ? `${leftPanelWidth}%` : "100%",
           minWidth: "400px",
           transition: isResizing ? "none" : "width 150ms ease-out",
         }}
@@ -128,7 +128,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
       </div>
 
       {/* Resize Handle (only when chat is visible) */}
-      {!chatCollapsed && (
+      {chatVisible && (
         <div
           data-testid="split-layout-resize-handle"
           className={cn(
@@ -150,7 +150,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
       )}
 
       {/* Right Section - Integrated Chat Panel (hidden when collapsed) */}
-      {!chatCollapsed && (
+      {chatVisible && (
         <div
           data-testid="kanban-split-right"
           className="flex flex-col overflow-hidden shrink-0"
@@ -160,7 +160,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
             transition: isResizing ? "none" : "width 150ms ease-out",
           }}
         >
-          <IntegratedChatPanel projectId={projectId} onClose={toggleChatCollapsed} />
+          <IntegratedChatPanel projectId={projectId} onClose={() => toggleChatVisible("kanban")} />
         </div>
       )}
     </div>

@@ -115,8 +115,6 @@ interface UiState {
   selectedTaskId: string | null;
   /** Task creation overlay context, or null if closed */
   taskCreationContext: { projectId: string; defaultTitle?: string } | null;
-  /** Whether the integrated chat panel is collapsed (hidden) */
-  chatCollapsed: boolean;
   /** Chat visibility per view (persisted to localStorage) */
   chatVisibleByView: Record<ViewType, boolean>;
   /** Whether the welcome screen is manually shown (vs. empty state) */
@@ -184,8 +182,6 @@ interface UiActions {
   openTaskCreation: (projectId: string, defaultTitle?: string) => void;
   /** Close task creation overlay */
   closeTaskCreation: () => void;
-  /** Toggle chat panel collapsed state */
-  toggleChatCollapsed: () => void;
   /** Set chat visibility for a specific view */
   setChatVisible: (view: ViewType, visible: boolean) => void;
   /** Toggle chat visibility for a specific view */
@@ -225,7 +221,6 @@ export const useUiStore = create<UiState & UiActions>()(
     taskFullViewId: null,
     selectedTaskId: null,
     taskCreationContext: null,
-    chatCollapsed: false,
     chatVisibleByView: loadChatVisibility(),
     showWelcomeOverlay: false,
     welcomeOverlayReturnView: null,
@@ -369,11 +364,6 @@ export const useUiStore = create<UiState & UiActions>()(
     closeTaskCreation: () =>
       set((state) => {
         state.taskCreationContext = null;
-      }),
-
-    toggleChatCollapsed: () =>
-      set((state) => {
-        state.chatCollapsed = !state.chatCollapsed;
       }),
 
     setChatVisible: (view, visible) =>
