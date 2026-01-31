@@ -109,7 +109,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(chat): filter result events early in tool call listener"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
