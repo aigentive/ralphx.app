@@ -104,3 +104,92 @@ export function isIdleStatus(status: InternalStatus): boolean {
 export function isReviewStatus(status: InternalStatus): boolean {
   return (REVIEW_STATUSES as readonly string[]).includes(status);
 }
+
+// ============================================================================
+// Status Groups for UI Features
+// ============================================================================
+
+/**
+ * Statuses where task is in execution phase (worker running)
+ */
+export const EXECUTION_STATUSES = [
+  "executing",
+  "re_executing",
+  "qa_refining",
+  "qa_testing",
+  "qa_passed",
+  "qa_failed",
+] as const satisfies readonly InternalStatus[];
+
+/**
+ * Statuses where task is in AI review phase
+ */
+export const AI_REVIEW_STATUSES = [
+  "pending_review",
+  "reviewing",
+] as const satisfies readonly InternalStatus[];
+
+/**
+ * Statuses where task awaits human review decision
+ */
+export const HUMAN_REVIEW_STATUSES = [
+  "review_passed",
+  "escalated",
+] as const satisfies readonly InternalStatus[];
+
+/**
+ * All review-related statuses (AI + Human)
+ */
+export const ALL_REVIEW_STATUSES = [
+  ...AI_REVIEW_STATUSES,
+  ...HUMAN_REVIEW_STATUSES,
+] as const;
+
+/**
+ * Statuses where drag-drop is disabled (system-managed states)
+ */
+export const NON_DRAGGABLE_STATUSES = [
+  "executing",
+  "re_executing",
+  "qa_refining",
+  "qa_testing",
+  "qa_passed",
+  "qa_failed",
+  "pending_review",
+  "reviewing",
+  "review_passed",
+  "escalated",
+  "revision_needed",
+] as const satisfies readonly InternalStatus[];
+
+// ============================================================================
+// Helper Functions for Status Groups
+// ============================================================================
+
+/**
+ * Check if a status is an execution status
+ */
+export function isExecutionStatus(status: InternalStatus): boolean {
+  return (EXECUTION_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Check if a status is an AI review status
+ */
+export function isAiReviewStatus(status: InternalStatus): boolean {
+  return (AI_REVIEW_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Check if a status is a human review status
+ */
+export function isHumanReviewStatus(status: InternalStatus): boolean {
+  return (HUMAN_REVIEW_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Check if a status is a non-draggable status
+ */
+export function isNonDraggableStatus(status: InternalStatus): boolean {
+  return (NON_DRAGGABLE_STATUSES as readonly string[]).includes(status);
+}
