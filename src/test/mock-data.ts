@@ -51,7 +51,7 @@ export function resetUuidCounter(): void {
  * @example
  * ```ts
  * const task = createMockTask({ title: "My Task" });
- * const completedTask = createMockTask({ internalStatus: "done" });
+ * const completedTask = createMockTask({ internalStatus: "approved" });
  * ```
  */
 export function createMockTask(overrides: Partial<Task> = {}): Task {
@@ -70,6 +70,7 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
     startedAt: null,
     completedAt: null,
     archivedAt: null,
+    blockedReason: null,
     ...overrides,
   };
 }
@@ -110,12 +111,29 @@ export function createTaskInStatus(
   overrides: Partial<Task> = {}
 ): Task {
   const now = new Date().toISOString();
+  // Statuses that indicate work has started
+  const startedStatuses: InternalStatus[] = [
+    "executing",
+    "re_executing",
+    "qa_refining",
+    "qa_testing",
+    "qa_passed",
+    "qa_failed",
+    "pending_review",
+    "reviewing",
+    "review_passed",
+    "escalated",
+    "revision_needed",
+    "approved",
+    "failed",
+  ];
+  // Terminal statuses
+  const terminalStatuses: InternalStatus[] = ["approved", "failed", "cancelled"];
+
   return createMockTask({
     internalStatus: status,
-    startedAt: ["working", "pr_ready", "review", "done"].includes(status)
-      ? now
-      : null,
-    completedAt: status === "done" ? now : null,
+    startedAt: startedStatuses.includes(status) ? now : null,
+    completedAt: terminalStatuses.includes(status) ? now : null,
     ...overrides,
   });
 }
