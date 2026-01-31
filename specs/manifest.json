@@ -394,6 +394,13 @@
       "prd": "specs/phases/prd_phase_54_blocked_reason.md",
       "status": "complete",
       "description": "Add blocked_reason field, display blocked tasks in Ready column, block reason dialog"
+    },
+    {
+      "phase": 55,
+      "name": "Web Target for Browser Testing",
+      "prd": "specs/phases/prd_phase_55_web_target_browser_testing.md",
+      "status": "pending",
+      "description": "Mock Tauri backend for browser automation testing with Playwright"
     }
   ]
 }
