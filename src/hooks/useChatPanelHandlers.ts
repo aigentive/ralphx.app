@@ -216,21 +216,45 @@ export function useChatPanelHandlers({
         context_id: string;
         conversation_id: string;
         tool_name: string;
+        tool_id?: string;
         arguments: unknown;
         result: unknown;
       }>("agent:tool_call", (event) => {
-        const { tool_name, arguments: args, result, conversation_id } = event.payload;
+        const { tool_name, tool_id, arguments: args, result, conversation_id } = event.payload;
         // Only show for active conversation
         if (conversation_id === activeConversationIdRef.current) {
-          setStreamingToolCalls((prev) => [
-            ...prev,
-            {
-              id: `streaming-${Date.now()}-${prev.length}`,
-              name: tool_name,
-              arguments: args,
-              result,
-            },
-          ]);
+          // Use backend tool_id for deduplication, fall back to timestamp-based ID if null
+          const id = tool_id ?? `streaming-${Date.now()}`;
+
+          setStreamingToolCalls((prev) => {
+            // Check if tool call already exists (deduplicate by tool_id)
+            const existing = prev.find((tc) => tc.id === id);
+
+            if (existing) {
+              // Update existing entry with new data (started → completed → result lifecycle)
+              return prev.map((tc) =>
+                tc.id === id
+                  ? {
+                      ...tc,
+                      name: tool_name,
+                      arguments: args ?? tc.arguments,
+                      result: result ?? tc.result,
+                    }
+                  : tc
+              );
+            }
+
+            // New tool call - append
+            return [
+              ...prev,
+              {
+                id,
+                name: tool_name,
+                arguments: args,
+                result,
+              },
+            ];
+          });
           // Invalidate cache to pick up any new messages from backend
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),

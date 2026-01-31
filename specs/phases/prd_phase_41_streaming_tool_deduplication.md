@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(chat): use backend tool_id for streaming deduplication"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
