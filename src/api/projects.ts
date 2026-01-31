@@ -12,10 +12,19 @@ import {
 } from "@/types/project";
 import {
   WorkflowResponseSchema,
+  WorkflowColumnResponseSchema,
   transformWorkflow,
+  transformWorkflowColumn,
   type WorkflowSchema,
+  type WorkflowColumn,
 } from "@/types/workflow";
 import { typedInvoke, typedInvokeWithTransform } from "@/lib/tauri";
+import {
+  CreateWorkflowInputSchema,
+  UpdateWorkflowInputSchema,
+  type CreateWorkflowInput,
+  type UpdateWorkflowInput,
+} from "@/lib/api/workflows";
 
 /**
  * Project list schema for array responses (snake_case from backend)
@@ -35,6 +44,11 @@ function transformProjectList(
  * Workflow list schema for array responses
  */
 const WorkflowListResponseSchema = z.array(WorkflowResponseSchema);
+
+/**
+ * Workflow column list schema for array responses
+ */
+const WorkflowColumnListResponseSchema = z.array(WorkflowColumnResponseSchema);
 
 /**
  * Get git branches for a working directory
@@ -118,16 +132,15 @@ export const workflowsApi = {
   /**
    * Get a workflow by ID
    * @param workflowId The workflow ID
-   * @returns The workflow
+   * @returns The workflow or null if not found
    */
-  get: async (workflowId: string): Promise<WorkflowSchema> => {
+  get: async (workflowId: string): Promise<WorkflowSchema | null> => {
     const raw = await typedInvoke(
       "get_workflow",
       { id: workflowId },
       WorkflowResponseSchema.nullable()
     );
-    if (!raw) throw new Error(`Workflow not found: ${workflowId}`);
-    return transformWorkflow(raw);
+    return raw ? transformWorkflow(raw) : null;
   },
 
   /**
@@ -136,10 +149,74 @@ export const workflowsApi = {
    */
   list: (): Promise<WorkflowSchema[]> =>
     typedInvokeWithTransform(
-      "list_workflows",
+      "get_workflows",
       {},
       WorkflowListResponseSchema,
       (workflows) => workflows.map(transformWorkflow)
+    ),
+
+  /**
+   * Get columns for the active/default workflow
+   * @returns Array of workflow columns
+   */
+  getActiveColumns: (): Promise<WorkflowColumn[]> =>
+    typedInvokeWithTransform(
+      "get_active_workflow_columns",
+      {},
+      WorkflowColumnListResponseSchema,
+      (columns) => columns.map(transformWorkflowColumn)
+    ),
+
+  /**
+   * Create a new workflow
+   * @param input Workflow creation data
+   * @returns The created workflow
+   */
+  create: async (input: CreateWorkflowInput): Promise<WorkflowSchema> => {
+    const validatedInput = CreateWorkflowInputSchema.parse(input);
+    return typedInvokeWithTransform(
+      "create_workflow",
+      { input: validatedInput },
+      WorkflowResponseSchema,
+      transformWorkflow
+    );
+  },
+
+  /**
+   * Update an existing workflow
+   * @param id The workflow ID
+   * @param input Partial workflow data to update
+   * @returns The updated workflow
+   */
+  update: async (id: string, input: UpdateWorkflowInput): Promise<WorkflowSchema> => {
+    const validatedInput = UpdateWorkflowInputSchema.parse(input);
+    return typedInvokeWithTransform(
+      "update_workflow",
+      { id, input: validatedInput },
+      WorkflowResponseSchema,
+      transformWorkflow
+    );
+  },
+
+  /**
+   * Delete a workflow by ID
+   * @param id The workflow ID
+   */
+  delete: async (id: string): Promise<void> => {
+    await invoke("delete_workflow", { id });
+  },
+
+  /**
+   * Set a workflow as the default
+   * @param id The workflow ID to set as default
+   * @returns The updated workflow
+   */
+  setDefault: (id: string): Promise<WorkflowSchema> =>
+    typedInvokeWithTransform(
+      "set_default_workflow",
+      { id },
+      WorkflowResponseSchema,
+      transformWorkflow
     ),
 
   /**
@@ -147,4 +224,16 @@ export const workflowsApi = {
    * @returns Number of workflows created
    */
   seedBuiltin: () => typedInvoke("seed_builtin_workflows", {}, z.number()),
+
+  /**
+   * Get the built-in workflow definitions (RalphX Default, Jira Compatible)
+   * @returns Array of built-in workflows
+   */
+  getBuiltin: (): Promise<WorkflowSchema[]> =>
+    typedInvokeWithTransform(
+      "get_builtin_workflows",
+      {},
+      WorkflowListResponseSchema,
+      (workflows) => workflows.map(transformWorkflow)
+    ),
 } as const;

@@ -5,8 +5,9 @@
  */
 
 import type { Project, CreateProject, UpdateProject } from "@/types/project";
-import type { WorkflowSchema } from "@/types/workflow";
+import type { WorkflowSchema, WorkflowColumn } from "@/types/workflow";
 import type { InternalStatus } from "@/types/status";
+import type { CreateWorkflowInput, UpdateWorkflowInput } from "@/lib/api/workflows";
 import { createMockProject, generateTestUuid } from "@/test/mock-data";
 import { getStore } from "./store";
 
@@ -106,20 +107,94 @@ const mockWorkflows: WorkflowSchema[] = [
 ];
 
 export const mockWorkflowsApi = {
-  get: async (workflowId: string): Promise<WorkflowSchema> => {
+  /**
+   * Get a workflow by ID
+   */
+  get: async (workflowId: string): Promise<WorkflowSchema | null> => {
     const workflow = mockWorkflows.find((w) => w.id === workflowId);
-    if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
-    }
-    return workflow;
+    return workflow ?? null;
   },
 
+  /**
+   * List all workflows
+   */
   list: async (): Promise<WorkflowSchema[]> => {
     return mockWorkflows;
   },
 
+  /**
+   * Get columns for the active/default workflow
+   */
+  getActiveColumns: async (): Promise<WorkflowColumn[]> => {
+    const defaultWorkflow = mockWorkflows.find((w) => w.isDefault);
+    return defaultWorkflow?.columns ?? mockWorkflowColumns;
+  },
+
+  /**
+   * Create a new workflow (no-op in mock, returns fake workflow)
+   */
+  create: async (input: CreateWorkflowInput): Promise<WorkflowSchema> => {
+    return {
+      id: `mock-workflow-${Date.now()}`,
+      name: input.name,
+      description: input.description,
+      columns: input.columns.map((col) => ({
+        id: col.id,
+        name: col.name,
+        mapsTo: col.maps_to as InternalStatus,
+        color: col.color,
+        icon: col.icon,
+      })),
+      isDefault: input.is_default ?? false,
+    };
+  },
+
+  /**
+   * Update an existing workflow (no-op in mock, returns updated data)
+   */
+  update: async (id: string, input: UpdateWorkflowInput): Promise<WorkflowSchema> => {
+    const existing = mockWorkflows.find((w) => w.id === id);
+    if (!existing) {
+      throw new Error(`Workflow not found: ${id}`);
+    }
+    return {
+      ...existing,
+      ...(input.name && { name: input.name }),
+      ...(input.description !== undefined && { description: input.description }),
+      ...(input.is_default !== undefined && { isDefault: input.is_default }),
+    };
+  },
+
+  /**
+   * Delete a workflow (no-op in mock)
+   */
+  delete: async (_id: string): Promise<void> => {
+    // No-op for mock
+  },
+
+  /**
+   * Set a workflow as the default (no-op in mock, returns updated workflow)
+   */
+  setDefault: async (id: string): Promise<WorkflowSchema> => {
+    const workflow = mockWorkflows.find((w) => w.id === id);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${id}`);
+    }
+    return { ...workflow, isDefault: true };
+  },
+
+  /**
+   * Seed builtin workflows (no-op in mock)
+   */
   seedBuiltin: async (): Promise<number> => {
     return 1;
+  },
+
+  /**
+   * Get the built-in workflow definitions
+   */
+  getBuiltin: async (): Promise<WorkflowSchema[]> => {
+    return mockWorkflows;
   },
 } as const;
 
