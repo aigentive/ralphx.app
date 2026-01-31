@@ -12,6 +12,7 @@
 
 import { mockTasksApi, mockStepsApi } from "./tasks";
 import { mockProjectsApi, mockWorkflowsApi } from "./projects";
+import { mockMethodologiesApi } from "./methodologies";
 import { mockExecutionApi } from "./execution";
 import { mockReviewsApi, mockFixTasksApi } from "./reviews";
 import { mockQaApi } from "./qa";
@@ -20,6 +21,7 @@ import { mockTestDataApi } from "./test-data";
 // Re-export for direct imports
 export { mockTasksApi, mockStepsApi } from "./tasks";
 export { mockProjectsApi, mockWorkflowsApi, mockGetGitBranches } from "./projects";
+export { mockMethodologiesApi } from "./methodologies";
 export { mockExecutionApi } from "./execution";
 export { mockChatApi } from "./chat";
 export { mockIdeationApi } from "./ideation";
@@ -43,6 +45,7 @@ export const mockApi = {
   tasks: mockTasksApi,
   projects: mockProjectsApi,
   workflows: mockWorkflowsApi,
+  methodologies: mockMethodologiesApi,
   qa: mockQaApi,
   reviews: mockReviewsApi,
   fixTasks: mockFixTasksApi,

@@ -9,11 +9,11 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as methodologiesApi from "@/lib/api/methodologies";
+import { api } from "@/lib/tauri";
 import type {
   MethodologyResponse,
   MethodologyActivationResponse,
-} from "@/lib/api/methodologies";
+} from "@/api/methodologies";
 import { workflowKeys } from "./useWorkflows";
 
 // ============================================================================
@@ -47,7 +47,7 @@ export const methodologyKeys = {
 export function useMethodologies() {
   return useQuery<MethodologyResponse[], Error>({
     queryKey: methodologyKeys.lists(),
-    queryFn: methodologiesApi.getMethodologies,
+    queryFn: api.methodologies.getAll,
     staleTime: 60 * 1000, // 1 minute
   });
 }
@@ -69,7 +69,7 @@ export function useMethodologies() {
 export function useActiveMethodology() {
   return useQuery<MethodologyResponse | null, Error>({
     queryKey: methodologyKeys.active(),
-    queryFn: methodologiesApi.getActiveMethodology,
+    queryFn: api.methodologies.getActive,
     staleTime: 30 * 1000, // 30 seconds
   });
 }
@@ -100,7 +100,7 @@ export function useActivateMethodology() {
   const queryClient = useQueryClient();
 
   return useMutation<MethodologyActivationResponse, Error, string>({
-    mutationFn: methodologiesApi.activateMethodology,
+    mutationFn: api.methodologies.activate,
     onSuccess: () => {
       // Invalidate methodology queries
       queryClient.invalidateQueries({ queryKey: methodologyKeys.all });
@@ -133,7 +133,7 @@ export function useDeactivateMethodology() {
   const queryClient = useQueryClient();
 
   return useMutation<MethodologyResponse, Error, string>({
-    mutationFn: methodologiesApi.deactivateMethodology,
+    mutationFn: api.methodologies.deactivate,
     onSuccess: () => {
       // Invalidate methodology queries
       queryClient.invalidateQueries({ queryKey: methodologyKeys.all });
