@@ -317,6 +317,13 @@
       "prd": "specs/phases/prd_phase_43_chat_visibility_persistence.md",
       "status": "pending",
       "description": "Persist chat panel visibility per-view with localStorage, unify dual-state architecture"
+    },
+    {
+      "phase": 44,
+      "name": "Fix Chat Context Bleeding",
+      "prd": "specs/phases/prd_phase_44_chat_context_bleeding_fix.md",
+      "status": "pending",
+      "description": "Fix race condition causing streaming tool calls and stop button to bleed across context switches"
     }
   ]
 }
