@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 23:30:00 - Phase 54 Task 5: Add blockTask and unblockTask API functions
+**What:**
+- Added `block(taskId, reason?)` method to tasksApi for blocking tasks with optional reason
+- Added `unblock(taskId)` method to tasksApi for unblocking tasks
+- Both methods use `typedInvokeWithTransform` with TaskSchema for type-safe responses
+
+**Files Modified:**
+- `src/api/tasks.ts`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:15:00 - Phase 54 Task 4: Add blockedReason to task types
 **What:**
 - Added `blocked_reason: z.string().nullable()` to TaskSchema (snake_case from backend)

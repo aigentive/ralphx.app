@@ -243,6 +243,25 @@ export const tasksApi = {
       TaskListSchema,
       (tasks) => tasks.map(transformTask)
     ),
+
+  /**
+   * Block a task with an optional reason
+   * Transitions the task to 'blocked' status and sets the blocked_reason field.
+   * @param taskId The task ID
+   * @param reason Optional reason for blocking
+   * @returns The updated task
+   */
+  block: (taskId: string, reason?: string): Promise<Task> =>
+    typedInvokeWithTransform("block_task", { taskId, reason }, TaskSchema, transformTask),
+
+  /**
+   * Unblock a task
+   * Transitions the task back to 'ready' status and clears the blocked_reason field.
+   * @param taskId The task ID
+   * @returns The updated task
+   */
+  unblock: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("unblock_task", { taskId }, TaskSchema, transformTask),
 } as const;
 
 // ============================================================================
