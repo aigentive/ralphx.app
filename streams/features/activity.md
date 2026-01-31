@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 23:45:00 - Phase 54 Task 6: Add blocked group to Ready column workflow
+**What:**
+- Added "blocked" group to Ready column in defaultWorkflow (workflow.ts)
+- Group includes: id, label, statuses (["blocked"]), Ban icon, warning accent color
+- canDragFrom: true, canDropTo: true (allows manual block/unblock via drag)
+
+**Files Modified:**
+- `src/types/workflow.ts`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:30:00 - Phase 54 Task 5: Add blockTask and unblockTask API functions
 **What:**
 - Added `block(taskId, reason?)` method to tasksApi for blocking tasks with optional reason
