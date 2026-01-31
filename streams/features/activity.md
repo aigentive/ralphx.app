@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 22:15:00 - Phase 51 Task 2: Create entitlements.plist for hardened runtime
+**What:**
+- Created `src-tauri/entitlements.plist` with hardened runtime entitlements
+- Included JIT support (`com.apple.security.cs.allow-jit`)
+- Included unsigned executable memory (`com.apple.security.cs.allow-unsigned-executable-memory`)
+- Included disable library validation (`com.apple.security.cs.disable-library-validation`)
+- Included Apple Events automation (`com.apple.security.automation.apple-events`)
+
+**Files Created:**
+- `src-tauri/entitlements.plist`
+
+**Commands:**
+- File creation: passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:05:00 - Phase 51 Task 1: Add macOS DMG and signing configuration
 **What:**
 - Added `macOS` section to bundle config in `src-tauri/tauri.conf.json`

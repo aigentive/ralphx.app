@@ -117,7 +117,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Include JIT, unsigned executable memory, library validation, and Apple Events",
       "Commit: feat(bundle): add hardened runtime entitlements"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
