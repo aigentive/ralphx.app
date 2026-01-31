@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-31 01:05:00 - Phase 56 Task 3: Move kanban spec to new location
+**What:**
+- Moved tests/visual/kanban.spec.ts to tests/visual/views/kanban/kanban.spec.ts
+- No relative import updates needed (only imports @playwright/test)
+- Generated new baseline snapshot at tests/visual/snapshots/views/kanban/kanban.spec.ts-snapshots/kanban-board-chromium-darwin.png
+
+**Commands:**
+- `npx playwright test tests/visual/views/kanban/kanban.spec.ts` - 3 passed
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:35:00 - Phase 56 Task 2: Create setup fixtures and wait helpers
 **What:**
 - Created tests/fixtures/setup.fixtures.ts with:
