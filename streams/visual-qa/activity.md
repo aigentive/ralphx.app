@@ -1,3 +1,12 @@
+### 2026-02-01 01:12:18 - Bootstrap Planning (Discovery)
+**What:**
+- Analyzed uncovered modals: AskUserQuestionModal, ProposalEditModal, PermissionDialog
+- AskUserQuestionModal: Confirmed blocked on dev server restart (all test files exist, EventProvider exposes bus, but window.__eventBus not available without restart)
+- ProposalEditModal: Requires UI navigation (ideation view → click edit) or test helper to set state
+- PermissionDialog: Identified as best next target - uses event bus pattern (permission:request), same infrastructure as AskUserQuestionModal
+
+**Result:** Updated backlog with prioritized bootstrap queue. PermissionDialog ready for next iteration.
+
 ### 2026-02-01 00:59:31 - AskUserQuestionModal Visual Tests (Blocked)
 **What:**
 - Attempted baseline generation for AskUserQuestionModal
