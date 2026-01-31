@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 06:00:00 - Phase 42 Task 8: Create AgentConstellation main orchestrator
+**What:**
+- Created src/components/WelcomeScreen/AgentConstellation.tsx
+- Defined AGENTS configuration array with 4 agents (Orchestrator, Worker, QA, Reviewer)
+- Each agent has id, name, role, icon (Lucide), color, and position (% from top-left)
+- Composed all visual elements: CodeRain, AmbientParticles, CentralHub, ConnectionPaths, DataPulse, AgentNode
+- Proper layering: z-0 CodeRain → z-10 AmbientParticles → z-20 ConnectionPaths → z-30 DataPulse → z-40 CentralHub → z-50 AgentNodes
+- Mouse parallax effect using Framer Motion useMotionValue + useSpring
+- Parallax affects layers 3-6 (paths, pulses, hub, nodes) while background stays fixed
+- Dynamic dimension calculation for SVG-based components (ConnectionPaths, DataPulse)
+- Staggered node entrance via AgentNode index prop
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 05:15:00 - Phase 42 Task 7: Create AgentNode with glow and hover
 **What:**
 - Created src/components/WelcomeScreen/AgentNode.tsx
