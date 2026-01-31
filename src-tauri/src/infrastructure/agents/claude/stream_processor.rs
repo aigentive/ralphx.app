@@ -104,6 +104,8 @@ pub enum AssistantContent {
         name: String,
         input: serde_json::Value,
     },
+    #[serde(rename = "thinking")]
+    Thinking { thinking: String },
     #[serde(other)]
     Other,
 }
@@ -163,6 +165,8 @@ pub enum ContentBlockItem {
 pub enum StreamEvent {
     /// Text chunk received
     TextChunk(String),
+    /// Thinking block from Claude's extended reasoning
+    Thinking(String),
     /// Tool call started (name and id available)
     ToolCallStarted {
         name: String,
@@ -204,6 +208,10 @@ pub struct StreamProcessor {
     current_tool_input: String,
     // Track current text accumulation for content blocks
     current_text_block: String,
+    // Track if we're in a thinking block (streaming mode)
+    in_thinking_block: bool,
+    // Accumulated thinking text during streaming
+    current_thinking_block: String,
 }
 
 impl StreamProcessor {
@@ -243,6 +251,10 @@ impl StreamProcessor {
                         name: self.current_tool_name.clone(),
                         id: self.current_tool_id.clone(),
                     });
+                } else if content_block.block_type == "thinking" {
+                    // Start of a thinking block - mark state for thinking delta handling
+                    self.in_thinking_block = true;
+                    self.current_thinking_block.clear();
                 }
             }
             StreamMessage::ContentBlockDelta { delta, .. } => {
@@ -251,6 +263,12 @@ impl StreamProcessor {
                         self.response_text.push_str(&text);
                         self.current_text_block.push_str(&text);
                         events.push(StreamEvent::TextChunk(text));
+                    }
+                } else if delta.delta_type == "thinking_delta" {
+                    // Thinking block delta - accumulate and emit
+                    if let Some(text) = delta.text {
+                        self.current_thinking_block.push_str(&text);
+                        events.push(StreamEvent::Thinking(text));
                     }
                 } else if delta.delta_type == "input_json_delta" {
                     if let Some(json) = delta.partial_json {
@@ -287,6 +305,11 @@ impl StreamProcessor {
                     self.current_tool_name.clear();
                     self.current_tool_id = None;
                     self.current_tool_input.clear();
+                } else if self.in_thinking_block {
+                    // End of thinking block - reset state
+                    // (thinking content was already emitted as chunks)
+                    self.in_thinking_block = false;
+                    self.current_thinking_block.clear();
                 }
             }
             StreamMessage::Result { session_id, .. } => {
@@ -324,6 +347,10 @@ impl StreamProcessor {
                                 result: None,
                             });
                             events.push(StreamEvent::ToolCallCompleted(tool_call));
+                        }
+                        AssistantContent::Thinking { thinking } => {
+                            // Emit complete thinking block from verbose mode
+                            events.push(StreamEvent::Thinking(thinking));
                         }
                         AssistantContent::Other => {}
                     }
@@ -692,5 +719,111 @@ mod tests {
 
         let parsed: ToolCall = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.name, "create_task_proposal");
+    }
+
+    #[test]
+    fn test_processor_thinking_block_streaming() {
+        let mut processor = StreamProcessor::new();
+
+        // Thinking block start
+        let start = StreamMessage::ContentBlockStart {
+            index: Some(0),
+            content_block: ContentBlock {
+                block_type: "thinking".to_string(),
+                id: None,
+                name: None,
+                text: None,
+                input: None,
+            },
+        };
+
+        // Thinking content delta
+        let delta1 = StreamMessage::ContentBlockDelta {
+            index: Some(0),
+            delta: ContentDelta {
+                delta_type: "thinking_delta".to_string(),
+                text: Some("Let me analyze ".to_string()),
+                partial_json: None,
+            },
+        };
+
+        let delta2 = StreamMessage::ContentBlockDelta {
+            index: Some(0),
+            delta: ContentDelta {
+                delta_type: "thinking_delta".to_string(),
+                text: Some("this problem.".to_string()),
+                partial_json: None,
+            },
+        };
+
+        // Thinking block stop
+        let stop = StreamMessage::ContentBlockStop { index: Some(0) };
+
+        let events1 = processor.process_message(start);
+        assert!(events1.is_empty()); // start doesn't emit event
+
+        let events2 = processor.process_message(delta1);
+        assert_eq!(events2.len(), 1);
+        assert!(matches!(&events2[0], StreamEvent::Thinking(t) if t == "Let me analyze "));
+
+        let events3 = processor.process_message(delta2);
+        assert_eq!(events3.len(), 1);
+        assert!(matches!(&events3[0], StreamEvent::Thinking(t) if t == "this problem."));
+
+        let events4 = processor.process_message(stop);
+        assert!(events4.is_empty()); // stop doesn't emit event for thinking
+    }
+
+    #[test]
+    fn test_processor_thinking_block_verbose() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![
+                    AssistantContent::Thinking {
+                        thinking: "Deep analysis of the problem...".to_string(),
+                    },
+                    AssistantContent::Text {
+                        text: "Here's my answer.".to_string(),
+                    },
+                ],
+                stop_reason: Some("end_turn".to_string()),
+            },
+            session_id: Some("sess-456".to_string()),
+        };
+
+        let events = processor.process_message(msg);
+
+        // Should emit: Thinking, TextChunk, SessionId
+        assert_eq!(events.len(), 3);
+        assert!(matches!(&events[0], StreamEvent::Thinking(t) if t == "Deep analysis of the problem..."));
+        assert!(matches!(&events[1], StreamEvent::TextChunk(t) if t == "Here's my answer."));
+        assert!(matches!(&events[2], StreamEvent::SessionId(id) if id == "sess-456"));
+    }
+
+    #[test]
+    fn test_parse_thinking_content() {
+        // Test parsing thinking content from assistant message JSON
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"Let me think..."}],"stop_reason":"end_turn"},"session_id":"sess-789"}"#;
+        let msg = StreamProcessor::parse_line(line);
+
+        let msg = msg.expect("Expected Some(StreamMessage)");
+        assert!(
+            matches!(msg, StreamMessage::Assistant { .. }),
+            "Expected Assistant message, got different variant"
+        );
+        let StreamMessage::Assistant { message, .. } = msg else {
+            unreachable!()
+        };
+        assert_eq!(message.content.len(), 1);
+        assert!(
+            matches!(&message.content[0], AssistantContent::Thinking { .. }),
+            "Expected Thinking content, got different variant"
+        );
+        let AssistantContent::Thinking { thinking } = &message.content[0] else {
+            unreachable!()
+        };
+        assert_eq!(thinking, "Let me think...");
     }
 }

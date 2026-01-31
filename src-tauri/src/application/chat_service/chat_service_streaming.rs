@@ -100,6 +100,9 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
                     }
+                    StreamEvent::Thinking(_) => {
+                        // Thinking blocks will be emitted to activity stream in Task 2
+                    }
                     StreamEvent::ToolCallStarted { name, id } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
