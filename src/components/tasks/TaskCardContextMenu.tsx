@@ -9,6 +9,7 @@
  * - Permanent Delete (only for archived tasks)
  */
 
+import { useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -19,6 +20,7 @@ import {
 import { Eye, Pencil, Archive, RotateCcw, Trash, X, Ban, Unlock, Lightbulb } from "lucide-react";
 import type { Task } from "@/types/task";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { BlockReasonDialog } from "./BlockReasonDialog";
 
 interface TaskCardContextMenuProps {
   task: Task;
@@ -29,6 +31,8 @@ interface TaskCardContextMenuProps {
   onRestore: () => void;
   onPermanentDelete: () => void;
   onStatusChange: (newStatus: string) => void;
+  /** Handler for blocking a task with an optional reason */
+  onBlockWithReason: (reason?: string) => void;
   /** Handler for starting ideation seeded from this task (only for backlog tasks) */
   onStartIdeation?: () => void;
 }
@@ -104,9 +108,11 @@ export function TaskCardContextMenu({
   onRestore,
   onPermanentDelete,
   onStatusChange,
+  onBlockWithReason,
   onStartIdeation,
 }: TaskCardContextMenuProps) {
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [showBlockDialog, setShowBlockDialog] = useState(false);
 
   const isArchived = task.archivedAt !== null;
   const canEditTask = canEdit(task);
@@ -209,7 +215,14 @@ export function TaskCardContextMenu({
             {statusActions.map((action) => (
               <ContextMenuItem
                 key={action.status}
-                onClick={() => handleStatusChange(action.status, action.label)}
+                onClick={() => {
+                  // Block action opens dialog instead of confirm
+                  if (action.label === "Block") {
+                    setShowBlockDialog(true);
+                  } else {
+                    handleStatusChange(action.status, action.label);
+                  }
+                }}
               >
                 <action.icon className="w-4 h-4 mr-2" />
                 {action.label}
@@ -236,6 +249,15 @@ export function TaskCardContextMenu({
         )}
       </ContextMenuContent>
       <ConfirmationDialog {...confirmationDialogProps} />
+      <BlockReasonDialog
+        isOpen={showBlockDialog}
+        onClose={() => setShowBlockDialog(false)}
+        onConfirm={(reason) => {
+          onBlockWithReason(reason);
+          setShowBlockDialog(false);
+        }}
+        taskTitle={task.title}
+      />
     </ContextMenu>
   );
 }
