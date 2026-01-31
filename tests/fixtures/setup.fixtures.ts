@@ -26,3 +26,11 @@ export async function setupActivity(page: Page) {
   // Wait for activity view to load
   await page.waitForSelector('[data-testid="activity-view"]', { timeout: 10000 });
 }
+
+export async function setupSettings(page: Page) {
+  await setupApp(page);
+  // Navigate to settings view
+  await page.click('[data-testid="nav-settings"]');
+  // Wait for settings view to load
+  await page.waitForSelector('[data-testid="settings-view"]', { timeout: 10000 });
+}

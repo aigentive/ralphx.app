@@ -9,7 +9,7 @@ Phase: IN_PROGRESS
 | kanban | ✅ | kanban.spec.ts | ✅ | covered |
 | ideation | ✅ | ideation.spec.ts | ✅ | covered |
 | activity | ✅ | activity.spec.ts | ✅ | covered |
-| settings | ❌ | — | — | uncovered |
+| settings | ✅ | settings.spec.ts | ✅ | covered |
 | extensibility | ❌ | — | — | uncovered |
 | task_detail | ❌ | — | — | uncovered |
 
