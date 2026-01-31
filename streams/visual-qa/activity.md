@@ -1,3 +1,28 @@
+### 2026-02-01 01:05:00 - PermissionDialog Investigation (P1 - Non-Blocking)
+**What:**
+- Investigated PermissionDialog after dev server restart per backlog instructions
+- Verified window.__eventBus correctly exposed by EventProvider (MockEventBus)
+- Created debug test to verify event bus functionality
+- Discovered root cause: PermissionDialog useEffect subscription never runs
+- Listener count for `permission:request` = 0 after app load (expected >= 1)
+- Component exists in App.tsx:760 but subscription mechanism broken in web mode
+
+**Mock parity:** Dev server restarted, MockEventBus working correctly (verified with immediate subscribe+emit test)
+
+**Debugging steps:**
+1. Restarted dev server: `pkill -f "vite.*5173" && npm run dev:web &`
+2. Ran tests: All 8 tests timeout waiting for dialog
+3. Created debug-eventbus.spec.ts to isolate issue
+4. Verified `window.__eventBus` available and type = MockEventBus
+5. Tested immediate subscribe+emit: WORKS ✅
+6. Checked PermissionDialog listener count: 0 ❌
+7. Conclusion: useEffect hook not subscribing in web mode
+
+**Result:** Reclassified as P1 technical debt (modal testability issue, non-blocking per stream rules)
+**Backlog:** Updated PermissionDialog entry with detailed findings
+
+---
+
 ### 2026-01-31 22:44:39 - AskUserQuestionModal Investigation (Blocked)
 **What:**
 - Investigated AskUserQuestionModal blocking issue
