@@ -39,6 +39,7 @@ tauri-plugin-window-state = "2"
 axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors"] }
 tauri-plugin-fs = "2.4.5"
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
 tempfile = "3"
