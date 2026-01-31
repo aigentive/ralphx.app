@@ -36,6 +36,7 @@ import type { ApplyProposalsInput } from "@/types/ideation";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
+import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
@@ -51,6 +52,7 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
+import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { api, getGitBranches } from "@/lib/tauri";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
@@ -158,6 +160,9 @@ function AppContent() {
   // Real-time execution status updates via Tauri events
   useExecutionEvents();
   const { isApproving, isRequestingChanges } = useReviewMutations();
+
+  // Listen for agent questions requiring user input
+  const { submitAnswer } = useAskUserQuestion();
 
   // Ideation hooks
   const { data: sessionData } = useIdeationSession(activeSession?.id ?? "");
@@ -293,10 +298,10 @@ function AppContent() {
     }
   };
 
-  const handleQuestionSubmit = async () => {
+  const handleQuestionSubmit = async (response: AskUserQuestionResponse) => {
     setIsQuestionLoading(true);
     try {
-      clearActiveQuestion();
+      await submitAnswer(response);
     } catch {
       toast.error("Failed to submit answer");
     } finally {

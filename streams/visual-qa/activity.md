@@ -1,3 +1,29 @@
+### 2026-02-01 00:05:51 - AskUserQuestionModal Visual Tests (Failed)
+**What:**
+- Created page object: tests/pages/modals/ask-user-question.page.ts
+- Created test helper: tests/helpers/ask-user-question.helpers.ts
+- Created spec: tests/visual/modals/ask-user-question/ask-user-question.spec.ts
+- Added useAskUserQuestion hook call to App.tsx
+- Exposed EventBus to window in EventProvider.tsx for testing
+
+**Mock parity:**
+- Status: NOT READY - event listener not subscribing (listener count = 0)
+- EventBus available on window: YES
+- useAskUserQuestion hook added to App.tsx: YES
+- Issue: Hook's useEffect not subscribing to "agent:ask_user_question" event
+- Verified code changes served by dev server (both App.tsx and EventProvider.tsx)
+- Hard reload in tests doesn't resolve the issue
+
+**Commands:**
+- `npx playwright test tests/visual/modals/ask-user-question/ask-user-question-simple.spec.ts`
+
+**Result:** Failed - Modal does not render when event is emitted
+
+**Notes:**
+- This requires deeper investigation into why the useAskUserQuestion hook subscription isn't working
+- All test infrastructure created but cannot proceed without mock parity
+- Added to streams/visual-qa/backlog.md as mock parity issue
+
 ### 2026-01-31 23:54:00 - ReviewsPanel Visual Tests
 **What:**
 - Created page object: tests/pages/modals/reviews-panel.page.ts
