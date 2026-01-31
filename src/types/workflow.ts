@@ -389,6 +389,15 @@ export const defaultWorkflow: WorkflowSchema = {
           canDragFrom: false, // User interacts via Approve/Revise buttons
           canDropTo: false,
         },
+        {
+          id: "escalated",
+          label: "Escalated",
+          statuses: ["escalated"],
+          icon: "AlertTriangle",
+          accentColor: "hsl(var(--warning))",
+          canDragFrom: false, // User interacts via Approve/Request Changes buttons
+          canDropTo: false,
+        },
       ],
     },
     { id: "done", name: "Done", mapsTo: "approved" },

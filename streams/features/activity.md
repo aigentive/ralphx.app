@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-01 12:45:00 - Phase 45 Task 10: Add Escalated column group to workflow schema
+**What:**
+- Added new group `escalated` to `in_review` column in `defaultWorkflow` (workflow.ts:392-400)
+- Group configuration: `id: "escalated"`, `label: "Escalated"`, `statuses: ["escalated"]`
+- Icon: `AlertTriangle`, accent color: `hsl(var(--warning))` (amber/warning styling)
+- Drag settings: `canDragFrom: false`, `canDropTo: false` (user interacts via Approve/Request Changes buttons)
+- Position: After `ready_approval` group within `in_review` column
+
+**Commands:**
+- `npm run lint` (passed with pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 12:15:00 - Phase 45 Task 9: Register EscalatedTaskDetail in view registry
 **What:**
 - Added `EscalatedTaskDetail` to import statement in TaskDetailPanel.tsx
