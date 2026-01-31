@@ -124,7 +124,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npx playwright test to verify test still passes",
       "Commit: refactor(tests): relocate kanban spec to visual/views/kanban"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
