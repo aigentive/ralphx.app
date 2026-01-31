@@ -380,7 +380,7 @@ export function ActivityView({
             </div>
           )}
 
-          {!isHistoricalMode && isEmpty && <EmptyState hasFilter={hasFilter} />}
+          {!isHistoricalMode && isEmpty && <EmptyState hasFilter={hasFilter} isLiveMode />}
           {isHistoricalMode && !historyQuery?.isLoading && isEmpty && <EmptyState hasFilter={hasFilter} />}
 
           {!isEmpty && (

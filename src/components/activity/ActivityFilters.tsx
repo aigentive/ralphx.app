@@ -279,6 +279,8 @@ export function SearchBar({
 
 export interface EmptyStateProps {
   hasFilter: boolean;
+  /** Whether we're in Live mode (shows History hint when empty) */
+  isLiveMode?: boolean;
 }
 
 function ActivityEmptyIcon() {
@@ -301,7 +303,37 @@ function ActivityEmptyIcon() {
   );
 }
 
-export function EmptyState({ hasFilter }: EmptyStateProps) {
+export function EmptyState({ hasFilter, isLiveMode }: EmptyStateProps) {
+  // Determine the message based on context
+  const getMessage = () => {
+    if (hasFilter) {
+      return {
+        title: "No matching activities",
+        subtitle: "Try adjusting your search or filters",
+      };
+    }
+
+    if (isLiveMode) {
+      return {
+        title: "No live activity",
+        subtitle: "Agent activity will appear here when tasks are running",
+        hint: (
+          <span className="flex items-center justify-center gap-1.5 mt-3 text-sm text-[var(--text-secondary)]">
+            <History className="w-4 h-4" />
+            Switch to <strong className="text-[var(--accent-primary)]">History</strong> to browse past events
+          </span>
+        ),
+      };
+    }
+
+    return {
+      title: "No activity yet",
+      subtitle: "Agent activity will appear here when tasks are running",
+    };
+  };
+
+  const { title, subtitle, hint } = getMessage();
+
   return (
     <div
       data-testid="activity-empty"
@@ -310,14 +342,9 @@ export function EmptyState({ hasFilter }: EmptyStateProps) {
       <div className="mb-4 opacity-50">
         <ActivityEmptyIcon />
       </div>
-      <p className="text-[var(--text-secondary)]">
-        {hasFilter ? "No matching activities" : "No activity yet"}
-      </p>
-      <p className="text-sm text-[var(--text-muted)] mt-1">
-        {hasFilter
-          ? "Try adjusting your search or filters"
-          : "Agent activity will appear here when tasks are running"}
-      </p>
+      <p className="text-[var(--text-secondary)]">{title}</p>
+      <p className="text-sm text-[var(--text-muted)] mt-1">{subtitle}</p>
+      {hint}
     </div>
   );
 }
