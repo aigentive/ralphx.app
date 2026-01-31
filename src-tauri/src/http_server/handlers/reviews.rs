@@ -238,8 +238,8 @@ pub async fn get_review_notes(
     }))
 }
 
-/// Approve a task after AI review has passed
-/// Only available when task is in ReviewPassed status
+/// Approve a task after AI review has passed or escalated
+/// Only available when task is in ReviewPassed or Escalated status
 pub async fn approve_task(
     State(state): State<HttpServerState>,
     Json(req): Json<super::ApproveTaskRequest>,
@@ -255,12 +255,14 @@ pub async fn approve_task(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
 
-    if task.internal_status != InternalStatus::ReviewPassed {
+    if task.internal_status != InternalStatus::ReviewPassed
+        && task.internal_status != InternalStatus::Escalated
+    {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
-                "Task must be in 'review_passed' status to approve. Current status: {}. \
-                This tool is only available after the AI reviewer has approved the task.",
+                "Task must be in 'review_passed' or 'escalated' status to approve. Current status: {}. \
+                This tool is only available after the AI reviewer has approved or escalated the task.",
                 task.internal_status.as_str()
             ),
         ));
@@ -319,8 +321,8 @@ pub async fn approve_task(
     }))
 }
 
-/// Request changes on a task after AI review has passed
-/// Only available when task is in ReviewPassed status
+/// Request changes on a task after AI review has passed or escalated
+/// Only available when task is in ReviewPassed or Escalated status
 pub async fn request_task_changes(
     State(state): State<HttpServerState>,
     Json(req): Json<super::RequestTaskChangesRequest>,
@@ -336,12 +338,14 @@ pub async fn request_task_changes(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
 
-    if task.internal_status != InternalStatus::ReviewPassed {
+    if task.internal_status != InternalStatus::ReviewPassed
+        && task.internal_status != InternalStatus::Escalated
+    {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
-                "Task must be in 'review_passed' status to request changes. Current status: {}. \
-                This tool is only available after the AI reviewer has approved the task.",
+                "Task must be in 'review_passed' or 'escalated' status to request changes. Current status: {}. \
+                This tool is only available after the AI reviewer has approved or escalated the task.",
                 task.internal_status.as_str()
             ),
         ));
