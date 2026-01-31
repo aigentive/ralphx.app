@@ -52,7 +52,6 @@ const FRAGMENT_COUNT = 45;
 const FRAGMENT_DATA = Array.from({ length: FRAGMENT_COUNT }, (_, i) => {
   // Use different prime multipliers to decouple properties
   const rDepth = seededRandom(i * 7 + 1);
-  const rLeft = seededRandom(i * 13 + 100);
   const rSpeed = seededRandom(i * 17 + 200);
   const rStart = seededRandom(i * 23 + 300);
   const rDelay = seededRandom(i * 31 + 400);
