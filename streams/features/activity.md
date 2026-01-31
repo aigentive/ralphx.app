@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-31 20:12:00 - Phase 40 Task 7: Add SVG tier connectors with critical path highlight
+**What:**
+- Added `TierConnector` component for SVG connectors between tiers
+- Renders downward arrow with vertical line to show dependency flow direction
+- Critical path connectors use solid `#ff6b35` (warm orange accent)
+- Non-critical connectors use dashed `var(--border-subtle)` styling
+- Computed `criticalConnectors` set to determine which tier transitions are on critical path
+- A connector is critical when both adjacent tiers have proposals on the critical path
+- Changed layout from `space-y-4` to `space-y-2` to accommodate connectors
+- Added 5 new tests for connector rendering and critical path highlighting
+
+**Files:**
+- src/components/Ideation/TieredProposalList.tsx (added TierConnector component, criticalConnectors logic)
+- src/components/Ideation/TieredProposalList.test.tsx (added tier connector tests)
+
+**Commands:**
+- `npm run lint` (0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+- `npm test -- TieredProposalList` (26 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 18:15:00 - Phase 40 Task 6: Integrate TieredProposalList into IdeationView
 **What:**
 - Replaced `sortedProposals.map()` rendering with `<TieredProposalList />` component

@@ -431,6 +431,126 @@ describe("TieredProposalList", () => {
   });
 
   // ============================================================================
+  // Tier Connector Tests
+  // ============================================================================
+
+  describe("tier connectors", () => {
+    it("does not render connector before first tier", () => {
+      const proposals = [createProposal({ id: "p1" })];
+      render(<TieredProposalList {...defaultProps} proposals={proposals} />);
+
+      // Should not have any connectors with single tier
+      expect(screen.queryByTestId("tier-connector")).not.toBeInTheDocument();
+    });
+
+    it("renders connector between tiers", () => {
+      const proposals = [
+        createProposal({ id: "p1", title: "Foundation" }),
+        createProposal({ id: "p2", title: "Core" }),
+      ];
+
+      const graph = createDependencyGraph(
+        [
+          { proposalId: "p1", title: "Foundation", inDegree: 0, outDegree: 1 },
+          { proposalId: "p2", title: "Core", inDegree: 1, outDegree: 0 },
+        ],
+        [{ from: "p1", to: "p2" }] // p2 depends on p1 → two tiers
+      );
+
+      render(
+        <TieredProposalList {...defaultProps} proposals={proposals} dependencyGraph={graph} />
+      );
+
+      // Should have one connector between tier 0 and tier 1
+      expect(screen.getByTestId("tier-connector")).toBeInTheDocument();
+    });
+
+    it("renders multiple connectors for multiple tier transitions", () => {
+      const proposals = [
+        createProposal({ id: "p1", title: "Foundation Task" }),
+        createProposal({ id: "p2", title: "Core Task" }),
+        createProposal({ id: "p3", title: "Integration Task" }),
+      ];
+
+      const graph = createDependencyGraph(
+        [
+          { proposalId: "p1", title: "Foundation Task", inDegree: 0, outDegree: 1 },
+          { proposalId: "p2", title: "Core Task", inDegree: 1, outDegree: 1 },
+          { proposalId: "p3", title: "Integration Task", inDegree: 1, outDegree: 0 },
+        ],
+        [
+          { from: "p1", to: "p2" }, // p2 depends on p1
+          { from: "p2", to: "p3" }, // p3 depends on p2
+        ]
+      );
+
+      render(
+        <TieredProposalList {...defaultProps} proposals={proposals} dependencyGraph={graph} />
+      );
+
+      // Should have two connectors (0→1, 1→2)
+      const connectors = screen.getAllByTestId("tier-connector");
+      expect(connectors).toHaveLength(2);
+    });
+
+    it("highlights connector on critical path", () => {
+      const proposals = [
+        createProposal({ id: "p1", title: "Foundation" }),
+        createProposal({ id: "p2", title: "Core" }),
+      ];
+
+      const graph = createDependencyGraph(
+        [
+          { proposalId: "p1", title: "Foundation", inDegree: 0, outDegree: 1 },
+          { proposalId: "p2", title: "Core", inDegree: 1, outDegree: 0 },
+        ],
+        [{ from: "p1", to: "p2" }],
+        ["p1", "p2"] // Both on critical path
+      );
+
+      const criticalPathIds = new Set(["p1", "p2"]);
+
+      render(
+        <TieredProposalList
+          {...defaultProps}
+          proposals={proposals}
+          dependencyGraph={graph}
+          criticalPathIds={criticalPathIds}
+        />
+      );
+
+      // The connector SVG should use critical path color (#ff6b35)
+      const connector = screen.getByTestId("tier-connector");
+      const svgLine = connector.querySelector("line");
+      expect(svgLine).toHaveAttribute("stroke", "#ff6b35");
+    });
+
+    it("uses dashed style for non-critical connector", () => {
+      const proposals = [
+        createProposal({ id: "p1", title: "Foundation" }),
+        createProposal({ id: "p2", title: "Core" }),
+      ];
+
+      const graph = createDependencyGraph(
+        [
+          { proposalId: "p1", title: "Foundation", inDegree: 0, outDegree: 1 },
+          { proposalId: "p2", title: "Core", inDegree: 1, outDegree: 0 },
+        ],
+        [{ from: "p1", to: "p2" }]
+      );
+
+      // No critical path
+      render(
+        <TieredProposalList {...defaultProps} proposals={proposals} dependencyGraph={graph} />
+      );
+
+      const connector = screen.getByTestId("tier-connector");
+      const svgLine = connector.querySelector("line");
+      expect(svgLine).toHaveAttribute("stroke-dasharray", "3 2");
+    });
+  });
+
+  // ============================================================================
   // Edge Case Tests
   // ============================================================================
 
