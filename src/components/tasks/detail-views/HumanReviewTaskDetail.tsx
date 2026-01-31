@@ -7,13 +7,14 @@
  * Part of the View Registry Pattern for state-specific task detail views.
  */
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionTitle } from "./shared";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import {
   Loader2,
@@ -213,6 +214,7 @@ function ActionButtons({
   const queryClient = useQueryClient();
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
   const approveMutation = useMutation({
     mutationFn: async () => {
@@ -246,6 +248,17 @@ function ActionButtons({
     }
   };
 
+  const handleApprove = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Approve this task?",
+      description: "The task will be marked as approved and completed.",
+      confirmText: "Approve",
+      variant: "default",
+    });
+    if (!confirmed) return;
+    approveMutation.mutate();
+  }, [confirm, approveMutation]);
+
   const isLoading = approveMutation.isPending || requestChangesMutation.isPending;
 
   return (
@@ -277,7 +290,7 @@ function ActionButtons({
       <div className="flex items-center gap-2">
         <Button
           data-testid="approve-button"
-          onClick={() => approveMutation.mutate()}
+          onClick={handleApprove}
           disabled={isLoading || showFeedbackInput}
           className="flex-1 gap-1.5"
           style={{
@@ -331,6 +344,7 @@ function ActionButtons({
           {approveMutation.error?.message || requestChangesMutation.error?.message}
         </p>
       )}
+      <ConfirmationDialog {...confirmationDialogProps} />
     </div>
   );
 }
