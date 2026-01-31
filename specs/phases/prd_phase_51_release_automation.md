@@ -185,7 +185,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: feat(updater): register updater plugin"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,

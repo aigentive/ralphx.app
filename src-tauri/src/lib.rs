@@ -62,6 +62,7 @@ pub fn run() {
                 .with_state_flags(tauri_plugin_window_state::StateFlags::all())
                 .build()
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
