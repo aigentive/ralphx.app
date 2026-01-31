@@ -1,10 +1,10 @@
 // Tauri commands for Review operations
 // Thin layer that delegates to ReviewRepository and ReviewService
 
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
-use crate::domain::entities::{ProjectId, ReviewId, ReviewNote, ReviewerType, TaskId};
+use crate::domain::entities::{ProjectId, ReviewId, ReviewNote, ReviewOutcome, ReviewerType, TaskId};
 
 // Re-export types for external use
 pub use super::review_commands_types::{
@@ -190,7 +190,7 @@ pub async fn reject_review(
 // Commands - Fix task operations
 // ============================================================================
 
-use crate::domain::entities::{InternalStatus, ReviewOutcome, Task};
+use crate::domain::entities::{InternalStatus, Task};
 use crate::domain::review::config::ReviewSettings;
 
 /// Approve a fix task, changing its status from Blocked to Ready
@@ -356,6 +356,166 @@ pub async fn get_fix_task_attempts(
         task_id: task_id.as_str().to_string(),
         attempt_count,
     })
+}
+
+// ============================================================================
+// Commands - Task-based approval (for human review after AI review)
+// ============================================================================
+
+use super::review_commands_types::{ApproveTaskInput, RequestTaskChangesInput};
+use crate::application::TaskTransitionService;
+use crate::commands::execution_commands::ExecutionState;
+use std::sync::Arc;
+
+/// Approve a task after AI review has passed or escalated
+/// This is the human approval action that transitions the task to Approved status
+#[tauri::command]
+pub async fn approve_task_for_review(
+    input: ApproveTaskInput,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let task_id = TaskId::from_string(input.task_id);
+
+    // 1. Get task and validate state is ReviewPassed or Escalated
+    let task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    if task.internal_status != InternalStatus::ReviewPassed
+        && task.internal_status != InternalStatus::Escalated
+    {
+        return Err(format!(
+            "Task must be in 'review_passed' or 'escalated' status to approve. Current status: {}. \
+            This action is only available after the AI reviewer has approved or escalated the task.",
+            task.internal_status.as_str()
+        ));
+    }
+
+    // 2. Create a human approval review note
+    let review_note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Human,
+        ReviewOutcome::Approved,
+        input.notes.unwrap_or_else(|| "Approved by user".to_string()),
+    );
+    state
+        .review_repo
+        .add_note(&review_note)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Transition to Approved using TaskTransitionService
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+    );
+
+    let old_status = task.internal_status.as_str().to_string();
+    transition_service
+        .transition_task(&task_id, InternalStatus::Approved)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 4. Emit events
+    let _ = app.emit("review:human_approved", serde_json::json!({
+        "task_id": task_id.as_str(),
+    }));
+    let _ = app.emit("task:status_changed", serde_json::json!({
+        "task_id": task_id.as_str(),
+        "old_status": old_status,
+        "new_status": "approved",
+    }));
+
+    Ok(())
+}
+
+/// Request changes on a task after AI review has passed or escalated
+/// This transitions the task to RevisionNeeded status for re-execution
+#[tauri::command]
+pub async fn request_task_changes_for_review(
+    input: RequestTaskChangesInput,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let task_id = TaskId::from_string(input.task_id);
+
+    // 1. Get task and validate state is ReviewPassed or Escalated
+    let task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    if task.internal_status != InternalStatus::ReviewPassed
+        && task.internal_status != InternalStatus::Escalated
+    {
+        return Err(format!(
+            "Task must be in 'review_passed' or 'escalated' status to request changes. Current status: {}. \
+            This action is only available after the AI reviewer has approved or escalated the task.",
+            task.internal_status.as_str()
+        ));
+    }
+
+    // 2. Create a human changes-requested review note
+    let review_note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Human,
+        ReviewOutcome::ChangesRequested,
+        input.feedback.clone(),
+    );
+    state
+        .review_repo
+        .add_note(&review_note)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Transition to RevisionNeeded (will auto-trigger re-execution)
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+    );
+
+    let old_status = task.internal_status.as_str().to_string();
+    transition_service
+        .transition_task(&task_id, InternalStatus::RevisionNeeded)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 4. Emit events
+    let _ = app.emit("review:human_changes_requested", serde_json::json!({
+        "task_id": task_id.as_str(),
+        "feedback": input.feedback,
+    }));
+    let _ = app.emit("task:status_changed", serde_json::json!({
+        "task_id": task_id.as_str(),
+        "old_status": old_status,
+        "new_status": "revision_needed",
+    }));
+
+    Ok(())
 }
 
 #[cfg(test)]
