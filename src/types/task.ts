@@ -31,6 +31,7 @@ export const TaskSchema = z.object({
   started_at: z.string().datetime({ offset: true }).nullable(),
   completed_at: z.string().datetime({ offset: true }).nullable(),
   archived_at: z.string().datetime({ offset: true }).nullable(),
+  blocked_reason: z.string().nullable(),
 });
 
 /**
@@ -55,6 +56,7 @@ export interface Task {
   startedAt: string | null;
   completedAt: string | null;
   archivedAt: string | null;
+  blockedReason: string | null;
   /** Not in TaskResponse - fetch via get_task_context */
   sourceProposalId?: string | null;
   /** Not in TaskResponse - fetch via get_task_context */
@@ -79,6 +81,7 @@ export function transformTask(raw: z.infer<typeof TaskSchema>): Task {
     startedAt: raw.started_at,
     completedAt: raw.completed_at,
     archivedAt: raw.archived_at,
+    blockedReason: raw.blocked_reason,
   };
 }
 
