@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 40,
+  "currentPhase": 41,
   "phases": [
     {
       "phase": 0,
@@ -294,14 +294,14 @@
       "phase": 40,
       "name": "Tiered Proposal View",
       "prd": "specs/phases/prd_phase_40_tiered_proposal_view.md",
-      "status": "active",
+      "status": "complete",
       "description": "Reorganize proposals into topological tiers with inline dependency names and reasons"
     },
     {
       "phase": 41,
       "name": "Streaming Tool Call Deduplication",
       "prd": "specs/phases/prd_phase_41_streaming_tool_deduplication.md",
-      "status": "pending",
+      "status": "active",
       "description": "Fix duplicate tool calls in streaming tooltip by using backend tool_id for deduplication"
     },
     {
