@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 19:00:00 - P0 Fix: PermissionDialog EventProvider migration
+**What:**
+- Migrated PermissionDialog from direct `@tauri-apps/api/event` listen() to useEventBus()
+- Replaced async listen() pattern with synchronous subscribe() from EventBus
+- Event `permission:request` now goes through EventProvider
+
+**Files Modified:**
+- `src/components/PermissionDialog.tsx` (use useEventBus() instead of direct listen())
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - PermissionDialog events will now use MockEventBus in web mode
+
+---
+
 ### 2026-01-31 18:00:00 - P0 Fix: TaskBoard EventProvider migration
 **What:**
 - Migrated TaskBoard from direct `@tauri-apps/api/event` listen() to useEventBus()
