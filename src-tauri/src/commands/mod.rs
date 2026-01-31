@@ -1,6 +1,7 @@
 // Tauri commands - thin layer bridging frontend to backend
 // Commands should be minimal - delegate to domain/infrastructure
 
+pub mod activity_commands;
 pub mod chat_responses;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
@@ -23,6 +24,11 @@ pub mod unified_chat_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
+pub use activity_commands::{
+    count_session_activity_events, count_task_activity_events, list_session_activity_events,
+    list_task_activity_events, ActivityEventFilterInput, ActivityEventPageResponse,
+    ActivityEventResponse,
+};
 pub use agent_profile_commands::{
     get_agent_profile, get_agent_profiles_by_role, get_builtin_agent_profiles,
     get_custom_agent_profiles, list_agent_profiles, seed_builtin_profiles,
