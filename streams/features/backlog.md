@@ -47,6 +47,16 @@
 - [x] [Frontend] Direct invoke call: useAskUserQuestion uses invoke() directly, not mockable - src/hooks/useAskUserQuestion.ts:86
 - [x] [Frontend] Direct invoke call: PermissionDialog uses invoke() directly, not mockable - src/components/PermissionDialog.tsx:47
 
+## From Phase 55 Verification (2026-01-31) - Event Listener Bypasses
+
+- [ ] [Frontend] Bypassed EventProvider: TaskChatPanel uses direct listen() import - src/components/tasks/TaskChatPanel.tsx:9
+- [ ] [Frontend] Bypassed EventProvider: TaskBoard uses direct listen() import - src/components/tasks/TaskBoard/TaskBoard.tsx:22
+- [ ] [Frontend] Bypassed EventProvider: PermissionDialog uses direct listen() import - src/components/PermissionDialog.tsx:2
+- [ ] [Frontend] Bypassed EventProvider: IdeationView uses direct listen() import - src/components/Ideation/IdeationView.tsx:21
+- [ ] [Frontend] Bypassed EventProvider: useSupervisorAlerts.listener uses direct listen() import - src/hooks/useSupervisorAlerts.listener.ts:9
+- [ ] [Frontend] Bypassed EventProvider: useAskUserQuestion uses direct listen() import - src/hooks/useAskUserQuestion.ts:10
+- [ ] [Frontend] Bypassed EventProvider: useChatPanelHandlers uses direct listen() import - src/hooks/useChatPanelHandlers.ts:9
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
