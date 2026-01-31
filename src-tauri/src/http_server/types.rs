@@ -271,11 +271,20 @@ pub struct SuggestTaskResponse {
 // Request/Response Types - Reviews
 // ============================================================================
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ReviewIssue {
+    pub severity: String, // "critical" | "major" | "minor" | "suggestion"
+    pub file: Option<String>,
+    pub line: Option<u32>,
+    pub description: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CompleteReviewRequest {
     pub task_id: String,
     pub decision: String, // "approved" | "needs_changes" | "escalate"
-    pub comments: Option<String>,
+    pub feedback: Option<String>,
+    pub issues: Option<Vec<ReviewIssue>>,
 }
 
 #[derive(Debug, Serialize)]

@@ -48,8 +48,18 @@ pub async fn complete_review(
         }
     };
 
-    // 3. Get feedback
-    let feedback = req.comments.unwrap_or_else(|| "No comments provided".to_string());
+    // 3. Get feedback (with issues serialized to JSON if present)
+    let mut feedback_text = req.feedback.unwrap_or_else(|| "No comments provided".to_string());
+
+    // Serialize issues to JSON and prepend to feedback for storage
+    if let Some(ref issues) = req.issues {
+        if !issues.is_empty() {
+            if let Ok(issues_json) = serde_json::to_string(issues) {
+                feedback_text = format!("{{\"issues\":{}}}\n{}", issues_json, feedback_text);
+            }
+        }
+    }
+    let feedback = feedback_text;
 
     // 4. Get or create Review record for this task
     let reviews = state
