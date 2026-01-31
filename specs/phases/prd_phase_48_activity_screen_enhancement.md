@@ -125,7 +125,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(domain): add ActivityEvent entity"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

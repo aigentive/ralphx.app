@@ -1,6 +1,7 @@
 // Domain entities - pure Rust types with no external dependencies
 // These represent the core business objects of RalphX
 
+pub mod activity_event;
 pub mod agent_run;
 pub mod artifact;
 pub mod artifact_flow;
@@ -66,3 +67,7 @@ pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationI
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
 pub use task_context::{ArtifactSummary, TaskContext, TaskProposalSummary};
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
+pub use activity_event::{
+    ActivityEvent, ActivityEventId, ActivityEventRole, ActivityEventType,
+    ParseActivityEventRoleError, ParseActivityEventTypeError,
+};

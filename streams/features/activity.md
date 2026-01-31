@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-31 23:30:00 - Phase 48 Task 3: Create ActivityEvent entity definition
+**What:**
+- Created `src-tauri/src/domain/entities/activity_event.rs` with `ActivityEvent` struct
+- Added `ActivityEventId` newtype with standard ID pattern (new, from_string, as_str, Display)
+- Added `ActivityEventType` enum: Thinking, ToolCall, ToolResult, Text, Error
+- Added `ActivityEventRole` enum: Agent, System, User (default: Agent)
+- Implemented `FromStr` and `Display` for both enums with parse error types
+- Added builder methods: `new_task_event`, `new_session_event`, `with_status`, `with_role`, `with_metadata`
+- Fields: id, task_id (Option), ideation_session_id (Option), internal_status (Option), event_type, role, content, metadata (JSON), created_at
+- Exported from `src-tauri/src/domain/entities/mod.rs`
+- Added 14 unit tests covering all functionality
+
+**Files Modified:**
+- `src-tauri/src/domain/entities/activity_event.rs` - New entity file
+- `src-tauri/src/domain/entities/mod.rs` - Added module and exports
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3137 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:15:00 - Phase 48 Task 2: Emit thinking and tool_result as AGENT_MESSAGE events
 **What:**
 - Modified `StreamEvent::Thinking` handler to emit `AGENT_MESSAGE` with `type="thinking"` for task execution context
