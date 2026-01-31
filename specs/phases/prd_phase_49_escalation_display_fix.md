@@ -128,7 +128,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(reviews): parse issues in get_task_state_history response"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
