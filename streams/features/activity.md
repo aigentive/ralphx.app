@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 23:15:00 - Phase 48 Task 2: Emit thinking and tool_result as AGENT_MESSAGE events
+**What:**
+- Modified `StreamEvent::Thinking` handler to emit `AGENT_MESSAGE` with `type="thinking"` for task execution context
+- Added `AGENT_MESSAGE` emission to `StreamEvent::ToolResultReceived` handler with `type="tool_result"` for task execution context
+- Both events include `taskId`, `type`, `content`, `timestamp`, and appropriate `metadata`
+- Tool result metadata includes `tool_use_id` for correlation
+
+**Files Modified:**
+- `src-tauri/src/application/chat_service/chat_service_streaming.rs` - Thinking and tool_result AGENT_MESSAGE emissions
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3124 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:00:00 - Phase 48 Task 1: Add Thinking variant and parse thinking blocks
 **What:**
 - Added `Thinking(String)` variant to `StreamEvent` enum in `stream_processor.rs`
