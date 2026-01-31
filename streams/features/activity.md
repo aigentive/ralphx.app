@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-01-31 14:00:00 - P0 Fix: useResearch mock API wiring
+**What:**
+- Created `src/api/research.ts` with centralized researchApi:
+  - `getProcesses`, `getProcess`, `getPresets` query methods
+  - `start`, `pause`, `resume`, `stop` mutation methods
+- Created `src/api-mock/research.ts` with mockResearchApi for web mode
+- Wired `researchApi` into realApi in `src/lib/tauri.ts`
+- Wired `mockResearchApi` into mockApi in `src/api-mock/index.ts`
+- Updated `useResearch.ts` to import from centralized `api` object instead of `@/lib/api/research`
+
+**Files Created:**
+- `src/api/research.ts` (centralized real API)
+- `src/api-mock/research.ts` (mock API for web mode)
+
+**Files Modified:**
+- `src/lib/tauri.ts` (added researchApi to realApi)
+- `src/api-mock/index.ts` (added mockResearchApi to mockApi)
+- `src/hooks/useResearch.ts` (use centralized api)
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - Research operations will now use mock data in web mode
+
+---
+
 ### 2026-01-31 13:00:00 - P0 Fix: useArtifacts mock API wiring
 **What:**
 - Created `src/api/artifacts.ts` with centralized artifactsApi:

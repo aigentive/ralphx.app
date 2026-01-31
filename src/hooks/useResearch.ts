@@ -9,12 +9,12 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as researchApi from "@/lib/api/research";
+import { api } from "@/lib/tauri";
 import type {
   ResearchProcessResponse,
   ResearchPresetResponse,
   StartResearchInput,
-} from "@/lib/api/research";
+} from "@/api/research";
 
 // ============================================================================
 // Query Keys
@@ -52,7 +52,7 @@ export const researchKeys = {
 export function useResearchProcesses(status?: string) {
   return useQuery<ResearchProcessResponse[], Error>({
     queryKey: researchKeys.processList(status),
-    queryFn: () => researchApi.getResearchProcesses(status),
+    queryFn: () => api.research.getProcesses(status),
     staleTime: 10 * 1000, // 10 seconds (research status changes frequently)
     refetchInterval: 30 * 1000, // Auto-refetch every 30s for running processes
   });
@@ -67,7 +67,7 @@ export function useResearchProcesses(status?: string) {
 export function useResearchProcess(id: string) {
   return useQuery<ResearchProcessResponse | null, Error>({
     queryKey: researchKeys.processDetail(id),
-    queryFn: () => researchApi.getResearchProcess(id),
+    queryFn: () => api.research.getProcess(id),
     enabled: !!id,
     staleTime: 10 * 1000, // 10 seconds
     refetchInterval: (query) => {
@@ -89,7 +89,7 @@ export function useResearchProcess(id: string) {
 export function useResearchPresets() {
   return useQuery<ResearchPresetResponse[], Error>({
     queryKey: researchKeys.presets(),
-    queryFn: researchApi.getResearchPresets,
+    queryFn: api.research.getPresets,
     staleTime: 5 * 60 * 1000, // 5 minutes (presets rarely change)
   });
 }
@@ -107,7 +107,7 @@ export function useStartResearch() {
   const queryClient = useQueryClient();
 
   return useMutation<ResearchProcessResponse, Error, StartResearchInput>({
-    mutationFn: researchApi.startResearch,
+    mutationFn: api.research.start,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: researchKeys.processes() });
     },
@@ -123,7 +123,7 @@ export function usePauseResearch() {
   const queryClient = useQueryClient();
 
   return useMutation<ResearchProcessResponse, Error, string>({
-    mutationFn: researchApi.pauseResearch,
+    mutationFn: api.research.pause,
     onSuccess: (process) => {
       queryClient.invalidateQueries({ queryKey: researchKeys.processes() });
       queryClient.invalidateQueries({
@@ -142,7 +142,7 @@ export function useResumeResearch() {
   const queryClient = useQueryClient();
 
   return useMutation<ResearchProcessResponse, Error, string>({
-    mutationFn: researchApi.resumeResearch,
+    mutationFn: api.research.resume,
     onSuccess: (process) => {
       queryClient.invalidateQueries({ queryKey: researchKeys.processes() });
       queryClient.invalidateQueries({
@@ -161,7 +161,7 @@ export function useStopResearch() {
   const queryClient = useQueryClient();
 
   return useMutation<ResearchProcessResponse, Error, string>({
-    mutationFn: researchApi.stopResearch,
+    mutationFn: api.research.stop,
     onSuccess: (process) => {
       queryClient.invalidateQueries({ queryKey: researchKeys.processes() });
       queryClient.invalidateQueries({

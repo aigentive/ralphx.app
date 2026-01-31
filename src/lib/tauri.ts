@@ -119,6 +119,19 @@ export {
   ArtifactRelationResponseSchema,
 } from "@/api/artifacts";
 
+// Research API
+export {
+  researchApi,
+  type ResearchProcessResponse,
+  type ResearchPresetResponse,
+  type StartResearchInput,
+  type CustomDepthInput,
+  ResearchProcessResponseSchema,
+  ResearchPresetResponseSchema,
+  StartResearchInputSchema,
+  CustomDepthInputSchema,
+} from "@/api/research";
+
 // QA API
 export {
   qaApi,
@@ -177,6 +190,7 @@ import { testDataApi } from "@/api/test-data";
 import { projectsApi, workflowsApi } from "@/api/projects";
 import { methodologiesApi } from "@/api/methodologies";
 import { artifactsApi } from "@/api/artifacts";
+import { researchApi } from "@/api/research";
 import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
@@ -201,6 +215,7 @@ const realApi = {
   workflows: workflowsApi,
   methodologies: methodologiesApi,
   artifacts: artifactsApi,
+  research: researchApi,
   qa: qaApi,
   reviews: reviewsApi,
   fixTasks: fixTasksApi,
