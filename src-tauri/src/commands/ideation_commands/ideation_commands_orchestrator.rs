@@ -53,6 +53,7 @@ pub async fn send_orchestrator_message(
         state.project_repo.clone(),
         state.task_repo.clone(),
         state.ideation_session_repo.clone(),
+        state.activity_event_repo.clone(),
         state.message_queue.clone(),
         state.running_agent_registry.clone(),
     )
@@ -93,6 +94,7 @@ pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<boo
         state.project_repo.clone(),
         state.task_repo.clone(),
         state.ideation_session_repo.clone(),
+        state.activity_event_repo.clone(),
         state.message_queue.clone(),
         state.running_agent_registry.clone(),
     );

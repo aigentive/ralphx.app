@@ -20,7 +20,7 @@ use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
-    AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -36,6 +36,7 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     execution_state: Arc<ExecutionState>,
@@ -52,6 +53,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<RunningAgentRegistry>,
         execution_state: Arc<ExecutionState>,
@@ -63,6 +65,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             chat_message_repo,
             project_repo,
             ideation_session_repo,
+            activity_event_repo,
             message_queue,
             running_agent_registry,
             execution_state,
@@ -223,6 +226,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             Arc::clone(&self.project_repo),
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.activity_event_repo),
             Arc::clone(&self.message_queue),
             Arc::clone(&self.running_agent_registry),
         )
@@ -272,6 +276,7 @@ mod tests {
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(execution_state),

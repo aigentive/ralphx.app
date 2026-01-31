@@ -159,6 +159,7 @@ fn create_chat_service(
         state.project_repo.clone(),
         state.task_repo.clone(),
         state.ideation_session_repo.clone(),
+        state.activity_event_repo.clone(),
         state.message_queue.clone(),
         state.running_agent_registry.clone(),
     )

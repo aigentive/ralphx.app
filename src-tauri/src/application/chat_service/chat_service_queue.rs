@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::domain::entities::{ChatContextType, ChatConversationId};
-use crate::domain::repositories::ChatMessageRepository;
+use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::domain::services::MessageQueue;
 use crate::infrastructure::agents::claude::{add_prompt_args, build_base_cli_command, configure_spawn};
 
@@ -31,6 +31,8 @@ pub async fn process_message_queue<R: Runtime + 'static>(
     session_id: &str,
     message_queue: Arc<MessageQueue>,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    task_repo: Arc<dyn TaskRepository>,
     cli_path: &Path,
     plugin_dir: &Path,
     working_directory: &Path,
@@ -158,6 +160,8 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         context_id,
                         &conversation_id,
                         app_handle.clone(),
+                        Some(Arc::clone(&activity_event_repo)),
+                        Some(Arc::clone(&task_repo)),
                     )
                     .await
                     {
