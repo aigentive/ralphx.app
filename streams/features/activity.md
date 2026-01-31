@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-31 23:30:00 - Phase 51 Task 8: Create GitHub Actions release workflow
+**What:**
+- Created `.github/workflows/` directory
+- Created `.github/workflows/release.yml` with full CI/CD workflow:
+  - Triggers on tag push (v*) or manual workflow_dispatch
+  - Sets up Node.js 20 with npm cache
+  - Sets up Rust toolchain with cargo cache
+  - Imports Apple certificate from secrets
+  - Builds Tauri app with code signing and notarization
+  - Creates draft release with DMG and update artifacts
+- Fixed typo from plan: `dtolnay/rust-action` → `dtolnay/rust-toolchain`
+- Added Rust cache step for faster CI builds
+
+**Files Created:**
+- `.github/workflows/release.yml`
+
+**Commands:**
+- `python3 -c "import yaml; yaml.safe_load(...)"`: YAML validation passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:15:00 - Phase 51 Task 7: Add UpdateChecker component for auto-update UI
 **What:**
 - Installed `@tauri-apps/plugin-updater` and `@tauri-apps/plugin-process` npm packages
