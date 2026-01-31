@@ -7,5 +7,3 @@
 
 export { default } from "./WelcomeScreen";
 export { default as WelcomeScreen } from "./WelcomeScreen";
-export { default as TerminalCanvas } from "./TerminalCanvas";
-export { default as ParticleField } from "./ParticleField";

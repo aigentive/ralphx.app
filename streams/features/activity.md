@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-31 19:15:00 - Phase 42 Task 10: Delete deprecated TerminalCanvas and ParticleField
+**What:**
+- Deleted src/components/WelcomeScreen/TerminalCanvas.tsx
+- Deleted src/components/WelcomeScreen/ParticleField.tsx
+- Updated src/components/WelcomeScreen/index.tsx to remove deprecated exports
+- Verified no other imports of these components in codebase
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 18:45:00 - Phase 42 Task 9: Update WelcomeScreen to use AgentConstellation
 **What:**
 - Replaced TerminalCanvas and ParticleField imports with AgentConstellation
