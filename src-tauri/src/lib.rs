@@ -237,6 +237,7 @@ pub fn run() {
             commands::task_commands::query::get_archived_count,
             commands::task_commands::query::search_tasks,
             commands::task_commands::query::get_valid_transitions,
+            commands::task_commands::query::get_tasks_awaiting_review,
             // Task step commands
             commands::task_step_commands::create_task_step,
             commands::task_step_commands::get_task_steps,

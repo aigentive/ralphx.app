@@ -37,6 +37,7 @@ pub use query::{
     get_archived_count,
     search_tasks,
     get_valid_transitions,
+    get_tasks_awaiting_review,
 };
 
 // Re-export mutation commands
