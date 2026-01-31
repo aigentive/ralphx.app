@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-31 16:00:00 - P0 Fix: PermissionDialog mock API wiring
+**What:**
+- Created `src/api/permission.ts` with centralized permissionApi:
+  - `resolveRequest` method for resolving permission requests from agents
+- Created `src/api-mock/permission.ts` with mockPermissionApi for web mode
+- Wired `permissionApi` into realApi in `src/lib/tauri.ts`
+- Wired `mockPermissionApi` into mockApi in `src/api-mock/index.ts`
+- Updated `PermissionDialog.tsx` to use centralized `api.permission.resolveRequest()` instead of direct `invoke()`
+
+**Files Created:**
+- `src/api/permission.ts` (centralized real API)
+- `src/api-mock/permission.ts` (mock API for web mode)
+
+**Files Modified:**
+- `src/lib/tauri.ts` (added permissionApi to realApi)
+- `src/api-mock/index.ts` (added mockPermissionApi to mockApi)
+- `src/components/PermissionDialog.tsx` (use centralized api)
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - Permission dialog will now use mock data in web mode
+
+---
+
 ### 2026-01-31 15:00:00 - P0 Fix: useAskUserQuestion mock API wiring
 **What:**
 - Created `src/api/ask-user-question.ts` with centralized askUserQuestionApi:

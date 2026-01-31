@@ -135,6 +135,9 @@ export {
 // Ask User Question API
 export { askUserQuestionApi } from "@/api/ask-user-question";
 
+// Permission API
+export { permissionApi, type ResolvePermissionInput } from "@/api/permission";
+
 // QA API
 export {
   qaApi,
@@ -195,6 +198,7 @@ import { methodologiesApi } from "@/api/methodologies";
 import { artifactsApi } from "@/api/artifacts";
 import { researchApi } from "@/api/research";
 import { askUserQuestionApi } from "@/api/ask-user-question";
+import { permissionApi } from "@/api/permission";
 import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
@@ -221,6 +225,7 @@ const realApi = {
   artifacts: artifactsApi,
   research: researchApi,
   askUserQuestion: askUserQuestionApi,
+  permission: permissionApi,
   qa: qaApi,
   reviews: reviewsApi,
   fixTasks: fixTasksApi,
