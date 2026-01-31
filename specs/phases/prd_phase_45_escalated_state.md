@@ -242,7 +242,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(TaskDetailPanel): register EscalatedTaskDetail view"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 10,
