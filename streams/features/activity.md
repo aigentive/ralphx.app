@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 22:15:00 - Phase 43 Task 1: Add chatVisibleByView state with localStorage persistence
+**What:**
+- Added CHAT_VISIBILITY_KEY constant and DEFAULT_CHAT_VISIBILITY defaults
+- Implemented loadChatVisibility() and saveChatVisibility() helper functions
+- Added chatVisibleByView: Record<ViewType, boolean> to UiState interface
+- Added setChatVisible and toggleChatVisible to UiActions interface
+- Initialized chatVisibleByView with loadChatVisibility() in store
+- Implemented setChatVisible and toggleChatVisible actions with persistence
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:30:00 - Phase 42 Task 11: Visual and functional verification
 **What:**
 - Verified wiring: AgentConstellation imported and rendered in WelcomeScreen (line 13, 56)
