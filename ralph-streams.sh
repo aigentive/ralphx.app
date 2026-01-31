@@ -56,7 +56,7 @@ NC='\033[0m' # No Color
 PAD="  "
 
 # Valid streams
-VALID_STREAMS="features|refactor|polish|verify|hygiene"
+VALID_STREAMS="features|refactor|polish|verify|hygiene|visual-qa"
 
 # Parse arguments - support both stream mode and legacy mode
 # Legacy mode: ./ralph-streams.sh <max_iterations>
