@@ -530,10 +530,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   ],
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],
-  "ralphx-reviewer": ["complete_review"],
-  // Post-review chat agent - helps user discuss review findings and take action
-  "ralphx-review-chat": ["get_review_notes", "approve_task", "request_task_changes"],
-  "ralphx-worker": [
+  "ralphx-reviewer": [
+    // specific review tools
+    "complete_review",
+    // common context tools
     "get_task_context",
     "get_artifact",
     "get_artifact_version",
@@ -541,12 +541,38 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+  ],
+  // Post-review chat agent - helps user discuss review findings and take action
+  "ralphx-review-chat": [
+    // specific review tools
+    "approve_task",
+    "request_task_changes",
+    // common context tools
+    "get_review_notes",
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+    "get_review_notes",
+    "get_task_steps",
+  ],
+  "ralphx-worker": [
+    // step management tools
     "start_step",
     "complete_step",
     "skip_step",
     "fail_step",
     "add_step",
     "get_step_progress",
+    // common context tools
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+    "get_review_notes",
+    "get_task_steps",
   ],
   // Session naming agent - generates titles for IDA sessions
   "session-namer": ["update_session_title"],
