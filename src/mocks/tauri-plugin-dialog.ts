@@ -34,12 +34,21 @@ export interface ConfirmDialogOptions {
 }
 
 /**
- * Mock open dialog - returns null (user cancelled)
+ * Mock open dialog - returns a test path for directory selection
  */
 export async function open(
-  _options?: OpenDialogOptions
+  options?: OpenDialogOptions
 ): Promise<string | string[] | null> {
-  console.debug("[mock] dialog.open called - returning null");
+  console.debug("[mock] dialog.open called");
+
+  // For directory selection (used by ProjectCreationWizard), return a test path
+  if (options?.directory) {
+    const testPath = "/Users/test/projects/test-project";
+    console.debug(`[mock] Returning test directory: ${testPath}`);
+    return testPath;
+  }
+
+  // For file selection, return null (user cancelled)
   return null;
 }
 

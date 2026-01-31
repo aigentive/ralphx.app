@@ -1,3 +1,22 @@
+### 2026-02-01 00:12:45 - ProjectCreationWizard Visual Tests
+**What:**
+- Extended mock dialog to return test path for directory selection
+- Created page object: tests/pages/modals/project-creation-wizard.page.ts
+- Created test helper: tests/helpers/project-creation-wizard.helpers.ts
+- Created spec: tests/visual/modals/project-creation-wizard/project-creation-wizard.spec.ts
+- Generated 3 baseline snapshots
+
+**Mock parity:**
+- Status: READY
+- Updated src/mocks/tauri-plugin-dialog.ts to return test directory path
+- Existing mocks used: mockProjectsApi.create, mockGetGitBranches
+
+**Commands:**
+- `npx playwright test tests/visual/modals/project-creation-wizard/project-creation-wizard.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/project-creation-wizard/project-creation-wizard.spec.ts`
+
+**Result:** Success - 6 tests passing, 3 snapshots generated
+
 ### 2026-02-01 00:05:51 - AskUserQuestionModal Visual Tests (Failed)
 **What:**
 - Created page object: tests/pages/modals/ask-user-question.page.ts
