@@ -4,6 +4,42 @@
 
 ---
 
+### 2026-01-31 10:30:00 - Phase 52 Task 1: Extract sub-components from ActivityView.tsx
+**What:**
+- Extracted types to `src/components/activity/ActivityView.types.ts` (60 lines)
+  - UnifiedActivityMessage, ViewMode, MessageTypeFilter, ExpandedState, CopiedState
+  - MESSAGE_TYPES and STATUS_OPTIONS constants
+- Extracted utilities to `src/components/activity/ActivityView.utils.ts` (130 lines)
+  - getMessageIcon, getMessageColor, getMessageBgColor, formatTimestamp
+  - getToolName, generateMessageKey, highlightJSON
+  - toUnifiedMessage, fromRealtimeMessage
+- Extracted `ActivityMessage.tsx` (130 lines)
+  - Individual message display with expand/collapse, copy functionality
+- Extracted `ActivityFilters.tsx` (200 lines)
+  - ViewModeToggle, StatusFilter, FilterTabs, SearchBar, EmptyState
+- Created placeholder `ActivityContext.tsx` (25 lines)
+  - Will be fully implemented in Task 2
+- Created `index.ts` for barrel exports
+- Refactored `ActivityView.tsx` from 974 lines to 370 lines
+
+**Files Created:**
+- `src/components/activity/ActivityView.types.ts`
+- `src/components/activity/ActivityView.utils.ts`
+- `src/components/activity/ActivityMessage.tsx`
+- `src/components/activity/ActivityFilters.tsx`
+- `src/components/activity/ActivityContext.tsx`
+- `src/components/activity/index.ts`
+
+**Files Modified:**
+- `src/components/activity/ActivityView.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:15:00 - Phase 51 Complete
 **What:**
 - Ran gap verification on Phase 51
