@@ -15,13 +15,14 @@
 ## Step 6.5: Visual Verification
 
 1. Check if dev server running at http://localhost:5173
-2. If unavailable → start: npm run dev:web (background)
-3. Use agent-browser:
+2. If unavailable → start: `npm run dev:web` (background)
+3. Need to reload changes? → restart: stop existing server, then `npm run dev:web`
+4. Use agent-browser:
    a. Open the feature view
    b. Snapshot interactive elements
    c. Take screenshot
    d. AI-judge: Does it match expected design?
-4. Visual issues? → Fix before proceeding
+5. Visual issues? → Fix before proceeding
 
 ## Screenshot Convention
 
