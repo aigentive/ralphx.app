@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-31 15:30:00 - Phase 46 Task 3: Update ReviewNoteResponse to include issues
+**What:**
+- Added `issues: Option<Vec<ReviewIssue>>` to `ReviewNoteResponse` struct (types.rs:295)
+- Added `parse_issues_from_notes` helper function to parse issues from notes field (reviews.rs:420-471)
+- Updated `get_review_notes` handler to extract issues from stored notes and include in response (reviews.rs:231-243)
+- Issues are stored as `{"issues":[...]}\n<feedback>` format and parsed back on retrieval
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3121 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 14:45:00 - Phase 46 Tasks 1 & 2: Add ReviewIssue struct and update handler
 **What:**
 - Activated Phase 46 (updated manifest.json)
