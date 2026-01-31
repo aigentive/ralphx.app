@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 22:45:00 - Phase 41 Task 3: Verify ToolCall type supports lifecycle tracking
+**What:**
+- Verified `ToolCall` interface in ToolCallIndicator.tsx already has all fields: `id`, `name`, `arguments`, `result`, `error`
+- Added `id` field to `ToolCallSchema` in chat-conversation.ts for consistency (unused schema but should match interface)
+- Updated schema comment to document lifecycle tracking support
+
+**Files:**
+- src/types/chat-conversation.ts (modified: added `id` field to ToolCallSchema)
+
+**Commands:**
+- `npm run lint` (0 errors, 9 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:15:00 - Phase 41 Task 2: Filter result events early in tool call listener
 **What:**
 - Added early return in `agent:tool_call` event listener to skip `result:toolu*` events
