@@ -3,10 +3,14 @@
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 // Handles background stream processing and event emission.
 
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::domain::entities::{ChatContextType, ChatConversationId};
+use crate::domain::entities::{
+    ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, TaskId,
+};
+use crate::domain::repositories::{ActivityEventRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{ContentBlockItem, StreamEvent, StreamProcessor, ToolCall};
 
 use super::{events, AgentChunkPayload, AgentToolCallPayload};
@@ -15,13 +19,24 @@ use super::{events, AgentChunkPayload, AgentToolCallPayload};
 // Background stream processing
 // ============================================================================
 
-/// Process stream output in background, emitting events
+/// Process stream output in background, emitting events and persisting activity events
+///
+/// # Arguments
+/// * `child` - The spawned Claude CLI process
+/// * `context_type` - The chat context type
+/// * `context_id` - The context ID (task_id, project_id, etc.)
+/// * `conversation_id` - The conversation ID
+/// * `app_handle` - Tauri app handle for events
+/// * `activity_event_repo` - Repository for persisting activity events (optional)
+/// * `task_repo` - Task repository for fetching current status (optional)
 pub async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
     context_type: ChatContextType,
     context_id: &str,
     conversation_id: &ChatConversationId,
     app_handle: Option<AppHandle<R>>,
+    activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
+    task_repo: Option<Arc<dyn TaskRepository>>,
 ) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), String> {
     let stdout = child
         .stdout
@@ -36,6 +51,13 @@ pub async fn process_stream_background<R: Runtime>(
     let conversation_id_str = conversation_id.as_str().to_string();
     let context_type_str = context_type.to_string();
     let context_id_str = context_id.to_string();
+
+    // Parse task_id for activity persistence (only for TaskExecution context)
+    let task_id_for_persistence = if context_type == ChatContextType::TaskExecution {
+        Some(TaskId::from_string(context_id.to_string()))
+    } else {
+        None
+    };
 
     // Spawn stderr reader
     let _stderr_handle = app_handle.clone();
@@ -97,6 +119,28 @@ pub async fn process_stream_background<R: Runtime>(
                                         "timestamp": chrono::Utc::now().timestamp_millis(),
                                     }),
                                 );
+
+                                // Persist activity event to database
+                                if let (Some(ref repo), Some(ref task_id)) =
+                                    (&activity_event_repo, &task_id_for_persistence)
+                                {
+                                    let event = ActivityEvent::new_task_event(
+                                        task_id.clone(),
+                                        ActivityEventType::Text,
+                                        text.clone(),
+                                    );
+                                    // Fetch current task status and add to event
+                                    let event = if let Some(ref t_repo) = task_repo {
+                                        if let Ok(Some(task)) = t_repo.get_by_id(task_id).await {
+                                            event.with_status(task.internal_status)
+                                        } else {
+                                            event
+                                        }
+                                    } else {
+                                        event
+                                    };
+                                    let _ = repo.save(event).await;
+                                }
                             }
                         }
                     }
@@ -113,6 +157,28 @@ pub async fn process_stream_background<R: Runtime>(
                                         "timestamp": chrono::Utc::now().timestamp_millis(),
                                     }),
                                 );
+                            }
+
+                            // Persist activity event to database
+                            if let (Some(ref repo), Some(ref task_id)) =
+                                (&activity_event_repo, &task_id_for_persistence)
+                            {
+                                let event = ActivityEvent::new_task_event(
+                                    task_id.clone(),
+                                    ActivityEventType::Thinking,
+                                    text.clone(),
+                                );
+                                // Fetch current task status and add to event
+                                let event = if let Some(ref t_repo) = task_repo {
+                                    if let Ok(Some(task)) = t_repo.get_by_id(task_id).await {
+                                        event.with_status(task.internal_status)
+                                    } else {
+                                        event
+                                    }
+                                } else {
+                                    event
+                                };
+                                let _ = repo.save(event).await;
                             }
                         }
                     }
@@ -173,19 +239,49 @@ pub async fn process_stream_background<R: Runtime>(
 
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
+                                let tool_content = format!(
+                                    "{} ({})",
+                                    tool_call.name,
+                                    serde_json::to_string(&tool_call.arguments).unwrap_or_default()
+                                );
+                                let tool_metadata = serde_json::json!({
+                                    "tool_name": tool_call.name,
+                                    "arguments": tool_call.arguments,
+                                });
+
                                 let _ = handle.emit(
                                     events::AGENT_MESSAGE,
                                     serde_json::json!({
                                         "taskId": context_id_str,
                                         "type": "tool_call",
-                                        "content": format!("{} ({})", tool_call.name, serde_json::to_string(&tool_call.arguments).unwrap_or_default()),
+                                        "content": tool_content,
                                         "timestamp": chrono::Utc::now().timestamp_millis(),
-                                        "metadata": {
-                                            "tool_name": tool_call.name,
-                                            "arguments": tool_call.arguments,
-                                        },
+                                        "metadata": tool_metadata,
                                     }),
                                 );
+
+                                // Persist activity event to database
+                                if let (Some(ref repo), Some(ref task_id)) =
+                                    (&activity_event_repo, &task_id_for_persistence)
+                                {
+                                    let event = ActivityEvent::new_task_event(
+                                        task_id.clone(),
+                                        ActivityEventType::ToolCall,
+                                        tool_content,
+                                    )
+                                    .with_metadata(tool_metadata.to_string());
+                                    // Fetch current task status and add to event
+                                    let event = if let Some(ref t_repo) = task_repo {
+                                        if let Ok(Some(task)) = t_repo.get_by_id(task_id).await {
+                                            event.with_status(task.internal_status)
+                                        } else {
+                                            event
+                                        }
+                                    } else {
+                                        event
+                                    };
+                                    let _ = repo.save(event).await;
+                                }
                             }
                         }
                     }
@@ -221,18 +317,45 @@ pub async fn process_stream_background<R: Runtime>(
 
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
+                                let result_content =
+                                    serde_json::to_string(&result).unwrap_or_default();
+                                let result_metadata = serde_json::json!({
+                                    "tool_use_id": tool_use_id,
+                                });
+
                                 let _ = handle.emit(
                                     events::AGENT_MESSAGE,
                                     serde_json::json!({
                                         "taskId": context_id_str,
                                         "type": "tool_result",
-                                        "content": serde_json::to_string(&result).unwrap_or_default(),
+                                        "content": result_content,
                                         "timestamp": chrono::Utc::now().timestamp_millis(),
-                                        "metadata": {
-                                            "tool_use_id": tool_use_id,
-                                        },
+                                        "metadata": result_metadata,
                                     }),
                                 );
+
+                                // Persist activity event to database
+                                if let (Some(ref repo), Some(ref task_id)) =
+                                    (&activity_event_repo, &task_id_for_persistence)
+                                {
+                                    let event = ActivityEvent::new_task_event(
+                                        task_id.clone(),
+                                        ActivityEventType::ToolResult,
+                                        result_content,
+                                    )
+                                    .with_metadata(result_metadata.to_string());
+                                    // Fetch current task status and add to event
+                                    let event = if let Some(ref t_repo) = task_repo {
+                                        if let Ok(Some(task)) = t_repo.get_by_id(task_id).await {
+                                            event.with_status(task.internal_status)
+                                        } else {
+                                            event
+                                        }
+                                    } else {
+                                        event
+                                    };
+                                    let _ = repo.save(event).await;
+                                }
                             }
                         }
                     }

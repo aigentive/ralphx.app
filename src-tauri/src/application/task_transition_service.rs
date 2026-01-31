@@ -18,7 +18,7 @@ use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
-    AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -221,6 +221,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<RunningAgentRegistry>,
         execution_state: Arc<ExecutionState>,
@@ -244,6 +245,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                 Arc::clone(&project_repo),
                 Arc::clone(&task_repo),
                 Arc::clone(&ideation_session_repo),
+                activity_event_repo,
                 message_queue,
                 running_agent_registry,
             )

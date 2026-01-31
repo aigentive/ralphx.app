@@ -14,7 +14,7 @@ use crate::domain::entities::{
     AgentRunId, ChatConversationId, ChatContextType, InternalStatus, TaskId,
 };
 use crate::domain::repositories::{
-    AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
@@ -52,6 +52,7 @@ use super::chat_service_types::{
 /// - `task_repo`: Task repository
 /// - `project_repo`: Project repository
 /// - `ideation_session_repo`: Ideation session repository
+/// - `activity_event_repo`: Activity event repository (for persistence)
 /// - `message_queue`: Message queue
 /// - `running_agent_registry`: Running agent registry
 /// - `execution_state`: Execution state (for task transitions)
@@ -73,6 +74,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     task_repo: Arc<dyn TaskRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     execution_state: Option<Arc<ExecutionState>>,
@@ -88,6 +90,8 @@ pub fn spawn_send_message_background<R: Runtime>(
             &context_id,
             &conversation_id,
             app_handle.clone(),
+            Some(Arc::clone(&activity_event_repo)),
+            Some(Arc::clone(&task_repo)),
         )
         .await;
 
@@ -183,6 +187,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&conversation_repo),
                                     Arc::clone(&agent_run_repo),
                                     Arc::clone(&ideation_session_repo),
+                                    Arc::clone(&activity_event_repo),
                                     Arc::clone(&message_queue),
                                     Arc::clone(&running_agent_registry),
                                     Arc::clone(exec_state),
@@ -366,6 +371,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     &context_id,
                                     &conversation_id,
                                     app_handle.clone(),
+                                    Some(Arc::clone(&activity_event_repo)),
+                                    Some(Arc::clone(&task_repo)),
                                 )
                                 .await
                                 {

@@ -4,6 +4,44 @@
 
 ---
 
+### 2026-01-31 09:00:00 - Phase 48 Task 8: Persist activity events when emitting stream events
+**What:**
+- Modified `process_stream_background()` to accept `activity_event_repo` and `task_repo` parameters
+- Added persistence logic for Text, Thinking, ToolCall, and ToolResult events
+- Each event type saves to database with current task status when emitting AGENT_MESSAGE
+- Updated `spawn_send_message_background()` to pass activity_event_repo
+- Updated `ClaudeChatService` struct to include activity_event_repo field
+- Updated all call sites across 12+ files:
+  - chat_service_streaming.rs, chat_service_send_background.rs, chat_service_queue.rs
+  - ClaudeChatService, TaskTransitionService, TaskSchedulerService, ChatResumptionRunner
+  - ideation_commands_orchestrator.rs, unified_chat_commands.rs, execution_commands.rs
+  - review_commands.rs, http_server/handlers/reviews.rs, startup_jobs.rs, lib.rs
+
+**Files Modified:**
+- `src-tauri/src/application/chat_service/chat_service_streaming.rs` - Added persistence logic
+- `src-tauri/src/application/chat_service/chat_service_send_background.rs` - Added activity_event_repo param
+- `src-tauri/src/application/chat_service/chat_service_queue.rs` - Added repos to process call
+- `src-tauri/src/application/chat_service/mod.rs` - Added activity_event_repo field
+- `src-tauri/src/application/task_transition_service.rs` - Added activity_event_repo param
+- `src-tauri/src/application/task_scheduler_service.rs` - Added activity_event_repo field
+- `src-tauri/src/application/chat_resumption.rs` - Added activity_event_repo field
+- `src-tauri/src/application/startup_jobs.rs` - Updated test helper
+- `src-tauri/src/commands/execution_commands.rs` - Updated 5 call sites
+- `src-tauri/src/commands/review_commands.rs` - Updated 2 call sites
+- `src-tauri/src/commands/task_commands/mutation.rs` - Updated call sites
+- `src-tauri/src/commands/ideation_commands/ideation_commands_orchestrator.rs` - Updated 2 call sites
+- `src-tauri/src/commands/unified_chat_commands.rs` - Updated helper
+- `src-tauri/src/http_server/handlers/reviews.rs` - Updated 3 call sites
+- `src-tauri/src/lib.rs` - Updated startup initialization
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all 148+ tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 01:00:00 - Phase 48 Task 7: Wire ActivityEventRepository to app state
 **What:**
 - Created `src-tauri/src/infrastructure/memory/memory_activity_event_repo.rs` with in-memory implementation

@@ -131,6 +131,7 @@ pub fn run() {
             let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
             let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
             let startup_ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
+            let startup_activity_event_repo = Arc::clone(&app_state.activity_event_repo);
             let startup_message_queue = Arc::clone(&app_state.message_queue);
             let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
             let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
@@ -153,6 +154,7 @@ pub fn run() {
                         startup_conversation_repo.clone(),
                         startup_agent_run_repo.clone(),
                         startup_ideation_session_repo.clone(),
+                        startup_activity_event_repo.clone(),
                         startup_message_queue.clone(),
                         startup_running_agent_registry.clone(),
                         Some(startup_app_handle.clone()),
@@ -165,6 +167,7 @@ pub fn run() {
                 let chat_resumption_chat_message_repo = Arc::clone(&startup_chat_message_repo);
                 let chat_resumption_conversation_repo = Arc::clone(&startup_conversation_repo);
                 let chat_resumption_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
+                let chat_resumption_activity_event_repo = Arc::clone(&startup_activity_event_repo);
                 let chat_resumption_message_queue = Arc::clone(&startup_message_queue);
                 let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
                 let chat_resumption_app_handle = startup_app_handle.clone();
@@ -177,6 +180,7 @@ pub fn run() {
                     startup_conversation_repo,
                     startup_agent_run_repo.clone(),
                     startup_ideation_session_repo,
+                    startup_activity_event_repo,
                     startup_message_queue,
                     startup_running_agent_registry,
                     Arc::clone(&startup_execution_state),
@@ -205,6 +209,7 @@ pub fn run() {
                     chat_resumption_chat_message_repo,
                     chat_resumption_project_repo,
                     chat_resumption_ideation_session_repo,
+                    chat_resumption_activity_event_repo,
                     chat_resumption_message_queue,
                     chat_resumption_running_agent_registry,
                     Arc::clone(&startup_execution_state),
