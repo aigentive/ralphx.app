@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 21:25:00 - Phase 50 Task 4: Add confirmation dialog to ReviewDetailModal approve
+**What:**
+- Imported `useConfirmation` hook in ReviewDetailModal.tsx
+- Destructured `{ confirm, confirmationDialogProps, ConfirmationDialog }` from hook
+- Added `handleApprove` async handler with confirmation: "Approve this task?" / "The task will be marked as approved and completed."
+- Updated Approve button onClick to use `handleApprove` instead of direct `approveMutation.mutate()`
+- Added `<ConfirmationDialog {...confirmationDialogProps} />` to component render (inside DialogContent)
+
+**Files Modified:**
+- `src/components/reviews/ReviewDetailModal.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with pre-existing warnings only)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:05:00 - Phase 50 Task 3: Add confirmation dialogs to TaskCardContextMenu
 **What:**
 - Imported `useConfirmation` hook in TaskCardContextMenu.tsx
