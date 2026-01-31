@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 56,
+  "currentPhase": 57,
   "phases": [
     {
       "phase": 0,
@@ -408,6 +408,13 @@
       "prd": "specs/phases/prd_phase_56_visual_qa_stream.md",
       "status": "complete",
       "description": "Dedicated stream for visual regression testing with Page Object Model infrastructure"
+    },
+    {
+      "phase": 57,
+      "name": "Activity Page Global History & UX",
+      "prd": "specs/phases/prd_phase_57_activity_global_history.md",
+      "status": "active",
+      "description": "Enable global activity history view, optional task/session filtering, improved Live mode UX"
     }
   ]
 }
