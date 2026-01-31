@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 53,
+  "currentPhase": 54,
   "phases": [
     {
       "phase": 0,
@@ -385,14 +385,14 @@
       "phase": 53,
       "name": "Review Timeline Unification",
       "prd": "specs/phases/prd_phase_53_review_timeline_unification.md",
-      "status": "active",
+      "status": "complete",
       "description": "Extract shared ReviewTimeline component for state-specific detail views"
     },
     {
       "phase": 54,
       "name": "Blocked Reason Feature",
       "prd": "specs/phases/prd_phase_54_blocked_reason.md",
-      "status": "pending",
+      "status": "active",
       "description": "Add blocked_reason field, display blocked tasks in Ready column, block reason dialog"
     }
   ]
