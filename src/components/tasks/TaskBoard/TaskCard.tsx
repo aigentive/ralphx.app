@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Clock } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -356,6 +356,27 @@ export function TaskCard({
           <div className="text-xs mt-1 line-clamp-2 text-white/50 leading-relaxed">
             {task.description}
           </div>
+        )}
+
+        {/* Blocked reason indicator */}
+        {task.internalStatus === "blocked" && task.blockedReason && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  data-testid="blocked-reason-indicator"
+                  className="flex items-center gap-1.5 mt-1.5 text-xs"
+                  style={{ color: "hsl(var(--warning))" }}
+                >
+                  <Ban className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate">{task.blockedReason}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p className="text-sm">{task.blockedReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
 
         {/* Badge row */}
