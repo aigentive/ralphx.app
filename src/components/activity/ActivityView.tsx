@@ -11,6 +11,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useInView } from "react-intersection-observer";
 import { useActivityStore } from "@/stores/activityStore";
+import { useUiStore } from "@/stores/uiStore";
 import {
   useTaskActivityEvents,
   useSessionActivityEvents,
@@ -611,6 +612,7 @@ export function ActivityView({
   const realtimeMessages = useActivityStore((s) => s.messages);
   const alerts = useActivityStore((s) => s.alerts);
   const clearMessages = useActivityStore((s) => s.clearMessages);
+  const clearActivityFilter = useUiStore((s) => s.clearActivityFilter);
 
   // Determine initial mode: if we have a context (taskId/sessionId), default to historical
   const defaultMode: ViewMode = taskId || sessionId ? "historical" : "realtime";
@@ -621,6 +623,13 @@ export function ActivityView({
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [copied, setCopied] = useState<CopiedState>({});
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // Auto-switch to historical mode when navigating from StatusActivityBadge with context
+  useEffect(() => {
+    if (taskId || sessionId) {
+      setViewMode("historical");
+    }
+  }, [taskId, sessionId]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -754,6 +763,32 @@ export function ActivityView({
     setSearchQuery("");
   }, []);
 
+  // Handle view mode change - clear activity filter when switching to realtime
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === "realtime") {
+      clearActivityFilter();
+    }
+  }, [clearActivityFilter]);
+
+  // Handle type filter change - clear activity filter when user manually changes filters
+  const handleTypeFilterChange = useCallback((filter: MessageTypeFilter) => {
+    setTypeFilter(filter);
+    // Only clear if we had a context filter and user is changing filters
+    if (taskId || sessionId) {
+      clearActivityFilter();
+    }
+  }, [taskId, sessionId, clearActivityFilter]);
+
+  // Handle status filter change - clear activity filter when user manually changes filters
+  const handleStatusFilterChange = useCallback((statuses: string[]) => {
+    setStatusFilter(statuses);
+    // Only clear if we had a context filter and user is changing filters
+    if (taskId || sessionId) {
+      clearActivityFilter();
+    }
+  }, [taskId, sessionId, clearActivityFilter]);
+
   // Check if there are active filters
   const hasFilter = typeFilter !== "all" || searchQuery.trim() !== "";
   const isEmpty = filteredMessages.length === 0;
@@ -830,16 +865,16 @@ export function ActivityView({
           </div>
           <ViewModeToggle
             mode={viewMode}
-            onChange={setViewMode}
+            onChange={handleViewModeChange}
             disabled={!taskId && !sessionId}
           />
         </div>
         <div className="flex items-center gap-2">
-          <FilterTabs active={typeFilter} onChange={setTypeFilter} />
+          <FilterTabs active={typeFilter} onChange={handleTypeFilterChange} />
           {viewMode === "historical" && (
             <StatusFilter
               selectedStatuses={statusFilter}
-              onChange={setStatusFilter}
+              onChange={handleStatusFilterChange}
             />
           )}
         </div>

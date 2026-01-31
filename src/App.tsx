@@ -94,7 +94,8 @@ function AppContent() {
   const welcomeOverlayReturnView = useUiStore((s) => s.welcomeOverlayReturnView);
   const openWelcomeOverlay = useUiStore((s) => s.openWelcomeOverlay);
   const closeWelcomeOverlay = useUiStore((s) => s.closeWelcomeOverlay);
-
+  // Activity filter state (for context-aware navigation from StatusActivityBadge)
+  const activityFilter = useUiStore((s) => s.activityFilter);
 
   // Chat panel state (width + message management)
   const chatWidth = useChatStore((s) => s.width);
@@ -688,7 +689,13 @@ function AppContent() {
                 />
               )}
               {currentView === "extensibility" && <ExtensibilityView />}
-              {currentView === "activity" && <ActivityView showHeader />}
+              {currentView === "activity" && (
+                <ActivityView
+                  showHeader
+                  {...(activityFilter.taskId && { taskId: activityFilter.taskId })}
+                  {...(activityFilter.sessionId && { sessionId: activityFilter.sessionId })}
+                />
+              )}
               {currentView === "settings" && <SettingsView />}
             </div>
         </div>

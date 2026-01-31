@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-31 17:30:00 - Phase 48 Task 16: Wire ActivityView to read filter from uiStore
+**What:**
+- Added `activityFilter` selector in App.tsx from uiStore
+- Passed `activityFilter.taskId` and `activityFilter.sessionId` to ActivityView component
+- Added `clearActivityFilter` action import in ActivityView
+- Added `useEffect` to auto-switch to historical mode when taskId/sessionId changes from outside
+- Added `handleViewModeChange` callback to clear activity filter when switching to realtime
+- Added `handleTypeFilterChange` callback to clear activity filter when user manually changes type filter
+- Added `handleStatusFilterChange` callback to clear activity filter when user manually changes status filter
+- Updated JSX to use new handlers instead of direct setters
+
+**Files Modified:**
+- `src/App.tsx` - Pass activityFilter props to ActivityView
+- `src/components/activity/ActivityView.tsx` - Read filter from uiStore, auto-switch mode, clear on manual change
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 17:00:00 - Phase 48 Task 15: Integrate StatusActivityBadge in chat panels
 **What:**
 - Replaced Badge + WorkerExecutingIndicator with StatusActivityBadge in IntegratedChatPanel.tsx
