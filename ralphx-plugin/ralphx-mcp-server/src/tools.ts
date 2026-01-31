@@ -453,7 +453,7 @@ export const ALL_TOOLS: Tool[] = [
   {
     name: "approve_task",
     description:
-      "Approve a task after AI review. ONLY available when task is in 'review_passed' status (awaiting human decision). " +
+      "Approve a task after AI review. ONLY available when task is in 'review_passed' or 'escalated' status (awaiting human decision). " +
       "Use this when the user confirms they want to approve the task after discussing the review with you. " +
       "This will NOT work during active review - use complete_review for that.",
     inputSchema: {
@@ -474,7 +474,7 @@ export const ALL_TOOLS: Tool[] = [
   {
     name: "request_task_changes",
     description:
-      "Request changes on a task after AI review. ONLY available when task is in 'review_passed' status (awaiting human decision). " +
+      "Request changes on a task after AI review. ONLY available when task is in 'review_passed' or 'escalated' status (awaiting human decision). " +
       "Use this when the user wants to request changes after discussing the review with you. " +
       "This will NOT work during active review - use complete_review for that.",
     inputSchema: {
