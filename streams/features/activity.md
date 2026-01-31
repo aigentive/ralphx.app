@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-02-01 05:45:00 - Phase 44 Task 2: Fix useChatPanelHandlers event listener dependency array
+**What:**
+- Added `activeConversationId` to event listener useEffect dependency array (line 366)
+- Added `setStreamingToolCalls([])` to cleanup function before unlisteners (line 364)
+- This completes the race condition fix for ChatPanel/TaskChatPanel contexts
+
+**Commands:**
+- `npx eslint src/hooks/useChatPanelHandlers.ts` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 05:15:00 - Phase 44 Task 1: Fix useIntegratedChatEvents event listener dependency array
 **What:**
 - Added `activeConversationId` to event listener useEffect dependency array (line 141)

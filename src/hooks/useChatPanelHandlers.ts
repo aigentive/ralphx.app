@@ -361,9 +361,10 @@ export function useChatPanelHandlers({
     })();
 
     return () => {
+      setStreamingToolCalls([]);
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [queryClient, logError, messagesEndRef]);
+  }, [queryClient, logError, messagesEndRef, activeConversationId]);
 
   return {
     streamingToolCalls,
