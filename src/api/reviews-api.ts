@@ -109,7 +109,7 @@ export const reviewsApi = {
    * @returns The review or null if not found
    */
   getById: (reviewId: string) =>
-    typedInvoke("get_review_by_id", { review_id: reviewId }, ReviewResponseSchema.nullable()),
+    typedInvoke("get_review_by_id", { reviewId }, ReviewResponseSchema.nullable()),
 
   /**
    * Get all reviews for a task
@@ -117,7 +117,7 @@ export const reviewsApi = {
    * @returns Array of reviews for the task
    */
   getByTaskId: (taskId: string) =>
-    typedInvoke("get_reviews_by_task_id", { task_id: taskId }, ReviewListResponseSchema),
+    typedInvoke("get_reviews_by_task_id", { taskId }, ReviewListResponseSchema),
 
   /**
    * Get task state history (review notes)
@@ -125,7 +125,7 @@ export const reviewsApi = {
    * @returns Array of review notes (state transitions)
    */
   getTaskStateHistory: (taskId: string) =>
-    typedInvoke("get_task_state_history", { task_id: taskId }, ReviewNoteListResponseSchema),
+    typedInvoke("get_task_state_history", { taskId }, ReviewNoteListResponseSchema),
 
   /**
    * Approve a pending review
@@ -200,5 +200,5 @@ export const fixTasksApi = {
    * @returns Fix task attempts response with task_id and attempt_count
    */
   getAttempts: (taskId: string) =>
-    typedInvoke("get_fix_task_attempts", { task_id: taskId }, FixTaskAttemptsResponseSchema),
+    typedInvoke("get_fix_task_attempts", { taskId }, FixTaskAttemptsResponseSchema),
 } as const;
