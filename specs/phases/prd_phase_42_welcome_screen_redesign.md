@@ -95,7 +95,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck to verify no type errors",
       "Commit: feat(deps): add framer-motion for welcome screen animations"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
