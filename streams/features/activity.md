@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-31 12:15:00 - P0 Fix: useMethodologies mock API wiring
+**What:**
+- Created `src/api/methodologies.ts` with centralized methodologiesApi:
+  - `getAll`, `getActive`, `activate`, `deactivate` methods
+- Created `src/api-mock/methodologies.ts` with mockMethodologiesApi for web mode
+- Wired `methodologiesApi` into realApi in `src/lib/tauri.ts`
+- Wired `mockMethodologiesApi` into mockApi in `src/api-mock/index.ts`
+- Updated `useMethodologies.ts` to import from centralized `api` object instead of `@/lib/api/methodologies`
+
+**Files Created:**
+- `src/api/methodologies.ts` (centralized real API)
+- `src/api-mock/methodologies.ts` (mock API for web mode)
+
+**Files Modified:**
+- `src/lib/tauri.ts` (added methodologiesApi to realApi)
+- `src/api-mock/index.ts` (added mockMethodologiesApi to mockApi)
+- `src/hooks/useMethodologies.ts` (use centralized api)
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - Methodology operations will now use mock data in web mode
+
+---
+
 ### 2026-01-31 11:30:00 - P0 Fix: useWorkflows mock API wiring
 **What:**
 - Extended `workflowsApi` in `src/api/projects.ts` with missing methods:

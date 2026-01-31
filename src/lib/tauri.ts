@@ -95,6 +95,15 @@ export {
   getGitBranches,
 } from "@/api/projects";
 
+// Methodologies API
+export {
+  methodologiesApi,
+  type MethodologyResponse,
+  type MethodologyActivationResponse,
+  MethodologyResponseSchema,
+  MethodologyActivationResponseSchema,
+} from "@/api/methodologies";
+
 // QA API
 export {
   qaApi,
@@ -151,6 +160,7 @@ export {
 import { executionApi } from "@/api/execution";
 import { testDataApi } from "@/api/test-data";
 import { projectsApi, workflowsApi } from "@/api/projects";
+import { methodologiesApi } from "@/api/methodologies";
 import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
@@ -173,6 +183,7 @@ const realApi = {
   tasks: tasksApi,
   projects: projectsApi,
   workflows: workflowsApi,
+  methodologies: methodologiesApi,
   qa: qaApi,
   reviews: reviewsApi,
   fixTasks: fixTasksApi,
