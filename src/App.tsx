@@ -22,6 +22,7 @@ import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import { SettingsView } from "@/components/settings";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
+import { UpdateChecker } from "@/components/UpdateChecker";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
 import { useUiStore } from "@/stores/uiStore";
@@ -486,6 +487,9 @@ function AppContent() {
       className="h-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
     >
+      {/* Update checker - runs on mount, shows toast if update available */}
+      <UpdateChecker />
+
       {/* Header - macOS Tahoe Liquid Glass */}
       <TooltipProvider delayDuration={300}>
         <header

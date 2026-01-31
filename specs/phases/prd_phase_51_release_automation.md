@@ -204,7 +204,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(updater): add UpdateChecker component"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 8,

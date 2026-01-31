@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-31 23:15:00 - Phase 51 Task 7: Add UpdateChecker component for auto-update UI
+**What:**
+- Installed `@tauri-apps/plugin-updater` and `@tauri-apps/plugin-process` npm packages
+- Created `src/components/UpdateChecker.tsx` component that:
+  - Checks for updates 3 seconds after app startup (non-blocking)
+  - Shows toast notification when update is available
+  - Provides "Update Now" and "Later" buttons
+  - Downloads with progress percentage display
+  - Relaunches app after installation
+- Added UpdateChecker to `App.tsx` (renders inside main element)
+
+**Files Created:**
+- `src/components/UpdateChecker.tsx`
+
+**Files Modified:**
+- `src/App.tsx`
+- `package.json`, `package-lock.json`
+
+**Commands:**
+- `npm install @tauri-apps/plugin-updater @tauri-apps/plugin-process`: 2 packages added
+- `npm run lint && npm run typecheck`: passed (0 errors, 9 pre-existing warnings)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:00:00 - Phase 51 Task 6: Register updater plugin in Rust
 **What:**
 - Added `.plugin(tauri_plugin_updater::Builder::new().build())` to `src-tauri/src/lib.rs`
