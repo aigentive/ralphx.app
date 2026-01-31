@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 21:00:00 - Phase 47 Task 6: Add consolidated status group constants to status.ts
+**What:**
+- Added `EXECUTION_STATUSES` array for execution phase statuses (executing, re_executing, qa_*)
+- Added `AI_REVIEW_STATUSES` array for AI review phase (pending_review, reviewing)
+- Added `HUMAN_REVIEW_STATUSES` array for human review phase (review_passed, escalated)
+- Added `ALL_REVIEW_STATUSES` array combining AI + Human review statuses
+- Added `NON_DRAGGABLE_STATUSES` array for system-managed states (execution + review + revision_needed)
+- Added helper functions: `isExecutionStatus()`, `isAiReviewStatus()`, `isHumanReviewStatus()`, `isNonDraggableStatus()`
+- All constants use `as const satisfies readonly InternalStatus[]` for type safety
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 20:00:00 - Phase 47 Task 5: Update useReviews hook and ReviewsPanel to use task-based query
 **What:**
 - Added `useTasksAwaitingReview` hook to src/hooks/useReviews.ts
