@@ -515,9 +515,17 @@ function AppContent() {
             {/* App Branding */}
             <h1
               className="text-xl font-bold tracking-tight select-none"
-              style={{ color: "#ff6b35" }}
+              style={{ color: "var(--text-primary)" }}
             >
-              RalphX
+              Ralph
+              <span
+                style={{
+                  color: "#ff6b35",
+                  textShadow: "0 0 12px rgba(255, 107, 53, 0.5)",
+                }}
+              >
+                X
+              </span>
             </h1>
 
             {/* View Navigation */}

@@ -47,41 +47,54 @@ const FRAGMENT_COUNT = 45;
 
 /**
  * Pre-computed fragment data for deterministic rendering
- * Uses seeded random to generate visually interesting but stable positions
+ * Uses prime-based shuffling to ensure nearby fragments have very different timings.
  */
 const FRAGMENT_DATA = Array.from({ length: FRAGMENT_COUNT }, (_, i) => {
-  const r1 = seededRandom(i * 11 + 1);
-  const r2 = seededRandom(i * 11 + 2);
-  const r3 = seededRandom(i * 11 + 3);
-  const r4 = seededRandom(i * 11 + 4);
-  const r5 = seededRandom(i * 11 + 5);
-  const r6 = seededRandom(i * 11 + 6);
-  const r7 = seededRandom(i * 11 + 7);
+  // Use different prime multipliers to decouple properties
+  const rDepth = seededRandom(i * 7 + 1);
+  const rLeft = seededRandom(i * 13 + 100);
+  const rSpeed = seededRandom(i * 17 + 200);
+  const rStart = seededRandom(i * 23 + 300);
+  const rDelay = seededRandom(i * 31 + 400);
+  const rText = seededRandom(i * 37 + 500);
+  const rDrift = seededRandom(i * 41 + 600);
 
   // Depth layer: 0 = far (small, slow), 1 = mid, 2 = near (large, fast)
-  const depthLayer = r1 < 0.3 ? 0 : r1 < 0.7 ? 1 : 2;
+  const depthLayer = rDepth < 0.3 ? 0 : rDepth < 0.7 ? 1 : 2;
 
-  // Size and opacity based on depth
+  // Size and opacity based on depth (reduced for subtlety)
   const fontSize = depthLayer === 0 ? 10 : depthLayer === 1 ? 12 : 14;
-  const opacity = depthLayer === 0 ? 0.15 : depthLayer === 1 ? 0.25 : 0.35;
+  const opacity = depthLayer === 0 ? 0.08 : depthLayer === 1 ? 0.12 : 0.18;
 
-  // Speed based on depth (far = slow, near = fast)
-  const duration = depthLayer === 0 ? 20 + r3 * 10 : depthLayer === 1 ? 12 + r3 * 8 : 8 + r3 * 4;
+  // Speed - much more varied within each layer
+  const baseSpeed = depthLayer === 0 ? 25 : depthLayer === 1 ? 16 : 10;
+  const speedVariation = depthLayer === 0 ? 15 : depthLayer === 1 ? 10 : 6;
+  const duration = baseSpeed + rSpeed * speedVariation;
+
+  // Horizontal position - use golden ratio for better distribution
+  const goldenRatio = 0.618033988749;
+  const left = ((i * goldenRatio * 100) % 100);
 
   // Horizontal drift amount
-  const driftX = (r7 - 0.5) * 40;
+  const driftX = (rDrift - 0.5) * 50;
+
+  // Delay - spread across a long period, completely independent of position
+  const delay = rDelay * 30; // 0-30 seconds
+
+  // Start offset - varied
+  const startOffset = -10 - rStart * 90; // -10% to -100%
 
   return {
     id: i,
-    left: `${r2 * 100}%`,
-    startOffset: `${-r4 * 100}%`, // Start at various heights off-screen
-    delay: r5 * 10, // Stagger start times
+    left: `${left}%`,
+    startOffset: `${startOffset}%`,
+    delay,
     duration,
     fontSize,
     opacity,
     driftX,
-    text: CODE_SNIPPETS[Math.floor(r6 * CODE_SNIPPETS.length)],
-    isHighlight: r1 > 0.92, // ~8% chance of orange highlight
+    text: CODE_SNIPPETS[Math.floor(rText * CODE_SNIPPETS.length)],
+    isHighlight: rDepth > 0.92,
     depthLayer,
   };
 });
@@ -148,7 +161,9 @@ export default function CodeRain({ className = "" }: CodeRainProps) {
               left: f.left,
               top: 0,
               fontSize: f.fontSize,
-              color: f.isHighlight ? "#ff6b35" : "rgba(255, 255, 255, 0.4)",
+              color: f.isHighlight ? "#ff6b35" : "rgba(255, 255, 255, 0.25)",
+              opacity: 0, // Start hidden, animation will control visibility
+              transform: `translateY(${f.startOffset}) translateX(0)`, // Match animation start
               ["--start-offset" as string]: f.startOffset,
               ["--drift-x" as string]: `${f.driftX}px`,
               ["--fragment-opacity" as string]: f.opacity,
