@@ -11,7 +11,7 @@ import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { SectionTitle } from "./shared";
+import { SectionTitle, ReviewTimeline } from "./shared";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -189,49 +189,6 @@ function ReviewIssuesList({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-/**
- * PreviousAttemptsSection - Shows previous revision attempts if any
- */
-function PreviousAttemptsSection({ history }: { history: ReviewNoteResponse[] }) {
-  const changesRequestedEntries = history.filter(
-    (entry) => entry.outcome === "changes_requested"
-  );
-
-  if (changesRequestedEntries.length === 0) return null;
-
-  return (
-    <div data-testid="previous-attempts-section">
-      <SectionTitle>Previous Attempts</SectionTitle>
-      <div className="space-y-2">
-        {changesRequestedEntries.map((entry, index) => (
-          <div
-            key={entry.id}
-            className="flex items-start gap-2 py-1.5 px-2 rounded"
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.15)",
-              border: "1px solid rgba(255,255,255,0.05)",
-            }}
-          >
-            <RotateCcw
-              className="w-3.5 h-3.5 mt-0.5 shrink-0"
-              style={{ color: "var(--status-warning)" }}
-            />
-            <div className="flex-1 min-w-0">
-              <span className="text-[11px] font-medium text-white/60">
-                Attempt #{changesRequestedEntries.length - index}: Changes requested
-              </span>
-              {entry.notes && (
-                <p className="text-[11px] text-white/40 truncate mt-0.5">
-                  {entry.notes}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /**
  * ActionButtons - Approve and Request Changes buttons
@@ -494,7 +451,17 @@ export function EscalatedTaskDetail({ task }: EscalatedTaskDetailProps) {
       )}
 
       {/* Previous Attempts */}
-      {!isLoading && <PreviousAttemptsSection history={history} />}
+      {!isLoading && (
+        <div data-testid="previous-attempts-section">
+          <SectionTitle>Previous Attempts</SectionTitle>
+          <ReviewTimeline
+            history={history}
+            filter={(e) => e.outcome === "changes_requested"}
+            showAttemptNumbers
+            emptyMessage="No previous attempts"
+          />
+        </div>
+      )}
 
       {/* Description Section */}
       <div>

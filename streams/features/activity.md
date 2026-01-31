@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 20:30:00 - Phase 53 Task 3: Update EscalatedTaskDetail to use shared ReviewTimeline
+**What:**
+- Removed local `PreviousAttemptsSection` function from EscalatedTaskDetail.tsx
+- Imported `ReviewTimeline` from `./shared`
+- Replaced `<PreviousAttemptsSection history={history} />` with `<ReviewTimeline history={history} filter={(e) => e.outcome === "changes_requested"} showAttemptNumbers emptyMessage="No previous attempts" />`
+- Escalated view now shows only `changes_requested` entries with numbered attempts
+
+**Files Modified:**
+- `src/components/tasks/detail-views/EscalatedTaskDetail.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 pre-existing warnings)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 20:15:00 - Phase 53 Task 2: Update CompletedTaskDetail to use shared ReviewTimeline
 **What:**
 - Removed local `HistoryTimelineItem` and `ReviewHistoryTimeline` functions from CompletedTaskDetail.tsx
