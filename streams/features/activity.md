@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 11:30:00 - Phase 45 Task 8: Create EscalatedTaskDetail component
+**What:**
+- Created `src/components/tasks/detail-views/EscalatedTaskDetail.tsx` (new file)
+- Component based on `HumanReviewTaskDetail` but with warning styling (amber instead of green)
+- Added warning banner: "AI ESCALATED TO HUMAN" with AlertTriangle icon
+- Added description: "AI reviewer couldn't decide - needs your input"
+- Added `EscalatedBadge` component showing "Needs Human Decision"
+- Added `AIEscalationReasonCard` to display escalation reason from review notes
+- Includes same Approve/Request Changes buttons as HumanReviewTaskDetail
+- Exported from `detail-views/index.ts`
+
+**Commands:**
+- `npm run lint` (passed with pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 14:30:00 - Phase 45 Task 7: Add escalated to InternalStatus TypeScript types
 **What:**
 - Added `'escalated'` to `InternalStatusSchema` after `'review_passed'` (status.ts:12)
