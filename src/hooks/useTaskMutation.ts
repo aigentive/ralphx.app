@@ -20,19 +20,23 @@ import { infiniteTaskKeys } from "./useInfiniteTasksQuery";
  * - Updating tasks
  * - Deleting tasks
  * - Moving tasks to a new status
+ * - Blocking/unblocking tasks
  *
  * @param projectId - The project ID for cache invalidation
  * @returns Object containing all task mutations
  *
  * @example
  * ```tsx
- * const { createMutation, moveMutation } = useTaskMutation("project-123");
+ * const { createMutation, moveMutation, blockMutation } = useTaskMutation("project-123");
  *
  * // Create a new task
  * createMutation.mutate({ projectId: "project-123", title: "New Task" });
  *
  * // Move a task
  * moveMutation.mutate({ taskId: "task-1", toStatus: "ready" });
+ *
+ * // Block a task
+ * blockMutation.mutate({ taskId: "task-1", reason: "Waiting for API" });
  * ```
  */
 export function useTaskMutation(projectId: string) {
@@ -112,6 +116,31 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  const blockMutation = useMutation({
+    mutationFn: ({ taskId, reason }: { taskId: string; reason?: string }) =>
+      api.tasks.block(taskId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success("Task blocked");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to block task: ${error.message}`);
+    },
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.unblock(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success("Task unblocked");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to unblock task: ${error.message}`);
+    },
+  });
+
   return {
     createMutation,
     updateMutation,
@@ -120,8 +149,12 @@ export function useTaskMutation(projectId: string) {
     archiveMutation,
     restoreMutation,
     permanentlyDeleteMutation,
+    blockMutation,
+    unblockMutation,
     isArchiving: archiveMutation.isPending,
     isRestoring: restoreMutation.isPending,
     isPermanentlyDeleting: permanentlyDeleteMutation.isPending,
+    isBlocking: blockMutation.isPending,
+    isUnblocking: unblockMutation.isPending,
   };
 }
