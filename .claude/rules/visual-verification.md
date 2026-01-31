@@ -7,15 +7,31 @@
 > You CANNOT skip screenshot capture for UI tasks.
 > You CANNOT delegate visual verification to sub-agents - execute DIRECTLY using the Skill tool.
 
-## Step 5.5: Mock Layer Check
+## Step 6.0: Mock Layer Check (PRODUCES EVIDENCE)
 
-1. Identify Tauri commands used by new/modified UI code
-2. Check if src/api-mock/ has matching mock
+1. Grep modified .tsx files for `invoke(` calls → list all Tauri commands
+2. Check if src/api-mock/ has matching mock for each command
 3. Missing? → Create minimal mock:
    - Add to src/api-mock/{domain}.ts
    - Just enough to render (not all states)
    - Export from src/api-mock/index.ts
 4. Verify: web mode renders without undefined errors
+5. **CREATE EVIDENCE FILE** at: `screenshots/features/YYYY-MM-DD_HH-MM-SS_[task-name]_mock-check.md`
+
+### Mock-Check Evidence Template
+
+```markdown
+# Mock Parity Check - [Task Name]
+
+## Commands Found
+- `command_name` → ✅ mock exists | ❌ CREATED mock
+
+## Web Mode Test
+- URL: http://localhost:5173/[path]
+- Renders: ✅ Yes | ❌ No (fixed: [description])
+
+## Result: PASS
+```
 
 ## Step 6.5: Visual Verification (NO DELEGATION)
 

@@ -53,11 +53,27 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
    - YES → MUST complete steps 6.0-6.5 below (CANNOT skip)
    - NO (backend-only, tests-only, config-only) → Skip to step 7
 
-6.0. Mock Layer Check (MANDATORY for UI tasks):
-   a. Identify Tauri commands used by modified UI code
-   b. Check src/api-mock/ has matching mock
-   c. Missing? → Create minimal mock first
+6.0. Mock Layer Check (MANDATORY for UI tasks - PRODUCES EVIDENCE):
+   a. Grep modified .tsx files for `invoke(` calls → list all Tauri commands used
+   b. For each command, check src/api-mock/ for matching mock function
+   c. Missing? → Create minimal mock first (add to src/api-mock/)
    d. Verify: `npm run dev:web` renders without undefined errors
+   e. **CREATE EVIDENCE FILE** (REQUIRED):
+      - Path: screenshots/features/YYYY-MM-DD_HH-MM-SS_[task-name]_mock-check.md
+      - Content:
+        ```
+        # Mock Parity Check - [Task Name]
+
+        ## Commands Found
+        - `command_name` → ✅ mock exists | ❌ CREATED mock
+
+        ## Web Mode Test
+        - URL: http://localhost:5173/[path]
+        - Renders: ✅ Yes | ❌ No (fixed: [description])
+
+        ## Result: PASS
+        ```
+   f. Record mock-check file path for checkpoint
 
 6.5. Browser Verification (MANDATORY for UI tasks - NO DELEGATION):
    **Execute this step DIRECTLY using the Skill tool. Do NOT delegate via Task tool.**
@@ -71,9 +87,13 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
    e. Record screenshot path for activity log
 
 6.9. Visual Verification Checkpoint (UI tasks only):
-   - Screenshot file exists at recorded path?
-   - YES → Proceed to step 7
-   - NO → STOP. Cannot mark task complete without visual evidence.
+   **BOTH files must exist. Check with `ls` command:**
+   - Mock-check evidence: screenshots/features/*_mock-check.md (from step 6.0)
+   - Screenshot: screenshots/features/*.png (from step 6.5)
+
+   Missing mock-check file? → STOP. Go back to step 6.0.
+   Missing screenshot? → STOP. Go back to step 6.5.
+   Both exist? → Proceed to step 7.
 
 7. Run linters (ONLY for what you modified):
    - Modified src/ files? → npm run lint && npm run typecheck
@@ -174,8 +194,8 @@ Log entries go in `streams/features/activity.md`:
 - `relevant commands run`
 
 **Visual Verification:** (REQUIRED for UI tasks, "N/A - backend only" for non-UI)
+- Mock-check: screenshots/features/[filename]_mock-check.md
 - Screenshot: screenshots/features/[filename].png
-- Mock status: Ready | Extended [description]
 - Browser test: Passed | Failed [reason]
 
 **Result:** Success/Failed
