@@ -6,7 +6,7 @@
  */
 
 import { useRef, useEffect, useCallback, useMemo } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { CHAT_TOOL_CALL, CHAT_RUN_COMPLETED } from "@/lib/events";
 import { useTaskChat, type TaskContextType } from "@/hooks/useTaskChat";
 import { chatKeys } from "@/hooks/useChat";
@@ -284,56 +284,54 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     startEditingQueuedMessage(contextKey, lastMessage.id);
   }, [queuedMessages, startEditingQueuedMessage, contextKey]);
 
-  // Subscribe to Tauri events for real-time updates (only on mount)
+  // Get the event bus from context (TauriEventBus or MockEventBus)
+  const eventBus = useEventBus();
+
+  // Subscribe to events for real-time updates (only on mount)
   useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
+    // Listen for tool calls - invalidate cache to pick up new messages
+    const toolCallUnsub = eventBus.subscribe<{
+      tool_name: string;
+      arguments: unknown;
+      result: unknown;
+      conversation_id: string;
+    }>(CHAT_TOOL_CALL, (payload) => {
+      const { conversation_id } = payload;
+      // Invalidate cache to pick up any new messages from backend
+      if (conversation_id === activeConversationIdRef.current) {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
+      }
+    });
 
-    (async () => {
-      // Listen for tool calls - invalidate cache to pick up new messages
-      const toolCallUnlisten = await listen<{
-        tool_name: string;
-        arguments: unknown;
-        result: unknown;
-        conversation_id: string;
-      }>(CHAT_TOOL_CALL, (event) => {
-        const { conversation_id } = event.payload;
-        // Invalidate cache to pick up any new messages from backend
-        if (conversation_id === activeConversationIdRef.current) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
+    // Listen for chat run completion - refresh messages
+    const runCompletedUnsub = eventBus.subscribe<{
+      conversation_id: string;
+    }>(CHAT_RUN_COMPLETED, (payload) => {
+      const { conversation_id } = payload;
+      // Invalidate cache to get final messages
+      if (conversation_id) {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
+      }
+      // Scroll to bottom
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
         }
-      });
-      unlisteners.push(toolCallUnlisten);
+      }, 100);
+    });
 
-      // Listen for chat run completion - refresh messages
-      const runCompletedUnlisten = await listen<{
-        conversation_id: string;
-      }>(CHAT_RUN_COMPLETED, (event) => {
-        const { conversation_id } = event.payload;
-        // Invalidate cache to get final messages
-        if (conversation_id) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
-        // Scroll to bottom
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
-      });
-      unlisteners.push(runCompletedUnlisten);
-
-      // Note: execution:* and review:* events are now unified under chat:* events
-      // The backend emits chat:tool_call and chat:run_completed for all context types
-    })();
+    // Note: execution:* and review:* events are now unified under chat:* events
+    // The backend emits chat:tool_call and chat:run_completed for all context types
 
     return () => {
-      unlisteners.forEach((unlisten) => unlisten());
+      toolCallUnsub();
+      runCompletedUnsub();
     };
-  }, [queryClient]);
+  }, [eventBus, queryClient]);
 
   // Sort messages by createdAt - render in chronological order, no grouping
   const sortedMessages = useMemo(() => {
