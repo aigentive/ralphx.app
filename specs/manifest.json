@@ -378,7 +378,7 @@
       "phase": 52,
       "name": "Activity Screen UI Improvements",
       "prd": "specs/phases/prd_phase_52_activity_ui_improvements.md",
-      "status": "active",
+      "status": "complete",
       "description": "Smart content rendering, context display, role filter, ActivityView refactor"
     }
   ]
