@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
 import {
@@ -52,12 +52,13 @@ export function useAskUserQuestion() {
   const activeQuestion = useUiStore((s) => s.activeQuestion);
   const setActiveQuestion = useUiStore((s) => s.setActiveQuestion);
   const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
+  const eventBus = useEventBus();
 
   // Set up event listener for agent questions
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<unknown>("agent:ask_user_question", (event) => {
+    const unsubscribe = eventBus.subscribe<unknown>("agent:ask_user_question", (payload) => {
       // Runtime validation of event payload
-      const parsed = AskUserQuestionPayloadSchema.safeParse(event.payload);
+      const parsed = AskUserQuestionPayloadSchema.safeParse(payload);
 
       if (!parsed.success) {
         return;
@@ -66,10 +67,8 @@ export function useAskUserQuestion() {
       setActiveQuestion(parsed.data);
     });
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [setActiveQuestion]);
+    return unsubscribe;
+  }, [setActiveQuestion, eventBus]);
 
   /**
    * Submit an answer to the agent's question

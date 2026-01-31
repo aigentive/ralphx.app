@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 22:30:00 - P0 Fix: useAskUserQuestion EventProvider migration
+**What:**
+- Migrated useAskUserQuestion from direct `@tauri-apps/api/event` listen() to useEventBus()
+- Replaced async listen() with synchronous subscribe() from EventBus
+- Event `agent:ask_user_question` now goes through EventProvider
+- Simplified cleanup logic since subscribe() returns sync unsubscribe function
+
+**Files Modified:**
+- `src/hooks/useAskUserQuestion.ts` (use useEventBus() instead of direct listen())
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - useAskUserQuestion events will now use MockEventBus in web mode
+
+---
+
 ### 2026-01-31 21:15:00 - P0 Fix: useSupervisorAlerts.listener EventProvider migration
 **What:**
 - Migrated useSupervisorAlerts.listener from direct `@tauri-apps/api/event` listen() to useEventBus()
