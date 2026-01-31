@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-31 18:45:00 - Phase 42 Task 9: Update WelcomeScreen to use AgentConstellation
+**What:**
+- Replaced TerminalCanvas and ParticleField imports with AgentConstellation
+- Updated title to 7xl size with enhanced glow on "X" accent
+- Changed tagline from "Autonomous AI Development, Orchestrated" to "Watch AI Build Your Software"
+- Updated CTA button text from "Create Your First Project" to "Start Your First Project"
+- Added idle state tracking with 3-second delay for keyboard hint pulse animation
+- AgentConstellation now fills full screen as background (absolute inset-0)
+- Added gradient overlay (z-30) for text readability over animated background
+- Content container floated at z-40 above constellation
+- Close button z-index increased to z-50 for overlay mode visibility
+- Removed unused CSS animations (terminalBlink, codeFloat, particleDrift) that belonged to deleted components
+- Added keyboardHintPulse animation for idle state
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 06:00:00 - Phase 42 Task 8: Create AgentConstellation main orchestrator
 **What:**
 - Created src/components/WelcomeScreen/AgentConstellation.tsx
