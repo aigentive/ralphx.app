@@ -335,3 +335,14 @@
 **Mock parity:** Extended mock task fixture to populate all 5 default workflow columns (Backlog, Ready, Executing, Review, Approved) with 3 tasks each
 **Commands:** `npx playwright test tests/visual/states/kanban/all-status-columns.spec.ts --update-snapshots`
 **Result:** Success
+
+### 2026-01-31 23:19:53 - error-state Visual Tests
+**What:** Created page object + spec + baseline for error boundary states
+**Mock parity:** ready - Used static HTML rendering to test ErrorBoundary visual design
+- Created tests/helpers/error.helpers.ts for error state test utilities
+- Created tests/pages/error-state.page.ts with ErrorBoundary selectors
+- Created error-state.spec.ts with 3 test cases (collapsed, expanded, production mode)
+- Tests verify ErrorBoundary UI design per ErrorBoundary.tsx component
+**Commands:** `npx playwright test tests/visual/states/error-state/error-state.spec.ts --update-snapshots`
+**Result:** Success - 3 tests passing with baselines
+**Bootstrap Status:** COMPLETE - all uncovered items from manifest now covered
