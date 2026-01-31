@@ -13,6 +13,37 @@ import type { ExecutionStatusResponse } from "@/lib/tauri";
 import type { ViewType } from "@/types/chat";
 
 // ============================================================================
+// Chat Visibility Persistence
+// ============================================================================
+
+const CHAT_VISIBILITY_KEY = "ralphx-chat-visibility-by-view";
+
+const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
+  kanban: true, // visible by default (integrated layout)
+  ideation: true, // always visible (built-in chat)
+  extensibility: false,
+  activity: false,
+  settings: false,
+  task_detail: false,
+};
+
+function loadChatVisibility(): Record<ViewType, boolean> {
+  try {
+    const saved = localStorage.getItem(CHAT_VISIBILITY_KEY);
+    if (saved) {
+      return { ...DEFAULT_CHAT_VISIBILITY, ...JSON.parse(saved) };
+    }
+  } catch {
+    /* ignore parse errors */
+  }
+  return { ...DEFAULT_CHAT_VISIBILITY };
+}
+
+function saveChatVisibility(visibility: Record<ViewType, boolean>): void {
+  localStorage.setItem(CHAT_VISIBILITY_KEY, JSON.stringify(visibility));
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -86,6 +117,8 @@ interface UiState {
   taskCreationContext: { projectId: string; defaultTitle?: string } | null;
   /** Whether the integrated chat panel is collapsed (hidden) */
   chatCollapsed: boolean;
+  /** Chat visibility per view (persisted to localStorage) */
+  chatVisibleByView: Record<ViewType, boolean>;
   /** Whether the welcome screen is manually shown (vs. empty state) */
   showWelcomeOverlay: boolean;
   /** View to return to when closing manually-opened welcome screen */
@@ -153,6 +186,10 @@ interface UiActions {
   closeTaskCreation: () => void;
   /** Toggle chat panel collapsed state */
   toggleChatCollapsed: () => void;
+  /** Set chat visibility for a specific view */
+  setChatVisible: (view: ViewType, visible: boolean) => void;
+  /** Toggle chat visibility for a specific view */
+  toggleChatVisible: (view: ViewType) => void;
   /** Open welcome screen overlay, saving current view */
   openWelcomeOverlay: () => void;
   /** Close welcome screen overlay, restoring previous view */
@@ -189,6 +226,7 @@ export const useUiStore = create<UiState & UiActions>()(
     selectedTaskId: null,
     taskCreationContext: null,
     chatCollapsed: false,
+    chatVisibleByView: loadChatVisibility(),
     showWelcomeOverlay: false,
     welcomeOverlayReturnView: null,
 
@@ -336,6 +374,18 @@ export const useUiStore = create<UiState & UiActions>()(
     toggleChatCollapsed: () =>
       set((state) => {
         state.chatCollapsed = !state.chatCollapsed;
+      }),
+
+    setChatVisible: (view, visible) =>
+      set((state) => {
+        state.chatVisibleByView[view] = visible;
+        saveChatVisibility(state.chatVisibleByView);
+      }),
+
+    toggleChatVisible: (view) =>
+      set((state) => {
+        state.chatVisibleByView[view] = !state.chatVisibleByView[view];
+        saveChatVisibility(state.chatVisibleByView);
       }),
 
     openWelcomeOverlay: () =>
