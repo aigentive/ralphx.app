@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 10:45:00 - Phase 55 Gap Verification
+**What:**
+- All PRD tasks (1-8) completed, ran gap verification
+- Found 6 P0 gaps related to mock API wiring:
+  - useWorkflows, useMethodologies, useArtifacts, useResearch import directly from @/lib/api/* modules instead of centralized api object
+  - useAskUserQuestion and PermissionDialog use direct invoke() calls
+- These hooks bypass the isWebMode() → mockApi switching mechanism
+- TaskBoardWithHeader (main Kanban view) uses useWorkflows which will fail in web mode
+
+**Gaps Added to Backlog:**
+- 4 hooks bypassing mock API proxy
+- 2 components with direct invoke() calls
+
+**Result:** 6 P0 items added to streams/features/backlog.md
+
+---
+
 ### 2026-01-31 09:15:00 - Phase 55 Task 7: Set up Playwright and create initial visual regression test
 **What:**
 - Installed `@playwright/test` as dev dependency

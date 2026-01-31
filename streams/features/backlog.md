@@ -38,6 +38,15 @@
 
 - [x] [Frontend] Orphaned mutation: unblockMutation never used - TaskCard uses moveMutation for "Unblock" action instead - src/components/tasks/TaskBoard/TaskCard.tsx:189
 
+## From Phase 55 Verification (2026-01-31)
+
+- [ ] [Frontend] Bypassed mock API: useWorkflows imports directly from @/lib/api/workflows instead of centralized api object - src/hooks/useWorkflows.ts:15
+- [ ] [Frontend] Bypassed mock API: useMethodologies imports directly from @/lib/api/methodologies instead of centralized api object - src/hooks/useMethodologies.ts:12
+- [ ] [Frontend] Bypassed mock API: useArtifacts imports directly from @/lib/api/artifacts instead of centralized api object - src/hooks/useArtifacts.ts:15
+- [ ] [Frontend] Bypassed mock API: useResearch imports directly from @/lib/api/research instead of centralized api object - src/hooks/useResearch.ts:12
+- [ ] [Frontend] Direct invoke call: useAskUserQuestion uses invoke() directly, not mockable - src/hooks/useAskUserQuestion.ts:86
+- [ ] [Frontend] Direct invoke call: PermissionDialog uses invoke() directly, not mockable - src/components/PermissionDialog.tsx:47
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
