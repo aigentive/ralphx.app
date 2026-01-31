@@ -333,6 +333,15 @@ export const defaultWorkflow: WorkflowSchema = {
           canDragFrom: true,
           canDropTo: false, // Only review process can add here
         },
+        {
+          id: "blocked",
+          label: "Blocked",
+          statuses: ["blocked"],
+          icon: "Ban",
+          accentColor: "hsl(var(--warning))",
+          canDragFrom: true,
+          canDropTo: true,
+        },
       ],
     },
     {
