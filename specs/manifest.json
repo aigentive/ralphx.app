@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 44,
+  "currentPhase": 45,
   "phases": [
     {
       "phase": 0,
@@ -322,14 +322,14 @@
       "phase": 44,
       "name": "Fix Chat Context Bleeding",
       "prd": "specs/phases/prd_phase_44_chat_context_bleeding_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix race condition causing streaming tool calls and stop button to bleed across context switches"
     },
     {
       "phase": 45,
       "name": "Escalated State for Review System",
       "prd": "specs/phases/prd_phase_45_escalated_state.md",
-      "status": "pending",
+      "status": "active",
       "description": "Add dedicated Escalated state for AI reviewer escalation requiring human decision"
     }
   ]
