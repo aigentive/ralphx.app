@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { chatApi, stopAgent, type SendAgentMessageResult } from "@/api/chat";
 import { chatKeys } from "@/hooks/useChat";
@@ -203,15 +203,18 @@ export function useChatPanelHandlers({
     startEditingQueuedMessage(contextKey, lastMessage.id);
   }, [queuedMessages, startEditingQueuedMessage, contextKey]);
 
+  // Get EventBus for Tauri event subscriptions (mockable in browser mode)
+  const eventBus = useEventBus();
+
   // Subscribe to Tauri events for real-time updates (only on mount)
   // Using unified agent:* events (Phase 5-6 consolidation)
   useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
+    const unsubscribers: Array<() => void> = [];
 
-    (async () => {
-      // Listen for tool calls - accumulate for streaming display and invalidate cache
-      // Unified event: agent:tool_call (replaces chat:tool_call and execution:tool_call)
-      const toolCallUnlisten = await listen<{
+    // Listen for tool calls - accumulate for streaming display and invalidate cache
+    // Unified event: agent:tool_call (replaces chat:tool_call and execution:tool_call)
+    unsubscribers.push(
+      eventBus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
@@ -219,8 +222,8 @@ export function useChatPanelHandlers({
         tool_id?: string;
         arguments: unknown;
         result: unknown;
-      }>("agent:tool_call", (event) => {
-        const { tool_name, tool_id, arguments: args, result, conversation_id } = event.payload;
+      }>("agent:tool_call", (payload) => {
+        const { tool_name, tool_id, arguments: args, result, conversation_id } = payload;
 
         // Skip result events early - they don't add new tool calls and are filtered at render anyway
         if (tool_name.startsWith("result:toolu")) {
@@ -266,18 +269,19 @@ export function useChatPanelHandlers({
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-      });
-      unlisteners.push(toolCallUnlisten);
+      })
+    );
 
-      // Listen for run completion - clear streaming state and refresh
-      // Unified event: agent:run_completed (replaces chat:run_completed and execution:run_completed)
-      const runCompletedUnlisten = await listen<{
+    // Listen for run completion - clear streaming state and refresh
+    // Unified event: agent:run_completed (replaces chat:run_completed and execution:run_completed)
+    unsubscribers.push(
+      eventBus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         status: string;
-      }>("agent:run_completed", (event) => {
-        const { conversation_id } = event.payload;
+      }>("agent:run_completed", (payload) => {
+        const { conversation_id } = payload;
         // Clear streaming tool calls
         setStreamingToolCalls([]);
         // Invalidate cache to get final messages
@@ -292,18 +296,19 @@ export function useChatPanelHandlers({
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
           }
         }, 100);
-      });
-      unlisteners.push(runCompletedUnlisten);
+      })
+    );
 
-      // Listen for agent errors - clear streaming state
-      // Unified event: agent:error
-      const errorUnlisten = await listen<{
+    // Listen for agent errors - clear streaming state
+    // Unified event: agent:error
+    unsubscribers.push(
+      eventBus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         error: string;
-      }>("agent:error", (event) => {
-        const { conversation_id, error, context_type } = event.payload;
+      }>("agent:error", (payload) => {
+        const { conversation_id, error, context_type } = payload;
         logError(`agent error (context=${context_type}, conversation=${conversation_id})`, error);
         // Clear streaming tool calls on error
         setStreamingToolCalls([]);
@@ -313,37 +318,39 @@ export function useChatPanelHandlers({
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-      });
-      unlisteners.push(errorUnlisten);
+      })
+    );
 
-      // Listen for run started - for progress tracking
-      // Unified event: agent:run_started
-      const runStartedUnlisten = await listen<{
+    // Listen for run started - for progress tracking
+    // Unified event: agent:run_started
+    unsubscribers.push(
+      eventBus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         agent_run_id: string;
-      }>("agent:run_started", (event) => {
-        const { conversation_id } = event.payload;
+      }>("agent:run_started", (payload) => {
+        const { conversation_id } = payload;
         // Invalidate agent run status to pick up new run
         if (conversation_id) {
           queryClient.invalidateQueries({
             queryKey: chatKeys.agentRun(conversation_id),
           });
         }
-      });
-      unlisteners.push(runStartedUnlisten);
+      })
+    );
 
-      // Listen for queue_sent - backend notifies when it sends a queued message
-      // This updates the optimistic UI for queued messages
-      // Since frontend and backend use the same ID, we can match exactly by ID
-      const queueSentUnlisten = await listen<{
+    // Listen for queue_sent - backend notifies when it sends a queued message
+    // This updates the optimistic UI for queued messages
+    // Since frontend and backend use the same ID, we can match exactly by ID
+    unsubscribers.push(
+      eventBus.subscribe<{
         message_id: string;
         conversation_id: string;
         context_type: string;
         context_id: string;
-      }>("agent:queue_sent", (event) => {
-        const { message_id, context_type, context_id } = event.payload;
+      }>("agent:queue_sent", (payload) => {
+        const { message_id, context_type, context_id } = payload;
 
         // Build context key from event payload - unified queue with context-aware keys
         const eventContextKey = context_type === "ideation"
@@ -356,15 +363,14 @@ export function useChatPanelHandlers({
                 ? `review:${context_id}`
                 : `project:${context_id}`;
         useChatStore.getState().deleteQueuedMessage(eventContextKey, message_id);
-      });
-      unlisteners.push(queueSentUnlisten);
-    })();
+      })
+    );
 
     return () => {
       setStreamingToolCalls([]);
-      unlisteners.forEach((unlisten) => unlisten());
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [queryClient, logError, messagesEndRef, activeConversationId]);
+  }, [queryClient, logError, messagesEndRef, activeConversationId, eventBus]);
 
   return {
     streamingToolCalls,
