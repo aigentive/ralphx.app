@@ -41,8 +41,9 @@ src-tauri/gen/schemas
 playwright-report/
 test-results/
 
-# Screenshots (keep .gitkeep)
-screenshots/*
+# Screenshots (track mock-check.md evidence, ignore PNGs)
+screenshots/**/*.png
+!screenshots/**/*_mock-check.md
 !screenshots/.gitkeep
 *.db
 .ralph-stop
