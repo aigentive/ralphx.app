@@ -20,7 +20,7 @@ Phase: IN_PROGRESS
 | ReviewsPanel | ✅ | reviews-panel.spec.ts | ✅ | covered |
 | AskUserQuestionModal | ❌ | — | — | uncovered |
 | ProjectCreationWizard | ✅ | project-creation-wizard.spec.ts | ✅ | covered |
-| ProposalEditModal | ❌ | — | — | uncovered |
+| ProposalEditModal | 🚧 | proposal-edit.spec.ts | — | blocked |
 | PermissionDialog | 🚧 | — | — | blocked |
 
 ## States & Edge Cases
