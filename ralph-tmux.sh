@@ -5,11 +5,11 @@
 #   ./ralph-tmux.sh [command]
 #
 # Commands:
-#   start   - Create tmux session with all streams (default)
-#   attach  - Attach to existing session
-#   stop    - Stop all streams and kill session
-#   restart - Restart all streams (or single stream with: restart <stream>)
-#   status  - Show session status without attaching
+#   start [stream]  - Create tmux session (all streams, or single stream if specified)
+#   attach          - Attach to existing session
+#   stop            - Stop all streams and kill session
+#   restart [stream]- Restart all streams (or single stream if specified)
+#   status          - Show session status without attaching
 
 set -e
 
@@ -52,13 +52,28 @@ session_exists() {
 #------------------------------------------------------------------------------
 
 create_session() {
+    local only_stream="$1"
+
     if session_exists; then
         echo -e "${YELLOW}Session '$SESSION_NAME' already exists${NC}"
         echo "Use: ./ralph-tmux.sh attach"
         exit 0
     fi
 
-    echo -e "${GREEN}Creating RALPH multi-stream session...${NC}"
+    # Validate stream name if provided
+    if [ -n "$only_stream" ]; then
+        case "$only_stream" in
+            features|refactor|polish|verify|hygiene) ;;
+            *)
+                echo -e "${RED}Unknown stream: $only_stream${NC}"
+                echo "Valid streams: features, refactor, polish, verify, hygiene"
+                exit 1
+                ;;
+        esac
+        echo -e "${GREEN}Creating RALPH session with only '$only_stream' stream...${NC}"
+    else
+        echo -e "${GREEN}Creating RALPH multi-stream session...${NC}"
+    fi
 
     cd "$SCRIPT_DIR"
 
@@ -128,26 +143,48 @@ create_session() {
     tmux set-option -t "$SESSION_NAME" pane-border-status top
     tmux set-option -t "$SESSION_NAME" pane-border-format " #{pane_title} "
 
-    # Start commands in each pane
+    # Start commands in each pane (conditionally based on only_stream)
     tmux send-keys -t "$SESSION_NAME:0.0" "./ralph-tmux-status.sh" C-m
-    tmux send-keys -t "$SESSION_NAME:0.1" "./scripts/stream-watch-features.sh" C-m
-    tmux send-keys -t "$SESSION_NAME:0.2" "./scripts/stream-watch-refactor.sh" C-m
-    tmux send-keys -t "$SESSION_NAME:0.3" "./scripts/stream-watch-polish.sh" C-m
-    tmux send-keys -t "$SESSION_NAME:0.4" "./scripts/stream-watch-verify.sh" C-m
-    tmux send-keys -t "$SESSION_NAME:0.5" "./scripts/stream-watch-hygiene.sh" C-m
 
-    # Select features pane as default
-    tmux select-pane -t "$SESSION_NAME:0.1"
+    if [ -z "$only_stream" ] || [ "$only_stream" = "features" ]; then
+        tmux send-keys -t "$SESSION_NAME:0.1" "./scripts/stream-watch-features.sh" C-m
+    fi
+    if [ -z "$only_stream" ] || [ "$only_stream" = "refactor" ]; then
+        tmux send-keys -t "$SESSION_NAME:0.2" "./scripts/stream-watch-refactor.sh" C-m
+    fi
+    if [ -z "$only_stream" ] || [ "$only_stream" = "polish" ]; then
+        tmux send-keys -t "$SESSION_NAME:0.3" "./scripts/stream-watch-polish.sh" C-m
+    fi
+    if [ -z "$only_stream" ] || [ "$only_stream" = "verify" ]; then
+        tmux send-keys -t "$SESSION_NAME:0.4" "./scripts/stream-watch-verify.sh" C-m
+    fi
+    if [ -z "$only_stream" ] || [ "$only_stream" = "hygiene" ]; then
+        tmux send-keys -t "$SESSION_NAME:0.5" "./scripts/stream-watch-hygiene.sh" C-m
+    fi
 
-    echo -e "${GREEN}Session created with 6 panes${NC}"
+    # Select the appropriate pane as default
+    case "$only_stream" in
+        features) tmux select-pane -t "$SESSION_NAME:0.1" ;;
+        refactor) tmux select-pane -t "$SESSION_NAME:0.2" ;;
+        polish)   tmux select-pane -t "$SESSION_NAME:0.3" ;;
+        verify)   tmux select-pane -t "$SESSION_NAME:0.4" ;;
+        hygiene)  tmux select-pane -t "$SESSION_NAME:0.5" ;;
+        *)        tmux select-pane -t "$SESSION_NAME:0.1" ;;  # Default to features
+    esac
+
+    if [ -n "$only_stream" ]; then
+        echo -e "${GREEN}Session created - only '$only_stream' stream started${NC}"
+    else
+        echo -e "${GREEN}Session created with all 5 streams${NC}"
+    fi
     echo ""
     echo "Pane layout:"
     echo "  [0] STATUS   - Header (keybindings)"
-    echo "  [1] FEATURES - PRD + P0 fixes (opus, 60% width)"
-    echo "  [2] REFACTOR - P1 file splits (sonnet)"
-    echo "  [3] POLISH   - P2/P3 cleanup (sonnet)"
-    echo "  [4] VERIFY   - Gap detection (sonnet)"
-    echo "  [5] HYGIENE  - Backlog maintenance (sonnet)"
+    echo "  [1] FEATURES - PRD + P0 fixes (opus, 60% width)$([ -n "$only_stream" ] && [ "$only_stream" != "features" ] && echo " [not started]")"
+    echo "  [2] REFACTOR - P1 file splits (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "refactor" ] && echo " [not started]")"
+    echo "  [3] POLISH   - P2/P3 cleanup (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "polish" ] && echo " [not started]")"
+    echo "  [4] VERIFY   - Gap detection (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "verify" ] && echo " [not started]")"
+    echo "  [5] HYGIENE  - Backlog maintenance (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "hygiene" ] && echo " [not started]")"
     echo ""
     echo "Ctrl+b <0-5> to switch+zoom, Ctrl+b z to unzoom"
     echo ""
@@ -351,7 +388,7 @@ shift 2>/dev/null || true
 
 case "$command" in
     start)
-        create_session
+        create_session "$1"
         ;;
     attach)
         attach_session
@@ -369,15 +406,22 @@ case "$command" in
         show_status
         ;;
     *)
-        echo "Usage: ./ralph-tmux.sh [start|attach|stop|restart|graceful-stop|status]"
+        echo "Usage: ./ralph-tmux.sh [command] [stream]"
         echo ""
         echo "Commands:"
-        echo "  start         - Create tmux session with all streams (default)"
-        echo "  attach        - Attach to existing session"
-        echo "  stop          - Stop all streams immediately"
-        echo "  graceful-stop - Wait for current tasks to complete, then stop"
-        echo "  restart       - Restart all streams (or: restart <stream>)"
-        echo "  status        - Show session status without attaching"
+        echo "  start [stream]  - Create tmux session (all streams, or single stream)"
+        echo "  attach          - Attach to existing session"
+        echo "  stop            - Stop all streams immediately"
+        echo "  graceful-stop   - Wait for current tasks to complete, then stop"
+        echo "  restart [stream]- Restart all streams (or single stream)"
+        echo "  status          - Show session status without attaching"
+        echo ""
+        echo "Streams: features, refactor, polish, verify, hygiene"
+        echo ""
+        echo "Examples:"
+        echo "  ./ralph-tmux.sh start           # Start all streams"
+        echo "  ./ralph-tmux.sh start features  # Start only features stream"
+        echo "  ./ralph-tmux.sh restart polish  # Restart only polish stream"
         echo ""
         echo "Keybinding: Ctrl+b S = graceful stop (from within tmux)"
         exit 1
