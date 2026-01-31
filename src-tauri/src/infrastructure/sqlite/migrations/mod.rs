@@ -29,12 +29,13 @@ pub mod helpers;
 mod v1_initial_schema;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
+mod v4_add_blocked_reason;
 
 #[cfg(test)]
 mod tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 3;
+pub const SCHEMA_VERSION: i32 = 4;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -63,6 +64,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 3,
         name: "add_activity_events",
         migrate: v3_add_activity_events::migrate,
+    },
+    Migration {
+        version: 4,
+        name: "add_blocked_reason",
+        migrate: v4_add_blocked_reason::migrate,
     },
 ];
 
