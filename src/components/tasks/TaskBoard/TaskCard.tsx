@@ -44,7 +44,6 @@ import { toast } from "sonner";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { ReviewStateBadge } from "./ReviewStateBadge";
-import { api } from "@/lib/tauri";
 import {
   getCardStyles,
   getExecutionStateClass,
@@ -119,6 +118,7 @@ export function TaskCard({
     restoreMutation,
     permanentlyDeleteMutation,
     moveMutation,
+    blockMutation,
   } = useTaskMutation(task.projectId);
 
   // Confirmation dialog state for permanent delete
@@ -190,17 +190,10 @@ export function TaskCard({
   };
 
   const handleBlockWithReason = useCallback(
-    async (reason?: string) => {
-      try {
-        await api.tasks.block(task.id, reason);
-        // Invalidate queries to refresh the task list
-        // Note: The block API emits queue_changed event which triggers UI refresh
-      } catch (error) {
-        console.error("Failed to block task:", error);
-        toast.error("Failed to block task");
-      }
+    (reason?: string) => {
+      blockMutation.mutate(reason ? { taskId: task.id, reason } : { taskId: task.id });
     },
-    [task.id]
+    [task.id, blockMutation]
   );
 
   const handleStartIdeation = async () => {

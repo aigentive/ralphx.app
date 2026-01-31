@@ -30,6 +30,10 @@
 
 - [x] [Frontend] Dead hook: useIdeationEvents defined but never called in any component - src/hooks/useIdeationEvents.ts:33
 
+## From Phase 54 Verification (2026-02-01)
+
+- [x] [Frontend] Orphaned mutation: handleBlockWithReason bypasses blockMutation, calls api directly - src/components/tasks/TaskBoard/TaskCard.tsx:192
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
