@@ -219,6 +219,27 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await;
             }
+            State::Escalated => {
+                // Emit 'review:escalated' event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("review:escalated", &self.machine.context.task_id)
+                    .await;
+
+                // Notify user that AI escalated review
+                self.machine
+                    .context
+                    .services
+                    .notifier
+                    .notify_with_message(
+                        "review:escalated",
+                        &self.machine.context.task_id,
+                        "AI review escalated. Please review and decide.",
+                    )
+                    .await;
+            }
             State::ReExecuting => {
                 // Spawn worker agent with revision context via ChatService
                 let task_id = &self.machine.context.task_id;
