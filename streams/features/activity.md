@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 15:30:00 - Phase 48 Task 13: Add activityFilter state to uiStore
+**What:**
+- Added `ActivityFilter` interface with `taskId` and `sessionId` fields (both nullable)
+- Added `activityFilter` state to `UiState` interface with initial value `{ taskId: null, sessionId: null }`
+- Implemented `setActivityFilter(filter: Partial<ActivityFilter>)` action for setting filter values
+- Implemented `clearActivityFilter()` action for resetting filter to initial state
+
+**Files Modified:**
+- `src/stores/uiStore.ts` - Added ActivityFilter type, state, and actions
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 14:15:00 - Phase 48 Task 12: Enhance ActivityView with infinite scroll and historical mode
 **What:**
 - Enhanced `src/components/activity/ActivityView.tsx` with dual-mode operation (real-time vs historical)

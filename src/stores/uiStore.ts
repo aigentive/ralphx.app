@@ -68,6 +68,12 @@ export interface Notification {
   duration?: number;
 }
 
+/** Filter for activity view navigation from StatusActivityBadge */
+export interface ActivityFilter {
+  taskId: string | null;
+  sessionId: string | null;
+}
+
 /** Confirmation dialog configuration */
 export interface ConfirmationConfig {
   title: string;
@@ -121,6 +127,8 @@ interface UiState {
   showWelcomeOverlay: boolean;
   /** View to return to when closing manually-opened welcome screen */
   welcomeOverlayReturnView: ViewType | null;
+  /** Filter for activity view navigation (set by StatusActivityBadge) */
+  activityFilter: ActivityFilter;
 }
 
 // ============================================================================
@@ -190,6 +198,10 @@ interface UiActions {
   openWelcomeOverlay: () => void;
   /** Close welcome screen overlay, restoring previous view */
   closeWelcomeOverlay: () => void;
+  /** Set activity filter for context-aware navigation */
+  setActivityFilter: (filter: Partial<ActivityFilter>) => void;
+  /** Clear activity filter */
+  clearActivityFilter: () => void;
 }
 
 // ============================================================================
@@ -224,6 +236,7 @@ export const useUiStore = create<UiState & UiActions>()(
     chatVisibleByView: loadChatVisibility(),
     showWelcomeOverlay: false,
     welcomeOverlayReturnView: null,
+    activityFilter: { taskId: null, sessionId: null },
 
     // Actions
     toggleSidebar: () =>
@@ -387,6 +400,21 @@ export const useUiStore = create<UiState & UiActions>()(
     closeWelcomeOverlay: () =>
       set((state) => {
         state.showWelcomeOverlay = false;
+      }),
+
+    setActivityFilter: (filter) =>
+      set((state) => {
+        if (filter.taskId !== undefined) {
+          state.activityFilter.taskId = filter.taskId;
+        }
+        if (filter.sessionId !== undefined) {
+          state.activityFilter.sessionId = filter.sessionId;
+        }
+      }),
+
+    clearActivityFilter: () =>
+      set((state) => {
+        state.activityFilter = { taskId: null, sessionId: null };
       }),
   }))
 );
