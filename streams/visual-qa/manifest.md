@@ -27,6 +27,6 @@ Phase: IN_PROGRESS
 | State | View/Modal | Spec | Status |
 |-------|------------|------|--------|
 | empty-kanban | kanban | empty-kanban.spec.ts | covered |
-| all-status-columns | kanban | — | uncovered |
+| all-status-columns | kanban | all-status-columns.spec.ts | covered |
 | loading-state | various | — | uncovered |
 | error-state | various | — | uncovered |

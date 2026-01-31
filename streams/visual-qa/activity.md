@@ -317,3 +317,9 @@
 - `npx playwright test tests/visual/modals/ask-user-question/ask-user-question.spec.ts`
 
 **Result:** Success
+
+### 2026-02-01 01:11:55 - All Status Columns Visual Tests
+**What:** Created page object fixture + spec + baseline for kanban all-status-columns state
+**Mock parity:** Extended mock task fixture to populate all 5 default workflow columns (Backlog, Ready, Executing, Review, Approved) with 3 tasks each
+**Commands:** `npx playwright test tests/visual/states/kanban/all-status-columns.spec.ts --update-snapshots`
+**Result:** Success
