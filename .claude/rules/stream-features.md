@@ -36,7 +36,12 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
 
 ```
 1. Check streams/features/backlog.md for P0 items
-   → P0 EXISTS? → Fix it → Mark [x] → Commit → STOP
+   → P0 EXISTS? → Fix it
+   → If P0 is tagged [Visual/Mock]:
+     - MUST re-run visual verification (steps 6.0-6.9)
+     - Screenshot must now show the previously missing data
+     - Checkpoint must pass before marking complete
+   → Mark [x] → Commit → STOP
 
 2. Read specs/manifest.json → find active phase (status: "active")
    → NO ACTIVE PHASE? → Output IDLE signal → END
