@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 01:00:00 - P0 Fix: Use blockMutation instead of direct API call
+**What:**
+- Gap verification found handleBlockWithReason calling api.tasks.block() directly
+- This bypassed query invalidation and toast notifications from useTaskMutation
+- Fixed by extracting blockMutation from useTaskMutation hook
+- Changed handleBlockWithReason to call blockMutation.mutate() instead
+- Removed unused api import
+
+**Files Modified:**
+- `src/components/tasks/TaskBoard/TaskCard.tsx`
+- `streams/features/backlog.md` (P0 item added and marked fixed)
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:45:00 - Phase 54 Task 10: Add blockTask and unblockTask mutations
 **What:**
 - Added `blockMutation` with `{ taskId, reason? }` input to useTaskMutation.ts
