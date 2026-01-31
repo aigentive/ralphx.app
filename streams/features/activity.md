@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-01-31 19:45:00 - Phase 53 Task 1: Extract ReviewTimeline to shared location
+**What:**
+- Created `src/components/tasks/detail-views/shared/` directory structure
+- Extracted `ReviewTimeline` component from CompletedTaskDetail.tsx
+  - `HistoryTimelineItem` and `ReviewHistoryTimeline` logic moved to `shared/ReviewTimeline.tsx`
+  - Added props interface: `filter?`, `emptyMessage?`, `showAttemptNumbers?`
+  - Filter logic filters history before rendering
+  - `showAttemptNumbers` displays "Attempt #N: Changes requested" format
+- Created `shared/SectionTitle.tsx` (moved from `shared.tsx`)
+- Created `shared/index.ts` with exports for both components
+- Updated `shared.tsx` to re-export from new locations (backward compatibility)
+- Fixed TypeScript `exactOptionalPropertyTypes` issue with spread pattern
+
+**Files Created:**
+- `src/components/tasks/detail-views/shared/ReviewTimeline.tsx`
+- `src/components/tasks/detail-views/shared/SectionTitle.tsx`
+- `src/components/tasks/detail-views/shared/index.ts`
+
+**Files Modified:**
+- `src/components/tasks/detail-views/shared.tsx` (re-exports)
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 pre-existing warnings)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 16:15:00 - Phase 52 Complete: Gap Verification Passed
 **What:**
 - All 5 tasks completed with `passes: true`
