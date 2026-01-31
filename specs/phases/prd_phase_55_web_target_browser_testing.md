@@ -197,7 +197,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "category": "frontend",
     "description": "Set up Playwright and create initial visual regression test",
     "plan_section": "Task 7: Playwright Setup and Initial Test",
-    "blocking": [],
+    "blocking": [8],
     "blockedBy": [6],
     "atomic_commit": "test(visual): add Playwright setup and kanban board test",
     "steps": [
@@ -210,6 +210,27 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Add screenshot comparison for visual regression",
       "Run npm run lint && npm run typecheck",
       "Commit: test(visual): add Playwright setup and kanban board test"
+    ],
+    "passes": false
+  },
+  {
+    "id": 8,
+    "category": "docs",
+    "description": "Create user documentation for web target and browser testing",
+    "plan_section": "N/A - Documentation task",
+    "blocking": [],
+    "blockedBy": [7],
+    "atomic_commit": "docs: add web target and browser testing guide",
+    "steps": [
+      "Create docs/web-testing.md with comprehensive guide",
+      "Document: How to run web mode (npm run dev:web)",
+      "Document: What works in web mode (UI rendering, navigation, mock data)",
+      "Document: Limitations (read-only mocks, no persistence, no real backend)",
+      "Document: How to run Playwright tests (npx playwright test)",
+      "Document: How to add new visual regression tests",
+      "Document: How to update baseline screenshots",
+      "Document: Troubleshooting common issues",
+      "Commit: docs: add web target and browser testing guide"
     ],
     "passes": false
   }
