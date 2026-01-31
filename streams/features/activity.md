@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 00:45:00 - Phase 54 Task 10: Add blockTask and unblockTask mutations
+**What:**
+- Added `blockMutation` with `{ taskId, reason? }` input to useTaskMutation.ts
+- Added `unblockMutation` with `taskId` input to useTaskMutation.ts
+- Both mutations invalidate task list and infinite task queries
+- Added toast notifications for success/error states
+- Added `isBlocking` and `isUnblocking` pending state flags to return object
+- Updated JSDoc to include blocking/unblocking in the mutation list
+
+**Files Modified:**
+- `src/hooks/useTaskMutation.ts`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:30:00 - Phase 54 Task 9: Display blocked reason on task cards
 **What:**
 - Added Ban icon import to TaskCard.tsx
