@@ -4,6 +4,51 @@
 
 ---
 
+### 2026-02-01 09:45:00 - Phase 57 Task 2: Add Tauri command and register
+**What:**
+- Extended ActivityEventFilterInput struct with optional task_id and session_id fields
+- Updated to_domain_filter() to convert task_id/session_id to domain filter
+- Added list_all_activity_events Tauri command with cursor-based pagination
+- Registered list_all_activity_events in lib.rs invoke_handler
+- Added tests for task_id and session_id filter input conversion
+
+**Files:**
+- `src-tauri/src/commands/activity_commands.rs` (modified)
+- `src-tauri/src/lib.rs` (modified)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test activity_event`
+
+**Result:** Success
+
+---
+
+### 2026-02-01 09:15:00 - Phase 57 Task 1: Add list_all to activity event repository
+**What:**
+- Added task_id and session_id optional fields to ActivityEventFilter struct
+- Added with_task_id() and with_session_id() builder methods to filter
+- Updated is_empty() to include new fields
+- Added list_all() method to ActivityEventRepository trait
+- Implemented list_all in SqliteActivityEventRepo with cursor-based pagination
+- Implemented list_all in MemoryActivityEventRepo
+- Added build_list_all_filter_clause helper for SQLite query building
+- Added matches_full_filter helper for Memory filtering
+- Added comprehensive tests: test_list_all_returns_all_events, test_list_all_with_task_id_filter, test_list_all_with_session_id_filter, test_list_all_pagination
+
+**Files:**
+- `src-tauri/src/domain/repositories/activity_event_repository.rs` (modified)
+- `src-tauri/src/infrastructure/sqlite/sqlite_activity_event_repo.rs` (modified)
+- `src-tauri/src/infrastructure/memory/memory_activity_event_repo.rs` (modified)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test activity_event`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 02:30:00 - Phase 56 Complete: Gap Verification Passed
 **What:**
 - Ran gap verification on Phase 56 (Visual QA Stream for Playwright Testing)

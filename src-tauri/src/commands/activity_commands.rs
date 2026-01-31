@@ -65,6 +65,10 @@ pub struct ActivityEventFilterInput {
     pub roles: Option<Vec<String>>,
     /// Filter by internal status(es) - ["backlog", "executing", etc.]
     pub statuses: Option<Vec<String>>,
+    /// Filter by task ID (for list_all queries)
+    pub task_id: Option<String>,
+    /// Filter by session ID (for list_all queries)
+    pub session_id: Option<String>,
 }
 
 impl ActivityEventFilterInput {
@@ -100,6 +104,14 @@ impl ActivityEventFilterInput {
             if !parsed.is_empty() {
                 filter = filter.with_statuses(parsed);
             }
+        }
+
+        if let Some(ref task_id) = self.task_id {
+            filter = filter.with_task_id(TaskId::from_string(task_id.clone()));
+        }
+
+        if let Some(ref session_id) = self.session_id {
+            filter = filter.with_session_id(IdeationSessionId::from_string(session_id.clone()));
         }
 
         filter
@@ -190,6 +202,42 @@ pub async fn list_session_activity_events(
     })
 }
 
+/// List all activity events with cursor-based pagination
+///
+/// Returns all activity events across the system. Unlike list_task_activity_events and
+/// list_session_activity_events which require a specific context, this returns events
+/// from all tasks and sessions combined.
+///
+/// # Arguments
+/// * `cursor` - Optional cursor from previous page (format: "timestamp|id")
+/// * `limit` - Maximum number of events to return (default: 50, max: 100)
+/// * `filter` - Optional filter criteria (can include task_id/session_id for narrowing)
+///
+/// # Returns
+/// A page of events ordered by created_at DESC (newest first)
+#[tauri::command]
+pub async fn list_all_activity_events(
+    cursor: Option<String>,
+    limit: Option<u32>,
+    filter: Option<ActivityEventFilterInput>,
+    state: State<'_, AppState>,
+) -> Result<ActivityEventPageResponse, String> {
+    let limit = limit.unwrap_or(50).min(100);
+    let domain_filter = filter.map(|f| f.to_domain_filter());
+
+    let page = state
+        .activity_event_repo
+        .list_all(cursor.as_deref(), limit, domain_filter.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ActivityEventPageResponse {
+        events: page.events.into_iter().map(ActivityEventResponse::from).collect(),
+        cursor: page.cursor,
+        has_more: page.has_more,
+    })
+}
+
 /// Count activity events for a task
 #[tauri::command]
 pub async fn count_task_activity_events(
@@ -241,6 +289,8 @@ mod tests {
             event_types: Some(vec!["thinking".to_string(), "text".to_string()]),
             roles: None,
             statuses: None,
+            task_id: None,
+            session_id: None,
         };
         let filter = input.to_domain_filter();
         assert!(!filter.is_empty());
@@ -254,6 +304,8 @@ mod tests {
             event_types: None,
             roles: Some(vec!["agent".to_string()]),
             statuses: None,
+            task_id: None,
+            session_id: None,
         };
         let filter = input.to_domain_filter();
         assert!(!filter.is_empty());
@@ -266,6 +318,8 @@ mod tests {
             event_types: None,
             roles: None,
             statuses: Some(vec!["executing".to_string()]),
+            task_id: None,
+            session_id: None,
         };
         let filter = input.to_domain_filter();
         assert!(!filter.is_empty());
@@ -278,9 +332,41 @@ mod tests {
             event_types: Some(vec!["invalid_type".to_string()]),
             roles: Some(vec!["invalid_role".to_string()]),
             statuses: Some(vec!["invalid_status".to_string()]),
+            task_id: None,
+            session_id: None,
         };
         let filter = input.to_domain_filter();
         // Invalid values are filtered out, leaving an empty filter
         assert!(filter.is_empty());
+    }
+
+    #[test]
+    fn activity_event_filter_input_to_domain_with_task_id() {
+        let input = ActivityEventFilterInput {
+            event_types: None,
+            roles: None,
+            statuses: None,
+            task_id: Some("test-task-123".to_string()),
+            session_id: None,
+        };
+        let filter = input.to_domain_filter();
+        assert!(!filter.is_empty());
+        assert!(filter.task_id.is_some());
+        assert_eq!(filter.task_id.unwrap().as_str(), "test-task-123");
+    }
+
+    #[test]
+    fn activity_event_filter_input_to_domain_with_session_id() {
+        let input = ActivityEventFilterInput {
+            event_types: None,
+            roles: None,
+            statuses: None,
+            task_id: None,
+            session_id: Some("test-session-456".to_string()),
+        };
+        let filter = input.to_domain_filter();
+        assert!(!filter.is_empty());
+        assert!(filter.session_id.is_some());
+        assert_eq!(filter.session_id.unwrap().as_str(), "test-session-456");
     }
 }

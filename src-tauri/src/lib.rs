@@ -404,6 +404,7 @@ pub fn run() {
             // Activity event commands (pagination, filtering)
             commands::activity_commands::list_task_activity_events,
             commands::activity_commands::list_session_activity_events,
+            commands::activity_commands::list_all_activity_events,
             commands::activity_commands::count_task_activity_events,
             commands::activity_commands::count_session_activity_events
         ])
