@@ -43,6 +43,11 @@ export function useReviewEvents() {
         queryKey: reviewKeys.pending(),
       });
 
+      // Also invalidate tasks awaiting review (for ReviewsPanel badges)
+      queryClient.invalidateQueries({
+        queryKey: reviewKeys.tasksAwaitingReview(),
+      });
+
       // For completed events, also invalidate task-specific queries
       if (reviewEvent.type === "completed") {
         queryClient.invalidateQueries({

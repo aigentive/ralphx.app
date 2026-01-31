@@ -223,6 +223,19 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
+  const { setAgentRunning } = useChatStore();
+
+  // Track previous isLive to detect transitions
+  const prevIsLiveRef = useRef(isLive);
+
+  // Clear agent state when chat becomes historical (isLive: true → false)
+  useEffect(() => {
+    if (prevIsLiveRef.current && !isLive) {
+      // isLive transitioned from true → false, clear stale agent state
+      setAgentRunning(contextKey, false);
+    }
+    prevIsLiveRef.current = isLive;
+  }, [isLive, contextKey, setAgentRunning]);
 
   // Streaming state - accumulates text chunks as they arrive
   const messagesEndRef = useRef<HTMLDivElement>(null);
