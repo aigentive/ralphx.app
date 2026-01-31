@@ -17,9 +17,23 @@ export default defineConfig(async ({ mode }) => {
     "@": path.resolve(__dirname, "./src"),
   };
 
-  // In web mode, alias Tauri plugins to our mock implementations
+  // In web mode, alias Tauri APIs and plugins to our mock implementations
   const webModeAliases: Record<string, string> = isWebMode
     ? {
+        // Core Tauri APIs
+        "@tauri-apps/api/core": path.resolve(
+          __dirname,
+          "./src/mocks/tauri-api-core.ts"
+        ),
+        "@tauri-apps/api/event": path.resolve(
+          __dirname,
+          "./src/mocks/tauri-api-event.ts"
+        ),
+        "@tauri-apps/api/webview": path.resolve(
+          __dirname,
+          "./src/mocks/tauri-api-webview.ts"
+        ),
+        // Tauri plugins
         "@tauri-apps/plugin-dialog": path.resolve(
           __dirname,
           "./src/mocks/tauri-plugin-dialog.ts"
