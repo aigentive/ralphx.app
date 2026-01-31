@@ -128,7 +128,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(backend): add block_task and unblock_task commands"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

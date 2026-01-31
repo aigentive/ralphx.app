@@ -511,3 +511,197 @@ pub async fn permanently_delete_task(
 
     Ok(())
 }
+
+/// Block a task with an optional reason
+///
+/// Transitions the task to Blocked status and optionally records why it's blocked.
+/// The blocked reason is displayed on the task card and can help track dependencies
+/// or external blockers.
+///
+/// # Arguments
+/// * `task_id` - The task ID to block
+/// * `reason` - Optional reason why the task is blocked
+/// * `app` - Tauri app handle for event emission
+///
+/// # Returns
+/// * `TaskResponse` - The blocked task with updated status and reason
+///
+/// # Errors
+/// * Task not found
+/// * Invalid state transition (task cannot transition to Blocked from current status)
+#[tauri::command]
+pub async fn block_task(
+    task_id: String,
+    reason: Option<String>,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<TaskResponse, String> {
+    use crate::application::{TaskSchedulerService, TaskTransitionService};
+    use crate::domain::state_machine::services::TaskScheduler;
+
+    tracing::info!(task_id = %task_id, reason = ?reason, "block_task command invoked");
+
+    let task_id_obj = TaskId::from_string(task_id.clone());
+
+    // Get the task first to capture project_id for events
+    let task = state
+        .task_repo
+        .get_by_id(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let project_id = task.project_id.clone();
+
+    // Create the task scheduler for auto-scheduling Ready tasks
+    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&execution_state),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    ));
+
+    // Create the transition service
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+    )
+    .with_task_scheduler(task_scheduler);
+
+    // Transition to Blocked status
+    let mut blocked_task = transition_service
+        .transition_task(&task_id_obj, InternalStatus::Blocked)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Set the blocked reason (must update separately after transition)
+    blocked_task.blocked_reason = reason;
+    blocked_task.touch();
+
+    state
+        .task_repo
+        .update(&blocked_task)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit queue_changed since the task was likely in Ready status
+    emit_queue_changed(&state, &project_id, &app).await;
+
+    Ok(TaskResponse::from(blocked_task))
+}
+
+/// Unblock a task
+///
+/// Transitions the task from Blocked to Ready status and clears the blocked reason.
+///
+/// # Arguments
+/// * `task_id` - The task ID to unblock
+/// * `app` - Tauri app handle for event emission
+///
+/// # Returns
+/// * `TaskResponse` - The unblocked task with Ready status
+///
+/// # Errors
+/// * Task not found
+/// * Invalid state transition (task must be in Blocked status)
+#[tauri::command]
+pub async fn unblock_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<TaskResponse, String> {
+    use crate::application::{TaskSchedulerService, TaskTransitionService};
+    use crate::domain::state_machine::services::TaskScheduler;
+
+    tracing::info!(task_id = %task_id, "unblock_task command invoked");
+
+    let task_id_obj = TaskId::from_string(task_id.clone());
+
+    // Get the task first to verify it's blocked and capture project_id
+    let task = state
+        .task_repo
+        .get_by_id(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    if task.internal_status != InternalStatus::Blocked {
+        return Err(format!(
+            "Task {} is not in Blocked status (current: {}). Cannot unblock.",
+            task_id,
+            task.internal_status
+        ));
+    }
+
+    let project_id = task.project_id.clone();
+
+    // Create the task scheduler for auto-scheduling Ready tasks
+    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&execution_state),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    ));
+
+    // Create the transition service
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+    )
+    .with_task_scheduler(task_scheduler);
+
+    // Transition to Ready status
+    let mut unblocked_task = transition_service
+        .transition_task(&task_id_obj, InternalStatus::Ready)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Clear the blocked reason
+    unblocked_task.blocked_reason = None;
+    unblocked_task.touch();
+
+    state
+        .task_repo
+        .update(&unblocked_task)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit queue_changed since we're adding a task to Ready status
+    emit_queue_changed(&state, &project_id, &app).await;
+
+    Ok(TaskResponse::from(unblocked_task))
+}

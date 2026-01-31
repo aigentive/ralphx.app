@@ -91,6 +91,7 @@ pub struct TaskResponse {
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
     pub archived_at: Option<String>,
+    pub blocked_reason: Option<String>,
 }
 
 impl From<Task> for TaskResponse {
@@ -109,6 +110,7 @@ impl From<Task> for TaskResponse {
             started_at: task.started_at.map(|dt| dt.to_rfc3339()),
             completed_at: task.completed_at.map(|dt| dt.to_rfc3339()),
             archived_at: task.archived_at.map(|dt| dt.to_rfc3339()),
+            blocked_reason: task.blocked_reason,
         }
     }
 }
