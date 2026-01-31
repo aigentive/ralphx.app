@@ -100,8 +100,21 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
                     }
-                    StreamEvent::Thinking(_) => {
-                        // Thinking blocks will be emitted to activity stream in Task 2
+                    StreamEvent::Thinking(text) => {
+                        // Activity stream event for task execution
+                        if context_type == ChatContextType::TaskExecution {
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    events::AGENT_MESSAGE,
+                                    serde_json::json!({
+                                        "taskId": context_id_str,
+                                        "type": "thinking",
+                                        "content": text,
+                                        "timestamp": chrono::Utc::now().timestamp_millis(),
+                                    }),
+                                );
+                            }
+                        }
                     }
                     StreamEvent::ToolCallStarted { name, id } => {
                         if let Some(ref handle) = app_handle {
@@ -205,6 +218,22 @@ pub async fn process_stream_background<R: Runtime>(
                                     "conversation_id": conversation_id_str,
                                 }),
                             );
+
+                            // Activity stream event for task execution
+                            if context_type == ChatContextType::TaskExecution {
+                                let _ = handle.emit(
+                                    events::AGENT_MESSAGE,
+                                    serde_json::json!({
+                                        "taskId": context_id_str,
+                                        "type": "tool_result",
+                                        "content": serde_json::to_string(&result).unwrap_or_default(),
+                                        "timestamp": chrono::Utc::now().timestamp_millis(),
+                                        "metadata": {
+                                            "tool_use_id": tool_use_id,
+                                        },
+                                    }),
+                                );
+                            }
                         }
                     }
                 }
