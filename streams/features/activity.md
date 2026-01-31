@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 22:15:00 - Phase 41 Task 2: Filter result events early in tool call listener
+**What:**
+- Added early return in `agent:tool_call` event listener to skip `result:toolu*` events
+- These events don't add new tool calls and were already filtered at render time in StreamingToolIndicator.tsx
+- Filtering early avoids unnecessary React state updates
+
+**Files:**
+- src/hooks/useChatPanelHandlers.ts (modified: added early return for result events)
+
+**Commands:**
+- `npm run lint` (0 errors, 9 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:45:00 - Phase 41 Task 1: Use backend tool_id for streaming deduplication
 **What:**
 - Added `tool_id?: string` to the TypeScript event payload interface in useChatPanelHandlers.ts

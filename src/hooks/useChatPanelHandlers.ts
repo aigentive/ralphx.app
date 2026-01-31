@@ -221,6 +221,12 @@ export function useChatPanelHandlers({
         result: unknown;
       }>("agent:tool_call", (event) => {
         const { tool_name, tool_id, arguments: args, result, conversation_id } = event.payload;
+
+        // Skip result events early - they don't add new tool calls and are filtered at render anyway
+        if (tool_name.startsWith("result:toolu")) {
+          return;
+        }
+
         // Only show for active conversation
         if (conversation_id === activeConversationIdRef.current) {
           // Use backend tool_id for deduplication, fall back to timestamp-based ID if null
