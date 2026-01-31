@@ -198,6 +198,19 @@ impl TaskStateMachine {
         }
     }
 
+    /// Escalated state - AI couldn't decide, awaiting human decision
+    pub fn escalated(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::HumanApprove => Response::Transition(State::Approved),
+            TaskEvent::HumanRequestChanges { feedback } => {
+                self.context.review_feedback = Some(feedback.clone());
+                Response::Transition(State::RevisionNeeded)
+            }
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
+            _ => Response::NotHandled,
+        }
+    }
+
     /// RevisionNeeded state - review found issues, ready for re-execution
     pub fn revision_needed(&mut self, event: &TaskEvent) -> Response {
         match event {

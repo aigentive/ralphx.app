@@ -154,8 +154,7 @@ fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_mach
         InternalStatus::PendingReview => State::PendingReview,
         InternalStatus::Reviewing => State::Reviewing,
         InternalStatus::ReviewPassed => State::ReviewPassed,
-        // Temporary: map to ReviewPassed until State::Escalated is added in Task 2
-        InternalStatus::Escalated => State::ReviewPassed,
+        InternalStatus::Escalated => State::Escalated,
         InternalStatus::RevisionNeeded => State::RevisionNeeded,
         InternalStatus::ReExecuting => State::ReExecuting,
         InternalStatus::Approved => State::Approved,
@@ -180,6 +179,7 @@ fn state_to_internal_status(state: &crate::domain::state_machine::machine::State
         State::PendingReview => InternalStatus::PendingReview,
         State::Reviewing => InternalStatus::Reviewing,
         State::ReviewPassed => InternalStatus::ReviewPassed,
+        State::Escalated => InternalStatus::Escalated,
         State::RevisionNeeded => InternalStatus::RevisionNeeded,
         State::ReExecuting => InternalStatus::ReExecuting,
         State::Approved => InternalStatus::Approved,
