@@ -46,6 +46,8 @@ import {
   FilterTabs,
   SearchBar,
   EmptyState,
+  TaskFilter,
+  SessionFilter,
 } from "./ActivityFilters";
 
 // ============================================================================
@@ -84,6 +86,10 @@ export function ActivityView({
   const [copied, setCopied] = useState<CopiedState>({});
   const [autoScroll, setAutoScroll] = useState(true);
 
+  // Optional task/session filters for global history mode
+  const [filterTaskId, setFilterTaskId] = useState<string | null>(null);
+  const [filterSessionId, setFilterSessionId] = useState<string | null>(null);
+
   // Auto-switch to historical mode when navigating from StatusActivityBadge with context
   useEffect(() => {
     if (taskId || sessionId) {
@@ -115,6 +121,28 @@ export function ActivityView({
     return Object.keys(filter).length > 0 ? filter : undefined;
   }, [typeFilter, statusFilter, roleFilter]);
 
+  // Build filter for global query (includes optional task/session narrowing)
+  const globalFilter: ActivityEventFilter | undefined = useMemo(() => {
+    const filter: ActivityEventFilter = {};
+    if (typeFilter !== "all") {
+      filter.eventTypes = [typeFilter as ActivityEventType];
+    }
+    if (statusFilter.length > 0) {
+      filter.statuses = statusFilter;
+    }
+    if (roleFilter.length > 0) {
+      filter.roles = roleFilter;
+    }
+    // Add optional task/session filters for global query narrowing
+    if (filterTaskId) {
+      filter.taskId = filterTaskId;
+    }
+    if (filterSessionId) {
+      filter.sessionId = filterSessionId;
+    }
+    return Object.keys(filter).length > 0 ? filter : undefined;
+  }, [typeFilter, statusFilter, roleFilter, filterTaskId, filterSessionId]);
+
   // Historical queries - task-specific, session-specific, or global (all events)
   const taskHistoryQuery = useTaskActivityEvents({
     taskId: taskId ?? "",
@@ -129,8 +157,9 @@ export function ActivityView({
   });
 
   // Global query for all events (when no task/session context)
+  // Uses globalFilter which includes optional task/session narrowing from dropdowns
   const globalHistoryQuery = useAllActivityEvents({
-    ...(historicalFilter !== undefined && { filter: historicalFilter }),
+    ...(globalFilter !== undefined && { filter: globalFilter }),
     limit: 50,
   });
 
@@ -302,6 +331,13 @@ export function ActivityView({
             <>
               <StatusFilter selectedStatuses={statusFilter} onChange={handleStatusFilterChange} />
               <RoleFilter selectedRoles={roleFilter} onChange={handleRoleFilterChange} />
+              {/* Task/Session filters only show in global mode (no taskId/sessionId prop provided) */}
+              {!taskId && !sessionId && (
+                <>
+                  <TaskFilter selectedTaskId={filterTaskId} onChange={setFilterTaskId} />
+                  <SessionFilter selectedSessionId={filterSessionId} onChange={setFilterSessionId} />
+                </>
+              )}
             </>
           )}
         </div>

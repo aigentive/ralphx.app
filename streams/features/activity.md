@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 13:00:00 - Phase 57 Task 9: Wire filters to the global activity query
+**What:**
+- Added `filterTaskId` and `filterSessionId` state to ActivityView
+- Created `globalFilter` memo that includes taskId/sessionId for query narrowing
+- Updated `useAllActivityEvents` call to use `globalFilter` instead of `historicalFilter`
+- Rendered `TaskFilter` and `SessionFilter` dropdowns in global history mode only
+- Filters only show when `viewMode === "historical"` AND no `taskId`/`sessionId` prop provided
+
+**Files:**
+- `src/components/activity/ActivityView.tsx` (modified)
+
+**Commands:**
+- `npx eslint src/components/activity/ActivityView.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 12:45:00 - Phase 57 Task 8: Add SessionFilter searchable dropdown
 **What:**
 - Created `SessionFilter` component using Popover + searchable list pattern
