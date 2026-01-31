@@ -15,12 +15,14 @@ export {
   ReviewResponseSchema,
   ReviewActionResponseSchema,
   ReviewNoteResponseSchema,
+  ReviewIssueSchema,
   FixTaskAttemptsResponseSchema,
   ReviewListResponseSchema,
   ReviewNoteListResponseSchema,
   type ReviewResponse,
   type ReviewActionResponse,
   type ReviewNoteResponse,
+  type ReviewIssue,
   type FixTaskAttemptsResponse,
 } from "./reviews-api.schemas";
 

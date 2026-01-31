@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-31 16:45:00 - Phase 46 Task 5: Add ReviewIssuesList component
+**What:**
+- Added `ReviewIssue` type export to reviews-api.ts and tauri.ts
+- Created `ReviewIssuesList` component with severity badges and file:line references
+- Integrated `ReviewIssuesList` into `AIEscalationReasonCard` to display issues when present
+- Severity colors: critical=error (red), major=warning (orange), minor=muted, suggestion=accent
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 16:00:00 - Phase 46 Task 4: Add ReviewIssue schema to frontend
 **What:**
 - Added `ReviewIssueSchema` with severity, file, line, description fields (reviews-api.schemas.ts:48-54)

@@ -25,7 +25,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import type { Task } from "@/types/task";
-import type { ReviewNoteResponse } from "@/lib/tauri";
+import type { ReviewNoteResponse, ReviewIssue } from "@/lib/tauri";
 
 interface EscalatedTaskDetailProps {
   task: Task;
@@ -54,7 +54,7 @@ function EscalatedBadge() {
 }
 
 /**
- * AIEscalationReasonCard - Displays AI escalation reason
+ * AIEscalationReasonCard - Displays AI escalation reason and issues
  */
 function AIEscalationReasonCard({
   review,
@@ -63,6 +63,8 @@ function AIEscalationReasonCard({
   review: ReviewNoteResponse | null;
   onViewDiff?: () => void;
 }) {
+  const issues = review?.issues ?? [];
+
   return (
     <div
       data-testid="ai-escalation-reason-card"
@@ -103,6 +105,9 @@ function AIEscalationReasonCard({
         </p>
       )}
 
+      {/* Issues list */}
+      {issues.length > 0 && <ReviewIssuesList issues={issues} />}
+
       {/* View Diff link */}
       {onViewDiff && (
         <button
@@ -114,6 +119,71 @@ function AIEscalationReasonCard({
           View Diff
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * ReviewIssuesList - Displays review issues with severity badges and file:line references
+ */
+function ReviewIssuesList({ issues }: { issues: ReviewIssue[] }) {
+  const severityColors: Record<string, string> = {
+    critical: "var(--status-error)",
+    major: "var(--status-warning)",
+    minor: "var(--text-muted)",
+    suggestion: "var(--accent-primary)",
+  };
+
+  const severityIcons: Record<string, string> = {
+    critical: "\u26d4", // no entry sign
+    major: "\u26a0", // warning sign
+    minor: "\u2139", // info sign
+    suggestion: "\u2728", // sparkle
+  };
+
+  return (
+    <div data-testid="review-issues-list" className="space-y-2 mt-3">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertTriangle
+          className="w-3.5 h-3.5"
+          style={{ color: "var(--status-warning)" }}
+        />
+        <span className="text-[11px] font-medium text-white/60 uppercase tracking-wider">
+          Issues Found ({issues.length})
+        </span>
+      </div>
+      {issues.map((issue, i) => (
+        <div
+          key={i}
+          data-testid={`review-issue-${i}`}
+          className="flex items-start gap-2 p-2 rounded"
+          style={{
+            backgroundColor: "rgba(0, 0, 0, 0.2)",
+            border: "1px solid rgba(255,255,255,0.05)",
+          }}
+        >
+          <span
+            className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${severityColors[issue.severity] || severityColors.minor} 15%, transparent)`,
+              color: severityColors[issue.severity] || severityColors.minor,
+            }}
+          >
+            {severityIcons[issue.severity] || "\u2022"} {issue.severity}
+          </span>
+          <div className="flex-1 min-w-0">
+            {issue.file && (
+              <span className="text-[11px] text-white/40 block truncate">
+                {issue.file}
+                {issue.line !== null && issue.line !== undefined && `:${issue.line}`}
+              </span>
+            )}
+            <p className="text-[12px] text-white/70" style={{ lineHeight: "1.4" }}>
+              {issue.description}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
