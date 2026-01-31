@@ -6,8 +6,9 @@ use axum::{
 use tauri::Emitter;
 
 use super::*;
-use crate::application::TaskTransitionService;
+use crate::application::{TaskTransitionService, TaskSchedulerService};
 use crate::commands::review_helpers::parse_issues_from_notes;
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::entities::{
     InternalStatus, Review, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
@@ -136,6 +137,21 @@ pub async fn complete_review(
     let fix_task_id: Option<TaskId> = None;
 
     // 6. Trigger state transition via TaskTransitionService
+    // Create scheduler for auto-scheduling next Ready task when this one exits Reviewing
+    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&state.execution_state),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.activity_event_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        state.app_state.app_handle.as_ref().cloned(),
+    ));
+
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
         Arc::clone(&state.app_state.project_repo),
@@ -148,7 +164,8 @@ pub async fn complete_review(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
-    );
+    )
+    .with_task_scheduler(task_scheduler);
 
     let new_status = match outcome {
         ReviewToolOutcome::Approved => {
