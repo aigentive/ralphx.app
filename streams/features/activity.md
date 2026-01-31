@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 23:05:00 - P0 Fix: useChatPanelHandlers EventProvider migration
+**What:**
+- Migrated useChatPanelHandlers from direct `@tauri-apps/api/event` listen() to useEventBus()
+- Replaced async IIFE with synchronous subscribe() calls from EventBus
+- Events `agent:tool_call`, `agent:run_completed`, `agent:error`, `agent:run_started`, `agent:queue_sent` now go through EventProvider
+- Simplified cleanup: removed UnlistenFn type, now uses synchronous unsubscribe array
+
+**Files Modified:**
+- `src/hooks/useChatPanelHandlers.ts` (use useEventBus() instead of direct listen())
+
+**Commands:**
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success - Chat panel events will now use MockEventBus in web mode
+
+---
+
 ### 2026-01-31 22:30:00 - P0 Fix: useAskUserQuestion EventProvider migration
 **What:**
 - Migrated useAskUserQuestion from direct `@tauri-apps/api/event` listen() to useEventBus()
