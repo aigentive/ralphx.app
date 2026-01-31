@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-31 22:00:00 - Phase 47 Task 7: Update components to import from centralized status.ts
+**What:**
+- Updated `TaskCard.utils.ts`: Imported `NON_DRAGGABLE_STATUSES` from `@/types/status`, removed local definition (lines 154-165)
+- Updated `IntegratedChatPanel.tsx`: Imported `EXECUTION_STATUSES`, `HUMAN_REVIEW_STATUSES` from `@/types/status`, replaced local `executionStatuses` and `reviewStatuses` arrays
+- Updated `TaskFullView.tsx`: Imported `EXECUTION_STATUSES`, `HUMAN_REVIEW_STATUSES` from `@/types/status`, replaced local `reviewStatuses` and `executingStatuses` arrays
+- Verified no duplicate status arrays remain via grep (only `status.ts` now has definitions)
+- Preserved `REVIEW_STATE_STATUSES` in TaskCard.utils.ts as it has a different purpose (badge display vs review process)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors, 9 pre-existing warnings)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:00:00 - Phase 47 Task 6: Add consolidated status group constants to status.ts
 **What:**
 - Added `EXECUTION_STATUSES` array for execution phase statuses (executing, re_executing, qa_*)

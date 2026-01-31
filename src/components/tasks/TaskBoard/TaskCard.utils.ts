@@ -4,7 +4,7 @@
  * Contains styling helpers extracted from TaskCard.tsx to reduce component size.
  */
 
-import type { InternalStatus } from "@/types/status";
+import { type InternalStatus, NON_DRAGGABLE_STATUSES } from "@/types/status";
 
 /**
  * Get priority color for the left border stripe (Refined Studio aesthetic)
@@ -149,26 +149,11 @@ export function getExecutionBorderStyles(status: InternalStatus): React.CSSPrope
 }
 
 /**
- * Statuses that cannot be manually dragged
- */
-export const NON_DRAGGABLE_STATUSES: readonly InternalStatus[] = [
-  "executing",
-  "qa_refining",
-  "qa_testing",
-  "qa_passed",
-  "qa_failed",
-  "pending_review",
-  "revision_needed",
-  "reviewing",
-  "review_passed",
-  "re_executing",
-] as const;
-
-/**
  * Check if a task with given status is draggable
+ * Uses centralized NON_DRAGGABLE_STATUSES from @/types/status
  */
 export function isDraggableStatus(status: InternalStatus): boolean {
-  return !NON_DRAGGABLE_STATUSES.includes(status);
+  return !(NON_DRAGGABLE_STATUSES as readonly string[]).includes(status);
 }
 
 /**

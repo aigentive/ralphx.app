@@ -20,6 +20,7 @@ import { TaskChatPanel } from "./TaskChatPanel";
 import { useTasks } from "@/hooks/useTasks";
 import { useProjectStore } from "@/stores/projectStore";
 import type { InternalStatus } from "@/types/task";
+import { EXECUTION_STATUSES, HUMAN_REVIEW_STATUSES } from "@/types/status";
 
 interface TaskFullViewProps {
   taskId: string;
@@ -171,6 +172,7 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
   });
 
   // Determine context type based on task status
+  // Uses centralized status constants from @/types/status
   const contextType = useMemo((): "task" | "task_execution" | "review" => {
     if (!task) {
       console.log("[TaskFullView] contextType: task (no task object)");
@@ -178,22 +180,17 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
     }
 
     // Review states route to reviewer agent
-    const reviewStatuses: InternalStatus[] = ["reviewing", "review_passed"];
-    if (reviewStatuses.includes(task.internalStatus)) {
+    // Includes HUMAN_REVIEW_STATUSES (review_passed, escalated) + "reviewing" (AI review in progress)
+    if (
+      (HUMAN_REVIEW_STATUSES as readonly string[]).includes(task.internalStatus) ||
+      task.internalStatus === "reviewing"
+    ) {
       console.log(`[TaskFullView] contextType: review (internalStatus=${task.internalStatus})`);
       return "review";
     }
 
     // Execution states route to worker agent
-    const executingStatuses: InternalStatus[] = [
-      "executing",
-      "re_executing",
-      "qa_refining",
-      "qa_testing",
-      "qa_passed",
-      "qa_failed",
-    ];
-    const result = executingStatuses.includes(task.internalStatus)
+    const result = (EXECUTION_STATUSES as readonly string[]).includes(task.internalStatus)
       ? "task_execution"
       : "task";
     console.log(`[TaskFullView] contextType: ${result} (internalStatus=${task.internalStatus})`);

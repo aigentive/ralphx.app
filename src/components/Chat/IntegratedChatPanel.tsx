@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
+import { EXECUTION_STATUSES, HUMAN_REVIEW_STATUSES } from "@/types/status";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -73,15 +74,15 @@ export function IntegratedChatPanel({
   );
 
   // Execution states: worker agent is running (only when NOT in ideation mode)
-  const executionStatuses = ["executing", "re_executing", "qa_refining", "qa_testing", "qa_passed", "qa_failed"];
   const isExecutionMode = !ideationSessionId && selectedTask?.internalStatus
-    ? executionStatuses.includes(selectedTask.internalStatus)
+    ? (EXECUTION_STATUSES as readonly string[]).includes(selectedTask.internalStatus)
     : false;
 
   // Review states: reviewer agent conversation (only when NOT in ideation mode)
-  const reviewStatuses = ["reviewing", "review_passed", "escalated"];
+  // Note: Uses HUMAN_REVIEW_STATUSES (review_passed, escalated) + "reviewing" (AI review in progress)
   const isReviewMode = !ideationSessionId && selectedTask?.internalStatus
-    ? reviewStatuses.includes(selectedTask.internalStatus)
+    ? (HUMAN_REVIEW_STATUSES as readonly string[]).includes(selectedTask.internalStatus) ||
+      selectedTask.internalStatus === "reviewing"
     : false;
 
   // Use extracted context management hook
