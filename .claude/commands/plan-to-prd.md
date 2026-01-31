@@ -173,9 +173,11 @@ After the table, provide:
 
 ### Task Conversion Guidelines
 
+**CRITICAL: Read `.claude/rules/task-planning.md` before converting tasks.**
+
 When converting plan steps to PRD tasks:
 
-1. **One major implementation step = one task**
+1. **One major implementation step = one task** (but see compilation unit rule below)
 2. **Include the plan section reference** so the agent knows where to look
 3. **Extract dependencies** from plan step relationships
 4. **Add standard steps:**
@@ -183,6 +185,11 @@ When converting plan steps to PRD tasks:
    - Implementation steps from the plan
    - Linting step (cargo clippy for backend, npm run lint for frontend)
    - Commit step with appropriate prefix
+
+**Compilation Unit Rule (from task-planning.md):**
+- If step N renames/removes a field and step N+1 updates usages, they MUST be one task
+- Each task must compile independently - no broken intermediate states
+- Test: "Can `cargo check` / `npm run typecheck` pass after JUST this task?"
 
 ### Dependency Detection
 
@@ -258,22 +265,7 @@ Becomes PRD tasks:
 
 ### Deriving Commit Messages
 
-If the plan doesn't have explicit `atomic_commit` annotations, derive them:
-
-| Files Modified | Scope |
-|----------------|-------|
-| `src-tauri/**` | backend service/module name |
-| `src/**` | frontend component/feature name |
-| `ralphx-mcp-server/**` | mcp |
-| `ralphx-plugin/**` | plugin |
-
-| Task Description Contains | Type |
-|---------------------------|------|
-| "create", "add", "implement", "new" | feat |
-| "fix", "repair", "correct", "resolve" | fix |
-| "update", "modify", "change" | feat |
-| "refactor", "extract", "split" | refactor |
-| "document", "readme", "template" | docs |
+If the plan doesn't have explicit `atomic_commit` annotations, derive them using the tables in `.claude/rules/task-planning.md`.
 
 ### Category Detection
 

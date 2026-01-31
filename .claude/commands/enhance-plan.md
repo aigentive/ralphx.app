@@ -57,6 +57,8 @@ All modifications happen on `specs/plans/<derived_name>.md`, never the original.
 
 ## Enhancement Steps
 
+**CRITICAL: Before annotating tasks, read `.claude/rules/task-planning.md` for compilation unit rules.**
+
 ### Step 1: Check Idempotency
 
 Read the plan file and check if it already contains a "Commit Lock Workflow" section.
@@ -75,8 +77,33 @@ For each task/step found, analyze:
 1. Dependencies (look for "depends on", "requires", "after", "blocking", "blocks")
 2. Whether it blocks other tasks
 3. What files it modifies (for deriving commit scope)
+4. **Whether it forms a compilation unit with adjacent tasks** (see task-planning.md)
 
-### Step 3: Add Dependency Annotations
+### Step 3: Validate Compilation Units
+
+**Before adding dependency annotations, check for the chicken-egg problem:**
+
+For each task that modifies existing code:
+1. Does it rename a field, function, or type?
+2. Does it change a function signature?
+3. Does it remove an export?
+
+If yes to any: **All files referencing the changed item must be in the SAME task.**
+
+**Example of what to catch:**
+```markdown
+### Task 1: Rename `comments` to `feedback` in Request struct
+### Task 2: Update handler to use `req.feedback`
+    Dependencies: Task 1
+```
+This is WRONG. Task 1 alone breaks compilation. Merge them:
+```markdown
+### Task 1: Rename `comments` to `feedback` and update handler
+```
+
+See `.claude/rules/task-planning.md` for full compilation unit rules.
+
+### Step 5: Add Dependency Annotations
 
 For each task that doesn't already have dependency annotations, add:
 
@@ -96,9 +123,9 @@ Or for non-blocking tasks:
 **Annotation rules:**
 - `(BLOCKING)` - Add to task title if other tasks depend on it
 - `**Dependencies:**` - List task numbers that must complete first, or "None"
-- `**Atomic Commit:**` - Derive from task description and files modified
+- `**Atomic Commit:**` - Derive from task description and files modified (see `.claude/rules/task-planning.md`)
 
-### Step 4: Add Git Workflow Section
+### Step 7: Add Git Workflow Section
 
 After the last `## ` heading in the file (or at the end if no major headings), add:
 
@@ -106,43 +133,28 @@ After the last `## ` heading in the file (or at the end if no major headings), a
 ## Commit Lock Workflow (Parallel Agent Coordination)
 
 **See `.claude/rules/commit-lock.md` for the complete atomic commit protocol.**
+**See `.claude/rules/task-planning.md` for task design and compilation unit rules.**
 
 Key points:
 - All commit operations (check + acquire + commit + release) must be in a SINGLE Bash command
 - Never separate the lock check and acquisition into different tool calls
+- Each task must be a complete compilation unit (code compiles after each task)
 ```
 
-### Step 5: Report Results
+### Step 8: Report Results
 
 Report to the user:
 1. Where the enhanced plan is located
 2. Number of tasks found and annotated
 3. Whether it was copied or enhanced in place
 
-## Commit Scope Detection
+## Commit Message Conventions
 
-Derive commit scope from files being modified:
+**See `.claude/rules/task-planning.md` for full commit type and scope detection tables.**
 
-| Files Modified | Scope |
-|----------------|-------|
-| `src-tauri/**` | backend service/module name |
-| `src/**` | frontend component/feature name |
-| `ralphx-mcp-server/**` | mcp |
-| `ralphx-plugin/**` | plugin |
-| `specs/**`, `docs/**` | docs |
-| `.claude/**` | commands, config |
-
-## Commit Type Detection
-
-| Task Description Contains | Type |
-|---------------------------|------|
-| "create", "add", "implement", "new" | feat |
-| "fix", "repair", "correct", "resolve" | fix |
-| "update", "modify", "change" | feat (enhancement) |
-| "refactor", "extract", "split", "reorganize" | refactor |
-| "document", "readme", "template" | docs |
-| "test", "spec", "verify" | test |
-| Otherwise | chore |
+Quick reference:
+- **Scope:** Derived from files modified (src-tauri → backend, src → frontend, etc.)
+- **Type:** Derived from task description (add/create → feat, fix → fix, etc.)
 
 ## Example
 
