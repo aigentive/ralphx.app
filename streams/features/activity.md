@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-01 00:30:00 - Phase 54 Task 9: Display blocked reason on task cards
+**What:**
+- Added Ban icon import to TaskCard.tsx
+- Added blocked reason indicator when task.internalStatus === "blocked" && task.blockedReason
+- Shows Ban icon with truncated reason text
+- Full reason displayed in tooltip on hover
+- Uses warning color (hsl(var(--warning))) for visibility
+
+**Files Modified:**
+- `src/components/tasks/TaskBoard/TaskCard.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:15:00 - Phase 54 Task 8: Integrate BlockReasonDialog in context menu
 **What:**
 - Modified `TaskCardContextMenu.tsx` to open `BlockReasonDialog` when "Block" action is clicked
