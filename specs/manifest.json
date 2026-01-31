@@ -364,7 +364,7 @@
       "phase": 50,
       "name": "Confirmation Dialogs for Task State Transitions",
       "prd": "specs/phases/prd_phase_50_confirmation_dialogs.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add confirmation dialogs to all task state transition actions using useConfirmation hook"
     }
   ]
