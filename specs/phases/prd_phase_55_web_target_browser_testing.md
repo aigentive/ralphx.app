@@ -211,7 +211,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: test(visual): add Playwright setup and kanban board test"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 8,
