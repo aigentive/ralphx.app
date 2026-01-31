@@ -48,3 +48,21 @@
 - `npx playwright test tests/visual/views/activity/activity.spec.ts`
 
 **Result:** Success (8 tests passing)
+
+---
+
+### 2026-01-31 23:35:00 - Settings View Visual Tests
+**What:**
+- Created page object: tests/pages/settings.page.ts
+- Created spec: tests/visual/views/settings/settings.spec.ts
+- Added setupSettings fixture to tests/fixtures/setup.fixtures.ts
+- Generated 3 baseline snapshots (80KB, 83KB, 80KB)
+
+**Mock parity:**
+- Status: ready (SettingsView is self-contained, uses props, no API calls needed)
+
+**Commands:**
+- `npx playwright test tests/visual/views/settings/settings.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/views/settings/settings.spec.ts`
+
+**Result:** Success (9 tests passing)
