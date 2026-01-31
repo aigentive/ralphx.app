@@ -232,7 +232,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Document: Troubleshooting common issues",
       "Commit: docs: add web target and browser testing guide"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
