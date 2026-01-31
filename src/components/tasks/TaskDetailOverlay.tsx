@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -226,6 +227,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
     isPermanentlyDeleting,
   } = useTaskMutation(projectId);
 
+  // Confirmation dialog for archive/restore
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+
   // Close overlay on Escape key
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -282,8 +286,14 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   };
 
   // Handle archive
-  const handleArchive = () => {
+  const handleArchive = async () => {
     if (!task) return;
+    const confirmed = await confirm({
+      title: "Archive this task?",
+      description: "The task will be moved to the archive.",
+      confirmText: "Archive",
+    });
+    if (!confirmed) return;
     archiveMutation.mutate(task.id, {
       onSuccess: () => {
         handleClose();
@@ -292,8 +302,14 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   };
 
   // Handle restore
-  const handleRestore = () => {
+  const handleRestore = async () => {
     if (!task) return;
+    const confirmed = await confirm({
+      title: "Restore this task?",
+      description: "The task will be restored to the backlog.",
+      confirmText: "Restore",
+    });
+    if (!confirmed) return;
     restoreMutation.mutate(task.id, {
       onSuccess: () => {
         handleClose();
@@ -604,6 +620,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Archive/Restore Confirmation Dialog */}
+      <ConfirmationDialog {...confirmationDialogProps} />
     </>
   );
 }

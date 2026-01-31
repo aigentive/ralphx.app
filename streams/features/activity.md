@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 20:35:00 - Phase 50 Task 2: Add confirmation dialogs to TaskDetailOverlay archive/restore
+**What:**
+- Imported `useConfirmation` hook in TaskDetailOverlay.tsx
+- Wrapped `handleArchive` with confirmation: "Archive this task?" / "The task will be moved to the archive."
+- Wrapped `handleRestore` with confirmation: "Restore this task?" / "The task will be restored to the backlog."
+- Added `<ConfirmationDialog {...confirmationDialogProps} />` to component render
+- Note: Delete already had its own confirmation dialog - no change needed
+
+**Files Modified:**
+- `src/components/tasks/TaskDetailOverlay.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with pre-existing warnings only)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 20:15:00 - Phase 50 Task 1: Add confirmation dialog to StatusDropdown
 **What:**
 - Imported `useConfirmation` hook in StatusDropdown.tsx
