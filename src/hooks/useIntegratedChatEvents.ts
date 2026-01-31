@@ -135,7 +135,8 @@ export function useIntegratedChatEvents({
     })();
 
     return () => {
+      setStreamingToolCalls([]); // Clear on cleanup to prevent context bleeding
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [queryClient, messagesEndRef, setStreamingToolCalls]);
+  }, [queryClient, messagesEndRef, setStreamingToolCalls, activeConversationId]);
 }
