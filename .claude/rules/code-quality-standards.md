@@ -31,18 +31,8 @@
 | Named constants | Magic numbers → `TIMEOUT_MS = 300` |
 | DRY | 2+ times → helper |
 
-## Tauri API Layer (CRITICAL)
-
-**Invoke params:** Tauri 2.x converts Rust `snake_case` → JS `camelCase` automatically.
-
-| Context | JS | Rust | Failure mode |
-|---------|----|----- |--------------|
-| Direct params | `{ taskId }` | `task_id: String` | ❌`{ task_id }`→silent "missing key" |
-| Struct via `input` | `{ input: { task_id } }` | serde match | Must match exactly |
-
-**Response serialization:** Rust snake_case → Zod snake_case → Transform → TS camelCase
-- Backend: NEVER `#[serde(rename_all = "camelCase")]` on responses
-- Frontend: Schema snake_case → transform → camelCase types
+## Tauri API Layer
+See @.claude/rules/api-layer.md for complete API patterns.
 
 ## Database
 

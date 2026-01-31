@@ -1,6 +1,6 @@
 # Gap Verification Workflow
 
-**Required Context:** @.claude/rules/stream-features.md | @.claude/rules/stream-verify.md
+**Required Context:** @.claude/rules/stream-features.md | @.claude/rules/stream-verify.md | @.claude/rules/api-layer.md
 
 ## When to Run
 

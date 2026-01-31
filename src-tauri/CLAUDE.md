@@ -84,17 +84,8 @@ pub type AppResult<T> = Result<T, AppError>;
 ExecutionDone→QaRefining (QA on) | ExecutionDone→PendingReview (QA off)
 QaPassed→PendingReview | RevisionNeeded→Executing (retry)
 
-### Param Conventions
-| Type | Rust | JS |
-|------|------|---|
-| Direct | `context_type: String` | `{ contextType }` (Tauri converts) |
-| Struct | `input: CreateInput` | `{ input: { context_type } }` (serde exact-match) |
-| Struct+rename | `#[serde(rename_all="camelCase")]` | `{ input: { contextType } }` |
-
-### Response Serialization (CRITICAL)
-- **NEVER** use `#[serde(rename_all = "camelCase")]` on response structs
-- Rust's default snake_case serialization is correct
-- Frontend handles case conversion via transform layer
+### API Layer Patterns
+See @.claude/rules/api-layer.md for param conventions, response serialization, and cross-layer patterns.
 
 ### Command Handlers (THIN)
 Commands must be 5-10 lines max — extract, delegate, return:
