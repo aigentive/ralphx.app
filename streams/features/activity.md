@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-01 01:00:00 - Phase 48 Task 7: Wire ActivityEventRepository to app state
+**What:**
+- Created `src-tauri/src/infrastructure/memory/memory_activity_event_repo.rs` with in-memory implementation
+- Implements full ActivityEventRepository trait: save, get_by_id, list_by_task_id, list_by_session_id, delete_by_*, count_by_*
+- Cursor-based pagination with timestamp|id format matching SQLite implementation
+- Filter support for event_type, role, status
+- Added `activity_event_repo: Arc<dyn ActivityEventRepository>` field to AppState struct
+- Wired SqliteActivityEventRepository in new_production() and with_db_path()
+- Wired MemoryActivityEventRepository in new_test() and with_repos()
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/memory/memory_activity_event_repo.rs` - New in-memory implementation
+- `src-tauri/src/infrastructure/memory/mod.rs` - Module already exported (prior session)
+- `src-tauri/src/application/app_state.rs` - Added field and initialization in all constructors
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test activity_event` (60 tests passed)
+- `cargo test app_state` (9 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:30:00 - Phase 48 Task 6: Implement SQLite repository for activity events
 **What:**
 - Created `src-tauri/src/infrastructure/sqlite/sqlite_activity_event_repo.rs`
