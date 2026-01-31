@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-01 12:15:00 - Phase 45 Task 9: Register EscalatedTaskDetail in view registry
+**What:**
+- Added `EscalatedTaskDetail` to import statement in TaskDetailPanel.tsx
+- Updated `TASK_DETAIL_VIEWS` mapping: changed `escalated: HumanReviewTaskDetail` to `escalated: EscalatedTaskDetail`
+- Now tasks with `escalated` status will render the dedicated EscalatedTaskDetail component instead of the generic HumanReviewTaskDetail
+
+**Commands:**
+- `npm run lint` (passed with pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 11:30:00 - Phase 45 Task 8: Create EscalatedTaskDetail component
 **What:**
 - Created `src/components/tasks/detail-views/EscalatedTaskDetail.tsx` (new file)

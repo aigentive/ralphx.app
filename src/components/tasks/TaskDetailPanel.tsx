@@ -34,6 +34,7 @@ import {
   ExecutionTaskDetail,
   ReviewingTaskDetail,
   HumanReviewTaskDetail,
+  EscalatedTaskDetail,
   WaitingTaskDetail,
   CompletedTaskDetail,
 } from "./detail-views";
@@ -86,7 +87,7 @@ const TASK_DETAIL_VIEWS: Record<
   pending_review: WaitingTaskDetail,
   reviewing: ReviewingTaskDetail,
   review_passed: HumanReviewTaskDetail,
-  escalated: HumanReviewTaskDetail, // Uses same view as review_passed (human decision needed)
+  escalated: EscalatedTaskDetail,
   revision_needed: RevisionTaskDetail,
   // Terminal states
   approved: CompletedTaskDetail,
