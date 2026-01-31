@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-01 10:45:00 - Phase 57 Task 4: Add API wrapper for list_all
+**What:**
+- Added `all.list()` method to activityEventsApi for global activity event queries
+- Updated `transformFilterToBackend` to include task_id and session_id fields for filter conversion
+- API wrapper follows existing pattern with cursor/limit/filter options
+
+**Files:**
+- `src/api/activity-events.ts` (modified)
+- `src/api/activity-events.transforms.ts` (modified)
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npx eslint src/api/activity-events.ts src/api/activity-events.transforms.ts` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 10:15:00 - Phase 57 Task 3: Extend ActivityEventFilter with taskId/sessionId
 **What:**
 - Added optional taskId and sessionId fields to ActivityEventFilter type (camelCase for frontend)

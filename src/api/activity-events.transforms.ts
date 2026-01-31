@@ -55,5 +55,7 @@ export function transformFilterToBackend(
     event_types: filter.eventTypes,
     roles: filter.roles,
     statuses: filter.statuses,
+    task_id: filter.taskId,
+    session_id: filter.sessionId,
   };
 }
