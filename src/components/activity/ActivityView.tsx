@@ -15,6 +15,7 @@ import { useUiStore } from "@/stores/uiStore";
 import {
   useTaskActivityEvents,
   useSessionActivityEvents,
+  useAllActivityEvents,
   flattenActivityPages,
 } from "@/hooks/useActivityEvents";
 import type { ActivityEventFilter, ActivityEventType } from "@/api/activity-events.types";
@@ -73,9 +74,8 @@ export function ActivityView({
   const clearMessages = useActivityStore((s) => s.clearMessages);
   const clearActivityFilter = useUiStore((s) => s.clearActivityFilter);
 
-  // Determine initial mode: if we have a context (taskId/sessionId), default to historical
-  const defaultMode: ViewMode = taskId || sessionId ? "historical" : "realtime";
-  const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? defaultMode);
+  // Default to historical mode (shows all events) - only use realtime if explicitly requested
+  const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "historical");
   const [typeFilter, setTypeFilter] = useState<MessageTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [roleFilter, setRoleFilter] = useState<RoleFilterValue[]>([]);
@@ -115,7 +115,7 @@ export function ActivityView({
     return Object.keys(filter).length > 0 ? filter : undefined;
   }, [typeFilter, statusFilter, roleFilter]);
 
-  // Historical queries (enabled only in historical mode with appropriate context)
+  // Historical queries - task-specific, session-specific, or global (all events)
   const taskHistoryQuery = useTaskActivityEvents({
     taskId: taskId ?? "",
     ...(historicalFilter !== undefined && { filter: historicalFilter }),
@@ -128,9 +128,16 @@ export function ActivityView({
     limit: 50,
   });
 
+  // Global query for all events (when no task/session context)
+  const globalHistoryQuery = useAllActivityEvents({
+    ...(historicalFilter !== undefined && { filter: historicalFilter }),
+    limit: 50,
+  });
+
   // Select the appropriate historical query based on context
-  const historyQuery = taskId ? taskHistoryQuery : sessionId ? sessionHistoryQuery : null;
-  const isHistoricalMode = viewMode === "historical" && historyQuery;
+  // If taskId provided → task query; if sessionId → session query; otherwise → global query
+  const historyQuery = taskId ? taskHistoryQuery : sessionId ? sessionHistoryQuery : globalHistoryQuery;
+  const isHistoricalMode = viewMode === "historical";
 
   // Extract query data for stable dependencies
   const historyData = historyQuery?.data;
@@ -287,7 +294,7 @@ export function ActivityView({
           <div className="flex-1">
             <SearchBar value={searchQuery} onChange={setSearchQuery} onClear={handleClearSearch} />
           </div>
-          <ViewModeToggle mode={viewMode} onChange={handleViewModeChange} disabled={!taskId && !sessionId} />
+          <ViewModeToggle mode={viewMode} onChange={handleViewModeChange} />
         </div>
         <div className="flex items-center gap-2">
           <FilterTabs active={typeFilter} onChange={handleTypeFilterChange} />

@@ -207,7 +207,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(activity): enable global history view"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,
