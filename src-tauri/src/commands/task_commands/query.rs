@@ -208,3 +208,48 @@ pub async fn get_valid_transitions(
 
     Ok(transitions)
 }
+
+/// Get tasks awaiting review for a project
+///
+/// Returns tasks in review-related statuses that are awaiting either
+/// AI review or human review decision.
+///
+/// # Arguments
+/// * `project_id` - The project ID
+///
+/// # Returns
+/// * `Vec<TaskResponse>` - Tasks in pending_review, reviewing, review_passed, or escalated states
+///
+/// # Review Status Meanings
+/// - `pending_review`: Queued for AI review
+/// - `reviewing`: AI review in progress
+/// - `review_passed`: AI approved, awaiting human approval
+/// - `escalated`: AI escalated, awaiting human decision
+#[tauri::command]
+pub async fn get_tasks_awaiting_review(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskResponse>, String> {
+    let project_id = ProjectId::from_string(project_id);
+
+    // Define the review-related statuses
+    let review_statuses = vec![
+        InternalStatus::PendingReview,
+        InternalStatus::Reviewing,
+        InternalStatus::ReviewPassed,
+        InternalStatus::Escalated,
+    ];
+
+    // Get tasks in review statuses using the existing list_paginated method
+    // Use a high limit to get all tasks (no pagination needed for this view)
+    let tasks = state
+        .task_repo
+        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Convert to response
+    let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
+
+    Ok(task_responses)
+}
