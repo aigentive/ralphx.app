@@ -18,7 +18,7 @@ import {
   Sparkles,
   Network,
 } from "lucide-react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { toast } from "sonner";
 import type {
   IdeationSession,
@@ -121,41 +121,45 @@ export function IdeationView({
   // Dependency analysis loading state
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
 
+  // Get the event bus from context (TauriEventBus or MockEventBus)
+  const eventBus = useEventBus();
+
   // Listen for dependency analysis events
   useEffect(() => {
     const sessionId = session?.id;
     if (!sessionId) return;
 
-    const unlistenFns: Promise<UnlistenFn>[] = [];
-
     // Listen for analysis started
-    unlistenFns.push(
-      listen<{ session_id: string }>("dependencies:analysis_started", (event) => {
-        if (event.payload.session_id === sessionId) {
+    const unsubAnalysisStarted = eventBus.subscribe<{ session_id: string }>(
+      "dependencies:analysis_started",
+      (payload) => {
+        if (payload.session_id === sessionId) {
           setIsAnalyzingDependencies(true);
         }
-      })
+      }
     );
 
     // Listen for suggestions applied
-    unlistenFns.push(
-      listen<{ session_id: string; applied_count: number }>("dependencies:suggestions_applied", (event) => {
-        if (event.payload.session_id === sessionId) {
+    const unsubSuggestionsApplied = eventBus.subscribe<{ session_id: string; applied_count: number }>(
+      "dependencies:suggestions_applied",
+      (payload) => {
+        if (payload.session_id === sessionId) {
           setIsAnalyzingDependencies(false);
-          const count = event.payload.applied_count;
+          const count = payload.applied_count;
           if (count > 0) {
             toast.success(`${count} ${count === 1 ? "dependency" : "dependencies"} added`);
           } else {
             toast.info("No new dependencies found");
           }
         }
-      })
+      }
     );
 
     return () => {
-      unlistenFns.forEach((unlisten) => unlisten.then((fn) => fn()));
+      unsubAnalysisStarted();
+      unsubSuggestionsApplied();
     };
-  }, [session?.id]);
+  }, [eventBus, session?.id]);
 
   // Manual re-trigger dependency analysis
   const handleReanalyzeDependencies = useCallback(async () => {
@@ -175,29 +179,24 @@ export function IdeationView({
   }, [session?.planArtifactId, fetchPlanArtifact]);
 
   useEffect(() => {
-    let unlisten: UnlistenFn | undefined;
+    const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[] }>(
+      "plan:proposals_may_need_update",
+      (payload) => {
+        const affectedProposals = proposals.filter((p) => payload.proposal_ids.includes(p.id));
+        const previousStates: Record<string, unknown> = {};
+        affectedProposals.forEach((p) => { previousStates[p.id] = { ...p }; });
 
-    const setupListener = async () => {
-      unlisten = await listen<{ artifact_id: string; proposal_ids: string[] }>(
-        "plan:proposals_may_need_update",
-        (event) => {
-          const affectedProposals = proposals.filter((p) => event.payload.proposal_ids.includes(p.id));
-          const previousStates: Record<string, unknown> = {};
-          affectedProposals.forEach((p) => { previousStates[p.id] = { ...p }; });
+        showSyncNotification({
+          artifactId: payload.artifact_id,
+          proposalIds: payload.proposal_ids,
+          previousStates,
+          timestamp: Date.now(),
+        });
+      }
+    );
 
-          showSyncNotification({
-            artifactId: event.payload.artifact_id,
-            proposalIds: event.payload.proposal_ids,
-            previousStates,
-            timestamp: Date.now(),
-          });
-        }
-      );
-    };
-
-    setupListener();
-    return () => { if (unlisten) unlisten(); };
-  }, [proposals, showSyncNotification]);
+    return () => { unsubProposalsUpdate(); };
+  }, [eventBus, proposals, showSyncNotification]);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
