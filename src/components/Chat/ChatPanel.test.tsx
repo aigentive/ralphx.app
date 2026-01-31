@@ -22,7 +22,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 // Create mock functions outside vi.mock for persistence
-const mockTogglePanel = vi.fn();
+const mockToggleChatVisible = vi.fn();
 const mockSetWidth = vi.fn();
 const mockSendMessageMutateAsync = vi.fn().mockResolvedValue(undefined);
 const mockQueueMessage = vi.fn();
@@ -31,17 +31,28 @@ const mockDeleteQueuedMessage = vi.fn();
 const mockSetAgentRunning = vi.fn();
 const mockStartEditingQueuedMessage = vi.fn();
 
-// Mock state
-let mockStoreState = {
-  isOpen: true,
+// Mock chat store state (no isOpen - visibility is in uiStore now)
+let mockChatStoreState = {
   width: 320,
-  togglePanel: mockTogglePanel,
   setWidth: mockSetWidth,
   queueMessage: mockQueueMessage,
   editQueuedMessage: mockEditQueuedMessage,
   deleteQueuedMessage: mockDeleteQueuedMessage,
   setAgentRunning: mockSetAgentRunning,
   startEditingQueuedMessage: mockStartEditingQueuedMessage,
+};
+
+// Mock UI store state for chat visibility (all views visible by default for tests)
+let mockUiStoreState = {
+  chatVisibleByView: {
+    kanban: true,
+    ideation: true,
+    extensibility: true,
+    activity: true,
+    settings: true,
+    task_detail: true,
+  },
+  toggleChatVisible: mockToggleChatVisible,
 };
 
 let mockChatState = {
@@ -70,20 +81,30 @@ vi.mock("@/hooks/useChat", () => ({
 }));
 
 vi.mock("@/stores/chatStore", () => ({
-  useChatStore: vi.fn((selector?: (state: typeof mockStoreState) => unknown) => {
+  useChatStore: vi.fn((selector?: (state: typeof mockChatStoreState) => unknown) => {
     if (selector) {
-      return selector(mockStoreState);
+      return selector(mockChatStoreState);
     }
-    return mockStoreState;
+    return mockChatStoreState;
   }),
   selectQueuedMessages: vi.fn(() => () => []),
   selectIsAgentRunning: vi.fn(() => () => false),
-  selectActiveConversationId: vi.fn((state: typeof mockStoreState) => state.activeConversationId || null),
+  selectActiveConversationId: vi.fn((state: typeof mockChatStoreState) => state.activeConversationId || null),
   getContextKey: vi.fn(() => "project:test"),
+}));
+
+vi.mock("@/stores/uiStore", () => ({
+  useUiStore: vi.fn((selector?: (state: typeof mockUiStoreState) => unknown) => {
+    if (selector) {
+      return selector(mockUiStoreState);
+    }
+    return mockUiStoreState;
+  }),
 }));
 
 import { useChat } from "@/hooks/useChat";
 import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
 
 const mockMessages = [
   {
@@ -129,11 +150,9 @@ describe("ChatPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Reset mock state to defaults
-    mockStoreState = {
-      isOpen: true,
+    // Reset chat store state (no isOpen - visibility is in uiStore now)
+    mockChatStoreState = {
       width: 320,
-      togglePanel: mockTogglePanel,
       setWidth: mockSetWidth,
       queueMessage: mockQueueMessage,
       editQueuedMessage: mockEditQueuedMessage,
@@ -143,6 +162,19 @@ describe("ChatPanel", () => {
       queuedMessages: [],
       isAgentRunning: false,
       activeConversationId: null,
+    };
+
+    // Reset UI store state for chat visibility (all views visible by default for tests)
+    mockUiStoreState = {
+      chatVisibleByView: {
+        kanban: true,
+        ideation: true,
+        extensibility: true,
+        activity: true,
+        settings: true,
+        task_detail: true,
+      },
+      toggleChatVisible: mockToggleChatVisible,
     };
 
     mockChatState = {
@@ -164,7 +196,18 @@ describe("ChatPanel", () => {
       createConversation: vi.fn(),
     };
 
-    vi.mocked(useChatStore).mockImplementation(() => mockStoreState);
+    vi.mocked(useChatStore).mockImplementation((selector?: (state: typeof mockChatStoreState) => unknown) => {
+      if (selector) {
+        return selector(mockChatStoreState);
+      }
+      return mockChatStoreState;
+    });
+    vi.mocked(useUiStore).mockImplementation((selector?: (state: typeof mockUiStoreState) => unknown) => {
+      if (selector) {
+        return selector(mockUiStoreState);
+      }
+      return mockUiStoreState;
+    });
     vi.mocked(useChat).mockImplementation(() => mockChatState as ReturnType<typeof useChat>);
   });
 
@@ -180,7 +223,8 @@ describe("ChatPanel", () => {
     });
 
     it("does not render when closed", () => {
-      mockStoreState.isOpen = false;
+      // Set ideation view to not visible
+      mockUiStoreState.chatVisibleByView.ideation = false;
 
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
@@ -299,7 +343,7 @@ describe("ChatPanel", () => {
       // Close button triggers animation, then calls togglePanel after 200ms
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(mockTogglePanel).toHaveBeenCalled();
+      expect(mockToggleChatVisible).toHaveBeenCalled();
       vi.useRealTimers();
     });
   });
@@ -314,7 +358,7 @@ describe("ChatPanel", () => {
       // Escape triggers animation, then calls togglePanel after 200ms
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(mockTogglePanel).toHaveBeenCalled();
+      expect(mockToggleChatVisible).toHaveBeenCalled();
       vi.useRealTimers();
     });
   });
@@ -392,7 +436,7 @@ describe("ChatPanel", () => {
 
   describe("panel width", () => {
     it("applies width from store", () => {
-      mockStoreState.width = 400;
+      mockChatStoreState.width = 400;
 
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
@@ -401,7 +445,7 @@ describe("ChatPanel", () => {
     });
 
     it("has minimum width of 280px", () => {
-      mockStoreState.width = 200; // Below minimum
+      mockChatStoreState.width = 200; // Below minimum
 
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 

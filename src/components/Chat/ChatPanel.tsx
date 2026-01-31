@@ -13,6 +13,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
 import { useTaskStore } from "@/stores/taskStore";
 import { useQuery } from "@tanstack/react-query";
@@ -177,12 +178,13 @@ interface ChatPanelProps {
   context: ChatContext;
 }
 
-// Wrapper component that checks isOpen before rendering the full panel
+// Wrapper component that checks visibility before rendering the full panel
 // This prevents expensive hooks from running when the panel is closed
 export function ChatPanel({ context }: ChatPanelProps) {
-  const isOpen = useChatStore((s) => s.isOpen);
+  const chatVisibleByView = useUiStore((s) => s.chatVisibleByView);
+  const isVisible = chatVisibleByView[context.view];
 
-  if (!isOpen) {
+  if (!isVisible) {
     return null;
   }
 
@@ -190,12 +192,9 @@ export function ChatPanel({ context }: ChatPanelProps) {
 }
 
 function ChatPanelContent({ context }: ChatPanelProps) {
-  const chatStore = useChatStore();
-  const {
-    width,
-    togglePanel,
-    setWidth,
-  } = chatStore;
+  const width = useChatStore((s) => s.width);
+  const setWidth = useChatStore((s) => s.setWidth);
+  const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   const activeConversationId = useChatStore(selectActiveConversationId);
 
   // Detect execution mode: if task is executing, switch to task_execution context
@@ -319,10 +318,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const handleClose = useCallback(() => {
     setIsExiting(true);
     setTimeout(() => {
-      togglePanel();
+      toggleChatVisible(context.view);
       setIsExiting(false);
     }, 200);
-  }, [togglePanel]);
+  }, [toggleChatVisible, context.view]);
 
   // Escape to close panel (only runs when panel is open via wrapper)
   useEffect(() => {

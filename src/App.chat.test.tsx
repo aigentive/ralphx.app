@@ -15,6 +15,7 @@ import { act } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { getQueryClient } from "@/lib/queryClient";
 import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import type { ChatContext } from "@/types/chat";
 
@@ -42,9 +43,20 @@ vi.mock("@/lib/tauri", () => ({
 // Mock useChat hook
 vi.mock("@/hooks/useChat", () => ({
   useChat: () => ({
-    messages: { data: [], isLoading: false },
+    messages: { data: { messages: [] }, isLoading: false },
     sendMessage: { mutateAsync: vi.fn(), isPending: false },
+    conversations: { data: [], isLoading: false },
+    switchConversation: vi.fn(),
+    createConversation: vi.fn(),
   }),
+  chatKeys: {
+    all: ["chat"],
+    messages: () => ["chat", "messages"],
+    conversations: () => ["chat", "conversations"],
+    conversation: (id: string) => ["chat", "conversations", id],
+    conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
+    agentRun: (id: string) => ["chat", "agent-run", id],
+  },
 }));
 
 // ============================================================================
@@ -75,14 +87,26 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 
 describe("ChatPanel Integration", () => {
   beforeEach(() => {
-    // Reset chat store before each test
+    // Reset chat store before each test (no isOpen - visibility is in uiStore now)
     act(() => {
       useChatStore.setState({
         messages: {},
         context: null,
-        isOpen: false,
         width: 320,
         isLoading: false,
+      });
+    });
+    // Reset UI store chat visibility
+    act(() => {
+      useUiStore.setState({
+        chatVisibleByView: {
+          kanban: false,
+          ideation: false,
+          extensibility: false,
+          activity: false,
+          settings: false,
+          task_detail: false,
+        },
       });
     });
     // Clear localStorage
@@ -109,7 +133,9 @@ describe("ChatPanel Integration", () => {
 
     it("renders ChatPanel when open", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -122,7 +148,9 @@ describe("ChatPanel Integration", () => {
 
     it("displays context indicator for kanban view", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -150,7 +178,9 @@ describe("ChatPanel Integration", () => {
     it("closes chat panel when close button clicked", async () => {
       vi.useFakeTimers();
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -176,7 +206,10 @@ describe("ChatPanel Integration", () => {
   describe("panel width", () => {
     it("applies width from store", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true, width: 400 });
+        useChatStore.setState({ width: 400 });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -191,7 +224,9 @@ describe("ChatPanel Integration", () => {
 
     it("has resize handle", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -205,7 +240,10 @@ describe("ChatPanel Integration", () => {
 
     it("uses minimum width from store constants", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true, width: 280 });
+        useChatStore.setState({ width: 280 });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -224,20 +262,20 @@ describe("ChatPanel Integration", () => {
   // ==========================================================================
 
   describe("store state management", () => {
-    it("togglePanel toggles isOpen state", () => {
-      const { togglePanel } = useChatStore.getState();
+    it("toggleChatVisible toggles visibility for a view", () => {
+      const { toggleChatVisible } = useUiStore.getState();
 
-      expect(useChatStore.getState().isOpen).toBe(false);
-
-      act(() => {
-        togglePanel();
-      });
-      expect(useChatStore.getState().isOpen).toBe(true);
+      expect(useUiStore.getState().chatVisibleByView.kanban).toBe(false);
 
       act(() => {
-        togglePanel();
+        toggleChatVisible("kanban");
       });
-      expect(useChatStore.getState().isOpen).toBe(false);
+      expect(useUiStore.getState().chatVisibleByView.kanban).toBe(true);
+
+      act(() => {
+        toggleChatVisible("kanban");
+      });
+      expect(useUiStore.getState().chatVisibleByView.kanban).toBe(false);
     });
 
     it("setWidth updates width in store", () => {
@@ -270,18 +308,18 @@ describe("ChatPanel Integration", () => {
       expect(useChatStore.getState().width).toBe(800);
     });
 
-    it("setOpen directly sets isOpen state", () => {
-      const { setOpen } = useChatStore.getState();
+    it("setChatVisible directly sets visibility state for a view", () => {
+      const { setChatVisible } = useUiStore.getState();
 
       act(() => {
-        setOpen(true);
+        setChatVisible("kanban", true);
       });
-      expect(useChatStore.getState().isOpen).toBe(true);
+      expect(useUiStore.getState().chatVisibleByView.kanban).toBe(true);
 
       act(() => {
-        setOpen(false);
+        setChatVisible("kanban", false);
       });
-      expect(useChatStore.getState().isOpen).toBe(false);
+      expect(useUiStore.getState().chatVisibleByView.kanban).toBe(false);
     });
   });
 
@@ -292,7 +330,9 @@ describe("ChatPanel Integration", () => {
   describe("context awareness", () => {
     it("shows Project context for kanban view without selected task", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -307,7 +347,9 @@ describe("ChatPanel Integration", () => {
 
     it("shows Chat context for ideation view", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, ideation: true },
+        });
       });
 
       render(
@@ -328,7 +370,9 @@ describe("ChatPanel Integration", () => {
 
     it("shows Task context for task_detail view", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, task_detail: true },
+        });
       });
 
       render(
@@ -348,7 +392,9 @@ describe("ChatPanel Integration", () => {
 
     it("shows Task context for kanban with selected task", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -374,7 +420,9 @@ describe("ChatPanel Integration", () => {
   describe("accessibility", () => {
     it("has complementary role", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -388,7 +436,9 @@ describe("ChatPanel Integration", () => {
 
     it("has accessible label", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -402,7 +452,9 @@ describe("ChatPanel Integration", () => {
 
     it("close button has accessible label", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -416,7 +468,9 @@ describe("ChatPanel Integration", () => {
 
     it("input has accessible label", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -430,7 +484,9 @@ describe("ChatPanel Integration", () => {
 
     it("send button has accessible label", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -450,7 +506,9 @@ describe("ChatPanel Integration", () => {
   describe("styling", () => {
     it("uses design tokens for background", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
@@ -465,7 +523,9 @@ describe("ChatPanel Integration", () => {
 
     it("uses design tokens for border", () => {
       act(() => {
-        useChatStore.setState({ isOpen: true });
+        useUiStore.setState({
+          chatVisibleByView: { ...useUiStore.getState().chatVisibleByView, kanban: true },
+        });
       });
 
       render(
