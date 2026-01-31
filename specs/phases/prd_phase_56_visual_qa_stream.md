@@ -191,7 +191,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "chmod +x scripts/stream-watch-visual-qa.sh",
       "Commit: feat(streams): add visual-qa stream watcher script"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 8,
