@@ -795,3 +795,71 @@ async fn test_search_matches_partial_strings() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, task.id);
 }
+
+// ==================== BLOCKED REASON TESTS ====================
+
+#[tokio::test]
+async fn test_create_preserves_blocked_reason() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let mut task = create_test_task("Blocked Task");
+    task.internal_status = InternalStatus::Blocked;
+    task.blocked_reason = Some("Waiting for API design".to_string());
+
+    repo.create(task.clone()).await.unwrap();
+    let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+
+    assert_eq!(found.blocked_reason, Some("Waiting for API design".to_string()));
+    assert_eq!(found.internal_status, InternalStatus::Blocked);
+}
+
+#[tokio::test]
+async fn test_update_preserves_blocked_reason() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let mut task = create_test_task("Task");
+    repo.create(task.clone()).await.unwrap();
+
+    // Update to blocked with reason
+    task.internal_status = InternalStatus::Blocked;
+    task.blocked_reason = Some("Waiting for dependency".to_string());
+    repo.update(&task).await.unwrap();
+
+    let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(found.blocked_reason, Some("Waiting for dependency".to_string()));
+    assert_eq!(found.internal_status, InternalStatus::Blocked);
+}
+
+#[tokio::test]
+async fn test_update_clears_blocked_reason() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let mut task = create_test_task("Task");
+    task.internal_status = InternalStatus::Blocked;
+    task.blocked_reason = Some("Waiting for something".to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    // Unblock - clear the reason
+    task.internal_status = InternalStatus::Ready;
+    task.blocked_reason = None;
+    repo.update(&task).await.unwrap();
+
+    let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(found.blocked_reason.is_none());
+    assert_eq!(found.internal_status, InternalStatus::Ready);
+}
+
+#[tokio::test]
+async fn test_blocked_reason_defaults_to_none() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let task = create_test_task("Normal Task");
+    repo.create(task.clone()).await.unwrap();
+
+    let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(found.blocked_reason.is_none());
+}

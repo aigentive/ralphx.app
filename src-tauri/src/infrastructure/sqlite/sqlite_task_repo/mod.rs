@@ -42,8 +42,8 @@ impl TaskRepository for SqliteTaskRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             rusqlite::params![
                 task.id.as_str(),
                 task.project_id.as_str(),
@@ -60,6 +60,7 @@ impl TaskRepository for SqliteTaskRepository {
                 task.started_at.map(|dt| dt.to_rfc3339()),
                 task.completed_at.map(|dt| dt.to_rfc3339()),
                 task.archived_at.map(|dt| dt.to_rfc3339()),
+                task.blocked_reason,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -99,7 +100,7 @@ impl TaskRepository for SqliteTaskRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, updated_at = ?10, started_at = ?11, completed_at = ?12, archived_at = ?13
+            "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, updated_at = ?10, started_at = ?11, completed_at = ?12, archived_at = ?13, blocked_reason = ?14
              WHERE id = ?1",
             rusqlite::params![
                 task.id.as_str(),
@@ -115,6 +116,7 @@ impl TaskRepository for SqliteTaskRepository {
                 task.started_at.map(|dt| dt.to_rfc3339()),
                 task.completed_at.map(|dt| dt.to_rfc3339()),
                 task.archived_at.map(|dt| dt.to_rfc3339()),
+                task.blocked_reason,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -140,7 +142,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+                "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason
                  FROM tasks WHERE project_id = ?1 AND internal_status = ?2
                  ORDER BY priority DESC, created_at ASC",
             )
@@ -206,7 +208,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         // Find READY tasks that have no blockers
         let result = conn.query_row(
-            "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at
+            "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason
              FROM tasks t
              WHERE t.project_id = ?1
                AND t.internal_status = 'ready'
@@ -231,7 +233,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at
+                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason
                  FROM tasks t
                  INNER JOIN task_blockers tb ON t.id = tb.blocker_id
                  WHERE tb.task_id = ?1",
@@ -252,7 +254,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at
+                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason
                  FROM tasks t
                  INNER JOIN task_blockers tb ON t.id = tb.task_id
                  WHERE tb.blocker_id = ?1",
@@ -326,7 +328,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         // Fetch and return the updated task
         let result = conn.query_row(
-            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason
              FROM tasks WHERE id = ?1",
             [task_id.as_str()],
             |row| Task::from_row(row),
@@ -350,7 +352,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         // Fetch and return the updated task
         let result = conn.query_row(
-            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at
+            "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason
              FROM tasks WHERE id = ?1",
             [task_id.as_str()],
             |row| Task::from_row(row),
