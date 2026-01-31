@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-01 10:15:00 - Phase 45 Task 6: Update approve_task/request_task_changes validation
+**What:**
+- Updated `approve_task` handler to accept both `ReviewPassed` AND `Escalated` status (reviews.rs:258-268)
+- Updated `request_task_changes` handler to accept both `ReviewPassed` AND `Escalated` status (reviews.rs:341-351)
+- Updated docstrings to mention both valid statuses
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all 3121 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 09:45:00 - Phase 45 Task 5: Update HTTP handler for Escalate decision
 **What:**
 - Split combined `NeedsChanges | Escalate` match arm in `complete_review` handler (reviews.rs:150-158)
