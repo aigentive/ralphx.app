@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 23:45:00 - Phase 48 Task 4: Create ActivityEventRepository trait
+**What:**
+- Created `src-tauri/src/domain/repositories/activity_event_repository.rs` with repository trait
+- Added `ActivityEventFilter` struct with builder pattern for filtering by event_types, roles, statuses
+- Added `ActivityEventPage` struct for paginated results with cursor, has_more
+- Defined `ActivityEventRepository` trait with: save, get_by_id, list_by_task_id, list_by_session_id, delete_by_*, count_by_* methods
+- Cursor-based pagination using "timestamp|id" format (pipe separator to avoid ISO 8601 colon conflicts)
+- Exported from `src-tauri/src/domain/repositories/mod.rs`
+- Added 15 unit tests including mock repository implementation
+
+**Files Modified:**
+- `src-tauri/src/domain/repositories/activity_event_repository.rs` - New repository trait file
+- `src-tauri/src/domain/repositories/mod.rs` - Added module and exports
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test activity_event_repository` (15 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:30:00 - Phase 48 Task 3: Create ActivityEvent entity definition
 **What:**
 - Created `src-tauri/src/domain/entities/activity_event.rs` with `ActivityEvent` struct
