@@ -79,7 +79,7 @@ export function IntegratedChatPanel({
     : false;
 
   // Review states: reviewer agent conversation (only when NOT in ideation mode)
-  const reviewStatuses = ["reviewing", "review_passed"];
+  const reviewStatuses = ["reviewing", "review_passed", "escalated"];
   const isReviewMode = !ideationSessionId && selectedTask?.internalStatus
     ? reviewStatuses.includes(selectedTask.internalStatus)
     : false;
