@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-31 20:15:00 - Phase 53 Task 2: Update CompletedTaskDetail to use shared ReviewTimeline
+**What:**
+- Removed local `HistoryTimelineItem` and `ReviewHistoryTimeline` functions from CompletedTaskDetail.tsx
+- Imported `ReviewTimeline` from `./shared`
+- Updated usage from `<ReviewHistoryTimeline history={history} />` to `<ReviewTimeline history={history} />`
+- Removed unused imports (`Bot`, `User`, `RotateCcw`)
+- Kept local `formatRelativeTime` for approval banner display (unrelated to timeline)
+- No functional change - all entries still displayed
+
+**Files Modified:**
+- `src/components/tasks/detail-views/CompletedTaskDetail.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 pre-existing warnings)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 19:45:00 - Phase 53 Task 1: Extract ReviewTimeline to shared location
 **What:**
 - Created `src/components/tasks/detail-views/shared/` directory structure
