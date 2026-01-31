@@ -90,7 +90,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(tests): add visual test directory structure and base page object"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
