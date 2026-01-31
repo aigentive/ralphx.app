@@ -1,80 +1,34 @@
 /**
  * AgentConstellation - Main orchestrator for Agent Network visualization
  *
- * Composes all visual elements for the welcome screen "constellation":
- * - CodeRain: Dense background code fragments drifting
- * - AmbientParticles: Floating dots throughout scene
- * - CentralHub: Pulsing core with ripple rings
- * - ConnectionPaths: SVG lines with glow connecting agents to hub
- * - DataPulse: Particles traveling along connection paths
- * - AgentNode: 4 agent nodes (Orchestrator, Worker, QA, Reviewer)
+ * Displays all 13 RalphX agents orbiting around a central hub:
+ * - Inner orbit (4): Orchestrator, Worker, Reviewer, QA
+ * - Middle orbit (4): Supervisor, Researcher, Ideation, QA Prep
+ * - Outer orbit (5): Chat agents, Namer, Dependencies
  *
  * Features:
- * - Staggered node entrance animation (fly in from edges)
+ * - True orbital physics with smooth animation
+ * - Responsive - orbits scale with viewport while staying in bounds
+ * - Connection lines from agents to central hub
  * - Mouse parallax effect on entire scene
- * - Proper layering: background → connections → hub → nodes → particles
  *
  * Anti-AI-Slop: Warm orange #ff6b35 only, no purple/blue gradients
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useSpring } from "framer-motion";
-import { Brain, Code2, Eye, ShieldCheck } from "lucide-react";
 
-import AgentNode, { type AgentConfig } from "./AgentNode";
 import AmbientParticles from "./AmbientParticles";
 import CentralHub from "./CentralHub";
 import CodeRain from "./CodeRain";
-import ConnectionPaths from "./ConnectionPaths";
-import DataPulse from "./DataPulse";
-
-/**
- * AGENTS configuration array
- * Positions are percentages from top-left (0-100)
- */
-const AGENTS: AgentConfig[] = [
-  {
-    id: "orchestrator",
-    name: "Orchestrator",
-    role: "Plans & coordinates",
-    icon: Brain,
-    color: "#ff6b35", // Warm orange accent
-    position: { x: 25, y: 70 },
-  },
-  {
-    id: "worker",
-    name: "Worker",
-    role: "Writes code",
-    icon: Code2,
-    color: "#4ade80", // Green
-    position: { x: 25, y: 30 },
-  },
-  {
-    id: "qa",
-    name: "QA Refiner",
-    role: "Validates quality",
-    icon: ShieldCheck,
-    color: "#60a5fa", // Blue
-    position: { x: 75, y: 30 },
-  },
-  {
-    id: "reviewer",
-    name: "Reviewer",
-    role: "Reviews changes",
-    icon: Eye,
-    color: "#f59e0b", // Amber
-    position: { x: 75, y: 70 },
-  },
-];
+import OrbitingAgentNode from "./OrbitingAgentNode";
+import { ORBITING_AGENTS, calculateOrbitalRadius } from "./agentConfig";
 
 /** Hub size in pixels */
-const HUB_SIZE = 100;
-
-/** Agent node size in pixels */
-const NODE_SIZE = 80;
+const HUB_SIZE = 80;
 
 /** Parallax intensity (pixels of movement) */
-const PARALLAX_INTENSITY = 20;
+const PARALLAX_INTENSITY = 15;
 
 interface AgentConstellationProps {
   className?: string;
@@ -133,12 +87,13 @@ export default function AgentConstellation({
     mouseY.set(0);
   }, [mouseX, mouseY]);
 
-  // Convert agent positions from percentage to pixels for absolute positioning
-  const getAgentStyle = (agent: AgentConfig) => ({
-    left: `${agent.position.x}%`,
-    top: `${agent.position.y}%`,
-    transform: "translate(-50%, -50%)",
-  });
+  const centerX = dimensions.width / 2;
+  const centerY = dimensions.height / 2;
+
+  // Calculate orbital radii for the orbit path circles
+  const innerRadius = calculateOrbitalRadius("inner", dimensions.width, dimensions.height);
+  const middleRadius = calculateOrbitalRadius("middle", dimensions.width, dimensions.height);
+  const outerRadius = calculateOrbitalRadius("outer", dimensions.width, dimensions.height);
 
   return (
     <div
@@ -150,10 +105,10 @@ export default function AgentConstellation({
       {/* Layer 1: Code Rain Background */}
       <CodeRain className="z-0" />
 
-      {/* Layer 2: Ambient Particles (floats above code rain) */}
+      {/* Layer 2: Ambient Particles */}
       <AmbientParticles className="z-10" />
 
-      {/* Layer 3-6: Parallax-affected content */}
+      {/* Layer 3+: Parallax-affected content */}
       <motion.div
         className="absolute inset-0"
         style={{
@@ -161,27 +116,55 @@ export default function AgentConstellation({
           y: parallaxY,
         }}
       >
-        {/* Layer 3: Connection Paths (SVG lines) */}
+        {/* Orbital path circles */}
         {dimensions.width > 0 && dimensions.height > 0 && (
-          <ConnectionPaths
-            agents={AGENTS}
+          <svg
+            className="absolute inset-0 z-20 pointer-events-none"
             width={dimensions.width}
             height={dimensions.height}
-            className="z-20"
-          />
+          >
+            <defs>
+              {/* Glow filter for orbital paths */}
+              <filter id="orbitGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="1" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {/* Inner orbital path */}
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={innerRadius}
+              fill="none"
+              stroke="rgba(255, 107, 53, 0.04)"
+              strokeWidth="1"
+            />
+            {/* Middle orbital path */}
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={middleRadius}
+              fill="none"
+              stroke="rgba(255, 107, 53, 0.03)"
+              strokeWidth="1"
+            />
+            {/* Outer orbital path */}
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={outerRadius}
+              fill="none"
+              stroke="rgba(255, 107, 53, 0.02)"
+              strokeWidth="1"
+            />
+          </svg>
         )}
 
-        {/* Layer 4: Data Pulses (particles on paths) */}
-        {dimensions.width > 0 && dimensions.height > 0 && (
-          <DataPulse
-            agents={AGENTS}
-            width={dimensions.width}
-            height={dimensions.height}
-            className="z-30"
-          />
-        )}
-
-        {/* Layer 5: Central Hub (positioned at 50%, 50%) */}
+        {/* Central Hub */}
         <div
           className="absolute z-40"
           style={{
@@ -193,16 +176,21 @@ export default function AgentConstellation({
           <CentralHub size={HUB_SIZE} />
         </div>
 
-        {/* Layer 6: Agent Nodes */}
-        {AGENTS.map((agent, index) => (
-          <div
-            key={agent.id}
-            className="absolute z-50"
-            style={getAgentStyle(agent)}
-          >
-            <AgentNode agent={agent} size={NODE_SIZE} index={index} />
-          </div>
-        ))}
+        {/* Orbiting Agent Nodes */}
+        {dimensions.width > 0 &&
+          dimensions.height > 0 &&
+          ORBITING_AGENTS.map((agent, index) => (
+            <OrbitingAgentNode
+              key={agent.id}
+              agent={agent}
+              viewportWidth={dimensions.width}
+              viewportHeight={dimensions.height}
+              centerX={centerX}
+              centerY={centerY}
+              size={agent.tier === "inner" ? 50 : agent.tier === "middle" ? 42 : 36}
+              index={index}
+            />
+          ))}
       </motion.div>
     </div>
   );

@@ -52,16 +52,17 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
       )}
 
       {/* Agent Constellation background - full screen animated network */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 z-0">
         <AgentConstellation />
       </div>
 
-      {/* Gradient overlay for text readability */}
+      {/* Gradient overlay for text readability - small dark mask only at center */}
       <div
         className="absolute inset-0 pointer-events-none z-30"
         style={{
           background:
-            "radial-gradient(ellipse at center, rgba(12, 12, 12, 0.3) 0%, rgba(12, 12, 12, 0.7) 70%)",
+            "radial-gradient(circle at center, rgba(12, 12, 12, 0.95) 0%, rgba(12, 12, 12, 0.8) 150px, rgba(12, 12, 12, 0.3) 200px, transparent 280px)",
+          isolation: "isolate",
         }}
       />
 
@@ -69,12 +70,12 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
       <div className="relative z-40 flex flex-col items-center px-8 max-w-4xl w-full">
         {/* Hero section */}
         <div
-          className="text-center mb-8 hero-section"
+          className="text-center mb-14 hero-section"
           style={{ animation: "fadeSlideIn 0.6s ease-out forwards" }}
         >
           {/* RalphX title with accent X and glow */}
           <h1
-            className="text-7xl font-bold tracking-tight mb-4"
+            className="text-7xl font-bold tracking-tight mb-3"
             style={{
               fontFamily: "var(--font-display)",
               color: "var(--text-primary)",
@@ -116,7 +117,7 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
           {/* Primary CTA button with glow */}
           <button
             onClick={onCreateProject}
-            className="group flex items-center gap-3 px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cta-button"
+            className="group flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cta-button"
             style={{
               backgroundColor: "var(--accent-primary)",
               color: "#fff",
@@ -126,7 +127,7 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
             }}
             data-testid="create-first-project-button"
           >
-            <Sparkles className="w-5 h-5 transition-transform group-hover:rotate-12" />
+            <Sparkles className="w-4 h-4 transition-transform group-hover:rotate-12" />
             Start Your First Project
           </button>
 
