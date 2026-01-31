@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 08:15:00 - Phase 45 Task 2: Add Escalated state to state machine
+**What:**
+- Added `Escalated` variant to `State` enum in `types.rs` after `ReviewPassed`
+- Added dispatch case: `State::Escalated => self.escalated(event)`
+- Added `as_str()`: `State::Escalated => "escalated"`
+- Added `FromStr`: `"escalated" => Ok(State::Escalated)`
+- Added `name()`: `State::Escalated => "Escalated"`
+- Implemented `escalated()` handler in `transitions.rs` with `HumanApprove->Approved`, `HumanRequestChanges->RevisionNeeded`, `Cancel->Cancelled`
+- Updated `state_to_internal_status()` to map `State::Escalated => InternalStatus::Escalated`
+- Updated `internal_status_to_state()` to map `InternalStatus::Escalated => State::Escalated` (removed temporary mapping)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all 3121 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 07:30:00 - Phase 45 Task 1: Add Escalated variant to InternalStatus enum
 **What:**
 - Added `Escalated` variant to `InternalStatus` enum after `ReviewPassed`
