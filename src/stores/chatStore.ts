@@ -50,8 +50,6 @@ interface ChatState {
   messages: Record<string, ChatMessage[]>;
   /** Current chat context (view, selected items) */
   context: ChatContext | null;
-  /** Whether the chat panel is open */
-  isOpen: boolean;
   /** Panel width in pixels */
   width: number;
   /** Loading state for async operations */
@@ -71,10 +69,6 @@ interface ChatState {
 interface ChatActions {
   /** Set the current chat context */
   setContext: (context: ChatContext | null) => void;
-  /** Toggle the chat panel open/close */
-  togglePanel: () => void;
-  /** Set the panel open state directly */
-  setOpen: (isOpen: boolean) => void;
   /** Set the panel width (clamped to min/max) */
   setWidth: (width: number) => void;
   /** Add a message to a context */
@@ -112,7 +106,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
     // Initial state
     messages: {},
     context: null,
-    isOpen: false,
     width: DEFAULT_WIDTH,
     isLoading: false,
     activeConversationId: null,
@@ -123,16 +116,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
     setContext: (context) =>
       set((state) => {
         state.context = context;
-      }),
-
-    togglePanel: () =>
-      set((state) => {
-        state.isOpen = !state.isOpen;
-      }),
-
-    setOpen: (isOpen) =>
-      set((state) => {
-        state.isOpen = isOpen;
       }),
 
     setWidth: (width) =>

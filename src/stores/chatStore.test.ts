@@ -38,7 +38,6 @@ describe("chatStore", () => {
     useChatStore.setState({
       messages: {},
       context: null,
-      isOpen: false,
       width: 320,
       isLoading: false,
       activeConversationId: null,
@@ -56,11 +55,6 @@ describe("chatStore", () => {
     it("has null context", () => {
       const state = useChatStore.getState();
       expect(state.context).toBeNull();
-    });
-
-    it("has isOpen false", () => {
-      const state = useChatStore.getState();
-      expect(state.isOpen).toBe(false);
     });
 
     it("has default width 320", () => {
@@ -117,42 +111,6 @@ describe("chatStore", () => {
 
       const state = useChatStore.getState();
       expect(state.context).toBeNull();
-    });
-  });
-
-  describe("togglePanel", () => {
-    it("opens closed panel", () => {
-      useChatStore.getState().togglePanel();
-
-      const state = useChatStore.getState();
-      expect(state.isOpen).toBe(true);
-    });
-
-    it("closes open panel", () => {
-      useChatStore.setState({ isOpen: true });
-
-      useChatStore.getState().togglePanel();
-
-      const state = useChatStore.getState();
-      expect(state.isOpen).toBe(false);
-    });
-  });
-
-  describe("setOpen", () => {
-    it("sets isOpen to true", () => {
-      useChatStore.getState().setOpen(true);
-
-      const state = useChatStore.getState();
-      expect(state.isOpen).toBe(true);
-    });
-
-    it("sets isOpen to false", () => {
-      useChatStore.setState({ isOpen: true });
-
-      useChatStore.getState().setOpen(false);
-
-      const state = useChatStore.getState();
-      expect(state.isOpen).toBe(false);
     });
   });
 

@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-01 03:10:00 - Phase 43 Task 4: Remove deprecated isOpen/togglePanel/setOpen from chatStore
+**What:**
+- Updated ChatPanel to use chatVisibleByView from uiStore instead of isOpen from chatStore
+- Added useUiStore import to ChatPanel for unified visibility state
+- Changed wrapper component to check chatVisibleByView[context.view] for panel visibility
+- Updated ChatPanelContent to use toggleChatVisible from uiStore for close button
+- Removed isOpen: boolean from ChatState interface in chatStore.ts
+- Removed togglePanel() and setOpen() actions from ChatActions interface
+- Removed isOpen initialization and implementations from store
+- Updated chatStore.test.ts to remove deprecated state/action tests
+- Updated ChatPanel.test.tsx to mock useUiStore and use chatVisibleByView
+- Updated App.chat.test.tsx to use unified visibility state from uiStore
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:15:00 - Phase 43 Task 3: Update useAppKeyboardShortcuts hook for unified chat visibility
 **What:**
 - Replaced toggleChatPanel and toggleChatCollapsed with single toggleChatVisible(view: ViewType) in interface
