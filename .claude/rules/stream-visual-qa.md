@@ -82,7 +82,7 @@ Match if: File path is in test directories OR mentioned in manifest/backlog
 1. Read streams/visual-qa/backlog.md
 
 2. Find first unchecked [ ] item
-   → NO ITEMS? → Output IDLE signal → END
+   → NO ITEMS? → Run Discovery Phase
 
 3. Execute same workflow as bootstrap (mock parity → page object → spec → baseline)
 
@@ -91,6 +91,42 @@ Match if: File path is in test directories OR mentioned in manifest/backlog
 5. Update manifest.md if adding new coverage
 
 6. Commit and STOP
+```
+
+### Discovery Phase (Self-Backfill)
+
+When bootstrap complete AND backlog empty, discover new components:
+
+```
+1. Run Explore agent to find NEW components:
+   - Scan src/components/, src/views/, src/modals/
+   - Compare against streams/visual-qa/manifest.md
+   - Identify components NOT in manifest
+
+2. Found new components?
+   → Add to manifest.md with Status: uncovered
+   → Add to backlog.md as items
+   → Return to Bootstrap Phase (work the newly discovered item)
+
+3. No new components found? → Output IDLE signal → END
+```
+
+### Explore Prompt for Component Discovery
+
+```
+Scan src/ for React components not in streams/visual-qa/manifest.md:
+- Check src/components/**/*.tsx
+- Check src/views/**/*.tsx
+- Check src/modals/**/*.tsx
+
+For each component file found:
+1. Is it in manifest.md? → Skip
+2. Not in manifest? → Report as new
+
+Output format:
+- [View/Modal/Component] ComponentName - src/path/to/file.tsx
+
+Maximum 10 items.
 ```
 
 ## Test Code Quality Standards
@@ -222,7 +258,15 @@ If mock is incomplete:
 
 **When:** At the START of an iteration, NOT after completing work.
 
-**Condition:** Bootstrap complete AND backlog empty (no unchecked items)
+**Condition:** Bootstrap complete AND backlog empty AND discovery finds no new components
+
+**Flow:**
+```
+1. Bootstrap incomplete? → Work bootstrap item
+2. Backlog has items? → Work backlog item
+3. Discovery finds new components? → Add to manifest/backlog → Work item
+4. Nothing to do? → IDLE
+```
 
 **Action:** Output `<promise>IDLE</promise>`
 
