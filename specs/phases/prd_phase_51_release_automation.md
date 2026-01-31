@@ -101,7 +101,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify JSON is valid",
       "Commit: feat(bundle): add macOS DMG and signing configuration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
