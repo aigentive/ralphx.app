@@ -392,7 +392,7 @@
       "phase": 54,
       "name": "Blocked Reason Feature",
       "prd": "specs/phases/prd_phase_54_blocked_reason.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add blocked_reason field, display blocked tasks in Ready column, block reason dialog"
     }
   ]
