@@ -21,6 +21,10 @@ pub struct ActivityEventFilter {
     pub roles: Option<Vec<ActivityEventRole>>,
     /// Filter by internal status(es)
     pub statuses: Option<Vec<InternalStatus>>,
+    /// Filter by task ID (optional, for list_all filtering)
+    pub task_id: Option<TaskId>,
+    /// Filter by session ID (optional, for list_all filtering)
+    pub session_id: Option<IdeationSessionId>,
 }
 
 impl ActivityEventFilter {
@@ -47,9 +51,25 @@ impl ActivityEventFilter {
         self
     }
 
+    /// Filter to a specific task
+    pub fn with_task_id(mut self, task_id: TaskId) -> Self {
+        self.task_id = Some(task_id);
+        self
+    }
+
+    /// Filter to a specific session
+    pub fn with_session_id(mut self, session_id: IdeationSessionId) -> Self {
+        self.session_id = Some(session_id);
+        self
+    }
+
     /// Check if the filter is empty (no filtering criteria)
     pub fn is_empty(&self) -> bool {
-        self.event_types.is_none() && self.roles.is_none() && self.statuses.is_none()
+        self.event_types.is_none()
+            && self.roles.is_none()
+            && self.statuses.is_none()
+            && self.task_id.is_none()
+            && self.session_id.is_none()
     }
 }
 
@@ -129,6 +149,25 @@ pub trait ActivityEventRepository: Send + Sync {
         session_id: &IdeationSessionId,
         filter: Option<&ActivityEventFilter>,
     ) -> AppResult<u64>;
+
+    /// List all activity events with cursor-based pagination
+    ///
+    /// Returns all events across all tasks and sessions. Use filter.task_id
+    /// or filter.session_id to optionally narrow results.
+    ///
+    /// # Arguments
+    /// * `cursor` - Optional cursor from previous page (format: "timestamp|id")
+    /// * `limit` - Maximum number of events to return (max 100)
+    /// * `filter` - Optional filter criteria (including task_id/session_id)
+    ///
+    /// # Returns
+    /// A page of events ordered by created_at DESC (newest first)
+    async fn list_all(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+        filter: Option<&ActivityEventFilter>,
+    ) -> AppResult<ActivityEventPage>;
 }
 
 #[cfg(test)]
@@ -199,6 +238,19 @@ mod tests {
             _filter: Option<&ActivityEventFilter>,
         ) -> AppResult<u64> {
             Ok(0)
+        }
+
+        async fn list_all(
+            &self,
+            _cursor: Option<&str>,
+            _limit: u32,
+            _filter: Option<&ActivityEventFilter>,
+        ) -> AppResult<ActivityEventPage> {
+            Ok(ActivityEventPage {
+                events: vec![],
+                cursor: None,
+                has_more: false,
+            })
         }
     }
 

@@ -26,7 +26,7 @@ impl MemoryActivityEventRepository {
         }
     }
 
-    /// Check if an event matches the filter criteria
+    /// Check if an event matches the filter criteria (excluding task_id/session_id)
     fn matches_filter(event: &ActivityEvent, filter: Option<&ActivityEventFilter>) -> bool {
         let Some(f) = filter else {
             return true;
@@ -57,6 +57,32 @@ impl MemoryActivityEventRepository {
         }
 
         true
+    }
+
+    /// Check if an event matches the full filter criteria (including task_id/session_id)
+    fn matches_full_filter(event: &ActivityEvent, filter: Option<&ActivityEventFilter>) -> bool {
+        let Some(f) = filter else {
+            return true;
+        };
+
+        // Check task_id filter
+        if let Some(filter_task_id) = &f.task_id {
+            match &event.task_id {
+                Some(event_task_id) if event_task_id == filter_task_id => {}
+                _ => return false,
+            }
+        }
+
+        // Check session_id filter
+        if let Some(filter_session_id) = &f.session_id {
+            match &event.ideation_session_id {
+                Some(event_session_id) if event_session_id == filter_session_id => {}
+                _ => return false,
+            }
+        }
+
+        // Check remaining filters (event_types, roles, statuses)
+        Self::matches_filter(event, filter)
     }
 
     /// Format a cursor from an event (timestamp|id format)
@@ -255,6 +281,67 @@ impl ActivityEventRepository for MemoryActivityEventRepository {
             .filter(|e| Self::matches_filter(e, filter))
             .count();
         Ok(count as u64)
+    }
+
+    async fn list_all(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+        filter: Option<&ActivityEventFilter>,
+    ) -> AppResult<ActivityEventPage> {
+        let events = self.events.read().await;
+
+        // Cap limit at MAX_LIMIT
+        let limit = limit.min(MAX_LIMIT);
+
+        // Filter all events by the full filter criteria
+        let mut filtered: Vec<&ActivityEvent> = events
+            .values()
+            .filter(|e| Self::matches_full_filter(e, filter))
+            .collect();
+
+        // Sort by created_at DESC, id DESC (newest first)
+        filtered.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| b.id.as_str().cmp(a.id.as_str()))
+        });
+
+        // Apply cursor if provided
+        if let Some(cursor_str) = cursor {
+            if let Some((cursor_ts, cursor_id)) = Self::parse_cursor(cursor_str) {
+                // Find position after cursor
+                if let Some(pos) = filtered.iter().position(|e| {
+                    let e_ts = e.created_at.to_rfc3339();
+                    e_ts < cursor_ts || (e_ts == cursor_ts && e.id.as_str() < cursor_id.as_str())
+                }) {
+                    filtered = filtered.into_iter().skip(pos).collect();
+                } else {
+                    // Cursor is beyond all events
+                    filtered.clear();
+                }
+            }
+        }
+
+        // Take limit + 1 to detect has_more
+        let has_more = filtered.len() > limit as usize;
+        let result_events: Vec<ActivityEvent> = filtered
+            .into_iter()
+            .take(limit as usize)
+            .cloned()
+            .collect();
+
+        let next_cursor = if has_more {
+            result_events.last().map(Self::format_cursor)
+        } else {
+            None
+        };
+
+        Ok(ActivityEventPage {
+            events: result_events,
+            cursor: next_cursor,
+            has_more,
+        })
     }
 }
 
@@ -533,5 +620,131 @@ mod tests {
             page.events[0].internal_status,
             Some(InternalStatus::Executing)
         );
+    }
+
+    #[tokio::test]
+    async fn test_list_all_returns_all_events() {
+        let repo = MemoryActivityEventRepository::new();
+        let task_id = TaskId::new();
+        let session_id = IdeationSessionId::new();
+
+        // Create events for both task and session
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::Text,
+            "task event 1",
+        ))
+        .await
+        .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+        repo.save(ActivityEvent::new_session_event(
+            session_id.clone(),
+            ActivityEventType::Text,
+            "session event 1",
+        ))
+        .await
+        .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::ToolCall,
+            "task event 2",
+        ))
+        .await
+        .unwrap();
+
+        // list_all should return all 3 events
+        let page = repo.list_all(None, 50, None).await.unwrap();
+        assert_eq!(page.events.len(), 3);
+        assert!(!page.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_list_all_with_task_id_filter() {
+        let repo = MemoryActivityEventRepository::new();
+        let task_id = TaskId::new();
+        let session_id = IdeationSessionId::new();
+
+        // Create events for both task and session
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::Text,
+            "task event",
+        ))
+        .await
+        .unwrap();
+        repo.save(ActivityEvent::new_session_event(
+            session_id.clone(),
+            ActivityEventType::Text,
+            "session event",
+        ))
+        .await
+        .unwrap();
+
+        // Filter by task_id
+        let filter = ActivityEventFilter::new().with_task_id(task_id.clone());
+        let page = repo.list_all(None, 50, Some(&filter)).await.unwrap();
+        assert_eq!(page.events.len(), 1);
+        assert_eq!(page.events[0].task_id, Some(task_id));
+    }
+
+    #[tokio::test]
+    async fn test_list_all_with_session_id_filter() {
+        let repo = MemoryActivityEventRepository::new();
+        let task_id = TaskId::new();
+        let session_id = IdeationSessionId::new();
+
+        // Create events for both task and session
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::Text,
+            "task event",
+        ))
+        .await
+        .unwrap();
+        repo.save(ActivityEvent::new_session_event(
+            session_id.clone(),
+            ActivityEventType::Text,
+            "session event",
+        ))
+        .await
+        .unwrap();
+
+        // Filter by session_id
+        let filter = ActivityEventFilter::new().with_session_id(session_id.clone());
+        let page = repo.list_all(None, 50, Some(&filter)).await.unwrap();
+        assert_eq!(page.events.len(), 1);
+        assert_eq!(page.events[0].ideation_session_id, Some(session_id));
+    }
+
+    #[tokio::test]
+    async fn test_list_all_pagination() {
+        let repo = MemoryActivityEventRepository::new();
+        let task_id = TaskId::new();
+
+        // Create 5 events with delays
+        for i in 0..5 {
+            let event = ActivityEvent::new_task_event(
+                task_id.clone(),
+                ActivityEventType::Text,
+                format!("content {}", i),
+            );
+            repo.save(event).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+        }
+
+        // First page
+        let page1 = repo.list_all(None, 3, None).await.unwrap();
+        assert_eq!(page1.events.len(), 3);
+        assert!(page1.has_more);
+        assert!(page1.cursor.is_some());
+
+        // Second page
+        let page2 = repo
+            .list_all(page1.cursor.as_deref(), 3, None)
+            .await
+            .unwrap();
+        assert_eq!(page2.events.len(), 2);
+        assert!(!page2.has_more);
     }
 }
