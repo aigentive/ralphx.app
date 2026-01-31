@@ -21,3 +21,24 @@ export async function loadMockIdeationSession(page: Page) {
   // Wait for proposal cards to appear
   await page.waitForSelector('[data-testid^="proposal-card-"]', { timeout: 10000 });
 }
+
+/**
+ * Helper to open the ProposalEditModal for the first proposal in the loaded session.
+ * Must be called after loadMockIdeationSession.
+ */
+export async function openProposalEditModal(page: Page) {
+  const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
+
+  // Hover to reveal edit button
+  await firstProposalCard.hover();
+
+  // Wait a moment for hover state to activate
+  await page.waitForTimeout(200);
+
+  // Click the edit button (second button in the card - first is checkbox, second is edit icon)
+  const editButton = firstProposalCard.locator('button').nth(1);
+  await editButton.click();
+
+  // Wait for modal to appear
+  await page.waitForSelector('[data-testid="proposal-edit-modal"]', { timeout: 5000 });
+}
