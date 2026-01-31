@@ -10,7 +10,7 @@ Phase: IN_PROGRESS
 | ideation | ✅ | ideation.spec.ts | ✅ | covered |
 | activity | ✅ | activity.spec.ts | ✅ | covered |
 | settings | ✅ | settings.spec.ts | ✅ | covered |
-| extensibility | ❌ | — | — | uncovered |
+| extensibility | ✅ | extensibility.spec.ts | ✅ | covered |
 | task_detail | ❌ | — | — | uncovered |
 
 ## Modals (6 total)
