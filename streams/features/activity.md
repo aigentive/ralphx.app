@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 19:25:00 - Phase 49 Task 3: Update get_task_state_history to parse issues from notes
+**What:**
+- Updated `get_task_state_history` Tauri command to use `parse_issues_from_notes` helper
+- Replaced `ReviewNoteResponse::from(note)` with inline construction that parses issues
+- Now returns clean notes (without embedded JSON) and parsed issues array
+- Added import for `parse_issues_from_notes` from `review_helpers` module
+
+**Files Modified:**
+- `src-tauri/src/commands/review_commands.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - 3194 tests)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 19:05:00 - Phase 49 Task 2: Extract parse_issues_from_notes helper to shared module
 **What:**
 - Created `src-tauri/src/commands/review_helpers.rs` with `parse_issues_from_notes` function

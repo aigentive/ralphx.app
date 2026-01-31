@@ -6,6 +6,8 @@ use tauri::{Emitter, State};
 use crate::application::AppState;
 use crate::domain::entities::{ProjectId, ReviewId, ReviewNote, ReviewOutcome, ReviewerType, TaskId};
 
+use super::review_helpers::parse_issues_from_notes;
+
 // Re-export types for external use
 pub use super::review_commands_types::{
     ApproveFixTaskInput, ApproveReviewInput, FixTaskAttemptsResponse, RejectFixTaskInput,
@@ -63,6 +65,7 @@ pub async fn get_reviews_by_task_id(
 }
 
 /// Get the state history (review notes) for a task
+/// Parses embedded issues JSON from notes if present
 #[tauri::command]
 pub async fn get_task_state_history(
     task_id: String,
@@ -73,7 +76,23 @@ pub async fn get_task_state_history(
         .review_repo
         .get_notes_by_task_id(&task_id)
         .await
-        .map(|notes| notes.into_iter().map(ReviewNoteResponse::from).collect())
+        .map(|notes| {
+            notes
+                .into_iter()
+                .map(|note| {
+                    let (issues, clean_notes) = parse_issues_from_notes(&note.notes);
+                    ReviewNoteResponse {
+                        id: note.id.as_str().to_string(),
+                        task_id: note.task_id.as_str().to_string(),
+                        reviewer: note.reviewer.to_string(),
+                        outcome: note.outcome.to_string(),
+                        notes: clean_notes,
+                        issues,
+                        created_at: note.created_at.to_rfc3339(),
+                    }
+                })
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
