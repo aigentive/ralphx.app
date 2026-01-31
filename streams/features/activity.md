@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 18:15:00 - Phase 47 Task 2: Add task-based approval API and update detail views
+**What:**
+- Added `ApproveTaskInput` and `RequestTaskChangesInput` interfaces to reviews-api.ts
+- Added `approveTask` and `requestTaskChanges` methods to reviewsApi (call new Tauri commands)
+- Updated `HumanReviewTaskDetail.tsx`: ActionButtons now uses taskId instead of reviewId
+- Updated `EscalatedTaskDetail.tsx`: same changes as HumanReviewTaskDetail
+- Removed `pendingReview` lookup (no longer needed - task ID is source of truth)
+- Removed `!reviewId` disabled condition from buttons (buttons now always enabled when not loading)
+- Removed unused `useReviewsByTaskId` imports from both detail views
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 17:30:00 - Phase 47 Task 1: Add approve_task_for_review and request_task_changes_for_review Tauri commands
 **What:**
 - Added `ApproveTaskInput` and `RequestTaskChangesInput` structs to review_commands_types.rs

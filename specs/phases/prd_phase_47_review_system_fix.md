@@ -117,7 +117,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(reviews): add task-based approval API and update detail views"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

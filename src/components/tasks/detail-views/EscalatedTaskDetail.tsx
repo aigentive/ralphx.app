@@ -12,7 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionTitle } from "./shared";
-import { useReviewsByTaskId, useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
+import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import {
@@ -234,13 +234,14 @@ function PreviousAttemptsSection({ history }: { history: ReviewNoteResponse[] })
 
 /**
  * ActionButtons - Approve and Request Changes buttons
+ * Uses task-based API (not review-based) for human approval actions.
  */
 function ActionButtons({
-  reviewId,
+  taskId,
   onApproveSuccess,
   onRequestChangesSuccess,
 }: {
-  reviewId: string | null;
+  taskId: string;
   onApproveSuccess?: () => void;
   onRequestChangesSuccess?: () => void;
 }) {
@@ -250,8 +251,7 @@ function ActionButtons({
 
   const approveMutation = useMutation({
     mutationFn: async () => {
-      if (!reviewId) throw new Error("No review ID");
-      await api.reviews.approve({ review_id: reviewId });
+      await api.reviews.approveTask({ task_id: taskId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -261,9 +261,8 @@ function ActionButtons({
   });
 
   const requestChangesMutation = useMutation({
-    mutationFn: async (notes: string) => {
-      if (!reviewId) throw new Error("No review ID");
-      await api.reviews.requestChanges({ review_id: reviewId, notes });
+    mutationFn: async (feedbackText: string) => {
+      await api.reviews.requestTaskChanges({ task_id: taskId, feedback: feedbackText });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -314,7 +313,7 @@ function ActionButtons({
         <Button
           data-testid="approve-button"
           onClick={() => approveMutation.mutate()}
-          disabled={isLoading || !reviewId || showFeedbackInput}
+          disabled={isLoading || showFeedbackInput}
           className="flex-1 gap-1.5"
           style={{
             backgroundColor: "var(--status-success)",
@@ -331,7 +330,7 @@ function ActionButtons({
         <Button
           data-testid="request-changes-button"
           onClick={handleRequestChangesClick}
-          disabled={isLoading || !reviewId || (showFeedbackInput && !feedback.trim())}
+          disabled={isLoading || (showFeedbackInput && !feedback.trim())}
           variant="outline"
           className="flex-1 gap-1.5"
           style={{
@@ -395,17 +394,15 @@ function getLatestEscalationReview(
  * Shows: Warning banner, escalation reason, previous attempts, and action buttons.
  */
 export function EscalatedTaskDetail({ task }: EscalatedTaskDetailProps) {
-  const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(task.id);
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(task.id);
 
   const latestEscalationReview = getLatestEscalationReview(history);
-  const pendingReview = reviews.find((r) => r.status === "pending");
 
   const handleViewDiff = () => {
     // TODO: Implement DiffViewer/ReviewDetailModal (deferred to PRD:20)
   };
 
-  const isLoading = reviewsLoading || historyLoading;
+  const isLoading = historyLoading;
 
   return (
     <div
@@ -508,7 +505,7 @@ export function EscalatedTaskDetail({ task }: EscalatedTaskDetailProps) {
       {/* Action Buttons */}
       {!isLoading && (
         <ActionButtons
-          reviewId={pendingReview?.id ?? null}
+          taskId={task.id}
         />
       )}
     </div>
