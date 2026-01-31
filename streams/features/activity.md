@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-02-01 13:00:00 - Phase 45 Task 11: Update MCP tool descriptions for escalated status
+**What:**
+- Updated `approve_task` tool description to mention `'escalated'` status (tools.ts:456)
+- Updated `request_task_changes` tool description to mention `'escalated'` status (tools.ts:477)
+- Both tools now correctly document that they work for tasks in `'review_passed'` OR `'escalated'` status
+
+**Commands:**
+- Documentation change only - no linting required
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 12:45:00 - Phase 45 Task 10: Add Escalated column group to workflow schema
 **What:**
 - Added new group `escalated` to `in_review` column in `defaultWorkflow` (workflow.ts:392-400)

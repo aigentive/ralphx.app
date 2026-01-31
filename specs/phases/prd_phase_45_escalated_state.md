@@ -277,7 +277,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update request_task_changes description to mention 'escalated' as valid status",
       "Commit: docs(mcp): update approve_task and request_task_changes descriptions"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
