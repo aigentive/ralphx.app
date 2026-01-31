@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-01 08:23:00 - Phase 55 Task 6: Add dev:web npm script and Vite web mode configuration
+**What:**
+- Added `dev:web` and `build:web` npm scripts to package.json:
+  - `dev:web`: `vite --mode web` - runs dev server in web mode
+  - `build:web`: `vite build --mode web --outDir dist-web` - builds for web target
+- Updated vite.config.ts to use different ports in web mode:
+  - Web mode uses port 5173 (default Vite) to avoid conflict with native dev server on 1420
+  - HMR port also adjusted: 5174 for web mode vs 1421 for native mode
+
+**Files Modified:**
+- `package.json` (added scripts)
+- `vite.config.ts` (conditional port configuration)
+
+**Commands:**
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+- `npm run typecheck` - passed
+- `npm run dev:web` - starts successfully on port 5173
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 05:30:00 - Phase 55 Task 5: Add Tauri Plugin Mocks for Web Mode
 **What:**
 - Created mock implementations for all Tauri plugins used in the codebase:
