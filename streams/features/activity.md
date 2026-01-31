@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-01 00:00:00 - Phase 48 Task 5: Add activity_events database migration
+**What:**
+- Created `src-tauri/src/infrastructure/sqlite/migrations/v3_add_activity_events.rs`
+- Table schema: id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
+- CHECK constraint enforces exactly one of task_id or ideation_session_id is set (polymorphic context)
+- Added 6 indexes: task_id, session_id, event_type, created_at DESC, composite cursor for task, composite cursor for session
+- Registered in MIGRATIONS array in mod.rs
+- Bumped SCHEMA_VERSION to 3
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/sqlite/migrations/v3_add_activity_events.rs` - New migration file
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs` - Registered migration, bumped version
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:45:00 - Phase 48 Task 4: Create ActivityEventRepository trait
 **What:**
 - Created `src-tauri/src/domain/repositories/activity_event_repository.rs` with repository trait
@@ -3904,6 +3925,28 @@
 **Commands:**
 - `npm run lint` - 0 errors, 9 warnings (all pre-existing)
 - `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
+### 2026-01-31 04:42:00 - Phase 48 Task 4: Create ActivityEventRepository trait
+**What:**
+- Created src-tauri/src/domain/repositories/activity_event_repository.rs
+- Added ActivityEventFilter with multi-value filters for event_types, roles, statuses
+- Added ActivityEventPage with cursor and has_more for pagination
+- Defined ActivityEventRepository trait with save, get, list, delete, count operations
+- Cursor-based pagination using (created_at, id) tuple for efficient browsing
+- Mock implementation for testing trait object safety
+- Exported from src-tauri/src/domain/repositories/mod.rs
+
+**Files:**
+- NEW: src-tauri/src/domain/repositories/activity_event_repository.rs
+- MODIFIED: src-tauri/src/domain/repositories/mod.rs
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - all tests pass
 
 **Result:** Success
 
