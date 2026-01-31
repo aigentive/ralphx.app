@@ -1,6 +1,8 @@
 // State entry side effects
 // This module contains the on_enter implementation that handles state-specific actions
 
+use std::sync::Arc;
+
 use super::super::machine::State;
 
 impl<'a> super::TransitionHandler<'a> {
@@ -22,8 +24,15 @@ impl<'a> super::TransitionHandler<'a> {
                         .await;
                 }
 
-                // Try to auto-start this task if execution slots are available
-                self.try_schedule_ready_tasks().await;
+                // Delay auto-scheduling so UI sees task "settle" in Ready column
+                // before it potentially moves to Executing (600ms matches common UI feedback timing)
+                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+                    let scheduler = Arc::clone(scheduler);
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                        scheduler.try_schedule_ready_tasks().await;
+                    });
+                }
             }
             State::Executing => {
                 // Use ChatService for persistent worker execution (Phase 15B)
