@@ -119,6 +119,7 @@ export function TaskCard({
     permanentlyDeleteMutation,
     moveMutation,
     blockMutation,
+    unblockMutation,
   } = useTaskMutation(task.projectId);
 
   // Confirmation dialog state for permanent delete
@@ -196,6 +197,10 @@ export function TaskCard({
     [task.id, blockMutation]
   );
 
+  const handleUnblock = useCallback(() => {
+    unblockMutation.mutate(task.id);
+  }, [task.id, unblockMutation]);
+
   const handleStartIdeation = async () => {
     try {
       // Create session with seedTaskId
@@ -226,6 +231,7 @@ export function TaskCard({
         onPermanentDelete={handlePermanentDelete}
         onStatusChange={handleStatusChange}
         onBlockWithReason={handleBlockWithReason}
+        onUnblock={handleUnblock}
         onStartIdeation={handleStartIdeation}
       >
         <div

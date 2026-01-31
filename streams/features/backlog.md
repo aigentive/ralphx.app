@@ -34,6 +34,10 @@
 
 - [x] [Frontend] Orphaned mutation: handleBlockWithReason bypasses blockMutation, calls api directly - src/components/tasks/TaskBoard/TaskCard.tsx:192
 
+## From Phase 54 Verification (2026-02-01) - Second Pass
+
+- [x] [Frontend] Orphaned mutation: unblockMutation never used - TaskCard uses moveMutation for "Unblock" action instead - src/components/tasks/TaskBoard/TaskCard.tsx:189
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
