@@ -1,7 +1,7 @@
 # Visual Coverage Manifest
 
 ## Bootstrap Status
-Phase: IN_PROGRESS
+Phase: COMPLETE
 
 ## Views (6 total)
 | View | Mock Ready | Spec File | Baseline | Status |
@@ -29,4 +29,4 @@ Phase: IN_PROGRESS
 | empty-kanban | kanban | empty-kanban.spec.ts | covered |
 | all-status-columns | kanban | all-status-columns.spec.ts | covered |
 | loading-state | kanban | loading-state.spec.ts | covered |
-| error-state | various | — | uncovered |
+| error-state | various | error-state.spec.ts | covered |
