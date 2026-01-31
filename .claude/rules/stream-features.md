@@ -48,6 +48,12 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
 
 5. Execute task following PRD steps exactly
 
+5.5-6.5. Visual Verification (if affects UI):
+   - Could this task change what the user sees?
+     (Components, views, API responses rendered in UI, stores, types, styles, etc.)
+   - YES → Read .claude/rules/visual-verification.md and follow its workflow
+   - NO → Skip to step 6
+
 6. Run linters (ONLY for what you modified):
    - Modified src/ files? → npm run lint && npm run typecheck
    - Modified src-tauri/ files? → cargo clippy --all-targets --all-features -- -D warnings && cargo test
