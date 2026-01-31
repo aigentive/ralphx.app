@@ -7,6 +7,7 @@
  * - Passes dependency details to each ProposalCard
  * - Maintains sortOrder as tiebreaker within same tier
  * - Preserves selection and highlight functionality
+ * - SVG tier connectors with critical path highlighting
  */
 
 import React, { useMemo } from "react";
@@ -15,6 +16,61 @@ import type { DependencyGraphResponse } from "@/api/ideation.types";
 import { ProposalCard, type DependencyDetail } from "./ProposalCard";
 import { ProposalTierGroup } from "./ProposalTierGroup";
 import { useDependencyTiers, getDependencyReason } from "@/hooks/useDependencyGraph";
+
+// ============================================================================
+// Tier Connector Component
+// ============================================================================
+
+interface TierConnectorProps {
+  /** Whether the connector is on the critical path */
+  isOnCriticalPath: boolean;
+}
+
+/**
+ * SVG connector rendered between tier groups to show dependency flow direction
+ * - Dashed line for normal connections
+ * - Solid orange line for critical path
+ */
+const TierConnector = React.memo(function TierConnector({
+  isOnCriticalPath,
+}: TierConnectorProps) {
+  return (
+    <div
+      data-testid="tier-connector"
+      className="flex justify-center py-1"
+      aria-hidden="true"
+    >
+      <svg
+        width="24"
+        height="20"
+        viewBox="0 0 24 20"
+        fill="none"
+        className="opacity-60"
+      >
+        {/* Vertical connector line */}
+        <line
+          x1="12"
+          y1="0"
+          x2="12"
+          y2="14"
+          stroke={isOnCriticalPath ? "#ff6b35" : "var(--border-subtle, rgba(255,255,255,0.1))"}
+          strokeWidth={isOnCriticalPath ? "2" : "1.5"}
+          strokeDasharray={isOnCriticalPath ? "none" : "3 2"}
+          strokeLinecap="round"
+        />
+        {/* Downward arrow */}
+        <path
+          d="M8 11L12 17L16 11"
+          stroke={isOnCriticalPath ? "#ff6b35" : "var(--border-subtle, rgba(255,255,255,0.1))"}
+          strokeWidth={isOnCriticalPath ? "2" : "1.5"}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </svg>
+    </div>
+  );
+});
 
 // ============================================================================
 // Types
@@ -180,10 +236,38 @@ export const TieredProposalList = React.memo(function TieredProposalList({
     return tiers;
   }, [proposals, tierMap, maxTier]);
 
-  // Get ordered tier numbers (0, 1, 2, ...)
+  // Get ordered tier numbers (0, 1, 2, ...) - only non-empty tiers
   const tierNumbers = useMemo(() => {
-    return Array.from(proposalsByTier.keys()).sort((a, b) => a - b);
+    return Array.from(proposalsByTier.keys())
+      .filter(tier => (proposalsByTier.get(tier) ?? []).length > 0)
+      .sort((a, b) => a - b);
   }, [proposalsByTier]);
+
+  // Compute which tier transitions have critical path proposals on both sides
+  // A connector is "critical" if there's a critical path proposal in both adjacent tiers
+  const criticalConnectors = useMemo(() => {
+    const critical = new Set<number>(); // Set of tier numbers where connector TO that tier is critical
+
+    for (let i = 1; i < tierNumbers.length; i++) {
+      const prevTier = tierNumbers[i - 1]!; // Guaranteed by loop bounds
+      const currTier = tierNumbers[i]!; // Guaranteed by loop bounds
+
+      const prevTierProposals = proposalsByTier.get(prevTier) ?? [];
+      const currTierProposals = proposalsByTier.get(currTier) ?? [];
+
+      // Check if any proposal in prev tier is on critical path
+      const prevHasCritical = prevTierProposals.some(p => criticalPathIds.has(p.id));
+      // Check if any proposal in curr tier is on critical path
+      const currHasCritical = currTierProposals.some(p => criticalPathIds.has(p.id));
+
+      // Connector is critical if both tiers have critical path proposals
+      if (prevHasCritical && currHasCritical) {
+        critical.add(currTier);
+      }
+    }
+
+    return critical;
+  }, [tierNumbers, proposalsByTier, criticalPathIds]);
 
   // If no proposals, return null (parent handles empty state)
   if (proposals.length === 0) {
@@ -191,73 +275,80 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   }
 
   return (
-    <div data-testid="tiered-proposal-list" className="space-y-4">
-      {tierNumbers.map((tier) => {
+    <div data-testid="tiered-proposal-list" className="space-y-2">
+      {tierNumbers.map((tier, tierIndex) => {
         const tierProposals = proposalsByTier.get(tier) ?? [];
-        if (tierProposals.length === 0) return null;
+
+        // Render connector before tier (except for the first tier)
+        const showConnector = tierIndex > 0;
+        const connectorIsCritical = criticalConnectors.has(tier);
 
         return (
-          <ProposalTierGroup
-            key={tier}
-            tier={tier}
-            proposalCount={tierProposals.length}
-          >
-            <div className="space-y-3">
-              {tierProposals.map((proposal, index) => {
-                const dependsOnDetails = buildDependencyDetails(
-                  proposal.id,
-                  proposals,
-                  dependencyGraph
-                );
-                const blocksCount = computeBlocksCount(proposal.id, dependencyGraph);
-                const isOnCriticalPath = criticalPathIds.has(proposal.id);
-                const isHighlighted = highlightedIds.has(proposal.id);
+          <React.Fragment key={tier}>
+            {showConnector && (
+              <TierConnector isOnCriticalPath={connectorIsCritical} />
+            )}
+            <ProposalTierGroup
+              tier={tier}
+              proposalCount={tierProposals.length}
+            >
+              <div className="space-y-3">
+                {tierProposals.map((proposal, index) => {
+                  const dependsOnDetails = buildDependencyDetails(
+                    proposal.id,
+                    proposals,
+                    dependencyGraph
+                  );
+                  const blocksCount = computeBlocksCount(proposal.id, dependencyGraph);
+                  const isOnCriticalPath = criticalPathIds.has(proposal.id);
+                  const isHighlighted = highlightedIds.has(proposal.id);
 
-                // Build optional props conditionally for exactOptionalPropertyTypes
-                const optionalProps: {
-                  dependsOnCount?: number;
-                  dependsOnDetails?: DependencyDetail[];
-                  blocksCount?: number;
-                  isOnCriticalPath?: boolean;
-                  isHighlighted?: boolean;
-                  currentPlanVersion?: number;
-                  onViewHistoricalPlan?: (artifactId: string, version: number) => void;
-                } = {};
+                  // Build optional props conditionally for exactOptionalPropertyTypes
+                  const optionalProps: {
+                    dependsOnCount?: number;
+                    dependsOnDetails?: DependencyDetail[];
+                    blocksCount?: number;
+                    isOnCriticalPath?: boolean;
+                    isHighlighted?: boolean;
+                    currentPlanVersion?: number;
+                    onViewHistoricalPlan?: (artifactId: string, version: number) => void;
+                  } = {};
 
-                if (dependsOnDetails.length > 0) {
-                  optionalProps.dependsOnCount = dependsOnDetails.length;
-                  optionalProps.dependsOnDetails = dependsOnDetails;
-                }
-                if (blocksCount > 0) {
-                  optionalProps.blocksCount = blocksCount;
-                }
-                if (isOnCriticalPath) {
-                  optionalProps.isOnCriticalPath = isOnCriticalPath;
-                }
-                if (isHighlighted) {
-                  optionalProps.isHighlighted = isHighlighted;
-                }
-                if (currentPlanVersion !== undefined) {
-                  optionalProps.currentPlanVersion = currentPlanVersion;
-                }
-                if (onViewHistoricalPlan !== undefined) {
-                  optionalProps.onViewHistoricalPlan = onViewHistoricalPlan;
-                }
+                  if (dependsOnDetails.length > 0) {
+                    optionalProps.dependsOnCount = dependsOnDetails.length;
+                    optionalProps.dependsOnDetails = dependsOnDetails;
+                  }
+                  if (blocksCount > 0) {
+                    optionalProps.blocksCount = blocksCount;
+                  }
+                  if (isOnCriticalPath) {
+                    optionalProps.isOnCriticalPath = isOnCriticalPath;
+                  }
+                  if (isHighlighted) {
+                    optionalProps.isHighlighted = isHighlighted;
+                  }
+                  if (currentPlanVersion !== undefined) {
+                    optionalProps.currentPlanVersion = currentPlanVersion;
+                  }
+                  if (onViewHistoricalPlan !== undefined) {
+                    optionalProps.onViewHistoricalPlan = onViewHistoricalPlan;
+                  }
 
-                return (
-                  <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
-                    <ProposalCard
-                      proposal={proposal}
-                      onSelect={onSelect}
-                      onEdit={onEdit}
-                      onRemove={onRemove}
-                      {...optionalProps}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </ProposalTierGroup>
+                  return (
+                    <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
+                      <ProposalCard
+                        proposal={proposal}
+                        onSelect={onSelect}
+                        onEdit={onEdit}
+                        onRemove={onRemove}
+                        {...optionalProps}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </ProposalTierGroup>
+          </React.Fragment>
         );
       })}
     </div>

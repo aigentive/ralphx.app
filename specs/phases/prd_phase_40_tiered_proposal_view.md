@@ -224,7 +224,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ideation): add SVG tier connectors with critical path highlight"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
