@@ -42,3 +42,12 @@ export async function setupExtensibility(page: Page) {
   // Wait for extensibility view to load
   await page.waitForSelector('[data-testid="extensibility-view"]', { timeout: 10000 });
 }
+
+export async function setupTaskDetail(page: Page) {
+  await setupKanban(page);
+  // Click the first task card to open detail overlay
+  const firstTaskCard = page.locator('[data-testid^="task-card-"]').first();
+  await firstTaskCard.click();
+  // Wait for task detail overlay to load
+  await page.waitForSelector('[data-testid="task-detail-overlay"]', { timeout: 10000 });
+}
