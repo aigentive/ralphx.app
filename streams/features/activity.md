@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-31 22:45:00 - Phase 43 Task 2: Update App.tsx to use unified per-view chat visibility
+**What:**
+- Replaced chatCollapsed/toggleChatCollapsed with chatVisibleByView/toggleChatVisible from uiStore
+- Removed chatIsOpen/toggleChatPanel imports from chatStore (kept chatWidth/setChatWidth/clearMessages)
+- Updated chat toggle button logic to use unified chatVisibleByView[currentView]
+- Updated handleToggle to use () => toggleChatVisible(currentView)
+- Updated useAppKeyboardShortcuts call with adapter functions for backward compatibility
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:15:00 - Phase 43 Task 1: Add chatVisibleByView state with localStorage persistence
 **What:**
 - Added CHAT_VISIBILITY_KEY constant and DEFAULT_CHAT_VISIBILITY defaults

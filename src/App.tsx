@@ -87,9 +87,9 @@ function AppContent() {
   const setCurrentView = useUiStore((s) => s.setCurrentView);
   const taskFullViewId = useUiStore((s) => s.taskFullViewId);
   const closeTaskFullView = useUiStore((s) => s.closeTaskFullView);
-  // Split layout chat state (for kanban view)
-  const chatCollapsed = useUiStore((s) => s.chatCollapsed);
-  const toggleChatCollapsed = useUiStore((s) => s.toggleChatCollapsed);
+  // Unified chat visibility per view (replaces chatCollapsed and chatStore.isOpen)
+  const chatVisibleByView = useUiStore((s) => s.chatVisibleByView);
+  const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   // Welcome screen overlay state
   const showWelcomeOverlay = useUiStore((s) => s.showWelcomeOverlay);
   const welcomeOverlayReturnView = useUiStore((s) => s.welcomeOverlayReturnView);
@@ -97,10 +97,8 @@ function AppContent() {
   const closeWelcomeOverlay = useUiStore((s) => s.closeWelcomeOverlay);
 
 
-  // Chat panel state (for non-kanban views)
-  const chatIsOpen = useChatStore((s) => s.isOpen);
+  // Chat panel state (width + message management)
   const chatWidth = useChatStore((s) => s.width);
-  const toggleChatPanel = useChatStore((s) => s.togglePanel);
   const setChatWidth = useChatStore((s) => s.setWidth);
   const clearMessages = useChatStore((s) => s.clearMessages);
 
@@ -481,11 +479,13 @@ function AppContent() {
   }, [welcomeOverlayReturnView, setCurrentView, closeWelcomeOverlay]);
 
   // Keyboard shortcuts for view switching, chat toggle, and project creation
+  // Note: useAppKeyboardShortcuts will be updated in Task 3 to accept unified toggleChatVisible
+  // For now, pass adapter functions to satisfy existing interface
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView,
-    toggleChatPanel,
-    toggleChatCollapsed,
+    toggleChatPanel: () => toggleChatVisible(currentView),
+    toggleChatCollapsed: () => toggleChatVisible("kanban"),
     openProjectWizard: handleOpenProjectWizard,
     hasProjects: !hasNoProjects,
     showWelcomeOverlay,
@@ -541,10 +541,9 @@ function AppContent() {
             </div>
             {/* Chat Panel Toggle - hidden on ideation (has built-in chat) */}
             {currentView !== "ideation" && (() => {
-              // For kanban view, chat is always visible but can be collapsed
-              // For other views, chat panel can be completely closed
-              const isExpanded = currentView === "kanban" ? !chatCollapsed : chatIsOpen;
-              const handleToggle = currentView === "kanban" ? toggleChatCollapsed : toggleChatPanel;
+              // Unified per-view visibility - same logic for all views
+              const isExpanded = chatVisibleByView[currentView];
+              const handleToggle = () => toggleChatVisible(currentView);
 
               return (
                 <Tooltip>
