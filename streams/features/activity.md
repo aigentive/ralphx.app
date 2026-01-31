@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-01 10:15:00 - Phase 57 Task 3: Extend ActivityEventFilter with taskId/sessionId
+**What:**
+- Added optional taskId and sessionId fields to ActivityEventFilter type (camelCase for frontend)
+- Added optional task_id and session_id to ActivityEventFilterInputSchema (snake_case for Rust backend)
+
+**Files:**
+- `src/api/activity-events.types.ts` (modified)
+- `src/api/activity-events.schemas.ts` (modified)
+
+**Commands:**
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 09:45:00 - Phase 57 Task 2: Add Tauri command and register
 **What:**
 - Extended ActivityEventFilterInput struct with optional task_id and session_id fields
