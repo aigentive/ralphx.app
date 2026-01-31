@@ -63,10 +63,10 @@ create_session() {
     # Validate stream name if provided
     if [ -n "$only_stream" ]; then
         case "$only_stream" in
-            features|refactor|polish|verify|hygiene) ;;
+            features|refactor|polish|verify|hygiene|visual-qa) ;;
             *)
                 echo -e "${RED}Unknown stream: $only_stream${NC}"
-                echo "Valid streams: features, refactor, polish, verify, hygiene"
+                echo "Valid streams: features, refactor, polish, verify, hygiene, visual-qa"
                 exit 1
                 ;;
         esac
@@ -94,23 +94,26 @@ create_session() {
     tmux bind-key -T prefix 3 select-pane -t 3 \; resize-pane -Z
     tmux bind-key -T prefix 4 select-pane -t 4 \; resize-pane -Z
     tmux bind-key -T prefix 5 select-pane -t 5 \; resize-pane -Z
+    tmux bind-key -T prefix 6 select-pane -t 6 \; resize-pane -Z
 
     # Bind Ctrl-b S to graceful stop (creates stop signal file)
     tmux bind-key -T prefix S run-shell "touch $SCRIPT_DIR/.ralph-stop && tmux display-message 'Graceful stop initiated'"
 
     # Create the pane layout
-    # Layout: STATUS header at top, FEATURES (60%) on left, 4 sonnet streams stacked on right
+    # Layout: STATUS header at top, FEATURES (60%) on left, 5 sonnet streams stacked on right
     #
     # ┌─────────────────────────────────────────────────────────────────┐
     # │ [0] STATUS (5% height)                                          │
     # ├─────────────────────────────────────┬───────────────────────────┤
     # │                                     │ [2] REFACTOR              │
     # │                                     ├───────────────────────────┤
-    # │ [1] FEATURES (opus)                 │ [3] POLISH                │
-    # │ 60% width                           ├───────────────────────────┤
-    # │                                     │ [4] VERIFY                │
+    # │                                     │ [3] POLISH                │
+    # │ [1] FEATURES (opus)                 ├───────────────────────────┤
+    # │ 60% width                           │ [4] VERIFY                │
     # │                                     ├───────────────────────────┤
     # │                                     │ [5] HYGIENE               │
+    # │                                     ├───────────────────────────┤
+    # │                                     │ [6] VISUAL-QA             │
     # └─────────────────────────────────────┴───────────────────────────┘
 
     # Split: header (5%) on top, main area (95%) below
@@ -121,15 +124,18 @@ create_session() {
     # Pane 1 = FEATURES, Pane 2 = right column
     tmux split-window -t "$SESSION_NAME:0.1" -h -p 40
 
-    # Split right column into 4 equal parts for sonnet streams
-    # Pane 2 = REFACTOR (top), Pane 3 = bottom 75%
-    tmux split-window -t "$SESSION_NAME:0.2" -v -p 75
+    # Split right column into 5 equal parts for sonnet streams
+    # Pane 2 = REFACTOR (top), Pane 3 = bottom 80%
+    tmux split-window -t "$SESSION_NAME:0.2" -v -p 80
 
-    # Pane 3 = POLISH, Pane 4 = bottom 66%
-    tmux split-window -t "$SESSION_NAME:0.3" -v -p 66
+    # Pane 3 = POLISH, Pane 4 = bottom 75%
+    tmux split-window -t "$SESSION_NAME:0.3" -v -p 75
 
-    # Pane 4 = VERIFY, Pane 5 = HYGIENE (bottom 50%)
-    tmux split-window -t "$SESSION_NAME:0.4" -v -p 50
+    # Pane 4 = VERIFY, Pane 5 = bottom 66%
+    tmux split-window -t "$SESSION_NAME:0.4" -v -p 66
+
+    # Pane 5 = HYGIENE, Pane 6 = VISUAL-QA (bottom 50%)
+    tmux split-window -t "$SESSION_NAME:0.5" -v -p 50
 
     # Set pane titles
     tmux select-pane -t "$SESSION_NAME:0.0" -T "STATUS"
@@ -138,6 +144,7 @@ create_session() {
     tmux select-pane -t "$SESSION_NAME:0.3" -T "POLISH"
     tmux select-pane -t "$SESSION_NAME:0.4" -T "VERIFY"
     tmux select-pane -t "$SESSION_NAME:0.5" -T "HYGIENE"
+    tmux select-pane -t "$SESSION_NAME:0.6" -T "VISUAL-QA"
 
     # Enable pane titles in status bar
     tmux set-option -t "$SESSION_NAME" pane-border-status top
@@ -161,32 +168,37 @@ create_session() {
     if [ -z "$only_stream" ] || [ "$only_stream" = "hygiene" ]; then
         tmux send-keys -t "$SESSION_NAME:0.5" "./scripts/stream-watch-hygiene.sh" C-m
     fi
+    if [ -z "$only_stream" ] || [ "$only_stream" = "visual-qa" ]; then
+        tmux send-keys -t "$SESSION_NAME:0.6" "./scripts/stream-watch-visual-qa.sh" C-m
+    fi
 
     # Select the appropriate pane as default
     case "$only_stream" in
-        features) tmux select-pane -t "$SESSION_NAME:0.1" ;;
-        refactor) tmux select-pane -t "$SESSION_NAME:0.2" ;;
-        polish)   tmux select-pane -t "$SESSION_NAME:0.3" ;;
-        verify)   tmux select-pane -t "$SESSION_NAME:0.4" ;;
-        hygiene)  tmux select-pane -t "$SESSION_NAME:0.5" ;;
-        *)        tmux select-pane -t "$SESSION_NAME:0.1" ;;  # Default to features
+        features)  tmux select-pane -t "$SESSION_NAME:0.1" ;;
+        refactor)  tmux select-pane -t "$SESSION_NAME:0.2" ;;
+        polish)    tmux select-pane -t "$SESSION_NAME:0.3" ;;
+        verify)    tmux select-pane -t "$SESSION_NAME:0.4" ;;
+        hygiene)   tmux select-pane -t "$SESSION_NAME:0.5" ;;
+        visual-qa) tmux select-pane -t "$SESSION_NAME:0.6" ;;
+        *)         tmux select-pane -t "$SESSION_NAME:0.1" ;;  # Default to features
     esac
 
     if [ -n "$only_stream" ]; then
         echo -e "${GREEN}Session created - only '$only_stream' stream started${NC}"
     else
-        echo -e "${GREEN}Session created with all 5 streams${NC}"
+        echo -e "${GREEN}Session created with all 6 streams${NC}"
     fi
     echo ""
     echo "Pane layout:"
-    echo "  [0] STATUS   - Header (keybindings)"
-    echo "  [1] FEATURES - PRD + P0 fixes (opus, 60% width)$([ -n "$only_stream" ] && [ "$only_stream" != "features" ] && echo " [not started]")"
-    echo "  [2] REFACTOR - P1 file splits (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "refactor" ] && echo " [not started]")"
-    echo "  [3] POLISH   - P2/P3 cleanup (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "polish" ] && echo " [not started]")"
-    echo "  [4] VERIFY   - Gap detection (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "verify" ] && echo " [not started]")"
-    echo "  [5] HYGIENE  - Backlog maintenance (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "hygiene" ] && echo " [not started]")"
+    echo "  [0] STATUS    - Header (keybindings)"
+    echo "  [1] FEATURES  - PRD + P0 fixes (opus, 60% width)$([ -n "$only_stream" ] && [ "$only_stream" != "features" ] && echo " [not started]")"
+    echo "  [2] REFACTOR  - P1 file splits (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "refactor" ] && echo " [not started]")"
+    echo "  [3] POLISH    - P2/P3 cleanup (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "polish" ] && echo " [not started]")"
+    echo "  [4] VERIFY    - Gap detection (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "verify" ] && echo " [not started]")"
+    echo "  [5] HYGIENE   - Backlog maintenance (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "hygiene" ] && echo " [not started]")"
+    echo "  [6] VISUAL-QA - Playwright tests (sonnet)$([ -n "$only_stream" ] && [ "$only_stream" != "visual-qa" ] && echo " [not started]")"
     echo ""
-    echo "Ctrl+b <0-5> to switch+zoom, Ctrl+b z to unzoom"
+    echo "Ctrl+b <0-6> to switch+zoom, Ctrl+b z to unzoom"
     echo ""
     echo "Attaching to session..."
 
@@ -218,7 +230,7 @@ stop_all() {
     rm -f "$SCRIPT_DIR/.ralph-stop"
 
     # Send Ctrl+C to each pane to stop running processes
-    for pane in 0 1 2 3 4 5; do
+    for pane in 0 1 2 3 4 5 6; do
         tmux send-keys -t "$SESSION_NAME:0.$pane" C-c 2>/dev/null || true
     done
 
@@ -281,13 +293,17 @@ restart_stream() {
             pane="5"
             script="./scripts/stream-watch-hygiene.sh"
             ;;
+        visual-qa)
+            pane="6"
+            script="./scripts/stream-watch-visual-qa.sh"
+            ;;
         status)
             pane="0"
             script="./ralph-tmux-status.sh"
             ;;
         *)
             echo -e "${RED}Unknown stream: $stream${NC}"
-            echo "Valid streams: features, refactor, polish, verify, hygiene, status"
+            echo "Valid streams: features, refactor, polish, verify, hygiene, visual-qa, status"
             exit 1
             ;;
     esac
@@ -351,7 +367,7 @@ graceful_stop() {
     while [ $elapsed -lt $timeout ]; do
         # Check if any stream panes are still running claude
         local running=0
-        for pane in 1 2 3 4 5; do
+        for pane in 1 2 3 4 5 6; do
             local cmd=$(tmux display-message -t "$SESSION_NAME:0.$pane" -p '#{pane_current_command}' 2>/dev/null || echo "")
             if [[ "$cmd" == *"claude"* ]] || [[ "$cmd" == *"ralph-streams"* ]]; then
                 running=$((running + 1))
@@ -416,7 +432,7 @@ case "$command" in
         echo "  restart [stream]- Restart all streams (or single stream)"
         echo "  status          - Show session status without attaching"
         echo ""
-        echo "Streams: features, refactor, polish, verify, hygiene"
+        echo "Streams: features, refactor, polish, verify, hygiene, visual-qa"
         echo ""
         echo "Examples:"
         echo "  ./ralph-tmux.sh start           # Start all streams"
