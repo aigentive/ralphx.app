@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-31 01:00:00 - Phase 56 Task 11: Document test organization in web-testing.md
+**What:**
+- Added comprehensive "Test Organization" section to docs/web-testing.md
+- Documented modular directory structure (views, modals, states subdirs)
+- Documented Page Object Model (POM) pattern with code examples
+- Documented spec file pattern with beforeEach and fixture usage
+- Added file size limits table (spec: 200 LOC, page object: 150 LOC)
+- Added split triggers table for code organization
+- Added naming conventions table (spec, page, fixture, helper patterns)
+- Added code quality checklist for new specs
+- Updated "Writing New Tests" section with basic workflow
+- Updated "File Reference" section to include tests/pages/, tests/fixtures/, tests/helpers/
+
+**Files:**
+- `docs/web-testing.md` (modified - added ~120 lines of documentation)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:15:00 - Phase 56 Task 10: Add visual-qa pane to ralph-tmux.sh
 **What:**
 - Added visual-qa to valid stream validation (line 66)
