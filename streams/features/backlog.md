@@ -54,7 +54,7 @@
 - [x] [Frontend] Bypassed EventProvider: PermissionDialog uses direct listen() import - src/components/PermissionDialog.tsx:2
 - [x] [Frontend] Bypassed EventProvider: IdeationView uses direct listen() import - src/components/Ideation/IdeationView.tsx:21
 - [x] [Frontend] Bypassed EventProvider: useSupervisorAlerts.listener uses direct listen() import - src/hooks/useSupervisorAlerts.listener.ts:9
-- [ ] [Frontend] Bypassed EventProvider: useAskUserQuestion uses direct listen() import - src/hooks/useAskUserQuestion.ts:10
+- [x] [Frontend] Bypassed EventProvider: useAskUserQuestion uses direct listen() import - src/hooks/useAskUserQuestion.ts:10
 - [ ] [Frontend] Bypassed EventProvider: useChatPanelHandlers uses direct listen() import - src/hooks/useChatPanelHandlers.ts:9
 
 ---
