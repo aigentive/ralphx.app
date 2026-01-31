@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 18:00:00 - P0 Fix: TaskBoard EventProvider migration
+**What:**
+- Migrated TaskBoard from direct `@tauri-apps/api/event` listen() to useEventBus()
+- Replaced async listen() pattern with synchronous subscribe() from EventBus
+- Events task:archived, task:restored, task:deleted now go through EventProvider
+- Simplified cleanup logic since subscribe() returns sync unsubscribe functions
+
+**Files Modified:**
+- `src/components/tasks/TaskBoard/TaskBoard.tsx` (use useEventBus() instead of direct listen())
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - TaskBoard events will now use MockEventBus in web mode
+
+---
+
 ### 2026-01-31 17:00:00 - P0 Fix: TaskChatPanel EventProvider migration
 **What:**
 - Migrated TaskChatPanel from direct `@tauri-apps/api/event` listen() to useEventBus()
