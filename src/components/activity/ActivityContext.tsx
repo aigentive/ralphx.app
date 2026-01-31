@@ -1,24 +1,73 @@
 /**
  * ActivityContext - Displays source/origin badge with contextual link
  *
- * Placeholder component - will be fully implemented in Task 2 (Context/Source Display)
+ * Shows where an activity event originated (task or ideation session)
+ * with a clickable link to navigate to the source, plus a role badge.
  */
 
+import { useCallback } from "react";
+import { CheckSquare, MessageSquare } from "lucide-react";
+import { useUiStore } from "@/stores/uiStore";
+import { useIdeationStore } from "@/stores/ideationStore";
+
 export interface ActivityContextProps {
-  taskId?: string;
-  sessionId?: string;
-  role?: string;
+  taskId?: string | undefined;
+  sessionId?: string | undefined;
+  role?: string | undefined;
 }
 
 /**
- * Placeholder for ActivityContext component.
- * Will be implemented in Task 2 to display:
- * - Icon: Task icon or Ideation icon
- * - Label: Task title or Session name
+ * ActivityContext displays the source of an activity event and the role.
+ * - Icon: Task icon (CheckSquare) or Session icon (MessageSquare)
+ * - Label: Truncated task/session ID
  * - Link: Click to navigate to the source
  * - Role badge: Agent / System / User indicator
  */
-export function ActivityContext(_props: ActivityContextProps) {
-  // Placeholder - will be implemented in Task 2
-  return null;
+export function ActivityContext({ taskId, sessionId, role }: ActivityContextProps) {
+  const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
+  const setCurrentView = useUiStore((state) => state.setCurrentView);
+  const setActiveSession = useIdeationStore((state) => state.setActiveSession);
+
+  const handleNavigate = useCallback(() => {
+    if (taskId) {
+      setSelectedTaskId(taskId);
+      setCurrentView("kanban");
+    } else if (sessionId) {
+      setActiveSession(sessionId);
+      setCurrentView("ideation");
+    }
+  }, [taskId, sessionId, setSelectedTaskId, setCurrentView, setActiveSession]);
+
+  // Don't render if no context available
+  if (!taskId && !sessionId) {
+    return null;
+  }
+
+  const isTask = Boolean(taskId);
+  const Icon = isTask ? CheckSquare : MessageSquare;
+  const label = isTask
+    ? `Task: ${taskId?.slice(0, 8)}...`
+    : `Session: ${sessionId?.slice(0, 8)}...`;
+
+  const roleLabel = role === "agent" ? "Agent" : role === "system" ? "System" : role === "user" ? "User" : null;
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleNavigate();
+        }}
+        className="flex items-center gap-1 hover:text-[var(--text-secondary)] transition-colors"
+      >
+        <Icon className="w-3 h-3" />
+        <span>{label}</span>
+      </button>
+      {roleLabel && (
+        <span className="px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[10px]">
+          {roleLabel}
+        </span>
+      )}
+    </div>
+  );
 }
