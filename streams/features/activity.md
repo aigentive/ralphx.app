@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-01-31 13:00:00 - P0 Fix: useArtifacts mock API wiring
+**What:**
+- Created `src/api/artifacts.ts` with centralized artifactsApi:
+  - `getArtifacts`, `getArtifact`, `createArtifact`, `updateArtifact`, `deleteArtifact`
+  - `getArtifactsByBucket`, `getArtifactsByTask`
+  - `getBuckets`, `createBucket`, `getSystemBuckets`
+  - `addArtifactRelation`, `getArtifactRelations`
+- Updated `src/api-mock/artifact.ts` with mockArtifactsApi matching the full interface
+- Wired `artifactsApi` into realApi in `src/lib/tauri.ts`
+- Wired `mockArtifactsApi` into mockApi in `src/api-mock/index.ts`
+- Updated `useArtifacts.ts` to import from centralized `api` object instead of `@/lib/api/artifacts`
+
+**Files Created:**
+- `src/api/artifacts.ts` (centralized real API)
+
+**Files Modified:**
+- `src/api-mock/artifact.ts` (extended mock API)
+- `src/lib/tauri.ts` (added artifactsApi to realApi)
+- `src/api-mock/index.ts` (added mockArtifactsApi to mockApi)
+- `src/hooks/useArtifacts.ts` (use centralized api)
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - Artifact operations will now use mock data in web mode
+
+---
+
 ### 2026-01-31 12:15:00 - P0 Fix: useMethodologies mock API wiring
 **What:**
 - Created `src/api/methodologies.ts` with centralized methodologiesApi:

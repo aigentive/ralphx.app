@@ -12,7 +12,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as artifactsApi from "@/lib/api/artifacts";
+import { api } from "@/lib/tauri";
 import type {
   ArtifactResponse,
   BucketResponse,
@@ -21,7 +21,7 @@ import type {
   UpdateArtifactInput,
   CreateBucketInput,
   AddRelationInput,
-} from "@/lib/api/artifacts";
+} from "@/api/artifacts";
 
 // ============================================================================
 // Query Keys
@@ -62,7 +62,7 @@ export const artifactKeys = {
 export function useArtifacts(artifactType?: string) {
   return useQuery<ArtifactResponse[], Error>({
     queryKey: artifactKeys.list(artifactType),
-    queryFn: () => artifactsApi.getArtifacts(artifactType),
+    queryFn: () => api.artifacts.getArtifacts(artifactType),
     staleTime: 30 * 1000, // 30 seconds
   });
 }
@@ -76,7 +76,7 @@ export function useArtifacts(artifactType?: string) {
 export function useArtifact(id: string) {
   return useQuery<ArtifactResponse | null, Error>({
     queryKey: artifactKeys.detail(id),
-    queryFn: () => artifactsApi.getArtifact(id),
+    queryFn: () => api.artifacts.getArtifact(id),
     enabled: !!id,
     staleTime: 30 * 1000, // 30 seconds
   });
@@ -91,7 +91,7 @@ export function useArtifact(id: string) {
 export function useArtifactsByBucket(bucketId: string) {
   return useQuery<ArtifactResponse[], Error>({
     queryKey: artifactKeys.byBucket(bucketId),
-    queryFn: () => artifactsApi.getArtifactsByBucket(bucketId),
+    queryFn: () => api.artifacts.getArtifactsByBucket(bucketId),
     enabled: !!bucketId,
     staleTime: 30 * 1000, // 30 seconds
   });
@@ -106,7 +106,7 @@ export function useArtifactsByBucket(bucketId: string) {
 export function useArtifactsByTask(taskId: string) {
   return useQuery<ArtifactResponse[], Error>({
     queryKey: artifactKeys.byTask(taskId),
-    queryFn: () => artifactsApi.getArtifactsByTask(taskId),
+    queryFn: () => api.artifacts.getArtifactsByTask(taskId),
     enabled: !!taskId,
     staleTime: 30 * 1000, // 30 seconds
   });
@@ -120,7 +120,7 @@ export function useArtifactsByTask(taskId: string) {
 export function useBuckets() {
   return useQuery<BucketResponse[], Error>({
     queryKey: artifactKeys.buckets(),
-    queryFn: artifactsApi.getBuckets,
+    queryFn: api.artifacts.getBuckets,
     staleTime: 60 * 1000, // 1 minute (buckets rarely change)
   });
 }
@@ -134,7 +134,7 @@ export function useBuckets() {
 export function useArtifactRelations(artifactId: string) {
   return useQuery<ArtifactRelationResponse[], Error>({
     queryKey: artifactKeys.relations(artifactId),
-    queryFn: () => artifactsApi.getArtifactRelations(artifactId),
+    queryFn: () => api.artifacts.getArtifactRelations(artifactId),
     enabled: !!artifactId,
     staleTime: 30 * 1000, // 30 seconds
   });
@@ -153,7 +153,7 @@ export function useCreateArtifact() {
   const queryClient = useQueryClient();
 
   return useMutation<ArtifactResponse, Error, CreateArtifactInput>({
-    mutationFn: artifactsApi.createArtifact,
+    mutationFn: api.artifacts.createArtifact,
     onSuccess: (artifact) => {
       queryClient.invalidateQueries({ queryKey: artifactKeys.lists() });
       if (artifact.bucket_id) {
@@ -183,7 +183,7 @@ export function useUpdateArtifact() {
     Error,
     { id: string; input: UpdateArtifactInput }
   >({
-    mutationFn: ({ id, input }) => artifactsApi.updateArtifact(id, input),
+    mutationFn: ({ id, input }) => api.artifacts.updateArtifact(id, input),
     onSuccess: (artifact, { id }) => {
       queryClient.invalidateQueries({ queryKey: artifactKeys.lists() });
       queryClient.invalidateQueries({ queryKey: artifactKeys.detail(id) });
@@ -210,7 +210,7 @@ export function useDeleteArtifact() {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, string>({
-    mutationFn: artifactsApi.deleteArtifact,
+    mutationFn: api.artifacts.deleteArtifact,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: artifactKeys.all });
     },
@@ -226,7 +226,7 @@ export function useCreateBucket() {
   const queryClient = useQueryClient();
 
   return useMutation<BucketResponse, Error, CreateBucketInput>({
-    mutationFn: artifactsApi.createBucket,
+    mutationFn: api.artifacts.createBucket,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: artifactKeys.buckets() });
     },
@@ -242,7 +242,7 @@ export function useAddArtifactRelation() {
   const queryClient = useQueryClient();
 
   return useMutation<ArtifactRelationResponse, Error, AddRelationInput>({
-    mutationFn: artifactsApi.addArtifactRelation,
+    mutationFn: api.artifacts.addArtifactRelation,
     onSuccess: (_, input) => {
       queryClient.invalidateQueries({
         queryKey: artifactKeys.relations(input.from_artifact_id),
