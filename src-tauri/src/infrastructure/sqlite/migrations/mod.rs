@@ -28,12 +28,13 @@ use crate::error::{AppError, AppResult};
 pub mod helpers;
 mod v1_initial_schema;
 mod v2_add_dependency_reason;
+mod v3_add_activity_events;
 
 #[cfg(test)]
 mod tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 2;
+pub const SCHEMA_VERSION: i32 = 3;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -57,6 +58,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 2,
         name: "add_dependency_reason",
         migrate: v2_add_dependency_reason::migrate,
+    },
+    Migration {
+        version: 3,
+        name: "add_activity_events",
+        migrate: v3_add_activity_events::migrate,
     },
 ];
 
