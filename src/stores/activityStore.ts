@@ -25,6 +25,8 @@ interface ActivityState {
   messages: AgentMessageEvent[];
   /** Supervisor alerts */
   alerts: SupervisorAlertEvent[];
+  /** Timestamp of the most recent message (for pulsating Live indicator) */
+  lastEventTime: number | null;
 }
 
 // ============================================================================
@@ -69,11 +71,13 @@ export const useActivityStore = create<ActivityState & ActivityActions>()(
     // Initial state
     messages: [],
     alerts: [],
+    lastEventTime: null,
 
     // Actions
     addMessage: (message) =>
       set((state) => {
         state.messages.push(message);
+        state.lastEventTime = Date.now();
         // Ring buffer: remove oldest messages if over limit
         if (state.messages.length > MAX_MESSAGES) {
           state.messages = state.messages.slice(-MAX_MESSAGES);
