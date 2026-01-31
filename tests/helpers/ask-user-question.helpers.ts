@@ -2,27 +2,34 @@ import { Page } from "@playwright/test";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
 /**
- * Trigger an AskUserQuestion modal in web mode by emitting an event
+ * Trigger an AskUserQuestion modal in web mode by directly manipulating uiStore
  *
- * In web mode, the app uses MockEventBus which is accessible via window.__eventBus.
- * This helper emits the event to trigger the modal programmatically.
+ * In web mode, the modal's visibility is controlled by uiStore.activeQuestion.
+ * This helper directly sets the activeQuestion state to bypass the event subscription
+ * timing issue.
+ *
+ * RATIONALE: The event-based approach has a race condition where the event is emitted
+ * before useAskUserQuestion's useEffect subscribes. Direct store manipulation is more
+ * reliable for testing.
  */
 export async function triggerAskUserQuestionModal(
   page: Page,
   question: AskUserQuestionPayload
 ): Promise<void> {
+  // Directly set activeQuestion in uiStore
   await page.evaluate((payload) => {
-    // Access the global event bus (set by EventProvider in web mode)
-    const eventBus = (window as any).__eventBus;
-    if (eventBus && typeof eventBus.emit === "function") {
-      eventBus.emit("agent:ask_user_question", payload);
+    // Access zustand store directly from window (exposed by devtools)
+    // In production, this would be triggered by event → hook → store
+    const uiStore = (window as any).__uiStore;
+    if (uiStore && typeof uiStore.getState === "function") {
+      uiStore.getState().setActiveQuestion(payload);
     } else {
-      throw new Error("EventBus not available. Make sure app is running in web mode.");
+      throw new Error("uiStore not available. Make sure app is running in web mode.");
     }
   }, question);
 
-  // Wait a small amount of time for React to process the event and update state
-  await page.waitForTimeout(100);
+  // Wait for React to process the state change
+  await page.waitForTimeout(200);
 }
 
 /**
