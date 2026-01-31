@@ -44,8 +44,12 @@ export function ActivityMessage({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (metadata) {
-        navigator.clipboard.writeText(JSON.stringify(metadata, null, 2));
-        onCopy();
+        try {
+          navigator.clipboard.writeText(JSON.stringify(metadata, null, 2));
+          onCopy();
+        } catch {
+          // Silently fail if metadata can't be stringified (shouldn't happen, but safe)
+        }
       }
     },
     [metadata, onCopy]
@@ -136,7 +140,14 @@ export function ActivityMessage({
               </Button>
             </div>
             <pre className="text-xs font-mono p-3 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[300px] overflow-y-auto">
-              {highlightJSON(JSON.stringify(metadata, null, 2))}
+              {(() => {
+                try {
+                  return highlightJSON(JSON.stringify(metadata, null, 2));
+                } catch {
+                  // Fallback to string representation if stringify fails
+                  return String(metadata);
+                }
+              })()}
             </pre>
           </div>
         </div>

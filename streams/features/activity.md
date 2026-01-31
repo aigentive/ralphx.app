@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-31 11:15:00 - Phase 52 Task 2: Add safe JSON parsing utility
+**What:**
+- Added `safeJsonParse<T>()` function to `ActivityView.utils.ts`
+  - Returns `{ data: T | string, error: boolean }` structure
+  - On parse failure, returns original string instead of throwing
+- Updated `toUnifiedMessage()` to use `safeJsonParse` for metadata parsing
+  - Gracefully handles malformed metadata JSON from backend
+  - On error, metadata is left undefined (no crash)
+- Updated `ActivityMessage.tsx` with defensive try-catch:
+  - Copy handler wrapped to prevent clipboard errors
+  - `highlightJSON` call wrapped with fallback to string
+
+**Files Modified:**
+- `src/components/activity/ActivityView.utils.ts`
+- `src/components/activity/ActivityMessage.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 10:30:00 - Phase 52 Task 1: Extract sub-components from ActivityView.tsx
 **What:**
 - Extracted types to `src/components/activity/ActivityView.types.ts` (60 lines)

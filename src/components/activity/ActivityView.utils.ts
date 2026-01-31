@@ -87,6 +87,28 @@ export function generateMessageKey(msg: UnifiedActivityMessage, index: number): 
 }
 
 // ============================================================================
+// Safe JSON Parsing
+// ============================================================================
+
+export interface SafeJsonParseResult<T = unknown> {
+  data: T;
+  error: boolean;
+}
+
+/**
+ * Safely parse JSON without throwing errors.
+ * Returns the parsed data and an error flag.
+ * On parse failure, returns the original string as data.
+ */
+export function safeJsonParse<T = unknown>(str: string): SafeJsonParseResult<T | string> {
+  try {
+    return { data: JSON.parse(str) as T, error: false };
+  } catch {
+    return { data: str, error: true };
+  }
+}
+
+// ============================================================================
 // JSON Highlighting
 // ============================================================================
 
@@ -163,12 +185,22 @@ export function highlightJSON(json: string): React.ReactNode[] {
  * Convert a historical ActivityEventResponse to UnifiedActivityMessage
  */
 export function toUnifiedMessage(event: ActivityEventResponse): UnifiedActivityMessage {
+  // Safely parse metadata - if it fails, log and continue without metadata
+  let parsedMetadata: Record<string, unknown> | undefined;
+  if (event.metadata) {
+    const result = safeJsonParse<Record<string, unknown>>(event.metadata);
+    if (!result.error && typeof result.data === "object" && result.data !== null) {
+      parsedMetadata = result.data as Record<string, unknown>;
+    }
+    // On error, metadata is left undefined (graceful degradation)
+  }
+
   return {
     id: event.id,
     type: event.eventType as AgentMessageEvent["type"],
     content: event.content,
     timestamp: new Date(event.createdAt).getTime(),
-    metadata: event.metadata ? JSON.parse(event.metadata) : undefined,
+    metadata: parsedMetadata,
     taskId: event.taskId ?? undefined,
     sessionId: event.ideationSessionId ?? undefined,
     internalStatus: event.internalStatus,
