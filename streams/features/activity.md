@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-31 11:30:00 - Phase 48 Task 10: Add activity events API wrapper with Zod schemas
+**What:**
+- Created `src/api/activity-events.schemas.ts` with Zod schemas for backend responses (snake_case)
+- Created `src/api/activity-events.types.ts` with TypeScript interfaces (camelCase)
+- Created `src/api/activity-events.transforms.ts` with snake_case to camelCase transform functions
+- Created `src/api/activity-events.ts` with `activityEventsApi` object exposing:
+  - `task.list()`: List paginated activity events for a task
+  - `task.count()`: Count activity events for a task
+  - `session.list()`: List paginated activity events for a session
+  - `session.count()`: Count activity events for a session
+- All functions support cursor-based pagination and filtering by event_types, roles, statuses
+
+**Files Created:**
+- `src/api/activity-events.schemas.ts` - Zod schemas
+- `src/api/activity-events.types.ts` - TypeScript types
+- `src/api/activity-events.transforms.ts` - Transform functions
+- `src/api/activity-events.ts` - API wrapper
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 10:15:00 - Phase 48 Task 9: Add Tauri commands for activity event pagination and filtering
 **What:**
 - Created `src-tauri/src/commands/activity_commands.rs` with 4 new Tauri commands
