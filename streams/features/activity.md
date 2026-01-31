@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-01 00:15:00 - Phase 54 Task 8: Integrate BlockReasonDialog in context menu
+**What:**
+- Modified `TaskCardContextMenu.tsx` to open `BlockReasonDialog` when "Block" action is clicked
+- Added `onBlockWithReason: (reason?: string) => void` prop to context menu interface
+- Added dialog state management with `showBlockDialog` state
+- "Block" action now opens dialog instead of simple confirmation
+- Dialog submission calls `onBlockWithReason` handler with optional reason
+- Modified `TaskCard.tsx` to pass `onBlockWithReason` handler
+- Handler calls `api.tasks.block(taskId, reason)` to invoke backend command
+
+**Files Modified:**
+- `src/components/tasks/TaskCardContextMenu.tsx`
+- `src/components/tasks/TaskBoard/TaskCard.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:00:00 - Phase 54 Task 7: Create BlockReasonDialog component
 **What:**
 - Created `src/components/tasks/BlockReasonDialog.tsx`

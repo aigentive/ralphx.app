@@ -12,7 +12,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { GripVertical, FileText, Lightbulb, Archive, Clock } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { ReviewStateBadge } from "./ReviewStateBadge";
+import { api } from "@/lib/tauri";
 import {
   getCardStyles,
   getExecutionStateClass,
@@ -188,6 +189,20 @@ export function TaskCard({
     moveMutation.mutate({ taskId: task.id, toStatus: newStatus });
   };
 
+  const handleBlockWithReason = useCallback(
+    async (reason?: string) => {
+      try {
+        await api.tasks.block(task.id, reason);
+        // Invalidate queries to refresh the task list
+        // Note: The block API emits queue_changed event which triggers UI refresh
+      } catch (error) {
+        console.error("Failed to block task:", error);
+        toast.error("Failed to block task");
+      }
+    },
+    [task.id]
+  );
+
   const handleStartIdeation = async () => {
     try {
       // Create session with seedTaskId
@@ -217,6 +232,7 @@ export function TaskCard({
         onRestore={handleRestore}
         onPermanentDelete={handlePermanentDelete}
         onStatusChange={handleStatusChange}
+        onBlockWithReason={handleBlockWithReason}
         onStartIdeation={handleStartIdeation}
       >
         <div

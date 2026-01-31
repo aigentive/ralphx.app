@@ -216,7 +216,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(frontend): integrate BlockReasonDialog in context menu"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 9,
