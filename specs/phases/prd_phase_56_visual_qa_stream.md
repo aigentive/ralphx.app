@@ -209,7 +209,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Create streams/visual-qa/activity.md with standard activity log template",
       "Commit: feat(streams): add visual-qa stream files"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 9,
