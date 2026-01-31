@@ -105,38 +105,11 @@ After the last `## ` heading in the file (or at the end if no major headings), a
 ```markdown
 ## Commit Lock Workflow (Parallel Agent Coordination)
 
-Reference: `.claude/rules/commit-lock.md`
+**See `.claude/rules/commit-lock.md` for the complete atomic commit protocol.**
 
-### Before Committing
-```bash
-# 1. Establish project root (works from any subdirectory)
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-
-# 2. Check/acquire lock
-if [ -f "$PROJECT_ROOT/.commit-lock" ]; then
-  # Read lock content, wait 3s, retry up to 30s
-  # If stale (same content >30s), delete and proceed
-fi
-
-# 3. Create lock
-echo "<stream-name> $(date -u +%Y-%m-%dT%H:%M:%S)" > "$PROJECT_ROOT/.commit-lock"
-
-# 4. Stage and commit
-git -C "$PROJECT_ROOT" add <files>
-git -C "$PROJECT_ROOT" commit -m "message"
-```
-
-### After Committing
-```bash
-# ALWAYS release lock (success or failure)
-rm -f "$PROJECT_ROOT/.commit-lock"
-```
-
-### Lock Rules
-1. Acquire lock BEFORE `git add`
-2. Release lock AFTER commit (success OR failure)
-3. Stale = same content + >30 sec old
-4. Never force-delete active lock from another agent
+Key points:
+- All commit operations (check + acquire + commit + release) must be in a SINGLE Bash command
+- Never separate the lock check and acquisition into different tool calls
 ```
 
 ### Step 5: Report Results

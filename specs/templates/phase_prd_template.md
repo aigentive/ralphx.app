@@ -41,14 +41,11 @@ Each task follows this pattern:
 
 ## Git Workflow (Parallel Agent Coordination)
 
-**Before each commit, follow the commit lock protocol:**
+**Before each commit, follow the commit lock protocol at `.claude/rules/commit-lock.md`**
 
-Reference: `.claude/rules/commit-lock.md`
-
-1. Establish project root: `PROJECT_ROOT="$(git rev-parse --show-toplevel)"`
-2. Acquire lock before `git add` (see commit-lock.md § Protocol)
-3. Stage and commit using `git -C "$PROJECT_ROOT"`
-4. Release lock after commit: `rm -f "$PROJECT_ROOT/.commit-lock"`
+Key points:
+- All commit operations (check + acquire + commit + release) must be in a SINGLE Bash command
+- Never separate the lock check and acquisition into different tool calls
 
 **Commit message conventions** (see `.claude/rules/git-workflow.md`):
 - Features stream: `feat:` / `fix:` / `docs:`

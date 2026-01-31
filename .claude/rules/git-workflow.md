@@ -10,20 +10,6 @@
 2. **Use commit lock protocol** — see @.claude/rules/commit-lock.md for full details
 3. **Only recover YOUR work** — uncommitted files belong to the stream whose backlog/PRD mentions them
 
-## Commit Lock Summary
-
-Before any commit:
-```bash
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-# Check/acquire lock at $PROJECT_ROOT/.commit-lock
-# See commit-lock.md for full protocol
-```
-
-After commit (success or failure):
-```bash
-rm -f "$PROJECT_ROOT/.commit-lock"
-```
-
 ## Recovery Check (Code-Writing Streams Only)
 
 **Applies to:** features, refactor, polish streams

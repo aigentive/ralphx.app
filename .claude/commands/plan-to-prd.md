@@ -112,31 +112,12 @@ Ask if they want to:
 
 **ALWAYS commit the plan, PRD, and manifest using the commit lock protocol.**
 
-Reference: `.claude/rules/commit-lock.md`
+**See `.claude/rules/commit-lock.md` for the complete atomic commit protocol.**
 
-```bash
-# 1. Establish project root
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-
-# 2. Acquire commit lock
-if [ -f "$PROJECT_ROOT/.commit-lock" ]; then
-  # Wait and retry per protocol (see commit-lock.md)
-fi
-echo "plan-to-prd $(date -u +%Y-%m-%dT%H:%M:%S)" > "$PROJECT_ROOT/.commit-lock"
-
-# 3. Stage files
-git -C "$PROJECT_ROOT" add specs/plans/<plan_name>.md
-git -C "$PROJECT_ROOT" add specs/phases/prd_phase_<N>_<short_name>.md
-git -C "$PROJECT_ROOT" add specs/manifest.json
-
-# 4. Commit
-git -C "$PROJECT_ROOT" commit -m "docs: add Phase <N> PRD for <phase name>
-
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
-
-# 5. Release lock (ALWAYS, even on failure)
-rm -f "$PROJECT_ROOT/.commit-lock"
-```
+Use stream name `plan-to-prd` and stage these files:
+- `specs/plans/<plan_name>.md`
+- `specs/phases/prd_phase_<N>_<short_name>.md`
+- `specs/manifest.json`
 
 **Commit message format:**
 - If activating: `docs: add and activate Phase <N> PRD for <phase name>`
