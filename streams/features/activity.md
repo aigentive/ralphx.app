@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 19:05:00 - Phase 49 Task 2: Extract parse_issues_from_notes helper to shared module
+**What:**
+- Created `src-tauri/src/commands/review_helpers.rs` with `parse_issues_from_notes` function
+- Added `pub mod review_helpers` to `src-tauri/src/commands/mod.rs`
+- Updated `src-tauri/src/http_server/handlers/reviews.rs` to import and use the shared helper
+- Removed local `parse_issues_from_notes` function from reviews.rs (62 LOC reduction)
+- Added type conversion from commands::ReviewIssue (i32 line) to http_server::ReviewIssue (u32 line)
+- Added 5 unit tests for the helper function
+
+**Files Modified:**
+- `src-tauri/src/commands/review_helpers.rs` (created)
+- `src-tauri/src/commands/mod.rs`
+- `src-tauri/src/http_server/handlers/reviews.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - 3194 tests, including 5 new review_helpers tests)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 18:45:00 - Phase 49 Task 1: Add ReviewIssue type and issues field to ReviewNoteResponse
 **What:**
 - Added `ReviewIssue` struct with fields: severity, file (optional), line (optional), description

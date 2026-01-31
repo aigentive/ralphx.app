@@ -15,6 +15,7 @@ pub mod qa_commands;
 pub mod research_commands;
 pub mod review_commands;
 pub mod review_commands_types;
+pub mod review_helpers;
 pub mod task_commands;
 pub mod task_context_commands;
 pub mod task_step_commands;
