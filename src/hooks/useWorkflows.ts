@@ -12,13 +12,16 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as workflowsApi from "@/lib/api/workflows";
+import { api } from "@/lib/tauri";
+import type { WorkflowSchema, WorkflowColumn } from "@/types/workflow";
 import type {
-  WorkflowResponse,
-  WorkflowColumnResponse,
   CreateWorkflowInput,
   UpdateWorkflowInput,
 } from "@/lib/api/workflows";
+
+// Type aliases for backward compatibility
+type WorkflowResponse = WorkflowSchema;
+type WorkflowColumnResponse = WorkflowColumn;
 
 // ============================================================================
 // Query Keys
@@ -56,7 +59,7 @@ export const workflowKeys = {
 export function useWorkflows() {
   return useQuery<WorkflowResponse[], Error>({
     queryKey: workflowKeys.lists(),
-    queryFn: workflowsApi.getWorkflows,
+    queryFn: () => api.workflows.list(),
     staleTime: 60 * 1000, // 1 minute
   });
 }
@@ -79,7 +82,7 @@ export function useWorkflows() {
 export function useWorkflow(id: string) {
   return useQuery<WorkflowResponse | null, Error>({
     queryKey: workflowKeys.detail(id),
-    queryFn: () => workflowsApi.getWorkflow(id),
+    queryFn: () => api.workflows.get(id),
     enabled: !!id,
     staleTime: 60 * 1000, // 1 minute
   });
@@ -104,7 +107,7 @@ export function useWorkflow(id: string) {
 export function useActiveWorkflowColumns() {
   return useQuery<WorkflowColumnResponse[], Error>({
     queryKey: workflowKeys.activeColumns(),
-    queryFn: workflowsApi.getActiveWorkflowColumns,
+    queryFn: () => api.workflows.getActiveColumns(),
     staleTime: 60 * 1000, // 1 minute
   });
 }
@@ -134,7 +137,7 @@ export function useCreateWorkflow() {
   const queryClient = useQueryClient();
 
   return useMutation<WorkflowResponse, Error, CreateWorkflowInput>({
-    mutationFn: workflowsApi.createWorkflow,
+    mutationFn: (input) => api.workflows.create(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
     },
@@ -166,7 +169,7 @@ export function useUpdateWorkflow() {
     Error,
     { id: string; input: UpdateWorkflowInput }
   >({
-    mutationFn: ({ id, input }) => workflowsApi.updateWorkflow(id, input),
+    mutationFn: ({ id, input }) => api.workflows.update(id, input),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
       queryClient.invalidateQueries({ queryKey: workflowKeys.detail(id) });
@@ -193,7 +196,7 @@ export function useDeleteWorkflow() {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, string>({
-    mutationFn: workflowsApi.deleteWorkflow,
+    mutationFn: (id) => api.workflows.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
       queryClient.invalidateQueries({ queryKey: workflowKeys.activeColumns() });
@@ -219,7 +222,7 @@ export function useSetDefaultWorkflow() {
   const queryClient = useQueryClient();
 
   return useMutation<WorkflowResponse, Error, string>({
-    mutationFn: workflowsApi.setDefaultWorkflow,
+    mutationFn: (id) => api.workflows.setDefault(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
       queryClient.invalidateQueries({ queryKey: workflowKeys.activeColumns() });

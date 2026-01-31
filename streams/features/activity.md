@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-31 11:30:00 - P0 Fix: useWorkflows mock API wiring
+**What:**
+- Extended `workflowsApi` in `src/api/projects.ts` with missing methods:
+  - `getActiveColumns`, `create`, `update`, `delete`, `setDefault`, `getBuiltin`
+- Extended `mockWorkflowsApi` in `src/api-mock/projects.ts` to match real API interface
+- Updated `useWorkflows.ts` to import from centralized `api` object instead of `@/lib/api/workflows`
+- This enables mock API switching in web mode for workflow operations
+
+**Files Modified:**
+- `src/api/projects.ts` (extended workflowsApi)
+- `src/api-mock/projects.ts` (extended mockWorkflowsApi)
+- `src/hooks/useWorkflows.ts` (use centralized api)
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - TaskBoard will now use mock data in web mode
+
+---
+
 ### 2026-01-31 10:45:00 - Phase 55 Gap Verification
 **What:**
 - All PRD tasks (1-8) completed, ran gap verification
