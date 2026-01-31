@@ -346,3 +346,11 @@
 **Commands:** `npx playwright test tests/visual/states/error-state/error-state.spec.ts --update-snapshots`
 **Result:** Success - 3 tests passing with baselines
 **Bootstrap Status:** COMPLETE - all uncovered items from manifest now covered
+
+### 2026-02-01 01:24:58 - TaskDetailModal Visual Tests
+**What:** Created test helper, page object, fixtures, spec, and baseline snapshots
+**Mock parity:** ready - used existing window.__uiStore exposure from web mode
+**Commands:**
+- `npx playwright test tests/visual/modals/task-detail-modal/task-detail-modal.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/task-detail-modal/task-detail-modal.spec.ts`
+**Result:** Success - 14 tests passing, 4 baseline snapshots generated
