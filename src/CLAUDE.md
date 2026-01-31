@@ -64,18 +64,8 @@ EventProvider wraps app with hooks: `useTaskEvents()`, `useSupervisorAlerts()`, 
 
 ## Rules
 
-### Tauri Param Conventions (CRITICAL)
-| Context | JS Side | Rust Side |
-|---------|---------|-----------|
-| Direct params | `{ contextType, contextId }` (camelCase) | `context_type, context_id` |
-| Struct fields | `{ input: { context_type, context_id } }` (snake_case) | serde exact-match |
-
-Add `#[serde(rename_all="camelCase")]` to Rust struct for camelCase in JS struct fields.
-
-### API Schema Convention (CRITICAL)
-- Zod schemas for backend responses use **snake_case** (match Rust)
-- Transform functions convert to **camelCase** for components
-- See `.claude/rules/code-quality-standards.md` for full pattern
+### API Layer Patterns
+See @.claude/rules/api-layer.md for Tauri conventions, schemas, transforms, and mocking.
 
 ### TS Config (strict)
 ```json

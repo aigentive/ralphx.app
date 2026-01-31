@@ -71,6 +71,10 @@ style={{ boxShadow: "none", outline: "none" }}
 10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.
 11. **Task tools for complex work (MANDATORY)** — Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
 12. **Commit lock for parallel work** — Acquire `.commit-lock` before committing, release after. Stale = same content >30s. See `.claude/rules/commit-lock.md`
+13. **LLM-optimized docs** — When creating `.claude/rules/*.md` or `**/CLAUDE.md` files, include this maintainer note at the top (after Required Context if present):
+    ```
+    > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
+    ```
 
 ## Git Conventions
 - NO: git init, push, remotes
