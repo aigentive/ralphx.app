@@ -12,6 +12,7 @@ WATCH_FILES=("streams/polish/backlog.md")
 LOCK_FILE=".stream-${STREAM}-lock"
 
 # Colors for output
+RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
@@ -35,18 +36,21 @@ cleanup() {
     exit 0
 }
 
+# Check if a PID is still running
+is_pid_alive() {
+    kill -0 "$1" 2>/dev/null
+}
+
 # Run a cycle with lock protection
 run_cycle() {
     local trigger="$1"
 
-    # Check if already running
-    if [ -f "$LOCK_FILE" ]; then
+    # Atomic lock acquisition using noclobber
+    # This prevents TOCTOU race between check and acquire
+    if ! ( set -o noclobber; echo $$ > "$LOCK_FILE" ) 2>/dev/null; then
         echo -e "${PAD}${BLUE}[$STREAM] Already running, skipping trigger from $trigger${NC}"
         return 0
     fi
-
-    # Acquire lock
-    echo $$ > "$LOCK_FILE"
 
     echo -e "${PAD}${YELLOW}[$STREAM] Starting cycle ($trigger)...${NC}"
     ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
@@ -60,8 +64,18 @@ run_cycle() {
 
 trap cleanup SIGINT SIGTERM EXIT
 
-# Clean up stale lock from previous run
-rm -f "$LOCK_FILE"
+# Clean up stale lock from previous run (only if PID is dead)
+if [ -f "$LOCK_FILE" ]; then
+    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && is_pid_alive "$OLD_PID"; then
+        echo -e "${PAD}${RED}[$STREAM] Another instance is already running (PID $OLD_PID)${NC}"
+        echo -e "${PAD}${RED}[$STREAM] Kill it first or wait for it to finish${NC}"
+        exit 1
+    else
+        echo -e "${PAD}${YELLOW}[$STREAM] Removing stale lock (PID $OLD_PID is dead)${NC}"
+        rm -f "$LOCK_FILE"
+    fi
+fi
 
 echo ""
 echo -e "${PAD}${GREEN}[$STREAM] Starting with fswatch...${NC}"
