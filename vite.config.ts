@@ -67,15 +67,16 @@ export default defineConfig(async ({ mode }) => {
     // 1. prevent Vite from obscuring rust errors
     clearScreen: false,
     // 2. tauri expects a fixed port, fail if that port is not available
+    //    web mode uses port 5173 to avoid conflict with native dev server
     server: {
-      port: 1420,
+      port: isWebMode ? 5173 : 1420,
       strictPort: true,
       host: host || false,
       hmr: host
         ? {
             protocol: "ws",
             host,
-            port: 1421,
+            port: isWebMode ? 5174 : 1421,
           }
         : undefined,
       watch: {

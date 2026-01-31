@@ -190,7 +190,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: chore(build): add dev:web script and web mode Vite config"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,
