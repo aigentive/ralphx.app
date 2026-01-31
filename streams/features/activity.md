@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 20:15:00 - Phase 50 Task 1: Add confirmation dialog to StatusDropdown
+**What:**
+- Imported `useConfirmation` hook in StatusDropdown.tsx
+- Added `handleTransition` async handler that shows confirmation dialog before calling `onTransition`
+- Dialog message: "Change status to {label}?" / "This will move the task to {label}."
+- Added `<ConfirmationDialog {...confirmationDialogProps} />` to component render
+
+**Files Modified:**
+- `src/components/tasks/StatusDropdown.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with pre-existing warnings only)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 19:45:00 - Phase 49 Complete: Gap Verification Passed
 **What:**
 - Ran gap verification for Phase 49 (Fix Escalation Reason Not Displaying)

@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import type { InternalStatus } from "@/types/task";
 import type { StatusTransition } from "@/types/task";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,6 +86,19 @@ export function StatusDropdown({
   onTransition,
   disabled = false,
 }: StatusDropdownProps) {
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+
+  // Handler for status transition with confirmation
+  const handleTransition = async (newStatus: string, label: string) => {
+    const confirmed = await confirm({
+      title: `Change status to ${label}?`,
+      description: `This will move the task to ${label}.`,
+      confirmText: "Change Status",
+    });
+    if (!confirmed) return;
+    onTransition(newStatus);
+  };
+
   // Fetch valid transitions from backend
   const { data: validTransitions, isLoading, isError } = useQuery({
     queryKey: ["valid-transitions", taskId],
@@ -153,7 +167,7 @@ export function StatusDropdown({
         {validTransitions.map((transition: StatusTransition) => (
           <DropdownMenuItem
             key={transition.status}
-            onClick={() => onTransition(transition.status)}
+            onClick={() => handleTransition(transition.status, transition.label)}
             className="cursor-pointer"
           >
             <span
@@ -164,6 +178,7 @@ export function StatusDropdown({
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
+      <ConfirmationDialog {...confirmationDialogProps} />
     </DropdownMenu>
   );
 }
