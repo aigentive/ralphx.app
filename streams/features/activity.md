@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 12:00:00 - Phase 52 Task 3: Add context/source display with role badge
+**What:**
+- Implemented `ActivityContext` component in `ActivityContext.tsx`
+  - Displays source icon (CheckSquare for tasks, MessageSquare for sessions)
+  - Shows truncated task/session ID as clickable link
+  - Role badge (Agent/System/User) when role is available
+  - Navigation: clicking opens task detail or switches to ideation session
+- Integrated `ActivityContext` into `ActivityMessage` header
+  - Appears below the type/status row
+  - Shows context for events that have taskId or sessionId
+
+**Files Modified:**
+- `src/components/activity/ActivityContext.tsx`
+- `src/components/activity/ActivityMessage.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 11:15:00 - Phase 52 Task 2: Add safe JSON parsing utility
 **What:**
 - Added `safeJsonParse<T>()` function to `ActivityView.utils.ts`

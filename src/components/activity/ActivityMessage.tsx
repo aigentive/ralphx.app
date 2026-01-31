@@ -15,6 +15,7 @@ import {
   formatTimestamp,
   highlightJSON,
 } from "./ActivityView.utils";
+import { ActivityContext } from "./ActivityContext";
 
 export interface ActivityMessageProps {
   message: UnifiedActivityMessage;
@@ -109,7 +110,13 @@ export function ActivityMessage({
               </span>
             )}
           </div>
-          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
+          {/* Context: Source (task/session) and role */}
+          <ActivityContext
+            taskId={message.taskId}
+            sessionId={message.sessionId}
+            role={message.role}
+          />
+          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
             {displayContent}
           </p>
         </div>
