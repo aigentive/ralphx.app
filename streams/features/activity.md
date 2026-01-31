@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-01 00:00:00 - Phase 51 Task 10: Create release process documentation
+**What:**
+- Created `docs/release-process.md` with comprehensive documentation:
+  - Prerequisites (Apple Developer, certificates, signing keys)
+  - One-time setup instructions (certificate creation, app-specific password, GitHub secrets)
+  - Local build testing process
+  - Release creation workflow (version bump, tag, publish)
+  - Auto-update flow explanation
+  - Troubleshooting section covering common issues
+  - File reference table
+
+**Files Created:**
+- `docs/release-process.md`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:45:00 - Phase 51 Task 9: Create local build and version bump scripts
 **What:**
 - Created `scripts/build-release.sh` for local DMG builds:

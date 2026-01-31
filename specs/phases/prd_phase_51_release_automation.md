@@ -259,7 +259,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Include troubleshooting section",
       "Commit: docs: add release process documentation"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
