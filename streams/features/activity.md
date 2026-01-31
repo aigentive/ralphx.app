@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-31 10:15:00 - Phase 48 Task 9: Add Tauri commands for activity event pagination and filtering
+**What:**
+- Created `src-tauri/src/commands/activity_commands.rs` with 4 new Tauri commands
+- `list_task_activity_events`: Paginated list of activity events for a task
+- `list_session_activity_events`: Paginated list of activity events for an ideation session
+- `count_task_activity_events`: Count events for a task with optional filter
+- `count_session_activity_events`: Count events for a session with optional filter
+- Added `ActivityEventFilterInput` for frontend-friendly filter specification (event_types, roles, statuses)
+- Added `ActivityEventResponse` and `ActivityEventPageResponse` response types
+- Exported commands from `mod.rs` and registered in `lib.rs`
+
+**Files Modified:**
+- `src-tauri/src/commands/activity_commands.rs` - New file with commands
+- `src-tauri/src/commands/mod.rs` - Added module and re-exports
+- `src-tauri/src/lib.rs` - Registered 4 new commands
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 09:00:00 - Phase 48 Task 8: Persist activity events when emitting stream events
 **What:**
 - Modified `process_stream_background()` to accept `activity_event_repo` and `task_repo` parameters

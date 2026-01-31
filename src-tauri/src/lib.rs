@@ -397,7 +397,12 @@ pub fn run() {
             commands::unified_chat_commands::get_agent_run_status_unified,
             commands::unified_chat_commands::is_chat_service_available,
             commands::unified_chat_commands::stop_agent,
-            commands::unified_chat_commands::is_agent_running
+            commands::unified_chat_commands::is_agent_running,
+            // Activity event commands (pagination, filtering)
+            commands::activity_commands::list_task_activity_events,
+            commands::activity_commands::list_session_activity_events,
+            commands::activity_commands::count_task_activity_events,
+            commands::activity_commands::count_session_activity_events
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
