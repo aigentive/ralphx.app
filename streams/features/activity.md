@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-02-01 05:30:00 - Phase 55 Task 5: Add Tauri Plugin Mocks for Web Mode
+**What:**
+- Created mock implementations for all Tauri plugins used in the codebase:
+  - `src/mocks/tauri-plugin-dialog.ts` - Mocks open, save, message, ask, confirm
+  - `src/mocks/tauri-plugin-fs.ts` - Mocks readTextFile, writeTextFile, exists, etc.
+  - `src/mocks/tauri-plugin-process.ts` - Mocks relaunch, exit
+  - `src/mocks/tauri-plugin-updater.ts` - Mocks check (returns null - no update)
+  - `src/mocks/tauri-plugin-global-shortcut.ts` - Mocks register, unregister
+  - `src/mocks/index.ts` - Re-exports all plugin mocks
+- Updated `vite.config.ts` to use conditional aliases in web mode:
+  - Detects `mode === "web"` and aliases @tauri-apps/plugin-* to mock files
+  - Refactored config to use async function with mode parameter
+
+**Files Modified:**
+- `src/mocks/tauri-plugin-dialog.ts` (new)
+- `src/mocks/tauri-plugin-fs.ts` (new)
+- `src/mocks/tauri-plugin-process.ts` (new)
+- `src/mocks/tauri-plugin-updater.ts` (new)
+- `src/mocks/tauri-plugin-global-shortcut.ts` (new)
+- `src/mocks/index.ts` (new)
+- `vite.config.ts` (updated)
+
+**Commands:**
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 04:16:00 - Phase 55 Task 4: Migrate All Event Hooks to EventProvider
 **What:**
 - Migrated all ~15 event hooks from direct `@tauri-apps/api/event` `listen()` to `useEventBus()`:

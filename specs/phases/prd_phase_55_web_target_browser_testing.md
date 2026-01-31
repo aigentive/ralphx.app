@@ -171,7 +171,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(mocks): add Tauri plugin mocks for web mode"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,
