@@ -1,3 +1,22 @@
+### 2026-01-31 22:38:30 - ProposalEditModal Visual Tests (Blocked)
+**What:**
+- Created page object: tests/pages/modals/proposal-edit.page.ts
+- Created helper: tests/helpers/ideation.helpers.ts (loadMockIdeationSession)
+- Created spec: tests/visual/modals/proposal-edit/proposal-edit.spec.ts with 7 tests
+- Test infrastructure complete: page selectors, helper to load mock session, full interaction tests
+
+**Mock parity:**
+- Status: BROKEN - Mock ideation sessions don't render in web mode
+- Component exists: ProposalEditModal in src/components/Ideation/ProposalEditModal.tsx
+- Mock API exists: src/api-mock/ideation.ts with ensureMockData() creating session + proposal
+- Issue: Sessions don't appear in sidebar when navigating to ideation view
+- Root cause: Unknown - may be project ID mismatch, query key issue, or useIdeationSessions hook issue
+
+**Commands:**
+- `npx playwright test tests/visual/modals/proposal-edit/proposal-edit.spec.ts --update-snapshots`
+
+**Result:** BLOCKED - All 7 tests timeout waiting for sessions to load. Helper fails at first step (no sessions in sidebar). Updated backlog with detailed block description and marked manifest as blocked. Needs mock data fix or test-only helper to set editingProposalId.
+
 ### 2026-01-31 22:30:03 - PermissionDialog Visual Tests (Blocked)
 **What:**
 - Created page object: tests/pages/modals/permission-dialog.page.ts
