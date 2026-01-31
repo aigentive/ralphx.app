@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 22:05:00 - Phase 51 Task 1: Add macOS DMG and signing configuration
+**What:**
+- Added `macOS` section to bundle config in `src-tauri/tauri.conf.json`
+- Configured `minimumSystemVersion: "13.0"` for macOS Ventura+
+- Set `signingIdentity: "-"` to use environment variable (CI sets `APPLE_SIGNING_IDENTITY`)
+- Added DMG layout with app at (180, 170), Applications at (480, 170), window 660x400
+
+**Files Modified:**
+- `src-tauri/tauri.conf.json`
+
+**Commands:**
+- JSON validation: passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:50:00 - Phase 50 Complete: Gap Verification Passed
 **What:**
 - All 6 tasks completed successfully
