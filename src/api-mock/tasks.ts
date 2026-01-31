@@ -159,16 +159,37 @@ export const mockTasksApi = {
     return 0;
   },
 
-  getValidTransitions: async (_taskId: string): Promise<{ from: string; to: string }[]> => {
-    // Return common transitions
-    return [
-      { from: "backlog", to: "ready" },
-      { from: "ready", to: "executing" },
-      { from: "executing", to: "pending_review" },
-      { from: "pending_review", to: "reviewing" },
-      { from: "reviewing", to: "review_passed" },
-      { from: "review_passed", to: "approved" },
-    ];
+  getValidTransitions: async (taskId: string): Promise<{ status: string; label: string }[]> => {
+    // Return valid transitions based on current task status
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      return [];
+    }
+
+    // Common transition mappings
+    const transitionMap: Record<string, { status: string; label: string }[]> = {
+      backlog: [{ status: "ready", label: "Ready" }],
+      ready: [
+        { status: "executing", label: "Executing" },
+        { status: "blocked", label: "Blocked" },
+      ],
+      blocked: [{ status: "ready", label: "Ready" }],
+      executing: [{ status: "pending_review", label: "Pending Review" }],
+      pending_review: [{ status: "reviewing", label: "AI Review in Progress" }],
+      reviewing: [
+        { status: "review_passed", label: "AI Review Passed" },
+        { status: "revision_needed", label: "Needs Revision" },
+        { status: "escalated", label: "Escalated" },
+      ],
+      review_passed: [{ status: "approved", label: "Approved" }],
+      escalated: [
+        { status: "approved", label: "Approved" },
+        { status: "revision_needed", label: "Needs Revision" },
+      ],
+    };
+
+    return transitionMap[task.internalStatus] ?? [];
   },
 
   move: async (taskId: string, toStatus: string): Promise<Task> => {

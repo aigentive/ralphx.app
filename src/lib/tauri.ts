@@ -1,8 +1,16 @@
 // Tauri invoke wrappers with type safety using Zod schemas
 // This file serves as the main entry point and re-exports domain-specific API modules
+//
+// Web Mode Support:
+// When running in a browser (without Tauri), this module automatically switches
+// to mock implementations for visual testing and development.
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import { isWebMode } from "./tauri-detection";
+
+// Re-export environment detection utilities
+export { isWebMode, isTauriMode } from "./tauri-detection";
 
 // ============================================================================
 // Core Utilities
@@ -147,11 +155,13 @@ import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
 
+// Mock API imports for web mode
+import { mockApi } from "@/api-mock";
+
 /**
- * Aggregate API object containing all typed Tauri command wrappers
- * This provides backward compatibility for existing imports of `api`
+ * Real Tauri API object containing all typed Tauri command wrappers
  */
-export const api = {
+const realApi = {
   health: {
     /**
      * Check if the backend is running
@@ -170,3 +180,29 @@ export const api = {
   steps: stepsApi,
   testData: testDataApi,
 } as const;
+
+/**
+ * Aggregate API object - automatically switches between real Tauri API and mock API
+ *
+ * - In Tauri WebView: Uses real Tauri invoke() calls
+ * - In browser (web mode): Uses mock implementations for testing
+ *
+ * This provides backward compatibility for existing imports of `api`
+ *
+ * Note: We cache the result after first access to avoid repeated checks,
+ * but the check is deferred until first use to handle Tauri initialization timing.
+ */
+let _cachedApi: typeof realApi | typeof mockApi | null = null;
+
+function getApi(): typeof realApi | typeof mockApi {
+  if (_cachedApi === null) {
+    _cachedApi = isWebMode() ? mockApi : realApi;
+  }
+  return _cachedApi;
+}
+
+export const api = new Proxy({} as typeof realApi, {
+  get(_target, prop: keyof typeof realApi) {
+    return getApi()[prop];
+  },
+});

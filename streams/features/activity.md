@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-01 03:15:00 - Phase 55 Task 2: Add Tauri Detection and Mock API Switching
+**What:**
+- Created `src/lib/tauri-detection.ts` with `isWebMode()` and `isTauriMode()` functions
+- Detection based on presence of `window.__TAURI_INTERNALS__` (only exists in Tauri WebView)
+- Updated `src/lib/tauri.ts` to conditionally export mock or real API based on `isWebMode()`
+- Added re-export of detection utilities from `@/lib/tauri`
+- Fixed mock API `getValidTransitions` to return correct `{ status, label }[]` format (was `{ from, to }[]`)
+
+**Files Created:**
+- `src/lib/tauri-detection.ts`
+
+**Files Modified:**
+- `src/lib/tauri.ts` (added conditional API switching)
+- `src/api-mock/tasks.ts` (fixed getValidTransitions return type)
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 02:45:00 - Phase 55 Task 1: Create Mock API Module
 **What:**
 - Created `src/api-mock/` directory with mock implementations mirroring `src/api/` interface
