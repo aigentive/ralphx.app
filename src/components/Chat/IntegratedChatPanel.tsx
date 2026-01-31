@@ -18,9 +18,8 @@ import { useTasks } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
-import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
 import { EXECUTION_STATUSES, HUMAN_REVIEW_STATUSES } from "@/types/status";
+import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -302,13 +301,21 @@ export function IntegratedChatPanel({
         >
           {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
 
-          {/* Active agent badge */}
-          {(isSending || isAgentRunning || isExecutionMode) && (
-            <Badge variant="secondary" className="shrink-0 mr-2">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
-            </Badge>
-          )}
+          {/* Unified status + activity badge */}
+          <StatusActivityBadge
+            isAgentActive={isSending || isAgentRunning || isExecutionMode}
+            agentType={
+              isExecutionMode
+                ? "worker"
+                : isReviewMode
+                  ? "reviewer"
+                  : (isSending || isAgentRunning)
+                    ? "agent"
+                    : "idle" as AgentType
+            }
+            contextType={chatContext.view}
+            contextId={ideationSessionId || selectedTaskId || null}
+          />
 
           {/* Conversation Selector */}
           <ConversationSelector
@@ -346,7 +353,6 @@ export function IntegratedChatPanel({
             ref={virtuosoRef}
             messages={sortedMessages}
             conversationId={activeConversationId}
-            isExecutionMode={isExecutionMode}
             failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
             onDismissFailedRun={setDismissedErrorId}
             isSending={isSending}

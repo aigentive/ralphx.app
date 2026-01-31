@@ -7,9 +7,8 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem, type ContentBlockItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { type ToolCall } from "./ToolCallIndicator";
-import { Bot, MessageSquare, Loader2, Activity, Hammer, X } from "lucide-react";
+import { Bot, MessageSquare, Loader2, Activity, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useUiStore } from "@/stores/uiStore";
 
 interface Message {
   id: string;
@@ -86,41 +85,6 @@ function LoadingState() {
   );
 }
 
-function WorkerExecutingIndicator() {
-  const setCurrentView = useUiStore((s) => s.setCurrentView);
-
-  return (
-    <div
-      data-testid="worker-executing-indicator"
-      className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.03) 100%)",
-        border: "1px solid rgba(255,107,53,0.15)",
-      }}
-    >
-      <Hammer className="w-3.5 h-3.5 text-[#ff6b35]" />
-      <div className="flex items-center gap-2 flex-1">
-        <span className="text-[13px] font-medium text-white/80">Worker is executing...</span>
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setCurrentView("activity")}
-        className="shrink-0 h-7 px-2"
-        aria-label="View all activity"
-      >
-        <Activity className="w-3.5 h-3.5 mr-1" />
-        <span className="text-[11px]">Activity</span>
-      </Button>
-    </div>
-  );
-}
-
 interface FailedRunBannerProps {
   errorMessage: string;
   onDismiss: (() => void) | undefined;
@@ -170,7 +134,6 @@ export interface ChatMessagesProps {
   isLoading: boolean;
   isSending: boolean;
   isAgentRunning: boolean;
-  isExecutionMode: boolean;
   streamingToolCalls: ToolCall[];
   failedErrorMessage: string | undefined;
   onDismissError: (() => void) | undefined;
@@ -182,7 +145,6 @@ export function ChatMessages({
   isLoading,
   isSending,
   isAgentRunning,
-  isExecutionMode,
   streamingToolCalls,
   failedErrorMessage,
   onDismissError,
@@ -233,9 +195,6 @@ export function ChatMessages({
                   onDismiss={onDismissError}
                 />
               )}
-
-              {/* Show worker executing indicator when in execution mode */}
-              {isExecutionMode && <WorkerExecutingIndicator />}
             </div>
           ),
           Footer: () => (
@@ -269,4 +228,4 @@ export function ChatMessages({
   );
 }
 
-export { TypingIndicator, EmptyState, LoadingState, WorkerExecutingIndicator, FailedRunBanner };
+export { TypingIndicator, EmptyState, LoadingState, FailedRunBanner };
