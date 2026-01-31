@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 51,
+  "currentPhase": 52,
   "phases": [
     {
       "phase": 0,
@@ -373,6 +373,13 @@
       "prd": "specs/phases/prd_phase_51_release_automation.md",
       "status": "complete",
       "description": "DMG distribution, code signing, notarization, auto-update, GitHub Actions CI/CD"
+    },
+    {
+      "phase": 52,
+      "name": "Activity Screen UI Improvements",
+      "prd": "specs/phases/prd_phase_52_activity_ui_improvements.md",
+      "status": "active",
+      "description": "Smart content rendering, context display, role filter, ActivityView refactor"
     }
   ]
 }
