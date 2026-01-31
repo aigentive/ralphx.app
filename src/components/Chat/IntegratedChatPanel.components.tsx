@@ -4,7 +4,6 @@
 
 import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
 
 // ============================================================================
@@ -81,41 +80,6 @@ export function EmptyState() {
 // LoadingState is now extracted to MessageListSkeleton.tsx
 // Re-export for backwards compatibility
 export { MessageListSkeleton as LoadingState } from "./MessageListSkeleton";
-
-export function WorkerExecutingIndicator() {
-  const setCurrentView = useUiStore((s) => s.setCurrentView);
-
-  return (
-    <div
-      data-testid="worker-executing-indicator"
-      className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.03) 100%)",
-        border: "1px solid rgba(255,107,53,0.15)",
-      }}
-    >
-      <Hammer className="w-3.5 h-3.5 text-[#ff6b35]" />
-      <div className="flex items-center gap-2 flex-1">
-        <span className="text-[13px] font-medium text-white/80">Worker is executing...</span>
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setCurrentView("activity")}
-        className="shrink-0 h-7 px-2"
-        aria-label="View all activity"
-      >
-        <Activity className="w-3.5 h-3.5 mr-1" />
-        <span className="text-[11px]">Activity</span>
-      </Button>
-    </div>
-  );
-}
 
 interface FailedRunBannerProps {
   errorMessage: string;

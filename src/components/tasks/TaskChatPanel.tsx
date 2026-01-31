@@ -12,8 +12,8 @@ import { useTaskChat, type TaskContextType } from "@/hooks/useTaskChat";
 import { chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning } from "@/stores/chatStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import {
   MessageSquare,
   CheckSquare,
@@ -21,6 +21,7 @@ import {
   Loader2,
   Hammer,
 } from "lucide-react";
+import { StatusActivityBadge, type AgentType } from "../Chat/StatusActivityBadge";
 import { ConversationSelector } from "../Chat/ConversationSelector";
 import { QueuedMessageList } from "../Chat/QueuedMessageList";
 import { ChatInput } from "../Chat/ChatInput";
@@ -104,29 +105,6 @@ function LoadingState() {
       className="flex items-center justify-center p-6"
     >
       <Loader2 className="w-5 h-5 animate-spin text-[#ff6b35]" />
-    </div>
-  );
-}
-
-function WorkerExecutingIndicator() {
-  return (
-    <div
-      data-testid="task-chat-worker-executing"
-      className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg"
-      style={{
-        background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.03) 100%)",
-        border: "1px solid rgba(255,107,53,0.15)",
-      }}
-    >
-      <Hammer className="w-3.5 h-3.5 text-[#ff6b35]" />
-      <div className="flex items-center gap-2 flex-1">
-        <span className="text-[13px] font-medium text-white/80">Worker is executing...</span>
-        <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-[#ff6b35]" />
-        </div>
-      </div>
     </div>
   );
 }
@@ -380,12 +358,22 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
           {/* Chat mode indicator */}
           <ChatModeIndicator isLive={isLive} />
 
-          {/* Active agent badge */}
-          {isLive && (isSending || isAgentRunning || isExecutionMode) && (
-            <Badge variant="secondary" className="shrink-0 mr-2">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {isExecutionMode ? "Worker running..." : isReviewMode ? "Reviewer working..." : isAgentRunning ? "Agent responding..." : "Working"}
-            </Badge>
+          {/* Unified status + activity badge */}
+          {isLive && (
+            <StatusActivityBadge
+              isAgentActive={isSending || isAgentRunning || isExecutionMode}
+              agentType={
+                isExecutionMode
+                  ? "worker"
+                  : isReviewMode
+                    ? "reviewer"
+                    : (isSending || isAgentRunning)
+                      ? "agent"
+                      : "idle" as AgentType
+              }
+              contextType="task_detail"
+              contextId={taskId}
+            />
           )}
 
           <div className="flex items-center gap-1 shrink-0">
@@ -409,9 +397,6 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
           data-testid="task-chat-panel-messages"
         >
           <div className="p-3">
-            {/* Show worker executing indicator when in execution mode */}
-            {isExecutionMode && <WorkerExecutingIndicator />}
-
             {isLoading ? (
               <LoadingState />
             ) : isEmpty ? (

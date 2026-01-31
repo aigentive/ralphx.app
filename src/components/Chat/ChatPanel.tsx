@@ -19,7 +19,6 @@ import { useTaskStore } from "@/stores/taskStore";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   MessageSquare,
   CheckSquare,
@@ -27,9 +26,9 @@ import {
   X,
   PanelRightClose,
   PanelRightOpen,
-  Loader2,
   Hammer,
 } from "lucide-react";
+import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -368,13 +367,23 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />
 
-          {/* Active agent badge */}
-          {(isSending || isAgentRunning || isExecutionMode) && (
-            <Badge variant="secondary" className="shrink-0 mr-2">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {isExecutionMode ? "Worker running..." : isAgentRunning ? "Agent responding..." : "Working"}
-            </Badge>
-          )}
+          {/* Unified status + activity badge */}
+          <StatusActivityBadge
+            isAgentActive={isSending || isAgentRunning || isExecutionMode}
+            agentType={
+              isExecutionMode
+                ? "worker"
+                : (isSending || isAgentRunning)
+                  ? "agent"
+                  : "idle" as AgentType
+            }
+            contextType={context.view}
+            contextId={
+              context.view === "ideation" && context.ideationSessionId
+                ? context.ideationSessionId
+                : context.selectedTaskId || null
+            }
+          />
 
           <div className="flex items-center gap-1 shrink-0">
             {/* Conversation Selector */}
@@ -425,7 +434,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           isLoading={isLoading}
           isSending={isSending}
           isAgentRunning={isAgentRunning}
-          isExecutionMode={isExecutionMode}
           streamingToolCalls={streamingToolCalls}
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}

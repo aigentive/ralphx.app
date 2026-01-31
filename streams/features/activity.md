@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-01-31 17:00:00 - Phase 48 Task 15: Integrate StatusActivityBadge in chat panels
+**What:**
+- Replaced Badge + WorkerExecutingIndicator with StatusActivityBadge in IntegratedChatPanel.tsx
+- Replaced Badge + WorkerExecutingIndicator with StatusActivityBadge in ChatPanel.tsx
+- Replaced Badge + WorkerExecutingIndicator with StatusActivityBadge in TaskChatPanel.tsx
+- Removed `isExecutionMode` prop from ChatMessageList.tsx
+- Removed WorkerExecutingIndicator from ChatMessageList Header
+- Removed WorkerExecutingIndicator component from IntegratedChatPanel.components.tsx
+- Removed WorkerExecutingIndicator component from ChatMessages.tsx
+- Removed WorkerExecutingIndicator component from TaskChatPanel.tsx
+
+**Files Modified:**
+- `src/components/Chat/IntegratedChatPanel.tsx` - Replaced Badge with StatusActivityBadge
+- `src/components/Chat/ChatPanel.tsx` - Replaced Badge with StatusActivityBadge
+- `src/components/Chat/ChatMessageList.tsx` - Removed isExecutionMode prop and WorkerExecutingIndicator usage
+- `src/components/Chat/ChatMessages.tsx` - Removed isExecutionMode prop and WorkerExecutingIndicator
+- `src/components/Chat/IntegratedChatPanel.components.tsx` - Removed WorkerExecutingIndicator export
+- `src/components/tasks/TaskChatPanel.tsx` - Replaced Badge with StatusActivityBadge
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 16:15:00 - Phase 48 Task 14: Create StatusActivityBadge component
 **What:**
 - Created `src/components/Chat/StatusActivityBadge.tsx` - unified component for agent status + activity navigation

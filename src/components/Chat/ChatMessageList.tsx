@@ -14,7 +14,6 @@ import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import {
   TypingIndicator,
-  WorkerExecutingIndicator,
   FailedRunBanner,
 } from "./IntegratedChatPanel.components";
 import type { ToolCall } from "./ToolCallIndicator";
@@ -54,8 +53,6 @@ interface ChatMessageListProps {
   messages: ChatMessageData[];
   /** Conversation ID - used as key to force remount on conversation switch */
   conversationId: string | null;
-  /** Show worker executing indicator in header */
-  isExecutionMode: boolean;
   /** Show failed run banner */
   failedRun?: { id: string; errorMessage: string } | null;
   /** Callback when failed run banner is dismissed */
@@ -78,7 +75,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     {
       messages,
       conversationId,
-      isExecutionMode,
       failedRun,
       onDismissFailedRun,
       isSending,
@@ -139,9 +135,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     onDismiss={() => onDismissFailedRun(failedRun.id)}
                   />
                 )}
-
-                {/* Show worker executing indicator when in execution mode */}
-                {isExecutionMode && <WorkerExecutingIndicator />}
               </div>
             ),
             Footer: () => (
