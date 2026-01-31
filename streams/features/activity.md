@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 23:00:00 - Phase 51 Task 6: Register updater plugin in Rust
+**What:**
+- Added `.plugin(tauri_plugin_updater::Builder::new().build())` to `src-tauri/src/lib.rs`
+- Placed after existing plugin registrations (window_state)
+- Clippy passes with no warnings
+
+**Files Modified:**
+- `src-tauri/src/lib.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`: passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:45:00 - Phase 51 Task 5: Configure updater plugin in tauri.conf.json
 **What:**
 - Added `plugins.updater` section to `src-tauri/tauri.conf.json`
