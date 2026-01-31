@@ -14,6 +14,22 @@ import type {
 // ============================================================================
 
 export const mockActivityEventsApi = {
+  all: {
+    list: async (
+      _options?: {
+        cursor?: string;
+        limit?: number;
+        filter?: ActivityEventFilter;
+      }
+    ): Promise<ActivityEventPageResponse> => {
+      return {
+        events: [],
+        cursor: null,
+        hasMore: false,
+      };
+    },
+  },
+
   task: {
     list: async (
       _taskId: string,

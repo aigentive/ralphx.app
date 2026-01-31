@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 14:30:00 - Phase 57 Gap Verification: Missing all.list() mock
+**What:**
+- Ran gap verification for Phase 57 - all code wiring verified correctly
+- Found missing `all.list()` method in `mockActivityEventsApi` for browser testing mode
+- Added `all.list()` method returning empty event page (matches task/session patterns)
+- Marked P0 as fixed in backlog
+
+**Files:**
+- `src/api-mock/activity-events.ts` (modified - added all.list() method)
+- `streams/features/backlog.md` (modified - added and marked P0 as fixed)
+
+**Commands:**
+- `npx eslint src/api-mock/activity-events.ts` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 14:00:00 - Phase 57 Task 12: Add userLockedMode to prevent auto-switch
 **What:**
 - Added `userLockedMode` state to track when user manually selects a view mode
