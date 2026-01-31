@@ -32,6 +32,7 @@ import { useGitDiff } from "@/hooks/useGitDiff";
 import { useReviewsByTaskId, useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
@@ -324,6 +325,7 @@ export function ReviewDetailModal({
   const queryClient = useQueryClient();
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
   // Fetch task
   const { data: task, isLoading: taskLoading } = useQuery({
@@ -388,6 +390,17 @@ export function ReviewDetailModal({
       setShowFeedbackInput(true);
     }
   }, [showFeedbackInput, feedback, requestChangesMutation]);
+
+  const handleApprove = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Approve this task?",
+      description: "The task will be marked as approved and completed.",
+      confirmText: "Approve",
+      variant: "default",
+    });
+    if (!confirmed) return;
+    approveMutation.mutate();
+  }, [confirm, approveMutation]);
 
   const handleCommitSelect = useCallback((_commit: Commit) => {
     // In a real implementation, this would fetch files changed in the commit
@@ -572,7 +585,7 @@ export function ReviewDetailModal({
           </Button>
           <Button
             data-testid="review-detail-approve"
-            onClick={() => approveMutation.mutate()}
+            onClick={handleApprove}
             disabled={isLoading || !canApprove || showFeedbackInput}
             className="gap-1.5"
             style={{
@@ -588,6 +601,7 @@ export function ReviewDetailModal({
             Approve
           </Button>
         </div>
+        <ConfirmationDialog {...confirmationDialogProps} />
       </DialogContent>
     </Dialog>
   );
