@@ -1,6 +1,7 @@
 // Repository traits - domain layer abstractions for data persistence
 // These traits define the contract; implementations live in infrastructure layer
 
+pub mod activity_event_repository;
 pub mod agent_profile_repository;
 pub mod agent_run_repository;
 pub mod artifact_bucket_repository;
@@ -25,6 +26,9 @@ pub mod task_step_repository;
 pub mod workflow_repository;
 
 // Re-exports for convenience
+pub use activity_event_repository::{
+    ActivityEventFilter, ActivityEventPage, ActivityEventRepository,
+};
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
 pub use agent_run_repository::AgentRunRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;
