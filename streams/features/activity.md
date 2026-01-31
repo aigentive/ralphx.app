@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-01 12:45:00 - Phase 57 Task 8: Add SessionFilter searchable dropdown
+**What:**
+- Created `SessionFilter` component using Popover + searchable list pattern
+- Component fetches recent sessions (last 15) using `useIdeationSessions` hook
+- Shows selected session title in trigger button with clear button
+- Displays session status as secondary info
+- Re-exported SessionFilter from ActivityFilters.tsx for clean imports
+
+**Files:**
+- `src/components/activity/SessionFilter.tsx` (new)
+- `src/components/activity/ActivityFilters.tsx` (modified - added re-export)
+
+**Commands:**
+- `npx eslint src/components/activity/SessionFilter.tsx src/components/activity/ActivityFilters.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 12:15:00 - Phase 57 Task 7: Add TaskFilter searchable dropdown
 **What:**
 - Created `TaskFilter` component using Popover + searchable list pattern

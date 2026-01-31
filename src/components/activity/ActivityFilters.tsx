@@ -14,6 +14,10 @@ import {
 // Re-export TaskFilter from dedicated module
 export { TaskFilter } from "./TaskFilter";
 export type { TaskFilterProps } from "./TaskFilter";
+
+// Re-export SessionFilter from dedicated module
+export { SessionFilter } from "./SessionFilter";
+export type { SessionFilterProps } from "./SessionFilter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
