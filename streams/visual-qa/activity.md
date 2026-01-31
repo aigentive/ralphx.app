@@ -354,3 +354,11 @@
 - `npx playwright test tests/visual/modals/task-detail-modal/task-detail-modal.spec.ts --update-snapshots`
 - `npx playwright test tests/visual/modals/task-detail-modal/task-detail-modal.spec.ts`
 **Result:** Success - 14 tests passing, 4 baseline snapshots generated
+
+### 2026-02-01 01:40:00 - ProposalEditModal Visual Tests
+**What:** Created visual regression tests for ProposalEditModal
+**Mock parity:** Mock ideation commands already implemented (uncommitted in src/mocks/tauri-api-core.ts by features stream). Verified session renders, proposal loads, and modal opens successfully.
+**Commands:** 
+- `npx playwright test tests/visual/modals/proposal-edit/proposal-edit.spec.ts --update-snapshots` (baseline created)
+- `npx playwright test tests/visual/modals/proposal-edit/proposal-edit.spec.ts` (all tests pass)
+**Result:** Success - 7 tests passing, baseline snapshot created

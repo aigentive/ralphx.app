@@ -20,7 +20,7 @@ Phase: COMPLETE
 | ReviewsPanel | ✅ | reviews-panel.spec.ts | ✅ | covered |
 | AskUserQuestionModal | ✅ | ask-user-question.spec.ts | ✅ | covered |
 | ProjectCreationWizard | ✅ | project-creation-wizard.spec.ts | ✅ | covered |
-| ProposalEditModal | 🚧 | proposal-edit.spec.ts | — | blocked |
+| ProposalEditModal | ✅ | proposal-edit.spec.ts | ✅ | covered |
 | PermissionDialog | 🚧 | — | — | blocked |
 
 ## States & Edge Cases

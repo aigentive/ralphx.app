@@ -19,4 +19,4 @@
 
 <!-- Next components to cover, in order of readiness -->
 
-1. **ProposalEditModal** - **BLOCKED - Mock data parity issue**. Modal component exists and test infrastructure ready (tests/pages/modals/proposal-edit.page.ts, tests/helpers/ideation.helpers.ts, tests/visual/modals/proposal-edit/proposal-edit.spec.ts). Issue: Mock ideation sessions (src/api-mock/ideation.ts:ensureMockData) create session + proposal, but sessions don't render in sidebar when navigating to ideation view. Root cause unknown - may be project ID mismatch or query key issue. Needs either: (1) Fix mock data loading in web mode, OR (2) Test-only helper to set editingProposalId state in App.tsx. Tests fail at loadMockIdeationSession helper - no sessions appear in sidebar.
+- [x] **ProposalEditModal** - Completed. Spec, baseline, and helper updated. All 7 tests pass.

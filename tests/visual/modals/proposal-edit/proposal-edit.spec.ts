@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { IdeationPage } from "../../../pages/ideation.page";
 import { ProposalEditModalPage } from "../../../pages/modals/proposal-edit.page";
 import { setupIdeation } from "../../../fixtures/setup.fixtures";
-import { loadMockIdeationSession } from "../../../helpers/ideation.helpers";
+import { loadMockIdeationSession, openProposalEditModal } from "../../../helpers/ideation.helpers";
 
 /**
  * Visual regression tests for ProposalEditModal component.
@@ -29,12 +29,8 @@ test.describe("ProposalEditModal", () => {
     // Initially modal should not be visible
     await expect(proposalEditModal.modal).not.toBeVisible();
 
-    // Find the first proposal card and hover to reveal edit button
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-
-    // Click the edit button (FileEdit icon)
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    // Open the proposal edit modal using helper
+    await openProposalEditModal(page);
 
     // Modal should now be visible
     await proposalEditModal.waitForModal();
@@ -44,9 +40,7 @@ test.describe("ProposalEditModal", () => {
 
   test("displays all form fields with existing proposal data", async ({ page }) => {
     // Open the modal
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    await openProposalEditModal(page);
     await proposalEditModal.waitForModal();
 
     // All form fields should be visible
@@ -61,9 +55,7 @@ test.describe("ProposalEditModal", () => {
 
   test("allows editing proposal fields", async ({ page }) => {
     // Open the modal
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    await openProposalEditModal(page);
     await proposalEditModal.waitForModal();
 
     // Edit title
@@ -81,9 +73,7 @@ test.describe("ProposalEditModal", () => {
 
   test("allows adding and editing implementation steps", async ({ page }) => {
     // Open the modal
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    await openProposalEditModal(page);
     await proposalEditModal.waitForModal();
 
     // Get initial step count
@@ -99,9 +89,7 @@ test.describe("ProposalEditModal", () => {
 
   test("allows adding and editing acceptance criteria", async ({ page }) => {
     // Open the modal
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    await openProposalEditModal(page);
     await proposalEditModal.waitForModal();
 
     // Get initial criterion count
@@ -117,9 +105,7 @@ test.describe("ProposalEditModal", () => {
 
   test("closes modal when cancel button is clicked", async ({ page }) => {
     // Open the modal
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    await openProposalEditModal(page);
     await proposalEditModal.waitForModal();
 
     // Click cancel
@@ -131,9 +117,7 @@ test.describe("ProposalEditModal", () => {
 
   test("matches snapshot", async ({ page }) => {
     // Open the modal
-    const firstProposalCard = page.locator('[data-testid^="proposal-card-"]').first();
-    await firstProposalCard.hover();
-    await firstProposalCard.getByRole("button").filter({ hasText: /edit/i }).first().click();
+    await openProposalEditModal(page);
     await proposalEditModal.waitForModal();
 
     // Wait for animations to complete
