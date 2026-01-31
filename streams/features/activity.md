@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-01-31 21:30:00 - Phase 54 Task 1: Add blocked_reason column migration
+**What:**
+- Created `v4_add_blocked_reason.rs` migration file
+- Uses `helpers::add_column_if_not_exists` for idempotent migration
+- Added `mod v4_add_blocked_reason` to mod.rs
+- Registered migration in MIGRATIONS array (version 4)
+- Bumped SCHEMA_VERSION from 3 to 4
+- Added 4 tests: column exists, can set value, allows null, can update
+- Updated test_schema_version_constant to expect 4
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/sqlite/migrations/v4_add_blocked_reason.rs` (new)
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs`
+- `src-tauri/src/infrastructure/sqlite/migrations/tests.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passed
+- `cargo test --lib infrastructure::sqlite::migrations` - 42 tests passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:00:00 - Phase 53 Complete: Gap Verification Passed
 **What:**
 - All 3 PRD tasks completed with `passes: true`
