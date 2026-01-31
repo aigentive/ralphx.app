@@ -93,7 +93,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(http_server): add ReviewIssue struct and fix field name mismatch"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
@@ -110,7 +110,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(http_server): store issues in review notes"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
