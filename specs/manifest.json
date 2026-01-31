@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 49,
+  "currentPhase": 50,
   "phases": [
     {
       "phase": 0,
@@ -357,14 +357,14 @@
       "phase": 49,
       "name": "Fix Escalation Reason Not Displaying",
       "prd": "specs/phases/prd_phase_49_escalation_display_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix Tauri command to parse issues from notes like HTTP endpoint"
     },
     {
       "phase": 50,
       "name": "Confirmation Dialogs for Task State Transitions",
       "prd": "specs/phases/prd_phase_50_confirmation_dialogs.md",
-      "status": "pending",
+      "status": "active",
       "description": "Add confirmation dialogs to all task state transition actions using useConfirmation hook"
     }
   ]
