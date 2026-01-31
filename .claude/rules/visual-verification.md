@@ -5,6 +5,7 @@
 > **CRITICAL:** This workflow is MANDATORY for any task that modifies UI files.
 > You CANNOT mark a task as `"passes": true` without completing these steps.
 > You CANNOT skip screenshot capture for UI tasks.
+> You CANNOT delegate visual verification to sub-agents - execute DIRECTLY using the Skill tool.
 
 ## Step 5.5: Mock Layer Check
 
@@ -16,12 +17,14 @@
    - Export from src/api-mock/index.ts
 4. Verify: web mode renders without undefined errors
 
-## Step 6.5: Visual Verification
+## Step 6.5: Visual Verification (NO DELEGATION)
+
+**Execute DIRECTLY using the Skill tool. Do NOT use Task tool to delegate.**
 
 1. Check if dev server running at http://localhost:5173
 2. If unavailable → start: `npm run dev:web` (background)
 3. Need to reload changes? → restart: stop existing server, then `npm run dev:web`
-4. Use agent-browser:
+4. Invoke `/agent-browser-skill` (Skill tool) to:
    a. Open the feature view
    b. Snapshot interactive elements
    c. Take screenshot

@@ -59,9 +59,10 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
    c. Missing? → Create minimal mock first
    d. Verify: `npm run dev:web` renders without undefined errors
 
-6.5. Browser Verification (MANDATORY for UI tasks):
+6.5. Browser Verification (MANDATORY for UI tasks - NO DELEGATION):
+   **Execute this step DIRECTLY using the Skill tool. Do NOT delegate via Task tool.**
    a. Ensure dev server running: `curl -s http://localhost:5173 > /dev/null || npm run dev:web &`
-   b. Use agent-browser skill to:
+   b. Invoke `/agent-browser-skill` (Skill tool, NOT Task tool) to:
       - Navigate to the affected view
       - Interact with the modified component
       - Take screenshot: screenshots/features/YYYY-MM-DD_HH-MM-SS_[task-name].png
