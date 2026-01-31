@@ -331,6 +331,13 @@
       "prd": "specs/phases/prd_phase_45_escalated_state.md",
       "status": "complete",
       "description": "Add dedicated Escalated state for AI reviewer escalation requiring human decision"
+    },
+    {
+      "phase": 46,
+      "name": "Escalation Data Fix",
+      "prd": "specs/phases/prd_phase_46_escalation_data_fix.md",
+      "status": "pending",
+      "description": "Fix field name mismatch and add issues array support for escalation data display"
     }
   ]
 }
