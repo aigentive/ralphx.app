@@ -8,7 +8,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
 import {
   AskUserQuestionPayloadSchema,
@@ -83,11 +83,7 @@ export function useAskUserQuestion() {
 
       setIsLoading(true);
       try {
-        await invoke("answer_user_question", {
-          taskId: response.taskId,
-          selectedOptions: response.selectedOptions,
-          customResponse: response.customResponse,
-        });
+        await api.askUserQuestion.answerQuestion(response);
 
         clearActiveQuestion();
       } catch {

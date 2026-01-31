@@ -132,6 +132,9 @@ export {
   CustomDepthInputSchema,
 } from "@/api/research";
 
+// Ask User Question API
+export { askUserQuestionApi } from "@/api/ask-user-question";
+
 // QA API
 export {
   qaApi,
@@ -191,6 +194,7 @@ import { projectsApi, workflowsApi } from "@/api/projects";
 import { methodologiesApi } from "@/api/methodologies";
 import { artifactsApi } from "@/api/artifacts";
 import { researchApi } from "@/api/research";
+import { askUserQuestionApi } from "@/api/ask-user-question";
 import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
@@ -216,6 +220,7 @@ const realApi = {
   methodologies: methodologiesApi,
   artifacts: artifactsApi,
   research: researchApi,
+  askUserQuestion: askUserQuestionApi,
   qa: qaApi,
   reviews: reviewsApi,
   fixTasks: fixTasksApi,
