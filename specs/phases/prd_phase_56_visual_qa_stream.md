@@ -250,7 +250,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update help text",
       "Commit: feat(tmux): add visual-qa pane to ralph-tmux.sh"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 11,
