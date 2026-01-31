@@ -34,23 +34,12 @@ Read backlog → First [ ] item (not struck/excluded) → Verify still exists �
 
 **NEVER use `git add .` or `git add -A`** — other streams have uncommitted changes!
 
-### Commit Lock Protocol (see .claude/rules/commit-lock.md)
-```
-1. Check .commit-lock:
-   → NOT EXISTS? Create: echo "polish $(date -u +%Y-%m-%dT%H:%M:%S)" > .commit-lock
-   → EXISTS? Read content, check if stale (>30s). If stale, delete and acquire.
-            If not stale: sleep 3, re-read content (lock may change hands), loop.
+**Follow the atomic commit lock protocol at `.claude/rules/commit-lock.md`**
 
-2. Commit your files: git add <file1> <file2> ... && git commit
-
-3. Release lock: rm -f .commit-lock
-```
-
-### Commit Steps
-1. Acquire lock (create `.commit-lock`)
-2. `git add <file1> <file2> ...` — only your files
-3. Commit with prefix: `refactor(scope):`
-4. Release lock (delete `.commit-lock`)
+Key points:
+- All operations (check + acquire + commit + release) in ONE Bash command
+- Use stream name `polish`
+- Commit prefix: `refactor(scope):`
 
 ## IDLE Signal (ONLY when truly empty)
 
