@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-01 01:15:00 - Phase 42 Task 3: Create AmbientParticles floating dots component
+**What:**
+- Created src/components/WelcomeScreen/AmbientParticles.tsx
+- Implemented 35 tiny particles drifting randomly with smooth movement
+- Varied sizes (2px to 6px) using seeded random for deterministic rendering
+- Color palette includes white, orange accent (#ff6b35), and agent colors at low opacity
+- CSS keyframe animations for performance (particleDrift + particleGlow)
+- Follows same pattern as CodeRain for React purity compliance
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:05:00 - Phase 42 Task 1: Install framer-motion dependency
 **What:**
 - Installed framer-motion v12.29.2 for welcome screen animations
