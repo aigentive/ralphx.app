@@ -229,6 +229,20 @@ export const tasksApi = {
       InjectTaskResponseSchemaRaw,
       transformInjectTaskResponse
     ),
+
+  /**
+   * Get tasks awaiting review for a project
+   * Returns tasks in review-related statuses (pending_review, reviewing, review_passed, escalated)
+   * @param projectId The project ID
+   * @returns Array of tasks awaiting review
+   */
+  getTasksAwaitingReview: (projectId: string): Promise<Task[]> =>
+    typedInvokeWithTransform(
+      "get_tasks_awaiting_review",
+      { projectId },
+      TaskListSchema,
+      (tasks) => tasks.map(transformTask)
+    ),
 } as const;
 
 // ============================================================================

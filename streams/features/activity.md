@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-31 19:00:00 - Phase 47 Task 4: Add getTasksAwaitingReview API wrapper
+**What:**
+- Added `getTasksAwaitingReview` method to tasksApi in src/api/tasks.ts
+- Method calls `get_tasks_awaiting_review` Tauri command with projectId parameter
+- Returns array of Task objects using TaskListSchema with transformTask
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 18:15:00 - Phase 47 Task 2: Add task-based approval API and update detail views
 **What:**
 - Added `ApproveTaskInput` and `RequestTaskChangesInput` interfaces to reviews-api.ts

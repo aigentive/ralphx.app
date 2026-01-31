@@ -136,7 +136,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(task_commands): add get_tasks_awaiting_review query"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
@@ -153,7 +153,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(tasks-api): add getTasksAwaitingReview wrapper"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
