@@ -19,8 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { ViewMode, MessageTypeFilter } from "./ActivityView.types";
-import { MESSAGE_TYPES, STATUS_OPTIONS } from "./ActivityView.types";
+import type { ViewMode, MessageTypeFilter, RoleFilterValue } from "./ActivityView.types";
+import { MESSAGE_TYPES, STATUS_OPTIONS, ROLE_OPTIONS } from "./ActivityView.types";
 
 // ============================================================================
 // ViewModeToggle
@@ -116,6 +116,59 @@ export function StatusFilter({
           <DropdownMenuCheckboxItem
             key={value}
             checked={selectedStatuses.includes(value)}
+            onCheckedChange={() => handleToggle(value)}
+          >
+            {label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ============================================================================
+// RoleFilter
+// ============================================================================
+
+export interface RoleFilterProps {
+  selectedRoles: RoleFilterValue[];
+  onChange: (roles: RoleFilterValue[]) => void;
+}
+
+export function RoleFilter({
+  selectedRoles,
+  onChange,
+}: RoleFilterProps) {
+  const handleToggle = useCallback((role: RoleFilterValue) => {
+    if (selectedRoles.includes(role)) {
+      onChange(selectedRoles.filter((r) => r !== role));
+    } else {
+      onChange([...selectedRoles, role]);
+    }
+  }, [selectedRoles, onChange]);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs gap-1.5 bg-[var(--bg-elevated)] border-[var(--border-default)] hover:bg-[var(--bg-hover)]"
+        >
+          Role
+          {selectedRoles.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-[var(--accent-primary)] text-white text-[10px]">
+              {selectedRoles.length}
+            </span>
+          )}
+          <ChevronDown className="w-3 h-3 ml-1" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-32">
+        {ROLE_OPTIONS.map(({ value, label }) => (
+          <DropdownMenuCheckboxItem
+            key={value}
+            checked={selectedRoles.includes(value)}
             onCheckedChange={() => handleToggle(value)}
           >
             {label}

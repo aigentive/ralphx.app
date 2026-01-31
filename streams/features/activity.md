@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-01-31 13:45:00 - Phase 52 Task 4: Add role filter UI
+**What:**
+- Added `RoleFilter` component to `ActivityFilters.tsx`
+  - Multi-select dropdown matching StatusFilter design
+  - Options: Agent, System, User
+  - Shows count badge when roles are selected
+- Added `ROLE_OPTIONS` and `RoleFilterValue` type to `ActivityView.types.ts`
+- Wired `RoleFilter` to `historicalFilter.roles` in `ActivityView.tsx`
+  - Added `roleFilter` state with `RoleFilterValue[]` type
+  - Added `handleRoleFilterChange` callback
+  - RoleFilter appears in filter bar next to StatusFilter (historical mode only)
+  - Filter state flows through to backend via `ActivityEventFilter.roles`
+
+**Files Modified:**
+- `src/components/activity/ActivityFilters.tsx`
+- `src/components/activity/ActivityView.types.ts`
+- `src/components/activity/ActivityView.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 12:00:00 - Phase 52 Task 3: Add context/source display with role badge
 **What:**
 - Implemented `ActivityContext` component in `ActivityContext.tsx`
