@@ -1,14 +1,17 @@
 /**
  * Plan artifact event hooks - Tauri plan artifact event listeners with type-safe validation
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import { PlanArtifactEventSchema } from "@/types/events";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
 import type { Artifact } from "@/types/artifact";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Hook to listen for plan artifact events from the backend
@@ -26,19 +29,21 @@ import type { Artifact } from "@/types/artifact";
  * ```
  */
 export function usePlanArtifactEvents() {
+  const bus = useEventBus();
   const setPlanArtifact = useIdeationStore((s) => s.setPlanArtifact);
   const activeSessionId = useIdeationStore((s) => s.activeSessionId);
   const sessions = useIdeationStore((s) => s.sessions);
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    const unsubscribes: Unsubscribe[] = [];
+
     // Listen for created events
-    const unlistenCreated: Promise<UnlistenFn> = listen<unknown>(
-      "plan_artifact:created",
-      (event) => {
+    unsubscribes.push(
+      bus.subscribe<unknown>("plan_artifact:created", (payload) => {
         const parsed = PlanArtifactEventSchema.safeParse({
           type: "created",
-          ...(event.payload as Record<string, unknown>),
+          ...(payload as Record<string, unknown>),
         });
 
         if (!parsed.success) {
@@ -75,16 +80,15 @@ export function usePlanArtifactEvents() {
             queryKey: ideationKeys.sessionWithData(sessionId),
           });
         }
-      }
+      })
     );
 
     // Listen for updated events
-    const unlistenUpdated: Promise<UnlistenFn> = listen<unknown>(
-      "plan_artifact:updated",
-      (event) => {
+    unsubscribes.push(
+      bus.subscribe<unknown>("plan_artifact:updated", (payload) => {
         const parsed = PlanArtifactEventSchema.safeParse({
           type: "updated",
-          ...(event.payload as Record<string, unknown>),
+          ...(payload as Record<string, unknown>),
         });
 
         if (!parsed.success) {
@@ -132,12 +136,11 @@ export function usePlanArtifactEvents() {
             }
           }
         }
-      }
+      })
     );
 
     return () => {
-      unlistenCreated.then((fn) => fn());
-      unlistenUpdated.then((fn) => fn());
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [setPlanArtifact, activeSessionId, sessions, queryClient]);
+  }, [bus, setPlanArtifact, activeSessionId, sessions, queryClient]);
 }

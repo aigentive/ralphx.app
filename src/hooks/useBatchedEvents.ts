@@ -3,10 +3,12 @@
  *
  * High-frequency events (like agent messages during streaming) are buffered
  * and flushed periodically to prevent render thrashing.
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import type { AgentMessageEvent } from "@/types/events";
 
 /** Flush interval in milliseconds */
@@ -37,6 +39,7 @@ const FLUSH_INTERVAL_MS = 50;
  * ```
  */
 export function useBatchedAgentMessages(taskId: string): AgentMessageEvent[] {
+  const bus = useEventBus();
   const bufferRef = useRef<AgentMessageEvent[]>([]);
   const [messages, setMessages] = useState<AgentMessageEvent[]>([]);
 
@@ -54,16 +57,12 @@ export function useBatchedAgentMessages(taskId: string): AgentMessageEvent[] {
 
   // Set up event listener
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<AgentMessageEvent>("agent:message", (event) => {
-      if (event.payload.taskId === taskId) {
-        bufferRef.current.push(event.payload);
+    return bus.subscribe<AgentMessageEvent>("agent:message", (payload) => {
+      if (payload.taskId === taskId) {
+        bufferRef.current.push(payload);
       }
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [taskId]);
+  }, [bus, taskId]);
 
   return messages;
 }

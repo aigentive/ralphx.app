@@ -3,12 +3,15 @@
  *
  * Listens to step events from the backend and invalidates relevant queries
  * to keep the UI in sync with step progress updates from the worker agent.
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import { stepKeys } from "./useTaskSteps";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Hook to listen for step events from the backend
@@ -27,69 +30,58 @@ import { stepKeys } from "./useTaskSteps";
  * ```
  */
 export function useStepEvents() {
+  const bus = useEventBus();
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    const unsubscribes: Unsubscribe[] = [];
+
     // Listen for step:created events
-    const unlistenCreated: Promise<UnlistenFn> = listen<{ task_id: string }>(
-      "step:created",
-      (event) => {
-        const taskId = event.payload.task_id;
+    unsubscribes.push(
+      bus.subscribe<{ task_id: string }>("step:created", (payload) => {
+        const taskId = payload.task_id;
         if (taskId) {
           queryClient.invalidateQueries({ queryKey: stepKeys.byTask(taskId) });
           queryClient.invalidateQueries({ queryKey: stepKeys.progress(taskId) });
         }
-      }
+      })
     );
 
     // Listen for step:updated events
-    const unlistenUpdated: Promise<UnlistenFn> = listen<{ task_id: string }>(
-      "step:updated",
-      (event) => {
-        const taskId = event.payload.task_id;
+    unsubscribes.push(
+      bus.subscribe<{ task_id: string }>("step:updated", (payload) => {
+        const taskId = payload.task_id;
         if (taskId) {
           queryClient.invalidateQueries({ queryKey: stepKeys.byTask(taskId) });
           queryClient.invalidateQueries({ queryKey: stepKeys.progress(taskId) });
         }
-      }
+      })
     );
 
     // Listen for step:deleted events
-    const unlistenDeleted: Promise<UnlistenFn> = listen<{ task_id: string }>(
-      "step:deleted",
-      (event) => {
-        const taskId = event.payload.task_id;
+    unsubscribes.push(
+      bus.subscribe<{ task_id: string }>("step:deleted", (payload) => {
+        const taskId = payload.task_id;
         if (taskId) {
           queryClient.invalidateQueries({ queryKey: stepKeys.byTask(taskId) });
           queryClient.invalidateQueries({ queryKey: stepKeys.progress(taskId) });
         }
-      }
+      })
     );
 
     // Listen for steps:reordered events
-    const unlistenReordered: Promise<UnlistenFn> = listen<{ task_id: string }>(
-      "steps:reordered",
-      (event) => {
-        const taskId = event.payload.task_id;
+    unsubscribes.push(
+      bus.subscribe<{ task_id: string }>("steps:reordered", (payload) => {
+        const taskId = payload.task_id;
         if (taskId) {
           queryClient.invalidateQueries({ queryKey: stepKeys.byTask(taskId) });
           // No need to invalidate progress - reordering doesn't affect counts
         }
-      }
+      })
     );
 
     return () => {
-      void (async () => {
-        const createdFn = await unlistenCreated;
-        const updatedFn = await unlistenUpdated;
-        const deletedFn = await unlistenDeleted;
-        const reorderedFn = await unlistenReordered;
-
-        createdFn();
-        updatedFn();
-        deletedFn();
-        reorderedFn();
-      })();
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [queryClient]);
+  }, [bus, queryClient]);
 }

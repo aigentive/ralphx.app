@@ -3,12 +3,15 @@
  *
  * Listens to QA-related events and updates the qaStore accordingly.
  * Handles qa:prep and qa:test events with runtime validation.
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { QAPrepEventSchema, QATestEventSchema } from "@/types/events";
 import { useQAStore } from "@/stores/qaStore";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Hook to listen for QA events from the backend
@@ -28,16 +31,17 @@ import { useQAStore } from "@/stores/qaStore";
  * ```
  */
 export function useQAEvents(taskId?: string) {
+  const bus = useEventBus();
   const setLoadingTask = useQAStore((s) => s.setLoadingTask);
   const setError = useQAStore((s) => s.setError);
 
   useEffect(() => {
-    const unlisteners: Promise<UnlistenFn>[] = [];
+    const unsubscribes: Unsubscribe[] = [];
 
     // Listen for QA prep events
-    unlisteners.push(
-      listen<unknown>("qa:prep", (event) => {
-        const parsed = QAPrepEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("qa:prep", (payload) => {
+        const parsed = QAPrepEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error("Invalid QA prep event:", parsed.error.message);
@@ -69,9 +73,9 @@ export function useQAEvents(taskId?: string) {
     );
 
     // Listen for QA test events
-    unlisteners.push(
-      listen<unknown>("qa:test", (event) => {
-        const parsed = QATestEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("qa:test", (payload) => {
+        const parsed = QATestEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error("Invalid QA test event:", parsed.error.message);
@@ -103,7 +107,7 @@ export function useQAEvents(taskId?: string) {
     );
 
     return () => {
-      unlisteners.forEach((unlisten) => unlisten.then((fn) => fn()));
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [taskId, setLoadingTask, setError]);
+  }, [bus, taskId, setLoadingTask, setError]);
 }

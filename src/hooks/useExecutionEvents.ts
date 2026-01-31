@@ -4,14 +4,17 @@
  * Listens to execution events from the backend and updates the UI store
  * immediately to provide instant feedback for execution state changes.
  *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
+ *
  * Events:
  * - execution:status_changed: Running count, pause state, etc.
  * - execution:queue_changed: Queued task count
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { useUiStore } from "@/stores/uiStore";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Event payload for execution:status_changed
@@ -50,17 +53,19 @@ interface ExecutionQueueEvent {
  * ```
  */
 export function useExecutionEvents() {
+  const bus = useEventBus();
   const setExecutionStatus = useUiStore((state) => state.setExecutionStatus);
   const setExecutionQueuedCount = useUiStore(
     (state) => state.setExecutionQueuedCount
   );
 
   useEffect(() => {
+    const unsubscribes: Unsubscribe[] = [];
+
     // Listen for execution:status_changed events
-    const unlistenStatus: Promise<UnlistenFn> = listen<ExecutionStatusEvent>(
-      "execution:status_changed",
-      (event) => {
-        const { isPaused, runningCount, maxConcurrent } = event.payload;
+    unsubscribes.push(
+      bus.subscribe<ExecutionStatusEvent>("execution:status_changed", (payload) => {
+        const { isPaused, runningCount, maxConcurrent } = payload;
         setExecutionStatus({
           isPaused,
           runningCount,
@@ -69,20 +74,18 @@ export function useExecutionEvents() {
           queuedCount: useUiStore.getState().executionStatus.queuedCount,
           canStartTask: !isPaused && runningCount < maxConcurrent,
         });
-      }
+      })
     );
 
     // Listen for execution:queue_changed events
-    const unlistenQueue: Promise<UnlistenFn> = listen<ExecutionQueueEvent>(
-      "execution:queue_changed",
-      (event) => {
-        setExecutionQueuedCount(event.payload.queuedCount);
-      }
+    unsubscribes.push(
+      bus.subscribe<ExecutionQueueEvent>("execution:queue_changed", (payload) => {
+        setExecutionQueuedCount(payload.queuedCount);
+      })
     );
 
     return () => {
-      unlistenStatus.then((fn) => fn());
-      unlistenQueue.then((fn) => fn());
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [setExecutionStatus, setExecutionQueuedCount]);
+  }, [bus, setExecutionStatus, setExecutionQueuedCount]);
 }

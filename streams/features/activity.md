@@ -4,6 +4,48 @@
 
 ---
 
+### 2026-02-01 04:16:00 - Phase 55 Task 4: Migrate All Event Hooks to EventProvider
+**What:**
+- Migrated all ~15 event hooks from direct `@tauri-apps/api/event` `listen()` to `useEventBus()`:
+  - `useEvents.ts` (useAgentEvents, useSupervisorAlerts, useFileChangeEvents)
+  - `useEvents.task.ts` (useTaskEvents)
+  - `useEvents.review.ts` (useReviewEvents)
+  - `useEvents.proposal.ts` (useProposalEvents)
+  - `useEvents.execution.ts` (useExecutionErrorEvents)
+  - `useStepEvents.ts` (useStepEvents)
+  - `useEvents.planArtifact.ts` (usePlanArtifactEvents)
+  - `useIdeationEvents.ts` (useIdeationEvents)
+  - `useAgentEvents.ts` (agent lifecycle events)
+  - `useBatchedEvents.ts` (batched supervisor alerts)
+  - `useExecutionEvents.ts` (execution status events)
+  - `useQAEvents.ts` (QA events)
+  - `useIntegratedChatEvents.ts` (integrated chat events)
+- Updated EventProvider architecture to fix circular dependency:
+  - Split into `EventBusContext.Provider` + `GlobalEventListeners` child component
+  - `GlobalEventListeners` calls all event hooks AFTER context is available
+- Updated `useExecutionEvents.test.tsx`:
+  - Renamed from `.ts` to `.tsx` for JSX support
+  - Rewrote tests to use `MockEventBus.emit()` pattern instead of mocking raw `listen()`
+
+**Migration Pattern:**
+- Before: `listen<T>(event, (e) => handler(e.payload))` with `Promise<UnlistenFn>`
+- After: `bus.subscribe<T>(event, (payload) => handler(payload))` returns sync `Unsubscribe`
+
+**Files Modified:**
+- All `useEvents*.ts` hooks in `src/hooks/`
+- `src/providers/EventProvider.tsx` (GlobalEventListeners pattern)
+- `src/hooks/useExecutionEvents.test.tsx` (renamed, updated test pattern)
+
+**Commands:**
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+- `npm run typecheck` - passed
+- `npm run test -- src/hooks/useExecutionEvents.test.tsx` - 15 tests passed
+- `npm run test -- src/providers/EventProvider.test.tsx` - 10 tests passed
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 03:45:00 - Phase 55 Task 3: Create EventProvider for Tauri Event Abstraction
 **What:**
 - Created `src/lib/event-bus.ts` with EventBus interface and two implementations:

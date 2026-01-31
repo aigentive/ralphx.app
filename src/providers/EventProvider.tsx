@@ -2,7 +2,7 @@
  * EventProvider - Global event listener setup and event bus context
  *
  * This component:
- * 1. Provides an EventBus instance via React context (for hook migration in Task 4)
+ * 1. Provides an EventBus instance via React context
  * 2. Sets up global Tauri event listeners for the application
  *
  * The EventBus abstraction allows switching between:
@@ -60,6 +60,28 @@ export function useEventBus(): EventBus {
   return bus;
 }
 
+/**
+ * Internal component that sets up global event listeners.
+ *
+ * This is a child of the EventBusContext.Provider so the hooks
+ * can use useEventBus() to access the bus instance.
+ */
+function GlobalEventListeners({ children }: { children: ReactNode }) {
+  // Set up global event listeners using the EventBus from context
+  useTaskEvents();
+  useProposalEvents(); // Listen to proposal events for Ideation view
+  useStepEvents(); // Listen to step events for task execution progress
+  useSupervisorAlerts();
+  useReviewEvents();
+  useFileChangeEvents();
+  useAgentEvents(); // Listen to agent:message events for Activity view (no active conversation)
+  useExecutionErrorEvents(); // Handle agent execution errors and unstick UI
+  useIdeationEvents(); // Listen to ideation events (session title updates)
+  usePlanArtifactEvents(); // Listen to plan artifact events for real-time updates
+
+  return <>{children}</>;
+}
+
 interface EventProviderProps {
   children: ReactNode;
 }
@@ -95,23 +117,9 @@ export function EventProvider({ children }: EventProviderProps) {
   // Create event bus once based on environment (Tauri or browser mode)
   const eventBus = useMemo(() => createEventBus(), []);
 
-  // Set up global event listeners
-  // Note: These still use the direct Tauri listen() API.
-  // Task 4 will migrate them to use the eventBus via useEventBus() hook.
-  useTaskEvents();
-  useProposalEvents(); // Listen to proposal events for Ideation view
-  useStepEvents(); // Listen to step events for task execution progress
-  useSupervisorAlerts();
-  useReviewEvents();
-  useFileChangeEvents();
-  useAgentEvents(); // Listen to agent:message events for Activity view
-  useExecutionErrorEvents(); // Handle agent execution errors and unstick UI
-  useIdeationEvents(); // Listen to ideation events (session title updates)
-  usePlanArtifactEvents(); // Listen to plan artifact events for real-time updates
-
   return (
     <EventBusContext.Provider value={eventBus}>
-      {children}
+      <GlobalEventListeners>{children}</GlobalEventListeners>
     </EventBusContext.Provider>
   );
 }

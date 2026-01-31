@@ -1,10 +1,12 @@
 /**
  * Task event hooks - Tauri task event listeners with type-safe validation
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import { TaskEventSchema } from "@/types/events";
 import { useTaskStore } from "@/stores/taskStore";
 import { taskKeys } from "@/hooks/useTasks";
@@ -26,15 +28,16 @@ import { transformTask, type Task } from "@/types/task";
  * ```
  */
 export function useTaskEvents() {
+  const bus = useEventBus();
   const addTask = useTaskStore((s) => s.addTask);
   const updateTask = useTaskStore((s) => s.updateTask);
   const removeTask = useTaskStore((s) => s.removeTask);
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<unknown>("task:event", (event) => {
+    return bus.subscribe<unknown>("task:event", (payload) => {
       // Runtime validation of backend events
-      const parsed = TaskEventSchema.safeParse(event.payload);
+      const parsed = TaskEventSchema.safeParse(payload);
 
       if (!parsed.success) {
         return;
@@ -87,9 +90,5 @@ export function useTaskEvents() {
           break;
       }
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [addTask, updateTask, removeTask, queryClient]);
+  }, [bus, addTask, updateTask, removeTask, queryClient]);
 }

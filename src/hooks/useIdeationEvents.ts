@@ -1,14 +1,17 @@
 /**
  * Ideation event hooks - Tauri ideation event listeners with type-safe validation
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Schema for session title updated event payload
@@ -75,18 +78,19 @@ const DependencySuggestionsAppliedEventSchema = z.object({
  * ```
  */
 export function useIdeationEvents() {
+  const bus = useEventBus();
   const updateSession = useIdeationStore((s) => s.updateSession);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     console.log("[IdeationEvents] Setting up event listeners");
-    const unlistenFns: Promise<UnlistenFn>[] = [];
+    const unsubscribes: Unsubscribe[] = [];
 
     // Listen for session title updates (from session-namer agent)
-    unlistenFns.push(
-      listen<unknown>("ideation:session_title_updated", (event) => {
-        console.log("[IdeationEvents] Received session_title_updated:", event.payload);
-        const parsed = SessionTitleUpdatedEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("ideation:session_title_updated", (payload) => {
+        console.log("[IdeationEvents] Received session_title_updated:", payload);
+        const parsed = SessionTitleUpdatedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error(
@@ -103,10 +107,10 @@ export function useIdeationEvents() {
     );
 
     // Listen for single proposal priority assessment
-    unlistenFns.push(
-      listen<unknown>("proposal:priority_assessed", (event) => {
-        console.log("[IdeationEvents] Received proposal:priority_assessed:", event.payload);
-        const parsed = ProposalPriorityAssessedEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("proposal:priority_assessed", (payload) => {
+        console.log("[IdeationEvents] Received proposal:priority_assessed:", payload);
+        const parsed = ProposalPriorityAssessedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error(
@@ -122,10 +126,10 @@ export function useIdeationEvents() {
     );
 
     // Listen for batch session priorities assessment
-    unlistenFns.push(
-      listen<unknown>("session:priorities_assessed", (event) => {
-        console.log("[IdeationEvents] Received session:priorities_assessed:", event.payload);
-        const parsed = SessionPrioritiesAssessedEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("session:priorities_assessed", (payload) => {
+        console.log("[IdeationEvents] Received session:priorities_assessed:", payload);
+        const parsed = SessionPrioritiesAssessedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error(
@@ -141,10 +145,10 @@ export function useIdeationEvents() {
     );
 
     // Listen for dependency added
-    unlistenFns.push(
-      listen<unknown>("dependency:added", (event) => {
-        console.log("[IdeationEvents] Received dependency:added:", event.payload);
-        const parsed = DependencyEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("dependency:added", (payload) => {
+        console.log("[IdeationEvents] Received dependency:added:", payload);
+        const parsed = DependencyEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error("Invalid dependency:added event:", parsed.error.message);
@@ -157,10 +161,10 @@ export function useIdeationEvents() {
     );
 
     // Listen for dependency removed
-    unlistenFns.push(
-      listen<unknown>("dependency:removed", (event) => {
-        console.log("[IdeationEvents] Received dependency:removed:", event.payload);
-        const parsed = DependencyEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("dependency:removed", (payload) => {
+        console.log("[IdeationEvents] Received dependency:removed:", payload);
+        const parsed = DependencyEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error("Invalid dependency:removed event:", parsed.error.message);
@@ -173,10 +177,10 @@ export function useIdeationEvents() {
     );
 
     // Listen for dependency analysis started (AI suggestion in progress)
-    unlistenFns.push(
-      listen<unknown>("dependencies:analysis_started", (event) => {
-        console.log("[IdeationEvents] Received dependencies:analysis_started:", event.payload);
-        const parsed = DependencyAnalysisStartedEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("dependencies:analysis_started", (payload) => {
+        console.log("[IdeationEvents] Received dependencies:analysis_started:", payload);
+        const parsed = DependencyAnalysisStartedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error("Invalid dependencies:analysis_started event:", parsed.error.message);
@@ -189,10 +193,10 @@ export function useIdeationEvents() {
     );
 
     // Listen for dependency suggestions applied (AI suggestion completed)
-    unlistenFns.push(
-      listen<unknown>("dependencies:suggestions_applied", (event) => {
-        console.log("[IdeationEvents] Received dependencies:suggestions_applied:", event.payload);
-        const parsed = DependencySuggestionsAppliedEventSchema.safeParse(event.payload);
+    unsubscribes.push(
+      bus.subscribe<unknown>("dependencies:suggestions_applied", (payload) => {
+        console.log("[IdeationEvents] Received dependencies:suggestions_applied:", payload);
+        const parsed = DependencySuggestionsAppliedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           console.error("Invalid dependencies:suggestions_applied event:", parsed.error.message);
@@ -207,7 +211,7 @@ export function useIdeationEvents() {
     );
 
     return () => {
-      unlistenFns.forEach((unlisten) => unlisten.then((fn) => fn()));
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [updateSession, queryClient]);
+  }, [bus, updateSession, queryClient]);
 }
