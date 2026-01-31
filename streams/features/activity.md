@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-31 21:35:00 - Phase 50 Task 5: Add confirmation dialog to HumanReviewTaskDetail approve
+**What:**
+- Imported `useConfirmation` hook in HumanReviewTaskDetail.tsx
+- Added `useCallback` to imports for handleApprove function
+- Destructured `{ confirm, confirmationDialogProps, ConfirmationDialog }` from hook in ActionButtons component
+- Added `handleApprove` async handler with confirmation: "Approve this task?" / "The task will be marked as approved and completed."
+- Updated Approve button onClick to use `handleApprove` instead of direct `approveMutation.mutate()`
+- Added `<ConfirmationDialog {...confirmationDialogProps} />` to ActionButtons render
+
+**Files Modified:**
+- `src/components/tasks/detail-views/HumanReviewTaskDetail.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with pre-existing warnings only)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:25:00 - Phase 50 Task 4: Add confirmation dialog to ReviewDetailModal approve
 **What:**
 - Imported `useConfirmation` hook in ReviewDetailModal.tsx
