@@ -359,6 +359,13 @@
       "prd": "specs/phases/prd_phase_49_escalation_display_fix.md",
       "status": "pending",
       "description": "Fix Tauri command to parse issues from notes like HTTP endpoint"
+    },
+    {
+      "phase": 50,
+      "name": "Confirmation Dialogs for Task State Transitions",
+      "prd": "specs/phases/prd_phase_50_confirmation_dialogs.md",
+      "status": "pending",
+      "description": "Add confirmation dialogs to all task state transition actions using useConfirmation hook"
     }
   ]
 }
