@@ -51,3 +51,11 @@ export async function setupTaskDetail(page: Page) {
   // Wait for task detail overlay to load
   await page.waitForSelector('[data-testid="task-detail-overlay"]', { timeout: 10000 });
 }
+
+export async function setupReviewsPanel(page: Page) {
+  await setupApp(page);
+  // Click reviews toggle to open the panel
+  await page.click('[data-testid="reviews-toggle"]');
+  // Wait for reviews panel to load
+  await page.waitForSelector('[data-testid="reviews-panel"]', { timeout: 10000 });
+}
