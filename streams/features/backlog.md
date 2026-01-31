@@ -57,6 +57,10 @@
 - [x] [Frontend] Bypassed EventProvider: useAskUserQuestion uses direct listen() import - src/hooks/useAskUserQuestion.ts:10
 - [x] [Frontend] Bypassed EventProvider: useChatPanelHandlers uses direct listen() import - src/hooks/useChatPanelHandlers.ts:9
 
+## From Phase 57 Verification (2026-02-01)
+
+- [x] [Frontend] Missing mock API: all.list() method missing from mockActivityEventsApi - src/api-mock/activity-events.ts:16
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
