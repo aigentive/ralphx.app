@@ -1,9 +1,17 @@
 /**
  * ActivityMessage - Individual message display component
+ *
+ * Smart content rendering based on event type:
+ * - tool_result: Formatted JSON with syntax highlighting
+ * - tool_call: Tool name badge + formatted arguments
+ * - thinking: Markdown rendering
+ * - text/error: Plain text with whitespace preserved
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { ChevronDown, Copy, Check } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UnifiedActivityMessage } from "./ActivityView.types";
@@ -14,8 +22,10 @@ import {
   getToolName,
   formatTimestamp,
   highlightJSON,
+  safeJsonParse,
 } from "./ActivityView.utils";
 import { ActivityContext } from "./ActivityContext";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 
 export interface ActivityMessageProps {
   message: UnifiedActivityMessage;
@@ -36,10 +46,82 @@ export function ActivityMessage({
   const hasDetails = type === "tool_call" || type === "tool_result" || metadata;
   const toolName = getToolName(content);
 
-  // Parse content for display
-  const displayContent = content.length > 200 && !isExpanded
-    ? content.slice(0, 200) + "..."
-    : content;
+  // Smart content rendering based on event type
+  const renderedContent = useMemo(() => {
+    switch (type) {
+      case "tool_result": {
+        // Parse content as JSON and display with syntax highlighting
+        const result = safeJsonParse(content);
+        if (!result.error && typeof result.data === "object" && result.data !== null) {
+          const jsonString = JSON.stringify(result.data, null, 2);
+          const truncated = !isExpanded && jsonString.length > 200;
+          const displayJson = truncated ? jsonString.slice(0, 200) + "..." : jsonString;
+          return (
+            <pre className="text-xs font-mono p-2 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[200px] overflow-y-auto mt-1">
+              {highlightJSON(displayJson)}
+            </pre>
+          );
+        }
+        // Fallback: display as plain text if not valid JSON
+        const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
+        return (
+          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
+            {truncatedContent}
+          </p>
+        );
+      }
+
+      case "tool_call": {
+        // For tool_call, show tool arguments from metadata as formatted JSON
+        // Content usually contains the raw call string like "Read ({...})"
+        // We prefer to show the structured metadata if available
+        if (metadata && typeof metadata === "object") {
+          const jsonString = JSON.stringify(metadata, null, 2);
+          const truncated = !isExpanded && jsonString.length > 200;
+          const displayJson = truncated ? jsonString.slice(0, 200) + "..." : jsonString;
+          return (
+            <pre className="text-xs font-mono p-2 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[200px] overflow-y-auto mt-1">
+              {highlightJSON(displayJson)}
+            </pre>
+          );
+        }
+        // Fallback to plain content
+        const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
+        return (
+          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
+            {truncatedContent}
+          </p>
+        );
+      }
+
+      case "thinking": {
+        // Render thinking content as markdown
+        const truncatedContent = !isExpanded && content.length > 500 ? content.slice(0, 500) + "..." : content;
+        return (
+          <div className="text-sm text-[var(--text-primary)] mt-1 prose-sm prose-invert max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {truncatedContent}
+            </ReactMarkdown>
+          </div>
+        );
+      }
+
+      case "text":
+      case "error":
+      default: {
+        // Plain text with whitespace preserved
+        const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
+        return (
+          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
+            {truncatedContent}
+          </p>
+        );
+      }
+    }
+  }, [type, content, metadata, isExpanded]);
 
   const handleCopy = useCallback(
     (e: React.MouseEvent) => {
@@ -116,9 +198,8 @@ export function ActivityMessage({
             sessionId={message.sessionId}
             role={message.role}
           />
-          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
-            {displayContent}
-          </p>
+          {/* Smart content rendering based on event type */}
+          {renderedContent}
         </div>
 
         {/* Timestamp */}
