@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-01 13:30:00 - Phase 57 Task 10: Add pulsating Live indicator
+**What:**
+- Added `lastEventTime` field to activityStore to track when events arrive
+- Updated `addMessage` to set `lastEventTime = Date.now()` on each new message
+- Added `isReceiving` prop to ViewModeToggle component
+- Implemented pulsating orange (#ff6b35) dot animation when Live mode receives events
+- Added `live-pulse` and `live-pulse-dot` CSS keyframe animations to ActivityView
+- Created effect in ActivityView to compute `isReceiving` from `lastEventTime` (5 second threshold)
+- Wired `isReceiving` to ViewModeToggle for visual feedback
+
+**Files:**
+- `src/stores/activityStore.ts` (modified - added lastEventTime)
+- `src/components/activity/ActivityFilters.tsx` (modified - added isReceiving prop)
+- `src/components/activity/ActivityView.tsx` (modified - added animation CSS and wiring)
+
+**Commands:**
+- `npx eslint src/stores/activityStore.ts src/components/activity/ActivityFilters.tsx src/components/activity/ActivityView.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 13:00:00 - Phase 57 Task 9: Wire filters to the global activity query
 **What:**
 - Added `filterTaskId` and `filterSessionId` state to ActivityView

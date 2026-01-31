@@ -65,6 +65,9 @@ export interface ActivityViewProps {
   initialMode?: ViewMode;
 }
 
+/** Time window (ms) to consider activity as "receiving" for pulsating indicator */
+const RECEIVING_THRESHOLD_MS = 5000;
+
 export function ActivityView({
   taskId,
   sessionId,
@@ -74,7 +77,11 @@ export function ActivityView({
   const realtimeMessages = useActivityStore((s) => s.messages);
   const alerts = useActivityStore((s) => s.alerts);
   const clearMessages = useActivityStore((s) => s.clearMessages);
+  const lastEventTime = useActivityStore((s) => s.lastEventTime);
   const clearActivityFilter = useUiStore((s) => s.clearActivityFilter);
+
+  // Track if we're actively receiving events (for pulsating Live indicator)
+  const [isReceiving, setIsReceiving] = useState(false);
 
   // Default to historical mode (shows all events) - only use realtime if explicitly requested
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "historical");
@@ -96,6 +103,26 @@ export function ActivityView({
       setViewMode("historical");
     }
   }, [taskId, sessionId]);
+
+  // Update isReceiving based on lastEventTime for pulsating Live indicator
+  useEffect(() => {
+    if (!lastEventTime) {
+      setIsReceiving(false);
+      return;
+    }
+
+    // Check if we're within the receiving threshold
+    const checkReceiving = () => {
+      const now = Date.now();
+      setIsReceiving(now - lastEventTime < RECEIVING_THRESHOLD_MS);
+    };
+
+    checkReceiving();
+
+    // Set up interval to update state as time passes
+    const interval = setInterval(checkReceiving, 1000);
+    return () => clearInterval(interval);
+  }, [lastEventTime]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -323,7 +350,7 @@ export function ActivityView({
           <div className="flex-1">
             <SearchBar value={searchQuery} onChange={setSearchQuery} onClear={handleClearSearch} />
           </div>
-          <ViewModeToggle mode={viewMode} onChange={handleViewModeChange} />
+          <ViewModeToggle mode={viewMode} onChange={handleViewModeChange} isReceiving={isReceiving} />
         </div>
         <div className="flex items-center gap-2">
           <FilterTabs active={typeFilter} onChange={handleTypeFilterChange} />
@@ -420,6 +447,23 @@ export function ActivityView({
         }
         .thinking-icon {
           animation: thinking-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes live-pulse {
+          0%, 100% {
+            box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 8px 2px rgba(255, 107, 53, 0.3);
+            transform: scale(1.1);
+          }
+        }
+        .live-pulse-dot {
+          animation: live-pulse 1.5s ease-in-out infinite;
+        }
+        .live-receiving {
+          box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.3);
         }
       `}</style>
     </div>

@@ -38,13 +38,18 @@ export interface ViewModeToggleProps {
   mode: ViewMode;
   onChange: (mode: ViewMode) => void;
   disabled?: boolean;
+  /** Whether Live mode is actively receiving events (triggers pulsating animation) */
+  isReceiving?: boolean;
 }
 
 export function ViewModeToggle({
   mode,
   onChange,
   disabled,
+  isReceiving,
 }: ViewModeToggleProps) {
+  const showPulsating = mode === "realtime" && isReceiving;
+
   return (
     <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-base)]">
       <button
@@ -52,15 +57,19 @@ export function ViewModeToggle({
         onClick={() => onChange("realtime")}
         disabled={disabled}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors relative",
           mode === "realtime"
             ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent",
-          disabled && "opacity-50 cursor-not-allowed"
+          disabled && "opacity-50 cursor-not-allowed",
+          showPulsating && "live-receiving"
         )}
       >
-        <Radio className="w-3 h-3" />
+        <Radio className={cn("w-3 h-3", showPulsating && "text-[#ff6b35]")} />
         Live
+        {showPulsating && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#ff6b35] live-pulse-dot" />
+        )}
       </button>
       <button
         data-testid="activity-mode-historical"
