@@ -55,6 +55,7 @@ const STATUS_LABELS: Record<InternalStatus, string> = {
   cancelled: "Cancelled",
   reviewing: "AI Review in Progress",
   review_passed: "AI Review Passed",
+  escalated: "Escalated",
   re_executing: "Re-executing",
 };
 

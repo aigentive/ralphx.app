@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<InternalStatus, { label: string; color: string }> = 
   cancelled: { label: "Cancelled", color: "var(--text-muted)" },
   reviewing: { label: "AI Review in Progress", color: "var(--status-info)" },
   review_passed: { label: "AI Review Passed", color: "var(--status-success)" },
+  escalated: { label: "Escalated", color: "var(--status-warning)" },
   re_executing: { label: "Re-executing", color: "var(--accent-primary)" },
 };
 

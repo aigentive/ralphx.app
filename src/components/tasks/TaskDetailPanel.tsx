@@ -86,6 +86,7 @@ const TASK_DETAIL_VIEWS: Record<
   pending_review: WaitingTaskDetail,
   reviewing: ReviewingTaskDetail,
   review_passed: HumanReviewTaskDetail,
+  escalated: HumanReviewTaskDetail, // Uses same view as review_passed (human decision needed)
   revision_needed: RevisionTaskDetail,
   // Terminal states
   approved: CompletedTaskDetail,
@@ -180,6 +181,11 @@ const STATUS_CONFIG: Record<
     label: "AI Review Passed",
     bg: "rgba(16, 185, 129, 0.15)",
     text: "var(--status-success)",
+  },
+  escalated: {
+    label: "Escalated",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
   },
   re_executing: {
     label: "Re-executing",

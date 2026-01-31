@@ -139,6 +139,11 @@ const STATUS_CONFIG: Record<
     bg: "rgba(16, 185, 129, 0.15)",
     text: "var(--status-success)",
   },
+  escalated: {
+    label: "Escalated",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
+  },
   re_executing: {
     label: "Re-executing",
     bg: "rgba(255, 107, 53, 0.15)",

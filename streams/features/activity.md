@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 14:30:00 - Phase 45 Task 7: Add escalated to InternalStatus TypeScript types
+**What:**
+- Added `'escalated'` to `InternalStatusSchema` after `'review_passed'` (status.ts:12)
+- Added `'escalated'` to `ACTIVE_STATUSES` array (status.ts:56)
+- Added `'escalated'` to `REVIEW_STATUSES` array (status.ts:75)
+- Added `escalated` entry to all `STATUS_CONFIG` records in 6 files
+- Added `escalated` to `TASK_DETAIL_VIEWS` registry using `HumanReviewTaskDetail` (TaskDetailPanel.tsx:89)
+- Added `escalated` to `SYSTEM_CONTROLLED_STATUSES` array (TaskDetailModal.constants.ts:115)
+
+**Commands:**
+- `npm run lint` (passed with pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 10:15:00 - Phase 45 Task 6: Update approve_task/request_task_changes validation
 **What:**
 - Updated `approve_task` handler to accept both `ReviewPassed` AND `Escalated` status (reviews.rs:258-268)
