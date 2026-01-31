@@ -1,3 +1,26 @@
+### 2026-01-31 22:44:39 - AskUserQuestionModal Investigation (Blocked)
+**What:**
+- Investigated AskUserQuestionModal blocking issue
+- Restarted dev server (port conflict resolution: force-killed 5173, restarted)
+- Re-ran tests after server restart: same timeout errors
+- Analyzed event flow: window.__eventBus → MockEventBus → useAskUserQuestion → uiStore → modal render
+- Verified infrastructure: EventProvider exposes bus (line 123), App.tsx uses hook (line 165), modal renders (line 733)
+- Screenshot analysis: app loads correctly, but modal never appears after event emit
+
+**Root cause analysis:**
+- window.__eventBus is available (EventProvider sets it when !window.__TAURI_INTERNALS__)
+- triggerAskUserQuestionModal helper emits event successfully (no error thrown)
+- Modal fails to appear → likely timing: event emitted before subscription ready, OR event handler not updating state
+
+**Commands:**
+- `lsof -ti:5173 | xargs kill -9` (force kill port)
+- `npm run dev:web` (restart server)
+- `npx playwright test tests/visual/modals/ask-user-question/ask-user-question.spec.ts --update-snapshots` (all 14 tests timeout)
+
+**Result:** Failed - Issue deeper than dev server restart. Blocked: needs either (1) wait for subscription ready in helper, or (2) debug MockEventBus state update flow
+
+---
+
 ### 2026-01-31 22:38:30 - ProposalEditModal Visual Tests (Blocked)
 **What:**
 - Created page object: tests/pages/modals/proposal-edit.page.ts
