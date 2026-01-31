@@ -479,13 +479,10 @@ function AppContent() {
   }, [welcomeOverlayReturnView, setCurrentView, closeWelcomeOverlay]);
 
   // Keyboard shortcuts for view switching, chat toggle, and project creation
-  // Note: useAppKeyboardShortcuts will be updated in Task 3 to accept unified toggleChatVisible
-  // For now, pass adapter functions to satisfy existing interface
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView,
-    toggleChatPanel: () => toggleChatVisible(currentView),
-    toggleChatCollapsed: () => toggleChatVisible("kanban"),
+    toggleChatVisible,
     openProjectWizard: handleOpenProjectWizard,
     hasProjects: !hasNoProjects,
     showWelcomeOverlay,
