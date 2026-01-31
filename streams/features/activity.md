@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-01-31 16:15:00 - Phase 48 Task 14: Create StatusActivityBadge component
+**What:**
+- Created `src/components/Chat/StatusActivityBadge.tsx` - unified component for agent status + activity navigation
+- Props: `isAgentActive`, `agentType`, `contextType`, `contextId`, `hasActivity`
+- AgentType enum: "worker" | "reviewer" | "agent" | "idle"
+- Behavior by state: hidden when idle+no activity, muted icon when idle+has activity, badge when active
+- onClick navigates to Activity view with context filter (taskId or sessionId) set via uiStore
+
+**Files Created:**
+- `src/components/Chat/StatusActivityBadge.tsx` - Unified status + activity badge component
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 15:30:00 - Phase 48 Task 13: Add activityFilter state to uiStore
 **What:**
 - Added `ActivityFilter` interface with `taskId` and `sessionId` fields (both nullable)
