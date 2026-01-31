@@ -150,7 +150,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo check to verify dependency resolves",
       "Commit: feat(updater): add tauri-plugin-updater dependency"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
