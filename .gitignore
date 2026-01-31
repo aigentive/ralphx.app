@@ -37,6 +37,10 @@ out/
 src-tauri/target/
 src-tauri/gen/schemas
 
+# Playwright
+playwright-report/
+test-results/
+
 # Screenshots (keep .gitkeep)
 screenshots/*
 !screenshots/.gitkeep
