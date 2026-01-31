@@ -310,6 +310,13 @@
       "prd": "specs/phases/prd_phase_42_welcome_screen_redesign.md",
       "status": "pending",
       "description": "Agent Constellation design with animated network, orbiting nodes, and dramatic visual effects"
+    },
+    {
+      "phase": 43,
+      "name": "Per-Page Chat Visibility Persistence",
+      "prd": "specs/phases/prd_phase_43_chat_visibility_persistence.md",
+      "status": "pending",
+      "description": "Persist chat panel visibility per-view with localStorage, unify dual-state architecture"
     }
   ]
 }
