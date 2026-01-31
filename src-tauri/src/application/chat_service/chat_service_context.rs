@@ -142,11 +142,12 @@ pub fn build_command(
         _ => {}
     }
 
-    // For Review context, ALWAYS start a fresh session. Resuming causes the model
-    // to see old "Review already submitted" messages and follow that pattern instead
-    // of calling complete_review again. Each review cycle needs a clean slate.
-    let should_resume = conversation.claude_session_id.is_some()
-        && conversation.context_type != ChatContextType::Review;
+    // For reviewer agent (not review-chat), start fresh session each review cycle.
+    // Resuming causes the model to see old "Review already submitted" messages.
+    // But review-chat needs session persistence for user conversation continuity.
+    let is_fresh_review_cycle = conversation.context_type == ChatContextType::Review
+        && agent_name == "ralphx-reviewer";
+    let should_resume = conversation.claude_session_id.is_some() && !is_fresh_review_cycle;
 
     let (prompt, resume_session, agent) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
