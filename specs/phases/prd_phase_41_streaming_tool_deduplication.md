@@ -127,7 +127,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: chore(types): ensure ToolCall type supports lifecycle tracking"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

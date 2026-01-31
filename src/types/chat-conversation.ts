@@ -83,8 +83,10 @@ export type AgentRun = z.infer<typeof AgentRunSchema>;
 
 /**
  * Tool call schema (parsed from JSON in message.toolCalls)
+ * Fields support lifecycle tracking: started → completed → result
  */
 export const ToolCallSchema = z.object({
+  id: z.string().min(1),
   name: z.string().min(1),
   arguments: z.unknown(),
   result: z.unknown().nullable(),
