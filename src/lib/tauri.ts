@@ -104,6 +104,21 @@ export {
   MethodologyActivationResponseSchema,
 } from "@/api/methodologies";
 
+// Artifacts API
+export {
+  artifactsApi,
+  type ArtifactResponse,
+  type BucketResponse,
+  type ArtifactRelationResponse,
+  type CreateArtifactInput,
+  type UpdateArtifactInput,
+  type CreateBucketInput,
+  type AddRelationInput,
+  ArtifactResponseSchema,
+  BucketResponseSchema,
+  ArtifactRelationResponseSchema,
+} from "@/api/artifacts";
+
 // QA API
 export {
   qaApi,
@@ -161,6 +176,7 @@ import { executionApi } from "@/api/execution";
 import { testDataApi } from "@/api/test-data";
 import { projectsApi, workflowsApi } from "@/api/projects";
 import { methodologiesApi } from "@/api/methodologies";
+import { artifactsApi } from "@/api/artifacts";
 import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
@@ -184,6 +200,7 @@ const realApi = {
   projects: projectsApi,
   workflows: workflowsApi,
   methodologies: methodologiesApi,
+  artifacts: artifactsApi,
   qa: qaApi,
   reviews: reviewsApi,
   fixTasks: fixTasksApi,

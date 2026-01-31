@@ -42,7 +42,7 @@
 
 - [x] [Frontend] Bypassed mock API: useWorkflows imports directly from @/lib/api/workflows instead of centralized api object - src/hooks/useWorkflows.ts:15
 - [x] [Frontend] Bypassed mock API: useMethodologies imports directly from @/lib/api/methodologies instead of centralized api object - src/hooks/useMethodologies.ts:12
-- [ ] [Frontend] Bypassed mock API: useArtifacts imports directly from @/lib/api/artifacts instead of centralized api object - src/hooks/useArtifacts.ts:15
+- [x] [Frontend] Bypassed mock API: useArtifacts imports directly from @/lib/api/artifacts instead of centralized api object - src/hooks/useArtifacts.ts:15
 - [ ] [Frontend] Bypassed mock API: useResearch imports directly from @/lib/api/research instead of centralized api object - src/hooks/useResearch.ts:12
 - [ ] [Frontend] Direct invoke call: useAskUserQuestion uses invoke() directly, not mockable - src/hooks/useAskUserQuestion.ts:86
 - [ ] [Frontend] Direct invoke call: PermissionDialog uses invoke() directly, not mockable - src/components/PermissionDialog.tsx:47
