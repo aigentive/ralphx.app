@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-31 21:05:00 - Phase 50 Task 3: Add confirmation dialogs to TaskCardContextMenu
+**What:**
+- Imported `useConfirmation` hook in TaskCardContextMenu.tsx
+- Created confirmation message mappings for all status actions (Cancel, Block, Unblock, Re-open, Retry)
+- Added `handleArchive` async handler with confirmation: "Archive this task?" / "The task will be moved to the archive."
+- Added `handleRestore` async handler with confirmation: "Restore this task?" / "The task will be restored to the backlog."
+- Added `handlePermanentDelete` async handler with confirmation: "Delete permanently?" / "This will permanently delete the task." (destructive variant)
+- Added `handleStatusChange` async handler that maps each status to appropriate confirmation messages
+- Updated all menu items to use the new async handlers
+- Added `<ConfirmationDialog {...confirmationDialogProps} />` to component render
+
+**Files Modified:**
+- `src/components/tasks/TaskCardContextMenu.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with pre-existing warnings only)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 20:35:00 - Phase 50 Task 2: Add confirmation dialogs to TaskDetailOverlay archive/restore
 **What:**
 - Imported `useConfirmation` hook in TaskDetailOverlay.tsx
