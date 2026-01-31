@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
 import {
   Dialog,
@@ -27,18 +27,17 @@ import type { PermissionRequest } from "@/types/permission";
  */
 export function PermissionDialog() {
   const [requests, setRequests] = useState<PermissionRequest[]>([]);
+  const eventBus = useEventBus();
   const currentRequest = requests[0];
 
   // Listen to permission request events from backend
   useEffect(() => {
-    const unlisten = listen<PermissionRequest>("permission:request", (event) => {
-      setRequests((prev) => [...prev, event.payload]);
+    const unsubscribe = eventBus.subscribe<PermissionRequest>("permission:request", (payload) => {
+      setRequests((prev) => [...prev, payload]);
     });
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
+    return unsubscribe;
+  }, [eventBus]);
 
   const handleDecision = async (decision: "allow" | "deny") => {
     if (!currentRequest) return;
