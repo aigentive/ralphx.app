@@ -1,17 +1,10 @@
 /**
- * Shared components and utilities for detail-views
+ * Shared components re-export for backward compatibility
  *
- * Extracted common components used across multiple state-specific
- * task detail views to reduce duplication.
+ * Components have been moved to ./shared/ directory.
+ * This file re-exports them to maintain existing import paths.
  */
 
-import type { ReactNode } from "react";
-
-/**
- * SectionTitle - Consistent section header styling for task detail views
- */
-export function SectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">{children}</h3>
-  );
-}
+export { SectionTitle } from "./shared/SectionTitle";
+export { ReviewTimeline } from "./shared/ReviewTimeline";
+export type { ReviewTimelineProps } from "./shared/ReviewTimeline";
