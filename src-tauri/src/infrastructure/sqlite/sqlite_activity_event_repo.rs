@@ -51,6 +51,7 @@ impl SqliteActivityEventRepository {
     }
 
     /// Build filter clause with positional placeholders starting at the given index
+    /// Does NOT include task_id/session_id filtering (those are handled by caller)
     fn build_filter_clause(
         filter: Option<&ActivityEventFilter>,
         start_param_idx: usize,
@@ -111,6 +112,83 @@ impl SqliteActivityEventRepository {
         };
 
         (where_clause, params)
+    }
+
+    /// Build filter clause for list_all that includes task_id/session_id filtering
+    /// Returns (conditions: Vec<String>, params: Vec<String>) instead of a WHERE clause
+    fn build_list_all_filter_clause(
+        filter: Option<&ActivityEventFilter>,
+        start_param_idx: usize,
+    ) -> (Vec<String>, Vec<String>) {
+        let mut conditions = Vec::new();
+        let mut params = Vec::new();
+        let mut idx = start_param_idx;
+
+        if let Some(f) = filter {
+            // Task ID filter
+            if let Some(task_id) = &f.task_id {
+                conditions.push(format!("task_id = ?{}", idx));
+                params.push(task_id.as_str().to_string());
+                idx += 1;
+            }
+
+            // Session ID filter
+            if let Some(session_id) = &f.session_id {
+                conditions.push(format!("ideation_session_id = ?{}", idx));
+                params.push(session_id.as_str().to_string());
+                idx += 1;
+            }
+
+            // Event types filter
+            if let Some(event_types) = &f.event_types {
+                if !event_types.is_empty() {
+                    let placeholders: Vec<String> = event_types
+                        .iter()
+                        .map(|t| {
+                            params.push(t.to_string());
+                            let placeholder = format!("?{}", idx);
+                            idx += 1;
+                            placeholder
+                        })
+                        .collect();
+                    conditions.push(format!("event_type IN ({})", placeholders.join(", ")));
+                }
+            }
+
+            // Roles filter
+            if let Some(roles) = &f.roles {
+                if !roles.is_empty() {
+                    let placeholders: Vec<String> = roles
+                        .iter()
+                        .map(|r| {
+                            params.push(r.to_string());
+                            let placeholder = format!("?{}", idx);
+                            idx += 1;
+                            placeholder
+                        })
+                        .collect();
+                    conditions.push(format!("role IN ({})", placeholders.join(", ")));
+                }
+            }
+
+            // Statuses filter
+            if let Some(statuses) = &f.statuses {
+                if !statuses.is_empty() {
+                    let placeholders: Vec<String> = statuses
+                        .iter()
+                        .map(|s| {
+                            params.push(s.to_string());
+                            let placeholder = format!("?{}", idx);
+                            idx += 1;
+                            placeholder
+                        })
+                        .collect();
+                    conditions.push(format!("internal_status IN ({})", placeholders.join(", ")));
+                }
+            }
+        }
+
+        (conditions, params)
     }
 }
 
@@ -446,6 +524,127 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
 
         Ok(count as u64)
     }
+
+    async fn list_all(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+        filter: Option<&ActivityEventFilter>,
+    ) -> AppResult<ActivityEventPage> {
+        let conn = self.conn.lock().await;
+
+        // Cap limit at MAX_LIMIT
+        let limit = limit.min(MAX_LIMIT);
+        // Request one extra to detect has_more
+        let fetch_limit = limit + 1;
+
+        let (sql, params): (String, Vec<String>) = if let Some(cursor_str) = cursor {
+            if let Some((cursor_ts, cursor_id)) = Self::parse_cursor(cursor_str) {
+                // Cursor pagination: get events older than cursor
+                // Build filter conditions starting at param index 4 (after cursor_ts, cursor_id, limit)
+                let (filter_conditions, filter_params) =
+                    Self::build_list_all_filter_clause(filter, 4);
+
+                let where_clause = if filter_conditions.is_empty() {
+                    "(created_at < ?1 OR (created_at = ?1 AND id < ?2))".to_string()
+                } else {
+                    format!(
+                        "(created_at < ?1 OR (created_at = ?1 AND id < ?2)) AND {}",
+                        filter_conditions.join(" AND ")
+                    )
+                };
+
+                let sql = format!(
+                    "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
+                     FROM activity_events
+                     WHERE {}
+                     ORDER BY created_at DESC, id DESC
+                     LIMIT ?3",
+                    where_clause
+                );
+                let mut params: Vec<String> =
+                    vec![cursor_ts, cursor_id, fetch_limit.to_string()];
+                params.extend(filter_params);
+                (sql, params)
+            } else {
+                // Invalid cursor, treat as first page
+                let (filter_conditions, filter_params) =
+                    Self::build_list_all_filter_clause(filter, 2);
+
+                let where_clause = if filter_conditions.is_empty() {
+                    "1=1".to_string()
+                } else {
+                    filter_conditions.join(" AND ")
+                };
+
+                let sql = format!(
+                    "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
+                     FROM activity_events
+                     WHERE {}
+                     ORDER BY created_at DESC, id DESC
+                     LIMIT ?1",
+                    where_clause
+                );
+                let mut params: Vec<String> = vec![fetch_limit.to_string()];
+                params.extend(filter_params);
+                (sql, params)
+            }
+        } else {
+            // First page (no cursor)
+            let (filter_conditions, filter_params) =
+                Self::build_list_all_filter_clause(filter, 2);
+
+            let where_clause = if filter_conditions.is_empty() {
+                "1=1".to_string()
+            } else {
+                filter_conditions.join(" AND ")
+            };
+
+            let sql = format!(
+                "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
+                 FROM activity_events
+                 WHERE {}
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?1",
+                where_clause
+            );
+            let mut params: Vec<String> = vec![fetch_limit.to_string()];
+            params.extend(filter_params);
+            (sql, params)
+        };
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect();
+
+        let mut events: Vec<ActivityEvent> = stmt
+            .query_map(params_refs.as_slice(), ActivityEvent::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let has_more = events.len() > limit as usize;
+        if has_more {
+            events.truncate(limit as usize);
+        }
+
+        let next_cursor = if has_more {
+            events.last().map(Self::format_cursor)
+        } else {
+            None
+        };
+
+        Ok(ActivityEventPage {
+            events,
+            cursor: next_cursor,
+            has_more,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -740,6 +939,140 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_all_returns_all_events() {
+        let conn = setup_test_db();
+        let repo = SqliteActivityEventRepository::new(conn);
+
+        let task_id = TaskId::from_string("t1".to_string());
+        let session_id = IdeationSessionId::from_string("s1".to_string());
+
+        // Create events for both task and session
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::Text,
+            "task event 1",
+        ))
+        .await
+        .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+        repo.save(ActivityEvent::new_session_event(
+            session_id.clone(),
+            ActivityEventType::Text,
+            "session event 1",
+        ))
+        .await
+        .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::ToolCall,
+            "task event 2",
+        ))
+        .await
+        .unwrap();
+
+        // list_all should return all 3 events
+        let page = repo.list_all(None, 50, None).await.unwrap();
+        assert_eq!(page.events.len(), 3);
+        assert!(!page.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_list_all_with_task_id_filter() {
+        let conn = setup_test_db();
+        let repo = SqliteActivityEventRepository::new(conn);
+
+        let task_id = TaskId::from_string("t1".to_string());
+        let session_id = IdeationSessionId::from_string("s1".to_string());
+
+        // Create events for both task and session
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::Text,
+            "task event",
+        ))
+        .await
+        .unwrap();
+        repo.save(ActivityEvent::new_session_event(
+            session_id.clone(),
+            ActivityEventType::Text,
+            "session event",
+        ))
+        .await
+        .unwrap();
+
+        // Filter by task_id
+        let filter = ActivityEventFilter::new().with_task_id(task_id.clone());
+        let page = repo.list_all(None, 50, Some(&filter)).await.unwrap();
+        assert_eq!(page.events.len(), 1);
+        assert_eq!(page.events[0].task_id, Some(task_id));
+    }
+
+    #[tokio::test]
+    async fn test_list_all_with_session_id_filter() {
+        let conn = setup_test_db();
+        let repo = SqliteActivityEventRepository::new(conn);
+
+        let task_id = TaskId::from_string("t1".to_string());
+        let session_id = IdeationSessionId::from_string("s1".to_string());
+
+        // Create events for both task and session
+        repo.save(ActivityEvent::new_task_event(
+            task_id.clone(),
+            ActivityEventType::Text,
+            "task event",
+        ))
+        .await
+        .unwrap();
+        repo.save(ActivityEvent::new_session_event(
+            session_id.clone(),
+            ActivityEventType::Text,
+            "session event",
+        ))
+        .await
+        .unwrap();
+
+        // Filter by session_id
+        let filter = ActivityEventFilter::new().with_session_id(session_id.clone());
+        let page = repo.list_all(None, 50, Some(&filter)).await.unwrap();
+        assert_eq!(page.events.len(), 1);
+        assert_eq!(page.events[0].ideation_session_id, Some(session_id));
+    }
+
+    #[tokio::test]
+    async fn test_list_all_pagination() {
+        let conn = setup_test_db();
+        let repo = SqliteActivityEventRepository::new(conn);
+
+        let task_id = TaskId::from_string("t1".to_string());
+
+        // Create 5 events with delays
+        for i in 0..5 {
+            let event = ActivityEvent::new_task_event(
+                task_id.clone(),
+                ActivityEventType::Text,
+                format!("content {}", i),
+            );
+            repo.save(event).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+        }
+
+        // First page
+        let page1 = repo.list_all(None, 3, None).await.unwrap();
+        assert_eq!(page1.events.len(), 3);
+        assert!(page1.has_more);
+        assert!(page1.cursor.is_some());
+
+        // Second page
+        let page2 = repo
+            .list_all(page1.cursor.as_deref(), 3, None)
+            .await
+            .unwrap();
+        assert_eq!(page2.events.len(), 2);
+        assert!(!page2.has_more);
     }
 
     #[test]
