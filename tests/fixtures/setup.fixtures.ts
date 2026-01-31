@@ -59,3 +59,27 @@ export async function setupReviewsPanel(page: Page) {
   // Wait for reviews panel to load
   await page.waitForSelector('[data-testid="reviews-panel"]', { timeout: 10000 });
 }
+
+export async function setupEmptyKanban(page: Page) {
+  await setupApp(page);
+  // Clear all tasks from the mock store to create an empty state
+  await page.evaluate(() => {
+    const mockStore = (window as any).__mockStore;
+    const queryClient = (window as any).__queryClient;
+
+    if (mockStore) {
+      // Clear only tasks, keep the project
+      mockStore.tasks.clear();
+      mockStore.taskSteps.clear();
+    }
+
+    // Invalidate React Query cache to trigger refetch with empty data
+    if (queryClient) {
+      queryClient.invalidateQueries();
+    }
+  });
+  // Wait for queries to refetch and render empty state
+  await page.waitForTimeout(500);
+  // Wait for the board to be visible (even if empty)
+  await page.waitForSelector('[data-testid="task-board"]', { timeout: 10000 });
+}

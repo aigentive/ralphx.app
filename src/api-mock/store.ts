@@ -153,6 +153,12 @@ export function getStore(): MockStore {
   if (!store.initialized) {
     seedMockData();
   }
+
+  // Expose store to window in web mode for Playwright testing
+  if (typeof window !== 'undefined') {
+    (window as any).__mockStore = store;
+  }
+
   return store;
 }
 

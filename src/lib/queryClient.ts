@@ -57,6 +57,11 @@ let queryClient: QueryClient | null = null;
 export function getQueryClient(): QueryClient {
   if (!queryClient) {
     queryClient = createQueryClient();
+
+    // Expose queryClient to window in web mode for Playwright testing
+    if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) {
+      (window as any).__queryClient = queryClient;
+    }
   }
   return queryClient;
 }

@@ -1,3 +1,14 @@
+### 2026-02-01 01:27:00 - empty-kanban State Visual Tests
+**What:** Created page object helper + spec + baseline for empty kanban board state
+**Mock parity:** Extended mock infrastructure to support empty state testing
+- Exposed __mockStore to window for test manipulation (src/api-mock/store.ts)
+- Exposed __queryClient to window for cache invalidation (src/lib/queryClient.ts)
+- Created setupEmptyKanban helper that clears tasks and invalidates queries
+**Commands:** `npx playwright test tests/visual/states/empty-kanban/empty-kanban.spec.ts --update-snapshots`
+**Result:** Success - 4 tests passing with baselines
+
+---
+
 ### 2026-02-01 01:05:00 - PermissionDialog Investigation (P1 - Non-Blocking)
 **What:**
 - Investigated PermissionDialog after dev server restart per backlog instructions
