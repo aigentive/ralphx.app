@@ -11,7 +11,7 @@
 
 <!-- Items discovered during testing where mock data is missing or incomplete -->
 
-- [ ] TaskDetailModal: No UI trigger exists in web mode - modal requires programmatic opening via uiStore.openModal() but lacks natural entry point (right-click menu, button, etc.). Needs either: (1) UI trigger implementation, or (2) test-only helper to expose store manipulation
+- [x] TaskDetailModal: Resolved by creating test helper (tests/helpers/task-detail.helpers.ts) that uses window.__uiStore (already exposed for web mode). No production UI trigger needed for visual testing.
 - [x] AskUserQuestionModal: Resolved by exposing uiStore to window for direct state manipulation in tests (avoiding event subscription race condition)
 - [ ] PermissionDialog: **BLOCKED - Component subscription issue**. Server restarted, window.__eventBus available, but PermissionDialog useEffect never subscribes to permission:request events (listener count = 0 after app load). Root cause: Component mounts but useEffect subscription not working in web mode. Needs investigation: (1) useEventBus() error in web mode? (2) Component lifecycle issue? (3) EventProvider context not available? Test infrastructure ready: tests/pages/modals/permission-dialog.page.ts, tests/helpers/permission.helpers.ts, tests/visual/modals/permission-dialog/permission-dialog.spec.ts. **Reclassified as P1 technical debt** (non-blocking per stream rules).
 

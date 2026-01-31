@@ -16,7 +16,7 @@ Phase: COMPLETE
 ## Modals (6 total)
 | Modal | Mock Ready | Spec File | Baseline | Status |
 |-------|------------|-----------|----------|--------|
-| TaskDetailModal | 🚧 | — | — | blocked |
+| TaskDetailModal | ✅ | task-detail-modal.spec.ts | ✅ | covered |
 | ReviewsPanel | ✅ | reviews-panel.spec.ts | ✅ | covered |
 | AskUserQuestionModal | ✅ | ask-user-question.spec.ts | ✅ | covered |
 | ProjectCreationWizard | ✅ | project-creation-wizard.spec.ts | ✅ | covered |
