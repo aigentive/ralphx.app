@@ -33,6 +33,8 @@ interface TaskCardContextMenuProps {
   onStatusChange: (newStatus: string) => void;
   /** Handler for blocking a task with an optional reason */
   onBlockWithReason: (reason?: string) => void;
+  /** Handler for unblocking a task (clears blocked_reason) */
+  onUnblock: () => void;
   /** Handler for starting ideation seeded from this task (only for backlog tasks) */
   onStartIdeation?: () => void;
 }
@@ -109,6 +111,7 @@ export function TaskCardContextMenu({
   onPermanentDelete,
   onStatusChange,
   onBlockWithReason,
+  onUnblock,
   onStartIdeation,
 }: TaskCardContextMenuProps) {
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
@@ -174,6 +177,16 @@ export function TaskCardContextMenu({
     if (confirmed) onStatusChange(newStatus);
   };
 
+  const handleUnblock = async () => {
+    const confirmed = await confirm({
+      title: "Unblock this task?",
+      description: "The task will be moved back to ready and the blocked reason will be cleared.",
+      confirmText: "Unblock",
+      variant: "default",
+    });
+    if (confirmed) onUnblock();
+  };
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
@@ -219,6 +232,9 @@ export function TaskCardContextMenu({
                   // Block action opens dialog instead of confirm
                   if (action.label === "Block") {
                     setShowBlockDialog(true);
+                  } else if (action.label === "Unblock") {
+                    // Unblock uses dedicated handler to clear blocked_reason
+                    handleUnblock();
                   } else {
                     handleStatusChange(action.status, action.label);
                   }

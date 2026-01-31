@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-01 01:15:00 - P0 Fix: Use unblockMutation instead of moveMutation
+**What:**
+- Gap verification found TaskCard using moveMutation for "Unblock" action
+- This called move_task backend which doesn't clear blocked_reason field
+- Fixed by adding onUnblock prop to TaskCardContextMenu interface
+- Added handleUnblock function in TaskCard using unblockMutation
+- Updated context menu to call handleUnblock for "Unblock" action
+- unblockMutation properly calls unblock_task which clears blocked_reason
+
+**Files Modified:**
+- `src/components/tasks/TaskCardContextMenu.tsx` (added onUnblock prop, handleUnblock function)
+- `src/components/tasks/TaskBoard/TaskCard.tsx` (added handleUnblock, extracted unblockMutation)
+- `streams/features/backlog.md` (P0 item added and marked fixed)
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 01:00:00 - P0 Fix: Use blockMutation instead of direct API call
 **What:**
 - Gap verification found handleBlockWithReason calling api.tasks.block() directly
