@@ -370,7 +370,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(activity): read filter from uiStore for context-aware navigation"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
