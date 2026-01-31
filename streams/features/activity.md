@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 17:00:00 - P0 Fix: TaskChatPanel EventProvider migration
+**What:**
+- Migrated TaskChatPanel from direct `@tauri-apps/api/event` listen() to useEventBus()
+- Replaced async listen() pattern with synchronous subscribe() from EventBus
+- Events CHAT_TOOL_CALL and CHAT_RUN_COMPLETED now go through EventProvider
+
+**Files Modified:**
+- `src/components/tasks/TaskChatPanel.tsx` (use useEventBus() instead of direct listen())
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - TaskChatPanel events will now use MockEventBus in web mode
+
+---
+
 ### 2026-01-31 16:00:00 - P0 Fix: PermissionDialog mock API wiring
 **What:**
 - Created `src/api/permission.ts` with centralized permissionApi:
