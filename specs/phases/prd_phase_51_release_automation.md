@@ -240,7 +240,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Make scripts executable with chmod +x",
       "Commit: feat(scripts): add release build and version bump scripts"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 10,

@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 23:45:00 - Phase 51 Task 9: Create local build and version bump scripts
+**What:**
+- Created `scripts/build-release.sh` for local DMG builds:
+  - Builds frontend with `npm run build`
+  - Builds Tauri in release mode with `cargo tauri build`
+  - Outputs locations of .app and .dmg files
+- Created `scripts/bump-version.sh` for version management:
+  - Updates package.json, Cargo.toml, and tauri.conf.json
+  - Provides git commands for creating release tag
+- Made both scripts executable with `chmod +x`
+
+**Files Created:**
+- `scripts/build-release.sh`
+- `scripts/bump-version.sh`
+
+**Commands:**
+- `chmod +x scripts/build-release.sh scripts/bump-version.sh`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:30:00 - Phase 51 Task 8: Create GitHub Actions release workflow
 **What:**
 - Created `.github/workflows/` directory
