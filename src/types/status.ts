@@ -19,6 +19,7 @@ export const InternalStatusSchema = z.enum([
   "pending_review",
   "reviewing",
   "review_passed",
+  "escalated",
   "revision_needed",
   "re_executing",
   "approved",
@@ -53,6 +54,7 @@ export const ACTIVE_STATUSES: readonly InternalStatus[] = [
   "pending_review",
   "reviewing",
   "review_passed",
+  "escalated",
   "revision_needed",
 ] as const;
 
@@ -72,6 +74,7 @@ export const REVIEW_STATUSES: readonly InternalStatus[] = [
   "pending_review",
   "reviewing",
   "review_passed",
+  "escalated",
 ] as const;
 
 /**
