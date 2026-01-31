@@ -7,7 +7,7 @@ Phase: IN_PROGRESS
 | View | Mock Ready | Spec File | Baseline | Status |
 |------|------------|-----------|----------|--------|
 | kanban | ✅ | kanban.spec.ts | ✅ | covered |
-| ideation | ❌ | — | — | uncovered |
+| ideation | ✅ | ideation.spec.ts | ✅ | covered |
 | activity | ❌ | — | — | uncovered |
 | settings | ❌ | — | — | uncovered |
 | extensibility | ❌ | — | — | uncovered |

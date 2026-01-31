@@ -10,3 +10,11 @@ export async function setupKanban(page: Page) {
   // Wait for kanban-specific elements
   await page.waitForSelector('[data-testid^="task-card-"]');
 }
+
+export async function setupIdeation(page: Page) {
+  await setupApp(page);
+  // Navigate to ideation view
+  await page.click('[data-testid="nav-ideation"]');
+  // Wait for ideation view to load
+  await page.waitForSelector('[data-testid="ideation-view"]', { timeout: 10000 });
+}
