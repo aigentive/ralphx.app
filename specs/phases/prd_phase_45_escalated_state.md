@@ -97,7 +97,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(status): add Escalated variant to InternalStatus enum"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

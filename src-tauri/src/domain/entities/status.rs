@@ -35,6 +35,8 @@ pub enum InternalStatus {
     Reviewing,
     /// AI approved, awaiting human confirmation
     ReviewPassed,
+    /// AI couldn't decide, escalated to human for decision
+    Escalated,
     /// Reviewer requested changes
     RevisionNeeded,
     /// Worker is revising based on review feedback
@@ -69,8 +71,9 @@ impl InternalStatus {
 
             // Review states
             PendingReview => &[Reviewing],
-            Reviewing => &[ReviewPassed, RevisionNeeded],
+            Reviewing => &[ReviewPassed, RevisionNeeded, Escalated],
             ReviewPassed => &[Approved, RevisionNeeded],
+            Escalated => &[Approved, RevisionNeeded],
             RevisionNeeded => &[ReExecuting, Cancelled],
             ReExecuting => &[PendingReview, Failed, Blocked],
 
@@ -102,6 +105,7 @@ impl InternalStatus {
             PendingReview,
             Reviewing,
             ReviewPassed,
+            Escalated,
             RevisionNeeded,
             ReExecuting,
             Approved,
@@ -124,6 +128,7 @@ impl InternalStatus {
             InternalStatus::PendingReview => "pending_review",
             InternalStatus::Reviewing => "reviewing",
             InternalStatus::ReviewPassed => "review_passed",
+            InternalStatus::Escalated => "escalated",
             InternalStatus::RevisionNeeded => "revision_needed",
             InternalStatus::ReExecuting => "re_executing",
             InternalStatus::Approved => "approved",
@@ -169,6 +174,7 @@ impl FromStr for InternalStatus {
             "pending_review" => Ok(InternalStatus::PendingReview),
             "reviewing" => Ok(InternalStatus::Reviewing),
             "review_passed" => Ok(InternalStatus::ReviewPassed),
+            "escalated" => Ok(InternalStatus::Escalated),
             "revision_needed" => Ok(InternalStatus::RevisionNeeded),
             "re_executing" => Ok(InternalStatus::ReExecuting),
             "approved" => Ok(InternalStatus::Approved),
@@ -189,7 +195,7 @@ mod tests {
 
     #[test]
     fn internal_status_has_17_variants() {
-        assert_eq!(InternalStatus::all_variants().len(), 16);
+        assert_eq!(InternalStatus::all_variants().len(), 17);
     }
 
     #[test]
@@ -207,6 +213,7 @@ mod tests {
             PendingReview,
             Reviewing,
             ReviewPassed,
+            Escalated,
             RevisionNeeded,
             ReExecuting,
             Approved,
@@ -244,6 +251,12 @@ mod tests {
     }
 
     #[test]
+    fn serializes_to_snake_case_escalated() {
+        let json = serde_json::to_string(&InternalStatus::Escalated).unwrap();
+        assert_eq!(json, "\"escalated\"");
+    }
+
+    #[test]
     fn all_variants_serialize_correctly() {
         let expected_serializations = vec![
             ("backlog", InternalStatus::Backlog),
@@ -257,6 +270,7 @@ mod tests {
             ("pending_review", InternalStatus::PendingReview),
             ("reviewing", InternalStatus::Reviewing),
             ("review_passed", InternalStatus::ReviewPassed),
+            ("escalated", InternalStatus::Escalated),
             ("revision_needed", InternalStatus::RevisionNeeded),
             ("re_executing", InternalStatus::ReExecuting),
             ("approved", InternalStatus::Approved),
@@ -586,6 +600,33 @@ mod tests {
     fn review_passed_to_revision_needed() {
         use InternalStatus::*;
         assert!(ReviewPassed.can_transition_to(RevisionNeeded));
+    }
+
+    // ===== Escalated State Transition Tests =====
+
+    #[test]
+    fn reviewing_to_escalated() {
+        use InternalStatus::*;
+        assert!(Reviewing.can_transition_to(Escalated));
+    }
+
+    #[test]
+    fn escalated_transitions() {
+        use InternalStatus::*;
+        let transitions = Escalated.valid_transitions();
+        assert_eq!(transitions, &[Approved, RevisionNeeded]);
+    }
+
+    #[test]
+    fn escalated_to_approved() {
+        use InternalStatus::*;
+        assert!(Escalated.can_transition_to(Approved));
+    }
+
+    #[test]
+    fn escalated_to_revision_needed() {
+        use InternalStatus::*;
+        assert!(Escalated.can_transition_to(RevisionNeeded));
     }
 
     #[test]

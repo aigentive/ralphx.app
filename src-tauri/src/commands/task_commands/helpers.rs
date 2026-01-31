@@ -69,6 +69,7 @@ pub fn status_to_label(status: InternalStatus) -> String {
         InternalStatus::PendingReview => "Send to Review".to_string(),
         InternalStatus::Reviewing => "AI Reviewing".to_string(),
         InternalStatus::ReviewPassed => "Review Passed".to_string(),
+        InternalStatus::Escalated => "Escalated".to_string(),
         InternalStatus::RevisionNeeded => "Needs Revision".to_string(),
         InternalStatus::ReExecuting => "Re-executing".to_string(),
         InternalStatus::Approved => "Approve".to_string(),
