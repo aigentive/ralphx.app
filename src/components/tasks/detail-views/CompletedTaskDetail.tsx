@@ -8,14 +8,11 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { SectionTitle } from "./shared";
+import { SectionTitle, ReviewTimeline } from "./shared";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import {
   CheckCircle2,
   Loader2,
-  Bot,
-  User,
-  RotateCcw,
   ExternalLink,
   RefreshCw,
 } from "lucide-react";
@@ -83,122 +80,6 @@ function getApprovalInfo(history: ReviewNoteResponse[]): {
   const aiApproval = approvedEntries.find((e) => e.reviewer === "ai") ?? null;
 
   return { humanApproval, aiApproval };
-}
-
-/**
- * HistoryTimelineItem - Individual item in the review history timeline
- */
-function HistoryTimelineItem({
-  entry,
-  isLast,
-}: {
-  entry: ReviewNoteResponse;
-  isLast: boolean;
-}) {
-  const isApproved = entry.outcome === "approved";
-  const isChangesRequested = entry.outcome === "changes_requested";
-  const isHuman = entry.reviewer === "human";
-
-  const getIconAndColor = () => {
-    if (isApproved) {
-      return {
-        Icon: CheckCircle2,
-        color: "var(--status-success)",
-        bgColor: "rgba(16, 185, 129, 0.15)",
-      };
-    }
-    if (isChangesRequested) {
-      return {
-        Icon: RotateCcw,
-        color: "var(--status-warning)",
-        bgColor: "rgba(245, 158, 11, 0.15)",
-      };
-    }
-    return {
-      Icon: CheckCircle2,
-      color: "rgba(255,255,255,0.5)",
-      bgColor: "rgba(255,255,255,0.08)",
-    };
-  };
-
-  const { Icon, color, bgColor } = getIconAndColor();
-  const ReviewerIcon = isHuman ? User : Bot;
-
-  const getLabel = () => {
-    if (isApproved) {
-      return `${isHuman ? "Human" : "AI"} approved`;
-    }
-    if (isChangesRequested) {
-      return `${isHuman ? "Human" : "AI"} changes requested`;
-    }
-    return `${isHuman ? "Human" : "AI"} reviewed`;
-  };
-
-  return (
-    <div className="flex gap-3">
-      {/* Timeline line and dot */}
-      <div className="flex flex-col items-center">
-        <div
-          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-          style={{ backgroundColor: bgColor }}
-        >
-          <Icon className="w-3.5 h-3.5" style={{ color }} />
-        </div>
-        {!isLast && (
-          <div
-            className="w-px flex-1 min-h-[16px]"
-            style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
-          />
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 pb-3">
-        <div className="flex items-center gap-2">
-          <ReviewerIcon
-            className="w-3.5 h-3.5"
-            style={{ color: "rgba(255,255,255,0.5)" }}
-          />
-          <span className="text-[12px] font-medium text-white/70">
-            {getLabel()}
-          </span>
-          <span className="text-[11px] text-white/40">
-            {formatRelativeTime(entry.created_at)}
-          </span>
-        </div>
-        {entry.notes && (
-          <p className="text-[11px] text-white/50 mt-1 pl-5">
-            {entry.notes}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * ReviewHistoryTimeline - Shows timeline of review events
- */
-function ReviewHistoryTimeline({ history }: { history: ReviewNoteResponse[] }) {
-  if (history.length === 0) {
-    return (
-      <p className="text-[12px] text-white/40 italic">
-        No review history available
-      </p>
-    );
-  }
-
-  return (
-    <div data-testid="review-history-timeline">
-      {history.map((entry, index) => (
-        <HistoryTimelineItem
-          key={entry.id}
-          entry={entry}
-          isLast={index === history.length - 1}
-        />
-      ))}
-    </div>
-  );
 }
 
 /**
@@ -372,7 +253,7 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
               border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            <ReviewHistoryTimeline history={history} />
+            <ReviewTimeline history={history} />
           </div>
         </div>
       )}

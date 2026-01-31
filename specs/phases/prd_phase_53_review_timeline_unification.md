@@ -115,7 +115,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(detail-views): use shared ReviewTimeline in CompletedTaskDetail"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
