@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-31 16:00:00 - Phase 46 Task 4: Add ReviewIssue schema to frontend
+**What:**
+- Added `ReviewIssueSchema` with severity, file, line, description fields (reviews-api.schemas.ts:48-54)
+- Updated `ReviewNoteResponseSchema` to include `issues: z.array(ReviewIssueSchema).nullable().optional()` (line 63)
+- Exported `ReviewIssue` type for use in components
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed with 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 15:30:00 - Phase 46 Task 3: Update ReviewNoteResponse to include issues
 **What:**
 - Added `issues: Option<Vec<ReviewIssue>>` to `ReviewNoteResponse` struct (types.rs:295)

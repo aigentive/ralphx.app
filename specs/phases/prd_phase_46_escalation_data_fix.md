@@ -145,7 +145,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(api): add ReviewIssue schema and update response types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,

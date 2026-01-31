@@ -43,6 +43,18 @@ export const ReviewActionResponseSchema = z.object({
 export type ReviewActionResponse = z.infer<typeof ReviewActionResponseSchema>;
 
 /**
+ * Review issue from AI reviewer escalation
+ */
+export const ReviewIssueSchema = z.object({
+  severity: z.string(), // "critical" | "major" | "minor" | "suggestion"
+  file: z.string().nullable(),
+  line: z.number().int().nullable(),
+  description: z.string(),
+});
+
+export type ReviewIssue = z.infer<typeof ReviewIssueSchema>;
+
+/**
  * Review note response from Rust (state history)
  */
 export const ReviewNoteResponseSchema = z.object({
@@ -51,6 +63,7 @@ export const ReviewNoteResponseSchema = z.object({
   reviewer: ReviewerTypeSchema,
   outcome: ReviewOutcomeSchema,
   notes: z.string().nullable().optional(),
+  issues: z.array(ReviewIssueSchema).nullable().optional(),
   created_at: z.string(),
 });
 
