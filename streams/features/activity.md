@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-01-31 23:15:00 - Phase 43 Task 3: Update useAppKeyboardShortcuts hook for unified chat visibility
+**What:**
+- Replaced toggleChatPanel and toggleChatCollapsed with single toggleChatVisible(view: ViewType) in interface
+- Simplified ⌘K handler to call toggleChatVisible(currentView) instead of view-specific toggle functions
+- Updated dependency array to use new toggleChatVisible instead of old toggleChatPanel/toggleChatCollapsed
+- Updated App.tsx to pass toggleChatVisible directly instead of adapter functions
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:45:00 - Phase 43 Task 2: Update App.tsx to use unified per-view chat visibility
 **What:**
 - Replaced chatCollapsed/toggleChatCollapsed with chatVisibleByView/toggleChatVisible from uiStore

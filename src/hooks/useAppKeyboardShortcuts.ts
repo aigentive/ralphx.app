@@ -9,8 +9,7 @@ import type { ViewType } from "@/types/chat";
 interface UseAppKeyboardShortcutsProps {
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
-  toggleChatPanel: () => void;
-  toggleChatCollapsed: () => void;
+  toggleChatVisible: (view: ViewType) => void;
   openProjectWizard?: () => void;
   hasProjects?: boolean;
   showWelcomeOverlay?: boolean;
@@ -22,8 +21,7 @@ interface UseAppKeyboardShortcutsProps {
 export function useAppKeyboardShortcuts({
   currentView,
   setCurrentView,
-  toggleChatPanel,
-  toggleChatCollapsed,
+  toggleChatVisible,
   openProjectWizard,
   hasProjects,
   showWelcomeOverlay,
@@ -83,12 +81,7 @@ export function useAppKeyboardShortcuts({
               return;
             }
             e.preventDefault();
-            // Use split layout toggle for kanban, floating panel toggle for other views
-            if (currentView === "kanban") {
-              toggleChatCollapsed();
-            } else {
-              toggleChatPanel();
-            }
+            toggleChatVisible(currentView);
             break;
           }
           case "n":
@@ -148,7 +141,7 @@ export function useAppKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatPanel, currentView, toggleChatCollapsed, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
+  }, [setCurrentView, toggleChatVisible, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
