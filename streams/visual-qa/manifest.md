@@ -21,7 +21,7 @@ Phase: IN_PROGRESS
 | AskUserQuestionModal | ❌ | — | — | uncovered |
 | ProjectCreationWizard | ✅ | project-creation-wizard.spec.ts | ✅ | covered |
 | ProposalEditModal | ❌ | — | — | uncovered |
-| PermissionDialog | ❌ | — | — | uncovered |
+| PermissionDialog | 🚧 | — | — | blocked |
 
 ## States & Edge Cases
 | State | View/Modal | Spec | Status |

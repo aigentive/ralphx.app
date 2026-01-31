@@ -1,3 +1,21 @@
+### 2026-01-31 22:30:03 - PermissionDialog Visual Tests (Blocked)
+**What:**
+- Created page object: tests/pages/modals/permission-dialog.page.ts
+- Created helper: tests/helpers/permission.helpers.ts with 5 test fixtures
+- Created spec: tests/visual/modals/permission-dialog/permission-dialog.spec.ts with 8 tests
+- Test infrastructure complete: fixtures for Bash, Write, Edit, Read tools + truncation + queue tests
+
+**Mock parity:**
+- Status: READY (infrastructure complete)
+- Component renders in App.tsx line 760
+- EventBus exposed to window in EventProvider.tsx line 123
+- Uses same event bus pattern as AskUserQuestionModal (permission:request event)
+
+**Commands:**
+- `npx playwright test tests/visual/modals/permission-dialog/permission-dialog.spec.ts --update-snapshots`
+
+**Result:** BLOCKED - All 8 tests timeout with "modal not visible". Root cause: Dev server needs restart for EventProvider changes to take effect (window.__eventBus exposure). Cannot proceed per CLAUDE.md rule #8 (user manages dev server). Updated backlog and manifest with block status.
+
 ### 2026-02-01 01:12:18 - Bootstrap Planning (Discovery)
 **What:**
 - Analyzed uncovered modals: AskUserQuestionModal, ProposalEditModal, PermissionDialog
