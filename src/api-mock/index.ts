@@ -15,6 +15,7 @@ import { mockProjectsApi, mockWorkflowsApi } from "./projects";
 import { mockMethodologiesApi } from "./methodologies";
 import { mockArtifactsApi } from "./artifact";
 import { mockResearchApi } from "./research";
+import { mockAskUserQuestionApi } from "./ask-user-question";
 import { mockExecutionApi } from "./execution";
 import { mockReviewsApi, mockFixTasksApi } from "./reviews";
 import { mockQaApi } from "./qa";
@@ -26,6 +27,7 @@ export { mockProjectsApi, mockWorkflowsApi, mockGetGitBranches } from "./project
 export { mockMethodologiesApi } from "./methodologies";
 export { mockArtifactsApi } from "./artifact";
 export { mockResearchApi } from "./research";
+export { mockAskUserQuestionApi } from "./ask-user-question";
 export { mockExecutionApi } from "./execution";
 export { mockChatApi } from "./chat";
 export { mockIdeationApi } from "./ideation";
@@ -52,6 +54,7 @@ export const mockApi = {
   methodologies: mockMethodologiesApi,
   artifacts: mockArtifactsApi,
   research: mockResearchApi,
+  askUserQuestion: mockAskUserQuestionApi,
   qa: mockQaApi,
   reviews: mockReviewsApi,
   fixTasks: mockFixTasksApi,

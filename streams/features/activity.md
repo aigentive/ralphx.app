@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-01-31 15:00:00 - P0 Fix: useAskUserQuestion mock API wiring
+**What:**
+- Created `src/api/ask-user-question.ts` with centralized askUserQuestionApi:
+  - `answerQuestion` method for submitting user responses to agent questions
+- Created `src/api-mock/ask-user-question.ts` with mockAskUserQuestionApi for web mode
+- Wired `askUserQuestionApi` into realApi in `src/lib/tauri.ts`
+- Wired `mockAskUserQuestionApi` into mockApi in `src/api-mock/index.ts`
+- Updated `useAskUserQuestion.ts` to import from centralized `api` object instead of direct `invoke()`
+
+**Files Created:**
+- `src/api/ask-user-question.ts` (centralized real API)
+- `src/api-mock/ask-user-question.ts` (mock API for web mode)
+
+**Files Modified:**
+- `src/lib/tauri.ts` (added askUserQuestionApi to realApi)
+- `src/api-mock/index.ts` (added mockAskUserQuestionApi to mockApi)
+- `src/hooks/useAskUserQuestion.ts` (use centralized api)
+
+**Commands:**
+- `npm run typecheck` - passed
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+
+**Result:** Success - Ask user question operations will now use mock data in web mode
+
+---
+
 ### 2026-01-31 14:00:00 - P0 Fix: useResearch mock API wiring
 **What:**
 - Created `src/api/research.ts` with centralized researchApi:
