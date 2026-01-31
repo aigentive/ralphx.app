@@ -62,6 +62,17 @@ impl From<ReviewAction> for ReviewActionResponse {
     }
 }
 
+/// Issue reported during review
+#[derive(Debug, Clone, Serialize)]
+pub struct ReviewIssue {
+    pub severity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<i32>,
+    pub description: String,
+}
+
 /// Response wrapper for review notes (state history)
 #[derive(Debug, Serialize)]
 pub struct ReviewNoteResponse {
@@ -71,6 +82,8 @@ pub struct ReviewNoteResponse {
     pub outcome: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issues: Option<Vec<ReviewIssue>>,
     pub created_at: String,
 }
 
@@ -82,6 +95,7 @@ impl From<ReviewNote> for ReviewNoteResponse {
             reviewer: note.reviewer.to_string(),
             outcome: note.outcome.to_string(),
             notes: note.notes,
+            issues: None, // Will be populated by parse_issues_from_notes in Task 3
             created_at: note.created_at.to_rfc3339(),
         }
     }

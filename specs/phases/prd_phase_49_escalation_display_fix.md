@@ -91,7 +91,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(reviews): add ReviewIssue type and issues field to ReviewNoteResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

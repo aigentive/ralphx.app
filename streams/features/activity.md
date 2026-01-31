@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 18:45:00 - Phase 49 Task 1: Add ReviewIssue type and issues field to ReviewNoteResponse
+**What:**
+- Added `ReviewIssue` struct with fields: severity, file (optional), line (optional), description
+- Added `issues: Option<Vec<ReviewIssue>>` field to `ReviewNoteResponse` struct
+- Added `#[serde(skip_serializing_if = "Option::is_none")]` attribute to issues field
+- Updated `From<ReviewNote>` impl to set issues to None (will be populated by parse_issues_from_notes in Task 3)
+
+**Files Modified:**
+- `src-tauri/src/commands/review_commands_types.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - 3189 tests)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 17:30:00 - Phase 48 Task 16: Wire ActivityView to read filter from uiStore
 **What:**
 - Added `activityFilter` selector in App.tsx from uiStore
