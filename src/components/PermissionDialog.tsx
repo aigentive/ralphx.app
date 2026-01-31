@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/lib/tauri";
 import {
   Dialog,
   DialogContent,
@@ -44,12 +44,10 @@ export function PermissionDialog() {
     if (!currentRequest) return;
 
     try {
-      await invoke("resolve_permission_request", {
-        args: {
-          request_id: currentRequest.request_id,
-          decision,
-          message: decision === "deny" ? "User denied permission" : undefined,
-        },
+      await api.permission.resolveRequest({
+        requestId: currentRequest.request_id,
+        decision,
+        ...(decision === "deny" && { message: "User denied permission" }),
       });
     } catch (error) {
       console.error("Failed to resolve permission:", error);
