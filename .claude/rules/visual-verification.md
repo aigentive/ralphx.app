@@ -44,8 +44,15 @@
    a. Open the feature view
    b. Snapshot interactive elements
    c. Take screenshot
-   d. AI-judge: Does it match expected design?
-5. Visual issues? → Fix before proceeding
+5. **CRITICAL: Analyze screenshot against PRD:**
+   - Does it show the data/content the PRD specifies?
+   - Is data populated (not empty/undefined/placeholder)?
+   - Do all specified UI elements appear?
+6. **If screenshot shows empty/missing data:**
+   → Log P0 gap to streams/features/backlog.md
+   → Format: `- [ ] [Visual/Mock] [Component]: Missing mock data for [description]`
+   → STOP. Cannot complete task without proper visual verification.
+7. Visual issues fixable now? → Fix before proceeding
 
 ## Screenshot Convention
 

@@ -82,18 +82,28 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
       - Navigate to the affected view
       - Interact with the modified component
       - Take screenshot: screenshots/features/YYYY-MM-DD_HH-MM-SS_[task-name].png
-   c. AI-judge: Does it match PRD acceptance criteria?
-   d. Visual issues? → Fix before proceeding
-   e. Record screenshot path for activity log
+   c. **CRITICAL: Analyze screenshot against PRD acceptance criteria:**
+      - Does the UI show the expected data/content from the PRD?
+      - Is the data populated (not empty/undefined/placeholder)?
+      - Do all specified UI elements appear correctly?
+   d. **If screenshot shows empty/missing data that PRD requires:**
+      → This is a MOCK COVERAGE GAP
+      → Log P0 to streams/features/backlog.md:
+        `- [ ] [Visual/Mock] [Component]: Missing mock data for [description] - prevents visual verification`
+      → STOP. Cannot mark task complete with incomplete visual verification.
+   e. Visual issues fixable now? → Fix before proceeding
+   f. Record screenshot path and verification result for activity log
 
 6.9. Visual Verification Checkpoint (UI tasks only):
-   **BOTH files must exist. Check with `ls` command:**
-   - Mock-check evidence: screenshots/features/*_mock-check.md (from step 6.0)
-   - Screenshot: screenshots/features/*.png (from step 6.5)
+   **ALL conditions must pass:**
+   1. Mock-check evidence exists: screenshots/features/*_mock-check.md (from step 6.0)
+   2. Screenshot exists: screenshots/features/*.png (from step 6.5)
+   3. Screenshot shows PRD-required data (not empty/placeholder)
 
    Missing mock-check file? → STOP. Go back to step 6.0.
    Missing screenshot? → STOP. Go back to step 6.5.
-   Both exist? → Proceed to step 7.
+   Screenshot shows empty/missing data? → STOP. Log P0 gap, cannot complete task.
+   All conditions pass? → Proceed to step 7.
 
 7. Run linters (ONLY for what you modified):
    - Modified src/ files? → npm run lint && npm run typecheck
@@ -196,6 +206,7 @@ Log entries go in `streams/features/activity.md`:
 **Visual Verification:** (REQUIRED for UI tasks, "N/A - backend only" for non-UI)
 - Mock-check: screenshots/features/[filename]_mock-check.md
 - Screenshot: screenshots/features/[filename].png
+- PRD content check: ✅ Data visible | ❌ Empty/missing [logged P0]
 - Browser test: Passed | Failed [reason]
 
 **Result:** Success/Failed
