@@ -9,6 +9,8 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 
 use crate::application::task_transition_service::TaskTransitionService;
+use crate::application::task_scheduler_service::TaskSchedulerService;
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatConversationId, ChatContextType, InternalStatus, TaskId,
@@ -180,6 +182,21 @@ pub fn spawn_send_message_background<R: Runtime>(
                             if task.internal_status == InternalStatus::Executing
                                 || task.internal_status == InternalStatus::ReExecuting
                             {
+                                // Create scheduler for auto-scheduling next Ready task
+                                let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+                                    Arc::clone(exec_state),
+                                    Arc::clone(&project_repo),
+                                    Arc::clone(&task_repo),
+                                    Arc::clone(&chat_message_repo),
+                                    Arc::clone(&conversation_repo),
+                                    Arc::clone(&agent_run_repo),
+                                    Arc::clone(&ideation_session_repo),
+                                    Arc::clone(&activity_event_repo),
+                                    Arc::clone(&message_queue),
+                                    Arc::clone(&running_agent_registry),
+                                    app_handle.clone(),
+                                ));
+
                                 let transition_service = TaskTransitionService::new(
                                     Arc::clone(&task_repo),
                                     Arc::clone(&project_repo),
@@ -192,7 +209,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&running_agent_registry),
                                     Arc::clone(exec_state),
                                     app_handle.clone(),
-                                );
+                                )
+                                .with_task_scheduler(task_scheduler);
                                 if let Err(e) = transition_service
                                     .transition_task(&task_id, InternalStatus::PendingReview)
                                     .await
