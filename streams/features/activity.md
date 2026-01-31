@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-01-31 22:25:00 - Phase 51 Task 3: Add optimized release profile to Cargo.toml
+**What:**
+- Added `[profile.release]` section to `src-tauri/Cargo.toml`
+- Configured `lto = true` for link-time optimization
+- Set `opt-level = "s"` for size optimization
+- Enabled `strip = true` to remove debug symbols
+- Set `codegen-units = 1` for better optimization
+
+**Files Modified:**
+- `src-tauri/Cargo.toml`
+
+**Commands:**
+- `cargo check`: passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:15:00 - Phase 51 Task 2: Create entitlements.plist for hardened runtime
 **What:**
 - Created `src-tauri/entitlements.plist` with hardened runtime entitlements
