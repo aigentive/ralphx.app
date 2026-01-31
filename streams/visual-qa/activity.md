@@ -30,3 +30,21 @@
 - `npx playwright test tests/visual/views/ideation/ideation.spec.ts`
 
 **Result:** Success (5 tests passing)
+
+---
+
+### 2026-01-31 23:31:00 - Activity View Visual Tests
+**What:**
+- Created page object: tests/pages/activity.page.ts
+- Created spec: tests/visual/views/activity/activity.spec.ts
+- Added setupActivity fixture to tests/fixtures/setup.fixtures.ts
+- Generated baseline snapshot (53KB)
+
+**Mock parity:**
+- Status: ready (src/api-mock/activity-events.ts exists; ActivityView uses real-time store)
+
+**Commands:**
+- `npx playwright test tests/visual/views/activity/activity.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/views/activity/activity.spec.ts`
+
+**Result:** Success (8 tests passing)
