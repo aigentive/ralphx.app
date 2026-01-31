@@ -13,9 +13,10 @@
 ```
 1. Read entire PRD + referenced specs/plans
 2. Build mental model of what was supposed to be implemented
-3. Run VERIFICATION CHECKS (below) for each feature
-4. Gaps found? → Log to streams/features/backlog.md as P0 → Continue iterations
-5. No gaps? → Phase complete, update manifest
+3. Run CODE VERIFICATION CHECKS (below) for each feature
+4. Run VISUAL GAP VERIFICATION (@.claude/rules/visual-gap-verification.md)
+5. Gaps found? → Log to backlog as P0/P1 → Continue iterations
+6. No gaps? → Phase complete, update manifest
 ```
 
 ## Verification Checks
@@ -183,3 +184,4 @@ Gap verification feeds into the features stream:
 
 See @.claude/rules/stream-features.md for the features stream workflow.
 See @.claude/rules/stream-verify.md for the verify stream that produces P0s.
+See @.claude/rules/visual-gap-verification.md for visual verification at phase completion.

@@ -101,8 +101,13 @@ When fixed:
 
 When all PRD tasks have `"passes": true`:
 
-1. Run gap verification (see @.claude/rules/gap-verification.md)
-2. Gaps found? → Add to streams/features/backlog.md as P0 → Continue iterations
+1. Run code gap verification (see @.claude/rules/gap-verification.md)
+   → Code gaps found? → Add P0s → Continue iterations
+
+2. Run visual gap verification (see @.claude/rules/visual-gap-verification.md)
+   → Visual gaps found? → Add P0s → Continue iterations
+   → Modal testability issues? → Add P1s (non-blocking)
+
 3. No gaps? → Update manifest.json:
    - Set current phase `"status": "complete"`
    - Set next phase `"status": "active"`
@@ -152,6 +157,7 @@ Log entries go in `streams/features/activity.md`:
 
 ## Reference
 
-- Gap verification workflow: @.claude/rules/gap-verification.md
+- Code gap verification: @.claude/rules/gap-verification.md
+- Visual gap verification: @.claude/rules/visual-gap-verification.md
 - Code quality standards: @.claude/rules/code-quality-standards.md
 - Manifest and phases: `specs/manifest.json`
