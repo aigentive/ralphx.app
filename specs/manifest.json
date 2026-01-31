@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 41,
+  "currentPhase": 42,
   "phases": [
     {
       "phase": 0,
@@ -301,14 +301,14 @@
       "phase": 41,
       "name": "Streaming Tool Call Deduplication",
       "prd": "specs/phases/prd_phase_41_streaming_tool_deduplication.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix duplicate tool calls in streaming tooltip by using backend tool_id for deduplication"
     },
     {
       "phase": 42,
       "name": "Welcome Screen Redesign",
       "prd": "specs/phases/prd_phase_42_welcome_screen_redesign.md",
-      "status": "pending",
+      "status": "active",
       "description": "Agent Constellation design with animated network, orbiting nodes, and dramatic visual effects"
     },
     {
