@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 47,
+  "currentPhase": 48,
   "phases": [
     {
       "phase": 0,
@@ -343,14 +343,14 @@
       "phase": 47,
       "name": "Review System Fix",
       "prd": "specs/phases/prd_phase_47_review_system_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix approval buttons, populate Reviews panel, consolidate status constants"
     },
     {
       "phase": 48,
       "name": "Activity Screen Enhancement",
       "prd": "specs/phases/prd_phase_48_activity_screen_enhancement.md",
-      "status": "pending",
+      "status": "active",
       "description": "Persistent activity events, server-side pagination, infinite scroll, unified status widget"
     },
     {
