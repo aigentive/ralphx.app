@@ -276,6 +276,8 @@ pub fn run() {
             commands::review_commands::approve_fix_task,
             commands::review_commands::reject_fix_task,
             commands::review_commands::get_fix_task_attempts,
+            commands::review_commands::approve_task_for_review,
+            commands::review_commands::request_task_changes_for_review,
             commands::execution_commands::get_execution_status,
             commands::execution_commands::pause_execution,
             commands::execution_commands::resume_execution,

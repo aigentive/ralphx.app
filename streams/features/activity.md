@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-01-31 17:30:00 - Phase 47 Task 1: Add approve_task_for_review and request_task_changes_for_review Tauri commands
+**What:**
+- Added `ApproveTaskInput` and `RequestTaskChangesInput` structs to review_commands_types.rs
+- Added `approve_task_for_review` command that validates task is in ReviewPassed/Escalated, creates human approval review note, and transitions to Approved
+- Added `request_task_changes_for_review` command that validates task status, creates changes-requested review note, and transitions to RevisionNeeded
+- Both commands use TaskTransitionService for proper state machine transitions
+- Commands emit `review:human_approved`/`review:human_changes_requested` and `task:status_changed` events
+- Exported and registered new commands in mod.rs and lib.rs
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 16:45:00 - Phase 46 Task 5: Add ReviewIssuesList component
 **What:**
 - Added `ReviewIssue` type export to reviews-api.ts and tauri.ts

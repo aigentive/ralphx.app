@@ -60,9 +60,9 @@ pub use qa_commands::{
     get_qa_results, get_qa_settings, get_task_qa, retry_qa, skip_qa, update_qa_settings,
 };
 pub use review_commands::{
-    approve_fix_task, approve_review, get_fix_task_attempts, get_pending_reviews,
-    get_review_by_id, get_reviews_by_task_id, get_task_state_history, reject_fix_task,
-    reject_review, request_changes,
+    approve_fix_task, approve_review, approve_task_for_review, get_fix_task_attempts,
+    get_pending_reviews, get_review_by_id, get_reviews_by_task_id, get_task_state_history,
+    reject_fix_task, reject_review, request_changes, request_task_changes_for_review,
 };
 pub use task_commands::{
     answer_user_question, archive_task, create_task, delete_task, emit_queue_changed,

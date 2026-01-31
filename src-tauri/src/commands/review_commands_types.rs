@@ -135,3 +135,22 @@ pub struct FixTaskAttemptsResponse {
     pub task_id: String,
     pub attempt_count: u32,
 }
+
+// ============================================================================
+// Task-based Review Input Types
+// ============================================================================
+
+/// Input for approving a task after AI review has passed or escalated
+#[derive(Debug, Deserialize)]
+pub struct ApproveTaskInput {
+    pub task_id: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+/// Input for requesting changes on a task after AI review has passed or escalated
+#[derive(Debug, Deserialize)]
+pub struct RequestTaskChangesInput {
+    pub task_id: String,
+    pub feedback: String,
+}
