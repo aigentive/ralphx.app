@@ -6,7 +6,7 @@
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import { SupervisorEventSchema, SupervisorAlertSchema } from "@/types/supervisor";
 import { useSupervisorStore } from "./useSupervisorAlerts.store";
 
@@ -22,21 +22,22 @@ export function useSupervisorEventListener(options: { enabled?: boolean } = {}) 
   const { enabled = true } = options;
   const addAlert = useSupervisorStore((s) => s.addAlert);
   const setConnected = useSupervisorStore((s) => s.setConnected);
+  const eventBus = useEventBus();
 
   useEffect(() => {
     if (!enabled) return;
 
-    const unlisteners: Promise<UnlistenFn>[] = [];
+    const unsubscribers: (() => void)[] = [];
 
     // Listen for supervisor alerts (pre-processed by backend)
-    unlisteners.push(
-      listen<unknown>("supervisor:alert", (event) => {
+    unsubscribers.push(
+      eventBus.subscribe<unknown>("supervisor:alert", (payload) => {
         const parsed = SupervisorAlertSchema.omit({
           id: true,
           acknowledged: true,
           createdAt: true,
           acknowledgedAt: true,
-        }).safeParse(event.payload);
+        }).safeParse(payload);
 
         if (parsed.success) {
           addAlert(parsed.data);
@@ -45,9 +46,9 @@ export function useSupervisorEventListener(options: { enabled?: boolean } = {}) 
     );
 
     // Listen for raw supervisor events (for custom processing)
-    unlisteners.push(
-      listen<unknown>("supervisor:event", (event) => {
-        const parsed = SupervisorEventSchema.safeParse(event.payload);
+    unsubscribers.push(
+      eventBus.subscribe<unknown>("supervisor:event", (payload) => {
+        const parsed = SupervisorEventSchema.safeParse(payload);
 
         if (!parsed.success) {
           return;
@@ -94,9 +95,7 @@ export function useSupervisorEventListener(options: { enabled?: boolean } = {}) 
 
     return () => {
       setConnected(false);
-      void Promise.all(unlisteners).then((listeners) => {
-        listeners.forEach((fn) => fn());
-      });
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [enabled, addAlert, setConnected]);
+  }, [enabled, addAlert, setConnected, eventBus]);
 }
