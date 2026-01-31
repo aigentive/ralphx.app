@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 23:15:00 - Phase 54 Task 4: Add blockedReason to task types
+**What:**
+- Added `blocked_reason: z.string().nullable()` to TaskSchema (snake_case from backend)
+- Added `blockedReason: string | null` to Task interface (camelCase for frontend)
+- Added `blockedReason: raw.blocked_reason` to transformTask function
+
+**Files Modified:**
+- `src/types/task.ts`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed (0 errors, 9 warnings - pre-existing)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 23:00:00 - Phase 54 Task 3: Add block_task and unblock_task commands
 **What:**
 - Added `block_task` command in mutation.rs (transitions to Blocked + sets reason)
