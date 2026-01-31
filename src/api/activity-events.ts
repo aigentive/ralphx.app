@@ -46,6 +46,35 @@ async function typedInvoke<T>(
  */
 export const activityEventsApi = {
   /**
+   * Global activity event operations (all events regardless of context)
+   */
+  all: {
+    /**
+     * List all activity events with cursor-based pagination and optional filtering
+     * @param options Pagination and filter options (taskId/sessionId can narrow results)
+     * @returns A page of events with cursor for next page
+     */
+    list: async (options?: {
+      cursor?: string;
+      limit?: number;
+      filter?: ActivityEventFilter;
+    }): Promise<ActivityEventPageResponse> => {
+      const raw = await typedInvoke(
+        "list_all_activity_events",
+        {
+          cursor: options?.cursor ?? null,
+          limit: options?.limit ?? null,
+          filter: options?.filter
+            ? transformFilterToBackend(options.filter)
+            : null,
+        },
+        ActivityEventPageResponseSchema
+      );
+      return transformActivityEventPage(raw);
+    },
+  },
+
+  /**
    * Task activity event operations
    */
   task: {
