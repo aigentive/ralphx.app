@@ -3,15 +3,18 @@
  *
  * Handles real-time updates for agent runs across all contexts (ideation, task, review, project).
  * Listens to unified agent:* events and updates query cache and store state accordingly.
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
 import { chatKeys } from "./useChat";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Build a context key string from context type and ID
@@ -43,30 +46,31 @@ function buildContextKey(contextType: ContextType, contextId: string): string {
  * @param activeConversationId - The currently active conversation ID to filter events
  */
 export function useAgentEvents(activeConversationId: string | null) {
+  const bus = useEventBus();
   const queryClient = useQueryClient();
   const { setAgentRunning, deleteQueuedMessage, setActiveConversation } = useChatStore();
 
   useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
+    const unsubscribes: Unsubscribe[] = [];
 
-    (async () => {
-      // NOTE: Streaming cache updates disabled per user request.
-      // Instead of trying to stream text/tool calls character-by-character,
-      // we show a typing indicator while the agent is running and only
-      // render the final message with proper content_blocks when the run completes.
-      //
-      // The agent:chunk and agent:tool_call events are still emitted by the backend
-      // but we don't use them to update the UI during streaming. This avoids
-      // issues with mismatched tool calls/results and partial content.
+    // NOTE: Streaming cache updates disabled per user request.
+    // Instead of trying to stream text/tool calls character-by-character,
+    // we show a typing indicator while the agent is running and only
+    // render the final message with proper content_blocks when the run completes.
+    //
+    // The agent:chunk and agent:tool_call events are still emitted by the backend
+    // but we don't use them to update the UI during streaming. This avoids
+    // issues with mismatched tool calls/results and partial content.
 
-      // Listen for run started - set agent running state to true and update conversation cache
-      const runStartedUnlisten = await listen<{
+    // Listen for run started - set agent running state to true and update conversation cache
+    unsubscribes.push(
+      bus.subscribe<{
         run_id: string;
         context_type: string;
         context_id: string;
         conversation_id: string;
-      }>("agent:run_started", (event) => {
-        const { context_type, context_id: eventContextId, conversation_id } = event.payload;
+      }>("agent:run_started", (payload) => {
+        const { context_type, context_id: eventContextId, conversation_id } = payload;
 
         // Build context key from the event payload
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
@@ -86,20 +90,21 @@ export function useAgentEvents(activeConversationId: string | null) {
         if (!activeConversationId && conversation_id) {
           setActiveConversation(conversation_id);
         }
-      });
-      unlisteners.push(runStartedUnlisten);
+      })
+    );
 
-      // Listen for message created - optimistically add to cache
-      // Unified event: agent:message_created (replaces chat:message_created)
-      const messageCreatedUnlisten = await listen<{
+    // Listen for message created - optimistically add to cache
+    // Unified event: agent:message_created (replaces chat:message_created)
+    unsubscribes.push(
+      bus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         message_id: string;
         role: string;
         content: string;
-      }>("agent:message_created", (event) => {
-        const { conversation_id, message_id, role, content } = event.payload;
+      }>("agent:message_created", (payload) => {
+        const { conversation_id, message_id, role, content } = payload;
 
         // Filter by context type if needed (all contexts use the same event now)
         // If this is for the active conversation, add message to cache
@@ -132,18 +137,19 @@ export function useAgentEvents(activeConversationId: string | null) {
             }
           );
         }
-      });
-      unlisteners.push(messageCreatedUnlisten);
+      })
+    );
 
-      // Listen for run completion
-      // Unified event: agent:run_completed (replaces chat:run_completed)
-      const runCompletedUnlisten = await listen<{
+    // Listen for run completion
+    // Unified event: agent:run_completed (replaces chat:run_completed)
+    unsubscribes.push(
+      bus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         status: string;
-      }>("agent:run_completed", async (event) => {
-        const { conversation_id, context_type, context_id: eventContextId } = event.payload;
+      }>("agent:run_completed", (payload) => {
+        const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
@@ -165,36 +171,38 @@ export function useAgentEvents(activeConversationId: string | null) {
         // NOTE: Queue processing is now handled by the BACKEND
         // The backend automatically processes queued messages via --resume
         // when a run completes. We listen for agent:queue_sent to update UI.
-      });
-      unlisteners.push(runCompletedUnlisten);
+      })
+    );
 
-      // Listen for queue_sent - backend notifies us when it sends a queued message
-      // This allows us to update the optimistic UI by removing the sent message
-      // Since frontend and backend use the same ID, we can match exactly by ID
-      const queueSentUnlisten = await listen<{
+    // Listen for queue_sent - backend notifies us when it sends a queued message
+    // This allows us to update the optimistic UI by removing the sent message
+    // Since frontend and backend use the same ID, we can match exactly by ID
+    unsubscribes.push(
+      bus.subscribe<{
         message_id: string;
         conversation_id: string;
         context_type: string;
         context_id: string;
-      }>("agent:queue_sent", (event) => {
-        const { message_id, context_type, context_id: eventContextId } = event.payload;
+      }>("agent:queue_sent", (payload) => {
+        const { message_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload - unified queue with context-aware keys
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
         // Remove from frontend optimistic queue by exact ID match
         deleteQueuedMessage(eventContextKey, message_id);
-      });
-      unlisteners.push(queueSentUnlisten);
+      })
+    );
 
-      // Listen for agent errors
-      // Unified event: agent:error
-      const errorUnlisten = await listen<{
+    // Listen for agent errors
+    // Unified event: agent:error
+    unsubscribes.push(
+      bus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         error: string;
-      }>("agent:error", (event) => {
-        const { conversation_id, context_type, context_id: eventContextId } = event.payload;
+      }>("agent:error", (payload) => {
+        const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
         const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
@@ -213,12 +221,11 @@ export function useAgentEvents(activeConversationId: string | null) {
         }
 
         // Error already propagated via agent state change and query invalidation
-      });
-      unlisteners.push(errorUnlisten);
-    })();
+      })
+    );
 
     return () => {
-      unlisteners.forEach((unlisten) => unlisten());
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [activeConversationId, queryClient, setAgentRunning, deleteQueuedMessage, setActiveConversation]);
+  }, [bus, activeConversationId, queryClient, setAgentRunning, deleteQueuedMessage, setActiveConversation]);
 }

@@ -6,13 +6,16 @@
  * - Chat run completion events
  * - Execution-specific events
  * - Streaming tool call accumulation
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 interface UseIntegratedChatEventsProps {
   activeConversationId: string | null;
@@ -25,6 +28,7 @@ export function useIntegratedChatEvents({
   messagesEndRef,
   setStreamingToolCalls,
 }: UseIntegratedChatEventsProps) {
+  const bus = useEventBus();
   const queryClient = useQueryClient();
   const activeConversationIdRef = useRef(activeConversationId);
 
@@ -34,17 +38,17 @@ export function useIntegratedChatEvents({
 
   // Subscribe to Tauri events for real-time updates
   useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
+    const unsubscribes: Unsubscribe[] = [];
 
-    (async () => {
-      // Listen for tool calls - accumulate for streaming display and invalidate cache
-      const toolCallUnlisten = await listen<{
+    // Listen for tool calls - accumulate for streaming display and invalidate cache
+    unsubscribes.push(
+      bus.subscribe<{
         tool_name: string;
         arguments: unknown;
         result: unknown;
         conversation_id: string;
-      }>("chat:tool_call", (event) => {
-        const { tool_name, arguments: args, result, conversation_id } = event.payload;
+      }>("chat:tool_call", (payload) => {
+        const { tool_name, arguments: args, result, conversation_id } = payload;
         // Only show for active conversation
         if (conversation_id === activeConversationIdRef.current) {
           setStreamingToolCalls((prev) => [
@@ -61,14 +65,15 @@ export function useIntegratedChatEvents({
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-      });
-      unlisteners.push(toolCallUnlisten);
+      })
+    );
 
-      // Listen for chat run completion - clear streaming state and refresh
-      const runCompletedUnlisten = await listen<{
+    // Listen for chat run completion - clear streaming state and refresh
+    unsubscribes.push(
+      bus.subscribe<{
         conversation_id: string;
-      }>("chat:run_completed", (event) => {
-        const { conversation_id } = event.payload;
+      }>("chat:run_completed", (payload) => {
+        const { conversation_id } = payload;
         // Clear streaming tool calls
         setStreamingToolCalls([]);
         // Invalidate cache to get final messages
@@ -83,16 +88,17 @@ export function useIntegratedChatEvents({
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
           }
         }, 100);
-      });
-      unlisteners.push(runCompletedUnlisten);
+      })
+    );
 
-      // Execution-specific events
-      const execToolCallUnlisten = await listen<{
+    // Execution-specific events
+    unsubscribes.push(
+      bus.subscribe<{
         conversation_id: string;
         tool_name: string;
         arguments: unknown;
-      }>("execution:tool_call", (event) => {
-        const { tool_name, arguments: args, conversation_id } = event.payload;
+      }>("execution:tool_call", (payload) => {
+        const { tool_name, arguments: args, conversation_id } = payload;
         // Only show for active conversation
         if (conversation_id === activeConversationIdRef.current) {
           setStreamingToolCalls((prev) => [
@@ -108,14 +114,15 @@ export function useIntegratedChatEvents({
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-      });
-      unlisteners.push(execToolCallUnlisten);
+      })
+    );
 
-      // Listen for execution completion - clear streaming state and refresh
-      const execCompletedUnlisten = await listen<{
+    // Listen for execution completion - clear streaming state and refresh
+    unsubscribes.push(
+      bus.subscribe<{
         conversation_id: string;
-      }>("execution:run_completed", (event) => {
-        const { conversation_id } = event.payload;
+      }>("execution:run_completed", (payload) => {
+        const { conversation_id } = payload;
         // Clear streaming tool calls
         setStreamingToolCalls([]);
         // Invalidate cache to get final messages
@@ -130,13 +137,12 @@ export function useIntegratedChatEvents({
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
           }
         }, 100);
-      });
-      unlisteners.push(execCompletedUnlisten);
-    })();
+      })
+    );
 
     return () => {
       setStreamingToolCalls([]); // Clear on cleanup to prevent context bleeding
-      unlisteners.forEach((unlisten) => unlisten());
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [queryClient, messagesEndRef, setStreamingToolCalls, activeConversationId]);
+  }, [bus, queryClient, messagesEndRef, setStreamingToolCalls, activeConversationId]);
 }

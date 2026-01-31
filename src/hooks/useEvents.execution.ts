@@ -1,13 +1,16 @@
 /**
  * Execution event hooks - Tauri execution error event listeners
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useEventBus } from "@/providers/EventProvider";
 import { useChatStore } from "@/stores/chatStore";
 import { taskKeys } from "@/hooks/useTasks";
+import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
  * Hook to listen for execution error events
@@ -27,26 +30,27 @@ import { taskKeys } from "@/hooks/useTasks";
  * ```
  */
 export function useExecutionErrorEvents() {
+  const bus = useEventBus();
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const unlisteners: Promise<UnlistenFn>[] = [];
+    const unsubscribes: Unsubscribe[] = [];
 
     // Listen for execution errors
-    unlisteners.push(
-      listen<{
+    unsubscribes.push(
+      bus.subscribe<{
         conversation_id?: string;
         task_id?: string;
         error: string;
         stderr?: string;
-      }>("execution:error", (event) => {
-        console.error("Execution error received:", event.payload);
+      }>("execution:error", (payload) => {
+        console.error("Execution error received:", payload);
 
         // Reset agent running state to unstick the UI
         // Use task context key if task_id is present
-        if (event.payload.task_id) {
-          setAgentRunning(`task:${event.payload.task_id}`, false);
+        if (payload.task_id) {
+          setAgentRunning(`task:${payload.task_id}`, false);
         }
 
         // Invalidate queries so UI refreshes
@@ -55,26 +59,26 @@ export function useExecutionErrorEvents() {
 
         // Show toast notification
         toast.error("Agent execution failed", {
-          description: event.payload.error.slice(0, 200),
+          description: payload.error.slice(0, 200),
           duration: 10000, // Keep error visible longer
         });
       })
     );
 
     // Listen for stderr events (useful for debugging)
-    unlisteners.push(
-      listen<{
+    unsubscribes.push(
+      bus.subscribe<{
         conversation_id: string;
         task_id?: string;
         content: string;
-      }>("execution:stderr", (event) => {
+      }>("execution:stderr", (payload) => {
         // Log stderr for debugging but don't show toast for every line
-        console.warn("[Agent STDERR]", event.payload.content);
+        console.warn("[Agent STDERR]", payload.content);
       })
     );
 
     return () => {
-      unlisteners.forEach((unlisten) => unlisten.then((fn) => fn()));
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [setAgentRunning, queryClient]);
+  }, [bus, setAgentRunning, queryClient]);
 }

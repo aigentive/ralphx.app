@@ -1,10 +1,12 @@
 /**
  * Review event hooks - Tauri review event listeners with type-safe validation
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEventBus } from "@/providers/EventProvider";
 import { ReviewEventSchema } from "@/types/events";
 import { reviewKeys } from "@/hooks/useReviews";
 
@@ -24,12 +26,13 @@ import { reviewKeys } from "@/hooks/useReviews";
  * ```
  */
 export function useReviewEvents() {
+  const bus = useEventBus();
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<unknown>("review:update", (event) => {
+    return bus.subscribe<unknown>("review:update", (payload) => {
       // Runtime validation of backend events
-      const parsed = ReviewEventSchema.safeParse(event.payload);
+      const parsed = ReviewEventSchema.safeParse(payload);
 
       if (!parsed.success) {
         console.error("Invalid review event:", parsed.error.message);
@@ -58,9 +61,5 @@ export function useReviewEvents() {
         });
       }
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [queryClient]);
+  }, [bus, queryClient]);
 }

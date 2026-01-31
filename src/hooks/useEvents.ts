@@ -3,10 +3,12 @@
  *
  * Provides hooks for listening to backend events (task changes, agent messages,
  * supervisor alerts) and updating local stores in response.
+ *
+ * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useEffect } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEventBus } from "@/providers/EventProvider";
 import type { AgentMessageEvent } from "@/types/events";
 import { useActivityStore } from "@/stores/activityStore";
 
@@ -28,19 +30,16 @@ import { useActivityStore } from "@/stores/activityStore";
  * ```
  */
 export function useAgentEvents(taskId?: string) {
+  const bus = useEventBus();
   const addMessage = useActivityStore((s) => s.addMessage);
 
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<AgentMessageEvent>("agent:message", (event) => {
-      if (!taskId || event.payload.taskId === taskId) {
-        addMessage(event.payload);
+    return bus.subscribe<AgentMessageEvent>("agent:message", (payload) => {
+      if (!taskId || payload.taskId === taskId) {
+        addMessage(payload);
       }
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [taskId, addMessage]);
+  }, [bus, taskId, addMessage]);
 }
 
 /**
@@ -58,22 +57,19 @@ export function useAgentEvents(taskId?: string) {
  * ```
  */
 export function useSupervisorAlerts() {
+  const bus = useEventBus();
   const addAlert = useActivityStore((s) => s.addAlert);
 
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<{
+    return bus.subscribe<{
       taskId: string;
       severity: "low" | "medium" | "high" | "critical";
       type: "error" | "loop_detected" | "stuck" | "escalation";
       message: string;
-    }>("supervisor:alert", (event) => {
-      addAlert(event.payload);
+    }>("supervisor:alert", (payload) => {
+      addAlert(payload);
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [addAlert]);
+  }, [bus, addAlert]);
 }
 
 /**
@@ -83,15 +79,13 @@ export function useSupervisorAlerts() {
  * This is a placeholder for future implementation.
  */
 export function useFileChangeEvents() {
+  const bus = useEventBus();
+
   useEffect(() => {
-    const unlisten: Promise<UnlistenFn> = listen<unknown>("file:change", (_event) => {
+    return bus.subscribe<unknown>("file:change", (_payload) => {
       // TODO: Implement file change handling
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
+  }, [bus]);
 }
 
 // Re-export specialized event hooks
