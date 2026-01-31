@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-01 02:30:00 - Phase 42 Task 4: Create CentralHub pulsing core component
+**What:**
+- Created src/components/WelcomeScreen/CentralHub.tsx
+- Implemented pulsing warm orange (#ff6b35) core in center
+- Added 3 concentric ripple rings emanating outward (sonar effect)
+- Outer glow layer with breathing animation
+- Inner bright spot for visual depth
+- Uses Framer Motion for scale + opacity animations
+- Configurable size prop (default 80px)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 01:15:00 - Phase 42 Task 3: Create AmbientParticles floating dots component
 **What:**
 - Created src/components/WelcomeScreen/AmbientParticles.tsx
