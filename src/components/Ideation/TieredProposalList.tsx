@@ -10,7 +10,8 @@
  */
 
 import React, { useMemo } from "react";
-import type { TaskProposal, DependencyGraph } from "@/types/ideation";
+import type { TaskProposal } from "@/types/ideation";
+import type { DependencyGraphResponse } from "@/api/ideation.types";
 import { ProposalCard, type DependencyDetail } from "./ProposalCard";
 import { ProposalTierGroup } from "./ProposalTierGroup";
 import { useDependencyTiers, getDependencyReason } from "@/hooks/useDependencyGraph";
@@ -23,7 +24,7 @@ export interface TieredProposalListProps {
   /** List of proposals to display */
   proposals: TaskProposal[];
   /** Dependency graph for tier computation and dependency details */
-  dependencyGraph: DependencyGraph | null | undefined;
+  dependencyGraph: DependencyGraphResponse | null | undefined;
   /** Currently selected/highlighted proposal IDs */
   highlightedIds: Set<string>;
   /** IDs of proposals on the critical path */
@@ -50,7 +51,7 @@ export interface TieredProposalListProps {
 function buildDependencyDetails(
   proposalId: string,
   proposals: TaskProposal[],
-  dependencyGraph: DependencyGraph | null | undefined
+  dependencyGraph: DependencyGraphResponse | null | undefined
 ): DependencyDetail[] {
   if (!dependencyGraph) return [];
 
@@ -125,7 +126,7 @@ function buildDependencyDetails(
  */
 function computeBlocksCount(
   proposalId: string,
-  dependencyGraph: DependencyGraph | null | undefined
+  dependencyGraph: DependencyGraphResponse | null | undefined
 ): number {
   if (!dependencyGraph) return 0;
 
