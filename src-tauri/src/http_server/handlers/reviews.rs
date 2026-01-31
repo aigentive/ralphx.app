@@ -227,15 +227,22 @@ pub async fn get_review_notes(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let max_revisions = review_settings.max_revision_cycles;
 
-    // 4. Convert notes to response format
+    // 4. Convert notes to response format, parsing issues from notes if present
     let reviews: Vec<ReviewNoteResponse> = notes
         .into_iter()
-        .map(|note| ReviewNoteResponse {
-            id: note.id.as_str().to_string(),
-            reviewer: note.reviewer.to_string(),
-            outcome: note.outcome.to_string(),
-            notes: note.notes,
-            created_at: note.created_at.to_rfc3339(),
+        .map(|note| {
+            // Parse issues from notes field if present
+            // Format: {"issues":[...]}\n<feedback_text>
+            let (issues, clean_notes) = parse_issues_from_notes(&note.notes);
+
+            ReviewNoteResponse {
+                id: note.id.as_str().to_string(),
+                reviewer: note.reviewer.to_string(),
+                outcome: note.outcome.to_string(),
+                notes: clean_notes,
+                issues,
+                created_at: note.created_at.to_rfc3339(),
+            }
         })
         .collect();
 
@@ -413,4 +420,70 @@ pub async fn request_task_changes(
         new_status: "revision_needed".to_string(),
         fix_task_id: None,
     }))
+}
+
+/// Parse issues from notes field if present
+/// Format stored by complete_review: {"issues":[...]}\n<feedback_text>
+/// Returns (parsed_issues, clean_notes_without_json)
+fn parse_issues_from_notes(
+    notes: &Option<String>,
+) -> (Option<Vec<super::ReviewIssue>>, Option<String>) {
+    let Some(notes_text) = notes else {
+        return (None, None);
+    };
+
+    // Check if notes starts with {"issues": pattern
+    if !notes_text.starts_with("{\"issues\":") {
+        return (None, Some(notes_text.clone()));
+    }
+
+    // Find the end of the JSON line (first newline)
+    if let Some(newline_pos) = notes_text.find('\n') {
+        let json_part = &notes_text[..newline_pos];
+        let feedback_part = notes_text[newline_pos + 1..].to_string();
+
+        // Parse the issues wrapper: {"issues":[...]}
+        #[derive(serde::Deserialize)]
+        struct IssuesWrapper {
+            issues: Vec<super::ReviewIssue>,
+        }
+
+        match serde_json::from_str::<IssuesWrapper>(json_part) {
+            Ok(wrapper) => {
+                let issues = if wrapper.issues.is_empty() {
+                    None
+                } else {
+                    Some(wrapper.issues)
+                };
+                let clean_notes = if feedback_part.is_empty() {
+                    None
+                } else {
+                    Some(feedback_part)
+                };
+                (issues, clean_notes)
+            }
+            Err(_) => {
+                // Failed to parse, return original notes
+                (None, Some(notes_text.clone()))
+            }
+        }
+    } else {
+        // No newline, entire notes is JSON (no feedback text)
+        #[derive(serde::Deserialize)]
+        struct IssuesWrapper {
+            issues: Vec<super::ReviewIssue>,
+        }
+
+        match serde_json::from_str::<IssuesWrapper>(notes_text) {
+            Ok(wrapper) => {
+                let issues = if wrapper.issues.is_empty() {
+                    None
+                } else {
+                    Some(wrapper.issues)
+                };
+                (issues, None)
+            }
+            Err(_) => (None, Some(notes_text.clone())),
+        }
+    }
 }

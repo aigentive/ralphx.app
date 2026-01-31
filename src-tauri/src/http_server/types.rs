@@ -293,6 +293,7 @@ pub struct ReviewNoteResponse {
     pub reviewer: String,
     pub outcome: String,
     pub notes: Option<String>,
+    pub issues: Option<Vec<ReviewIssue>>,
     pub created_at: String,
 }
 
