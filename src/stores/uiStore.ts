@@ -364,6 +364,11 @@ export const useUiStore = create<UiState & UiActions>()(
     setSelectedTaskId: (taskId) =>
       set((state) => {
         state.selectedTaskId = taskId;
+        // Auto-open chat when a task is selected in kanban view
+        if (taskId !== null) {
+          state.chatVisibleByView.kanban = true;
+          saveChatVisibility(state.chatVisibleByView);
+        }
       }),
 
     openTaskCreation: (projectId, defaultTitle) =>
