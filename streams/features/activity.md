@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-01 00:30:00 - Phase 48 Task 6: Implement SQLite repository for activity events
+**What:**
+- Created `src-tauri/src/infrastructure/sqlite/sqlite_activity_event_repo.rs`
+- Implemented save() with INSERT statement for all event fields
+- Implemented list_by_task_id() and list_by_session_id() with cursor-based pagination
+- Cursor format: "timestamp|id" with pipe separator (avoids ISO 8601 colon conflicts)
+- Implemented filtering support for event_type, role, internal_status using positional placeholders
+- Implemented delete_by_task_id(), delete_by_session_id() for cascade operations
+- Implemented count_by_task_id(), count_by_session_id() with filter support
+- Limit capped at 100, fetch limit+1 to detect has_more
+- Exported from mod.rs
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/sqlite/sqlite_activity_event_repo.rs` - New repository implementation
+- `src-tauri/src/infrastructure/sqlite/mod.rs` - Module export and re-export
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test sqlite_activity_event` (12 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:00:00 - Phase 48 Task 5: Add activity_events database migration
 **What:**
 - Created `src-tauri/src/infrastructure/sqlite/migrations/v3_add_activity_events.rs`

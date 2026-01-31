@@ -230,6 +230,76 @@ impl ActivityEvent {
         self.metadata = Some(metadata.into());
         self
     }
+
+    /// Deserializes an ActivityEvent from a SQLite row
+    ///
+    /// Expected column order: id, task_id, ideation_session_id, internal_status,
+    /// event_type, role, content, metadata, created_at
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        let id: String = row.get(0)?;
+        let task_id: Option<String> = row.get(1)?;
+        let ideation_session_id: Option<String> = row.get(2)?;
+        let internal_status_str: Option<String> = row.get(3)?;
+        let event_type_str: String = row.get(4)?;
+        let role_str: String = row.get(5)?;
+        let content: String = row.get(6)?;
+        let metadata: Option<String> = row.get(7)?;
+        let created_at_str: String = row.get(8)?;
+
+        let event_type: ActivityEventType = event_type_str
+            .parse()
+            .map_err(|e: ParseActivityEventTypeError| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    4,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.0)),
+                )
+            })?;
+
+        let role: ActivityEventRole = role_str
+            .parse()
+            .map_err(|e: ParseActivityEventRoleError| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    5,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.0)),
+                )
+            })?;
+
+        let internal_status = internal_status_str
+            .map(|s| {
+                s.parse::<InternalStatus>().map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        3,
+                        rusqlite::types::Type::Text,
+                        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                    )
+                })
+            })
+            .transpose()?;
+
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    8,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?
+            .with_timezone(&Utc);
+
+        Ok(Self {
+            id: ActivityEventId::from_string(id),
+            task_id: task_id.map(TaskId::from_string),
+            ideation_session_id: ideation_session_id.map(IdeationSessionId::from_string),
+            internal_status,
+            event_type,
+            role,
+            content,
+            metadata,
+            created_at,
+        })
+    }
 }
 
 #[cfg(test)]
