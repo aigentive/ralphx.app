@@ -71,6 +71,22 @@ export interface RejectFixTaskInput {
   original_task_id: string;
 }
 
+/**
+ * Input for approving a task (task-based, used by human reviewers)
+ */
+export interface ApproveTaskInput {
+  task_id: string;
+  notes?: string;
+}
+
+/**
+ * Input for requesting changes on a task (task-based, used by human reviewers)
+ */
+export interface RequestTaskChangesInput {
+  task_id: string;
+  feedback: string;
+}
+
 // ============================================================================
 // Reviews API
 // ============================================================================
@@ -134,6 +150,24 @@ export const reviewsApi = {
    */
   reject: (input: RejectReviewInput) =>
     typedInvoke("reject_review", { input }, z.void()),
+
+  /**
+   * Approve a task (task-based, for human reviewers)
+   * Used when task is in review_passed or escalated state.
+   * @param input Approval input with task_id and optional notes
+   * @returns void on success
+   */
+  approveTask: (input: ApproveTaskInput) =>
+    typedInvoke("approve_task_for_review", { input }, z.void()),
+
+  /**
+   * Request changes on a task (task-based, for human reviewers)
+   * Used when task is in review_passed or escalated state.
+   * @param input Request changes input with task_id and feedback
+   * @returns void on success
+   */
+  requestTaskChanges: (input: RequestTaskChangesInput) =>
+    typedInvoke("request_task_changes_for_review", { input }, z.void()),
 } as const;
 
 // ============================================================================
