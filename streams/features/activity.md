@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-31 15:30:00 - Phase 52 Task 5: Add smart content rendering
+**What:**
+- Implemented type-specific content rendering in `ActivityMessage.tsx`
+  - **tool_result**: Parses content as JSON, displays with syntax highlighting using `highlightJSON`
+  - **tool_call**: Shows formatted metadata as JSON with syntax highlighting (tool args)
+  - **thinking**: Renders as markdown using `react-markdown` + `remark-gfm`, reuses `markdownComponents` from Chat
+  - **text/error**: Plain text with whitespace preserved (original behavior)
+- Added `useMemo` for efficient content rendering with proper dependencies
+- Added imports for `ReactMarkdown`, `remarkGfm`, `safeJsonParse`, `markdownComponents`
+- Truncation respects expanded state: JSON at 200 chars, markdown at 500 chars
+
+**Files Modified:**
+- `src/components/activity/ActivityMessage.tsx`
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 13:45:00 - Phase 52 Task 4: Add role filter UI
 **What:**
 - Added `RoleFilter` component to `ActivityFilters.tsx`

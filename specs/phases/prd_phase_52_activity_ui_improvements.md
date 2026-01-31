@@ -178,7 +178,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(activity): add smart content rendering for tool results and thinking blocks"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
