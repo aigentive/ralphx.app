@@ -103,11 +103,18 @@ const commandHandlers: Record<
  *
  * Routes commands to appropriate mock handlers.
  * Falls back to returning empty/null for unknown commands.
+ * Respects window.__mockInvokeDelay for testing loading states.
  */
 export async function invoke<T>(
   cmd: string,
   args?: Record<string, unknown>
 ): Promise<T> {
+  // Add delay if configured (for testing loading states)
+  const delay = (window as Window & { __mockInvokeDelay?: number }).__mockInvokeDelay;
+  if (delay && delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
   const handler = commandHandlers[cmd];
 
   if (handler) {

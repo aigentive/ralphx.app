@@ -1,3 +1,15 @@
+### 2026-01-31 23:16:27 - loading-state Visual Tests
+**What:** Created page object + spec + baseline for loading states (skeleton loaders)
+**Mock parity:** Extended mock invoke to support __mockInvokeDelay for loading state testing
+- Added delay support to src/mocks/tauri-api-core.ts invoke function
+- Extended KanbanPage with skeleton and error selectors
+- Created loading.helpers.ts for loading state test utilities
+- Tests verify skeleton appearance, structure, and transition to loaded state
+**Commands:** `npx playwright test tests/visual/states/loading-state/loading-state.spec.ts --update-snapshots`
+**Result:** Success - 2 tests passing with baselines
+
+---
+
 ### 2026-02-01 01:27:00 - empty-kanban State Visual Tests
 **What:** Created page object helper + spec + baseline for empty kanban board state
 **Mock parity:** Extended mock infrastructure to support empty state testing
