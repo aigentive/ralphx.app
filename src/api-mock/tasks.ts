@@ -1,0 +1,354 @@
+/**
+ * Mock Tasks API
+ *
+ * Mirrors the interface of src/api/tasks.ts with mock implementations.
+ * List/get operations return mock data; create/update/delete are no-ops that return success.
+ */
+
+import type { Task, TaskListResponse, CreateTask, UpdateTask, InternalStatus } from "@/types/task";
+import type { TaskStep, StepProgressSummary } from "@/types/task-step";
+import type { InjectTaskResponse, InjectTaskInput } from "@/api/tasks";
+import { createMockTask, generateTestUuid } from "@/test/mock-data";
+import { getStore } from "./store";
+
+// ============================================================================
+// Helper to create a valid TaskStep
+// ============================================================================
+
+function createMockStep(overrides: Partial<TaskStep> & { id: string; taskId: string }): TaskStep {
+  return {
+    title: "Mock Step",
+    description: null,
+    status: "pending",
+    sortOrder: 0,
+    dependsOn: null,
+    createdBy: "worker",
+    completionNote: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    startedAt: null,
+    completedAt: null,
+    ...overrides,
+  };
+}
+
+// ============================================================================
+// Mock Tasks API
+// ============================================================================
+
+export const mockTasksApi = {
+  list: async (params: {
+    projectId: string;
+    statuses?: string[];
+    offset?: number;
+    limit?: number;
+    includeArchived?: boolean;
+  }): Promise<TaskListResponse> => {
+    const store = getStore();
+    let tasks = Array.from(store.tasks.values()).filter(
+      (t) => t.projectId === params.projectId
+    );
+
+    // Filter by statuses if provided
+    if (params.statuses && params.statuses.length > 0) {
+      tasks = tasks.filter((t) => params.statuses!.includes(t.internalStatus));
+    }
+
+    // Filter archived if not included
+    if (!params.includeArchived) {
+      tasks = tasks.filter((t) => !t.archivedAt);
+    }
+
+    // Apply pagination
+    const offset = params.offset ?? 0;
+    const limit = params.limit ?? 20;
+    const paginatedTasks = tasks.slice(offset, offset + limit);
+
+    return {
+      tasks: paginatedTasks,
+      total: tasks.length,
+      offset,
+      hasMore: offset + limit < tasks.length,
+    };
+  },
+
+  search: async (
+    projectId: string,
+    query: string,
+    _includeArchived?: boolean
+  ): Promise<Task[]> => {
+    const store = getStore();
+    const lowerQuery = query.toLowerCase();
+    return Array.from(store.tasks.values()).filter(
+      (t) =>
+        t.projectId === projectId &&
+        (t.title.toLowerCase().includes(lowerQuery) ||
+          (t.description && t.description.toLowerCase().includes(lowerQuery)))
+    );
+  },
+
+  get: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return task;
+  },
+
+  create: async (input: CreateTask): Promise<Task> => {
+    // Read-only mock: return a new task with generated ID
+    const task = createMockTask({
+      id: generateTestUuid(),
+      projectId: input.projectId,
+      title: input.title,
+      description: input.description ?? null,
+      category: input.category ?? "feature",
+      priority: input.priority ?? 0,
+      blockedReason: null,
+    });
+    // Don't persist in read-only mode
+    return task;
+  },
+
+  update: async (taskId: string, input: UpdateTask): Promise<Task> => {
+    const store = getStore();
+    const existing = store.tasks.get(taskId);
+    if (!existing) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    // Read-only mock: return merged task without persisting
+    return {
+      ...existing,
+      ...(input.category !== undefined && { category: input.category }),
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.description !== undefined && { description: input.description }),
+      ...(input.priority !== undefined && { priority: input.priority }),
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  delete: async (_taskId: string): Promise<boolean> => {
+    // Read-only mock: return success
+    return true;
+  },
+
+  archive: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return { ...task, archivedAt: new Date().toISOString() };
+  },
+
+  restore: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return { ...task, archivedAt: null };
+  },
+
+  permanentlyDelete: async (_taskId: string): Promise<void> => {
+    // Read-only mock: no-op
+  },
+
+  getArchivedCount: async (_projectId: string): Promise<number> => {
+    return 0;
+  },
+
+  getValidTransitions: async (_taskId: string): Promise<{ from: string; to: string }[]> => {
+    // Return common transitions
+    return [
+      { from: "backlog", to: "ready" },
+      { from: "ready", to: "executing" },
+      { from: "executing", to: "pending_review" },
+      { from: "pending_review", to: "reviewing" },
+      { from: "reviewing", to: "review_passed" },
+      { from: "review_passed", to: "approved" },
+    ];
+  },
+
+  move: async (taskId: string, toStatus: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return {
+      ...task,
+      internalStatus: toStatus as InternalStatus,
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  inject: async (input: InjectTaskInput): Promise<InjectTaskResponse> => {
+    const task = createMockTask({
+      id: generateTestUuid(),
+      projectId: input.projectId,
+      title: input.title,
+      description: input.description ?? null,
+      category: (input.category ?? "feature") as Task["category"],
+      internalStatus: input.target === "planned" ? "ready" : "backlog",
+      blockedReason: null,
+    });
+    return {
+      task,
+      target: input.target ?? "backlog",
+      priority: task.priority,
+      makeNextApplied: input.makeNext ?? false,
+    };
+  },
+
+  getTasksAwaitingReview: async (projectId: string): Promise<Task[]> => {
+    const store = getStore();
+    const reviewStatuses = ["pending_review", "reviewing", "review_passed", "escalated"];
+    return Array.from(store.tasks.values()).filter(
+      (t) => t.projectId === projectId && reviewStatuses.includes(t.internalStatus)
+    );
+  },
+
+  block: async (taskId: string, reason?: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return {
+      ...task,
+      internalStatus: "blocked",
+      blockedReason: reason ?? null,
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  unblock: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return {
+      ...task,
+      internalStatus: "ready",
+      blockedReason: null,
+      updatedAt: new Date().toISOString(),
+    };
+  },
+} as const;
+
+// ============================================================================
+// Mock Steps API
+// ============================================================================
+
+export const mockStepsApi = {
+  getByTask: async (taskId: string): Promise<TaskStep[]> => {
+    const store = getStore();
+    return store.taskSteps.get(taskId) ?? [];
+  },
+
+  create: async (
+    taskId: string,
+    data: { title: string; description?: string; sortOrder?: number }
+  ): Promise<TaskStep> => {
+    return createMockStep({
+      id: generateTestUuid(),
+      taskId,
+      title: data.title,
+      description: data.description ?? null,
+      sortOrder: data.sortOrder ?? 0,
+    });
+  },
+
+  update: async (
+    stepId: string,
+    data: { title?: string; description?: string; sortOrder?: number }
+  ): Promise<TaskStep> => {
+    return createMockStep({
+      id: stepId,
+      taskId: "mock-task-id",
+      title: data.title ?? "Updated Step",
+      description: data.description ?? null,
+      sortOrder: data.sortOrder ?? 0,
+    });
+  },
+
+  delete: async (_stepId: string): Promise<void> => {
+    // Read-only mock: no-op
+  },
+
+  reorder: async (taskId: string, _stepIds: string[]): Promise<TaskStep[]> => {
+    const store = getStore();
+    return store.taskSteps.get(taskId) ?? [];
+  },
+
+  getProgress: async (taskId: string): Promise<StepProgressSummary> => {
+    const store = getStore();
+    const steps = store.taskSteps.get(taskId) ?? [];
+    const total = steps.length;
+    const completed = steps.filter((s) => s.status === "completed").length;
+    const inProgress = steps.filter((s) => s.status === "in_progress").length;
+    const pending = steps.filter((s) => s.status === "pending").length;
+    const skipped = steps.filter((s) => s.status === "skipped").length;
+    const failed = steps.filter((s) => s.status === "failed").length;
+
+    const currentStep = steps.find((s) => s.status === "in_progress") ?? null;
+    const nextStep = steps.find((s) => s.status === "pending") ?? null;
+
+    return {
+      taskId,
+      total,
+      completed,
+      inProgress,
+      pending,
+      skipped,
+      failed,
+      currentStep,
+      nextStep,
+      percentComplete: total > 0 ? Math.round((completed / total) * 100) : 0,
+    };
+  },
+
+  start: async (stepId: string): Promise<TaskStep> => {
+    return createMockStep({
+      id: stepId,
+      taskId: "mock-task-id",
+      title: "Started Step",
+      status: "in_progress",
+      startedAt: new Date().toISOString(),
+    });
+  },
+
+  complete: async (stepId: string, note?: string): Promise<TaskStep> => {
+    return createMockStep({
+      id: stepId,
+      taskId: "mock-task-id",
+      title: "Completed Step",
+      status: "completed",
+      completionNote: note ?? null,
+      completedAt: new Date().toISOString(),
+    });
+  },
+
+  skip: async (stepId: string, reason: string): Promise<TaskStep> => {
+    return createMockStep({
+      id: stepId,
+      taskId: "mock-task-id",
+      title: "Skipped Step",
+      status: "skipped",
+      completionNote: reason,
+    });
+  },
+
+  fail: async (stepId: string, error: string): Promise<TaskStep> => {
+    return createMockStep({
+      id: stepId,
+      taskId: "mock-task-id",
+      title: "Failed Step",
+      status: "failed",
+      completionNote: error,
+    });
+  },
+} as const;

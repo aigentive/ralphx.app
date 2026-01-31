@@ -1,0 +1,132 @@
+/**
+ * Mock Projects API
+ *
+ * Mirrors the interface of src/api/projects.ts with mock implementations.
+ */
+
+import type { Project, CreateProject, UpdateProject } from "@/types/project";
+import type { WorkflowSchema } from "@/types/workflow";
+import type { InternalStatus } from "@/types/status";
+import { createMockProject, generateTestUuid } from "@/test/mock-data";
+import { getStore } from "./store";
+
+// ============================================================================
+// Mock Projects API
+// ============================================================================
+
+export const mockProjectsApi = {
+  list: async (): Promise<Project[]> => {
+    const store = getStore();
+    return Array.from(store.projects.values());
+  },
+
+  get: async (projectId: string): Promise<Project> => {
+    const store = getStore();
+    const project = store.projects.get(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+    return project;
+  },
+
+  create: async (input: CreateProject): Promise<Project> => {
+    const project = createMockProject({
+      id: generateTestUuid(),
+      name: input.name,
+      workingDirectory: input.workingDirectory,
+      gitMode: input.gitMode ?? "local",
+    });
+    return project;
+  },
+
+  update: async (projectId: string, input: UpdateProject): Promise<Project> => {
+    const store = getStore();
+    const existing = store.projects.get(projectId);
+    if (!existing) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+    // Merge only the provided fields
+    const updated: Project = {
+      ...existing,
+      updatedAt: new Date().toISOString(),
+    };
+    if (input.name !== undefined) updated.name = input.name;
+    if (input.workingDirectory !== undefined) updated.workingDirectory = input.workingDirectory;
+    if (input.gitMode !== undefined) updated.gitMode = input.gitMode;
+    if (input.worktreePath !== undefined) updated.worktreePath = input.worktreePath;
+    if (input.worktreeBranch !== undefined) updated.worktreeBranch = input.worktreeBranch;
+    if (input.baseBranch !== undefined) updated.baseBranch = input.baseBranch;
+    return updated;
+  },
+
+  delete: async (_projectId: string): Promise<boolean> => {
+    return true;
+  },
+} as const;
+
+// ============================================================================
+// Mock Workflows API
+// ============================================================================
+
+const mockWorkflowColumns: WorkflowSchema["columns"] = [
+  {
+    id: "col-backlog",
+    name: "Backlog",
+    mapsTo: "backlog" as InternalStatus,
+  },
+  {
+    id: "col-ready",
+    name: "Ready",
+    mapsTo: "ready" as InternalStatus,
+  },
+  {
+    id: "col-executing",
+    name: "Executing",
+    mapsTo: "executing" as InternalStatus,
+  },
+  {
+    id: "col-review",
+    name: "Review",
+    mapsTo: "pending_review" as InternalStatus,
+  },
+  {
+    id: "col-approved",
+    name: "Approved",
+    mapsTo: "approved" as InternalStatus,
+  },
+];
+
+const mockWorkflows: WorkflowSchema[] = [
+  {
+    id: "workflow-default",
+    name: "Default Workflow",
+    columns: mockWorkflowColumns,
+    isDefault: true,
+  },
+];
+
+export const mockWorkflowsApi = {
+  get: async (workflowId: string): Promise<WorkflowSchema> => {
+    const workflow = mockWorkflows.find((w) => w.id === workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
+    }
+    return workflow;
+  },
+
+  list: async (): Promise<WorkflowSchema[]> => {
+    return mockWorkflows;
+  },
+
+  seedBuiltin: async (): Promise<number> => {
+    return 1;
+  },
+} as const;
+
+// ============================================================================
+// Mock Git Branches
+// ============================================================================
+
+export async function mockGetGitBranches(_workingDirectory: string): Promise<string[]> {
+  return ["main", "develop", "feature/mock-branch"];
+}
