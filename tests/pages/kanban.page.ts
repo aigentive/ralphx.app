@@ -9,6 +9,14 @@ export class KanbanPage extends BasePage {
   // Board layout
   readonly board: Locator;
 
+  // Loading state
+  readonly skeleton: Locator;
+  readonly skeletonColumn: (index: number) => Locator;
+  readonly skeletonCard: (colIndex: number, cardIndex: number) => Locator;
+
+  // Error state
+  readonly error: Locator;
+
   // Column selectors (by status id)
   readonly column: (status: string) => Locator;
   readonly dropZone: (status: string) => Locator;
@@ -28,6 +36,16 @@ export class KanbanPage extends BasePage {
 
     // Board layout
     this.board = page.locator('[data-testid="task-board"]');
+
+    // Loading state
+    this.skeleton = page.locator('[data-testid="task-board-skeleton"]');
+    this.skeletonColumn = (index) =>
+      page.locator(`[data-testid="skeleton-column-${index}"]`);
+    this.skeletonCard = (colIndex, cardIndex) =>
+      page.locator(`[data-testid="skeleton-card-${colIndex}-${cardIndex}"]`);
+
+    // Error state
+    this.error = page.locator('[data-testid="task-board-error"]');
 
     // Columns
     this.column = (status) => page.locator(`[data-testid="column-${status}"]`);
