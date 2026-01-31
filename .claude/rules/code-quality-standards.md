@@ -58,6 +58,36 @@
 **Backend:** NEVER `#[serde(rename_all = "camelCase")]` on responses. Input structs may use it.
 **Frontend:** Schemas expect snake_case → transforms → camelCase types.
 
+## Tauri Invoke Params (CRITICAL)
+
+Tauri 2.x auto-converts Rust `snake_case` param names to `camelCase` for JavaScript.
+
+| Context | JS Side | Rust Side | Example |
+|---------|---------|-----------|---------|
+| Direct params | **camelCase** | `snake_case` | `{ taskId }` → `task_id: String` |
+| Struct fields (via `input`) | **snake_case** | serde match | `{ input: { task_id } }` |
+
+**Why it matters:** Wrong case = silent failure with "missing required key" error. No compile-time check.
+
+### Quick Check
+
+When writing `invoke()` or `typedInvoke()` calls:
+1. Direct params? Use `camelCase`: `{ taskId, projectId }`
+2. Wrapped in `input`? Use `snake_case`: `{ input: { task_id, project_id } }`
+
+### Common Mistake
+
+```typescript
+// ❌ WRONG - snake_case direct param
+typedInvoke("get_task", { task_id: taskId }, schema)
+
+// ✅ CORRECT - camelCase direct param
+typedInvoke("get_task", { taskId }, schema)
+
+// ✅ CORRECT - snake_case in struct wrapper
+typedInvoke("create_task", { input: { project_id, title } }, schema)
+```
+
 ## Database Migrations
 
 **Location:** `src-tauri/src/infrastructure/sqlite/migrations/`
