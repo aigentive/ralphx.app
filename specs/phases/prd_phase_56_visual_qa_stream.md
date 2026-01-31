@@ -174,7 +174,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(tests): migrate kanban spec to page object pattern"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,
