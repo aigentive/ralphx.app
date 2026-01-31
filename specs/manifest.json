@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 52,
+  "currentPhase": 53,
   "phases": [
     {
       "phase": 0,
@@ -380,6 +380,13 @@
       "prd": "specs/phases/prd_phase_52_activity_ui_improvements.md",
       "status": "complete",
       "description": "Smart content rendering, context display, role filter, ActivityView refactor"
+    },
+    {
+      "phase": 53,
+      "name": "Review Timeline Unification",
+      "prd": "specs/phases/prd_phase_53_review_timeline_unification.md",
+      "status": "active",
+      "description": "Extract shared ReviewTimeline component for state-specific detail views"
     }
   ]
 }
