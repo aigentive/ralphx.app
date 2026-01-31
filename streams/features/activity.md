@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-01-31 22:00:00 - Phase 54 Task 2: Add blocked_reason to task entity and repository
+**What:**
+- Added `blocked_reason: Option<String>` field to Task entity struct
+- Updated `Task::new()` to initialize blocked_reason to None
+- Updated `Task::from_row()` to read blocked_reason from database
+- Updated TASK_COLUMNS constant in queries.rs
+- Updated all SELECT queries to include blocked_reason (GET_BY_ID, GET_BY_PROJECT, GET_OLDEST_READY_TASK, inline queries)
+- Updated INSERT query to include blocked_reason (16 params)
+- Updated UPDATE query to include blocked_reason (14 params)
+- Updated test database schema in task.rs tests
+- Added 6 entity tests: defaults to none, serializes, deserializes, from_row with/without value
+- Added 4 repository tests: create preserves, update preserves, update clears, defaults to none
+
+**Files Modified:**
+- `src-tauri/src/domain/entities/task.rs`
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs`
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs`
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/tests.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passed
+- `cargo test` - 3208 tests passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 21:30:00 - Phase 54 Task 1: Add blocked_reason column migration
 **What:**
 - Created `v4_add_blocked_reason.rs` migration file

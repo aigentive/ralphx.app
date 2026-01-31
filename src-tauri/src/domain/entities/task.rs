@@ -50,6 +50,9 @@ pub struct Task {
     /// When the task was archived (soft-deleted). None = active.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<DateTime<Utc>>,
+    /// Reason why the task is blocked (only set when status is Blocked)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<String>,
 }
 
 impl Task {
@@ -78,6 +81,7 @@ impl Task {
             started_at: None,
             completed_at: None,
             archived_at: None,
+            blocked_reason: None,
         }
     }
 
@@ -164,6 +168,7 @@ impl Task {
             archived_at: row
                 .get::<_, Option<String>>("archived_at")?
                 .map(Self::parse_datetime),
+            blocked_reason: row.get("blocked_reason")?,
         })
     }
 
@@ -597,7 +602,8 @@ mod tests {
                 updated_at TEXT NOT NULL,
                 started_at TEXT,
                 completed_at TEXT,
-                archived_at TEXT
+                archived_at TEXT,
+                blocked_reason TEXT
             )"#,
             [],
         )
@@ -994,5 +1000,113 @@ mod tests {
 
         assert!(task.source_proposal_id.is_none());
         assert!(task.plan_artifact_id.is_none());
+    }
+
+    // ===== blocked_reason Tests =====
+
+    #[test]
+    fn task_new_defaults_blocked_reason_to_none() {
+        let task = Task::new(ProjectId::new(), "Test".to_string());
+        assert!(task.blocked_reason.is_none());
+    }
+
+    #[test]
+    fn task_serializes_with_blocked_reason() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.blocked_reason = Some("Waiting for API design".to_string());
+
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("\"blocked_reason\":\"Waiting for API design\""));
+    }
+
+    #[test]
+    fn task_deserializes_with_blocked_reason() {
+        let json = r#"{
+            "id": "task-id",
+            "project_id": "proj-id",
+            "category": "feature",
+            "title": "Test",
+            "description": null,
+            "priority": 0,
+            "internal_status": "blocked",
+            "needs_review_point": false,
+            "blocked_reason": "Waiting for dependency",
+            "created_at": "2025-01-24T12:00:00Z",
+            "updated_at": "2025-01-24T12:00:00Z",
+            "started_at": null,
+            "completed_at": null
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.blocked_reason, Some("Waiting for dependency".to_string()));
+        assert_eq!(task.internal_status, InternalStatus::Blocked);
+    }
+
+    #[test]
+    fn task_deserializes_without_blocked_reason_defaults_to_none() {
+        let json = r#"{
+            "id": "task-id",
+            "project_id": "proj-id",
+            "category": "feature",
+            "title": "Test",
+            "description": null,
+            "priority": 0,
+            "internal_status": "backlog",
+            "created_at": "2025-01-24T12:00:00Z",
+            "updated_at": "2025-01-24T12:00:00Z",
+            "started_at": null,
+            "completed_at": null
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert!(task.blocked_reason.is_none());
+    }
+
+    #[test]
+    fn task_from_row_with_blocked_reason() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, needs_review_point, blocked_reason,
+               created_at, updated_at, started_at, completed_at)
+               VALUES ('task-blocked', 'proj-blocked', 'feature', 'Blocked Task', NULL, 0,
+               'blocked', 0, 'Waiting for API design',
+               '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-blocked'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert_eq!(task.blocked_reason, Some("Waiting for API design".to_string()));
+        assert_eq!(task.internal_status, InternalStatus::Blocked);
+    }
+
+    #[test]
+    fn task_from_row_with_null_blocked_reason() {
+        let conn = setup_test_db();
+        conn.execute(
+            r#"INSERT INTO tasks (id, project_id, category, title, description, priority,
+               internal_status, needs_review_point, blocked_reason,
+               created_at, updated_at, started_at, completed_at)
+               VALUES ('task-noblock', 'proj-noblock', 'feature', 'Not Blocked', NULL, 0,
+               'ready', 0, NULL,
+               '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z', NULL, NULL)"#,
+            [],
+        )
+        .unwrap();
+
+        let task: Task = conn
+            .query_row("SELECT * FROM tasks WHERE id = 'task-noblock'", [], |row| {
+                Task::from_row(row)
+            })
+            .unwrap();
+
+        assert!(task.blocked_reason.is_none());
+        assert_eq!(task.internal_status, InternalStatus::Ready);
     }
 }
