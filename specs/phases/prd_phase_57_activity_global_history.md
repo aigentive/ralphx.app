@@ -120,7 +120,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(activity): add list_all method to activity event repository"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
@@ -137,7 +137,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(activity): add list_all_activity_events command"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
