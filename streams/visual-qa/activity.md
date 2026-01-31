@@ -1,3 +1,24 @@
+### 2026-02-01 00:59:31 - AskUserQuestionModal Visual Tests (Blocked)
+**What:**
+- Attempted baseline generation for AskUserQuestionModal
+- All test infrastructure verified as complete:
+  - Page object exists: tests/pages/modals/ask-user-question.page.ts
+  - Helper exists: tests/helpers/ask-user-question.helpers.ts
+  - Spec exists: tests/visual/modals/ask-user-question/ask-user-question.spec.ts
+  - Hook wired in App.tsx line 165: useAskUserQuestion()
+  - EventBus exposed to window in EventProvider.tsx line 123
+  - Modal rendered in App.tsx line 733
+
+**Mock parity:**
+- Status: READY (infrastructure complete)
+- Test helper uses window.__eventBus to emit events
+- Modal listens via useAskUserQuestion hook
+
+**Commands:**
+- `npx playwright test tests/visual/modals/ask-user-question/ask-user-question.spec.ts --update-snapshots`
+
+**Result:** BLOCKED - All 14 tests timeout with "modal not visible". Root cause: Dev server needs restart for EventProvider changes to take effect (window.__eventBus exposure). Cannot proceed per CLAUDE.md rule #8 (user manages dev server). Updated backlog with clear instructions for user.
+
 ### 2026-02-01 00:12:45 - ProjectCreationWizard Visual Tests
 **What:**
 - Extended mock dialog to return test path for directory selection
