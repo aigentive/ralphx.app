@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-02-01 05:15:00 - Phase 44 Task 1: Fix useIntegratedChatEvents event listener dependency array
+**What:**
+- Added `activeConversationId` to event listener useEffect dependency array (line 141)
+- Added `setStreamingToolCalls([])` to cleanup function before unlisteners (line 138)
+- This fixes race condition where old events could bleed into new context during rapid switches
+
+**Commands:**
+- `npx eslint src/hooks/useIntegratedChatEvents.ts` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 04:30:00 - Phase 43 Task 5: Remove deprecated chatCollapsed/toggleChatCollapsed from uiStore
 **What:**
 - Updated KanbanSplitLayout.tsx to use chatVisibleByView.kanban instead of chatCollapsed
