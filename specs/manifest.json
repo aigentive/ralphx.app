@@ -345,6 +345,13 @@
       "prd": "specs/phases/prd_phase_47_review_system_fix.md",
       "status": "active",
       "description": "Fix approval buttons, populate Reviews panel, consolidate status constants"
+    },
+    {
+      "phase": 48,
+      "name": "Activity Screen Enhancement",
+      "prd": "specs/phases/prd_phase_48_activity_screen_enhancement.md",
+      "status": "pending",
+      "description": "Persistent activity events, server-side pagination, infinite scroll, unified status widget"
     }
   ]
 }
