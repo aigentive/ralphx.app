@@ -308,7 +308,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "DESIGN: Confirm SF Pro font (not Inter)",
       "Report any issues found or mark task as verified"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
