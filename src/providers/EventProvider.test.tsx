@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { EventProvider } from "./EventProvider";
+import { render, screen, renderHook } from "@testing-library/react";
+import { EventProvider, useEventBus } from "./EventProvider";
+import type { ReactNode } from "react";
 
 // Mock the event hooks
 vi.mock("@/hooks/useEvents", () => ({
@@ -8,6 +9,26 @@ vi.mock("@/hooks/useEvents", () => ({
   useSupervisorAlerts: vi.fn(),
   useReviewEvents: vi.fn(),
   useFileChangeEvents: vi.fn(),
+  useAgentEvents: vi.fn(),
+  useProposalEvents: vi.fn(),
+  useStepEvents: vi.fn(),
+  useExecutionErrorEvents: vi.fn(),
+}));
+
+vi.mock("@/hooks/useIdeationEvents", () => ({
+  useIdeationEvents: vi.fn(),
+}));
+
+vi.mock("@/hooks/useEvents.planArtifact", () => ({
+  usePlanArtifactEvents: vi.fn(),
+}));
+
+// Mock the event bus module
+vi.mock("@/lib/event-bus", () => ({
+  createEventBus: vi.fn(() => ({
+    subscribe: vi.fn(() => vi.fn()),
+    emit: vi.fn(),
+  })),
 }));
 
 import {
@@ -96,5 +117,40 @@ describe("EventProvider", () => {
     expect(screen.getByTestId("outer")).toContainElement(
       screen.getByTestId("inner")
     );
+  });
+});
+
+describe("useEventBus", () => {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <EventProvider>{children}</EventProvider>
+  );
+
+  it("should return event bus when used within EventProvider", () => {
+    const { result } = renderHook(() => useEventBus(), { wrapper });
+
+    expect(result.current).toBeDefined();
+    expect(result.current.subscribe).toBeDefined();
+    expect(result.current.emit).toBeDefined();
+  });
+
+  it("should throw error when used outside EventProvider", () => {
+    // Suppress console.error for this test since we expect an error
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(() => {
+      renderHook(() => useEventBus());
+    }).toThrow("useEventBus must be used within an EventProvider");
+
+    consoleSpy.mockRestore();
+  });
+
+  it("should return the same event bus instance on re-renders", () => {
+    const { result, rerender } = renderHook(() => useEventBus(), { wrapper });
+
+    const firstBus = result.current;
+    rerender();
+    const secondBus = result.current;
+
+    expect(firstBus).toBe(secondBus);
   });
 });
