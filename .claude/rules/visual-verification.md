@@ -1,6 +1,10 @@
 # Visual Verification Workflow
 
-**Required Context:** Read ONLY when stream-features.md step 5.5-6.5 triggers.
+**Required Context:** Auto-loaded by stream-features.md
+
+> **CRITICAL:** This workflow is MANDATORY for any task that modifies UI files.
+> You CANNOT mark a task as `"passes": true` without completing these steps.
+> You CANNOT skip screenshot capture for UI tasks.
 
 ## Step 5.5: Mock Layer Check
 

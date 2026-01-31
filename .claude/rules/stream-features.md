@@ -1,6 +1,6 @@
 # Features Stream
 
-**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md | @.claude/rules/gap-verification.md
+**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md | @.claude/rules/gap-verification.md | @.claude/rules/visual-verification.md
 
 ## Overview
 
@@ -48,27 +48,47 @@ Match if: File path appears in P0 item OR active PRD task OR is a features strea
 
 5. Execute task following PRD steps exactly
 
-5.5-6.5. Visual Verification (if affects UI):
-   - Could this task change what the user sees?
-     (Components, views, API responses rendered in UI, stores, types, styles, etc.)
-   - YES → Read .claude/rules/visual-verification.md and follow its workflow
-   - NO → Skip to step 6
+5.5. Visual Verification Check:
+   - Did this task modify ANY file in: src/components/, src/views/, src/pages/, src/modals/, src/styles/, *.css, *.tsx?
+   - YES → MUST complete steps 6.0-6.5 below (CANNOT skip)
+   - NO (backend-only, tests-only, config-only) → Skip to step 7
 
-6. Run linters (ONLY for what you modified):
+6.0. Mock Layer Check (MANDATORY for UI tasks):
+   a. Identify Tauri commands used by modified UI code
+   b. Check src/api-mock/ has matching mock
+   c. Missing? → Create minimal mock first
+   d. Verify: `npm run dev:web` renders without undefined errors
+
+6.5. Browser Verification (MANDATORY for UI tasks):
+   a. Ensure dev server running: `curl -s http://localhost:5173 > /dev/null || npm run dev:web &`
+   b. Use agent-browser skill to:
+      - Navigate to the affected view
+      - Interact with the modified component
+      - Take screenshot: screenshots/features/YYYY-MM-DD_HH-MM-SS_[task-name].png
+   c. AI-judge: Does it match PRD acceptance criteria?
+   d. Visual issues? → Fix before proceeding
+   e. Record screenshot path for activity log
+
+6.9. Visual Verification Checkpoint (UI tasks only):
+   - Screenshot file exists at recorded path?
+   - YES → Proceed to step 7
+   - NO → STOP. Cannot mark task complete without visual evidence.
+
+7. Run linters (ONLY for what you modified):
    - Modified src/ files? → npm run lint && npm run typecheck
    - Modified src-tauri/ files? → cargo clippy --all-targets --all-features -- -D warnings && cargo test
    - Do NOT run frontend linters for backend-only changes (and vice versa)
 
-7. Log to streams/features/activity.md
+8. Log to streams/features/activity.md
 
-8. Update PRD: set "passes": true
+9. Update PRD: set "passes": true
 
-9. Commit: feat|fix|docs: [description]
+10. Commit: feat|fix|docs: [description]
 
-10. STOP — end iteration (do NOT check for IDLE here, just end)
+11. STOP — end iteration (do NOT check for IDLE here, just end)
 ```
 
-**IMPORTANT:** IDLE detection happens ONLY at steps 2-3 (start of iteration). After completing a task (step 10), just end — the next iteration will check for more work.
+**IMPORTANT:** IDLE detection happens ONLY at steps 2-3 (start of iteration). After completing a task (step 11), just end — the next iteration will check for more work.
 
 ## P0 Rules (CANNOT BE BYPASSED)
 
@@ -151,6 +171,11 @@ Log entries go in `streams/features/activity.md`:
 
 **Commands:**
 - `relevant commands run`
+
+**Visual Verification:** (REQUIRED for UI tasks, "N/A - backend only" for non-UI)
+- Screenshot: screenshots/features/[filename].png
+- Mock status: Ready | Extended [description]
+- Browser test: Passed | Failed [reason]
 
 **Result:** Success/Failed
 ```
