@@ -336,7 +336,7 @@
       "phase": 46,
       "name": "Escalation Data Fix",
       "prd": "specs/phases/prd_phase_46_escalation_data_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix field name mismatch and add issues array support for escalation data display"
     }
   ]
