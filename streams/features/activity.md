@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-01-31 23:45:00 - Phase 56 Task 9: Verify playwright config for new test structure
+**What:**
+- Verified playwright.config.ts testDir is already set to `./tests/visual` (correct)
+- Verified snapshotDir is set to `./tests/visual/snapshots` (correct)
+- Confirmed all 3 kanban tests in `tests/visual/views/kanban/` are discovered and pass
+- No config changes needed - structure already supports new directory layout
+
+**Commands:**
+- `npx playwright test --list` - 3 tests found in views/kanban/kanban.spec.ts
+- `npx playwright test` - 3 passed (2.7s)
+
+**Result:** Success (verification only - no changes needed)
+
+---
+
 ### 2026-01-31 23:30:00 - Phase 56 Task 8: Create stream prompt and supporting files
 **What:**
 - Created streams/visual-qa/PROMPT.md with stream prompt referencing manifest, backlog, and rules files
