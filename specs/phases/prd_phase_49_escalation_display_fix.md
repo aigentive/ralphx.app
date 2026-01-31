@@ -110,7 +110,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: refactor(reviews): extract parse_issues_from_notes to shared module"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
