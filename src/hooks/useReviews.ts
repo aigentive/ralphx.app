@@ -5,12 +5,16 @@
  * - usePendingReviews: Pending reviews for a project
  * - useReviewsByTaskId: All reviews for a specific task
  * - useTaskStateHistory: State transition history for a task
+ * - useTasksAwaitingReview: Tasks awaiting AI or human review
  */
 
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ReviewResponse, type ReviewNoteResponse } from "@/lib/tauri";
+import { tasksApi } from "@/api/tasks";
 import { useReviewStore } from "@/stores/reviewStore";
+import type { Task } from "@/types/task";
+import type { InternalStatus } from "@/types/status";
 
 // ============================================================================
 // Query Keys
@@ -26,7 +30,20 @@ export const reviewKeys = {
   stateHistory: () => [...reviewKeys.all, "stateHistory"] as const,
   stateHistoryById: (taskId: string) =>
     [...reviewKeys.stateHistory(), taskId] as const,
+  tasksAwaitingReview: () => [...reviewKeys.all, "tasksAwaiting"] as const,
+  tasksAwaitingReviewByProject: (projectId: string) =>
+    [...reviewKeys.tasksAwaitingReview(), projectId] as const,
 };
+
+// ============================================================================
+// Status Constants for Review Filtering
+// ============================================================================
+
+/** Statuses where task is in AI review phase */
+const AI_REVIEW_STATUSES: InternalStatus[] = ["pending_review", "reviewing"];
+
+/** Statuses where task awaits human review decision */
+const HUMAN_REVIEW_STATUSES: InternalStatus[] = ["review_passed", "escalated"];
 
 // ============================================================================
 // usePendingReviews
@@ -238,6 +255,85 @@ export function useTaskStateHistory(
     /** The most recent history entry */
     latestEntry,
     /** Refetch history from backend */
+    refetch: query.refetch,
+  };
+}
+
+// ============================================================================
+// useTasksAwaitingReview
+// ============================================================================
+
+/**
+ * Hook to fetch tasks awaiting review for a project
+ *
+ * Returns tasks grouped by review type:
+ * - AI: Tasks in pending_review, reviewing
+ * - Human: Tasks in review_passed, escalated
+ *
+ * @param projectId - The project ID to fetch tasks for
+ * @param options - Hook options
+ * @returns Tasks grouped by review type, loading state, and computed properties
+ *
+ * @example
+ * ```tsx
+ * const { allTasks, aiTasks, humanTasks, isLoading } = useTasksAwaitingReview("project-123");
+ *
+ * // Filter by tab
+ * const displayTasks = activeTab === "ai" ? aiTasks : humanTasks;
+ * ```
+ */
+export function useTasksAwaitingReview(
+  projectId: string,
+  options: { enabled?: boolean } = {}
+) {
+  const { enabled = true } = options;
+
+  const query = useQuery<Task[], Error>({
+    queryKey: reviewKeys.tasksAwaitingReviewByProject(projectId),
+    queryFn: () => tasksApi.getTasksAwaitingReview(projectId),
+    enabled: enabled && !!projectId,
+    staleTime: 30 * 1000, // 30 seconds
+  });
+
+  // Wrap data in useMemo to prevent creating new array reference on every render
+  const allTasks = useMemo(() => query.data ?? [], [query.data]);
+
+  // Group tasks by review type
+  const aiTasks = useMemo(
+    () => allTasks.filter((t) => AI_REVIEW_STATUSES.includes(t.internalStatus)),
+    [allTasks]
+  );
+
+  const humanTasks = useMemo(
+    () => allTasks.filter((t) => HUMAN_REVIEW_STATUSES.includes(t.internalStatus)),
+    [allTasks]
+  );
+
+  const isEmpty = allTasks.length === 0;
+  const aiCount = aiTasks.length;
+  const humanCount = humanTasks.length;
+  const totalCount = allTasks.length;
+
+  return {
+    /** All tasks awaiting review */
+    allTasks,
+    /** Tasks in AI review phase (pending_review, reviewing) */
+    aiTasks,
+    /** Tasks awaiting human review (review_passed, escalated) */
+    humanTasks,
+    /** Whether data is loading */
+    isLoading: query.isLoading,
+    /** Error message if any */
+    error: query.error?.message ?? null,
+    /** Whether there are no tasks awaiting review */
+    isEmpty,
+    /** Number of tasks in AI review */
+    aiCount,
+    /** Number of tasks awaiting human review */
+    humanCount,
+    /** Total number of tasks awaiting review */
+    totalCount,
+    /** Refetch tasks from backend */
     refetch: query.refetch,
   };
 }

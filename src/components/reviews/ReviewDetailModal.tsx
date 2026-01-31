@@ -37,7 +37,8 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface ReviewDetailModalProps {
   taskId: string;
-  reviewId: string;
+  /** @deprecated No longer required - using task-based approval APIs */
+  reviewId?: string;
   onClose: () => void;
 }
 
@@ -318,7 +319,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
  */
 export function ReviewDetailModal({
   taskId,
-  reviewId,
   onClose,
 }: ReviewDetailModalProps) {
   const queryClient = useQueryClient();
@@ -332,8 +332,8 @@ export function ReviewDetailModal({
     enabled: !!taskId,
   });
 
-  // Fetch reviews for this task
-  const { data: reviews, hasAiReview } = useReviewsByTaskId(taskId);
+  // Fetch reviews for this task (for hasAiReview indicator)
+  const { hasAiReview } = useReviewsByTaskId(taskId);
 
   // Fetch review history
   const { data: history } = useTaskStateHistory(taskId);
@@ -342,8 +342,9 @@ export function ReviewDetailModal({
   const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =
     useGitDiff({ taskId, enabled: true });
 
-  // Find the pending review (for action buttons)
-  const pendingReview = reviews.find((r) => r.status === "pending");
+  // Check if task is in a state that allows human approval
+  // (review_passed or escalated)
+  const canApprove = task?.internalStatus === "review_passed" || task?.internalStatus === "escalated";
 
   // Get latest approved review for summary
   const latestApproved = useMemo(() => {
@@ -356,10 +357,10 @@ export function ReviewDetailModal({
     return history.filter((h) => h.outcome === "changes_requested").length;
   }, [history]);
 
-  // Approve mutation
+  // Approve mutation (task-based)
   const approveMutation = useMutation({
     mutationFn: async () => {
-      await api.reviews.approve({ review_id: reviewId });
+      await api.reviews.approveTask({ task_id: taskId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -368,10 +369,10 @@ export function ReviewDetailModal({
     },
   });
 
-  // Request changes mutation
+  // Request changes mutation (task-based)
   const requestChangesMutation = useMutation({
     mutationFn: async (notes: string) => {
-      await api.reviews.requestChanges({ review_id: reviewId, notes });
+      await api.reviews.requestTaskChanges({ task_id: taskId, feedback: notes });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reviewKeys.all });
@@ -404,7 +405,6 @@ export function ReviewDetailModal({
   }, [onClose]);
 
   const isLoading = approveMutation.isPending || requestChangesMutation.isPending;
-  const isPending = pendingReview != null;
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
@@ -555,7 +555,7 @@ export function ReviewDetailModal({
           <Button
             data-testid="review-detail-request-changes"
             onClick={handleRequestChangesClick}
-            disabled={isLoading || !isPending || (showFeedbackInput && !feedback.trim())}
+            disabled={isLoading || !canApprove || (showFeedbackInput && !feedback.trim())}
             variant="outline"
             className="gap-1.5"
             style={{
@@ -573,7 +573,7 @@ export function ReviewDetailModal({
           <Button
             data-testid="review-detail-approve"
             onClick={() => approveMutation.mutate()}
-            disabled={isLoading || !isPending || showFeedbackInput}
+            disabled={isLoading || !canApprove || showFeedbackInput}
             className="gap-1.5"
             style={{
               backgroundColor: "var(--status-success)",
