@@ -18,7 +18,7 @@ Phase: IN_PROGRESS
 |-------|------------|-----------|----------|--------|
 | TaskDetailModal | 🚧 | — | — | blocked |
 | ReviewsPanel | ✅ | reviews-panel.spec.ts | ✅ | covered |
-| AskUserQuestionModal | ❌ | — | — | uncovered |
+| AskUserQuestionModal | ✅ | ask-user-question.spec.ts | ✅ | covered |
 | ProjectCreationWizard | ✅ | project-creation-wizard.spec.ts | ✅ | covered |
 | ProposalEditModal | 🚧 | proposal-edit.spec.ts | — | blocked |
 | PermissionDialog | 🚧 | — | — | blocked |

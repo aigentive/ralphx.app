@@ -265,3 +265,19 @@
 - `npx playwright test tests/visual/views/task-detail/task-detail.spec.ts`
 
 **Result:** Success (5 tests passing)
+
+### 2026-01-31 22:52:58 - AskUserQuestionModal Visual Tests
+**What:**
+- Fixed timing issue by exposing uiStore to window (src/stores/uiStore.ts)
+- Updated helper to directly manipulate uiStore instead of relying on event subscription (tests/helpers/ask-user-question.helpers.ts)
+- Generated baseline snapshots (5 snapshot files)
+- All 14 tests passing
+
+**Mock parity:**
+- Status: ready (web mode functional)
+
+**Commands:**
+- `npx playwright test tests/visual/modals/ask-user-question/ask-user-question.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/ask-user-question/ask-user-question.spec.ts`
+
+**Result:** Success
