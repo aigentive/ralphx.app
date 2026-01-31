@@ -371,7 +371,7 @@
       "phase": 51,
       "name": "Release Automation",
       "prd": "specs/phases/prd_phase_51_release_automation.md",
-      "status": "active",
+      "status": "complete",
       "description": "DMG distribution, code signing, notarization, auto-update, GitHub Actions CI/CD"
     }
   ]
