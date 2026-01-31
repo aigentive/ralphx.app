@@ -385,7 +385,7 @@
       "phase": 53,
       "name": "Review Timeline Unification",
       "prd": "specs/phases/prd_phase_53_review_timeline_unification.md",
-      "status": "active",
+      "status": "complete",
       "description": "Extract shared ReviewTimeline component for state-specific detail views"
     }
   ]
