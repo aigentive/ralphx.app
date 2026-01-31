@@ -86,3 +86,23 @@
 - `npx playwright test tests/visual/views/settings/settings.spec.ts`
 
 **Result:** Success (9 tests passing)
+
+---
+
+### 2026-01-31 21:45:14 - Task Detail View Visual Tests
+**What:**
+- Created page object: tests/pages/task-detail.page.ts
+- Created spec: tests/visual/views/task-detail/task-detail.spec.ts
+- Added setupTaskDetail fixture to tests/fixtures/setup.fixtures.ts
+- Generated baseline snapshot (57KB)
+
+**Mock parity:**
+- Status: ready (src/api-mock/tasks.ts provides mock task data)
+- TaskDetailOverlay renders in Kanban split layout when task selected
+- Component uses overlay header (task-overlay-* testids) + TaskDetailPanel content
+
+**Commands:**
+- `npx playwright test tests/visual/views/task-detail/task-detail.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/views/task-detail/task-detail.spec.ts`
+
+**Result:** Success (5 tests passing)

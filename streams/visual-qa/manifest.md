@@ -11,7 +11,7 @@ Phase: IN_PROGRESS
 | activity | ✅ | activity.spec.ts | ✅ | covered |
 | settings | ✅ | settings.spec.ts | ✅ | covered |
 | extensibility | ✅ | extensibility.spec.ts | ✅ | covered |
-| task_detail | ❌ | — | — | uncovered |
+| task_detail | ✅ | task-detail.spec.ts | ✅ | covered |
 
 ## Modals (6 total)
 | Modal | Mock Ready | Spec File | Baseline | Status |
