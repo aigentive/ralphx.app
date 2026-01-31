@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 23:00:00 - Phase 54 Task 3: Add block_task and unblock_task commands
+**What:**
+- Added `block_task` command in mutation.rs (transitions to Blocked + sets reason)
+- Added `unblock_task` command in mutation.rs (transitions to Ready + clears reason)
+- Added `blocked_reason` to TaskResponse in types.rs
+- Registered new commands in lib.rs
+- Commands use TaskTransitionService for proper state machine handling
+- Both commands emit queue_changed events for UI updates
+
+**Files Modified:**
+- `src-tauri/src/commands/task_commands/mutation.rs`
+- `src-tauri/src/commands/task_commands/types.rs`
+- `src-tauri/src/lib.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passed
+- `cargo test` - 3208 tests passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:30:00 - Phase 53 Complete
 **What:**
 - Verified all tasks in Phase 53 (Review Timeline Unification) have `passes: true`
