@@ -306,8 +306,8 @@ export const ideationApi = {
      */
     reorder: async (sessionId: string, proposalIds: string[]): Promise<void> => {
       await invoke("reorder_proposals", {
-        session_id: sessionId,
-        proposal_ids: proposalIds,
+        sessionId,
+        proposalIds,
       });
     },
 

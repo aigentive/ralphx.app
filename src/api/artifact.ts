@@ -110,7 +110,7 @@ export const artifactApi = {
   getByTask: async (taskId: string): Promise<Artifact[]> => {
     const raw = await typedInvoke(
       "get_artifacts_by_task",
-      { task_id: taskId },
+      { taskId },
       z.array(ArtifactResponseSchema)
     );
     return raw.map(transformArtifact);
@@ -124,7 +124,7 @@ export const artifactApi = {
   getByBucket: async (bucketId: string): Promise<Artifact[]> => {
     const raw = await typedInvoke(
       "get_artifacts_by_bucket",
-      { bucket_id: bucketId },
+      { bucketId },
       z.array(ArtifactResponseSchema)
     );
     return raw.map(transformArtifact);
