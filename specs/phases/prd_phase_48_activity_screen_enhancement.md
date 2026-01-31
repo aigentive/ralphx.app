@@ -296,7 +296,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(activity): add infinite scroll and historical mode"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 13,
