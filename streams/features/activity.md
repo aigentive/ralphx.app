@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-01-31 22:45:00 - Phase 51 Task 5: Configure updater plugin in tauri.conf.json
+**What:**
+- Added `plugins.updater` section to `src-tauri/tauri.conf.json`
+- Configured pubkey placeholder (needs to be generated with `npx @tauri-apps/cli signer generate`)
+- Set GitHub releases endpoint for update manifest
+
+**Files Modified:**
+- `src-tauri/tauri.conf.json`
+
+**Commands:**
+- `jq .`: JSON validation passed
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 22:35:00 - Phase 51 Task 4: Add tauri-plugin-updater dependency
 **What:**
 - Added `tauri-plugin-updater = "2"` to dependencies in `src-tauri/Cargo.toml`

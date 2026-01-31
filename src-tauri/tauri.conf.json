@@ -35,5 +35,13 @@
         "windowSize": { "width": 660, "height": 400 }
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "GENERATE_THIS_WITH_npx_tauri_signer_generate",
+      "endpoints": [
+        "https://github.com/lazabogdan/ralphx/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
