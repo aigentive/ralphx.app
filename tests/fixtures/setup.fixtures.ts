@@ -34,3 +34,11 @@ export async function setupSettings(page: Page) {
   // Wait for settings view to load
   await page.waitForSelector('[data-testid="settings-view"]', { timeout: 10000 });
 }
+
+export async function setupExtensibility(page: Page) {
+  await setupApp(page);
+  // Navigate to extensibility view
+  await page.click('[data-testid="nav-extensibility"]');
+  // Wait for extensibility view to load
+  await page.waitForSelector('[data-testid="extensibility-view"]', { timeout: 10000 });
+}

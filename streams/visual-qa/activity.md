@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-01-31 21:38:23 - Extensibility View Visual Tests
+**What:**
+- Created page object: tests/pages/extensibility.page.ts
+- Created spec: tests/visual/views/extensibility/extensibility.spec.ts
+- Added setupExtensibility fixture to tests/fixtures/setup.fixtures.ts
+- Generated baseline snapshots (4 snapshots: workflows, artifacts, research, methodologies tabs)
+
+**Mock parity:**
+- Status: ready (all required mocks exist: methodologies, research, artifacts)
+- Workflows panel uses hardcoded mock data
+- All tabs render correctly in web mode
+
+**Commands:**
+- `npx playwright test tests/visual/views/extensibility/extensibility.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/views/extensibility/extensibility.spec.ts`
+
+**Result:** Success (10 tests passing)
+
+---
+
 ### 2026-01-31 23:30:00 - Stream Infrastructure Setup
 **What:**
 - Created PROMPT.md with stream prompt referencing manifest, backlog, and rules
