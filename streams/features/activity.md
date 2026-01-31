@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-01 09:45:00 - Phase 45 Task 5: Update HTTP handler for Escalate decision
+**What:**
+- Split combined `NeedsChanges | Escalate` match arm in `complete_review` handler (reviews.rs:150-158)
+- `NeedsChanges` still transitions to `InternalStatus::RevisionNeeded` (auto re-execute)
+- `Escalate` now transitions to `InternalStatus::Escalated` (requires human decision)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all 3121 tests passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 09:15:00 - Phase 45 Task 4: Add side effects for Escalated state
 **What:**
 - Added `State::Escalated` match arm in `side_effects.rs` after `ReviewPassed` handler

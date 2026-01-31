@@ -147,13 +147,21 @@ pub async fn complete_review(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             InternalStatus::ReviewPassed
         }
-        ReviewToolOutcome::NeedsChanges | ReviewToolOutcome::Escalate => {
-            // Needs changes or escalate: transition to RevisionNeeded
+        ReviewToolOutcome::NeedsChanges => {
+            // Needs changes: transition to RevisionNeeded (auto re-execute)
             transition_service
                 .transition_task(&task_id, InternalStatus::RevisionNeeded)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             InternalStatus::RevisionNeeded
+        }
+        ReviewToolOutcome::Escalate => {
+            // Escalate: transition to Escalated (requires human decision)
+            transition_service
+                .transition_task(&task_id, InternalStatus::Escalated)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            InternalStatus::Escalated
         }
     };
 
