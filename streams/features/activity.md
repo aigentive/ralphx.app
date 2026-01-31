@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-01 00:35:00 - Phase 56 Task 2: Create setup fixtures and wait helpers
+**What:**
+- Created tests/fixtures/setup.fixtures.ts with:
+  - setupApp(page) - goes to "/" and waits for app-header
+  - setupKanban(page) - calls setupApp then waits for task-card elements
+- Created tests/helpers/wait.helpers.ts with:
+  - waitForNetworkIdle(page, timeout) - waits for networkidle load state
+  - waitForAnimationsComplete(page) - 500ms timeout for animations
+
+**Commands:**
+- `npm run lint` - 0 errors (10 pre-existing warnings)
+- `npm run typecheck` - passed
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 00:15:00 - Phase 56 Task 1: Create test directory structure and base page object
 **What:**
 - Verified directory structure already exists: tests/visual/views/kanban, tests/visual/modals, tests/visual/states, tests/pages, tests/pages/modals, tests/fixtures, tests/helpers, streams/visual-qa
