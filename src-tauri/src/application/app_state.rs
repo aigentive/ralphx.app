@@ -13,31 +13,32 @@ use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::repositories::{
-    AgentProfileRepository, AgentRunRepository, ArtifactBucketRepository, ArtifactFlowRepository,
-    ArtifactRepository, ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    IdeationSettingsRepository, MethodologyRepository, ProcessRepository, ProjectRepository,
-    ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskQARepository, TaskRepository, TaskStepRepository, WorkflowRepository,
+    ActivityEventRepository, AgentProfileRepository, AgentRunRepository, ArtifactBucketRepository,
+    ArtifactFlowRepository, ArtifactRepository, ChatConversationRepository, ChatMessageRepository,
+    IdeationSessionRepository, IdeationSettingsRepository, MethodologyRepository, ProcessRepository,
+    ProjectRepository, ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
+    TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
+    TaskStepRepository, WorkflowRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryAgentProfileRepository, MemoryAgentRunRepository, MemoryArtifactBucketRepository,
-    MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatConversationRepository,
-    MemoryChatMessageRepository, MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository,
-    MemoryMethodologyRepository, MemoryProcessRepository, MemoryProjectRepository,
-    MemoryProposalDependencyRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
-    MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
-    MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
+    MemoryActivityEventRepository, MemoryAgentProfileRepository, MemoryAgentRunRepository,
+    MemoryArtifactBucketRepository, MemoryArtifactFlowRepository, MemoryArtifactRepository,
+    MemoryChatConversationRepository, MemoryChatMessageRepository, MemoryIdeationSessionRepository,
+    MemoryIdeationSettingsRepository, MemoryMethodologyRepository, MemoryProcessRepository,
+    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryReviewRepository,
+    MemoryReviewSettingsRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
+    MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
-    get_default_db_path, open_connection, run_migrations, SqliteAgentProfileRepository,
-    SqliteAgentRunRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
-    SqliteArtifactRepository, SqliteChatConversationRepository, SqliteChatMessageRepository,
-    SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository, SqliteMethodologyRepository,
-    SqliteProcessRepository, SqliteProjectRepository, SqliteProposalDependencyRepository,
-    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteTaskDependencyRepository,
-    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
-    SqliteTaskStepRepository, SqliteWorkflowRepository,
+    get_default_db_path, open_connection, run_migrations, SqliteActivityEventRepository,
+    SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteArtifactBucketRepository,
+    SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatConversationRepository,
+    SqliteChatMessageRepository, SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository,
+    SqliteMethodologyRepository, SqliteProcessRepository, SqliteProjectRepository,
+    SqliteProposalDependencyRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
+    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
+    SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -76,6 +77,8 @@ pub struct AppState {
     pub chat_conversation_repo: Arc<dyn ChatConversationRepository>,
     /// Agent run repository (for tracking Claude agent executions)
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
+    /// Activity event repository (for activity stream persistence)
+    pub activity_event_repo: Arc<dyn ActivityEventRepository>,
     /// Task dependency repository
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     // Extensibility repositories
@@ -163,6 +166,9 @@ impl AppState {
             agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            activity_event_repo: Arc::new(SqliteActivityEventRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -246,6 +252,9 @@ impl AppState {
             agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            activity_event_repo: Arc::new(SqliteActivityEventRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -297,6 +306,7 @@ impl AppState {
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
+            activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
             // Extensibility repositories
             workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
@@ -340,6 +350,7 @@ impl AppState {
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
+            activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
             // Extensibility repositories
             workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
