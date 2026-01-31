@@ -112,7 +112,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(tasks): add confirmation dialogs to TaskDetailOverlay archive/restore"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
