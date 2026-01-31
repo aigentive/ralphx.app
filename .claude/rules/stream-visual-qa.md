@@ -16,6 +16,32 @@ The visual-qa stream handles **visual regression testing and mock data parity au
 4. **Page Object Model mandatory** — no raw selectors in spec files
 5. **Baseline generation required** — always run `--update-snapshots` for new specs
 6. **Follow git workflow rules** — see @.claude/rules/git-workflow.md
+7. **Dev server management allowed** — this stream CAN start/restart `npm run dev:web` for testing
+
+## Dev Server Management
+
+**Exception to main CLAUDE.md rule 8:** Visual QA stream is allowed to manage the web dev server.
+
+| Scenario | Action |
+|----------|--------|
+| Server not running | Start: `npm run dev:web` (background) |
+| Need to reload changes | Restart: stop existing, then `npm run dev:web` |
+| Server running, no changes needed | Leave it alone |
+
+**Check if running:**
+```bash
+curl -s http://localhost:5173 > /dev/null && echo "running" || echo "not running"
+```
+
+**Start in background:**
+```bash
+npm run dev:web &
+```
+
+**Stop existing server:**
+```bash
+pkill -f "vite.*5173" || true
+```
 
 ## Recovery Check (ALWAYS FIRST)
 
