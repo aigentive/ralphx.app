@@ -44,4 +44,5 @@ screenshots/*
 .ralph-stop
 .commit-lock
 .stream-*-lock
+.stream-*-mtimes
 streams/hygiene/trigger
