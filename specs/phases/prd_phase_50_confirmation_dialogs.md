@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(tasks): add confirmation dialog to StatusDropdown"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
