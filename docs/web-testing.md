@@ -192,47 +192,146 @@ expect: {
 
 ---
 
-## Writing New Tests
+## Test Organization
 
-### Test File Location
+### Directory Structure
 
-Create tests in `tests/visual/`:
+Tests use a **modular Page Object Model (POM)** architecture:
 
 ```
-tests/visual/
-├── kanban.spec.ts     # Kanban board tests
-├── ideation.spec.ts   # Ideation view tests (add as needed)
-└── snapshots/         # Auto-generated snapshot directory
+tests/
+├── visual/
+│   ├── views/                    # View-specific specs
+│   │   ├── kanban/
+│   │   │   └── kanban.spec.ts           # Core layout tests (≤200 LOC)
+│   │   ├── ideation/
+│   │   │   └── ideation.spec.ts
+│   │   └── activity/
+│   │       └── activity.spec.ts
+│   ├── modals/                   # Modal-specific tests
+│   │   └── task-detail.spec.ts
+│   ├── states/                   # Edge case specs
+│   │   └── empty-states.spec.ts
+│   └── snapshots/                # Baseline screenshots (auto-generated)
+│
+├── pages/                        # Page Object Model
+│   ├── base.page.ts              # Shared navigation, waits
+│   ├── kanban.page.ts            # Kanban-specific selectors/actions
+│   └── modals/
+│       └── task-detail.page.ts
+│
+├── fixtures/                     # Shared test data
+│   └── setup.fixtures.ts         # Common beforeEach setup
+│
+└── helpers/                      # Utility functions
+    └── wait.helpers.ts           # Custom wait conditions
 ```
 
-### Basic Test Structure
+### Page Object Model (POM)
+
+All selectors must be in page objects, **never raw selectors in spec files**.
 
 ```typescript
+// tests/pages/kanban.page.ts
+import { Page, Locator } from "@playwright/test";
+import { BasePage } from "./base.page";
+
+export class KanbanPage extends BasePage {
+  readonly taskCard: (id: string) => Locator;
+  readonly column: (status: string) => Locator;
+  readonly searchInput: Locator;
+
+  constructor(page: Page) {
+    super(page);
+    this.taskCard = (id) => page.locator(`[data-testid="task-card-${id}"]`);
+    this.column = (status) => page.locator(`[data-testid="column-${status}"]`);
+    this.searchInput = page.locator('[data-testid="task-search"]');
+  }
+
+  async searchTasks(query: string) {
+    await this.searchInput.fill(query);
+    await this.page.keyboard.press("Enter");
+  }
+}
+```
+
+### Spec File Pattern
+
+```typescript
+// tests/visual/views/kanban/kanban.spec.ts
 import { test, expect } from "@playwright/test";
+import { KanbanPage } from "../../../pages/kanban.page";
+import { setupKanban } from "../../../fixtures/setup.fixtures";
 
-test.describe("Feature Name", () => {
-  test("renders correctly", async ({ page }) => {
-    await page.goto("/");
+test.describe("Kanban Board", () => {
+  let kanban: KanbanPage;
 
-    // Wait for app to load
-    await page.waitForSelector('[data-testid="app-header"]', { timeout: 10000 });
+  test.beforeEach(async ({ page }) => {
+    kanban = new KanbanPage(page);
+    await setupKanban(page);  // Shared setup
+  });
 
-    // Your assertions
-    const element = page.locator('[data-testid="my-element"]');
-    await expect(element).toBeVisible();
+  test("renders board layout", async () => {
+    await expect(kanban.column("todo")).toBeVisible();
+    await expect(kanban.column("in_progress")).toBeVisible();
   });
 
   test("matches snapshot", async ({ page }) => {
-    await page.goto("/path");
-    await page.waitForSelector('[data-testid="content"]', { timeout: 10000 });
-
-    // Wait for animations
-    await page.waitForTimeout(500);
-
-    await expect(page).toHaveScreenshot("my-feature.png");
+    await kanban.waitForAnimations();
+    await expect(page).toHaveScreenshot("kanban-board.png");
   });
 });
 ```
+
+### File Size Limits
+
+| File Type | Max Lines | Refactor At | Action |
+|-----------|-----------|-------------|--------|
+| Spec file | 200 | 150 | Split by feature area |
+| Page Object | 150 | 100 | Extract to sub-pages |
+| Fixtures | 100 | 80 | Split by domain |
+| Helpers | 50 | 40 | Extract to utilities |
+
+### Split Triggers
+
+| Condition | Action |
+|-----------|--------|
+| Spec file > 150 LOC | Split by feature area (e.g., `kanban-cards.spec.ts`) |
+| > 10 tests in one file | Split by test type (visual/interaction/state) |
+| Page object > 100 LOC | Extract to sub-page objects |
+| Same selector in 3+ files | Move to page object |
+| Same setup in 3+ files | Extract to fixture |
+
+### Naming Conventions
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Spec file | `{feature}.spec.ts` | `kanban.spec.ts` |
+| Spec subset | `{feature}-{subset}.spec.ts` | `kanban-cards.spec.ts` |
+| Page object | `{feature}.page.ts` | `kanban.page.ts` |
+| Fixture | `{domain}.fixtures.ts` | `tasks.fixtures.ts` |
+| Helper | `{purpose}.helpers.ts` | `wait.helpers.ts` |
+
+### Code Quality Checklist
+
+Before committing a new spec:
+- [ ] File ≤ 200 LOC
+- [ ] Uses Page Object for selectors (no raw `data-testid` in spec)
+- [ ] Shared setup extracted to fixture
+- [ ] Test names are descriptive (not "test 1", "test 2")
+- [ ] One assertion focus per test
+- [ ] Snapshot name matches test purpose
+
+---
+
+## Writing New Tests
+
+### Basic Workflow
+
+1. **Create page object** (if new feature): `tests/pages/{feature}.page.ts`
+2. **Write spec** using page object pattern
+3. **Generate baseline**: `npx playwright test [spec] --update-snapshots`
+4. **Verify test passes**: `npx playwright test [spec]`
 
 ### Testing Tips
 
@@ -350,8 +449,12 @@ npx playwright install
 | File | Purpose |
 |------|---------|
 | `playwright.config.ts` | Playwright configuration |
-| `tests/visual/` | Visual regression test files |
+| `tests/visual/` | Visual regression spec files (views, modals, states) |
 | `tests/visual/snapshots/` | Baseline screenshot images |
+| `tests/pages/` | Page Object Model files |
+| `tests/pages/base.page.ts` | Base page object with shared methods |
+| `tests/fixtures/` | Shared test setup and data |
+| `tests/helpers/` | Utility functions for tests |
 | `src/api-mock/` | Mock API implementations |
 | `src/mocks/` | Tauri plugin mocks |
 | `src/lib/tauri-detection.ts` | Environment detection |
