@@ -15,5 +15,6 @@ export { RevisionTaskDetail } from "./RevisionTaskDetail";
 export { ExecutionTaskDetail } from "./ExecutionTaskDetail";
 export { ReviewingTaskDetail } from "./ReviewingTaskDetail";
 export { HumanReviewTaskDetail } from "./HumanReviewTaskDetail";
+export { EscalatedTaskDetail } from "./EscalatedTaskDetail";
 export { WaitingTaskDetail } from "./WaitingTaskDetail";
 export { CompletedTaskDetail } from "./CompletedTaskDetail";
