@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-01 03:45:00 - Phase 42 Task 5: Create ConnectionPaths SVG lines with glow
+**What:**
+- Created src/components/WelcomeScreen/ConnectionPaths.tsx
+- Implemented SVG paths connecting all agent positions through central hub
+- Soft glow effect using SVG filter (feGaussianBlur + feMerge)
+- Per-agent linear gradients blending agent color with warm orange accent
+- Quadratic bezier curves with subtle perpendicular offset for visual interest
+- Accepts agents array with id, color, position props
+- Dynamic path generation based on container width/height
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 02:30:00 - Phase 42 Task 4: Create CentralHub pulsing core component
 **What:**
 - Created src/components/WelcomeScreen/CentralHub.tsx
