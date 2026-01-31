@@ -38,10 +38,22 @@ export interface SessionActivityEventsParams {
 }
 
 /**
+ * Parameters for global (all) activity events query
+ */
+export interface AllActivityEventsParams {
+  /** Optional filter criteria (includes taskId/sessionId for narrowing) */
+  filter?: ActivityEventFilter;
+  /** Page size (default 50, max 100) */
+  limit?: number;
+}
+
+/**
  * Query key factory for activity events queries
  */
 export const activityEventKeys = {
   all: ["activityEvents"] as const,
+  global: (filter?: ActivityEventFilter) =>
+    [...activityEventKeys.all, "global", filter] as const,
   task: (taskId: string, filter?: ActivityEventFilter) =>
     [...activityEventKeys.all, "task", taskId, filter] as const,
   session: (sessionId: string, filter?: ActivityEventFilter) =>
@@ -149,6 +161,56 @@ export function useSessionActivityEvents({
     staleTime: 10 * 60 * 1000, // 10 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes cache retention
     enabled: !!sessionId,
+  });
+}
+
+/**
+ * Hook for fetching all activity events with infinite scroll pagination
+ *
+ * Returns ALL events across all tasks and sessions, with optional filtering
+ * by taskId or sessionId (via the filter parameter).
+ *
+ * Uses cursor-based pagination for efficient browsing of historical events.
+ * Events are ordered by created_at DESC (newest first).
+ *
+ * @param params - Query parameters (optional filter with taskId/sessionId)
+ * @returns TanStack Query infinite result with pagination helpers
+ *
+ * @example
+ * ```tsx
+ * // Fetch all activity events
+ * const { data, fetchNextPage, hasNextPage } = useAllActivityEvents({});
+ *
+ * // Fetch with optional task/session filter
+ * const { data } = useAllActivityEvents({
+ *   filter: { taskId: "task-123" }, // Optional: narrow to specific task
+ * });
+ *
+ * const events = flattenActivityPages(data);
+ * ```
+ */
+export function useAllActivityEvents({
+  filter,
+  limit = 50,
+}: AllActivityEventsParams) {
+  return useInfiniteQuery<ActivityEventPageResponse, Error>({
+    queryKey: activityEventKeys.global(filter),
+    queryFn: async ({ pageParam }) => {
+      const cursor = pageParam as string | undefined;
+      return activityEventsApi.all.list({
+        ...(cursor !== undefined && { cursor }),
+        limit,
+        ...(filter !== undefined && { filter }),
+      });
+    },
+    getNextPageParam: (lastPage) => {
+      // Return the cursor for the next page, or undefined if no more pages
+      return lastPage.hasMore ? lastPage.cursor ?? undefined : undefined;
+    },
+    initialPageParam: undefined as string | undefined,
+    // Activity events are append-only historical data, longer cache is appropriate
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache retention
   });
 }
 

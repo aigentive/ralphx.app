@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-01 11:15:00 - Phase 57 Task 5: Add useAllActivityEvents hook
+**What:**
+- Added `AllActivityEventsParams` interface for global activity event queries
+- Added `activityEventKeys.global()` query key factory for cache management
+- Added `useAllActivityEvents` hook with TanStack Query infinite scroll support
+- Hook supports optional `taskId`/`sessionId` filtering via the filter parameter
+
+**Files:**
+- `src/hooks/useActivityEvents.ts` (modified)
+
+**Commands:**
+- `npx eslint src/hooks/useActivityEvents.ts` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 10:45:00 - Phase 57 Task 4: Add API wrapper for list_all
 **What:**
 - Added `all.list()` method to activityEventsApi for global activity event queries
