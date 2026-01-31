@@ -413,7 +413,7 @@
       "phase": 57,
       "name": "Activity Page Global History & UX",
       "prd": "specs/phases/prd_phase_57_activity_global_history.md",
-      "status": "complete",
+      "status": "active",
       "description": "Enable global activity history view, optional task/session filtering, improved Live mode UX"
     }
   ]
