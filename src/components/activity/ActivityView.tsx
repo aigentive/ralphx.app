@@ -29,6 +29,7 @@ import type {
   ExpandedState,
   CopiedState,
   UnifiedActivityMessage,
+  RoleFilterValue,
 } from "./ActivityView.types";
 import {
   toUnifiedMessage,
@@ -40,6 +41,7 @@ import { ActivityMessage } from "./ActivityMessage";
 import {
   ViewModeToggle,
   StatusFilter,
+  RoleFilter,
   FilterTabs,
   SearchBar,
   EmptyState,
@@ -76,6 +78,7 @@ export function ActivityView({
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? defaultMode);
   const [typeFilter, setTypeFilter] = useState<MessageTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [roleFilter, setRoleFilter] = useState<RoleFilterValue[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [copied, setCopied] = useState<CopiedState>({});
@@ -106,8 +109,11 @@ export function ActivityView({
     if (statusFilter.length > 0) {
       filter.statuses = statusFilter;
     }
+    if (roleFilter.length > 0) {
+      filter.roles = roleFilter;
+    }
     return Object.keys(filter).length > 0 ? filter : undefined;
-  }, [typeFilter, statusFilter]);
+  }, [typeFilter, statusFilter, roleFilter]);
 
   // Historical queries (enabled only in historical mode with appropriate context)
   const taskHistoryQuery = useTaskActivityEvents({
@@ -215,6 +221,11 @@ export function ActivityView({
     if (taskId || sessionId) clearActivityFilter();
   }, [taskId, sessionId, clearActivityFilter]);
 
+  const handleRoleFilterChange = useCallback((roles: RoleFilterValue[]) => {
+    setRoleFilter(roles);
+    if (taskId || sessionId) clearActivityFilter();
+  }, [taskId, sessionId, clearActivityFilter]);
+
   const hasFilter = typeFilter !== "all" || searchQuery.trim() !== "";
   const isEmpty = filteredMessages.length === 0;
   const alertCount = alerts.filter((a) => a.severity === "high" || a.severity === "critical").length;
@@ -281,7 +292,10 @@ export function ActivityView({
         <div className="flex items-center gap-2">
           <FilterTabs active={typeFilter} onChange={handleTypeFilterChange} />
           {viewMode === "historical" && (
-            <StatusFilter selectedStatuses={statusFilter} onChange={handleStatusFilterChange} />
+            <>
+              <StatusFilter selectedStatuses={statusFilter} onChange={handleStatusFilterChange} />
+              <RoleFilter selectedRoles={roleFilter} onChange={handleRoleFilterChange} />
+            </>
           )}
         </div>
       </div>

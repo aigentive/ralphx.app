@@ -65,3 +65,11 @@ export const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "Escalated", label: "Escalated" },
   { value: "Done", label: "Done" },
 ];
+
+// Role options for filtering
+export type RoleFilterValue = "agent" | "system" | "user";
+export const ROLE_OPTIONS: { value: RoleFilterValue; label: string }[] = [
+  { value: "agent", label: "Agent" },
+  { value: "system", label: "System" },
+  { value: "user", label: "User" },
+];
