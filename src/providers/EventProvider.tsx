@@ -115,7 +115,16 @@ interface EventProviderProps {
  */
 export function EventProvider({ children }: EventProviderProps) {
   // Create event bus once based on environment (Tauri or browser mode)
-  const eventBus = useMemo(() => createEventBus(), []);
+  const eventBus = useMemo(() => {
+    const bus = createEventBus();
+
+    // Expose event bus to window in web mode for Playwright testing
+    if (typeof window !== 'undefined' && !window.__TAURI_INTERNALS__) {
+      (window as any).__eventBus = bus;
+    }
+
+    return bus;
+  }, []);
 
   return (
     <EventBusContext.Provider value={eventBus}>
