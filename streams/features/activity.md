@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-01-31 18:15:00 - Phase 40 Task 6: Integrate TieredProposalList into IdeationView
+**What:**
+- Replaced `sortedProposals.map()` rendering with `<TieredProposalList />` component
+- Removed unused `sortedProposals` useMemo (sorting now handled by tier grouping)
+- Simplified critical path computation useMemo (dependency details now computed inside TieredProposalList)
+- Removed unused `DependencyDetail` import
+- Fixed type compatibility: updated `useDependencyTiers`, `getDependencyReason`, and `computeDependencyTiers` to accept `DependencyGraphResponse` instead of `DependencyGraph`
+- Used spread pattern for optional `currentPlanVersion` prop to comply with `exactOptionalPropertyTypes`
+
+**Files:**
+- src/components/Ideation/IdeationView.tsx (modified: import, useMemo simplified, TieredProposalList integration)
+- src/components/Ideation/TieredProposalList.tsx (type update: DependencyGraphResponse)
+- src/hooks/useDependencyGraph.ts (type update: DependencyGraphResponse for helper functions)
+
+**Commands:**
+- `npm run lint` (0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 17:02:00 - Phase 40 Task 5: Create TieredProposalList orchestration component
 **What:**
 - Created `TieredProposalList` component that groups proposals by topological tier

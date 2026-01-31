@@ -35,8 +35,8 @@ import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./IdeationView.constants";
 import { SessionBrowser } from "./SessionBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
-import { ProposalCard, type DependencyDetail } from "./ProposalCard";
 import { ProposalsToolbar } from "./ProposalsToolbar";
+import { TieredProposalList } from "./TieredProposalList";
 import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
 import { ProposalsEmptyState } from "./ProposalsEmptyState";
 import { useIdeationHandlers } from "./useIdeationHandlers";
@@ -110,42 +110,13 @@ export function IdeationView({
   // Fetch dependency graph for the session
   const { data: dependencyGraph } = useDependencyGraph(session?.id ?? "");
 
-  // Build dependency counts map, dependency details, and critical path set from the graph
-  const { dependencyCounts, dependencyDetails, criticalPathSet } = useMemo(() => {
+  // Build critical path set from the graph (TieredProposalList handles other computations)
+  const criticalPathSet = useMemo(() => {
     if (!dependencyGraph) {
-      return { dependencyCounts: {}, dependencyDetails: {}, criticalPathSet: new Set<string>() };
+      return new Set<string>();
     }
-
-    // Build counts from graph nodes
-    const counts: Record<string, { dependsOn: number; blocks: number }> = {};
-    for (const node of dependencyGraph.nodes) {
-      counts[node.proposalId] = {
-        dependsOn: node.inDegree,  // inDegree = number of proposals this depends on
-        blocks: node.outDegree,     // outDegree = number of proposals blocked by this
-      };
-    }
-
-    // Build dependency details from edges
-    // edge.from = the proposal that depends on edge.to
-    const details: Record<string, DependencyDetail[]> = {};
-    for (const edge of dependencyGraph.edges) {
-      const targetProposal = proposals.find(p => p.id === edge.to);
-      const existing = details[edge.from] ?? [];
-      // Build detail object conditionally for exactOptionalPropertyTypes
-      const detail: DependencyDetail = {
-        proposalId: edge.to,
-        title: targetProposal?.title ?? "Unknown",
-        ...(edge.reason !== null && { reason: edge.reason }),
-      };
-      existing.push(detail);
-      details[edge.from] = existing;
-    }
-
-    // Build critical path set
-    const criticalSet = new Set(dependencyGraph.criticalPath);
-
-    return { dependencyCounts: counts, dependencyDetails: details, criticalPathSet: criticalSet };
-  }, [dependencyGraph, proposals]);
+    return new Set(dependencyGraph.criticalPath);
+  }, [dependencyGraph]);
 
   // Dependency analysis loading state
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
@@ -339,8 +310,6 @@ export function IdeationView({
     }
   }, [proposalCount]);
 
-  const sortedProposals = useMemo(() => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder), [proposals]);
-
   const activeSessions = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
 
   return (
@@ -527,33 +496,18 @@ export function IdeationView({
                   {proposals.length === 0 && !(!planArtifact && ideationSettings?.planMode === "required") && <ProposalsEmptyState onBrowse={handleImportPlan} />}
 
                   {proposals.length > 0 && (
-                    <div className="space-y-3">
-                      {sortedProposals.map((proposal, index) => {
-                        const deps = dependencyCounts[proposal.id];
-                        const depDetails = dependencyDetails[proposal.id];
-                        const isOnCriticalPath = criticalPathSet.has(proposal.id);
-                        // Build optional props conditionally for exactOptionalPropertyTypes
-                        const dependencyProps = {
-                          ...(deps?.dependsOn !== undefined && { dependsOnCount: deps.dependsOn }),
-                          ...(deps?.blocks !== undefined && { blocksCount: deps.blocks }),
-                          ...(depDetails !== undefined && depDetails.length > 0 && { dependsOnDetails: depDetails }),
-                          ...(isOnCriticalPath && { isOnCriticalPath }),
-                        };
-                        return (
-                          <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
-                            <ProposalCard
-                              proposal={proposal}
-                              onSelect={handleSelectProposal}
-                              onEdit={onEditProposal}
-                              onRemove={onRemoveProposal}
-                              isHighlighted={highlightedProposalIds.has(proposal.id)}
-                              currentPlanVersion={planArtifact?.metadata.version ?? undefined}
-                              {...dependencyProps}
-                            />
-                          </div>
-                        );
+                    <TieredProposalList
+                      proposals={proposals}
+                      dependencyGraph={dependencyGraph}
+                      highlightedIds={highlightedProposalIds}
+                      criticalPathIds={criticalPathSet}
+                      onSelect={handleSelectProposal}
+                      onEdit={onEditProposal}
+                      onRemove={onRemoveProposal}
+                      {...(planArtifact?.metadata.version !== undefined && {
+                        currentPlanVersion: planArtifact.metadata.version,
                       })}
-                    </div>
+                    />
                   )}
                 </div>
 

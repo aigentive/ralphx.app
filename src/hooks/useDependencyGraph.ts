@@ -10,7 +10,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ideationApi, type DependencyGraphResponse } from "@/api/ideation";
 import { proposalKeys } from "./useProposals";
 import { ideationKeys } from "./useIdeation";
-import type { DependencyGraph } from "@/types/ideation";
 
 /**
  * Query key factory for dependencies
@@ -174,7 +173,7 @@ export interface TierAssignment {
  * const coreTier = tiers.tierGroups.get(1) ?? [];
  * ```
  */
-export function computeDependencyTiers(graph: DependencyGraph | null | undefined): TierAssignment {
+export function computeDependencyTiers(graph: DependencyGraphResponse | null | undefined): TierAssignment {
   const tierMap = new Map<string, number>();
   const tierGroups = new Map<number, string[]>();
 
@@ -320,7 +319,7 @@ export function computeDependencyTiers(graph: DependencyGraph | null | undefined
  * );
  * ```
  */
-export function useDependencyTiers(graph: DependencyGraph | null | undefined): TierAssignment {
+export function useDependencyTiers(graph: DependencyGraphResponse | null | undefined): TierAssignment {
   return useMemo(() => computeDependencyTiers(graph), [graph]);
 }
 
@@ -339,7 +338,7 @@ export function useDependencyTiers(graph: DependencyGraph | null | undefined): T
  * ```
  */
 export function getDependencyReason(
-  graph: DependencyGraph | null | undefined,
+  graph: DependencyGraphResponse | null | undefined,
   fromId: string,
   toId: string
 ): string | undefined {
