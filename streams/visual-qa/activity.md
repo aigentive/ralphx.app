@@ -1,3 +1,27 @@
+### 2026-01-31 23:54:00 - ReviewsPanel Visual Tests
+**What:**
+- Created page object: tests/pages/modals/reviews-panel.page.ts
+- Created spec: tests/visual/modals/reviews-panel/reviews-panel.spec.ts
+- Added setupReviewsPanel fixture to tests/fixtures/setup.fixtures.ts
+- Generated baseline snapshot
+
+**Mock parity:**
+- Status: ready (reviews mock returns empty array by default)
+- Panel opens/closes via reviews toggle button
+- Tabs (All, AI, Human) render correctly with empty state
+
+**Commands:**
+- `npx playwright test tests/visual/modals/reviews-panel/reviews-panel.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/reviews-panel/reviews-panel.spec.ts`
+
+**Result:** Success (5 tests passing)
+
+**Notes:**
+- TaskDetailModal marked as blocked in manifest (no UI trigger in web mode)
+- Added TaskDetailModal issue to backlog.md (requires programmatic opening)
+
+---
+
 # Visual QA Stream Activity
 
 > Log entries for visual regression test coverage and mock parity work.

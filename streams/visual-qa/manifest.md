@@ -16,8 +16,8 @@ Phase: IN_PROGRESS
 ## Modals (6 total)
 | Modal | Mock Ready | Spec File | Baseline | Status |
 |-------|------------|-----------|----------|--------|
-| TaskDetailModal | ❌ | — | — | uncovered |
-| ReviewsPanel | ❌ | — | — | uncovered |
+| TaskDetailModal | 🚧 | — | — | blocked |
+| ReviewsPanel | ✅ | reviews-panel.spec.ts | ✅ | covered |
 | AskUserQuestionModal | ❌ | — | — | uncovered |
 | ProjectCreationWizard | ❌ | — | — | uncovered |
 | ProposalEditModal | ❌ | — | — | uncovered |
