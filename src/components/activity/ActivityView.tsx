@@ -85,6 +85,8 @@ export function ActivityView({
 
   // Default to historical mode (shows all events) - only use realtime if explicitly requested
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "historical");
+  // Track if user has manually selected a mode - prevents auto-switching
+  const [userLockedMode, setUserLockedMode] = useState(false);
   const [typeFilter, setTypeFilter] = useState<MessageTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [roleFilter, setRoleFilter] = useState<RoleFilterValue[]>([]);
@@ -98,11 +100,20 @@ export function ActivityView({
   const [filterSessionId, setFilterSessionId] = useState<string | null>(null);
 
   // Auto-switch to historical mode when navigating from StatusActivityBadge with context
+  // Only auto-switch if user hasn't manually chosen a mode
   useEffect(() => {
-    if (taskId || sessionId) {
+    if (!userLockedMode && (taskId || sessionId)) {
       setViewMode("historical");
     }
-  }, [taskId, sessionId]);
+  }, [taskId, sessionId, userLockedMode]);
+
+  // Auto-switch to realtime mode when new live events arrive
+  // Only auto-switch if user hasn't manually chosen a mode
+  useEffect(() => {
+    if (!userLockedMode && realtimeMessages.length > 0 && viewMode === "historical") {
+      setViewMode("realtime");
+    }
+  }, [realtimeMessages.length, userLockedMode, viewMode]);
 
   // Update isReceiving based on lastEventTime for pulsating Live indicator
   useEffect(() => {
@@ -271,6 +282,7 @@ export function ActivityView({
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
+    setUserLockedMode(true); // User explicitly chose a mode - prevent auto-switching
     if (mode === "realtime") clearActivityFilter();
   }, [clearActivityFilter]);
 

@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 14:00:00 - Phase 57 Task 12: Add userLockedMode to prevent auto-switch
+**What:**
+- Added `userLockedMode` state to track when user manually selects a view mode
+- Updated `handleViewModeChange` to set `userLockedMode = true` when user clicks mode toggle
+- Modified existing auto-switch effect to check `userLockedMode` before switching to historical
+- Added new auto-switch effect to switch to realtime when events arrive (only if not locked)
+- Both auto-switch effects respect user's manual mode selection
+
+**Files:**
+- `src/components/activity/ActivityView.tsx` (modified - added userLockedMode state and updated effects)
+
+**Commands:**
+- `npx eslint src/components/activity/ActivityView.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 13:45:00 - Phase 57 Task 11: Improve empty state with History hint
 **What:**
 - Added `isLiveMode` optional prop to `EmptyState` component interface
