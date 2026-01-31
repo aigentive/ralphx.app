@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-01-31 14:15:00 - Phase 48 Task 12: Enhance ActivityView with infinite scroll and historical mode
+**What:**
+- Enhanced `src/components/activity/ActivityView.tsx` with dual-mode operation (real-time vs historical)
+- Added `ViewModeToggle` component with Live/History buttons
+- Added `StatusFilter` dropdown for filtering events by task status in historical mode
+- Implemented infinite scroll using `react-intersection-observer` (installed as new dependency)
+- Added `UnifiedActivityMessage` type to normalize real-time and historical events
+- Created `toUnifiedMessage()` and `fromRealtimeMessage()` conversion functions
+- Added loading states and "End of history" indicator for historical mode
+- Mode auto-selects to historical when taskId or sessionId is provided
+
+**Files Modified:**
+- `src/components/activity/ActivityView.tsx` - Major enhancement with dual-mode and infinite scroll
+- `package.json` / `package-lock.json` - Added react-intersection-observer dependency
+
+**Commands:**
+- `npm install react-intersection-observer` (installed successfully)
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 12:45:00 - Phase 48 Task 11: Add TanStack Query infinite query hook for activity events
 **What:**
 - Created `src/hooks/useActivityEvents.ts` with TanStack Query infinite query hooks
