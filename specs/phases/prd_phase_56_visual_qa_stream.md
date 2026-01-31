@@ -156,7 +156,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Test: ./ralph-streams.sh visual-qa 1 should recognize stream (will fail on missing PROMPT.md, that's expected)",
       "Commit: feat(streams): add visual-qa to ralph-streams.sh"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

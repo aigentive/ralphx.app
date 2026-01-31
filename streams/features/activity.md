@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-01-31 01:35:00 - Phase 56 Task 5: Add visual-qa to valid streams
+**What:**
+- Edited ralph-streams.sh line 59: added visual-qa to VALID_STREAMS
+- Changed from `features|refactor|polish|verify|hygiene` to `features|refactor|polish|verify|hygiene|visual-qa`
+- Tested: `./ralph-streams.sh visual-qa 1` recognizes stream (fails on missing PROMPT.md as expected)
+
+**Commands:**
+- `./ralph-streams.sh visual-qa 1` - stream recognized, fails on missing files (expected)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 01:20:00 - Phase 56 Task 4: Create stream rules file
 **What:**
 - Created .claude/rules/stream-visual-qa.md with full workflow and quality standards
