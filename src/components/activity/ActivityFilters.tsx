@@ -10,6 +10,10 @@ import {
   History,
   Radio,
 } from "lucide-react";
+
+// Re-export TaskFilter from dedicated module
+export { TaskFilter } from "./TaskFilter";
+export type { TaskFilterProps } from "./TaskFilter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {

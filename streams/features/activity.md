@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 12:15:00 - Phase 57 Task 7: Add TaskFilter searchable dropdown
+**What:**
+- Created `TaskFilter` component using Popover + searchable list pattern
+- Component fetches recent tasks (last 15) and allows search/filter
+- Shows selected task title in trigger button with clear button
+- Re-exported TaskFilter from ActivityFilters.tsx for clean imports
+
+**Files:**
+- `src/components/activity/TaskFilter.tsx` (new)
+- `src/components/activity/ActivityFilters.tsx` (modified - added re-export)
+
+**Commands:**
+- `npx eslint src/components/activity/TaskFilter.tsx src/components/activity/ActivityFilters.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 11:45:00 - Phase 57 Task 6: Enable global history view
 **What:**
 - Removed `disabled={!taskId && !sessionId}` condition from ViewModeToggle
