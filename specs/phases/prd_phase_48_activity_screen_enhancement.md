@@ -276,7 +276,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(hooks): add useActivityEvents infinite query hook"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 12,

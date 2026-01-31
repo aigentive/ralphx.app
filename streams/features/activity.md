@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-01-31 12:45:00 - Phase 48 Task 11: Add TanStack Query infinite query hook for activity events
+**What:**
+- Created `src/hooks/useActivityEvents.ts` with TanStack Query infinite query hooks
+- Implemented `useTaskActivityEvents(taskId, filter)` for task-scoped activity events
+- Implemented `useSessionActivityEvents(sessionId, filter)` for session-scoped activity events
+- Both hooks use cursor-based pagination with `useInfiniteQuery`
+- Added `flattenActivityPages()` helper to extract events from paginated data
+- Added `activityEventKeys` query key factory for cache management
+- Used conditional object spread to handle `exactOptionalPropertyTypes` constraint
+
+**Files Created:**
+- `src/hooks/useActivityEvents.ts` - TanStack Query infinite query hooks
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-01-31 11:30:00 - Phase 48 Task 10: Add activity events API wrapper with Zod schemas
 **What:**
 - Created `src/api/activity-events.schemas.ts` with Zod schemas for backend responses (snake_case)
