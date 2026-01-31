@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-01 11:45:00 - Phase 57 Task 6: Enable global history view
+**What:**
+- Removed `disabled={!taskId && !sessionId}` condition from ViewModeToggle
+- Added `useAllActivityEvents` import and call for global history (no context)
+- Updated query selection logic: taskId → task query, sessionId → session query, else → global query
+- Changed default view mode from conditional to always "historical"
+- ViewModeToggle is now always enabled, allowing global history browsing
+
+**Files:**
+- `src/components/activity/ActivityView.tsx` (modified)
+
+**Commands:**
+- `npx eslint src/components/activity/ActivityView.tsx` (passed)
+- `npm run typecheck` (passed)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 11:15:00 - Phase 57 Task 5: Add useAllActivityEvents hook
 **What:**
 - Added `AllActivityEventsParams` interface for global activity event queries
