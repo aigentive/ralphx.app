@@ -31,9 +31,14 @@ If no plans found in `~/.claude/plans/`, use AskUserQuestion to ask:
 - "Which plan file would you like to enhance?"
 - Options: Allow user to specify a path
 
-## Copy Logic
+## Copy Logic (MANDATORY - DO NOT SKIP)
 
-**Always copy first, then modify the copy.** This is simpler and safer.
+**CRITICAL: You MUST copy the file using the Bash `cp` command. NEVER recreate the file content using Write tool.**
+
+This is enforced because:
+1. Plans can be large and copying preserves exact content
+2. Manual recreation loses formatting, whitespace, and introduces errors
+3. The original plan is the source of truth
 
 ### Step 1: Ensure target directory exists
 ```bash
@@ -45,13 +50,29 @@ mkdir -p specs/plans
 2. Convert to snake_case (e.g., "My Feature Plan" → `my_feature_plan.md`)
 3. If no title found, use the original filename converted to snake_case
 
-### Step 3: Copy using bash
+### Step 3: Copy using Bash cp command (MANDATORY)
+
+**YOU MUST USE THIS EXACT PATTERN:**
 ```bash
 cp "<source_plan_path>" "specs/plans/<derived_name>.md"
 ```
 
-### Step 4: Enhance the copy
-All modifications happen on `specs/plans/<derived_name>.md`, never the original.
+**DO NOT:**
+- ❌ Use Write tool to create the file with the plan content
+- ❌ Read the source and then Write to the destination
+- ❌ Manually recreate any part of the plan content
+
+**DO:**
+- ✅ Use Bash tool with `cp` command
+- ✅ Then use Edit tool to make modifications to the copy
+
+### Step 4: Verify copy succeeded
+```bash
+ls -la "specs/plans/<derived_name>.md"
+```
+
+### Step 5: Enhance the copy using Edit tool
+All modifications happen on `specs/plans/<derived_name>.md` using the Edit tool, never the original.
 
 **Exception:** If the source is already inside `specs/plans/`, enhance in place (no copy needed).
 
