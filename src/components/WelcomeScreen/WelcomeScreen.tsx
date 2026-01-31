@@ -1,15 +1,16 @@
 /**
  * WelcomeScreen - Impressive animated welcome screen for first-run experience
  *
- * "Terminal Symphony" design: sophisticated dark terminal environment with
- * floating code fragments, particle effects, and warm orange accents.
+ * "Agent Constellation" design: animated agent network showing AI orchestration
+ * with 4 orbiting nodes around a pulsing central hub, connected by glowing paths
+ * with traveling data particles.
  *
  * Anti-AI-Slop: No purple/blue gradients, warm orange #ff6b35, SF Pro typography
  */
 
+import { useEffect, useState } from "react";
 import { Sparkles, X } from "lucide-react";
-import TerminalCanvas from "./TerminalCanvas";
-import ParticleField from "./ParticleField";
+import AgentConstellation from "./AgentConstellation";
 
 interface WelcomeScreenProps {
   onCreateProject: () => void;
@@ -18,6 +19,15 @@ interface WelcomeScreenProps {
 }
 
 export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScreenProps) {
+  // Track idle state for keyboard hint pulse animation
+  const [isIdle, setIsIdle] = useState(false);
+
+  useEffect(() => {
+    // Start idle pulse animation after 3 seconds
+    const idleTimer = setTimeout(() => setIsIdle(true), 3000);
+    return () => clearTimeout(idleTimer);
+  }, []);
+
   return (
     <div
       className="flex-1 flex flex-col items-center justify-center relative overflow-hidden"
@@ -28,7 +38,7 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
       {onClose && (
         <button
           onClick={onClose}
-          className="absolute top-6 right-6 z-20 p-2 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+          className="absolute top-6 right-6 z-50 p-2 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
           style={{
             backgroundColor: "rgba(255, 255, 255, 0.05)",
             border: "1px solid rgba(255, 255, 255, 0.1)",
@@ -41,39 +51,48 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
         </button>
       )}
 
-      {/* Particle field background */}
-      <ParticleField />
+      {/* Agent Constellation background - full screen animated network */}
+      <div className="absolute inset-0">
+        <AgentConstellation />
+      </div>
 
-      {/* Gradient overlay for depth */}
+      {/* Gradient overlay for text readability */}
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none z-30"
         style={{
           background:
-            "radial-gradient(ellipse at center, transparent 0%, var(--bg-base) 70%)",
+            "radial-gradient(ellipse at center, rgba(12, 12, 12, 0.3) 0%, rgba(12, 12, 12, 0.7) 70%)",
         }}
       />
 
-      {/* Content container */}
-      <div className="relative z-10 flex flex-col items-center px-8 max-w-4xl w-full">
+      {/* Content container - floats above the constellation */}
+      <div className="relative z-40 flex flex-col items-center px-8 max-w-4xl w-full">
         {/* Hero section */}
         <div
-          className="text-center mb-12 hero-section"
+          className="text-center mb-8 hero-section"
           style={{ animation: "fadeSlideIn 0.6s ease-out forwards" }}
         >
-          {/* RalphX title with subtle glow */}
+          {/* RalphX title with accent X and glow */}
           <h1
-            className="text-6xl font-bold tracking-tight mb-4"
+            className="text-7xl font-bold tracking-tight mb-4"
             style={{
               fontFamily: "var(--font-display)",
               color: "var(--text-primary)",
-              textShadow: "0 0 40px rgba(255, 107, 53, 0.15)",
+              textShadow: "0 0 60px rgba(255, 107, 53, 0.2)",
             }}
           >
             Ralph
-            <span style={{ color: "var(--accent-primary)" }}>X</span>
+            <span
+              style={{
+                color: "var(--accent-primary)",
+                textShadow: "0 0 30px rgba(255, 107, 53, 0.5)",
+              }}
+            >
+              X
+            </span>
           </h1>
 
-          {/* Tagline */}
+          {/* Tagline - updated per plan */}
           <p
             className="text-xl font-light"
             style={{
@@ -82,26 +101,15 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
               letterSpacing: "var(--tracking-wide)",
             }}
           >
-            Autonomous AI Development, Orchestrated
+            Watch AI Build Your Software
           </p>
-        </div>
-
-        {/* Terminal canvas visual */}
-        <div
-          className="w-full mb-12 terminal-section"
-          style={{
-            animation: "fadeSlideIn 0.6s ease-out 0.15s forwards",
-            opacity: 0,
-          }}
-        >
-          <TerminalCanvas />
         </div>
 
         {/* CTA section */}
         <div
           className="flex flex-col items-center gap-4 cta-section"
           style={{
-            animation: "fadeSlideIn 0.6s ease-out 0.3s forwards",
+            animation: "fadeSlideIn 0.6s ease-out 0.2s forwards",
             opacity: 0,
           }}
         >
@@ -119,12 +127,12 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
             data-testid="create-first-project-button"
           >
             <Sparkles className="w-5 h-5 transition-transform group-hover:rotate-12" />
-            Create Your First Project
+            Start Your First Project
           </button>
 
-          {/* Keyboard shortcut hints */}
+          {/* Keyboard shortcut hint with idle pulse */}
           <p
-            className="text-sm"
+            className={`text-sm transition-all duration-300 ${isIdle ? "keyboard-hint-pulse" : ""}`}
             style={{
               color: "var(--text-muted)",
               fontFamily: "var(--font-body)",
@@ -146,14 +154,8 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
         </div>
       </div>
 
-      {/* CSS animations - centralized for all WelcomeScreen components */}
+      {/* CSS animations */}
       <style>{`
-        /* Cursor blink animation */
-        @keyframes terminalBlink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-
         /* Staggered fade-in animation for content sections */
         @keyframes fadeSlideIn {
           from {
@@ -163,36 +165,6 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
           to {
             opacity: 1;
             transform: translateY(0);
-          }
-        }
-
-        /* Floating code fragment animation */
-        @keyframes codeFloat {
-          0%, 100% {
-            transform: translateY(0) rotate(0deg);
-            opacity: 0.6;
-          }
-          50% {
-            transform: translateY(-10px) rotate(2deg);
-            opacity: 0.8;
-          }
-        }
-
-        /* Particle drift animation */
-        @keyframes particleDrift {
-          0% {
-            transform: translate(0, 0);
-            opacity: 0;
-          }
-          10% {
-            opacity: 0.6;
-          }
-          90% {
-            opacity: 0.6;
-          }
-          100% {
-            transform: translate(var(--drift-x), var(--drift-y));
-            opacity: 0;
           }
         }
 
@@ -206,21 +178,24 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
           }
         }
 
-        /* Apply animations to subcomponents */
-        .terminal-cursor {
-          animation: terminalBlink 1s step-end infinite;
-        }
-
-        .code-fragment {
-          animation: codeFloat 4s ease-in-out infinite;
-        }
-
-        .particle {
-          animation: particleDrift ease-in-out infinite;
+        /* Keyboard hint pulse animation (after 3+ seconds idle) */
+        @keyframes keyboardHintPulse {
+          0%, 100% {
+            opacity: 0.6;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.02);
+          }
         }
 
         .cta-button {
           animation: glowPulse 3s ease-in-out infinite;
+        }
+
+        .keyboard-hint-pulse {
+          animation: keyboardHintPulse 2s ease-in-out infinite;
         }
       `}</style>
     </div>
