@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 15:30:00 - Phase 64 Task 2: Capture conversation_id and agent_run_id in chat service
+**What:**
+- Added import for `StateHistoryMetadata` from domain repositories
+- Added call to `update_latest_state_history_metadata` in `send_message()` after agent_run creation
+- Integration captures `conversation_id` and `agent_run_id` for `TaskExecution` and `Review` context types only
+- Uses best-effort pattern (ignores errors) to avoid breaking send_message if metadata update fails
+
+**Files Modified:**
+- `src-tauri/src/application/chat_service/mod.rs` (MODIFIED - added import and metadata update call)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - 3321 tests OK)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 15:00:00 - Phase 64 Task 1: Add repository method to update state history metadata
 **What:**
 - Added `StateHistoryMetadata` struct to domain repositories with `conversation_id` and `agent_run_id` fields

@@ -31,7 +31,8 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, ProjectRepository, StateHistoryMetadata, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 
@@ -346,6 +347,20 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .create(agent_run)
             .await
             .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+
+        // 2a. Update state history metadata for task-related contexts
+        // This links the conversation_id and agent_run_id to the state history entry,
+        // enabling history navigation to show the correct conversation for each state.
+        // Best-effort: don't fail send_message if metadata update fails.
+        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Review) {
+            let task_id = TaskId::from_string(context_id.to_string());
+            let metadata = StateHistoryMetadata {
+                conversation_id: conversation_id.as_str().to_string(),
+                agent_run_id: agent_run_id.clone(),
+            };
+            // Ignore errors - state history metadata is non-critical for message flow
+            let _ = self.task_repo.update_latest_state_history_metadata(&task_id, &metadata).await;
+        }
 
         // 3. Emit run started event
         self.emit_event(
