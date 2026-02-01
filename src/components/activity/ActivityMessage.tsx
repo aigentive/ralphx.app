@@ -5,7 +5,8 @@
  * - tool_result: Formatted JSON with syntax highlighting
  * - tool_call: Tool name badge + formatted arguments
  * - thinking: Markdown rendering
- * - text/error: Plain text with whitespace preserved
+ * - text: Markdown rendering (headers, lists, code blocks, tables)
+ * - error: Plain text with whitespace preserved
  */
 
 import { useCallback, useMemo } from "react";
@@ -138,9 +139,23 @@ export function ActivityMessage({
       }
 
       case "text":
-      case "error":
       default: {
-        // Plain text with whitespace preserved
+        // Render text messages as markdown (same as thinking blocks)
+        const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
+        return (
+          <div className="text-sm text-[var(--text-primary)] mt-1 prose-sm prose-invert max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {truncatedContent}
+            </ReactMarkdown>
+          </div>
+        );
+      }
+
+      case "error": {
+        // Error messages rendered as plain text (preserve exact formatting)
         const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
         return (
           <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
