@@ -184,7 +184,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(backend): add Tauri commands for review issues"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,
