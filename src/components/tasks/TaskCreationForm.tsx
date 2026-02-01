@@ -13,7 +13,6 @@ import { Plus, X, ChevronUp, ChevronDown } from "lucide-react";
 import { TaskFormFields, TaskFormActions } from "./TaskFormFields";
 import {
   inputBaseStyles,
-  buttonPrimaryStyles,
   labelStyles,
 } from "./TaskFormFields.constants";
 
@@ -152,20 +151,26 @@ export function TaskCreationForm({
         validationError={validationError}
       />
 
-      {/* Steps Section - no boxing, just spacing */}
-      <div className="mt-6">
-        <label className={labelStyles}>Steps (Optional)</label>
+      {/* Steps Section */}
+      <div
+        className="rounded-lg p-4 mt-5"
+        style={{
+          background: "linear-gradient(180deg, hsla(220 10% 100% / 0.02) 0%, hsla(220 10% 100% / 0.01) 100%)",
+          border: "1px solid hsla(220 10% 100% / 0.06)",
+        }}
+      >
+        <label className={labelStyles + " mb-3"}>Steps (Optional)</label>
 
         {/* Steps List */}
         {steps.length > 0 && (
-          <div className="space-y-2 mb-3">
+          <div className="space-y-1.5 mb-3">
             {steps.map((step, index) => (
               <div
                 key={index}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                className="flex items-center gap-2 px-3 py-2 rounded-md"
                 style={{
                   backgroundColor: "hsla(220 10% 100% / 0.03)",
-                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                  border: "1px solid hsla(220 10% 100% / 0.04)",
                 }}
               >
                 <span
@@ -180,36 +185,36 @@ export function TaskCreationForm({
                 >
                   {step}
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5">
                   <button
                     type="button"
                     onClick={() => moveStepUp(index)}
                     disabled={isSubmitting || index === 0}
-                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    style={{ color: "hsl(220 10% 40%)" }}
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(220_10%_100%/0.06)]"
+                    style={{ color: "hsl(220 10% 50%)" }}
                     title="Move up"
                   >
-                    <ChevronUp className="w-3.5 h-3.5" />
+                    <ChevronUp className="w-3 h-3" />
                   </button>
                   <button
                     type="button"
                     onClick={() => moveStepDown(index)}
                     disabled={isSubmitting || index === steps.length - 1}
-                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    style={{ color: "hsl(220 10% 40%)" }}
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(220_10%_100%/0.06)]"
+                    style={{ color: "hsl(220 10% 50%)" }}
                     title="Move down"
                   >
-                    <ChevronDown className="w-3.5 h-3.5" />
+                    <ChevronDown className="w-3 h-3" />
                   </button>
                   <button
                     type="button"
                     onClick={() => removeStep(index)}
                     disabled={isSubmitting}
                     className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(0_70%_55%/0.1)]"
-                    style={{ color: "hsl(220 10% 40%)" }}
+                    style={{ color: "hsl(220 10% 50%)" }}
                     title="Remove step"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               </div>
@@ -237,7 +242,24 @@ export function TaskCreationForm({
             type="button"
             onClick={addStep}
             disabled={isSubmitting || !newStepTitle.trim()}
-            className={buttonPrimaryStyles + " shrink-0"}
+            className="h-10 px-3 rounded-lg text-[13px] font-medium shrink-0 flex items-center justify-center gap-1.5 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "transparent",
+              border: "1px solid hsla(220 10% 100% / 0.12)",
+              color: "hsl(220 10% 60%)",
+            }}
+            onMouseEnter={(e) => {
+              if (!isSubmitting && newStepTitle.trim()) {
+                e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
+                e.currentTarget.style.color = "hsl(220 10% 80%)";
+                e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.12)";
+              e.currentTarget.style.color = "hsl(220 10% 60%)";
+              e.currentTarget.style.background = "transparent";
+            }}
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add</span>

@@ -22,7 +22,6 @@ import { useStepMutations } from "@/hooks/useStepMutations";
 import { TaskFormFields, TaskFormActions } from "./TaskFormFields";
 import {
   inputBaseStyles,
-  buttonPrimaryStyles,
   labelStyles,
 } from "./TaskFormFields.constants";
 
@@ -190,7 +189,24 @@ export function TaskEditForm({
               type="button"
               onClick={handleAddStep}
               disabled={isSaving || isAddingStep || !newStepTitle.trim()}
-              className={buttonPrimaryStyles + " shrink-0"}
+              className="h-10 px-3 rounded-lg text-[13px] font-medium shrink-0 flex items-center justify-center gap-1.5 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: "transparent",
+                border: "1px solid hsla(220 10% 100% / 0.12)",
+                color: "hsl(220 10% 60%)",
+              }}
+              onMouseEnter={(e) => {
+                if (!isSaving && !isAddingStep && newStepTitle.trim()) {
+                  e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
+                  e.currentTarget.style.color = "hsl(220 10% 80%)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.12)";
+                e.currentTarget.style.color = "hsl(220 10% 60%)";
+                e.currentTarget.style.background = "transparent";
+              }}
             >
               {isAddingStep ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
