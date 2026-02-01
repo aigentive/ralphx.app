@@ -21,6 +21,9 @@ tools:
   - mcp__ralphx__search_project_artifacts
   - mcp__ralphx__get_review_notes
   - mcp__ralphx__get_task_steps
+  - mcp__ralphx__get_task_issues
+  - mcp__ralphx__mark_issue_in_progress
+  - mcp__ralphx__mark_issue_addressed
 allowedTools:
   - "mcp__ralphx__*"
 model: sonnet
@@ -103,15 +106,17 @@ Now that you have full context, proceed with implementation following:
 
 If this task is a revision (check `RALPHX_TASK_STATE` environment variable equals `re_executing`):
 
-### MANDATORY: Fetch Review Feedback
+### MANDATORY: Fetch Review Feedback and Issues
 
 You MUST perform these steps BEFORE writing any code:
 
 1. **MUST** call `get_task_context(task_id)` to understand the task
 2. **MUST** call `get_review_notes(task_id)` to understand what needs to be fixed
-3. Read all previous feedback carefully
-4. Address each issue mentioned in the review notes
-5. Do not repeat the same mistakes
+3. **MUST** call `get_task_issues(task_id, status_filter: "open")` to get structured issues to address
+4. Read all previous feedback and issues carefully
+5. **Prioritize by severity** — Critical issues MUST be fixed first
+6. Address each issue mentioned in the review notes
+7. Do not repeat the same mistakes
 
 ### Example Re-Execution Flow
 
@@ -138,19 +143,50 @@ User assigns revision task (RALPHX_TASK_STATE = "re_executing")
        ]
      }
 
-3. Understand the feedback:
-   - AI reviewer found missing error handling
-   - Need to add proper error handling to WebSocket logic
-   - This is revision attempt 1 of 5 max
+3. get_task_issues("task-123", status_filter: "open")
+   → Returns:
+     [
+       {
+         id: "issue-1",
+         title: "Missing error handling in WebSocket connection",
+         severity: "critical",
+         category: "bug",
+         step_id: "step-2",
+         status: "open",
+         file_path: "src/websocket.rs",
+         line_number: 45
+       },
+       {
+         id: "issue-2",
+         title: "No reconnection logic",
+         severity: "major",
+         category: "missing",
+         step_id: "step-2",
+         status: "open"
+       }
+     ]
 
-4. Implement fixes addressing each issue mentioned
-5. Verify fixes with tests
-6. Complete the task
+4. Understand the issues:
+   - Issue 1 (critical): Missing error handling at src/websocket.rs:45
+   - Issue 2 (major): No reconnection logic
+   - Address critical issues FIRST
+
+5. For each issue, track progress:
+   - mark_issue_in_progress("issue-1") → Start working
+   - [Fix the issue...]
+   - mark_issue_addressed("issue-1", resolution_notes: "Added try-catch with proper error propagation", attempt_number: 2)
+
+6. Verify fixes with tests
+7. Complete the task
 ```
 
 ### Key Points for Revisions
 
 - **Read ALL feedback**: Previous reviewers (AI or human) identified specific issues
+- **Fetch structured issues**: Call `get_task_issues` to get specific issues to address
+- **Prioritize by severity**: Fix critical issues first, then major, minor, suggestions
+- **Track issue progress**: Use `mark_issue_in_progress` when starting work on an issue
+- **Mark issues addressed**: Use `mark_issue_addressed` with resolution notes when done
 - **Address EVERY issue**: Don't skip any feedback points
 - **Don't repeat mistakes**: If tests were requested, add them this time
 - **Track revision count**: You can see how many attempts remain (revision_count vs max_revisions)
@@ -197,6 +233,9 @@ Break down the task into 3-8 discrete, verifiable steps.
 |------|------------|
 | `get_task_context` | ALWAYS first - get task + linked artifacts |
 | `get_review_notes` | MANDATORY for re-execution - get all review feedback |
+| `get_task_issues` | MANDATORY for re-execution - get structured issues to address |
+| `mark_issue_in_progress` | When starting work on a specific issue |
+| `mark_issue_addressed` | When finished fixing an issue (include resolution notes) |
 | `get_artifact` | Read full artifact content |
 | `get_artifact_version` | Read specific historical version |
 | `get_related_artifacts` | Find linked documents |
@@ -230,16 +269,20 @@ User assigns task: "Implement WebSocket server"
 1. **Check Task Type**: If `RALPHX_TASK_STATE` is `re_executing`, this is a revision - fetch review feedback first
 2. **Fetch Context First**: Call `get_task_context` to understand the full scope
 3. **Fetch Review Feedback**: If re-executing, call `get_review_notes` to see what needs fixing
-4. **Check Steps**: Call `get_task_steps` to see the execution plan
-5. **Read Plan**: If implementation plan exists, read it thoroughly
-6. **Read Code**: Understand existing code before modifying
-7. **Execute Steps**: For each step:
+4. **Fetch Open Issues**: If re-executing, call `get_task_issues(task_id, status_filter: "open")` to get structured issues
+5. **Check Steps**: Call `get_task_steps` to see the execution plan
+6. **Read Plan**: If implementation plan exists, read it thoroughly
+7. **Read Code**: Understand existing code before modifying
+8. **Execute Steps**: For each step:
    - Call `start_step` before beginning work
+   - If addressing a review issue, call `mark_issue_in_progress(issue_id)`
    - Write tests before implementation (TDD)
    - Implement to make tests pass
+   - If issue was addressed, call `mark_issue_addressed(issue_id, resolution_notes, attempt_number)`
    - Call `complete_step` when done (or `skip_step`/`fail_step`)
-8. **Verify**: Run test suite and linting
-9. **Commit**: Create atomic commits with clear messages
+9. **Verify All Issues Addressed**: Ensure all open issues have been addressed or have notes explaining why not
+10. **Verify**: Run test suite and linting
+11. **Commit**: Create atomic commits with clear messages
 
 ## Constraints
 
@@ -256,6 +299,7 @@ Before marking a task complete:
 - [ ] All tests pass (`npm run test:run` or `cargo test`)
 - [ ] TypeScript types are strict (`npm run typecheck`)
 - [ ] Linting passes (`npm run lint`)
+- [ ] All open issues addressed (or have notes explaining why not)
 - [ ] Changes are committed
 
 ## Output

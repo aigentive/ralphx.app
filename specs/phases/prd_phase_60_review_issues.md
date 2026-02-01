@@ -281,7 +281,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Add instructions to use mark_issue_addressed with resolution notes",
       "Commit: feat(plugin): update worker agent for issue tracking"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 11,
