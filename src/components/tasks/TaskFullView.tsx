@@ -12,11 +12,12 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { X, ArrowLeft, Pencil, Archive, RotateCcw, Pause, Square } from "lucide-react";
+import { X, ArrowLeft, Pencil, Archive, RotateCcw, Pause, Square, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TaskDetailPanel } from "./TaskDetailPanel";
 import { TaskChatPanel } from "./TaskChatPanel";
+import { StateTimelineNav } from "./StateTimelineNav";
 import { useTasks } from "@/hooks/useTasks";
 import { useProjectStore } from "@/stores/projectStore";
 import type { InternalStatus } from "@/types/task";
@@ -170,6 +171,26 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
     const saved = localStorage.getItem("taskFullView:panelWidth");
     return saved ? parseFloat(saved) : 50;
   });
+
+  // History mode state - for viewing historical task states
+  const [historyState, setHistoryState] = useState<{
+    status: InternalStatus;
+    timestamp: string;
+  } | null>(null);
+
+  // Derived values for history mode
+  const isHistoryMode = historyState !== null;
+  const viewStatus = historyState?.status ?? task?.internalStatus;
+
+  // Reset history state when task changes
+  useEffect(() => {
+    setHistoryState(null);
+  }, [taskId]);
+
+  // Handler to exit history mode
+  const handleReturnToCurrent = useCallback(() => {
+    setHistoryState(null);
+  }, []);
 
   // Determine context type based on task status
   // Uses centralized status constants from @/types/status
@@ -331,6 +352,45 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
         </div>
       </div>
 
+      {/* State Timeline Navigation - for viewing historical states */}
+      <StateTimelineNav
+        taskId={task.id}
+        currentStatus={task.internalStatus}
+        onStateSelect={setHistoryState}
+        selectedState={historyState}
+      />
+
+      {/* History Mode Banner */}
+      {isHistoryMode && (
+        <div
+          data-testid="history-mode-banner"
+          className="px-4 py-2.5 flex items-center justify-between shrink-0"
+          style={{
+            background: "linear-gradient(90deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.05) 100%)",
+            borderBottom: "1px solid rgba(255,107,53,0.2)",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-[#ff6b35]" />
+            <span className="text-[13px] font-medium text-[#ff6b35]">
+              Viewing historical state: {historyState.status}
+            </span>
+            <span className="text-[11px] text-white/50">
+              ({new Date(historyState.timestamp).toLocaleString()})
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReturnToCurrent}
+            data-testid="return-to-current-button"
+            className="text-[#ff6b35] hover:text-[#ff6b35] hover:bg-[#ff6b35]/10"
+          >
+            Return to Current
+          </Button>
+        </div>
+      )}
+
       {/* Split Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel - Task Details */}
@@ -344,7 +404,12 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
           }}
         >
           <div className="p-6">
-            <TaskDetailPanel task={task} showHistory={true} useViewRegistry={true} />
+            <TaskDetailPanel
+              task={task}
+              showHistory={true}
+              useViewRegistry={true}
+              {...(isHistoryMode && viewStatus ? { viewAsStatus: viewStatus } : {})}
+            />
           </div>
         </div>
 
@@ -393,7 +458,12 @@ export function TaskFullView({ taskId, onClose }: TaskFullViewProps) {
             minWidth: "360px",
           }}
         >
-          <TaskChatPanel taskId={taskId} contextType={contextType} taskStatus={task.internalStatus} />
+          <TaskChatPanel
+            taskId={taskId}
+            contextType={contextType}
+            taskStatus={task.internalStatus}
+            {...(isHistoryMode && historyState ? { historicalStatus: historyState.status } : {})}
+          />
         </div>
       </div>
 
