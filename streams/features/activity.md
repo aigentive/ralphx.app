@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 19:30:00 - Phase 65 Task 4: Add markdown rendering for text messages
+**What:**
+- Updated `text` case in ActivityMessage.tsx to use ReactMarkdown with remarkGfm (same as thinking blocks)
+- Separated `error` case to preserve plain text rendering for error messages
+- Updated component docstring to reflect the new rendering behavior
+- Reuses existing `markdownComponents` from `@/components/Chat/MessageItem.markdown`
+
+**Files Modified:**
+- `src/components/activity/ActivityMessage.tsx` (text case now uses ReactMarkdown, separated error case)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - data formatting change (enables markdown in text messages)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:00:00 - Phase 65 Task 3: Add semantic tool result rendering
 **What:**
 - Added `generateResultPreview()` helper to extract human-readable summaries from tool results
