@@ -220,12 +220,12 @@ export function IdeationView({
     };
   }, [isResizing]);
 
-  const handleApply = useCallback((targetColumn: string) => {
+  // Accept Plan handler - accepts ALL proposals (no selection)
+  const handleAcceptPlan = useCallback((targetColumn: string) => {
     if (!session) return;
-    const selectedProposals = proposals.filter((p) => p.selected);
     onApply({
       sessionId: session.id,
-      proposalIds: selectedProposals.map((p) => p.id),
+      proposalIds: proposals.map((p) => p.id),
       targetColumn,
       preserveDependencies: true,
     });
@@ -239,9 +239,6 @@ export function IdeationView({
     setImportStatus,
     fileInputRef,
     handleArchive,
-    handleSelectAll,
-    handleDeselectAll,
-    handleSortByPriority,
     handleSelectProposal,
     handleClearAll,
     handleReviewSync,
@@ -262,7 +259,6 @@ export function IdeationView({
     syncNotification
   );
 
-  const selectedCount = proposals.filter((p) => p.selected).length;
 
   // File drop hook for drag-and-drop markdown import
   const { isDragging, dropProps, error: fileDropError } = useFileDrop({
@@ -407,13 +403,10 @@ export function IdeationView({
                 {/* Proposals Toolbar (replaces panel header) */}
                 {proposals.length > 0 && (
                   <ProposalsToolbar
-                    selectedCount={selectedCount}
-                    totalCount={proposals.length}
-                    onSelectAll={handleSelectAll}
-                    onDeselectAll={handleDeselectAll}
-                    onSortByPriority={handleSortByPriority}
+                    proposals={proposals}
+                    graph={dependencyGraph}
                     onClearAll={handleClearAll}
-                    onApply={handleApply}
+                    onAcceptPlan={handleAcceptPlan}
                     onAnalyzeDependencies={handleReanalyzeDependencies}
                     isAnalyzingDependencies={isAnalyzingDependencies}
                   />

@@ -18,21 +18,31 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CheckSquare, Square, ArrowUpDown, Trash2, ChevronDown, FileEdit, Inbox, ListTodo, Network, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  Trash2,
+  ChevronDown,
+  FileEdit,
+  Inbox,
+  ListTodo,
+  Network,
+  Loader2,
+  Check,
+  AlertCircle,
+} from "lucide-react";
+import { useDependencyGraphValidation } from "@/hooks/useDependencyGraphComplete";
+import type { TaskProposal } from "@/types/ideation";
+import type { DependencyGraphResponse } from "@/api/ideation.types";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface ProposalsToolbarProps {
-  selectedCount: number;
-  totalCount: number;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  onSortByPriority: () => void;
+  proposals: TaskProposal[];
+  graph: DependencyGraphResponse | null | undefined;
+  isReadOnly?: boolean;
   onClearAll: () => void;
-  onApply: (targetColumn: string) => void;
+  onAcceptPlan: (targetColumn: string) => void;
   onAnalyzeDependencies?: () => void;
   isAnalyzingDependencies?: boolean;
 }
@@ -42,18 +52,18 @@ interface ProposalsToolbarProps {
 // ============================================================================
 
 export function ProposalsToolbar({
-  selectedCount,
-  totalCount,
-  onSelectAll,
-  onDeselectAll,
-  onSortByPriority,
+  proposals,
+  graph,
+  isReadOnly = false,
   onClearAll,
-  onApply,
+  onAcceptPlan,
   onAnalyzeDependencies,
   isAnalyzingDependencies = false,
 }: ProposalsToolbarProps) {
-  const canApply = selectedCount > 0;
-  const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies;
+  const totalCount = proposals.length;
+  const validation = useDependencyGraphValidation(proposals, graph);
+  const canAccept = totalCount > 0 && !isReadOnly && validation.isComplete;
+  const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies && !isReadOnly;
 
   return (
     <div
@@ -63,13 +73,13 @@ export function ProposalsToolbar({
         background: "hsla(220 10% 8% / 0.6)",
       }}
     >
-      {/* Left: Selection count and analyzing status */}
+      {/* Left: Proposal count and analyzing status */}
       <div className="flex items-center gap-3">
         <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
           <span style={{ color: "hsl(220 10% 90%)" }} className="font-semibold">
-            {selectedCount}
+            {totalCount}
           </span>
-          {" "}of {totalCount} selected
+          {" "}{totalCount === 1 ? "proposal" : "proposals"}
         </span>
 
         {isAnalyzingDependencies && (
@@ -118,181 +128,122 @@ export function ProposalsToolbar({
             />
           )}
 
-          {/* Select All */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-lg"
-                onClick={onSelectAll}
-                style={{ color: "hsl(220 10% 50%)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                  e.currentTarget.style.color = "hsl(220 10% 90%)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
-                }}
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Select all</TooltipContent>
-          </Tooltip>
+          {/* Clear All (only when not read-only) */}
+          {!isReadOnly && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-lg"
+                  onClick={onClearAll}
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)";
+                    e.currentTarget.style.color = "hsl(0 70% 60%)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Clear all proposals</TooltipContent>
+            </Tooltip>
+          )}
 
-          {/* Deselect All */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-lg"
-                onClick={onDeselectAll}
-                style={{ color: "hsl(220 10% 50%)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                  e.currentTarget.style.color = "hsl(220 10% 90%)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
-                }}
-              >
-                <Square className="w-3.5 h-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Deselect all</TooltipContent>
-          </Tooltip>
+          {/* Separator before Accept Plan */}
+          {!isReadOnly && (
+            <div
+              className="w-px h-4 mx-1"
+              style={{ background: "hsla(220 10% 100% / 0.08)" }}
+            />
+          )}
+
+          {/* Graph incomplete warning */}
+          {!isReadOnly && totalCount > 0 && !validation.isComplete && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center px-1">
+                  <AlertCircle
+                    className="w-4 h-4"
+                    style={{ color: "hsl(40 90% 55%)" }}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                {validation.message}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </TooltipProvider>
 
-        {/* Separator */}
-        <div
-          className="w-px h-4 mx-1"
-          style={{ background: "hsla(220 10% 100% / 0.08)" }}
-        />
-
-        <TooltipProvider>
-          {/* Sort */}
-          <Tooltip>
-            <TooltipTrigger asChild>
+        {/* Accept Plan dropdown (only when not read-only) */}
+        {!isReadOnly && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-lg"
-                onClick={onSortByPriority}
-                style={{ color: "hsl(220 10% 50%)" }}
+                size="sm"
+                disabled={!canAccept}
+                className="h-7 px-3 text-[11px] font-semibold gap-1.5 rounded-lg transition-all duration-150"
+                style={{
+                  color: canAccept ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
+                  background: canAccept ? "hsla(14 100% 60% / 0.1)" : "transparent",
+                  border: canAccept ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid transparent",
+                }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                  e.currentTarget.style.color = "hsl(220 10% 90%)";
+                  if (canAccept) {
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  if (canAccept) {
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                  }
                 }}
               >
-                <ArrowUpDown className="w-3.5 h-3.5" />
+                <Check className="w-3 h-3" />
+                Accept Plan ({totalCount})
+                <ChevronDown className="w-3 h-3" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>Sort by priority</TooltipContent>
-          </Tooltip>
-
-          {/* Clear All */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-lg"
-                onClick={onClearAll}
-                style={{ color: "hsl(220 10% 50%)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)";
-                  e.currentTarget.style.color = "hsl(0 70% 60%)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
-                }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Clear all</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Separator */}
-        <div
-          className="w-px h-4 mx-1"
-          style={{ background: "hsla(220 10% 100% / 0.08)" }}
-        />
-
-        {/* Apply dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!canApply}
-              className={cn(
-                "h-7 px-3 text-[11px] font-semibold gap-1.5 rounded-lg",
-                "transition-all duration-150"
-              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-36"
               style={{
-                color: canApply ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
-                background: canApply ? "hsla(14 100% 60% / 0.1)" : "transparent",
-                border: canApply ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid transparent",
-              }}
-              onMouseEnter={(e) => {
-                if (canApply) {
-                  e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (canApply) {
-                  e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                }
+                background: "hsl(220 10% 14%)",
+                backdropFilter: "blur(20px)",
+                border: "1px solid hsla(220 10% 100% / 0.1)",
+                boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
               }}
             >
-              Apply
-              <ChevronDown className="w-3 h-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-36"
-            style={{
-              background: "hsl(220 10% 14%)",
-              backdropFilter: "blur(20px)",
-              border: "1px solid hsla(220 10% 100% / 0.1)",
-              boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
-            }}
-          >
-            <DropdownMenuItem
-              onClick={() => onApply("draft")}
-              className="text-[13px] cursor-pointer gap-2.5 py-2"
-            >
-              <FileEdit className="w-4 h-4" />
-              Draft
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onApply("backlog")}
-              className="text-[13px] cursor-pointer gap-2.5 py-2"
-            >
-              <Inbox className="w-4 h-4" />
-              Backlog
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onApply("todo")}
-              className="text-[13px] cursor-pointer gap-2.5 py-2"
-            >
-              <ListTodo className="w-4 h-4" />
-              Todo
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                onClick={() => onAcceptPlan("draft")}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+              >
+                <FileEdit className="w-4 h-4" />
+                Draft
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onAcceptPlan("backlog")}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+              >
+                <Inbox className="w-4 h-4" />
+                Backlog
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onAcceptPlan("todo")}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+              >
+                <ListTodo className="w-4 h-4" />
+                Todo
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </div>
   );
