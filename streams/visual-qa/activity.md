@@ -440,3 +440,19 @@
 
 ---
 
+### 2026-02-01 01:33:06 - BlockReasonDialog Visual Tests
+**What:** Created page object + spec + baseline for BlockReasonDialog component
+**Mock parity:** ready - no Tauri invoke calls, dialog controlled by local state
+- Created tests/helpers/block-reason-dialog.helpers.ts with openBlockDialogViaKanban helper (production UI flow)
+- Created tests/pages/modals/block-reason-dialog.page.ts with all selectors and actions
+- Created tests/visual/modals/block-reason-dialog/block-reason-dialog.spec.ts with 8 tests
+- Fixed helper to target "Ready Task" specifically (not first task card)
+- Fixed page object expectReasonValue method (inputValue instead of page.expect)
+- Generated 6 baseline snapshots: dialog with title, empty input, reason text, cancel button, confirm button, close behaviors
+**Commands:**
+- `npx playwright test tests/visual/modals/block-reason-dialog/block-reason-dialog.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/block-reason-dialog/block-reason-dialog.spec.ts`
+**Result:** Success - 8/8 tests passing, all baseline snapshots created
+
+---
+
