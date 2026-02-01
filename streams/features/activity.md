@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 02:45:00 - Phase 62 Task 4: Rename SessionBrowser to PlanBrowser with history section
+**What:**
+- Renamed `src/components/Ideation/SessionBrowser.tsx` to `PlanBrowser.tsx`
+- Updated all terminology from "sessions" to "plans" (props, variables, UI text)
+- Added `historyPlans` prop to show accepted/archived plans
+- Added collapsible History section with status badges (Accepted/Archived)
+- Extracted `PlanItem` sub-component for reuse between active and history lists
+- Updated `src/components/Ideation/IdeationView.tsx`:
+  - Changed import from SessionBrowser to PlanBrowser
+  - Added `historyPlans` computed from sessions with non-active status
+  - Updated prop names (sessions→plans, currentSessionId→currentPlanId, etc.)
+- Updated `src/components/Ideation/index.ts` export
+
+**Files Modified:**
+- `src/components/Ideation/SessionBrowser.tsx` → `PlanBrowser.tsx` (RENAMED + MODIFIED)
+- `src/components/Ideation/IdeationView.tsx` (MODIFIED)
+- `src/components/Ideation/index.ts` (MODIFIED)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - backend already tracks session status, frontend requires session with accepted status to verify History section display
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 02:15:00 - Phase 62 Task 3: Replace per-proposal selection with Accept Plan button
 **What:**
 - Modified `src/components/Ideation/ProposalsToolbar.tsx` to replace per-proposal selection with plan-level acceptance

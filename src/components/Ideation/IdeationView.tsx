@@ -30,7 +30,7 @@ import { useProposalStore } from "@/stores/proposalStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./IdeationView.constants";
-import { SessionBrowser } from "./SessionBrowser";
+import { PlanBrowser } from "./PlanBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
 import { ProposalsToolbar } from "./ProposalsToolbar";
 import { TieredProposalList } from "./TieredProposalList";
@@ -63,7 +63,7 @@ interface IdeationViewProps {
 
 // Empty States extracted to separate files
 
-// Session Browser extracted to SessionBrowser.tsx
+// Plan Browser extracted to PlanBrowser.tsx
 
 // Start Session Panel extracted to StartSessionPanel.tsx
 
@@ -301,7 +301,8 @@ export function IdeationView({
     }
   }, [proposalCount]);
 
-  const activeSessions = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
+  const activePlans = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
+  const historyPlans = useMemo(() => sessions.filter((s) => s.status !== "active"), [sessions]);
 
   return (
     <>
@@ -313,13 +314,14 @@ export function IdeationView({
         style={{ background: "hsl(220 10% 8%)" }}
         role="main"
       >
-        {/* Session Browser Sidebar */}
-        <SessionBrowser
-          sessions={activeSessions}
-          currentSessionId={session?.id ?? null}
-          onSelectSession={onSelectSession}
-          onNewSession={onNewSession}
-          {...(onDeleteSession !== undefined && { onDeleteSession })}
+        {/* Plan Browser Sidebar */}
+        <PlanBrowser
+          plans={activePlans}
+          historyPlans={historyPlans}
+          currentPlanId={session?.id ?? null}
+          onSelectPlan={onSelectSession}
+          onNewPlan={onNewSession}
+          {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
         />
 
         {/* Main Content */}

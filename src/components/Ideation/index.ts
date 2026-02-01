@@ -7,5 +7,5 @@ export { ProposalCard } from "./ProposalCard";
 export { ProposalEditModal } from "./ProposalEditModal";
 export { ProposalList } from "./ProposalList";
 export { ProposalsToolbar } from "./ProposalsToolbar";
-export { SessionBrowser } from "./SessionBrowser";
+export { PlanBrowser } from "./PlanBrowser";
 export { SessionSelector } from "./SessionSelector";
