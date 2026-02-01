@@ -189,6 +189,7 @@ mod tests {
     ) -> StartupJobRunner<tauri::Wry> {
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
