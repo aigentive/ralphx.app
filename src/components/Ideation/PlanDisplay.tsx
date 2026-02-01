@@ -287,22 +287,19 @@ export function PlanDisplay({
       onMouseLeave={() => setIsHovered(false)}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        {/* Header with glass-morphism */}
+        {/* Header - flat Tahoe style */}
         <div
           className="rounded-xl transition-all duration-200"
           style={{
             padding: "12px 14px",
             background: isOpen
-              ? "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.02) 100%)"
+              ? "hsla(14 100% 60% / 0.08)"
               : isHovered
-                ? "rgba(255,255,255,0.03)"
-                : "rgba(255,255,255,0.02)",
+                ? "hsla(220 10% 100% / 0.03)"
+                : "hsla(220 10% 100% / 0.02)",
             border: isOpen
-              ? "1px solid rgba(255,107,53,0.2)"
-              : "1px solid rgba(255,255,255,0.06)",
-            boxShadow: isOpen
-              ? "0 4px 16px rgba(255,107,53,0.06)"
-              : "none",
+              ? "1px solid hsla(14 100% 60% / 0.2)"
+              : "1px solid hsla(220 10% 100% / 0.06)",
           }}
         >
           <div className="flex items-center gap-3">
@@ -310,24 +307,21 @@ export function PlanDisplay({
               <button
                 className="flex items-center gap-3 text-left flex-1 min-w-0"
               >
-                {/* Icon with glow */}
+                {/* Icon - flat style */}
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
                   style={{
                     background: isOpen
-                      ? "linear-gradient(135deg, rgba(255,107,53,0.2) 0%, rgba(255,107,53,0.1) 100%)"
-                      : "rgba(255,255,255,0.04)",
+                      ? "hsla(14 100% 60% / 0.15)"
+                      : "hsla(220 10% 100% / 0.04)",
                     border: isOpen
-                      ? "1px solid rgba(255,107,53,0.3)"
-                      : "1px solid rgba(255,255,255,0.06)",
-                    boxShadow: isOpen
-                      ? "0 2px 8px rgba(255,107,53,0.15)"
-                      : "none",
+                      ? "1px solid hsla(14 100% 60% / 0.25)"
+                      : "1px solid hsla(220 10% 100% / 0.06)",
                   }}
                 >
                   <FileText
                     className="w-4 h-4 transition-colors duration-200"
-                    style={{ color: isOpen ? "#ff6b35" : "var(--text-muted)" }}
+                    style={{ color: isOpen ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
                   />
                 </div>
 
@@ -335,7 +329,7 @@ export function PlanDisplay({
                   <div className="flex items-center gap-2">
                     <span
                       className="text-[13px] font-medium truncate tracking-[-0.01em]"
-                      style={{ color: "var(--text-primary)" }}
+                      style={{ color: "hsl(220 10% 90%)" }}
                     >
                       {plan.name}
                     </span>
@@ -343,9 +337,9 @@ export function PlanDisplay({
                     <span
                       className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
                       style={{
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                        color: "var(--text-muted)",
+                        background: "hsla(220 10% 100% / 0.04)",
+                        border: "1px solid hsla(220 10% 100% / 0.06)",
+                        color: "hsl(220 10% 50%)",
                       }}
                     >
                       v{plan.metadata.version}
@@ -355,7 +349,7 @@ export function PlanDisplay({
                   {linkedProposalsCount > 0 && (
                     <span
                       className="text-[11px] mt-0.5 block"
-                      style={{ color: "var(--text-muted)" }}
+                      style={{ color: "hsl(220 10% 50%)" }}
                     >
                       {linkedProposalsCount} linked proposal{linkedProposalsCount !== 1 ? "s" : ""}
                     </span>
@@ -367,7 +361,7 @@ export function PlanDisplay({
                     "w-4 h-4 transition-transform duration-200 flex-shrink-0",
                     !isOpen && "-rotate-90"
                   )}
-                  style={{ color: "var(--text-muted)" }}
+                  style={{ color: "hsl(220 10% 50%)" }}
                 />
               </button>
             </CollapsibleTrigger>
@@ -382,17 +376,17 @@ export function PlanDisplay({
                   variant="ghost"
                   size="sm"
                   onClick={onApprove}
-                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg"
+                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
                   style={{
-                    color: "#ff6b35",
-                    background: "rgba(255,107,53,0.1)",
-                    border: "1px solid rgba(255,107,53,0.2)",
+                    color: "hsl(14 100% 60%)",
+                    background: "hsla(14 100% 60% / 0.1)",
+                    border: "1px solid hsla(14 100% 60% / 0.2)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255,107,53,0.15)";
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(255,107,53,0.1)";
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
                   }}
                 >
                   <Sparkles className="w-3 h-3" />
@@ -404,9 +398,9 @@ export function PlanDisplay({
                 <span
                   className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
                   style={{
-                    background: "rgba(34,197,94,0.1)",
-                    border: "1px solid rgba(34,197,94,0.2)",
-                    color: "#22c55e",
+                    background: "hsla(145 70% 45% / 0.1)",
+                    border: "1px solid hsla(145 70% 45% / 0.2)",
+                    color: "hsl(145 70% 45%)",
                   }}
                 >
                   <CheckCircle2 className="w-3 h-3" />
@@ -420,16 +414,16 @@ export function PlanDisplay({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 px-2 text-[11px] gap-1 rounded-lg"
-                      style={{ color: "var(--text-muted)" }}
+                      className="h-7 px-2 text-[11px] gap-1 rounded-lg transition-colors duration-150"
+                      style={{ color: "hsl(220 10% 50%)" }}
                       title="View version history"
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                        e.currentTarget.style.color = "var(--text-primary)";
+                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                        e.currentTarget.style.color = "hsl(220 10% 90%)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "var(--text-muted)";
+                        e.currentTarget.style.color = "hsl(220 10% 50%)";
                       }}
                     >
                       <History className="w-3 h-3" />
@@ -441,10 +435,10 @@ export function PlanDisplay({
                     align="end"
                     className="w-36"
                     style={{
-                      background: "rgba(30,30,30,0.95)",
+                      background: "hsl(220 10% 14%)",
                       backdropFilter: "blur(20px)",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                      border: "1px solid hsla(220 10% 100% / 0.08)",
+                      boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
                     }}
                   >
                     {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
@@ -456,20 +450,20 @@ export function PlanDisplay({
                           onClick={() => handleVersionSelect(version)}
                           className="text-[12px] cursor-pointer px-3 py-2"
                           style={{
-                            background: isSelected ? "rgba(255,107,53,0.1)" : "transparent",
-                            borderLeft: isSelected ? "2px solid #ff6b35" : "2px solid transparent",
+                            background: isSelected ? "hsla(14 100% 60% / 0.1)" : "transparent",
+                            borderLeft: isSelected ? "2px solid hsl(14 100% 60%)" : "2px solid transparent",
                           }}
                         >
                           <span className="flex items-center gap-2 w-full">
                             {isSelected && (
                               <span
                                 className="w-1.5 h-1.5 rounded-full"
-                                style={{ background: "#ff6b35" }}
+                                style={{ background: "hsl(14 100% 60%)" }}
                               />
                             )}
                             <span>v{version}</span>
                             {isLatest && (
-                              <span className="ml-auto" style={{ color: "var(--text-muted)" }}>
+                              <span className="ml-auto" style={{ color: "hsl(220 10% 50%)" }}>
                                 (latest)
                               </span>
                             )}
@@ -485,15 +479,15 @@ export function PlanDisplay({
                 variant="ghost"
                 size="sm"
                 onClick={onEdit}
-                className="h-7 w-7 p-0 rounded-lg"
-                style={{ color: "var(--text-muted)" }}
+                className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.color = "hsl(220 10% 90%)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
                 }}
               >
                 <FileEdit className="w-3.5 h-3.5" />
@@ -503,15 +497,15 @@ export function PlanDisplay({
                 variant="ghost"
                 size="sm"
                 onClick={handleExport}
-                className="h-7 w-7 p-0 rounded-lg"
-                style={{ color: "var(--text-muted)" }}
+                className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.color = "hsl(220 10% 90%)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
                 }}
               >
                 <Download className="w-3.5 h-3.5" />
@@ -526,7 +520,7 @@ export function PlanDisplay({
             className="mt-3 pl-6 pr-2 pb-4"
             style={{
               marginLeft: "16px",
-              borderLeft: "2px solid rgba(255,107,53,0.15)",
+              borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
             }}
           >
             {/* Version banner when viewing historical */}
@@ -534,27 +528,27 @@ export function PlanDisplay({
               <div
                 className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-lg"
                 style={{
-                  background: "rgba(245,158,11,0.1)",
-                  border: "1px solid rgba(245,158,11,0.2)",
+                  background: "hsla(45 93% 50% / 0.1)",
+                  border: "1px solid hsla(45 93% 50% / 0.2)",
                 }}
               >
-                <span className="text-[12px] font-medium" style={{ color: "#f59e0b" }}>
+                <span className="text-[12px] font-medium" style={{ color: "hsl(45 93% 55%)" }}>
                   Viewing version {selectedVersion} of {plan.metadata.version}
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleBackToLatest}
-                  className="h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md"
+                  className="h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md transition-colors duration-150"
                   style={{
-                    color: "#f59e0b",
-                    background: "rgba(245,158,11,0.1)",
+                    color: "hsl(45 93% 55%)",
+                    background: "hsla(45 93% 50% / 0.1)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(245,158,11,0.2)";
+                    e.currentTarget.style.background = "hsla(45 93% 50% / 0.2)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(245,158,11,0.1)";
+                    e.currentTarget.style.background = "hsla(45 93% 50% / 0.1)";
                   }}
                 >
                   <ArrowLeft className="w-3 h-3" />
@@ -567,8 +561,8 @@ export function PlanDisplay({
             {isLoadingVersion ? (
               <div className="flex items-center justify-center py-12">
                 <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#ff6b35" }} />
-                  <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
+                  <span className="text-[12px]" style={{ color: "hsl(220 10% 50%)" }}>
                     Loading version...
                   </span>
                 </div>
@@ -582,7 +576,7 @@ export function PlanDisplay({
             ) : (
               <p
                 className="text-[13px] italic py-8 text-center"
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "hsl(220 10% 50%)" }}
               >
                 No content available
               </p>

@@ -86,14 +86,14 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
             className={cn(
               "flex items-center gap-3 w-full text-left py-2.5 px-3",
               "rounded-lg transition-all duration-200",
-              "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ff6b35]/50"
+              "focus:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(14_100%_60%)]/50"
             )}
             style={{
-              background: isOpen ? "rgba(255,255,255,0.02)" : "transparent",
+              background: isOpen ? "hsla(220 10% 100% / 0.02)" : "transparent",
             }}
             onMouseEnter={(e) => {
               if (!isOpen) {
-                e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                e.currentTarget.style.background = "hsla(220 10% 100% / 0.02)";
               }
             }}
             onMouseLeave={(e) => {
@@ -102,14 +102,13 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
               }
             }}
           >
-            {/* Accent bar */}
+            {/* Accent bar - flat, no glow */}
             <div
               className="w-[3px] h-5 rounded-full transition-all duration-200"
               style={{
                 background: isOpen
-                  ? "linear-gradient(180deg, #ff6b35 0%, #ff8050 100%)"
-                  : "rgba(255,255,255,0.15)",
-                boxShadow: isOpen ? "0 0 8px rgba(255,107,53,0.3)" : "none",
+                  ? "hsl(14 100% 60%)"
+                  : "hsla(220 10% 100% / 0.15)",
               }}
             />
 
@@ -117,19 +116,19 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
             <div className="flex items-center gap-2 flex-1">
               <span
                 className="text-[11px] font-semibold uppercase tracking-wider"
-                style={{ color: isOpen ? "#ff6b35" : "var(--text-muted)" }}
+                style={{ color: isOpen ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
               >
                 Tier {tier}
               </span>
               <span
                 className="text-[11px]"
-                style={{ color: "var(--text-muted)", opacity: 0.5 }}
+                style={{ color: "hsl(220 10% 50%)", opacity: 0.5 }}
               >
                 ·
               </span>
               <span
                 className="text-[12px] font-medium"
-                style={{ color: "var(--text-secondary)" }}
+                style={{ color: "hsl(220 10% 70%)" }}
               >
                 {displayLabel}
               </span>
@@ -139,9 +138,9 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
             <span
               className="text-[11px] font-medium px-2 py-0.5 rounded-md"
               style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                color: "var(--text-muted)",
+                background: "hsla(220 10% 100% / 0.04)",
+                border: "1px solid hsla(220 10% 100% / 0.06)",
+                color: "hsl(220 10% 55%)",
               }}
             >
               {proposalCount}
@@ -153,7 +152,7 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
                 "w-4 h-4 transition-transform duration-200",
                 !isOpen && "-rotate-90"
               )}
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: "hsl(220 10% 50%)" }}
             />
           </button>
         </CollapsibleTrigger>
@@ -163,7 +162,7 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
           <div
             className="pl-5 pr-1 pb-3 pt-2 ml-[14px]"
             style={{
-              borderLeft: "2px solid rgba(255,107,53,0.15)",
+              borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
             }}
           >
             {children}
