@@ -82,6 +82,51 @@ export function getToolName(content: string): string | null {
   return toolMatch?.[1] ?? null;
 }
 
+/**
+ * Strip MCP server prefixes from tool names for cleaner display.
+ * Examples:
+ *   - "mcp__ralphx__get_task_steps" -> "get_task_steps"
+ *   - "mcp__plugin_context7_context7__resolve-library-id" -> "resolve-library-id"
+ *   - "Read" -> "Read"
+ */
+export function cleanToolName(rawName: string): string {
+  // Match mcp__<server>__<toolName> pattern
+  const mcpMatch = rawName.match(/^mcp__[^_]+(?:_[^_]+)*__(.+)$/);
+  if (mcpMatch && mcpMatch[1]) {
+    return mcpMatch[1];
+  }
+  return rawName;
+}
+
+/**
+ * Format tool arguments for display as key-value pairs.
+ * Returns an array of { key, value } for rendering.
+ */
+export function formatToolArguments(
+  metadata: Record<string, unknown> | undefined
+): Array<{ key: string; value: string }> {
+  if (!metadata || typeof metadata !== "object") {
+    return [];
+  }
+
+  return Object.entries(metadata).map(([key, value]) => {
+    let displayValue: string;
+    if (typeof value === "string") {
+      // Truncate long strings
+      displayValue = value.length > 80 ? value.slice(0, 80) + "…" : value;
+    } else if (value === null || value === undefined) {
+      displayValue = "null";
+    } else if (typeof value === "object") {
+      // For objects/arrays, show a compact preview
+      const json = JSON.stringify(value);
+      displayValue = json.length > 60 ? json.slice(0, 60) + "…" : json;
+    } else {
+      displayValue = String(value);
+    }
+    return { key, value: displayValue };
+  });
+}
+
 export function generateMessageKey(msg: UnifiedActivityMessage, index: number): string {
   return msg.id || `${msg.taskId || msg.sessionId}-${msg.timestamp}-${index}`;
 }
