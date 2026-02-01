@@ -142,16 +142,16 @@ function ActionButtonsCard({
   onReopenTask?: () => void;
 }) {
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2 justify-end">
       <Button
         data-testid="view-diff-button"
         onClick={onViewDiff}
         variant="outline"
-        className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
+        className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          borderColor: "rgba(255,255,255,0.12)",
-          color: "rgba(255,255,255,0.7)",
-          backgroundColor: "rgba(255,255,255,0.04)",
+          borderColor: "hsla(220 10% 100% / 0.15)",
+          color: "hsl(220 10% 70%)",
+          backgroundColor: "transparent",
         }}
       >
         <ExternalLink className="w-4 h-4" />
@@ -161,11 +161,11 @@ function ActionButtonsCard({
         data-testid="reopen-task-button"
         onClick={onReopenTask}
         variant="outline"
-        className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
+        className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          borderColor: "rgba(255,255,255,0.12)",
-          color: "rgba(255,255,255,0.7)",
-          backgroundColor: "rgba(255,255,255,0.04)",
+          borderColor: "hsla(220 10% 100% / 0.15)",
+          color: "hsl(220 10% 70%)",
+          backgroundColor: "transparent",
         }}
       >
         <RefreshCw className="w-4 h-4" />

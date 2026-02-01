@@ -6,6 +6,8 @@
 
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -20,6 +22,7 @@ import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import {
   Loader2,
   CheckCircle2,
@@ -95,7 +98,7 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
   ];
 
   return (
-    <DetailCard variant="success">
+    <DetailCard>
       {/* AI Badge header */}
       <div className="flex items-center gap-3 mb-4">
         <div
@@ -114,11 +117,16 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
         </div>
       </div>
 
-      {/* Summary text */}
+      {/* Summary text with markdown rendering - aligned with header text */}
       {review?.notes && (
-        <p className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12">
-          {review.notes}
-        </p>
+        <div className="pl-12 text-[13px] text-white/65 leading-relaxed mb-4 prose prose-sm prose-invert max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
+            {review.notes}
+          </ReactMarkdown>
+        </div>
       )}
 
       {/* Checklist */}
@@ -219,16 +227,15 @@ function ActionButtonsCard({
       )}
 
       {/* Action buttons */}
-      <div className="flex gap-3">
+      <div className="flex gap-2 justify-end">
         <Button
           data-testid="approve-button"
           onClick={handleApprove}
           disabled={isLoading || showFeedback}
-          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px] transition-all"
+          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
           style={{
-            background: "linear-gradient(180deg, #34c759 0%, #28a745 100%)",
+            backgroundColor: "hsl(142 70% 45%)",
             color: "white",
-            boxShadow: "0 2px 8px rgba(52, 199, 89, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}
         >
           {approveMutation.isPending ? (
@@ -244,11 +251,11 @@ function ActionButtonsCard({
           onClick={handleRequestChangesClick}
           disabled={isLoading || (showFeedback && !feedback.trim())}
           variant="outline"
-          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
+          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
-            borderColor: "#ff9f0a",
-            color: "#ffd60a",
-            backgroundColor: "rgba(255, 159, 10, 0.1)",
+            borderColor: "hsla(220 10% 100% / 0.15)",
+            color: "hsl(35 100% 55%)",
+            backgroundColor: "transparent",
           }}
         >
           {requestChangesMutation.isPending ? (

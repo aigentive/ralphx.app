@@ -266,11 +266,6 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
     setHistoryState(null);
   }, [selectedTaskId, setHistoryState]);
 
-  // Handler to exit history mode
-  const handleReturnToCurrent = useCallback(() => {
-    setHistoryState(null);
-  }, [setHistoryState]);
-
   // Handle backdrop click
   const handleBackdropClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -598,31 +593,15 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
           {isHistoryMode && (
             <div
               data-testid="history-mode-banner"
-              className="px-4 py-2.5 flex items-center justify-between shrink-0"
-              style={{
-                backgroundColor: "hsla(14 100% 60% / 0.1)",
-                borderBottom: "1px solid hsla(14 100% 60% / 0.2)",
-              }}
+              className="px-4 py-1.5 flex items-center gap-2 shrink-0"
             >
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4" style={{ color: "hsl(14 100% 60%)" }} />
-                <span className="text-[13px] font-medium" style={{ color: "hsl(14 100% 60%)" }}>
-                  Viewing historical state: {STATUS_CONFIG[historyState.status]?.label ?? historyState.status}
-                </span>
-                <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
-                  ({new Date(historyState.timestamp).toLocaleString()})
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleReturnToCurrent}
-                data-testid="return-to-current-button"
-                style={{ color: "hsl(14 100% 60%)" }}
-                className="hover:bg-[hsla(14_100%_60%/0.1)]"
-              >
-                Return to Current
-              </Button>
+              <History className="w-3 h-3" style={{ color: "hsl(220 10% 40%)" }} />
+              <span className="text-[11px]" style={{ color: "hsl(220 10% 45%)" }}>
+                Viewing: {STATUS_CONFIG[historyState.status]?.label ?? historyState.status}
+              </span>
+              <span className="text-[10px]" style={{ color: "hsl(220 10% 35%)" }}>
+                {new Date(historyState.timestamp).toLocaleString()}
+              </span>
             </div>
           )}
 

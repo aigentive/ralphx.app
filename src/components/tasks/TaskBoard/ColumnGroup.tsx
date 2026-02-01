@@ -59,7 +59,6 @@ export function ColumnGroup({
           borderLeft: isExpanded && accentColor
             ? `2px solid ${accentColor}`
             : "2px solid transparent",
-          paddingLeft: "4px",
         }}
       >
         {/* Group header - simple like Finder section headers */}
@@ -125,7 +124,7 @@ export function ColumnGroup({
 
         {/* Group content */}
         <CollapsibleContent className="pt-1">
-          <div className="flex flex-col gap-1.5 pl-1">
+          <div className="flex flex-col gap-1.5">
             {children}
           </div>
         </CollapsibleContent>

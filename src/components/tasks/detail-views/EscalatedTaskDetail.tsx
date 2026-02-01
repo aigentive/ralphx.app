@@ -233,16 +233,15 @@ function DecisionButtonsCard({
       )}
 
       {/* Decision buttons */}
-      <div className="flex gap-3">
+      <div className="flex gap-2 justify-end">
         <Button
           data-testid="approve-button"
           onClick={handleApprove}
           disabled={isLoading || showFeedback}
-          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
+          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
           style={{
-            background: "linear-gradient(180deg, #34c759 0%, #28a745 100%)",
+            backgroundColor: "hsl(142 70% 45%)",
             color: "white",
-            boxShadow: "0 2px 8px rgba(52, 199, 89, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}
         >
           {approveMutation.isPending ? (
@@ -258,11 +257,11 @@ function DecisionButtonsCard({
           onClick={handleRequestChangesClick}
           disabled={isLoading || (showFeedback && !feedback.trim())}
           variant="outline"
-          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
+          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
-            borderColor: "#ff9f0a",
-            color: "#ffd60a",
-            backgroundColor: "rgba(255, 159, 10, 0.1)",
+            borderColor: "hsla(220 10% 100% / 0.15)",
+            color: "hsl(35 100% 55%)",
+            backgroundColor: "transparent",
           }}
         >
           {requestChangesMutation.isPending ? (
