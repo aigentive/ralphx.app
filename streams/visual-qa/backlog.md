@@ -9,8 +9,8 @@
 
 ### Priority 1 - Major Views/Modals
 - [x] **WelcomeScreen** - Full-screen welcome/onboarding view with animated constellation
-- [x] **MergeWorkflowDialog** - Post-completion workflow options (merge/rebase/PR/keep/discard)
-- [ ] **ApplyModal** - Apply proposals to Kanban with dependency preview
+- [ ] ~~**MergeWorkflowDialog**~~ (no-trigger)
+- [ ] ~~**ApplyModal**~~ (orphan - not used in production code, only in tests)
 - [ ] **ReviewDetailModal** - Full-width review modal with diff viewer and history
 - [ ] **ReviewNotesModal** - Modal for adding review notes with fix descriptions
 - [ ] **TaskRerunDialog** - Task re-run workflow modal (keep/revert/create new)

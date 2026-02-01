@@ -14,7 +14,8 @@
 | Test times out | Log and move on | Debug and fix root cause |
 | Missing mock data | Document as P1 | Add mock to `src/api-mock/` |
 | Discovery finds items | Add to backlog, IDLE | Add to backlog, COMPLETE (triggers new cycle) |
-| Component is orphan | Test anyway | Mark `~~(orphan)~~`, skip, log reason |
+| Component is orphan | Test anyway | Mark `~~(orphan)~~`, skip |
+| Modal has no trigger | Add test page to App.tsx | Mark `~~(no-trigger)~~`, skip |
 
 ## Rules
 
@@ -44,7 +45,7 @@ Component doesn't render in web mode?
 | Imports | `grep -r "from.*ComponentName" src/ --include="*.tsx" \| grep -v index.ts` | 0 results |
 | JSX | `grep -r "<ComponentName" src/ --include="*.tsx"` | 0 results |
 
-**Mark:** `- [ ] ~~ComponentName~~ (orphan)` → Log → Pick next
+**Mark:** `- [ ] ~~ComponentName~~ (orphan|no-trigger)` → Pick next
 
 ## Dev Server Management
 
