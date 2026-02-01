@@ -40,5 +40,11 @@ export function useTaskStateTransitions(taskId: string | undefined) {
       return api.tasks.getStateTransitions(taskId);
     },
     enabled: Boolean(taskId),
+    // Prevent excessive refetching - state history doesn't change frequently
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 }
