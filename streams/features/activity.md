@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-02 06:15:00 - Phase 62 Task 9: Add dependency context fields to TaskContext for worker
+**What:**
+- Added `blocked_by`, `blocks`, and `tier` fields to `TaskContext` entity
+- Added `TaskDependencySummary` struct for representing blocker/dependent task info
+- Added `priority_score` field to `TaskProposalSummary`
+- Updated `TaskContextService.get_task_context()` to query task dependencies via `get_blockers()` and `get_dependents()`
+- Implemented tier calculation: tier 1 = no blockers, higher tiers based on incomplete blocker count
+- Added dependency-aware context hints (BLOCKED warning, downstream impact info)
+- Updated `http_server/helpers.rs` helper function with same dependency logic
+- Exported new `TaskDependencySummary` type from entities module
+
+**Files Modified:**
+- `src-tauri/src/domain/entities/task_context.rs` (MODIFIED - added new fields and TaskDependencySummary type)
+- `src-tauri/src/domain/entities/mod.rs` (MODIFIED - export TaskDependencySummary)
+- `src-tauri/src/application/task_context_service.rs` (MODIFIED - query dependencies, compute tier, generate hints)
+- `src-tauri/src/http_server/helpers.rs` (MODIFIED - matching changes for HTTP endpoint)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - all 222 tests)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 05:00:00 - Phase 62 Task 8: Rename ApplyModal to AcceptModal with full plan accept
 **What:**
 - Renamed `ApplyModal.tsx` to `AcceptModal.tsx`

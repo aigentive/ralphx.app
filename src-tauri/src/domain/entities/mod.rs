@@ -66,7 +66,7 @@ pub use methodology::{
 };
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
-pub use task_context::{ArtifactSummary, TaskContext, TaskProposalSummary};
+pub use task_context::{ArtifactSummary, TaskContext, TaskDependencySummary, TaskProposalSummary};
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
 pub use activity_event::{
     ActivityEvent, ActivityEventId, ActivityEventRole, ActivityEventType,

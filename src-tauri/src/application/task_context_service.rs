@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ArtifactSummary, Task, TaskContext, TaskId, TaskProposalSummary, StepProgressSummary,
+    ArtifactSummary, Task, TaskContext, TaskDependencySummary, TaskId, TaskProposalSummary, StepProgressSummary,
 };
 use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository};
 use crate::error::{AppError, AppResult};
@@ -74,6 +74,7 @@ impl TaskContextService
                         acceptance_criteria,
                         implementation_notes: None, // TaskProposal doesn't have implementation_notes field
                         plan_version_at_creation: proposal.plan_version_at_creation,
+                        priority_score: proposal.priority_score,
                     })
                 }
                 None => None,
@@ -131,16 +132,53 @@ impl TaskContextService
             None
         };
 
-        // 7. Generate context_hints based on what's available
+        // 7. Fetch task dependencies (blockers and dependents)
+        let blockers = self.task_repo.get_blockers(task_id).await?;
+        let blocked_by: Vec<TaskDependencySummary> = blockers
+            .into_iter()
+            .map(|t| TaskDependencySummary {
+                id: t.id.clone(),
+                title: t.title.clone(),
+                internal_status: t.internal_status,
+            })
+            .collect();
+
+        let dependents = self.task_repo.get_dependents(task_id).await?;
+        let blocks: Vec<TaskDependencySummary> = dependents
+            .into_iter()
+            .map(|t| TaskDependencySummary {
+                id: t.id.clone(),
+                title: t.title.clone(),
+                internal_status: t.internal_status,
+            })
+            .collect();
+
+        // 8. Compute tier from dependency depth
+        // Tier 1 = no blockers, Tier N = depends on tasks in tier N-1
+        // For now, use simple heuristic: tier = number of incomplete blockers + 1
+        let tier = if blocked_by.is_empty() {
+            Some(1)
+        } else {
+            // Count how many blockers are not yet completed
+            let incomplete_blockers = blocked_by
+                .iter()
+                .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+                .count();
+            Some((incomplete_blockers as u32) + 1)
+        };
+
+        // 9. Generate context_hints based on what's available
         let context_hints = self.generate_context_hints(
             &task,
             source_proposal.is_some(),
             plan_artifact.is_some(),
             related_artifacts.len(),
             steps.len(),
+            &blocked_by,
+            &blocks,
         );
 
-        // 8. Return TaskContext
+        // 10. Return TaskContext
         Ok(TaskContext {
             task,
             source_proposal,
@@ -149,6 +187,9 @@ impl TaskContextService
             steps,
             step_progress,
             context_hints,
+            blocked_by,
+            blocks,
+            tier,
         })
     }
 
@@ -181,8 +222,35 @@ impl TaskContextService
         has_plan: bool,
         related_count: usize,
         step_count: usize,
+        blocked_by: &[TaskDependencySummary],
+        blocks: &[TaskDependencySummary],
     ) -> Vec<String> {
         let mut hints = Vec::new();
+
+        // CRITICAL: Dependency hints come first - worker must check these before starting
+        if !blocked_by.is_empty() {
+            let incomplete: Vec<_> = blocked_by
+                .iter()
+                .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+                .collect();
+            if !incomplete.is_empty() {
+                let names: Vec<_> = incomplete.iter().map(|t| t.title.as_str()).collect();
+                hints.push(format!(
+                    "BLOCKED: Task cannot proceed - waiting for: {}",
+                    names.join(", ")
+                ));
+            } else {
+                hints.push("All blocking tasks completed - ready to execute".to_string());
+            }
+        }
+
+        if !blocks.is_empty() {
+            let names: Vec<_> = blocks.iter().map(|t| t.title.as_str()).collect();
+            hints.push(format!(
+                "Downstream impact: completing this task unblocks: {}",
+                names.join(", ")
+            ));
+        }
 
         if has_proposal {
             hints.push(
@@ -738,6 +806,10 @@ mod tests {
         assert_eq!(context.steps.len(), 0);
         assert!(context.step_progress.is_none());
         assert!(!context.context_hints.is_empty());
+        // New dependency fields
+        assert!(context.blocked_by.is_empty());
+        assert!(context.blocks.is_empty());
+        assert_eq!(context.tier, Some(1)); // No blockers = tier 1
     }
 
     #[tokio::test]
@@ -772,6 +844,7 @@ mod tests {
         let proposal_summary = context.source_proposal.unwrap();
         assert_eq!(proposal_summary.title, "Test Proposal");
         assert_eq!(proposal_summary.acceptance_criteria.len(), 1);
+        assert_eq!(proposal_summary.priority_score, 50); // Default priority score
         assert!(context.context_hints.iter().any(|h| h.contains("ideation")));
     }
 
@@ -875,5 +948,27 @@ mod tests {
         let result = service.get_task_context(&TaskId::new()).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_get_task_context_dependency_fields() {
+        // Test that the new dependency fields are populated correctly
+        let task = Task::new(ProjectId::new(), "Test Task".to_string());
+        let task_id = task.id.clone();
+
+        let service = TaskContextService::new(
+            Arc::new(MockTaskRepository::with_task(task.clone())),
+            Arc::new(MockTaskProposalRepository::empty()),
+            Arc::new(MockArtifactRepository::empty()),
+            Arc::new(MockTaskStepRepository::empty()),
+        );
+
+        let context = service.get_task_context(&task_id).await.unwrap();
+
+        // With mock returning empty blockers/dependents
+        assert!(context.blocked_by.is_empty());
+        assert!(context.blocks.is_empty());
+        // Tier should be 1 when no blockers exist
+        assert_eq!(context.tier, Some(1));
     }
 }
