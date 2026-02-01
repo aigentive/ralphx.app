@@ -129,15 +129,16 @@ export function SessionBrowser({
       data-testid="session-browser"
       className="flex flex-col h-full"
       style={{
-        width: "260px",
-        minWidth: "260px",
+        width: "276px",
+        minWidth: "276px",
         flexShrink: 0,
       }}
     >
       {/* Floating panel inner container */}
       <div
-        className="flex flex-col h-full m-2 rounded-[10px]"
+        className="flex flex-col h-full rounded-[10px]"
         style={{
+          margin: "8px",
           background: "hsla(220 10% 10% / 0.92)",
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
