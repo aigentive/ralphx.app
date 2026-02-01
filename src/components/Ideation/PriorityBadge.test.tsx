@@ -192,6 +192,32 @@ describe("PriorityBadge", () => {
     });
   });
 
+  describe("Animation", () => {
+    it("applies pulse animation class to critical priority", () => {
+      render(<PriorityBadge priority="critical" />);
+      const badge = screen.getByTestId("priority-badge");
+      expect(badge).toHaveClass("animate-pulse-critical");
+    });
+
+    it("does not apply pulse animation to high priority", () => {
+      render(<PriorityBadge priority="high" />);
+      const badge = screen.getByTestId("priority-badge");
+      expect(badge).not.toHaveClass("animate-pulse-critical");
+    });
+
+    it("does not apply pulse animation to medium priority", () => {
+      render(<PriorityBadge priority="medium" />);
+      const badge = screen.getByTestId("priority-badge");
+      expect(badge).not.toHaveClass("animate-pulse-critical");
+    });
+
+    it("does not apply pulse animation to low priority", () => {
+      render(<PriorityBadge priority="low" />);
+      const badge = screen.getByTestId("priority-badge");
+      expect(badge).not.toHaveClass("animate-pulse-critical");
+    });
+  });
+
   describe("Anti-AI-Slop", () => {
     it("uses specified colors, not purple", () => {
       const { rerender } = render(<PriorityBadge priority="critical" />);
