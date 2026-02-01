@@ -38,6 +38,8 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface ReviewDetailModalProps {
   taskId: string;
+  /** Pre-fetched history from parent to avoid duplicate API calls */
+  history?: ReviewNoteResponse[];
   /** @deprecated No longer required - using task-based approval APIs */
   reviewId?: string;
   onClose: () => void;
@@ -320,6 +322,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
  */
 export function ReviewDetailModal({
   taskId,
+  history: historyProp,
   onClose,
 }: ReviewDetailModalProps) {
   const queryClient = useQueryClient();
@@ -337,8 +340,9 @@ export function ReviewDetailModal({
   // Fetch reviews for this task (for hasAiReview indicator)
   const { hasAiReview } = useReviewsByTaskId(taskId);
 
-  // Fetch review history
-  const { data: history } = useTaskStateHistory(taskId);
+  // Use pre-fetched history from prop, or fetch if not provided
+  const { data: fetchedHistory } = useTaskStateHistory(taskId, { enabled: !historyProp });
+  const history = historyProp ?? fetchedHistory ?? [];
 
   // Git diff data
   const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =

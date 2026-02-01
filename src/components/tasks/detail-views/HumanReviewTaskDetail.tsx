@@ -456,6 +456,7 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
       {showReviewModal && (
         <ReviewDetailModal
           taskId={task.id}
+          history={history}
           onClose={() => setShowReviewModal(false)}
         />
       )}
