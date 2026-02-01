@@ -462,7 +462,7 @@
       "phase": 64,
       "name": "Link Conversation IDs to Task State History",
       "prd": "specs/phases/prd_phase_64_link_conversation_ids.md",
-      "status": "active",
+      "status": "complete",
       "description": "Store conversation_id and agent_run_id in state history for history navigation"
     }
   ]
