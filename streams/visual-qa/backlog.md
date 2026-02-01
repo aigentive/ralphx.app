@@ -11,7 +11,7 @@
 - [x] **WelcomeScreen** - Full-screen welcome/onboarding view with animated constellation
 - [ ] ~~**MergeWorkflowDialog**~~ (no-trigger)
 - [ ] ~~**ApplyModal**~~ (orphan - not used in production code, only in tests)
-- [ ] **ReviewDetailModal** - Full-width review modal with diff viewer and history
+- [x] **ReviewDetailModal** - Full-width review modal with diff viewer and history
 - [ ] **ReviewNotesModal** - Modal for adding review notes with fix descriptions
 - [ ] **TaskRerunDialog** - Task re-run workflow modal (keep/revert/create new)
 - [ ] **TaskFullView** - Full-screen task view component

@@ -207,6 +207,18 @@ export function ReviewsPanel({
   const { allTasks, aiTasks, humanTasks, isLoading, aiCount, humanCount, totalCount } =
     useTasksAwaitingReview(projectId);
 
+  // Expose helper for visual tests (web mode only)
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) {
+      (window as any).__openReviewDetailModal = (taskId: string) => {
+        setSelectedTaskId(taskId);
+      };
+      return () => {
+        delete (window as any).__openReviewDetailModal;
+      };
+    }
+  }, []);
+
   // Keyboard navigation - Escape to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

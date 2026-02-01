@@ -32,12 +32,40 @@ export const mockReviewsApi = {
     return null;
   },
 
-  getByTaskId: async (_taskId: string): Promise<ReviewResponse[]> => {
-    return [];
+  getByTaskId: async (taskId: string): Promise<ReviewResponse[]> => {
+    // Return mock review for visual testing
+    return [
+      {
+        id: `review-${taskId}`,
+        task_id: taskId,
+        outcome: "approved",
+        comments: null,
+        created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      },
+    ];
   },
 
-  getTaskStateHistory: async (_taskId: string): Promise<ReviewNoteResponse[]> => {
-    return [];
+  getTaskStateHistory: async (taskId: string): Promise<ReviewNoteResponse[]> => {
+    // Return mock review history for visual testing
+    return [
+      {
+        id: `note-${taskId}-1`,
+        task_id: taskId,
+        reviewer: "ai",
+        outcome: "approved",
+        notes: "Code follows project patterns and passes all automated checks. No issues found.",
+        created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1 hour ago
+      },
+      {
+        id: `note-${taskId}-2`,
+        task_id: taskId,
+        reviewer: "human",
+        outcome: "changes_requested",
+        notes: "Please add error handling for edge cases in the validation logic.",
+        created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+      },
+    ];
   },
 
   approve: async (_input: ApproveReviewInput): Promise<void> => {
