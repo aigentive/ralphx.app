@@ -265,8 +265,6 @@ export function StateTimelineNav({
 }: StateTimelineNavProps) {
   const { data: transitions, isLoading, error } = useTaskStateTransitions(taskId);
 
-  console.log('[StateTimelineNav] Render:', { taskId, currentStatus, transitions, isLoading, error });
-
   // Derive unique timeline entries from transitions
   const timelineEntries = useMemo((): TimelineEntry[] => {
     // Transient states to skip in the timeline
@@ -322,12 +320,9 @@ export function StateTimelineNav({
 
   // Handle badge click
   const handleBadgeClick = (entry: TimelineEntry) => {
-    console.log('[StateTimelineNav] Badge clicked:', entry);
     if (entry.isCurrent) {
-      console.log('[StateTimelineNav] Exiting history mode (clicked current)');
       onStateSelect(null);
     } else {
-      console.log('[StateTimelineNav] Entering history mode:', { status: entry.status, timestamp: entry.timestamp });
       onStateSelect({ status: entry.status, timestamp: entry.timestamp });
     }
   };

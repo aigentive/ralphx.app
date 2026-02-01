@@ -139,6 +139,10 @@ export function useAgentRunStatus(conversationId: string | null) {
       const agentRun = query.state.data;
       return agentRun?.status === "running" ? 2000 : false;
     },
+    // Prevent excessive refetching when not polling
+    staleTime: 10 * 1000, // 10 seconds
+    refetchOnWindowFocus: false,
+    refetchOnMount: "always", // Always check on mount for initial state
   });
 }
 
