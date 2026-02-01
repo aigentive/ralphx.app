@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-01 02:00:52 - Phase 59 Task 3: Create StateTimelineNav component
+**What:**
+- Created `src/components/tasks/StateTimelineNav.tsx` - horizontal timeline navigation for task history
+- Component fetches state transitions via `useTaskStateTransitions` hook
+- Renders clickable badges in chronological order (from first state to current)
+- Highlights selected/current state with distinct styling
+- Shows timestamps on hover via tooltip
+- Clicking historical state triggers `onStateSelect` callback for history mode
+- Clicking current state clears selection (exits history mode)
+- Handles loading, error, and empty states gracefully
+- Returns null if only one state (no navigation needed)
+
+**Files:**
+- `src/components/tasks/StateTimelineNav.tsx` (NEW - timeline navigation component)
+
+**Commands:**
+- `npx eslint src/components/tasks/StateTimelineNav.tsx` (passed - no errors)
+- `npm run typecheck` (passed - no new errors in StateTimelineNav.tsx)
+
+**Visual Verification:** N/A - component not yet rendered (will be wired in Task 4)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 19:00:00 - Phase 59 Task 2: Create useTaskStateTransitions hook
 **What:**
 - Added StateTransitionResponseSchemaRaw Zod schema to tasks.schemas.ts
