@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 62,
+  "currentPhase": 63,
   "phases": [
     {
       "phase": 0,
@@ -448,14 +448,14 @@
       "phase": 62,
       "name": "Planning Lifecycle & Accepted State",
       "prd": "specs/phases/prd_phase_62_planning_lifecycle_accepted_state.md",
-      "status": "active",
+      "status": "complete",
       "description": "Accept entire plans, history section, worker dependency context, auto-blocking"
     },
     {
       "phase": 63,
       "name": "Wire Review Issues to UI Detail Views",
       "prd": "specs/phases/prd_phase_63_wire_review_issues_ui.md",
-      "status": "pending",
+      "status": "active",
       "description": "Wire Phase 60 review issues API to detail views with IssueList component"
     }
   ]
