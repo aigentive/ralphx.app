@@ -61,7 +61,7 @@ export const diffApi = {
   getTaskFileChanges: (taskId: string, projectPath: string): Promise<FileChange[]> =>
     typedInvokeWithTransform(
       "get_task_file_changes",
-      { task_id: taskId, project_path: projectPath },
+      { taskId, projectPath },
       FileChangesResponseSchema,
       (changes) => changes.map(transformFileChange)
     ),
@@ -76,7 +76,7 @@ export const diffApi = {
   getFileDiff: (filePath: string, projectPath: string): Promise<FileDiff> =>
     typedInvokeWithTransform(
       "get_file_diff",
-      { file_path: filePath, project_path: projectPath },
+      { filePath, projectPath },
       FileDiffSchema,
       transformFileDiff
     ),
