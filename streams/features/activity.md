@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-01 02:08:29 - Phase 59 Task 5: Add isHistorical prop to detail views
+**What:**
+- Extended `TaskDetailProps` interface with optional `isHistorical` boolean prop
+- Updated TaskDetailPanel to pass `isHistorical={true}` when `viewAsStatus` is set
+- Updated HumanReviewTaskDetail to hide ActionButtons when `isHistorical` is true
+- Updated EscalatedTaskDetail to hide ActionButtons when `isHistorical` is true
+- Updated CompletedTaskDetail to hide ActionButtons when `isHistorical` is true
+
+**Files:**
+- `src/components/tasks/TaskDetailPanel.tsx` (added isHistorical prop and passing logic)
+- `src/components/tasks/detail-views/HumanReviewTaskDetail.tsx` (hide actions in history mode)
+- `src/components/tasks/detail-views/EscalatedTaskDetail.tsx` (hide actions in history mode)
+- `src/components/tasks/detail-views/CompletedTaskDetail.tsx` (hide actions in history mode)
+
+**Commands:**
+- `npx eslint [modified files]` (passed - no errors)
+- `npm run typecheck` (passed - no new errors in modified files)
+
+**Visual Verification:** N/A - backend/hook changes only; Task 6 completes the UI feature
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 02:04:53 - Phase 59 Task 4: Add history mode state and banner to TaskDetailOverlay
 **What:**
 - Added `historyState` useState to TaskDetailOverlay for tracking selected historical state
