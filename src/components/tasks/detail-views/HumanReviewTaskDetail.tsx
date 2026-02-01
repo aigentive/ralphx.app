@@ -94,7 +94,7 @@ function ChecklistItem({ label, passed }: { label: string; passed: boolean }) {
  */
 function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const MAX_HEIGHT = 120; // collapsed height in pixels
+  const COLLAPSED_HEIGHT = 80; // pixels
 
   const checks = [
     { label: "Code follows project patterns", passed: true },
@@ -102,19 +102,23 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
     { label: "No linting errors", passed: true },
   ];
 
-  const hasLongContent = review?.notes && review.notes.length > 200;
+  const hasContent = review?.notes && review.notes.length > 100;
 
   return (
     <DetailCard>
-      {/* AI Badge header */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* AI Badge header - clickable to expand/collapse */}
+      <button
+        onClick={() => hasContent && setIsExpanded(!isExpanded)}
+        className="flex items-center gap-3 w-full text-left"
+        disabled={!hasContent}
+      >
         <div
           className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
           style={{ backgroundColor: "rgba(10, 132, 255, 0.15)" }}
         >
           <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <span className="text-[13px] font-semibold text-white/80 block">
             AI Review Summary
           </span>
@@ -122,15 +126,27 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
             Automated checks passed
           </span>
         </div>
-      </div>
-
-      {/* Summary text with collapsible container */}
-      {review?.notes && (
-        <div className="relative">
-          <div
-            className="pl-12 text-[13px] text-white/65 leading-relaxed mb-4 prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300"
+        {/* Expand indicator */}
+        {hasContent && (
+          <span
+            className="text-[11px] font-medium px-2 py-0.5 rounded"
             style={{
-              maxHeight: isExpanded ? "none" : `${MAX_HEIGHT}px`,
+              color: "hsl(217 90% 60%)",
+              backgroundColor: "hsla(217 90% 60% / 0.1)",
+            }}
+          >
+            {isExpanded ? "Less" : "More"}
+          </span>
+        )}
+      </button>
+
+      {/* Collapsible content area */}
+      {review?.notes && (
+        <div className="relative mt-4">
+          <div
+            className="pl-12 text-[13px] text-white/65 leading-relaxed prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300 ease-out"
+            style={{
+              maxHeight: isExpanded ? "1000px" : `${COLLAPSED_HEIGHT}px`,
             }}
           >
             <ReactMarkdown
@@ -139,37 +155,35 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
             >
               {review.notes}
             </ReactMarkdown>
+
+            {/* Checklist inside collapsible */}
+            <div className="space-y-0.5 mt-4 not-prose">
+              {checks.map((check, i) => (
+                <ChecklistItem key={i} {...check} />
+              ))}
+            </div>
           </div>
 
           {/* Gradient fade overlay when collapsed */}
-          {hasLongContent && !isExpanded && (
+          {hasContent && !isExpanded && (
             <div
-              className="absolute bottom-4 left-12 right-0 h-16 pointer-events-none"
+              className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none"
               style={{
-                background: "linear-gradient(to bottom, transparent, hsl(220 10% 12%))",
+                background: "linear-gradient(to bottom, hsla(220 10% 12% / 0), hsl(220 10% 12%))",
               }}
             />
-          )}
-
-          {/* Expand/collapse button */}
-          {hasLongContent && (
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="pl-12 text-[12px] font-medium transition-colors"
-              style={{ color: "hsl(217 90% 60%)" }}
-            >
-              {isExpanded ? "Show less" : "Show more"}
-            </button>
           )}
         </div>
       )}
 
-      {/* Checklist */}
-      <div className="pl-12 space-y-0.5 mt-3">
-        {checks.map((check, i) => (
-          <ChecklistItem key={i} {...check} />
-        ))}
-      </div>
+      {/* Checklist fallback when no notes */}
+      {!review?.notes && (
+        <div className="pl-12 space-y-0.5 mt-4">
+          {checks.map((check, i) => (
+            <ChecklistItem key={i} {...check} />
+          ))}
+        </div>
+      )}
     </DetailCard>
   );
 }
