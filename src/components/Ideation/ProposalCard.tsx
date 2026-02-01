@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { FileEdit, Trash2, Eye, ChevronDown, ChevronRight } from "lucide-react";
+import { FileEdit, Trash2, Eye, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskProposal } from "@/types/ideation";
 import { PRIORITY_CONFIG } from "./PlanningView.constants";
@@ -41,6 +41,10 @@ export interface ProposalCardProps {
   dependsOnDetails?: DependencyDetail[];
   blocksCount?: number;
   isOnCriticalPath?: boolean;
+  /** Whether the plan is in read-only mode (accepted/archived status) */
+  isReadOnly?: boolean;
+  /** Callback to navigate to the created task in kanban */
+  onNavigateToTask?: (taskId: string) => void;
 }
 
 // ============================================================================
@@ -61,6 +65,8 @@ export const ProposalCard = React.memo(function ProposalCard({
   dependsOnDetails,
   blocksCount,
   isOnCriticalPath,
+  isReadOnly = false,
+  onNavigateToTask,
 }: ProposalCardProps) {
   const [isDepsExpanded, setIsDepsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -156,48 +162,50 @@ export const ProposalCard = React.memo(function ProposalCard({
               {proposal.title}
             </h3>
 
-            {/* Actions */}
-            <div
-              className={cn(
-                "flex items-center gap-1 transition-opacity duration-150",
-                isHovered ? "opacity-100" : "opacity-0"
-              )}
-            >
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 rounded-lg transition-colors duration-150"
-                      style={{ background: "transparent" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                      onClick={(e) => { e.stopPropagation(); onEdit(proposal.id); }}
-                    >
-                      <FileEdit className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 rounded-lg transition-colors duration-150"
-                      style={{ background: "transparent" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                      onClick={(e) => { e.stopPropagation(); onRemove(proposal.id); }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" style={{ color: "hsl(0 70% 60%)" }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Remove</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+            {/* Actions - hidden in read-only mode */}
+            {!isReadOnly && (
+              <div
+                className={cn(
+                  "flex items-center gap-1 transition-opacity duration-150",
+                  isHovered ? "opacity-100" : "opacity-0"
+                )}
+              >
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-lg transition-colors duration-150"
+                        style={{ background: "transparent" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        onClick={(e) => { e.stopPropagation(); onEdit(proposal.id); }}
+                      >
+                        <FileEdit className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-lg transition-colors duration-150"
+                        style={{ background: "transparent" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        onClick={(e) => { e.stopPropagation(); onRemove(proposal.id); }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" style={{ color: "hsl(0 70% 60%)" }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Remove</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
           </div>
 
           <p
@@ -360,6 +368,21 @@ export const ProposalCard = React.memo(function ProposalCard({
             >
               <Eye className="w-3.5 h-3.5" />
               View plan as of proposal creation (v{proposal.planVersionAtCreation})
+            </button>
+          )}
+
+          {/* View Task link - shown when proposal has been converted to task */}
+          {proposal.createdTaskId && onNavigateToTask && (
+            <button
+              data-testid="view-task-link"
+              onClick={(e) => { e.stopPropagation(); onNavigateToTask(proposal.createdTaskId!); }}
+              className="mt-3 text-[12px] flex items-center gap-1.5 transition-colors duration-150"
+              style={{ color: "hsl(14 100% 60%)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "hsl(14 100% 65%)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "hsl(14 100% 60%)"; }}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Task →
             </button>
           )}
         </div>

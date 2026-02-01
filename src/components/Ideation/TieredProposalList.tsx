@@ -105,6 +105,10 @@ export interface TieredProposalListProps {
   onRemove: (proposalId: string) => void;
   /** Callback to view historical plan */
   onViewHistoricalPlan?: (artifactId: string, version: number) => void;
+  /** Whether the plan is in read-only mode (accepted/archived status) */
+  isReadOnly?: boolean;
+  /** Callback to navigate to a created task in kanban */
+  onNavigateToTask?: (taskId: string) => void;
 }
 
 // ============================================================================
@@ -214,6 +218,8 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   onEdit,
   onRemove,
   onViewHistoricalPlan,
+  isReadOnly,
+  onNavigateToTask,
 }: TieredProposalListProps) {
   // Compute tier assignments from dependency graph
   const { tierMap, maxTier } = useDependencyTiers(dependencyGraph);
@@ -322,6 +328,8 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                     isHighlighted?: boolean;
                     currentPlanVersion?: number;
                     onViewHistoricalPlan?: (artifactId: string, version: number) => void;
+                    isReadOnly?: boolean;
+                    onNavigateToTask?: (taskId: string) => void;
                   } = {};
 
                   if (dependsOnDetails.length > 0) {
@@ -342,6 +350,12 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                   }
                   if (onViewHistoricalPlan !== undefined) {
                     optionalProps.onViewHistoricalPlan = onViewHistoricalPlan;
+                  }
+                  if (isReadOnly) {
+                    optionalProps.isReadOnly = isReadOnly;
+                  }
+                  if (onNavigateToTask !== undefined) {
+                    optionalProps.onNavigateToTask = onNavigateToTask;
                   }
 
                   return (
