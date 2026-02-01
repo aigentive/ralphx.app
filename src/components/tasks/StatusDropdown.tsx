@@ -147,7 +147,7 @@ export function StatusDropdown({
           size="sm"
           disabled={disabled}
           className={cn(
-            "min-w-[120px] justify-between",
+            "gap-1.5",
             disabled && "opacity-50 cursor-not-allowed"
           )}
         >
