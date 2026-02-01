@@ -1,10 +1,10 @@
 /**
  * ProgressIndicator - macOS Tahoe-inspired progress bar
  *
- * Features:
- * - Rounded track with soft shadows
- * - Animated fill with subtle gradient
- * - Optional step counter
+ * Minimal design:
+ * - No container/card wrapper
+ * - Thin progress track (4px)
+ * - Flat colors, no gradients or borders
  */
 
 interface ProgressIndicatorProps {
@@ -30,29 +30,44 @@ export function ProgressIndicator({
   const showSteps = completedSteps !== undefined && totalSteps !== undefined && totalSteps > 0;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {/* Labels row */}
       <div className="flex items-center justify-between">
         {showSteps && (
-          <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
-            Step <span style={{ color: "hsl(220 10% 70%)" }}>{completedSteps}</span> of{" "}
-            <span style={{ color: "hsl(220 10% 70%)" }}>{totalSteps}</span>
+          <span
+            className="text-[12px]"
+            style={{ color: "hsl(220 10% 55%)" }}
+          >
+            Step{" "}
+            <span
+              className="font-medium tabular-nums"
+              style={{ color: "hsl(220 10% 80%)" }}
+            >
+              {completedSteps}
+            </span>
+            {" "}of{" "}
+            <span
+              className="font-medium tabular-nums"
+              style={{ color: "hsl(220 10% 80%)" }}
+            >
+              {totalSteps}
+            </span>
           </span>
         )}
         <span
-          className="text-[11px] font-medium ml-auto tabular-nums"
+          className="text-[12px] font-medium ml-auto tabular-nums"
           style={{ color }}
         >
           {Math.round(percentComplete)}%
         </span>
       </div>
 
-      {/* Progress track */}
+      {/* Progress track - thin, minimal */}
       <div
-        className="relative h-1.5 rounded-full overflow-hidden"
-        style={{ backgroundColor: "hsla(220 10% 100% / 0.08)" }}
+        className="relative h-1 rounded-full overflow-hidden"
+        style={{ backgroundColor: "hsl(220 10% 16%)" }}
       >
-        {/* Progress fill - flat, no gradient */}
+        {/* Progress fill */}
         <div
           className="absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out"
           style={{

@@ -68,9 +68,9 @@ export function StepList({ taskId, editable = false, hideCompletionNotes = false
     );
   }
 
-  // Steps list
+  // Steps list - minimal
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-0">
       {steps.map((step, index) => {
         const props = {
           step,
@@ -79,7 +79,17 @@ export function StepList({ taskId, editable = false, hideCompletionNotes = false
           hideCompletionNote: hideCompletionNotes,
           ...(editable && { onDelete: (stepId: string) => deleteStep.mutate(stepId) }),
         };
-        return <StepItem key={step.id} {...props} />;
+        return (
+          <div key={step.id}>
+            {index > 0 && (
+              <div
+                className="h-px mx-3"
+                style={{ backgroundColor: 'hsla(220 10% 100% / 0.04)' }}
+              />
+            )}
+            <StepItem {...props} />
+          </div>
+        );
       })}
     </div>
   );
