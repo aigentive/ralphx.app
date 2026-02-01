@@ -48,6 +48,6 @@ pub use status_transition::StatusTransition;
 pub use task_dependency_repository::TaskDependencyRepository;
 pub use task_proposal_repository::TaskProposalRepository;
 pub use task_qa_repository::TaskQARepository;
-pub use task_repository::TaskRepository;
+pub use task_repository::{StateHistoryMetadata, TaskRepository};
 pub use task_step_repository::TaskStepRepository;
 pub use workflow_repository::WorkflowRepository;

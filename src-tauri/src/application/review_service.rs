@@ -427,6 +427,7 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
 mod tests {
     use super::*;
     use crate::domain::entities::{ReviewId, ReviewStatus};
+    use crate::domain::repositories::StateHistoryMetadata;
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::RwLock;
@@ -601,6 +602,14 @@ mod tests {
 
         async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
             Ok(None)
+        }
+
+        async fn update_latest_state_history_metadata(
+            &self,
+            _task_id: &TaskId,
+            _metadata: &StateHistoryMetadata,
+        ) -> AppResult<()> {
+            Ok(())
         }
     }
 

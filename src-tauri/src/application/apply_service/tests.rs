@@ -6,8 +6,8 @@ use crate::domain::entities::{
     TaskProposal, TaskProposalId, TaskStep,
 };
 use crate::domain::repositories::{
-    IdeationSessionRepository, ProposalDependencyRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository, TaskStepRepository,
+    IdeationSessionRepository, ProposalDependencyRepository, StateHistoryMetadata,
+    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::error::AppResult;
 use std::collections::HashMap;
@@ -610,6 +610,14 @@ use std::sync::{Arc, Mutex};
 
         async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
             Ok(None)
+        }
+
+        async fn update_latest_state_history_metadata(
+            &self,
+            _task_id: &TaskId,
+            _metadata: &StateHistoryMetadata,
+        ) -> AppResult<()> {
+            Ok(())
         }
     }
 

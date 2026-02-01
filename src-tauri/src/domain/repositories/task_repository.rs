@@ -9,6 +9,15 @@ use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::StatusTransition;
 use crate::error::AppResult;
 
+/// Metadata to attach to state history entries for linking conversations to states
+#[derive(Debug, Clone)]
+pub struct StateHistoryMetadata {
+    /// The conversation ID associated with this state entry
+    pub conversation_id: String,
+    /// The agent run ID that was started for this state
+    pub agent_run_id: String,
+}
+
 /// Repository trait for Task persistence.
 /// Implementations can use SQLite, PostgreSQL, in-memory, etc.
 #[async_trait]
@@ -166,6 +175,29 @@ pub trait TaskRepository: Send + Sync {
     /// * `Some(Task)` - The oldest Ready task (FIFO ordering)
     /// * `None` - No Ready tasks exist across any project
     async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>>;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // State History Operations (Phase 64 - Link Conversation IDs)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Update the metadata of the most recent state history entry for a task
+    ///
+    /// Used to link a conversation_id and agent_run_id to the state transition
+    /// after the conversation/agent_run is created. This enables history
+    /// navigation to show the correct conversation for each historical state.
+    ///
+    /// # Arguments
+    /// * `task_id` - The task ID
+    /// * `metadata` - The metadata containing conversation_id and agent_run_id
+    ///
+    /// # Returns
+    /// * `Ok(())` - Metadata was updated successfully
+    /// * `Err` - No state history entry exists or database error
+    async fn update_latest_state_history_metadata(
+        &self,
+        task_id: &TaskId,
+        metadata: &StateHistoryMetadata,
+    ) -> AppResult<()>;
 }
 
 #[cfg(test)]
@@ -296,6 +328,14 @@ mod tests {
 
         async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
             Ok(None)
+        }
+
+        async fn update_latest_state_history_metadata(
+            &self,
+            _task_id: &TaskId,
+            _metadata: &StateHistoryMetadata,
+        ) -> AppResult<()> {
+            Ok(())
         }
     }
 

@@ -13,7 +13,7 @@ use chrono::Utc;
 use rusqlite::Connection;
 
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
-use crate::domain::repositories::{StatusTransition, TaskRepository};
+use crate::domain::repositories::{StateHistoryMetadata, StatusTransition, TaskRepository};
 use crate::error::{AppError, AppResult};
 
 /// SQLite implementation of TaskRepository for production use
@@ -481,6 +481,15 @@ impl TaskRepository for SqliteTaskRepository {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(e.to_string())),
         }
+    }
+
+    async fn update_latest_state_history_metadata(
+        &self,
+        task_id: &TaskId,
+        metadata: &StateHistoryMetadata,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        helpers::update_latest_state_history_metadata_sync(&conn, task_id, metadata)
     }
 }
 
