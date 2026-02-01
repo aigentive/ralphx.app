@@ -7,6 +7,7 @@
  * Part of the View Registry Pattern for state-specific task detail views.
  */
 
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { SectionTitle, ReviewTimeline } from "./shared";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -21,6 +22,11 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 import { api } from "@/lib/tauri";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
+import {
+  TaskRerunDialog,
+  type TaskRerunResult,
+} from "@/components/tasks/TaskRerunDialog";
+import { useGitDiff } from "@/hooks/useGitDiff";
 
 interface CompletedTaskDetailProps {
   task: Task;
@@ -136,20 +142,70 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
     task.id
   );
 
+  // Dialog state
+  const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Git diff data for commit info
+  const { commits } = useGitDiff({ taskId: task.id });
+
+  // Build commitInfo from the latest commit
+  const latestCommit = commits[0];
+  const commitInfo = {
+    sha: latestCommit?.shortSha ?? "unknown",
+    message: latestCommit?.message ?? "No commit info available",
+    hasDependentCommits: commits.length > 1,
+  };
+
   const { humanApproval } = getApprovalInfo(history);
 
   const handleViewDiff = () => {
     // Diff viewer not yet implemented
   };
 
-  const handleReopenTask = async () => {
-    try {
-      await api.tasks.move(task.id, "ready");
-      queryClient.invalidateQueries({ queryKey: taskKeys.list(task.projectId) });
-    } catch (error) {
-      console.error("Failed to reopen task:", error);
-    }
+  // Open the dialog instead of directly moving the task
+  const handleReopenTask = () => {
+    setError(null);
+    setIsRerunDialogOpen(true);
   };
+
+  // Handle dialog close
+  const handleDialogClose = useCallback(() => {
+    if (!isProcessing) {
+      setIsRerunDialogOpen(false);
+      setError(null);
+    }
+  }, [isProcessing]);
+
+  // Handle rerun confirmation
+  const handleRerunConfirm = useCallback(
+    async (result: TaskRerunResult) => {
+      setIsProcessing(true);
+      setError(null);
+
+      try {
+        // All options currently move to ready (full revert/duplicate is future work)
+        switch (result.option) {
+          case "keep_changes":
+          case "revert_commit":
+          case "create_new":
+            await api.tasks.move(task.id, "ready");
+            break;
+        }
+
+        await queryClient.invalidateQueries({
+          queryKey: taskKeys.list(task.projectId),
+        });
+        setIsRerunDialogOpen(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reopen task");
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [task.id, task.projectId, queryClient]
+  );
 
   const approvalTimeDisplay = humanApproval
     ? formatRelativeTime(humanApproval.created_at)
@@ -260,6 +316,17 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
 
       {/* Action Buttons */}
       <ActionButtons onViewDiff={handleViewDiff} onReopenTask={handleReopenTask} />
+
+      {/* Task Rerun Dialog */}
+      <TaskRerunDialog
+        isOpen={isRerunDialogOpen}
+        onClose={handleDialogClose}
+        onConfirm={handleRerunConfirm}
+        task={task}
+        commitInfo={commitInfo}
+        isProcessing={isProcessing}
+        error={error}
+      />
     </div>
   );
 }
