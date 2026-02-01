@@ -78,7 +78,7 @@ const commandHandlers: Record<
     };
   },
   get_tasks_awaiting_review: async (args) => {
-    const response = await mockTasksApi.getTasksAwaitingReview(args.project_id);
+    const response = await mockTasksApi.getTasksAwaitingReview(args.project_id as string);
     // Convert to snake_case for Tauri response
     return response.map((task) => ({
       id: task.id,

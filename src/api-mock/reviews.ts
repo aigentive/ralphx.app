@@ -37,11 +37,13 @@ export const mockReviewsApi = {
     return [
       {
         id: `review-${taskId}`,
+        project_id: "project-1",
         task_id: taskId,
-        outcome: "approved",
-        comments: null,
+        reviewer_type: "ai",
+        status: "approved",
+        notes: null,
         created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-        updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        completed_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
       },
     ];
   },
