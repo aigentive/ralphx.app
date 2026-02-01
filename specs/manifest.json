@@ -469,7 +469,7 @@
       "phase": 65,
       "name": "Activity Screen UX Improvement",
       "prd": "specs/phases/prd_phase_65_activity_screen_ux.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix scroll behavior, semantic tool rendering, markdown support, visual cleanup"
     }
   ]
