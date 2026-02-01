@@ -23,7 +23,7 @@ Phase: IN PROGRESS (discovered 10 new components)
 | ProposalEditModal | ✅ | proposal-edit.spec.ts | ✅ | covered |
 | PermissionDialog | 🚧 | — | — | blocked |
 | WelcomeScreen | ✅ | welcome-screen.spec.ts | ✅ | covered |
-| MergeWorkflowDialog | ✅ | merge-workflow-dialog.spec.ts | ✅ | covered |
+| MergeWorkflowDialog | — | — | — | ~~skipped~~ (no-trigger) |
 | ApplyModal | — | — | — | uncovered |
 | ReviewDetailModal | — | — | — | uncovered |
 | ReviewNotesModal | — | — | — | uncovered |
