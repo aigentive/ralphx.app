@@ -276,7 +276,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Explain tier context for priority understanding",
       "Commit: docs(plugin): add dependency context guidance to worker agent"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 11,
