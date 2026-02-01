@@ -28,7 +28,6 @@ import {
   Loader2,
   CheckCircle2,
   Bot,
-  Check,
   RotateCcw,
   MessageSquare,
   ShieldCheck,
@@ -55,54 +54,18 @@ function getLatestApprovedReview(
 }
 
 /**
- * ChecklistItem - Individual check with native styling
- */
-function ChecklistItem({ label, passed }: { label: string; passed: boolean }) {
-  return (
-    <div className="flex items-center gap-3 py-2">
-      <div
-        className="flex items-center justify-center w-5 h-5 rounded-md shrink-0"
-        style={{
-          backgroundColor: passed
-            ? "rgba(52, 199, 89, 0.15)"
-            : "rgba(255,255,255,0.06)",
-        }}
-      >
-        {passed ? (
-          <Check className="w-3 h-3" style={{ color: "#34c759" }} />
-        ) : (
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: "rgba(255,255,255,0.2)" }}
-          />
-        )}
-      </div>
-      <span
-        className="text-[13px]"
-        style={{
-          color: passed ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.4)",
-        }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
-/**
  * AIReviewCard - Summary of AI review findings with collapsible content
+ *
+ * Uses review.issues (parsed by backend) and review.notes (clean description)
  */
 function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const COLLAPSED_HEIGHT = 80; // pixels
+  const COLLAPSED_HEIGHT = 120; // pixels
 
-  const checks = [
-    { label: "Code follows project patterns", passed: true },
-    { label: "Tests are passing", passed: true },
-    { label: "No linting errors", passed: true },
-  ];
-
-  const hasContent = review?.notes && review.notes.length > 100;
+  // Backend parses issues and notes separately
+  const issues = review?.issues ?? [];
+  const summary = review?.notes ?? "";
+  const hasContent = summary.length > 100 || issues.length > 0;
 
   // Click handler - expand when collapsed, clicking anywhere
   const handleCardClick = () => {
@@ -131,33 +94,73 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
               AI Review Summary
             </span>
             <span className="text-[11px] text-white/45">
-              Automated checks passed
+              {issues.length > 0
+                ? `${issues.length} observation${issues.length > 1 ? "s" : ""}`
+                : "Automated checks passed"}
             </span>
           </div>
         </div>
 
-        {/* Collapsible content area */}
-        {review?.notes && (
+        {/* Content area */}
+        {(summary || issues.length > 0) && (
           <div className="relative mt-4">
             <div
-              className="pl-12 text-[13px] text-white/65 leading-relaxed prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300 ease-out"
+              className="pl-12 overflow-hidden transition-all duration-300 ease-out"
               style={{
-                maxHeight: isExpanded ? "1000px" : `${COLLAPSED_HEIGHT}px`,
+                maxHeight: isExpanded ? "2000px" : `${COLLAPSED_HEIGHT}px`,
               }}
             >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
-              >
-                {review.notes}
-              </ReactMarkdown>
+              {/* Issues list */}
+              {issues.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {issues.map((issue, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 text-[13px]"
+                    >
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase shrink-0 mt-0.5"
+                        style={{
+                          backgroundColor:
+                            issue.severity === "critical"
+                              ? "rgba(255, 69, 58, 0.2)"
+                              : issue.severity === "major"
+                              ? "rgba(255, 159, 10, 0.2)"
+                              : "rgba(48, 209, 88, 0.2)",
+                          color:
+                            issue.severity === "critical"
+                              ? "#ff453a"
+                              : issue.severity === "major"
+                              ? "#ff9f0a"
+                              : "#30d158",
+                        }}
+                      >
+                        {issue.severity}
+                      </span>
+                      <span className="text-white/65">
+                        {issue.file && (
+                          <span className="text-white/40 font-mono text-[12px]">
+                            {issue.file}:{" "}
+                          </span>
+                        )}
+                        {issue.description}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Checklist inside collapsible */}
-              <div className="space-y-0.5 mt-4 not-prose">
-                {checks.map((check, i) => (
-                  <ChecklistItem key={i} {...check} />
-                ))}
-              </div>
+              {/* Summary text */}
+              {summary && (
+                <div className="text-[13px] text-white/65 leading-relaxed prose prose-sm prose-invert max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {summary}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
 
             {/* Gradient fade overlay when collapsed */}
@@ -172,12 +175,13 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
           </div>
         )}
 
-        {/* Checklist fallback when no notes */}
-        {!review?.notes && (
-          <div className="pl-12 space-y-0.5 mt-4">
-            {checks.map((check, i) => (
-              <ChecklistItem key={i} {...check} />
-            ))}
+        {/* No content fallback */}
+        {!summary && issues.length === 0 && (
+          <div className="pl-12 mt-4">
+            <div className="flex items-center gap-2 text-[13px] text-white/50">
+              <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+              <span>All automated checks passed</span>
+            </div>
           </div>
         )}
 
