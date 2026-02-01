@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-01 20:15:00 - Phase 60 Task 7: Update CompleteReviewInput with structured issues support
+**What:**
+- Added `ReviewIssueInput` struct with all fields: title, description, severity, category, step_id, no_step_reason, file_path, line_number, code_snippet
+- Added builder methods to ReviewIssueInput: with_step_id, with_no_step_reason, with_category, with_description, with_file_location
+- Added `ReviewIssueValidationError` enum with EmptyTitle and MissingStepOrReason variants
+- Added `issues: Vec<ReviewIssueInput>` field to CompleteReviewInput
+- Added `needs_changes_with_issues()` constructor for creating CompleteReviewInput with structured issues
+- Updated validation: NeedsChanges outcome now requires non-empty issues
+- Updated validation: Each issue must have step_id OR no_step_reason
+- Updated all test files constructing CompleteReviewInput (complete_review.rs, review_service.rs, review_flows.rs)
+- Added helper function `make_needs_changes_input()` in review_flows.rs to reduce test code duplication
+
+**Files:**
+- `src-tauri/src/domain/tools/complete_review.rs` (added ReviewIssueInput, updated CompleteReviewInput)
+- `src-tauri/src/application/review_service.rs` (updated tests)
+- `src-tauri/tests/review_flows.rs` (added helper, updated tests)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3317+ tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 18:23:54 - Phase 60 Task 6: Add execute agent issue tracking commands
 **What:**
 - Added `MarkIssueInProgressInput` and `MarkIssueAddressedInput` input types to review_commands_types.rs
