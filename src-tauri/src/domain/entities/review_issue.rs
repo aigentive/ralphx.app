@@ -4,6 +4,7 @@
 // Lifecycle: open → in_progress → addressed → verified (or wontfix)
 
 use chrono::{DateTime, Utc};
+use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -382,6 +383,71 @@ impl ReviewIssue {
         self.status = IssueStatus::WontFix;
         self.resolution_notes = Some(reason);
         self.touch();
+    }
+
+    /// Deserializes a ReviewIssue from a SQLite row
+    /// Column order: id, review_note_id, task_id, step_id, no_step_reason, title, description,
+    ///               severity, category, file_path, line_number, code_snippet, status,
+    ///               resolution_notes, addressed_in_attempt, verified_by_review_id, created_at, updated_at
+    pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        let id: String = row.get(0)?;
+        let review_note_id: String = row.get(1)?;
+        let task_id: String = row.get(2)?;
+        let step_id: Option<String> = row.get(3)?;
+        let no_step_reason: Option<String> = row.get(4)?;
+        let title: String = row.get(5)?;
+        let description: Option<String> = row.get(6)?;
+        let severity_str: String = row.get(7)?;
+        let category_str: Option<String> = row.get(8)?;
+        let file_path: Option<String> = row.get(9)?;
+        let line_number: Option<i32> = row.get(10)?;
+        let code_snippet: Option<String> = row.get(11)?;
+        let status_str: String = row.get(12)?;
+        let resolution_notes: Option<String> = row.get(13)?;
+        let addressed_in_attempt: Option<i32> = row.get(14)?;
+        let verified_by_review_id_str: Option<String> = row.get(15)?;
+        let created_at_str: String = row.get(16)?;
+        let updated_at_str: String = row.get(17)?;
+
+        let severity = IssueSeverity::from_db_string(&severity_str)
+            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))))?;
+
+        let category = category_str
+            .map(|s| IssueCategory::from_db_string(&s))
+            .transpose()
+            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))))?;
+
+        let status = IssueStatus::from_db_string(&status_str)
+            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))))?;
+
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(16, rusqlite::types::Type::Text, Box::new(e)))?
+            .with_timezone(&Utc);
+
+        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
+            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(17, rusqlite::types::Type::Text, Box::new(e)))?
+            .with_timezone(&Utc);
+
+        Ok(Self {
+            id: ReviewIssueId::from_string(id),
+            review_note_id: ReviewNoteId::from_string(review_note_id),
+            task_id: TaskId::from_string(task_id),
+            step_id: step_id.map(TaskStepId::from_string),
+            no_step_reason,
+            title,
+            description,
+            severity,
+            category,
+            file_path,
+            line_number,
+            code_snippet,
+            status,
+            resolution_notes,
+            addressed_in_attempt,
+            verified_by_review_id: verified_by_review_id_str.map(ReviewNoteId::from_string),
+            created_at,
+            updated_at,
+        })
     }
 }
 
