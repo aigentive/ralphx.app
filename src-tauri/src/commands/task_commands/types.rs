@@ -145,4 +145,8 @@ pub struct StateTransitionResponse {
     pub trigger: String,
     /// When the transition occurred (RFC3339 format)
     pub timestamp: String,
+    /// Conversation ID associated with this state (for executing/reviewing states)
+    pub conversation_id: Option<String>,
+    /// Agent run ID that was started for this state
+    pub agent_run_id: Option<String>,
 }

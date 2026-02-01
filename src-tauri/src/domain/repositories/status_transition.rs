@@ -16,6 +16,12 @@ pub struct StatusTransition {
     pub trigger: String,
     /// When the transition occurred
     pub timestamp: DateTime<Utc>,
+    /// Conversation ID associated with this state (for executing/reviewing states)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+    /// Agent run ID that was started for this state
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_run_id: Option<String>,
 }
 
 impl StatusTransition {
@@ -26,6 +32,8 @@ impl StatusTransition {
             to,
             trigger: trigger.into(),
             timestamp: Utc::now(),
+            conversation_id: None,
+            agent_run_id: None,
         }
     }
 
@@ -41,6 +49,27 @@ impl StatusTransition {
             to,
             trigger: trigger.into(),
             timestamp,
+            conversation_id: None,
+            agent_run_id: None,
+        }
+    }
+
+    /// Create a status transition with full metadata (including conversation tracking)
+    pub fn with_metadata(
+        from: InternalStatus,
+        to: InternalStatus,
+        trigger: impl Into<String>,
+        timestamp: DateTime<Utc>,
+        conversation_id: Option<String>,
+        agent_run_id: Option<String>,
+    ) -> Self {
+        Self {
+            from,
+            to,
+            trigger: trigger.into(),
+            timestamp,
+            conversation_id,
+            agent_run_id,
         }
     }
 }
