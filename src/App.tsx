@@ -530,11 +530,11 @@ function AppContent() {
         <header
           className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-24 border-b z-50 select-none"
           style={{
-            background: "rgba(18,18,18,0.85)",
+            background: "hsla(220 10% 8% / 0.85)",
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
-            borderColor: "rgba(255,255,255,0.06)",
-            boxShadow: "0 1px 0 rgba(255,255,255,0.03)",
+            borderColor: "hsla(220 10% 100% / 0.06)",
+            boxShadow: "0 1px 0 hsla(220 10% 100% / 0.03)",
           }}
           data-tauri-drag-region
           data-testid="app-header"

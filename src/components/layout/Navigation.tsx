@@ -60,10 +60,10 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
                 )}
                 style={{
                   background: isActive
-                    ? "rgba(255,107,53,0.1)"
+                    ? "hsla(14 100% 60% / 0.1)"
                     : "transparent",
-                  border: isActive ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                  color: isActive ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                  border: isActive ? "1px solid hsla(14 100% 60% / 0.15)" : "1px solid transparent",
+                  color: isActive ? "hsl(14 100% 60%)" : "hsl(220 10% 55%)",
                 }}
                 data-testid={`nav-${view}`}
                 aria-current={isActive ? "page" : undefined}
