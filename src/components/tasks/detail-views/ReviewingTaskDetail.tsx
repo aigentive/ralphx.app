@@ -13,12 +13,33 @@ import type { Task } from "@/types/task";
 
 interface ReviewingTaskDetailProps {
   task: Task;
+  /** True when viewing a historical state - shows completed state instead of loading */
+  isHistorical?: boolean;
 }
 
 /**
- * ReviewingBadge - Shows animated indicator for active review
+ * ReviewingBadge - Shows animated indicator for active review or completed for historical
  */
-function ReviewingBadge() {
+function ReviewingBadge({ isHistorical }: { isHistorical?: boolean | undefined }) {
+  if (isHistorical) {
+    return (
+      <div
+        data-testid="reviewing-badge"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
+        style={{
+          backgroundColor: "rgba(16, 185, 129, 0.15)",
+          color: "var(--status-success)",
+        }}
+      >
+        <CheckCircle2
+          className="w-3 h-3"
+          style={{ color: "var(--status-success)" }}
+        />
+        Completed
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="reviewing-badge"
@@ -105,15 +126,23 @@ function ReviewStepItem({
  * review step tracking from the backend. The active step is shown as
  * "Examining changes" which is typically the main review activity.
  */
-function ReviewStepsIndicator() {
+function ReviewStepsIndicator({ isHistorical }: { isHistorical?: boolean | undefined }) {
   // For now, we simulate review progress - in a full implementation,
   // this would come from the review process itself
-  const steps: Array<{ label: string; status: ReviewStepStatus }> = [
-    { label: "Gathering context", status: "completed" },
-    { label: "Examining changes", status: "active" },
-    { label: "Running checks", status: "pending" },
-    { label: "Generating feedback", status: "pending" },
-  ];
+  // When viewing historical state, show all steps as completed
+  const steps: Array<{ label: string; status: ReviewStepStatus }> = isHistorical
+    ? [
+        { label: "Gathering context", status: "completed" },
+        { label: "Examining changes", status: "completed" },
+        { label: "Running checks", status: "completed" },
+        { label: "Generating feedback", status: "completed" },
+      ]
+    : [
+        { label: "Gathering context", status: "completed" },
+        { label: "Examining changes", status: "active" },
+        { label: "Running checks", status: "pending" },
+        { label: "Generating feedback", status: "pending" },
+      ];
 
   return (
     <div
@@ -121,7 +150,7 @@ function ReviewStepsIndicator() {
       className="rounded-lg p-3"
       style={{
         backgroundColor: "rgba(0, 0, 0, 0.2)",
-        border: "1px solid rgba(59, 130, 246, 0.15)",
+        border: isHistorical ? "1px solid rgba(16, 185, 129, 0.15)" : "1px solid rgba(59, 130, 246, 0.15)",
       }}
     >
       {steps.map((step, index) => (
@@ -190,59 +219,43 @@ function FilesUnderReview() {
  *
  * Renders task information for reviewing state.
  * Shows: AI review banner, review steps progress, files under review, and description.
+ * When isHistorical is true, shows a completed state instead of loading indicators.
  */
-export function ReviewingTaskDetail({ task }: ReviewingTaskDetailProps) {
+export function ReviewingTaskDetail({ task, isHistorical }: ReviewingTaskDetailProps) {
   return (
     <div
       data-testid="reviewing-task-detail"
       data-task-id={task.id}
       className="space-y-5"
     >
-      {/* AI Review In Progress Banner */}
+      {/* AI Review Banner - shows completed state when historical */}
       <div
         data-testid="reviewing-banner"
         className="flex items-center gap-2 px-3 py-2 rounded-lg"
         style={{
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          border: "1px solid rgba(59, 130, 246, 0.25)",
+          backgroundColor: isHistorical ? "rgba(16, 185, 129, 0.1)" : "rgba(59, 130, 246, 0.1)",
+          border: isHistorical ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(59, 130, 246, 0.25)",
         }}
       >
         <Bot
           className="w-4 h-4 shrink-0"
-          style={{ color: "var(--status-info)" }}
+          style={{ color: isHistorical ? "var(--status-success)" : "var(--status-info)" }}
         />
         <span
           className="text-[13px] font-medium"
-          style={{ color: "var(--status-info)" }}
+          style={{ color: isHistorical ? "var(--status-success)" : "var(--status-info)" }}
         >
-          AI REVIEW IN PROGRESS
+          {isHistorical ? "AI REVIEW COMPLETED" : "AI REVIEW IN PROGRESS"}
         </span>
         <div className="ml-auto">
-          <ReviewingBadge />
+          <ReviewingBadge isHistorical={isHistorical} />
         </div>
-      </div>
-
-      {/* Header: Title */}
-      <div className="space-y-1">
-        <h2
-          data-testid="reviewing-task-title"
-          className="text-base font-semibold text-white/90"
-          style={{
-            letterSpacing: "-0.02em",
-            lineHeight: "1.3",
-          }}
-        >
-          {task.title}
-        </h2>
-        <p className="text-[12px] text-white/50">
-          Category: <span className="text-white/70">{task.category}</span>
-        </p>
       </div>
 
       {/* Review Steps Indicator */}
       <div data-testid="reviewing-steps-section">
         <SectionTitle>Review Steps</SectionTitle>
-        <ReviewStepsIndicator />
+        <ReviewStepsIndicator isHistorical={isHistorical} />
       </div>
 
       {/* Files Under Review */}

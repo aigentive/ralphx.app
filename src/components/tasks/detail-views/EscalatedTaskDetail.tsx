@@ -411,23 +411,6 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
         <EscalatedBadge />
       </div>
 
-      {/* Header: Title */}
-      <div className="space-y-1">
-        <h2
-          data-testid="escalated-task-title"
-          className="text-base font-semibold text-white/90"
-          style={{
-            letterSpacing: "-0.02em",
-            lineHeight: "1.3",
-          }}
-        >
-          {task.title}
-        </h2>
-        <p className="text-[12px] text-white/50">
-          Category: <span className="text-white/70">{task.category}</span>
-        </p>
-      </div>
-
       {/* Loading state */}
       {isLoading && (
         <div
