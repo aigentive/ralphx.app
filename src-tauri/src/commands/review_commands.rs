@@ -8,9 +8,10 @@ use crate::domain::entities::{ProjectId, ReviewId, ReviewNote, ReviewOutcome, Re
 
 // Re-export types for external use
 pub use super::review_commands_types::{
-    ApproveFixTaskInput, ApproveReviewInput, FixTaskAttemptsResponse, RejectFixTaskInput,
-    RejectReviewInput, RequestChangesInput, ReviewActionResponse, ReviewNoteResponse,
-    ReviewResponse,
+    ApproveFixTaskInput, ApproveReviewInput, FixTaskAttemptsResponse, IssueProgressResponse,
+    RejectFixTaskInput, RejectReviewInput, ReopenIssueInput, RequestChangesInput,
+    ReviewActionResponse, ReviewIssueResponse, ReviewNoteResponse, ReviewResponse,
+    VerifyIssueInput,
 };
 
 // ============================================================================
@@ -519,6 +520,127 @@ pub async fn request_task_changes_for_review(
     }));
 
     Ok(())
+}
+
+// ============================================================================
+// Commands - Review Issue operations
+// ============================================================================
+
+use crate::domain::entities::ReviewIssueId;
+use crate::domain::entities::ReviewNoteId;
+
+/// Get issues for a task, optionally filtered by status
+/// status_filter: "open" returns only open issues, "all" or None returns all issues
+#[tauri::command]
+pub async fn get_task_issues(
+    task_id: String,
+    status_filter: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReviewIssueResponse>, String> {
+    let task_id = TaskId::from_string(task_id);
+
+    let issues = match status_filter.as_deref() {
+        Some("open") => {
+            state
+                .review_issue_repo
+                .get_open_by_task_id(&task_id)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        _ => {
+            state
+                .review_issue_repo
+                .get_by_task_id(&task_id)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+    };
+
+    Ok(issues.into_iter().map(ReviewIssueResponse::from).collect())
+}
+
+/// Get issue progress summary for a task
+#[tauri::command]
+pub async fn get_issue_progress(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<IssueProgressResponse, String> {
+    let task_id = TaskId::from_string(task_id);
+
+    let summary = state
+        .review_issue_repo
+        .get_summary(&task_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(IssueProgressResponse::from(summary))
+}
+
+/// Verify that an issue has been fixed (Addressed -> Verified)
+/// Called by the reviewer during subsequent review
+#[tauri::command]
+pub async fn verify_issue(
+    input: VerifyIssueInput,
+    state: State<'_, AppState>,
+) -> Result<ReviewIssueResponse, String> {
+    let issue_id = ReviewIssueId::from_string(input.issue_id);
+    let review_note_id = ReviewNoteId::from_string(input.review_note_id);
+
+    let mut issue = state
+        .review_issue_repo
+        .get_by_id(&issue_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Issue not found: {}", issue_id.as_str()))?;
+
+    if issue.status != crate::domain::entities::IssueStatus::Addressed {
+        return Err(format!(
+            "Cannot verify issue: current status is {} (expected addressed)",
+            issue.status
+        ));
+    }
+
+    issue.verify(review_note_id);
+    state
+        .review_issue_repo
+        .update(&issue)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewIssueResponse::from(issue))
+}
+
+/// Reopen an issue that was not actually fixed (Addressed -> Open)
+/// Called by the reviewer during subsequent review when fix is insufficient
+#[tauri::command]
+pub async fn reopen_issue(
+    input: ReopenIssueInput,
+    state: State<'_, AppState>,
+) -> Result<ReviewIssueResponse, String> {
+    let issue_id = ReviewIssueId::from_string(input.issue_id);
+
+    let mut issue = state
+        .review_issue_repo
+        .get_by_id(&issue_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Issue not found: {}", issue_id.as_str()))?;
+
+    if issue.status != crate::domain::entities::IssueStatus::Addressed {
+        return Err(format!(
+            "Cannot reopen issue: current status is {} (expected addressed)",
+            issue.status
+        ));
+    }
+
+    issue.reopen(input.reason);
+    state
+        .review_issue_repo
+        .update(&issue)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewIssueResponse::from(issue))
 }
 
 #[cfg(test)]

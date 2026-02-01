@@ -4,6 +4,40 @@
 
 ---
 
+### 2026-02-01 07:45:00 - Phase 60 Task 5: Add Tauri commands for review issues (review agent tools)
+**What:**
+- Added `review_issue_repo` field to AppState with both SQLite and memory implementations
+- Created MemoryReviewIssueRepository for testing
+- Added Tauri commands for review issue operations:
+  - `get_task_issues`: Get issues by task with optional status filter ("open" or "all")
+  - `get_issue_progress`: Get issue progress summary with severity breakdown
+  - `verify_issue`: Verify an addressed issue (Addressed → Verified)
+  - `reopen_issue`: Reopen an issue that wasn't properly fixed (Addressed → Open)
+- Added response types in review_commands_types.rs:
+  - `ReviewIssueResponse`: Full issue response with all fields
+  - `IssueProgressResponse`: Progress summary with severity breakdown
+  - `SeverityBreakdownResponse`, `SeverityCountResponse`: Severity statistics
+  - `VerifyIssueInput`, `ReopenIssueInput`: Input types for commands
+- Registered all new commands in Tauri invoke handler
+
+**Files:**
+- `src-tauri/src/application/app_state.rs` (added review_issue_repo)
+- `src-tauri/src/infrastructure/memory/memory_review_issue_repo.rs` (NEW)
+- `src-tauri/src/infrastructure/memory/mod.rs` (added exports)
+- `src-tauri/src/commands/review_commands.rs` (added 4 commands)
+- `src-tauri/src/commands/review_commands_types.rs` (added response/input types)
+- `src-tauri/src/lib.rs` (registered commands)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test review_issue` (82 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 06:30:00 - Phase 60 Task 4: Create ReviewIssue service with business logic
 **What:**
 - Created ReviewIssueService in application layer with full business logic
