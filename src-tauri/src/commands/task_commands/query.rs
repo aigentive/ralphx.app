@@ -3,7 +3,7 @@
 use tauri::State;
 use crate::application::AppState;
 use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
-use super::types::{TaskResponse, TaskListResponse, StatusTransition};
+use super::types::{TaskResponse, TaskListResponse, StatusTransition, StateTransitionResponse};
 use super::helpers::status_to_label;
 
 /// List tasks for a project with pagination support
@@ -154,6 +154,57 @@ pub async fn search_tasks(
     let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
 
     Ok(task_responses)
+}
+
+/// Get state transition history for a task
+///
+/// Returns a chronological list of all status transitions a task has gone through.
+/// Used by the StateTimelineNav component for displaying task state history.
+///
+/// # Arguments
+/// * `task_id` - The task ID to get state history for
+///
+/// # Returns
+/// * `Vec<StateTransitionResponse>` - Chronologically ordered list of state transitions
+///
+/// # Examples
+/// ```ignore
+/// // Get state history for a completed task
+/// // Returns transitions like:
+/// // [
+/// //   { from_status: null, to_status: "backlog", trigger: "user", timestamp: "..." },
+/// //   { from_status: "backlog", to_status: "ready", trigger: "user", timestamp: "..." },
+/// //   { from_status: "ready", to_status: "executing", trigger: "agent", timestamp: "..." },
+/// //   { from_status: "executing", to_status: "approved", trigger: "reviewer", timestamp: "..." }
+/// // ]
+/// get_task_state_transitions("task-123")
+/// ```
+#[tauri::command]
+pub async fn get_task_state_transitions(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<StateTransitionResponse>, String> {
+    let task_id_obj = TaskId::from_string(task_id);
+
+    // Get status history from repository
+    let transitions = state
+        .task_repo
+        .get_status_history(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Convert domain StatusTransition to StateTransitionResponse
+    let responses: Vec<StateTransitionResponse> = transitions
+        .into_iter()
+        .map(|t| StateTransitionResponse {
+            from_status: Some(t.from.as_str().to_string()),
+            to_status: t.to.as_str().to_string(),
+            trigger: t.trigger,
+            timestamp: t.timestamp.to_rfc3339(),
+        })
+        .collect();
+
+    Ok(responses)
 }
 
 /// Get valid status transitions for a task

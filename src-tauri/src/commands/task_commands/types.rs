@@ -132,3 +132,17 @@ pub struct StatusTransition {
     /// User-friendly label for the UI (e.g., "Ready for Work", "Cancel")
     pub label: String,
 }
+
+/// Response for historical state transition records
+/// Used by StateTimelineNav for displaying task state history
+#[derive(Debug, Serialize)]
+pub struct StateTransitionResponse {
+    /// Status transitioned from (null for initial state)
+    pub from_status: Option<String>,
+    /// Status transitioned to
+    pub to_status: String,
+    /// What triggered this transition (e.g., "user", "agent", "system")
+    pub trigger: String,
+    /// When the transition occurred (RFC3339 format)
+    pub timestamp: String,
+}
