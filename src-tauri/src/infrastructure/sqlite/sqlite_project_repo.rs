@@ -37,8 +37,8 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO projects (id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO projects (id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 project.id.as_str(),
                 project.name,
@@ -47,6 +47,7 @@ impl ProjectRepository for SqliteProjectRepository {
                 project.worktree_path,
                 project.worktree_branch,
                 project.base_branch,
+                project.worktree_parent_directory,
                 project.created_at.to_rfc3339(),
                 project.updated_at.to_rfc3339(),
             ],
@@ -60,7 +61,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, created_at, updated_at
+            "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, created_at, updated_at
              FROM projects WHERE id = ?1",
             [id.as_str()],
             |row| Project::from_row(row),
@@ -78,7 +79,7 @@ impl ProjectRepository for SqliteProjectRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, created_at, updated_at
+                "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, created_at, updated_at
                  FROM projects ORDER BY name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -96,7 +97,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "UPDATE projects SET name = ?2, working_directory = ?3, git_mode = ?4, worktree_path = ?5, worktree_branch = ?6, base_branch = ?7, updated_at = ?8
+            "UPDATE projects SET name = ?2, working_directory = ?3, git_mode = ?4, worktree_path = ?5, worktree_branch = ?6, base_branch = ?7, worktree_parent_directory = ?8, updated_at = ?9
              WHERE id = ?1",
             rusqlite::params![
                 project.id.as_str(),
@@ -106,6 +107,7 @@ impl ProjectRepository for SqliteProjectRepository {
                 project.worktree_path,
                 project.worktree_branch,
                 project.base_branch,
+                project.worktree_parent_directory,
                 project.updated_at.to_rfc3339(),
             ],
         )
@@ -127,7 +129,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, created_at, updated_at
+            "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, created_at, updated_at
              FROM projects WHERE working_directory = ?1",
             [path],
             |row| Project::from_row(row),

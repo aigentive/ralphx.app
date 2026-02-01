@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-02 23:45:00 - Phase 66 Task 3: Add git_mode and worktree_parent_directory fields to Project
+**What:**
+- Added worktree_parent_directory field to Project entity (git_mode already existed)
+- Created migration v9_project_git_fields.rs with IF NOT EXISTS column
+- Updated ProjectRepository INSERT/UPDATE/SELECT to handle new field
+- Updated frontend types (Project interface, Zod schemas, transform function)
+- Fixed mock-data.ts to include new field
+- Bumped SCHEMA_VERSION to 9
+
+**Files Modified:**
+- `src-tauri/src/domain/entities/project.rs` (entity + from_row + tests)
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs` (version bump + registration)
+- `src-tauri/src/infrastructure/sqlite/migrations/v9_project_git_fields.rs` (new)
+- `src-tauri/src/infrastructure/sqlite/migrations/v9_project_git_fields_tests.rs` (new)
+- `src-tauri/src/infrastructure/sqlite/migrations/v1_initial_schema_tests.rs` (version constant)
+- `src-tauri/src/infrastructure/sqlite/sqlite_project_repo.rs` (INSERT/UPDATE + queries)
+- `src/types/project.ts` (Zod schema + interface + transform)
+- `src/test/mock-data.ts` (mock project factory)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - all 3340 tests)
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:30:00 - Phase 66 Task 2: Add task_branch, worktree_path, merge_commit_sha fields
 **What:**
 - Added 3 new fields to Task entity: task_branch, worktree_path, merge_commit_sha
