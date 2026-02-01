@@ -655,10 +655,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_review_needs_changes_creates_fix_task() {
+        use crate::domain::entities::IssueSeverity;
+        use crate::domain::tools::ReviewIssueInput;
         let (review_repo, task_repo, project_id, task_id) = setup();
         let service = ReviewService::new(review_repo.clone(), task_repo.clone());
         let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-        let input = CompleteReviewInput::needs_changes("Missing error handling", "Add try-catch");
+        let issue = ReviewIssueInput::new("Missing error handling", IssueSeverity::Major)
+            .with_no_step_reason("General code quality");
+        let input = CompleteReviewInput::needs_changes_with_issues(
+            "Missing error handling",
+            "Add try-catch",
+            vec![issue],
+        );
         let result = service.process_review_result(&mut review, &input).await.unwrap();
         assert!(result.is_some());
         let fix_task_id = result.unwrap();
@@ -734,12 +742,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_reject_fix_task_creates_new_fix() {
+        use crate::domain::entities::IssueSeverity;
+        use crate::domain::tools::ReviewIssueInput;
         let (review_repo, task_repo, project_id, task_id) = setup();
         let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), ReviewSettings::with_fix_approval());
 
         // Create a review and fix task
         let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-        let input = CompleteReviewInput::needs_changes("Missing tests", "Add tests");
+        let issue = ReviewIssueInput::new("Missing tests", IssueSeverity::Major)
+            .with_no_step_reason("General requirement");
+        let input = CompleteReviewInput::needs_changes_with_issues(
+            "Missing tests",
+            "Add tests",
+            vec![issue],
+        );
         let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap().unwrap();
 
         // Reject the fix task
@@ -758,6 +774,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
+        use crate::domain::entities::IssueSeverity;
+        use crate::domain::tools::ReviewIssueInput;
         let (review_repo, task_repo, project_id, task_id) = setup();
         // Set max_fix_attempts to 1
         let settings = ReviewSettings::with_max_attempts(1);
@@ -765,7 +783,13 @@ mod tests {
 
         // Create a review and fix task
         let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-        let input = CompleteReviewInput::needs_changes("Missing tests", "Add tests");
+        let issue = ReviewIssueInput::new("Missing tests", IssueSeverity::Major)
+            .with_no_step_reason("General requirement");
+        let input = CompleteReviewInput::needs_changes_with_issues(
+            "Missing tests",
+            "Add tests",
+            vec![issue],
+        );
         let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap().unwrap();
 
         // At this point we have 1 fix action, which equals max_fix_attempts
@@ -782,6 +806,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_fix_attempt_count() {
+        use crate::domain::entities::IssueSeverity;
+        use crate::domain::tools::ReviewIssueInput;
         let (review_repo, task_repo, project_id, task_id) = setup();
         let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
@@ -790,7 +816,13 @@ mod tests {
 
         // Create a review and add a fix task
         let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-        let input = CompleteReviewInput::needs_changes("Missing tests", "Add tests");
+        let issue = ReviewIssueInput::new("Missing tests", IssueSeverity::Major)
+            .with_no_step_reason("General requirement");
+        let input = CompleteReviewInput::needs_changes_with_issues(
+            "Missing tests",
+            "Add tests",
+            vec![issue],
+        );
         service.process_review_result(&mut review, &input).await.unwrap();
 
         // Now should be 1

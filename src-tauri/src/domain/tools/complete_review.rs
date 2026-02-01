@@ -1,6 +1,7 @@
 // complete_review tool input schema for the reviewer agent
 // This defines the structure the AI reviewer uses to report review outcomes
 
+use crate::domain::entities::{IssueCategory, IssueSeverity, TaskStepId};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -61,6 +62,135 @@ impl std::fmt::Display for ParseReviewToolOutcomeError {
 impl std::error::Error for ParseReviewToolOutcomeError {}
 
 // ========================================
+// ReviewIssueInput
+// ========================================
+
+/// Input struct for creating a structured issue during review
+///
+/// Each issue must either link to a specific task step (via `step_id`) or
+/// provide a justification for why it doesn't relate to a step (via `no_step_reason`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewIssueInput {
+    /// Short title describing the issue
+    pub title: String,
+    /// Optional detailed description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Severity of the issue (critical, major, minor, suggestion)
+    pub severity: IssueSeverity,
+    /// Category of the issue (bug, missing, quality, design)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<IssueCategory>,
+    /// Optional link to a specific task step this issue relates to
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_id: Option<TaskStepId>,
+    /// Required justification if step_id is None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_step_reason: Option<String>,
+    /// Optional file path where issue was found
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+    /// Optional line number in the file
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_number: Option<i32>,
+    /// Optional code snippet showing the issue
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_snippet: Option<String>,
+}
+
+impl ReviewIssueInput {
+    /// Create a new issue input with required fields only
+    pub fn new(title: impl Into<String>, severity: IssueSeverity) -> Self {
+        Self {
+            title: title.into(),
+            description: None,
+            severity,
+            category: None,
+            step_id: None,
+            no_step_reason: None,
+            file_path: None,
+            line_number: None,
+            code_snippet: None,
+        }
+    }
+
+    /// Set the step_id for this issue
+    pub fn with_step_id(mut self, step_id: TaskStepId) -> Self {
+        self.step_id = Some(step_id);
+        self
+    }
+
+    /// Set the no_step_reason for this issue
+    pub fn with_no_step_reason(mut self, reason: impl Into<String>) -> Self {
+        self.no_step_reason = Some(reason.into());
+        self
+    }
+
+    /// Set the category for this issue
+    pub fn with_category(mut self, category: IssueCategory) -> Self {
+        self.category = Some(category);
+        self
+    }
+
+    /// Set the description for this issue
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Set the file location for this issue
+    pub fn with_file_location(mut self, file_path: impl Into<String>, line_number: Option<i32>) -> Self {
+        self.file_path = Some(file_path.into());
+        self.line_number = line_number;
+        self
+    }
+
+    /// Validate the issue input
+    ///
+    /// Returns Ok(()) if valid, or the first validation error encountered.
+    pub fn validate(&self) -> Result<(), ReviewIssueValidationError> {
+        // Title must not be empty
+        if self.title.trim().is_empty() {
+            return Err(ReviewIssueValidationError::EmptyTitle);
+        }
+
+        // Either step_id OR no_step_reason must be provided
+        let has_step = self.step_id.is_some();
+        let has_reason = self.no_step_reason.as_ref().is_some_and(|r| !r.trim().is_empty());
+
+        if !has_step && !has_reason {
+            return Err(ReviewIssueValidationError::MissingStepOrReason);
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for ReviewIssueInput
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewIssueValidationError {
+    /// Title field is empty
+    EmptyTitle,
+    /// Either step_id or no_step_reason must be provided
+    MissingStepOrReason,
+}
+
+impl std::fmt::Display for ReviewIssueValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReviewIssueValidationError::EmptyTitle => {
+                write!(f, "issue title cannot be empty")
+            }
+            ReviewIssueValidationError::MissingStepOrReason => {
+                write!(f, "issue must have either step_id or no_step_reason")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ReviewIssueValidationError {}
+
+// ========================================
 // CompleteReviewInput
 // ========================================
 
@@ -68,8 +198,8 @@ impl std::error::Error for ParseReviewToolOutcomeError {}
 ///
 /// The reviewer agent calls this tool to report the outcome of a code review.
 /// Based on the outcome, different fields are required:
-/// - `approved`: Only `notes` is required
-/// - `needs_changes`: `notes` and `fix_description` are required
+/// - `approved`: Only `notes` is required, `issues` is optional
+/// - `needs_changes`: `notes`, `fix_description`, and non-empty `issues` are required
 /// - `escalate`: `notes` and `escalation_reason` are required
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompleteReviewInput {
@@ -77,6 +207,9 @@ pub struct CompleteReviewInput {
     pub outcome: ReviewToolOutcome,
     /// Detailed review notes explaining the decision
     pub notes: String,
+    /// Structured issues found during review (required if outcome is needs_changes)
+    #[serde(default)]
+    pub issues: Vec<ReviewIssueInput>,
     /// Description for the fix task (required if outcome is needs_changes)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_description: Option<String>,
@@ -98,6 +231,10 @@ pub enum CompleteReviewValidationError {
     MissingEscalationReason,
     /// escalation_reason is empty when outcome is escalate
     EmptyEscalationReason,
+    /// issues is required when outcome is needs_changes
+    MissingIssues,
+    /// An issue has a validation error (index, error)
+    InvalidIssue(usize, ReviewIssueValidationError),
 }
 
 impl std::fmt::Display for CompleteReviewValidationError {
@@ -118,6 +255,12 @@ impl std::fmt::Display for CompleteReviewValidationError {
             CompleteReviewValidationError::EmptyEscalationReason => {
                 write!(f, "escalation_reason cannot be empty when outcome is 'escalate'")
             }
+            CompleteReviewValidationError::MissingIssues => {
+                write!(f, "issues are required when outcome is 'needs_changes'")
+            }
+            CompleteReviewValidationError::InvalidIssue(idx, err) => {
+                write!(f, "issue at index {}: {}", idx, err)
+            }
         }
     }
 }
@@ -130,16 +273,36 @@ impl CompleteReviewInput {
         Self {
             outcome: ReviewToolOutcome::Approved,
             notes: notes.into(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: None,
         }
     }
 
     /// Create a new needs_changes review input
+    ///
+    /// Note: This is a legacy constructor that creates an empty issues list.
+    /// For proper validation, use `needs_changes_with_issues` instead.
     pub fn needs_changes(notes: impl Into<String>, fix_description: impl Into<String>) -> Self {
         Self {
             outcome: ReviewToolOutcome::NeedsChanges,
             notes: notes.into(),
+            issues: Vec::new(),
+            fix_description: Some(fix_description.into()),
+            escalation_reason: None,
+        }
+    }
+
+    /// Create a new needs_changes review input with structured issues
+    pub fn needs_changes_with_issues(
+        notes: impl Into<String>,
+        fix_description: impl Into<String>,
+        issues: Vec<ReviewIssueInput>,
+    ) -> Self {
+        Self {
+            outcome: ReviewToolOutcome::NeedsChanges,
+            notes: notes.into(),
+            issues,
             fix_description: Some(fix_description.into()),
             escalation_reason: None,
         }
@@ -150,6 +313,7 @@ impl CompleteReviewInput {
         Self {
             outcome: ReviewToolOutcome::Escalate,
             notes: notes.into(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: Some(escalation_reason.into()),
         }
@@ -164,20 +328,35 @@ impl CompleteReviewInput {
             return Err(CompleteReviewValidationError::EmptyNotes);
         }
 
+        // Validate all issues if present
+        for (idx, issue) in self.issues.iter().enumerate() {
+            if let Err(e) = issue.validate() {
+                return Err(CompleteReviewValidationError::InvalidIssue(idx, e));
+            }
+        }
+
         match self.outcome {
             ReviewToolOutcome::Approved => {
                 // No additional validation for approved
+                // Issues are optional for approved
                 Ok(())
             }
             ReviewToolOutcome::NeedsChanges => {
                 // fix_description is required
                 match &self.fix_description {
-                    None => Err(CompleteReviewValidationError::MissingFixDescription),
+                    None => return Err(CompleteReviewValidationError::MissingFixDescription),
                     Some(desc) if desc.trim().is_empty() => {
-                        Err(CompleteReviewValidationError::EmptyFixDescription)
+                        return Err(CompleteReviewValidationError::EmptyFixDescription)
                     }
-                    Some(_) => Ok(()),
+                    Some(_) => {}
                 }
+
+                // issues are required for needs_changes
+                if self.issues.is_empty() {
+                    return Err(CompleteReviewValidationError::MissingIssues);
+                }
+
+                Ok(())
             }
             ReviewToolOutcome::Escalate => {
                 // escalation_reason is required
@@ -332,6 +511,7 @@ mod tests {
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::Approved,
             notes: "".to_string(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: None,
         };
@@ -347,6 +527,7 @@ mod tests {
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::Approved,
             notes: "   \n\t  ".to_string(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: None,
         };
@@ -358,16 +539,26 @@ mod tests {
 
     #[test]
     fn test_validate_needs_changes_valid() {
-        let input = CompleteReviewInput::needs_changes("Issues found", "Fix the bug");
+        // needs_changes now requires issues, so use needs_changes_with_issues
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
+            .with_no_step_reason("General issue");
+        let input = CompleteReviewInput::needs_changes_with_issues(
+            "Issues found",
+            "Fix the bug",
+            vec![issue],
+        );
         assert!(input.validate().is_ok());
         assert!(input.is_valid());
     }
 
     #[test]
     fn test_validate_needs_changes_missing_fix_description() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
+            .with_no_step_reason("General issue");
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::NeedsChanges,
             notes: "Issues found".to_string(),
+            issues: vec![issue],
             fix_description: None,
             escalation_reason: None,
         };
@@ -379,9 +570,12 @@ mod tests {
 
     #[test]
     fn test_validate_needs_changes_empty_fix_description() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
+            .with_no_step_reason("General issue");
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::NeedsChanges,
             notes: "Issues found".to_string(),
+            issues: vec![issue],
             fix_description: Some("".to_string()),
             escalation_reason: None,
         };
@@ -393,9 +587,12 @@ mod tests {
 
     #[test]
     fn test_validate_needs_changes_whitespace_fix_description() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
+            .with_no_step_reason("General issue");
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::NeedsChanges,
             notes: "Issues found".to_string(),
+            issues: vec![issue],
             fix_description: Some("   ".to_string()),
             escalation_reason: None,
         };
@@ -403,6 +600,38 @@ mod tests {
             input.validate(),
             Err(CompleteReviewValidationError::EmptyFixDescription)
         );
+    }
+
+    #[test]
+    fn test_validate_needs_changes_missing_issues() {
+        let input = CompleteReviewInput {
+            outcome: ReviewToolOutcome::NeedsChanges,
+            notes: "Issues found".to_string(),
+            issues: Vec::new(),
+            fix_description: Some("Fix it".to_string()),
+            escalation_reason: None,
+        };
+        assert_eq!(
+            input.validate(),
+            Err(CompleteReviewValidationError::MissingIssues)
+        );
+    }
+
+    #[test]
+    fn test_validate_needs_changes_invalid_issue() {
+        let invalid_issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major);
+        // Missing both step_id and no_step_reason
+        let input = CompleteReviewInput {
+            outcome: ReviewToolOutcome::NeedsChanges,
+            notes: "Issues found".to_string(),
+            issues: vec![invalid_issue],
+            fix_description: Some("Fix it".to_string()),
+            escalation_reason: None,
+        };
+        assert!(matches!(
+            input.validate(),
+            Err(CompleteReviewValidationError::InvalidIssue(0, ReviewIssueValidationError::MissingStepOrReason))
+        ));
     }
 
     #[test]
@@ -417,6 +646,7 @@ mod tests {
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::Escalate,
             notes: "Security concern".to_string(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: None,
         };
@@ -431,6 +661,7 @@ mod tests {
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::Escalate,
             notes: "Security concern".to_string(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: Some("".to_string()),
         };
@@ -445,6 +676,7 @@ mod tests {
         let input = CompleteReviewInput {
             outcome: ReviewToolOutcome::Escalate,
             notes: "Security concern".to_string(),
+            issues: Vec::new(),
             fix_description: None,
             escalation_reason: Some("  \t\n  ".to_string()),
         };
@@ -452,6 +684,124 @@ mod tests {
             input.validate(),
             Err(CompleteReviewValidationError::EmptyEscalationReason)
         );
+    }
+
+    // ===== ReviewIssueInput Tests =====
+
+    #[test]
+    fn test_review_issue_input_new() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Critical);
+        assert_eq!(issue.title, "Test issue");
+        assert_eq!(issue.severity, IssueSeverity::Critical);
+        assert!(issue.step_id.is_none());
+        assert!(issue.no_step_reason.is_none());
+    }
+
+    #[test]
+    fn test_review_issue_input_with_step_id() {
+        let step_id = TaskStepId::from_string("step-123".to_string());
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
+            .with_step_id(step_id.clone());
+        assert_eq!(issue.step_id, Some(step_id));
+        assert!(issue.validate().is_ok());
+    }
+
+    #[test]
+    fn test_review_issue_input_with_no_step_reason() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Minor)
+            .with_no_step_reason("General code quality issue");
+        assert_eq!(issue.no_step_reason, Some("General code quality issue".to_string()));
+        assert!(issue.validate().is_ok());
+    }
+
+    #[test]
+    fn test_review_issue_input_validate_empty_title() {
+        let issue = ReviewIssueInput::new("", IssueSeverity::Major)
+            .with_no_step_reason("Reason");
+        assert_eq!(
+            issue.validate(),
+            Err(ReviewIssueValidationError::EmptyTitle)
+        );
+    }
+
+    #[test]
+    fn test_review_issue_input_validate_missing_step_or_reason() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major);
+        assert_eq!(
+            issue.validate(),
+            Err(ReviewIssueValidationError::MissingStepOrReason)
+        );
+    }
+
+    #[test]
+    fn test_review_issue_input_validate_whitespace_reason() {
+        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
+            .with_no_step_reason("   ");
+        assert_eq!(
+            issue.validate(),
+            Err(ReviewIssueValidationError::MissingStepOrReason)
+        );
+    }
+
+    #[test]
+    fn test_review_issue_input_serialization() {
+        let step_id = TaskStepId::from_string("step-123".to_string());
+        let issue = ReviewIssueInput::new("Bug found", IssueSeverity::Critical)
+            .with_step_id(step_id)
+            .with_category(IssueCategory::Bug)
+            .with_description("Detailed description")
+            .with_file_location("src/main.rs", Some(42));
+
+        let json = serde_json::to_string(&issue).unwrap();
+        let parsed: ReviewIssueInput = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.title, issue.title);
+        assert_eq!(parsed.severity, issue.severity);
+        assert_eq!(parsed.category, issue.category);
+        assert_eq!(parsed.step_id, issue.step_id);
+        assert_eq!(parsed.file_path, issue.file_path);
+        assert_eq!(parsed.line_number, issue.line_number);
+    }
+
+    #[test]
+    fn test_needs_changes_with_issues_constructor() {
+        let issue1 = ReviewIssueInput::new("Issue 1", IssueSeverity::Major)
+            .with_no_step_reason("General");
+        let issue2 = ReviewIssueInput::new("Issue 2", IssueSeverity::Minor)
+            .with_no_step_reason("General");
+
+        let input = CompleteReviewInput::needs_changes_with_issues(
+            "Multiple issues",
+            "Fix all issues",
+            vec![issue1, issue2],
+        );
+
+        assert_eq!(input.outcome, ReviewToolOutcome::NeedsChanges);
+        assert_eq!(input.issues.len(), 2);
+        assert!(input.validate().is_ok());
+    }
+
+    // ===== Validation Error Display Tests =====
+
+    #[test]
+    fn test_review_issue_validation_error_display() {
+        assert_eq!(
+            ReviewIssueValidationError::EmptyTitle.to_string(),
+            "issue title cannot be empty"
+        );
+        assert_eq!(
+            ReviewIssueValidationError::MissingStepOrReason.to_string(),
+            "issue must have either step_id or no_step_reason"
+        );
+    }
+
+    #[test]
+    fn test_invalid_issue_error_display() {
+        let err = CompleteReviewValidationError::InvalidIssue(
+            2,
+            ReviewIssueValidationError::EmptyTitle,
+        );
+        assert_eq!(err.to_string(), "issue at index 2: issue title cannot be empty");
     }
 
     // ===== Serialization Tests =====
@@ -529,6 +879,10 @@ mod tests {
         assert_eq!(
             CompleteReviewValidationError::EmptyEscalationReason.to_string(),
             "escalation_reason cannot be empty when outcome is 'escalate'"
+        );
+        assert_eq!(
+            CompleteReviewValidationError::MissingIssues.to_string(),
+            "issues are required when outcome is 'needs_changes'"
         );
     }
 }

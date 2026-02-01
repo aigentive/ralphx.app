@@ -19,7 +19,15 @@ use ralphx_lib::domain::entities::{
 use ralphx_lib::domain::repositories::ReviewRepository;
 use ralphx_lib::domain::review::config::ReviewSettings;
 use ralphx_lib::domain::state_machine::{State, TaskEvent};
-use ralphx_lib::domain::tools::complete_review::{CompleteReviewInput, ReviewToolOutcome};
+use ralphx_lib::domain::entities::IssueSeverity;
+use ralphx_lib::domain::tools::complete_review::{CompleteReviewInput, ReviewIssueInput, ReviewToolOutcome};
+
+/// Helper to create a valid needs_changes input with a single issue
+fn make_needs_changes_input(notes: &str, fix_description: &str) -> CompleteReviewInput {
+    let issue = ReviewIssueInput::new(notes, IssueSeverity::Major)
+        .with_no_step_reason("General code issue");
+    CompleteReviewInput::needs_changes_with_issues(notes, fix_description, vec![issue])
+}
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteReviewRepository, SqliteTaskRepository,
     TaskStateMachineRepository,
@@ -443,7 +451,7 @@ async fn test_ai_review_needs_changes_flow() {
     assert!(review.is_pending());
 
     // 2. Simulate reviewer agent returning NEEDS_CHANGES outcome
-    let input = CompleteReviewInput::needs_changes(
+    let input = make_needs_changes_input(
         "Missing error handling in the login function",
         "Add try-catch blocks around the API call and handle network errors",
     );
@@ -503,7 +511,7 @@ async fn test_ai_review_needs_changes_state_machine_transition() {
     // Conduct AI review with NEEDS_CHANGES
     let service = ReviewService::new(review_repo, task_repo);
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     service.process_review_result(&mut review, &input).await.unwrap();
 
     // Transition state machine: Reviewing -> RevisionNeeded
@@ -533,7 +541,7 @@ async fn test_ai_review_needs_changes_auto_fix_disabled() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo, settings);
 
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Missing tests", "Add unit tests");
+    let input = make_needs_changes_input("Missing tests", "Add unit tests");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
 
     // Should NOT create a fix task when auto_fix is disabled
@@ -561,7 +569,7 @@ async fn test_fix_task_has_higher_priority() {
     let service = ReviewService::new(review_repo, task_repo.clone());
 
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Fix needed", "Apply the fix");
+    let input = make_needs_changes_input("Fix needed", "Apply the fix");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
 
     let fix_task = task_repo
@@ -584,7 +592,7 @@ async fn test_fix_task_requires_approval() {
     let service = ReviewService::with_settings(review_repo, task_repo.clone(), settings);
 
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
 
     // Fix task should be in Blocked status (waiting for approval)
@@ -611,7 +619,7 @@ async fn test_fix_task_ready_without_approval() {
     let service = ReviewService::new(review_repo, task_repo.clone());
 
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
 
     // Fix task should be in Ready status
@@ -632,7 +640,7 @@ async fn test_fix_task_ready_without_approval() {
 /// Test: CompleteReviewInput::needs_changes validation
 #[test]
 fn test_complete_review_input_needs_changes() {
-    let input = CompleteReviewInput::needs_changes("Missing tests", "Add unit tests");
+    let input = make_needs_changes_input("Missing tests", "Add unit tests");
 
     assert_eq!(input.outcome, ReviewToolOutcome::NeedsChanges);
     assert_eq!(input.notes, "Missing tests");
@@ -652,6 +660,7 @@ fn test_complete_review_input_needs_changes_requires_fix_description() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::NeedsChanges,
         notes: "Missing tests".to_string(),
+        issues: vec![],
         fix_description: None, // Missing!
         escalation_reason: None,
     };
@@ -672,7 +681,7 @@ async fn test_count_fix_actions() {
 
     // Create a review with needs_changes
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug 1", "Fix 1");
+    let input = make_needs_changes_input("Bug 1", "Fix 1");
     service.process_review_result(&mut review, &input).await.unwrap();
 
     // Now should be 1
@@ -689,14 +698,14 @@ async fn test_multiple_fix_attempts_tracked() {
 
     // First review with needs_changes
     let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input1 = CompleteReviewInput::needs_changes("Bug 1", "Fix 1");
+    let input1 = make_needs_changes_input("Bug 1", "Fix 1");
     let fix1_id = service.process_review_result(&mut review1, &input1).await.unwrap();
     assert!(fix1_id.is_some());
 
     // Complete the first review (so we can start another)
     // Start a second review on the same task
     let mut review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input2 = CompleteReviewInput::needs_changes("Bug 2", "Fix 2");
+    let input2 = make_needs_changes_input("Bug 2", "Fix 2");
     let fix2_id = service.process_review_result(&mut review2, &input2).await.unwrap();
     assert!(fix2_id.is_some());
 
@@ -812,6 +821,7 @@ fn test_complete_review_input_escalate_requires_reason() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::Escalate,
         notes: "Something is wrong".to_string(),
+        issues: vec![],
         fix_description: None,
         escalation_reason: None, // Missing!
     };
@@ -949,7 +959,7 @@ async fn test_fix_task_rejection_creates_new_fix() {
 
     // 1. Create initial review with needs_changes to get a fix task
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Missing tests", "Add unit tests");
+    let input = make_needs_changes_input("Missing tests", "Add unit tests");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
     assert!(fix_task_id.is_some());
     let fix_task_id = fix_task_id.unwrap();
@@ -990,7 +1000,7 @@ async fn test_fix_task_max_attempts_moves_to_backlog() {
 
     // Create initial review with needs_changes
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
     assert!(fix_task_id.is_some());
     let fix_task_id = fix_task_id.unwrap();
@@ -1030,7 +1040,7 @@ async fn test_approve_fix_task_transitions_to_ready() {
 
     // Create fix task (starts as Blocked)
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
@@ -1062,7 +1072,7 @@ async fn test_approve_fix_task_fails_if_not_blocked() {
 
     // Create fix task (starts as Ready because no fix approval required)
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
@@ -1091,7 +1101,7 @@ async fn test_reject_fix_task_increments_attempt_counter() {
 
     // Create first fix task
     let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input1 = CompleteReviewInput::needs_changes("Bug 1", "Fix 1");
+    let input1 = make_needs_changes_input("Bug 1", "Fix 1");
     let fix1_id = service.process_review_result(&mut review1, &input1).await.unwrap();
     let fix1_id = fix1_id.unwrap();
 
@@ -1110,7 +1120,7 @@ async fn test_reject_fix_task_increments_attempt_counter() {
 
     // Create another review and process needs_changes to add another fix action
     let mut review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input2 = CompleteReviewInput::needs_changes("Bug 2", "Fix 2");
+    let input2 = make_needs_changes_input("Bug 2", "Fix 2");
     service.process_review_result(&mut review2, &input2).await.unwrap();
 
     // Now count should be 2
@@ -1128,7 +1138,7 @@ async fn test_fix_task_max_attempts_records_note() {
 
     // Create initial fix task
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Bug found", "Fix the bug");
+    let input = make_needs_changes_input("Bug found", "Fix the bug");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
@@ -1163,7 +1173,7 @@ async fn test_new_fix_task_includes_feedback() {
 
     // Create initial fix task
     let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
-    let input = CompleteReviewInput::needs_changes("Missing validation", "Add input validation");
+    let input = make_needs_changes_input("Missing validation", "Add input validation");
     let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
