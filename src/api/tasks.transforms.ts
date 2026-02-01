@@ -58,7 +58,8 @@ export function transformStateTransition(
     toStatus: raw.to_status as InternalStatus,
     trigger: raw.trigger,
     timestamp: raw.timestamp,
-    ...(raw.conversation_id !== undefined && { conversationId: raw.conversation_id }),
-    ...(raw.agent_run_id !== undefined && { agentRunId: raw.agent_run_id }),
+    // Only include conversationId/agentRunId if they have actual string values (not null or undefined)
+    ...(raw.conversation_id != null && { conversationId: raw.conversation_id }),
+    ...(raw.agent_run_id != null && { agentRunId: raw.agent_run_id }),
   };
 }

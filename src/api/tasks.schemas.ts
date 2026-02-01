@@ -28,7 +28,7 @@ export const StateTransitionResponseSchemaRaw = z.object({
   /** When the transition occurred (RFC3339 format) */
   timestamp: z.string(),
   /** Conversation ID for states that spawn conversations (executing, re_executing, reviewing) */
-  conversation_id: z.string().optional(),
+  conversation_id: z.string().nullish(),
   /** Agent run ID for the specific execution within the conversation */
-  agent_run_id: z.string().optional(),
+  agent_run_id: z.string().nullish(),
 });
