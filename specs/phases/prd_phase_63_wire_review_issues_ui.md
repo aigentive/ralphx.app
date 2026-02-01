@@ -171,7 +171,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(detail-views): add issue progress bar to WaitingTaskDetail"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
