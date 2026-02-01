@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-01 19:00:00 - Phase 59 Task 2: Create useTaskStateTransitions hook
+**What:**
+- Added StateTransitionResponseSchemaRaw Zod schema to tasks.schemas.ts
+- Added StateTransition type and transformStateTransition to tasks.transforms.ts
+- Added getStateTransitions method to tasksApi in src/api/tasks.ts
+- Added getStateTransitions mock to mockTasksApi in src/api-mock/tasks.ts
+- Created useTaskStateTransitions hook with TanStack Query in src/hooks/useTaskStateTransitions.ts
+
+**Files:**
+- `src/api/tasks.schemas.ts` (added StateTransitionResponseSchemaRaw)
+- `src/api/tasks.transforms.ts` (added StateTransition type and transform)
+- `src/api/tasks.ts` (added getStateTransitions method and re-exports)
+- `src/api-mock/tasks.ts` (added mock implementation)
+- `src/hooks/useTaskStateTransitions.ts` (NEW - hook with query keys)
+
+**Commands:**
+- `npm run lint` (passed - no errors in modified files)
+- `npm run typecheck` (passed - no errors in modified files)
+
+**Visual Verification:** N/A - hook only (no UI component)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 18:15:00 - Phase 59 Task 1: Add get_task_state_transitions command
 **What:**
 - Added StateTransitionResponse type to task_commands/types.rs

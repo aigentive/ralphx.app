@@ -7,7 +7,7 @@
 
 import type { Task, TaskListResponse, CreateTask, UpdateTask, InternalStatus } from "@/types/task";
 import type { TaskStep, StepProgressSummary } from "@/types/task-step";
-import type { InjectTaskResponse, InjectTaskInput } from "@/api/tasks";
+import type { InjectTaskResponse, InjectTaskInput, StateTransition } from "@/api/tasks";
 import { createMockTask, generateTestUuid } from "@/test/mock-data";
 import { getStore } from "./store";
 
@@ -257,6 +257,67 @@ export const mockTasksApi = {
       blockedReason: null,
       updatedAt: new Date().toISOString(),
     };
+  },
+
+  getStateTransitions: async (taskId: string): Promise<StateTransition[]> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      return [];
+    }
+
+    // Generate mock state transitions based on current task status
+    // This simulates a realistic task history for visual testing
+    const transitions: StateTransition[] = [];
+    const baseTime = new Date(task.createdAt);
+
+    // Always start from backlog
+    transitions.push({
+      fromStatus: null,
+      toStatus: "backlog",
+      trigger: "user",
+      timestamp: baseTime.toISOString(),
+    });
+
+    // Common progression based on current status
+    // Uses all 17 InternalStatus values from status.ts
+    const statusProgression: Record<InternalStatus, InternalStatus[]> = {
+      backlog: [],
+      ready: ["ready"],
+      blocked: ["ready", "blocked"],
+      executing: ["ready", "executing"],
+      qa_refining: ["ready", "executing", "qa_refining"],
+      qa_testing: ["ready", "executing", "qa_refining", "qa_testing"],
+      qa_passed: ["ready", "executing", "qa_refining", "qa_testing", "qa_passed"],
+      qa_failed: ["ready", "executing", "qa_refining", "qa_testing", "qa_failed"],
+      pending_review: ["ready", "executing", "pending_review"],
+      reviewing: ["ready", "executing", "pending_review", "reviewing"],
+      review_passed: ["ready", "executing", "pending_review", "reviewing", "review_passed"],
+      revision_needed: ["ready", "executing", "pending_review", "reviewing", "revision_needed"],
+      re_executing: ["ready", "executing", "pending_review", "reviewing", "revision_needed", "re_executing"],
+      escalated: ["ready", "executing", "pending_review", "reviewing", "escalated"],
+      approved: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved"],
+      cancelled: ["ready", "cancelled"],
+      failed: ["ready", "executing", "failed"],
+    };
+
+    const progression = statusProgression[task.internalStatus] ?? [];
+    let prevStatus: InternalStatus = "backlog";
+    let timeOffset = 1;
+
+    for (const status of progression) {
+      const transitionTime = new Date(baseTime.getTime() + timeOffset * 60 * 60 * 1000);
+      transitions.push({
+        fromStatus: prevStatus,
+        toStatus: status,
+        trigger: status === "ready" ? "user" : status === "executing" ? "agent" : "system",
+        timestamp: transitionTime.toISOString(),
+      });
+      prevStatus = status;
+      timeOffset++;
+    }
+
+    return transitions;
   },
 } as const;
 

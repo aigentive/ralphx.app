@@ -1,8 +1,8 @@
 // Transform functions for converting snake_case tasks API responses to camelCase frontend types
 
 import { z } from "zod";
-import { InjectTaskResponseSchemaRaw } from "./tasks.schemas";
-import { transformTask, type Task } from "@/types/task";
+import { InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { transformTask, type Task, type InternalStatus } from "@/types/task";
 
 /**
  * Frontend InjectTaskResponse type (camelCase)
@@ -25,5 +25,34 @@ export function transformInjectTaskResponse(
     target: raw.target,
     priority: raw.priority,
     makeNextApplied: raw.make_next_applied,
+  };
+}
+
+/**
+ * Frontend StateTransition type (camelCase)
+ * Represents a single state transition in a task's history.
+ */
+export interface StateTransition {
+  /** Status transitioned from (null for initial state) */
+  fromStatus: InternalStatus | null;
+  /** Status transitioned to */
+  toStatus: InternalStatus;
+  /** What triggered this transition (e.g., "user", "agent", "system") */
+  trigger: string;
+  /** When the transition occurred (RFC3339 format) */
+  timestamp: string;
+}
+
+/**
+ * Transform StateTransitionResponseSchemaRaw to StateTransition
+ */
+export function transformStateTransition(
+  raw: z.infer<typeof StateTransitionResponseSchemaRaw>
+): StateTransition {
+  return {
+    fromStatus: raw.from_status as InternalStatus | null,
+    toStatus: raw.to_status as InternalStatus,
+    trigger: raw.trigger,
+    timestamp: raw.timestamp,
   };
 }
