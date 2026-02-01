@@ -65,6 +65,18 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         ],
         preapproved_cli_tools: &[],
     },
+    // Read-only variant for accepted plans - no mutation tools
+    AgentConfig {
+        name: "orchestrator-ideation-readonly",
+        allowed_tools: Some("Read,Grep,Glob"),
+        allowed_mcp_tools: &[
+            "list_session_proposals",
+            "get_proposal",
+            "get_plan_artifact",
+            "get_session_plan",
+        ],
+        preapproved_cli_tools: &[],
+    },
     AgentConfig {
         name: "session-namer",
         allowed_tools: Some(""),
