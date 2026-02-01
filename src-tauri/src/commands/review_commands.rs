@@ -9,9 +9,9 @@ use crate::domain::entities::{ProjectId, ReviewId, ReviewNote, ReviewOutcome, Re
 // Re-export types for external use
 pub use super::review_commands_types::{
     ApproveFixTaskInput, ApproveReviewInput, FixTaskAttemptsResponse, IssueProgressResponse,
-    RejectFixTaskInput, RejectReviewInput, ReopenIssueInput, RequestChangesInput,
-    ReviewActionResponse, ReviewIssueResponse, ReviewNoteResponse, ReviewResponse,
-    VerifyIssueInput,
+    MarkIssueAddressedInput, MarkIssueInProgressInput, RejectFixTaskInput, RejectReviewInput,
+    ReopenIssueInput, RequestChangesInput, ReviewActionResponse, ReviewIssueResponse,
+    ReviewNoteResponse, ReviewResponse, VerifyIssueInput,
 };
 
 // ============================================================================
@@ -634,6 +634,76 @@ pub async fn reopen_issue(
     }
 
     issue.reopen(input.reason);
+    state
+        .review_issue_repo
+        .update(&issue)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewIssueResponse::from(issue))
+}
+
+// ============================================================================
+// Commands - Execute Agent Issue Tracking
+// ============================================================================
+
+/// Mark an issue as being worked on (Open -> InProgress)
+/// Called by the worker/execute agent when starting to work on an issue
+#[tauri::command]
+pub async fn mark_issue_in_progress(
+    input: MarkIssueInProgressInput,
+    state: State<'_, AppState>,
+) -> Result<ReviewIssueResponse, String> {
+    let issue_id = ReviewIssueId::from_string(input.issue_id);
+
+    let mut issue = state
+        .review_issue_repo
+        .get_by_id(&issue_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Issue not found: {}", issue_id.as_str()))?;
+
+    if issue.status != crate::domain::entities::IssueStatus::Open {
+        return Err(format!(
+            "Cannot mark issue as in_progress: current status is {} (expected open)",
+            issue.status
+        ));
+    }
+
+    issue.start_work();
+    state
+        .review_issue_repo
+        .update(&issue)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewIssueResponse::from(issue))
+}
+
+/// Mark an issue as addressed (Open/InProgress -> Addressed)
+/// Called by the worker/execute agent after completing work on an issue
+#[tauri::command]
+pub async fn mark_issue_addressed(
+    input: MarkIssueAddressedInput,
+    state: State<'_, AppState>,
+) -> Result<ReviewIssueResponse, String> {
+    let issue_id = ReviewIssueId::from_string(input.issue_id);
+
+    let mut issue = state
+        .review_issue_repo
+        .get_by_id(&issue_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Issue not found: {}", issue_id.as_str()))?;
+
+    if !issue.needs_work() {
+        return Err(format!(
+            "Cannot mark issue as addressed: current status is {} (expected open or in_progress)",
+            issue.status
+        ));
+    }
+
+    issue.mark_addressed(Some(input.resolution_notes), input.attempt_number);
     state
         .review_issue_repo
         .update(&issue)

@@ -293,6 +293,8 @@ pub fn run() {
             commands::review_commands::get_issue_progress,
             commands::review_commands::verify_issue,
             commands::review_commands::reopen_issue,
+            commands::review_commands::mark_issue_in_progress,
+            commands::review_commands::mark_issue_addressed,
             commands::execution_commands::get_execution_status,
             commands::execution_commands::pause_execution,
             commands::execution_commands::resume_execution,

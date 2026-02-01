@@ -333,3 +333,17 @@ pub struct ReopenIssueInput {
     #[serde(default)]
     pub reason: Option<String>,
 }
+
+/// Input for marking an issue as in progress
+#[derive(Debug, Deserialize)]
+pub struct MarkIssueInProgressInput {
+    pub issue_id: String,
+}
+
+/// Input for marking an issue as addressed
+#[derive(Debug, Deserialize)]
+pub struct MarkIssueAddressedInput {
+    pub issue_id: String,
+    pub resolution_notes: String,
+    pub attempt_number: i32,
+}
