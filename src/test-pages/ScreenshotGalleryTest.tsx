@@ -22,9 +22,6 @@ const mockScreenshots: Screenshot[] = [
     stepResult: {
       step_id: "step-2",
       status: "passed",
-      started_at: "2026-01-31T10:01:00Z",
-      completed_at: "2026-01-31T10:01:05Z",
-      duration_ms: 5000,
     },
   },
   {
@@ -38,9 +35,6 @@ const mockScreenshots: Screenshot[] = [
       error: "Form validation failed: Email is required",
       expected: "Form submitted successfully",
       actual: "Form validation error displayed",
-      started_at: "2026-01-31T10:02:00Z",
-      completed_at: "2026-01-31T10:02:03Z",
-      duration_ms: 3000,
     },
     expectedPath: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='400' height='300' fill='%2348bb78'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='18'%3EExpected: Success Page%3C/text%3E%3C/svg%3E",
   },
@@ -71,7 +65,7 @@ export function ScreenshotGalleryTestPage({
       <ScreenshotGallery
         screenshots={screenshots}
         columns={columns}
-        emptyMessage={emptyMessage}
+        {...(emptyMessage !== undefined && { emptyMessage })}
       />
     </div>
   );
