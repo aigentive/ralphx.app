@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-02 12:45:00 - Phase 63 Task 3: Show open issues in ExecutionTaskDetail for re-execution
+**What:**
+- Added imports for `useQuery`, `reviewIssuesApi`, `IssueList`
+- Added conditional query to fetch open issues only when re-executing: `reviewIssuesApi.getByTaskId(task.id, "open")`
+- Added new "Issues to Address" section after RevisionFeedbackCard showing structured issues grouped by severity
+- Section only renders when `isReExecuting && openIssues.length > 0`
+
+**Files Modified:**
+- `src/components/tasks/detail-views/ExecutionTaskDetail.tsx` (MODIFIED - added issues query and display section)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - no new errors, only pre-existing warnings)
+
+**Visual Verification:** N/A - additive change using existing tested IssueList component
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 12:15:00 - Phase 63 Task 2: Wire RevisionTaskDetail to review issues API
 **What:**
 - Added imports for `useQuery`, `reviewIssuesApi`, `IssueList` and `ReviewIssue` type

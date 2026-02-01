@@ -6,6 +6,7 @@
  */
 
 import { Loader2, Radio, AlertTriangle, Bot, User, Zap } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { StepList } from "../StepList";
 import {
   SectionTitle,
@@ -17,6 +18,8 @@ import {
 } from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
+import { reviewIssuesApi } from "@/api/review-issues";
+import { IssueList } from "@/components/reviews/IssueList";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
@@ -112,6 +115,13 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
     { enabled: task.internalStatus === "re_executing" }
   );
 
+  // Fetch open issues when re-executing to show what needs to be addressed
+  const { data: openIssues = [] } = useQuery({
+    queryKey: ["review-issues", task.id, "open"],
+    queryFn: () => reviewIssuesApi.getByTaskId(task.id, "open"),
+    enabled: task.internalStatus === "re_executing",
+  });
+
   const hasSteps = (steps?.length ?? 0) > 0;
   const isReExecuting = task.internalStatus === "re_executing";
   const revisionFeedback = isReExecuting
@@ -168,6 +178,16 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
             feedback={revisionFeedback}
             isLoading={historyLoading}
           />
+        </section>
+      )}
+
+      {/* Open Issues to Address (only for re-executing with issues) */}
+      {isReExecuting && openIssues.length > 0 && (
+        <section data-testid="open-issues-section">
+          <SectionTitle>Issues to Address ({openIssues.length})</SectionTitle>
+          <DetailCard>
+            <IssueList issues={openIssues} groupBy="severity" compact />
+          </DetailCard>
         </section>
       )}
 
