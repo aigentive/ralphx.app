@@ -17,7 +17,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
+    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::{
@@ -52,6 +52,7 @@ use super::chat_service_types::{
 /// - `conversation_repo`: Conversation repository
 /// - `agent_run_repo`: Agent run repository
 /// - `task_repo`: Task repository
+/// - `task_dependency_repo`: Task dependency repository (for auto-unblocking)
 /// - `project_repo`: Project repository
 /// - `ideation_session_repo`: Ideation session repository
 /// - `activity_event_repo`: Activity event repository (for persistence)
@@ -74,6 +75,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
@@ -187,6 +189,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(exec_state),
                                     Arc::clone(&project_repo),
                                     Arc::clone(&task_repo),
+                                    Arc::clone(&task_dependency_repo),
                                     Arc::clone(&chat_message_repo),
                                     Arc::clone(&conversation_repo),
                                     Arc::clone(&agent_run_repo),
@@ -199,6 +202,7 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                                 let transition_service = TaskTransitionService::new(
                                     Arc::clone(&task_repo),
+                                    Arc::clone(&task_dependency_repo),
                                     Arc::clone(&project_repo),
                                     Arc::clone(&chat_message_repo),
                                     Arc::clone(&conversation_repo),
