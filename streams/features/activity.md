@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-02 18:00:00 - Phase 65 Task 1: Fix scroll behavior in ActivityView
+**What:**
+- Modified `autoScroll` state initialization to depend on `initialMode` (false for historical, true for live)
+- Updated auto-scroll effect to only scroll in live mode (`!isHistoricalMode` check)
+- Added `setAutoScroll(mode === "realtime")` in `handleViewModeChange` to reset state when switching modes
+
+**Files Modified:**
+- `src/components/activity/ActivityView.tsx` (3 changes)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - scroll behavior change (no new UI elements)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 17:00:00 - Phase 64 Task 5: Wire conversation selection to history navigation
 **What:**
 - Extended `taskHistoryState` type in uiStore to include optional `conversationId` and `agentRunId` fields

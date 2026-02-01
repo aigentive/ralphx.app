@@ -93,7 +93,8 @@ export function ActivityView({
   const [searchQuery, setSearchQuery] = useState("");
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [copied, setCopied] = useState<CopiedState>({});
-  const [autoScroll, setAutoScroll] = useState(true);
+  // Auto-scroll: disabled in historical mode, enabled in live mode
+  const [autoScroll, setAutoScroll] = useState(initialMode !== "historical");
 
   // Optional task/session filters for global history mode
   const [filterTaskId, setFilterTaskId] = useState<string | null>(null);
@@ -254,12 +255,13 @@ export function ActivityView({
     return filtered;
   }, [unifiedMessages, isHistoricalMode, taskId, typeFilter, searchQuery]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive (live mode only)
   useEffect(() => {
-    if (autoScroll && messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === "function") {
+    // Only auto-scroll in live mode when user wants to follow
+    if (!isHistoricalMode && autoScroll && messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === "function") {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [filteredMessages.length, autoScroll]);
+  }, [filteredMessages.length, autoScroll, isHistoricalMode]);
 
   // Detect manual scrolling to disable auto-scroll
   const handleScroll = useCallback(() => {
@@ -283,6 +285,8 @@ export function ActivityView({
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
     setUserLockedMode(true); // User explicitly chose a mode - prevent auto-switching
+    // Reset auto-scroll based on mode: disabled in history, enabled in live
+    setAutoScroll(mode === "realtime");
     if (mode === "realtime") clearActivityFilter();
   }, [clearActivityFilter]);
 
