@@ -197,6 +197,12 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
+  // History state from store - shared with IntegratedChatPanel
+  const historyState = useUiStore((s) => s.taskHistoryState);
+  const setHistoryState = useUiStore((s) => s.setTaskHistoryState);
+
+  // Debug logging for history state
+  console.log('[TaskDetailOverlay] History state from store:', historyState);
 
   // Ideation hooks
   const addSession = useIdeationStore((state) => state.addSession);
@@ -217,15 +223,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // History mode state - for viewing historical task states
-  const [historyState, setHistoryState] = useState<{
-    status: InternalStatus;
-    timestamp: string;
-  } | null>(null);
-
-  // Derived values for history mode
+  // Derived values for history mode (historyState from store)
   const isHistoryMode = historyState !== null;
-  const viewStatus = historyState?.status ?? task?.internalStatus;
+  const viewStatus = (historyState?.status as InternalStatus | undefined) ?? task?.internalStatus;
 
   // Get mutations
   const {
@@ -264,12 +264,12 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   useEffect(() => {
     setIsEditing(false);
     setHistoryState(null);
-  }, [selectedTaskId]);
+  }, [selectedTaskId, setHistoryState]);
 
   // Handler to exit history mode
   const handleReturnToCurrent = useCallback(() => {
     setHistoryState(null);
-  }, []);
+  }, [setHistoryState]);
 
   // Handle backdrop click
   const handleBackdropClick = useCallback(

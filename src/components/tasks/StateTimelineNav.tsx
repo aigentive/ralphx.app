@@ -10,6 +10,12 @@
 import { useMemo } from "react";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import { Loader2, Clock, Circle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { InternalStatus } from "@/types/task";
 
 // Status badge configuration - matches TaskDetailOverlay.tsx
@@ -114,16 +120,6 @@ interface TimelineEntry {
   isCurrent: boolean;
 }
 
-function formatTimestamp(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function formatRelativeTime(dateString: string): string {
   const diff = Date.now() - new Date(dateString).getTime();
   const mins = Math.floor(diff / 60000);
@@ -150,36 +146,38 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
   const isHighlighted = isSelected || entry.isCurrent;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={`timeline-badge-${entry.status}`}
-      data-status={entry.status}
-      data-current={entry.isCurrent}
-      data-selected={isSelected}
-      className="group relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
-      style={{
-        backgroundColor: isHighlighted ? config.bg : "transparent",
-        color: config.text,
-        border: `1px solid ${isHighlighted ? "transparent" : "rgba(255,255,255,0.1)"}`,
-        boxShadow: isSelected ? `0 0 0 2px ${config.text}40` : undefined,
-        opacity: isHighlighted ? 1 : 0.7,
-      }}
-      title={`${config.label} - ${formatTimestamp(entry.timestamp)}`}
-    >
-      {/* Status indicator dot */}
-      {entry.isCurrent ? (
-        <Circle className="w-2 h-2 fill-current" />
-      ) : (
-        <Circle className="w-2 h-2" style={{ opacity: 0.5 }} />
-      )}
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          data-testid={`timeline-badge-${entry.status}`}
+          data-status={entry.status}
+          data-current={entry.isCurrent}
+          data-selected={isSelected}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+          style={{
+            backgroundColor: isHighlighted ? config.bg : "transparent",
+            color: config.text,
+            border: `1px solid ${isHighlighted ? "transparent" : "rgba(255,255,255,0.1)"}`,
+            boxShadow: isSelected ? `0 0 0 2px ${config.text}40` : undefined,
+            opacity: isHighlighted ? 1 : 0.7,
+          }}
+        >
+          {/* Status indicator dot */}
+          {entry.isCurrent ? (
+            <Circle className="w-2 h-2 fill-current" />
+          ) : (
+            <Circle className="w-2 h-2" style={{ opacity: 0.5 }} />
+          )}
 
-      {/* Label */}
-      <span>{config.label}</span>
-
-      {/* Hover tooltip with timestamp */}
-      <span
-        className="absolute -bottom-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          {/* Label */}
+          <span>{config.label}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        className="px-2 py-1 text-[10px]"
         style={{
           backgroundColor: "var(--bg-elevated)",
           color: "var(--text-secondary)",
@@ -187,8 +185,8 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
         }}
       >
         {formatRelativeTime(entry.timestamp)}
-      </span>
-    </button>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -225,6 +223,8 @@ export function StateTimelineNav({
   selectedState,
 }: StateTimelineNavProps) {
   const { data: transitions, isLoading, error } = useTaskStateTransitions(taskId);
+
+  console.log('[StateTimelineNav] Render:', { taskId, currentStatus, transitions, isLoading, error });
 
   // Derive unique timeline entries from transitions
   // Each toStatus becomes an entry, preserving chronological order
@@ -274,11 +274,14 @@ export function StateTimelineNav({
 
   // Handle badge click
   const handleBadgeClick = (entry: TimelineEntry) => {
+    console.log('[StateTimelineNav] Badge clicked:', entry);
     if (entry.isCurrent) {
       // Clicking current state exits history mode
+      console.log('[StateTimelineNav] Exiting history mode (clicked current)');
       onStateSelect(null);
     } else {
       // Clicking historical state enters history mode
+      console.log('[StateTimelineNav] Entering history mode:', { status: entry.status, timestamp: entry.timestamp });
       onStateSelect({ status: entry.status, timestamp: entry.timestamp });
     }
   };
@@ -322,44 +325,46 @@ export function StateTimelineNav({
   }
 
   return (
-    <div
-      data-testid="state-timeline-nav"
-      className="flex items-center gap-1 px-4 py-3 overflow-x-auto"
-      style={{
-        backgroundColor: "rgba(0,0,0,0.2)",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
-      }}
-    >
-      <Clock
-        className="w-4 h-4 shrink-0 mr-2"
-        style={{ color: "var(--text-muted)" }}
-      />
+    <TooltipProvider delayDuration={300}>
+      <div
+        data-testid="state-timeline-nav"
+        className="flex items-center gap-1 px-4 py-3 overflow-x-auto"
+        style={{
+          backgroundColor: "rgba(0,0,0,0.2)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <Clock
+          className="w-4 h-4 shrink-0 mr-2"
+          style={{ color: "var(--text-muted)" }}
+        />
 
-      {timelineEntries.map((entry, index) => (
-        <div key={`${entry.status}-${entry.timestamp}`} className="flex items-center">
-          <TimelineBadge
-            entry={entry}
-            isSelected={
-              selectedState?.status === entry.status &&
-              selectedState?.timestamp === entry.timestamp
-            }
-            onClick={() => handleBadgeClick(entry)}
-          />
-          {index < timelineEntries.length - 1 && (
-            <TimelineConnector
-              isActive={
-                selectedState
-                  ? index < timelineEntries.findIndex(
-                      (e) =>
-                        e.status === selectedState.status &&
-                        e.timestamp === selectedState.timestamp
-                    )
-                  : true
+        {timelineEntries.map((entry, index) => (
+          <div key={`${entry.status}-${entry.timestamp}`} className="flex items-center">
+            <TimelineBadge
+              entry={entry}
+              isSelected={
+                selectedState?.status === entry.status &&
+                selectedState?.timestamp === entry.timestamp
               }
+              onClick={() => handleBadgeClick(entry)}
             />
-          )}
-        </div>
-      ))}
-    </div>
+            {index < timelineEntries.length - 1 && (
+              <TimelineConnector
+                isActive={
+                  selectedState
+                    ? index < timelineEntries.findIndex(
+                        (e) =>
+                          e.status === selectedState.status &&
+                          e.timestamp === selectedState.timestamp
+                      )
+                    : true
+                }
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }

@@ -17,12 +17,31 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface ExecutionTaskDetailProps {
   task: Task;
+  /** True when viewing a historical state - shows completed state instead of loading */
+  isHistorical?: boolean;
 }
 
 /**
  * LiveBadge - Animated indicator showing task is actively executing
+ * When isHistorical is true, shows a completed state instead
  */
-function LiveBadge({ isReExecuting }: { isReExecuting: boolean }) {
+function LiveBadge({ isReExecuting, isHistorical }: { isReExecuting: boolean; isHistorical?: boolean | undefined }) {
+  // When viewing historical state, show completed
+  if (isHistorical) {
+    return (
+      <div
+        data-testid="execution-live-badge"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
+        style={{
+          backgroundColor: "rgba(16, 185, 129, 0.15)",
+          color: "var(--status-success)",
+        }}
+      >
+        Completed
+      </div>
+    );
+  }
+
   const label = isReExecuting ? "Revising" : "Live";
   const bgColor = isReExecuting
     ? "rgba(245, 158, 11, 0.15)"
@@ -206,7 +225,7 @@ function getLatestRevisionFeedback(
  * Shows: live indicator, progress bar, revision context (if re_executing),
  * step list with current step highlighted, and description.
  */
-export function ExecutionTaskDetail({ task }: ExecutionTaskDetailProps) {
+export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const { data: progress } = useStepProgress(task.id);
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(
@@ -231,24 +250,9 @@ export function ExecutionTaskDetail({ task }: ExecutionTaskDetailProps) {
       data-task-id={task.id}
       className="space-y-5"
     >
-      {/* Header: Title + Live Badge */}
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <h2
-            data-testid="execution-task-title"
-            className="text-base font-semibold text-white/90 flex-1"
-            style={{
-              letterSpacing: "-0.02em",
-              lineHeight: "1.3",
-            }}
-          >
-            {task.title}
-          </h2>
-          <LiveBadge isReExecuting={isReExecuting} />
-        </div>
-        <p className="text-[12px] text-white/50">
-          Category: <span className="text-white/70">{task.category}</span>
-        </p>
+      {/* Live Badge */}
+      <div className="flex justify-end">
+        <LiveBadge isReExecuting={isReExecuting} isHistorical={isHistorical} />
       </div>
 
       {/* Progress Bar */}

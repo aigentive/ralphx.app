@@ -64,6 +64,8 @@ export function IntegratedChatPanel({
   onClose,
 }: IntegratedChatPanelProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  // History state from store - shared with TaskDetailOverlay for time-travel feature
+  const taskHistoryState = useUiStore((s) => s.taskHistoryState);
 
   // Get task data from React Query (useTasks) which has full task data
   const { data: tasks = [] } = useTasks(projectId);
@@ -72,16 +74,19 @@ export function IntegratedChatPanel({
     [tasks, selectedTaskId]
   );
 
+  // Determine effective status - use historical status in history mode, otherwise current status
+  const effectiveStatus = taskHistoryState?.status ?? selectedTask?.internalStatus;
+
   // Execution states: worker agent is running (only when NOT in ideation mode)
-  const isExecutionMode = !ideationSessionId && selectedTask?.internalStatus
-    ? (EXECUTION_STATUSES as readonly string[]).includes(selectedTask.internalStatus)
+  const isExecutionMode = !ideationSessionId && effectiveStatus
+    ? (EXECUTION_STATUSES as readonly string[]).includes(effectiveStatus)
     : false;
 
   // Review states: reviewer agent conversation (only when NOT in ideation mode)
   // Note: Uses HUMAN_REVIEW_STATUSES (review_passed, escalated) + "reviewing" (AI review in progress)
-  const isReviewMode = !ideationSessionId && selectedTask?.internalStatus
-    ? (HUMAN_REVIEW_STATUSES as readonly string[]).includes(selectedTask.internalStatus) ||
-      selectedTask.internalStatus === "reviewing"
+  const isReviewMode = !ideationSessionId && effectiveStatus
+    ? (HUMAN_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus) ||
+      effectiveStatus === "reviewing"
     : false;
 
   // Use extracted context management hook
@@ -200,6 +205,7 @@ export function IntegratedChatPanel({
     conversationContext?.contextId === currentContextId;
 
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
+  // No time-based filtering needed - we switch context types based on historical state
   const messagesData = useMemo(
     () =>
       activeConversationId && isConversationInCurrentContext
@@ -207,6 +213,16 @@ export function IntegratedChatPanel({
         : [],
     [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
   );
+
+  // Debug logging for history mode
+  const isHistoryMode = !!taskHistoryState;
+  console.log('[IntegratedChatPanel] Context mode:', {
+    isHistoryMode,
+    effectiveStatus,
+    isExecutionMode,
+    isReviewMode,
+    taskHistoryState,
+  });
 
   const {
     handleSend,

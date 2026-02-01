@@ -11,6 +11,7 @@ import { immer } from "zustand/middleware/immer";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
 import type { ViewType } from "@/types/chat";
+import type { InternalStatus } from "@/types/status";
 
 // ============================================================================
 // Chat Visibility Persistence
@@ -117,6 +118,8 @@ interface UiState {
   isSearching: boolean;
   /** ID of selected task for split-screen overlay (kanban view only) */
   selectedTaskId: string | null;
+  /** History state for time-travel feature - shared between TaskDetailOverlay and IntegratedChatPanel */
+  taskHistoryState: { status: InternalStatus; timestamp: string } | null;
   /** Task creation overlay context, or null if closed */
   taskCreationContext: { projectId: string; defaultTitle?: string } | null;
   /** Chat visibility per view (persisted to localStorage) */
@@ -180,6 +183,8 @@ interface UiActions {
   setIsSearching: (searching: boolean) => void;
   /** Set selected task ID for split-screen overlay */
   setSelectedTaskId: (taskId: string | null) => void;
+  /** Set task history state for time-travel feature */
+  setTaskHistoryState: (state: { status: InternalStatus; timestamp: string } | null) => void;
   /** Open task creation overlay */
   openTaskCreation: (projectId: string, defaultTitle?: string) => void;
   /** Close task creation overlay */
@@ -225,6 +230,7 @@ export const useUiStore = create<UiState & UiActions>()(
     boardSearchQuery: null,
     isSearching: false,
     selectedTaskId: null,
+    taskHistoryState: null,
     taskCreationContext: null,
     chatVisibleByView: loadChatVisibility(),
     showWelcomeOverlay: false,
@@ -352,6 +358,15 @@ export const useUiStore = create<UiState & UiActions>()(
           state.chatVisibleByView.kanban = true;
           saveChatVisibility(state.chatVisibleByView);
         }
+        // Clear history state when task is deselected
+        if (taskId === null) {
+          state.taskHistoryState = null;
+        }
+      }),
+
+    setTaskHistoryState: (historyState) =>
+      set((state) => {
+        state.taskHistoryState = historyState;
       }),
 
     openTaskCreation: (projectId, defaultTitle) =>
