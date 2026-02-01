@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-01 20:37:00 - Phase 60 Task 8: Add ReviewIssue types and Zod schemas
+**What:**
+- Created `src/types/review-issue.ts` with complete type system for review issues
+- Defined enums: IssueStatusSchema (open/in_progress/addressed/verified/wontfix), IssueSeveritySchema (critical/major/minor/suggestion), IssueCategorySchema (bug/missing/quality/design)
+- Defined ReviewIssueResponseSchema with snake_case matching Rust backend
+- Defined ReviewIssue interface with camelCase for frontend usage
+- Added transformReviewIssue function for snake_case → camelCase conversion
+- Added SeverityCount, SeverityBreakdown, IssueProgressSummary types with transforms
+- Added ReviewIssueListResponseSchema for array responses
+- Added status helpers: isIssueOpen, isIssueInProgress, isIssueAddressed, isIssueVerified, isIssueWontFix, isIssueTerminal, isIssueResolved, isIssueNeedsWork
+- Added severity helpers: getSeverityPriority, isSeverityBlocking, sortBySeverity
+- Added category helpers: isCodeIssue, isRequirementsIssue
+- Created comprehensive test file with 65 tests covering all schemas, transforms, and helpers
+- Exported all types and functions from src/types/index.ts
+
+**Files:**
+- `src/types/review-issue.ts` (NEW - 298 LOC)
+- `src/types/review-issue.test.ts` (NEW - 428 LOC)
+- `src/types/index.ts` (added exports)
+
+**Commands:**
+- `npm run lint` (passed, 0 errors)
+- `npm run typecheck` (passed)
+- `npm run test:run -- src/types/review-issue.test.ts` (65 tests passed)
+
+**Visual Verification:** N/A - types only, no UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 20:15:00 - Phase 60 Task 7: Update CompleteReviewInput with structured issues support
 **What:**
 - Added `ReviewIssueInput` struct with all fields: title, description, severity, category, step_id, no_step_reason, file_path, line_number, code_snippet
