@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-01 03:30:00 - Phase 60 Task 1: Create review_issues database migration
+**What:**
+- Created v6_review_issues.rs migration file with review_issues table schema
+- Includes all columns: id, review_note_id, task_id, step_id, no_step_reason, title, description, severity, category, file_path, line_number, code_snippet, status, resolution_notes, addressed_in_attempt, verified_by_review_id, created_at, updated_at
+- Added CHECK constraints for severity (critical, major, minor, suggestion), status (open, in_progress, addressed, verified, wontfix), and category (bug, missing, quality, design)
+- Created indexes: idx_review_issues_task_id, idx_review_issues_status, idx_review_issues_review_note
+- Added CASCADE delete on task and review_note, SET NULL on step deletion
+- Registered migration in mod.rs, bumped SCHEMA_VERSION to 6
+- Fixed outdated test_schema_version_constant assertion (was 4, now 6)
+- Added comprehensive v6 migration tests (10 tests)
+
+**Files:**
+- `src-tauri/src/infrastructure/sqlite/migrations/v6_review_issues.rs` (NEW)
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs` (registration)
+- `src-tauri/src/infrastructure/sqlite/migrations/tests.rs` (tests)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3233 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 02:45:00 - P0 Fix: Wire historicalStatus to TaskFullView
 **What:**
 - Added StateTimelineNav component to TaskFullView for history navigation
