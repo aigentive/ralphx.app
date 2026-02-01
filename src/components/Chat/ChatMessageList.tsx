@@ -64,6 +64,8 @@ interface ChatMessageListProps {
   streamingToolCalls: ToolCall[];
   /** Ref to scroll to */
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
+  scrollToTimestamp?: string | null;
 }
 
 // ============================================================================
@@ -81,6 +83,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isAgentRunning,
       streamingToolCalls,
       messagesEndRef,
+      scrollToTimestamp,
     },
     ref
   ) {
@@ -112,6 +115,30 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
       return () => clearTimeout(timeoutId);
     }, [streamingToolCalls.length]);
+
+    // Scroll to specific timestamp for history mode (time-travel feature)
+    // Finds the first message at or after the given timestamp and scrolls to it
+    useEffect(() => {
+      if (!scrollToTimestamp || messages.length === 0) return;
+
+      const targetTime = new Date(scrollToTimestamp).getTime();
+      const targetIndex = messages.findIndex(
+        (msg) => new Date(msg.createdAt).getTime() >= targetTime
+      );
+
+      if (targetIndex >= 0) {
+        // Add a small delay to ensure Virtuoso is ready
+        const timeoutId = setTimeout(() => {
+          virtuosoRef.current?.scrollToIndex({
+            index: targetIndex,
+            align: "start",
+            behavior: "smooth",
+          });
+        }, MARKDOWN_RENDER_DELAY_MS);
+        return () => clearTimeout(timeoutId);
+      }
+      return undefined;
+    }, [scrollToTimestamp, messages]);
 
     return (
       <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">

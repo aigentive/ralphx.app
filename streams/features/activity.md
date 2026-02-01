@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-02 17:00:00 - Phase 64 Task 5: Wire conversation selection to history navigation
+**What:**
+- Extended `taskHistoryState` type in uiStore to include optional `conversationId` and `agentRunId` fields
+- Updated `StateTimelineNav` to pass `conversationId` and `agentRunId` from transition data when selecting historical states
+- Updated `useChatPanelContext` to accept `overrideConversationId` and `overrideAgentRunId` props
+- Added effect in `useChatPanelContext` to automatically select override conversation when set
+- Added `scrollToTimestamp` prop to `ChatMessageList` for scroll-to-position in history mode
+- Updated `IntegratedChatPanel` to pass history state metadata to chat context and scroll to timestamp
+
+**Files Modified:**
+- `src/stores/uiStore.ts` (MODIFIED - extended taskHistoryState type)
+- `src/components/tasks/StateTimelineNav.tsx` (MODIFIED - pass metadata on state selection)
+- `src/hooks/useChatPanelContext.ts` (MODIFIED - added override props and selection effect)
+- `src/components/Chat/ChatMessageList.tsx` (MODIFIED - added scrollToTimestamp prop and effect)
+- `src/components/Chat/IntegratedChatPanel.tsx` (MODIFIED - wire history state to chat panel)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - data flow wiring only (UI changes are state-driven)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 16:30:00 - Phase 64 Task 4: Add metadata fields to state transition types
 **What:**
 - Added `conversation_id` and `agent_run_id` optional fields to `StateTransitionResponseSchemaRaw` Zod schema

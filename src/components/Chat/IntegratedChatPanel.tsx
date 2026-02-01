@@ -99,12 +99,16 @@ export function IntegratedChatPanel({
     streamingToolCalls,
     setStreamingToolCalls,
     autoSelectConversation,
+    // overrideAgentRunId is available but we use taskHistoryState.timestamp for scroll positioning
   } = useChatPanelContext({
     projectId,
     ideationSessionId,
     selectedTaskId: selectedTaskId ?? undefined,
     isExecutionMode,
     isReviewMode,
+    // Pass history mode overrides for conversation selection
+    overrideConversationId: taskHistoryState?.conversationId,
+    overrideAgentRunId: taskHistoryState?.agentRunId,
   });
 
   // Use context-aware selectors - unified queue works for all modes
@@ -399,6 +403,7 @@ export function IntegratedChatPanel({
               isAgentRunning={isAgentRunning}
               streamingToolCalls={streamingToolCalls}
               messagesEndRef={messagesEndRef}
+              scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
             />
           )}
 

@@ -22,6 +22,10 @@ interface UseChatPanelContextProps {
   selectedTaskId: string | undefined;
   isExecutionMode: boolean;
   isReviewMode: boolean;
+  /** Override conversation ID for history mode - forces selection of specific conversation */
+  overrideConversationId?: string | undefined;
+  /** Override agent run ID for history mode - used for scroll positioning */
+  overrideAgentRunId?: string | undefined;
 }
 
 interface ConversationData {
@@ -41,6 +45,8 @@ export function useChatPanelContext({
   selectedTaskId,
   isExecutionMode,
   isReviewMode,
+  overrideConversationId,
+  overrideAgentRunId,
 }: UseChatPanelContextProps) {
   const queryClient = useQueryClient();
   const activeConversationId = useChatStore(selectActiveConversationId);
@@ -149,6 +155,22 @@ export function useChatPanelContext({
     }
   }, [contextKey, setActiveConversation, queryClient, clearMessages]);
 
+  // Track previous override conversation ID to detect changes
+  const prevOverrideConversationIdRef = useRef<string | undefined>(undefined);
+
+  // Handle override conversation selection (for history mode)
+  useEffect(() => {
+    if (overrideConversationId !== prevOverrideConversationIdRef.current) {
+      prevOverrideConversationIdRef.current = overrideConversationId;
+
+      if (overrideConversationId) {
+        // In history mode with a specific conversation - select it
+        setActiveConversation(overrideConversationId);
+        hasAutoSelectedRef.current = true; // Prevent auto-select from overriding
+      }
+    }
+  }, [overrideConversationId, setActiveConversation]);
+
   // Determine current context type and ID for validation
   const currentContextType: ContextType = ideationSessionId
     ? "ideation"
@@ -220,5 +242,7 @@ export function useChatPanelContext({
     streamingToolCalls,
     setStreamingToolCalls,
     autoSelectConversation,
+    /** Override agent run ID for scroll positioning in history mode */
+    overrideAgentRunId,
   };
 }
