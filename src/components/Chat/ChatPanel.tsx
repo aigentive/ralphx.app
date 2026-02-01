@@ -361,8 +361,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           data-testid="chat-panel-header"
           className="flex items-center justify-between h-11 px-3 border-b backdrop-blur-sm"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
+            borderColor: "hsla(220 10% 100% / 0.06)",
+            background: "hsla(220 10% 10% / 0.95)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
           }}
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />

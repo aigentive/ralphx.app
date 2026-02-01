@@ -739,18 +739,31 @@ function AppContent() {
             </div>
         </div>
 
-          {/* ReviewsPanel slide-out */}
+          {/* ReviewsPanel - floating overlay with Tahoe glass panel */}
           {reviewsPanelOpen && (
             <div
-              className="w-96 border-l flex-shrink-0"
-              style={{ borderColor: "var(--border-subtle)" }}
+              className="fixed top-14 right-0 w-[400px] z-40 flex flex-col animate-[slide-in-right_200ms_ease-out]"
+              style={{ bottom: "76px" }}
             >
-              <ReviewsPanel
-                projectId={currentProjectId}
-                onClose={() => setReviewsPanelOpen(false)}
-                isApproving={isApproving}
-                isRequestingChanges={isRequestingChanges}
-              />
+              {/* Floating panel inner container */}
+              <div
+                className="flex flex-col flex-1 rounded-[10px] overflow-hidden"
+                style={{
+                  margin: "8px",
+                  background: "hsla(220 10% 10% / 0.92)",
+                  backdropFilter: "blur(20px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                  border: "1px solid hsla(220 20% 100% / 0.08)",
+                  boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+                }}
+              >
+                <ReviewsPanel
+                  projectId={currentProjectId}
+                  onClose={() => setReviewsPanelOpen(false)}
+                  isApproving={isApproving}
+                  isRequestingChanges={isRequestingChanges}
+                />
+              </div>
             </div>
           )}
 
