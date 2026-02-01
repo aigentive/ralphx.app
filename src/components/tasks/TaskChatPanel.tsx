@@ -31,6 +31,9 @@ import { MessageItem } from "../Chat/MessageItem";
 // Constants
 // ============================================================================
 
+/** Terminal task statuses - when reached, clear stale agent running state */
+const TERMINAL_STATUSES = ["done", "archived", "failed"];
+
 const animationStyles = `
 @keyframes typingBounce {
   0%, 60%, 100% { transform: translateY(0); }
@@ -188,6 +191,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     editQueuedMessage,
     deleteQueuedMessage,
     startEditingQueuedMessage,
+    clearAgentRunningForTask,
   } = useChatStore();
 
   // Use the new useTaskChat hook - single hook call handles all context types
@@ -236,6 +240,18 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     }
     prevIsLiveRef.current = isLive;
   }, [isLive, contextKey, setAgentRunning]);
+
+  // Track previous status to detect terminal state transitions
+  const prevStatusRef = useRef<string | null>(null);
+
+  // When task reaches terminal state, clear all stale agent running states for this task
+  // This handles the case where context keys cycled during state transitions
+  useEffect(() => {
+    if (TERMINAL_STATUSES.includes(taskStatus) && prevStatusRef.current !== taskStatus) {
+      clearAgentRunningForTask(taskId);
+    }
+    prevStatusRef.current = taskStatus;
+  }, [taskStatus, taskId, clearAgentRunningForTask]);
 
   // Streaming state - accumulates text chunks as they arrive
   const messagesEndRef = useRef<HTMLDivElement>(null);
