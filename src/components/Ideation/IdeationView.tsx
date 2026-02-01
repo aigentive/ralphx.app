@@ -30,7 +30,6 @@ import { PlanDisplay } from "./PlanDisplay";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
-import { cn } from "@/lib/utils";
 import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./IdeationView.constants";
 import { SessionBrowser } from "./SessionBrowser";
@@ -317,7 +316,8 @@ export function IdeationView({
       <div
         ref={containerRef}
         data-testid="ideation-view"
-        className="flex h-full relative bg-[#050505]"
+        className="flex h-full relative"
+        style={{ background: "hsl(220 10% 8%)" }}
         role="main"
       >
         {/* Session Browser Sidebar */}
@@ -339,8 +339,8 @@ export function IdeationView({
               data-testid="ideation-header"
               className="flex items-center justify-between h-11 px-4 border-b"
               style={{
-                borderColor: "rgba(255,255,255,0.06)",
-                background: "rgba(18,18,18,0.85)",
+                borderColor: "hsla(220 10% 100% / 0.06)",
+                background: "hsla(220 10% 12% / 0.85)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
               }}
@@ -349,22 +349,42 @@ export function IdeationView({
                 <div
                   className="w-6 h-6 rounded-md flex items-center justify-center"
                   style={{
-                    background: "rgba(255,107,53,0.1)",
-                    border: "1px solid rgba(255,107,53,0.2)",
+                    background: "hsla(14 100% 60% / 0.1)",
+                    border: "1px solid hsla(14 100% 60% / 0.2)",
                   }}
                 >
-                  <Sparkles className="w-3 h-3 text-[#ff6b35]" />
+                  <Sparkles className="w-3 h-3" style={{ color: "hsl(14 100% 60%)" }} />
                 </div>
                 <div>
-                  <h1 className="text-xs font-semibold text-[var(--text-primary)] tracking-tight">
+                  <h1
+                    className="text-xs font-semibold tracking-tight"
+                    style={{ color: "hsl(220 10% 90%)" }}
+                  >
                     {session.title || "New Session"}
                   </h1>
-                  <p className="text-[10px] text-[var(--text-muted)]">
+                  <p
+                    className="text-[10px]"
+                    style={{ color: "hsl(220 10% 50%)" }}
+                  >
                     {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={handleArchive} className="h-7 gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.06]">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleArchive}
+                className="h-7 gap-1.5 text-xs transition-colors duration-150"
+                style={{ color: "hsl(220 10% 60%)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "hsl(220 10% 90%)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "hsl(220 10% 60%)";
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
                 <Archive className="w-3.5 h-3.5" />
                 Archive
               </Button>
@@ -375,19 +395,30 @@ export function IdeationView({
               {/* Proposals Panel (Left) */}
               <div
                 data-testid="proposals-panel"
-                className="flex flex-col border-r border-white/[0.06] bg-gradient-to-b from-black/10 to-transparent relative"
-                style={{ width: `${leftPanelWidth}%`, minWidth: "360px" }}
+                className="flex flex-col relative"
+                style={{
+                  width: `${leftPanelWidth}%`,
+                  minWidth: "360px",
+                  borderRight: "1px solid hsla(220 10% 100% / 0.06)",
+                  background: "hsla(220 10% 10% / 0.5)",
+                }}
                 {...dropProps}
               >
                 {/* Drop zone overlay - shown during drag */}
                 <DropZoneOverlay isVisible={isDragging} message="Drop to import plan" />
                 {/* Panel Header */}
-                <div className="flex items-center justify-between px-4 h-10 border-b border-white/[0.06] bg-black/20">
+                <div
+                  className="flex items-center justify-between px-4 h-10"
+                  style={{
+                    borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+                    background: "hsla(220 10% 8% / 0.6)",
+                  }}
+                >
                   <div className="flex items-center gap-2">
-                    <ListTodo className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                    <h2 className="text-[13px] font-medium text-[var(--text-primary)]">Proposals</h2>
+                    <ListTodo className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
+                    <h2 className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Proposals</h2>
                     {isAnalyzingDependencies && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-[#ff6b35]">
+                      <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "hsl(14 100% 60%)" }}>
                         <Loader2 className="w-3 h-3 animate-spin" />
                         <span>Analyzing...</span>
                       </div>
@@ -403,7 +434,16 @@ export function IdeationView({
                               size="icon"
                               onClick={handleReanalyzeDependencies}
                               disabled={isAnalyzingDependencies}
-                              className="h-7 w-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] disabled:opacity-50"
+                              className="h-7 w-7 disabled:opacity-50 transition-colors duration-150"
+                              style={{ color: "hsl(220 10% 50%)" }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = "hsl(220 10% 90%)";
+                                e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = "hsl(220 10% 50%)";
+                                e.currentTarget.style.background = "transparent";
+                              }}
                             >
                               <Network className="w-3.5 h-3.5" />
                             </Button>
@@ -415,7 +455,14 @@ export function IdeationView({
                       </TooltipProvider>
                     )}
                     {proposals.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/[0.05] text-[var(--text-muted)] border border-white/[0.06]">
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[11px] font-medium"
+                        style={{
+                          background: "hsla(220 10% 100% / 0.05)",
+                          color: "hsl(220 10% 60%)",
+                          border: "1px solid hsla(220 10% 100% / 0.06)",
+                        }}
+                      >
                         {proposals.length}
                       </span>
                     )}
@@ -437,14 +484,19 @@ export function IdeationView({
                 {/* Proposals List */}
                 <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
                   {importStatus && (
-                    <div className={cn(
-                      "mb-4 p-4 rounded-xl border",
-                      importStatus.type === "success"
-                        ? "bg-emerald-500/10 border-emerald-500/30"
-                        : "bg-red-500/10 border-red-500/30"
-                    )}>
+                    <div
+                      className="mb-4 p-4 rounded-xl"
+                      style={{
+                        background: importStatus.type === "success"
+                          ? "hsla(145 70% 40% / 0.1)"
+                          : "hsla(0 70% 50% / 0.1)",
+                        border: `1px solid ${importStatus.type === "success"
+                          ? "hsla(145 70% 40% / 0.3)"
+                          : "hsla(0 70% 50% / 0.3)"}`,
+                      }}
+                    >
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-[var(--text-primary)]">{importStatus.message}</p>
+                        <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>{importStatus.message}</p>
                         <Button variant="ghost" size="icon" onClick={() => setImportStatus(null)} className="h-7 w-7">×</Button>
                       </div>
                     </div>
@@ -460,7 +512,25 @@ export function IdeationView({
                   )}
 
                   {!planArtifact && proposals.length > 0 && (
-                    <Button variant="outline" onClick={handleImportPlan} className="w-full mb-4 gap-2 border-white/[0.1] hover:border-white/[0.2] hover:bg-white/[0.03]" data-testid="import-plan-button">
+                    <Button
+                      variant="outline"
+                      onClick={handleImportPlan}
+                      className="w-full mb-4 gap-2 transition-colors duration-150"
+                      style={{
+                        border: "1px solid hsla(220 10% 100% / 0.1)",
+                        background: "transparent",
+                        color: "hsl(220 10% 70%)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
+                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.1)";
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                      data-testid="import-plan-button"
+                    >
                       <Upload className="w-4 h-4" />
                       Import Implementation Plan
                     </Button>
@@ -482,11 +552,16 @@ export function IdeationView({
                   {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full p-8">
                       <div className="relative">
-                        <div className="absolute inset-0 bg-[#ff6b35]/5 rounded-3xl blur-2xl" />
-                        <div className="relative p-8 rounded-2xl bg-gradient-to-br from-white/[0.03] to-transparent border border-white/[0.06] text-center">
-                          <Loader2 className="w-10 h-10 mx-auto mb-4 text-[#ff6b35] animate-spin" />
-                          <p className="font-medium text-[var(--text-secondary)]">Waiting for implementation plan...</p>
-                          <p className="text-sm text-[var(--text-muted)] mt-1">The orchestrator will create a plan first</p>
+                        <div
+                          className="relative p-8 rounded-2xl text-center"
+                          style={{
+                            background: "hsla(220 10% 14% / 0.6)",
+                            border: "1px solid hsla(220 10% 100% / 0.06)",
+                          }}
+                        >
+                          <Loader2 className="w-10 h-10 mx-auto mb-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
+                          <p className="font-medium" style={{ color: "hsl(220 10% 70%)" }}>Waiting for implementation plan...</p>
+                          <p className="text-sm mt-1" style={{ color: "hsl(220 10% 50%)" }}>The orchestrator will create a plan first</p>
                         </div>
                       </div>
                     </div>
@@ -515,15 +590,18 @@ export function IdeationView({
               {/* Resize Handle */}
               <div
                 data-testid="resize-handle"
-                className={cn("w-1 cursor-ew-resize relative group shrink-0", isResizing && "bg-[#ff6b35]/50")}
+                className="w-1 cursor-ew-resize relative group shrink-0"
+                style={{
+                  background: isResizing ? "hsla(14 100% 60% / 0.5)" : "transparent",
+                }}
                 onMouseDown={handleResizeStart}
               >
-                <div className={cn(
-                  "absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all duration-150",
-                  isResizing
-                    ? "bg-[#ff6b35] shadow-[0_0_12px_rgba(255,107,53,0.5)]"
-                    : "bg-white/[0.06] group-hover:bg-[#ff6b35]/60 group-hover:shadow-[0_0_8px_rgba(255,107,53,0.3)]"
-                )} />
+                <div
+                  className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all duration-150"
+                  style={{
+                    background: isResizing ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.06)",
+                  }}
+                />
               </div>
 
               {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
@@ -537,11 +615,10 @@ export function IdeationView({
                   ideationSessionId={session.id}
                   emptyState={<ConversationEmptyState />}
                   showHelperTextAlways={true}
-                  inputContainerClassName="border-t border-white/[0.06] bg-black/30"
                   headerContent={
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <MessageSquare className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
-                      <span className="text-[13px] font-medium text-[var(--text-primary)]">Conversation</span>
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
+                      <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
                     </div>
                   }
                 />
