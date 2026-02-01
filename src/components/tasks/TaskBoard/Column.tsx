@@ -81,8 +81,6 @@ function TaskSkeleton() {
 export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const [isHovered, setIsHovered] = useState(false);
-  const [isInlineAddExpanded, setIsInlineAddExpanded] = useState(false);
   const { active } = useDndContext();
   const isDragging = active !== null;
 
@@ -223,9 +221,8 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
   };
 
   // Determine if this column should show InlineTaskAdd
-  // Show when hovering OR when the inline add form is expanded (to preserve state)
+  // Always visible in draft/backlog columns (not during drag)
   const showInlineAdd =
-    (isHovered || isInlineAddExpanded) &&
     !isDragging &&
     (column.id === "draft" || column.id === "backlog");
 
@@ -242,8 +239,6 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
         paddingRight: "12px",
         ...(!isLast && { borderRight: "1px solid hsla(220 10% 100% / 0.06)" }),
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Column header - macOS Tahoe: small, gray, understated like Finder section headers */}
       <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
@@ -358,12 +353,11 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
           </>
         )}
 
-        {/* Inline task add - appears on hover (only in draft/backlog columns, not during drag) */}
+        {/* Inline task add - always visible in draft/backlog columns (hidden during drag) */}
         {showInlineAdd && (
           <InlineTaskAdd
             projectId={projectId}
             columnId={column.id}
-            onExpandedChange={setIsInlineAddExpanded}
           />
         )}
       </div>

@@ -31,7 +31,6 @@ interface InlineTaskAddProps {
 
 export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExpandedChange }: InlineTaskAddProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
@@ -123,62 +122,77 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
     handleCollapse();
   };
 
-  // Collapsed state: Ghost card with refined hover
+  // Collapsed state: Ghost card with refined hover (CSS-only, no state flicker)
   if (!isExpanded) {
     return (
-      <button
-        data-testid="inline-task-add-collapsed"
-        onClick={handleExpand}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className="group w-full relative overflow-hidden"
-        style={{
-          padding: "10px 12px",
-          borderRadius: "10px",
-          border: `1.5px dashed ${isHovered ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.15)"}`,
-          backgroundColor: isHovered ? "hsla(14 100% 60% / 0.04)" : "transparent",
-          transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
-          cursor: "pointer",
-        }}
-      >
-        <div
-          className="flex items-center gap-2"
+      <>
+        <style>{`
+          .inline-task-add-collapsed {
+            border: 1.5px dashed hsla(220 10% 100% / 0.15) !important;
+            background-color: transparent;
+            transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .inline-task-add-collapsed:hover {
+            border-color: hsl(14 100% 60%) !important;
+            background-color: hsla(14 100% 60% / 0.04);
+          }
+          .inline-task-add-collapsed .add-icon {
+            background-color: transparent;
+            transition: background-color 180ms ease;
+          }
+          .inline-task-add-collapsed:hover .add-icon {
+            background-color: hsla(14 100% 60% / 0.12);
+          }
+          .inline-task-add-collapsed .add-content {
+            color: hsl(220 10% 45%);
+            transition: color 180ms ease;
+          }
+          .inline-task-add-collapsed:hover .add-content {
+            color: hsl(14 100% 60%);
+          }
+        `}</style>
+        <button
+          data-testid="inline-task-add-collapsed"
+          onClick={handleExpand}
+          className="inline-task-add-collapsed group w-full relative overflow-hidden"
           style={{
-            color: isHovered ? "hsl(14 100% 60%)" : "hsl(220 10% 45%)",
-            transition: "color 180ms ease",
+            padding: "10px 12px",
+            borderRadius: "10px",
+            cursor: "pointer",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "18px",
-              height: "18px",
-              borderRadius: "5px",
-              backgroundColor: isHovered ? "hsla(14 100% 60% / 0.12)" : "transparent",
-              transition: "background-color 180ms ease",
-            }}
-          >
-            <Plus
+          <div className="add-content flex items-center gap-2">
+            <div
+              className="add-icon"
               style={{
-                width: "13px",
-                height: "13px",
-                strokeWidth: 2.5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "18px",
+                height: "18px",
+                borderRadius: "5px",
               }}
-            />
+            >
+              <Plus
+                style={{
+                  width: "13px",
+                  height: "13px",
+                  strokeWidth: 2.5,
+                }}
+              />
+            </div>
+            <span
+              style={{
+                fontSize: "13px",
+                fontWeight: 500,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              Add task
+            </span>
           </div>
-          <span
-            style={{
-              fontSize: "13px",
-              fontWeight: 500,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Add task
-          </span>
-        </div>
-      </button>
+        </button>
+      </>
     );
   }
 

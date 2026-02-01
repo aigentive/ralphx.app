@@ -98,7 +98,7 @@ export function TaskCard({
   hasCheckpoint,
   revisionCount,
 }: TaskCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging: isBeingDragged } = useDraggable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id });
 
   // UI Store - use selectedTaskId for split layout (TaskDetailOverlay handles rendering)
   const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
@@ -131,14 +131,13 @@ export function TaskCard({
   // Determine if task is draggable based on internal status
   const isDraggable = useMemo(() => isDraggableStatus(task.internalStatus), [task.internalStatus]);
 
-  // Hide when being dragged OR when transitioning after drop
-  const shouldHide = isBeingDragged || isHidden;
-
+  // Drag styling:
+  // - isHidden: briefly hide when moving to a different column (prevents duplicate)
+  // - Otherwise: always fully visible (DragOverlay handles the floating preview)
   const dragStyle: React.CSSProperties = {
     ...(transform && { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }),
-    opacity: shouldHide ? 0 : 1,
-    // Pop-in animation when card appears in new column
-    animation: shouldHide ? 'none' : 'card-pop-in 150ms ease-out',
+    opacity: isHidden ? 0 : 1,
+    transition: 'opacity 150ms ease-out',
   };
 
   // Build QA badge props conditionally to satisfy exactOptionalPropertyTypes

@@ -121,13 +121,13 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     return columns.filter((col) => searchTasksByColumn.has(col.id));
   }, [columns, isSearchActive, searchTasksByColumn]);
 
-  // Clear movingTaskId after React has re-rendered with new position
+  // Clear movingTaskId after a short delay to allow optimistic update to settle
   useEffect(() => {
     if (!movingTaskId) return;
-    const id = requestAnimationFrame(() => {
+    const timeoutId = setTimeout(() => {
       setMovingTaskId(null);
-    });
-    return () => cancelAnimationFrame(id);
+    }, 100);
+    return () => clearTimeout(timeoutId);
   }, [movingTaskId]);
 
   // Keyboard shortcuts: Cmd+N for new task, Cmd+F for search, Escape to close search
@@ -290,8 +290,25 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const taskId = String(event.active.id);
-    // Keep the moved task hidden until after re-render
-    setMovingTaskId(taskId);
+
+    // Find the source column for this task
+    const sourceColumn = columns.find((col) => {
+      const key = infiniteTaskKeys.list({
+        projectId,
+        statuses: getColumnStatuses(col),
+        includeArchived: showArchived,
+      });
+      const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
+      return data?.pages?.some((page) => page.tasks.some((t: Task) => t.id === taskId));
+    });
+
+    // Only hide the task if dropping on a DIFFERENT column
+    // (prevents card from disappearing when dropped on same column or outside)
+    const targetColumnId = event.over?.id.toString();
+    if (targetColumnId && sourceColumn && targetColumnId !== sourceColumn.id) {
+      setMovingTaskId(taskId);
+    }
+
     // Trigger optimistic update FIRST (onMutate is synchronous)
     onDragEnd(event);
     setActiveTask(null);
