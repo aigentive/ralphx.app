@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 01:45:00 - Phase 62 Task 2: Add useDependencyGraphComplete hook
+**What:**
+- Created `src/hooks/useDependencyGraphComplete.ts` with graph validation logic
+- Implements `DependencyGraphValidation` interface with detailed status
+- Exports `validateDependencyGraph` function for direct use
+- Exports `useDependencyGraphComplete` hook with useMemo for React integration
+- Validates: all proposals have tiers, no dangling dependencies, no cycles
+
+**Files Created:**
+- `src/hooks/useDependencyGraphComplete.ts` (NEW)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors in new code)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - hook only, no UI changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 01:15:00 - Phase 62 Task 1: Rename Converted status to Accepted with migration
 **What:**
 - Updated `IdeationSessionStatus` enum: `Converted` → `Accepted`
