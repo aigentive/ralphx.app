@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 03:45:00 - Phase 62 Task 6: Add task link to ProposalCard for accepted plans
+**What:**
+- Added `isReadOnly` and `onNavigateToTask` props to `ProposalCard` component
+- Added `isReadOnly` and `onNavigateToTask` props to `TieredProposalList` component
+- Added "View Task →" button that appears when `proposal.createdTaskId` exists
+- Hid edit/delete action buttons when `isReadOnly` is true (accepted/archived plans)
+- Added `handleNavigateToTask` callback in `PlanningView` that switches to kanban and selects task
+- Passed `isReadOnly` and `onNavigateToTask` through the component chain
+
+**Files Modified:**
+- `src/components/Ideation/ProposalCard.tsx` (MODIFIED - added ExternalLink icon, isReadOnly/onNavigateToTask props, View Task button, conditional edit/delete)
+- `src/components/Ideation/TieredProposalList.tsx` (MODIFIED - added isReadOnly/onNavigateToTask props passthrough)
+- `src/components/Ideation/PlanningView.tsx` (MODIFIED - added uiStore import, handleNavigateToTask handler, prop passing)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - feature requires accepted plan with createdTaskId to verify; backend already populates field on apply
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 03:15:00 - Phase 62 Task 5: Rename IdeationView to PlanningView with read-only support
 **What:**
 - Renamed `src/components/Ideation/IdeationView.tsx` to `PlanningView.tsx`

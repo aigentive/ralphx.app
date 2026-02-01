@@ -25,6 +25,7 @@ import type {
 } from "@/types/ideation";
 import { Button } from "@/components/ui/button";
 import { PlanDisplay } from "./PlanDisplay";
+import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
@@ -233,6 +234,15 @@ export function PlanningView({
       preserveDependencies: true,
     });
   }, [session, proposals, onApply]);
+
+  // Navigate to task handler - switches to kanban view and selects the task
+  const setCurrentView = useUiStore((state) => state.setCurrentView);
+  const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
+
+  const handleNavigateToTask = useCallback((taskId: string) => {
+    setCurrentView("kanban");
+    setSelectedTaskId(taskId);
+  }, [setCurrentView, setSelectedTaskId]);
 
   const {
     highlightedProposalIds,
@@ -518,6 +528,8 @@ export function PlanningView({
                       {...(planArtifact?.metadata.version !== undefined && {
                         currentPlanVersion: planArtifact.metadata.version,
                       })}
+                      {...(isReadOnly && { isReadOnly })}
+                      onNavigateToTask={handleNavigateToTask}
                     />
                   )}
                 </div>
