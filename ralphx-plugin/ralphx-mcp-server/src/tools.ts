@@ -37,7 +37,7 @@ export const ALL_TOOLS: Tool[] = [
         },
         category: {
           type: "string",
-          enum: ["feature", "fix", "setup", "testing", "refactor", "docs"],
+          enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
           description: "Task category",
         },
         priority: {
@@ -80,7 +80,7 @@ export const ALL_TOOLS: Tool[] = [
         },
         category: {
           type: "string",
-          enum: ["feature", "fix", "setup", "testing", "refactor", "docs"],
+          enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
           description: "Updated category",
         },
         priority: {
@@ -246,7 +246,7 @@ export const ALL_TOOLS: Tool[] = [
   {
     name: "update_task",
     description:
-      "Update an existing task's details. Use when the user wants to modify task title, description, priority, or status.",
+      "Update an existing task's details. Use when the user wants to modify task title, description, or priority. For status changes, use move_task or workflow commands.",
     inputSchema: {
       type: "object",
       properties: {
@@ -266,19 +266,6 @@ export const ALL_TOOLS: Tool[] = [
           type: "string",
           enum: ["critical", "high", "medium", "low"],
           description: "Updated priority",
-        },
-        status: {
-          type: "string",
-          enum: [
-            "backlog",
-            "ready",
-            "in_progress",
-            "blocked",
-            "review",
-            "done",
-            "cancelled",
-          ],
-          description: "Updated status",
         },
       },
       required: ["task_id"],
@@ -343,7 +330,7 @@ export const ALL_TOOLS: Tool[] = [
         },
         category: {
           type: "string",
-          enum: ["feature", "fix", "setup", "testing", "refactor", "docs"],
+          enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
           description: "Task category",
         },
         priority: {
@@ -371,17 +358,27 @@ export const ALL_TOOLS: Tool[] = [
           enum: [
             "backlog",
             "ready",
-            "in_progress",
             "blocked",
-            "review",
-            "done",
+            "executing",
+            "qa_refining",
+            "qa_testing",
+            "qa_passed",
+            "qa_failed",
+            "pending_review",
+            "reviewing",
+            "review_passed",
+            "escalated",
+            "revision_needed",
+            "re_executing",
+            "approved",
+            "failed",
             "cancelled",
           ],
           description: "Filter by status (optional)",
         },
         category: {
           type: "string",
-          enum: ["feature", "fix", "setup", "testing", "refactor", "docs"],
+          enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
           description: "Filter by category (optional)",
         },
       },
