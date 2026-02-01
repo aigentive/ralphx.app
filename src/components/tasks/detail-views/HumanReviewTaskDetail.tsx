@@ -104,85 +104,103 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
 
   const hasContent = review?.notes && review.notes.length > 100;
 
+  // Click handler - expand when collapsed, clicking anywhere
+  const handleCardClick = () => {
+    if (!isExpanded && hasContent) {
+      setIsExpanded(true);
+    }
+  };
+
   return (
     <DetailCard>
-      {/* AI Badge header - clickable to expand/collapse */}
-      <button
-        onClick={() => hasContent && setIsExpanded(!isExpanded)}
-        className="flex items-center gap-3 w-full text-left"
-        disabled={!hasContent}
+      {/* Clickable area when collapsed */}
+      <div
+        onClick={handleCardClick}
+        className={hasContent && !isExpanded ? "cursor-pointer" : ""}
       >
-        <div
-          className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
-          style={{ backgroundColor: "rgba(10, 132, 255, 0.15)" }}
-        >
-          <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <span className="text-[13px] font-semibold text-white/80 block">
-            AI Review Summary
-          </span>
-          <span className="text-[11px] text-white/45">
-            Automated checks passed
-          </span>
-        </div>
-        {/* Expand indicator */}
-        {hasContent && (
-          <span
-            className="text-[11px] font-medium px-2 py-0.5 rounded"
-            style={{
-              color: "hsl(217 90% 60%)",
-              backgroundColor: "hsla(217 90% 60% / 0.1)",
-            }}
-          >
-            {isExpanded ? "Less" : "More"}
-          </span>
-        )}
-      </button>
-
-      {/* Collapsible content area */}
-      {review?.notes && (
-        <div className="relative mt-4">
+        {/* AI Badge header */}
+        <div className="flex items-center gap-3">
           <div
-            className="pl-12 text-[13px] text-white/65 leading-relaxed prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300 ease-out"
-            style={{
-              maxHeight: isExpanded ? "1000px" : `${COLLAPSED_HEIGHT}px`,
-            }}
+            className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
+            style={{ backgroundColor: "rgba(10, 132, 255, 0.15)" }}
           >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {review.notes}
-            </ReactMarkdown>
-
-            {/* Checklist inside collapsible */}
-            <div className="space-y-0.5 mt-4 not-prose">
-              {checks.map((check, i) => (
-                <ChecklistItem key={i} {...check} />
-              ))}
-            </div>
+            <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
           </div>
+          <div>
+            <span className="text-[13px] font-semibold text-white/80 block">
+              AI Review Summary
+            </span>
+            <span className="text-[11px] text-white/45">
+              Automated checks passed
+            </span>
+          </div>
+        </div>
 
-          {/* Gradient fade overlay when collapsed */}
-          {hasContent && !isExpanded && (
+        {/* Collapsible content area */}
+        {review?.notes && (
+          <div className="relative mt-4">
             <div
-              className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none"
+              className="pl-12 text-[13px] text-white/65 leading-relaxed prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300 ease-out"
               style={{
-                background: "linear-gradient(to bottom, hsla(220 10% 12% / 0), hsl(220 10% 12%))",
+                maxHeight: isExpanded ? "1000px" : `${COLLAPSED_HEIGHT}px`,
               }}
-            />
-          )}
-        </div>
-      )}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {review.notes}
+              </ReactMarkdown>
 
-      {/* Checklist fallback when no notes */}
-      {!review?.notes && (
-        <div className="pl-12 space-y-0.5 mt-4">
-          {checks.map((check, i) => (
-            <ChecklistItem key={i} {...check} />
-          ))}
-        </div>
+              {/* Checklist inside collapsible */}
+              <div className="space-y-0.5 mt-4 not-prose">
+                {checks.map((check, i) => (
+                  <ChecklistItem key={i} {...check} />
+                ))}
+              </div>
+            </div>
+
+            {/* Gradient fade overlay when collapsed */}
+            {hasContent && !isExpanded && (
+              <div
+                className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none"
+                style={{
+                  background: "linear-gradient(to bottom, hsla(220 10% 12% / 0), hsl(220 10% 12%))",
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Checklist fallback when no notes */}
+        {!review?.notes && (
+          <div className="pl-12 space-y-0.5 mt-4">
+            {checks.map((check, i) => (
+              <ChecklistItem key={i} {...check} />
+            ))}
+          </div>
+        )}
+
+        {/* Show more - outside gradient, below content */}
+        {hasContent && !isExpanded && (
+          <div
+            className="pl-12 mt-2 text-[12px] font-medium"
+            style={{ color: "hsl(217 90% 60%)" }}
+          >
+            Show more
+          </div>
+        )}
+      </div>
+
+      {/* Show less button - only when expanded */}
+      {hasContent && isExpanded && (
+        <button
+          onClick={() => setIsExpanded(false)}
+          className="pl-12 mt-3 text-[12px] font-medium transition-colors hover:opacity-80"
+          style={{ color: "hsl(217 90% 60%)" }}
+        >
+          Show less
+        </button>
       )}
     </DetailCard>
   );
