@@ -100,19 +100,34 @@ export function truncate(text: string, maxLength: number): string {
 }
 
 /**
+ * Strip ANSI escape codes from text
+ * Handles color codes, cursor movement, and other terminal sequences
+ */
+export function stripAnsiCodes(text: string): string {
+  // Match ANSI escape sequences:
+  // - \x1b[ or \033[ followed by parameters and a letter
+  // - Also handles OSC sequences (\x1b]) and other escape sequences
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[PX^_][^\x1b]*\x1b\\|\x1b./g, '');
+}
+
+/**
  * Format value for display
  * - Strings are displayed directly (preserving newlines)
  * - Objects/arrays are pretty-printed as JSON
+ * - ANSI escape codes are stripped from all text output
  */
 export function formatValue(value: unknown): { text: string; isPlainText: boolean } {
   if (typeof value === "string") {
     // String values are displayed directly - newlines will be preserved
-    return { text: value, isPlainText: true };
+    // Strip ANSI escape codes for clean display
+    return { text: stripAnsiCodes(value), isPlainText: true };
   }
   try {
-    return { text: JSON.stringify(value, null, 2), isPlainText: false };
+    const json = JSON.stringify(value, null, 2);
+    return { text: stripAnsiCodes(json), isPlainText: false };
   } catch {
-    return { text: String(value), isPlainText: true };
+    return { text: stripAnsiCodes(String(value)), isPlainText: true };
   }
 }
 
