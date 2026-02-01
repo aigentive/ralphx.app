@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-02-01 22:25:00 - Phase 60 Task 12: Add IssueList and IssueTimeline UI components
+**What:**
+- Created `src/components/Reviews/IssueList.tsx` with:
+  - `SeverityBadge` - displays severity with icon and color (critical/major/minor/suggestion)
+  - `StatusBadge` - displays status with icon and color (open/in_progress/addressed/verified/wontfix)
+  - `IssueCard` - displays single issue with severity badge, status badge, category, title, description, file link
+  - `IssueGroup` - collapsible group of issues with title and count
+  - `IssueProgressBar` - visual progress bar showing issue resolution status with severity breakdown
+  - `IssueList` - main component with groupBy options (severity/status/step)
+- Created `src/components/Reviews/IssueTimeline.tsx` with:
+  - `IssueTimeline` - vertical timeline showing issue lifecycle (created → in_progress → addressed → verified)
+  - `IssueTimelineCompact` - compact dot-based timeline for inline display
+- Created `src/components/Reviews/index.ts` barrel export file
+- All components follow macOS Tahoe design: flat colors, blue-gray palette, small typography
+
+**Files:**
+- `src/components/Reviews/IssueList.tsx` (NEW - 354 LOC)
+- `src/components/Reviews/IssueTimeline.tsx` (NEW - 231 LOC)
+- `src/components/Reviews/index.ts` (NEW - 21 LOC)
+
+**Commands:**
+- `npm run lint` (0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - components created but not yet wired to views (Task 13 will integrate)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 21:55:00 - Phase 60 Task 11: Add reviewIssuesApi with Tauri invocations
 **What:**
 - Created `src/api/review-issues.ts` with all review issue API methods:
