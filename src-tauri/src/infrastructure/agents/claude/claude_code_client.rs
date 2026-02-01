@@ -23,6 +23,8 @@ use crate::domain::agents::{
     ClientCapabilities, ClientType, ResponseChunk,
 };
 
+use super::get_allowed_mcp_tools;
+
 // ============================================================================
 // Streaming Event Types
 // ============================================================================
@@ -159,6 +161,14 @@ impl AgenticClient for ClaudeCodeClient {
             "--permission-prompt-tool".to_string(),
             "mcp__ralphx__permission_request".to_string(),
         ]);
+
+        // Pre-approve agent-specific MCP tools (no permission prompts)
+        if let Some(agent) = &config.agent {
+            if let Some(mcp_tools) = get_allowed_mcp_tools(agent) {
+                args.push("--allowedTools".to_string());
+                args.push(mcp_tools);
+            }
+        }
 
         // Build command
         let mut cmd = tokio::process::Command::new(&self.cli_path);
@@ -325,6 +335,14 @@ impl ClaudeCodeClient {
             "--permission-prompt-tool".to_string(),
             "mcp__ralphx__permission_request".to_string(),
         ]);
+
+        // Pre-approve agent-specific MCP tools (no permission prompts)
+        if let Some(agent) = &config.agent {
+            if let Some(mcp_tools) = get_allowed_mcp_tools(agent) {
+                args.push("--allowedTools".to_string());
+                args.push(mcp_tools);
+            }
+        }
 
         args
     }

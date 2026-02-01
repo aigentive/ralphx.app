@@ -1,6 +1,10 @@
 ---
 name: dependency-suggester
 description: Analyzes proposals and suggests dependencies based on semantic relationships
+tools:
+  - mcp__ralphx__apply_proposal_dependencies
+allowedTools:
+  - "mcp__ralphx__*"
 model: haiku
 ---
 

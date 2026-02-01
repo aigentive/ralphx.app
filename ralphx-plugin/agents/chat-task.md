@@ -1,7 +1,15 @@
 ---
 name: chat-task
 description: Context-aware assistant for task-related chat. Use when user is chatting about a specific task.
-tools: Read, Grep, Glob
+tools:
+  - Read
+  - Grep
+  - Glob
+  - mcp__ralphx__update_task
+  - mcp__ralphx__add_task_note
+  - mcp__ralphx__get_task_details
+allowedTools:
+  - "mcp__ralphx__*"
 model: sonnet
 ---
 

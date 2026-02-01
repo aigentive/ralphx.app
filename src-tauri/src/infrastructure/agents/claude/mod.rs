@@ -5,7 +5,7 @@ mod agent_config;
 mod claude_code_client;
 mod stream_processor;
 
-pub use agent_config::{get_agent_config, get_allowed_tools, AgentConfig, AGENT_CONFIGS};
+pub use agent_config::{get_agent_config, get_allowed_tools, get_allowed_mcp_tools, AgentConfig, AGENT_CONFIGS};
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
 
@@ -71,7 +71,8 @@ pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path, agent_type: Op
 
 /// Add prompt-related args to a CLI command
 ///
-/// Applies agent-specific tool restrictions via --tools flag.
+/// Applies agent-specific tool restrictions via --tools flag (CLI tools)
+/// and --allowedTools flag (MCP tools for permission bypass).
 /// See `agent_config.rs` for the single source of truth on tool configurations.
 pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_session: Option<&str>) {
     // Add resume if continuing an existing session
@@ -85,14 +86,20 @@ pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, res
     if let Some(agent_name) = agent {
         cmd.args(["--agent", agent_name]);
 
-        // Apply tool restrictions from agent_config
+        // Apply CLI tool restrictions from agent_config
         // Frontmatter tools/disallowedTools only work for subagent spawning,
         // NOT for direct CLI invocations with --agent -p. We must pass --tools flag.
         if let Some(allowed_tools) = get_allowed_tools(agent_name) {
             // Pass --tools even if empty (restricts to MCP-only)
             cmd.args(["--tools", allowed_tools]);
-            eprintln!("[CLI] Agent {} restricted to tools: {:?}", agent_name,
+            eprintln!("[CLI] Agent {} restricted to CLI tools: {:?}", agent_name,
                 if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools });
+        }
+
+        // Pre-approve MCP tools to bypass permission prompts
+        if let Some(mcp_tools) = get_allowed_mcp_tools(agent_name) {
+            cmd.args(["--allowedTools", &mcp_tools]);
+            eprintln!("[CLI] Agent {} pre-approved MCP tools: {}", agent_name, mcp_tools);
         }
     }
 
