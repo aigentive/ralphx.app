@@ -420,7 +420,7 @@
       "phase": 58,
       "name": "Wire TaskRerunDialog",
       "prd": "specs/phases/prd_phase_58_wire_task_rerun_dialog.md",
-      "status": "active",
+      "status": "complete",
       "description": "Wire orphaned TaskRerunDialog to CompletedTaskDetail for proper reopen workflow"
     }
   ]
