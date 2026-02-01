@@ -586,13 +586,15 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
             </div>
           </div>
 
-          {/* State Timeline Navigation - for viewing historical states */}
-          <StateTimelineNav
-            taskId={task.id}
-            currentStatus={task.internalStatus}
-            onStateSelect={setHistoryState}
-            selectedState={historyState}
-          />
+          {/* State Timeline Navigation - for viewing historical states (hidden in edit mode) */}
+          {!isEditing && (
+            <StateTimelineNav
+              taskId={task.id}
+              currentStatus={task.internalStatus}
+              onStateSelect={setHistoryState}
+              selectedState={historyState}
+            />
+          )}
 
           {/* History Mode Banner */}
           {isHistoryMode && (
