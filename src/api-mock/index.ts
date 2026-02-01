@@ -19,6 +19,7 @@ import { mockAskUserQuestionApi } from "./ask-user-question";
 import { mockPermissionApi } from "./permission";
 import { mockExecutionApi } from "./execution";
 import { mockReviewsApi, mockFixTasksApi } from "./reviews";
+import { mockReviewIssuesApi } from "./review-issues";
 import { mockQaApi } from "./qa";
 import { mockTestDataApi } from "./test-data";
 
@@ -34,6 +35,7 @@ export { mockExecutionApi } from "./execution";
 export { mockChatApi } from "./chat";
 export { mockIdeationApi } from "./ideation";
 export { mockReviewsApi, mockFixTasksApi } from "./reviews";
+export { mockReviewIssuesApi } from "./review-issues";
 export { mockQaApi } from "./qa";
 export { mockActivityEventsApi } from "./activity-events";
 export { mockArtifactApi } from "./artifact";
@@ -60,6 +62,7 @@ export const mockApi = {
   permission: mockPermissionApi,
   qa: mockQaApi,
   reviews: mockReviewsApi,
+  reviewIssues: mockReviewIssuesApi,
   fixTasks: mockFixTasksApi,
   execution: mockExecutionApi,
   steps: mockStepsApi,

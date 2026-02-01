@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-01 21:55:00 - Phase 60 Task 11: Add reviewIssuesApi with Tauri invocations
+**What:**
+- Created `src/api/review-issues.ts` with all review issue API methods:
+  - `getByTaskId(taskId, statusFilter?)` - get issues for a task
+  - `getProgress(taskId)` - get issue progress summary
+  - `verify(input)` - verify an issue after re-review
+  - `reopen(input)` - reopen an issue not actually fixed
+  - `markInProgress(input)` - worker starting work on issue
+  - `markAddressed(input)` - worker completed work on issue
+- Used `typedInvokeWithTransform` pattern for all methods (snake_case → camelCase)
+- Re-exported all types and helper functions from `@/types/review-issue`
+- Created `src/api-mock/review-issues.ts` with mock implementations for web mode
+- Exported `mockReviewIssuesApi` from `src/api-mock/index.ts`
+
+**Files:**
+- `src/api/review-issues.ts` (NEW - 144 LOC)
+- `src/api-mock/review-issues.ts` (NEW - 140 LOC)
+- `src/api-mock/index.ts` (updated exports)
+
+**Commands:**
+- `npm run lint` (0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - API layer only, no UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 21:30:00 - Phase 60 Task 10: Update worker agent for issue tracking
 **What:**
 - Updated worker agent system prompt in `ralphx-plugin/agents/worker.md`
