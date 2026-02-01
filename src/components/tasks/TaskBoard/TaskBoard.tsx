@@ -348,10 +348,10 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                 className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
                 style={{
                   background: showArchived
-                    ? "hsla(220 60% 50% / 0.2)"
+                    ? "hsla(14 100% 60% / 0.15)"
                     : "transparent",
                   color: showArchived
-                    ? "hsl(220 80% 70%)"
+                    ? "hsl(14 100% 60%)"
                     : "hsl(220 10% 55%)",
                 }}
               >
@@ -365,7 +365,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
         {/* TaskBoard container - macOS Tahoe: clean, flat, minimal */}
         <div
           data-testid="task-board"
-          className="task-board relative flex items-stretch gap-3 py-4 overflow-x-auto flex-1"
+          className="task-board relative flex items-stretch py-4 overflow-x-auto flex-1"
           style={{
             /* Solid dark background with subtle cool tint - like Tahoe Finder */
             background: "hsl(220 10% 8%)",
@@ -394,10 +394,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             </div>
           ) : (
             <>
-              {/* Left spacer for scroll padding */}
-              <div className="w-4 flex-shrink-0" aria-hidden="true" />
-
-              {displayColumns.map((column) => {
+              {displayColumns.map((column, index) => {
                 // In search mode, provide search results to column
                 const searchTasks = isSearchActive
                   ? searchTasksByColumn.get(column.id)
@@ -426,6 +423,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                     searchTasks={searchTasks}
                     matchCount={matchCount}
                     {...(groups && { groups })}
+                    isLast={index === displayColumns.length - 1}
                   />
                 );
               })}

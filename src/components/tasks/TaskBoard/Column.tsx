@@ -43,6 +43,8 @@ interface ColumnProps {
   matchCount?: number | undefined;
   /** Optional state groups for multi-state columns */
   groups?: StateGroup[];
+  /** Hide right border for last column */
+  isLast?: boolean;
 }
 
 function InvalidDropIcon() {
@@ -76,7 +78,7 @@ function TaskSkeleton() {
   );
 }
 
-export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups }: ColumnProps) {
+export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -236,6 +238,9 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
         minWidth: "260px",
         maxWidth: "300px",
         scrollSnapAlign: "start",
+        paddingLeft: "12px",
+        paddingRight: "12px",
+        ...(!isLast && { borderRight: "1px solid hsla(220 10% 100% / 0.06)" }),
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
