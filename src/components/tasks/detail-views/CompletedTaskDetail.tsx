@@ -146,12 +146,11 @@ function ActionButtonsCard({
       <Button
         data-testid="view-diff-button"
         onClick={onViewDiff}
-        variant="outline"
+        variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          borderColor: "hsla(220 10% 100% / 0.15)",
           color: "hsl(220 10% 70%)",
-          backgroundColor: "transparent",
+          backgroundColor: "hsl(220 10% 16%)",
         }}
       >
         <ExternalLink className="w-4 h-4" />
@@ -160,12 +159,11 @@ function ActionButtonsCard({
       <Button
         data-testid="reopen-task-button"
         onClick={onReopenTask}
-        variant="outline"
+        variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          borderColor: "hsla(220 10% 100% / 0.15)",
           color: "hsl(220 10% 70%)",
-          backgroundColor: "transparent",
+          backgroundColor: "hsl(220 10% 16%)",
         }}
       >
         <RefreshCw className="w-4 h-4" />
