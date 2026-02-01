@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-02 05:00:00 - Phase 62 Task 8: Rename ApplyModal to AcceptModal with full plan accept
+**What:**
+- Renamed `ApplyModal.tsx` to `AcceptModal.tsx`
+- Updated component name from `ApplyModal` to `AcceptModal`
+- Updated props: `onApply` → `onAccept`, `isApplying` → `isAccepting`
+- Updated terminology: "Apply Proposals" → "Accept Plan", "Selected Proposals" → "Tasks to Create"
+- Updated button text: "Apply X Proposals" → "Accept Plan (X tasks)"
+- Updated loading text: "Applying..." → "Accepting..."
+- Updated test file to `AcceptModal.test.tsx` with matching assertions
+- Updated `index.ts` export with backward compatibility alias
+- Updated comment references in DependencyVisualization.tsx and test file
+
+**Files Modified:**
+- `src/components/Ideation/ApplyModal.tsx` → `AcceptModal.tsx` (RENAMED + MODIFIED)
+- `src/components/Ideation/ApplyModal.test.tsx` → `AcceptModal.test.tsx` (RENAMED + MODIFIED)
+- `src/components/Ideation/index.ts` (MODIFIED - updated export with alias)
+- `src/components/Ideation/DependencyVisualization.tsx` (MODIFIED - comment only)
+- `src/components/Ideation/DependencyVisualization.test.tsx` (MODIFIED - comment only)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - renaming modal; terminology changes are internal refactor
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 04:30:00 - Phase 62 Task 7: Remove selection checkboxes from proposal cards
 **What:**
 - Removed `Checkbox` component import from `ProposalCard.tsx`

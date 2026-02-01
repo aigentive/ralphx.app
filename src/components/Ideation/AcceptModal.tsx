@@ -1,7 +1,7 @@
 /**
- * ApplyModal - Modal for applying selected proposals to Kanban board
+ * AcceptModal - Modal for accepting a plan and creating tasks in Kanban
  * Shows summary, dependency graph preview, target column selector,
- * and warnings before applying.
+ * and warnings before accepting.
  */
 
 import { useState, useCallback, useEffect } from "react";
@@ -17,33 +17,33 @@ const TARGET_COLUMNS = [
   { value: "todo", label: "Todo" },
 ];
 
-interface ApplyModalProps {
+interface AcceptModalProps {
   isOpen: boolean;
   proposals: TaskProposal[];
   dependencyGraph: DependencyGraph;
   sessionId: string;
-  onApply: (options: ApplyProposalsInput) => void;
+  onAccept: (options: ApplyProposalsInput) => void;
   onCancel: () => void;
-  isApplying?: boolean;
+  isAccepting?: boolean;
   warnings?: string[];
 }
 
-export function ApplyModal({
+export function AcceptModal({
   isOpen,
   proposals,
   dependencyGraph,
   sessionId,
-  onApply,
+  onAccept,
   onCancel,
-  isApplying = false,
+  isAccepting = false,
   warnings = [],
-}: ApplyModalProps) {
+}: AcceptModalProps) {
   const [targetColumn, setTargetColumn] = useState("backlog");
   const [preserveDependencies, setPreserveDependencies] = useState(true);
 
   // Handle Escape key to close modal
   useEffect(() => {
-    if (!isOpen || isApplying) return;
+    if (!isOpen || isAccepting) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -53,27 +53,27 @@ export function ApplyModal({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isApplying, onCancel]);
+  }, [isOpen, isAccepting, onCancel]);
 
   const handleOverlayClick = useCallback(() => {
-    if (!isApplying) {
+    if (!isAccepting) {
       onCancel();
     }
-  }, [isApplying, onCancel]);
+  }, [isAccepting, onCancel]);
 
   const handleContentClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
 
-  const handleApply = useCallback(() => {
+  const handleAccept = useCallback(() => {
     const options: ApplyProposalsInput = {
       sessionId,
       proposalIds: proposals.map((p) => p.id),
       targetColumn,
       preserveDependencies,
     };
-    onApply(options);
-  }, [sessionId, proposals, targetColumn, preserveDependencies, onApply]);
+    onAccept(options);
+  }, [sessionId, proposals, targetColumn, preserveDependencies, onAccept]);
 
   if (!isOpen) return null;
 
@@ -81,17 +81,17 @@ export function ApplyModal({
   const dependencyCount = dependencyGraph.edges.length;
   const hasCycles = dependencyGraph.hasCycles;
   const hasCriticalPath = dependencyGraph.criticalPath.length > 0;
-  const canApply = proposalCount > 0 && !isApplying;
+  const canAccept = proposalCount > 0 && !isAccepting;
 
   const inputClasses =
     "w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <div
-      data-testid="apply-modal"
+      data-testid="accept-modal"
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
-      aria-labelledby="apply-modal-title"
+      aria-labelledby="accept-modal-title"
       aria-modal="true"
     >
       <div
@@ -107,26 +107,26 @@ export function ApplyModal({
         onClick={handleContentClick}
       >
         <h2
-          id="apply-modal-title"
+          id="accept-modal-title"
           className="text-lg font-semibold mb-4"
           style={{ color: "var(--text-primary)" }}
         >
-          Apply Proposals
+          Accept Plan
         </h2>
 
-        {/* Selected Proposals Summary */}
+        {/* Plan Summary */}
         <div className="mb-4">
           <h3
             className="text-sm font-medium mb-2"
             style={{ color: "var(--text-primary)" }}
           >
-            Selected Proposals
+            Tasks to Create
           </h3>
           <p
             className="text-sm mb-2"
             style={{ color: "var(--text-secondary)" }}
           >
-            {proposalCount} proposal{proposalCount !== 1 ? "s" : ""} selected
+            {proposalCount} task{proposalCount !== 1 ? "s" : ""} will be created
           </p>
           <div
             className="max-h-32 overflow-y-auto rounded border p-2 space-y-1"
@@ -255,7 +255,7 @@ export function ApplyModal({
             id="target-column"
             value={targetColumn}
             onChange={(e) => setTargetColumn(e.target.value)}
-            disabled={isApplying}
+            disabled={isAccepting}
             className={inputClasses}
             style={{
               backgroundColor: "var(--bg-base)",
@@ -278,7 +278,7 @@ export function ApplyModal({
               type="checkbox"
               checked={preserveDependencies}
               onChange={(e) => setPreserveDependencies(e.target.checked)}
-              disabled={isApplying}
+              disabled={isAccepting}
               className="mt-1"
               aria-label="Preserve dependencies between tasks"
             />
@@ -304,7 +304,7 @@ export function ApplyModal({
           <button
             type="button"
             onClick={onCancel}
-            disabled={isApplying}
+            disabled={isAccepting}
             className="px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: "var(--bg-hover)",
@@ -315,19 +315,19 @@ export function ApplyModal({
           </button>
           <button
             type="button"
-            onClick={handleApply}
-            disabled={!canApply}
+            onClick={handleAccept}
+            disabled={!canAccept}
             className="px-4 py-2 rounded text-sm font-medium transition-colors"
             style={{
-              backgroundColor: canApply ? "var(--accent-primary)" : "var(--bg-hover)",
-              color: canApply ? "var(--bg-base)" : "var(--text-secondary)",
-              cursor: canApply ? "pointer" : "not-allowed",
-              opacity: isApplying ? 0.7 : 1,
+              backgroundColor: canAccept ? "var(--accent-primary)" : "var(--bg-hover)",
+              color: canAccept ? "var(--bg-base)" : "var(--text-secondary)",
+              cursor: canAccept ? "pointer" : "not-allowed",
+              opacity: isAccepting ? 0.7 : 1,
             }}
           >
-            {isApplying
-              ? "Applying..."
-              : `Apply ${proposalCount} ${proposalCount === 1 ? "Proposal" : "Proposals"}`}
+            {isAccepting
+              ? "Accepting..."
+              : `Accept Plan (${proposalCount} ${proposalCount === 1 ? "task" : "tasks"})`}
           </button>
         </div>
       </div>
