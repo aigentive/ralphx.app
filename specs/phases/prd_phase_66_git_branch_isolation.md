@@ -146,7 +146,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(project): add git_mode and worktree_parent_directory fields with migration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

@@ -78,6 +78,8 @@ pub struct Project {
     pub worktree_branch: Option<String>,
     /// Base branch for comparisons (e.g., "main" or "master")
     pub base_branch: Option<String>,
+    /// Parent directory for task worktrees (default: ~/ralphx-worktrees)
+    pub worktree_parent_directory: Option<String>,
     /// When the project was created
     pub created_at: DateTime<Utc>,
     /// When the project was last updated
@@ -97,6 +99,7 @@ impl Project {
             worktree_path: None,
             worktree_branch: None,
             base_branch: None,
+            worktree_parent_directory: None,
             created_at: now,
             updated_at: now,
         }
@@ -119,6 +122,7 @@ impl Project {
             worktree_path: Some(worktree_path),
             worktree_branch: Some(worktree_branch),
             base_branch,
+            worktree_parent_directory: None,
             created_at: now,
             updated_at: now,
         }
@@ -136,7 +140,7 @@ impl Project {
 
     /// Deserialize a Project from a SQLite row.
     /// Expects columns: id, name, working_directory, git_mode,
-    /// worktree_path, worktree_branch, base_branch, created_at, updated_at
+    /// worktree_path, worktree_branch, base_branch, worktree_parent_directory, created_at, updated_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: ProjectId::from_string(row.get("id")?),
@@ -149,6 +153,7 @@ impl Project {
             worktree_path: row.get("worktree_path")?,
             worktree_branch: row.get("worktree_branch")?,
             base_branch: row.get("base_branch")?,
+            worktree_parent_directory: row.get("worktree_parent_directory")?,
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
         })
@@ -235,6 +240,7 @@ mod tests {
         assert!(project.worktree_path.is_none());
         assert!(project.worktree_branch.is_none());
         assert!(project.base_branch.is_none());
+        assert!(project.worktree_parent_directory.is_none());
     }
 
     #[test]
@@ -274,6 +280,7 @@ mod tests {
         assert_eq!(project.worktree_path, Some("/worktrees/feature".to_string()));
         assert_eq!(project.worktree_branch, Some("feature-branch".to_string()));
         assert_eq!(project.base_branch, Some("main".to_string()));
+        assert!(project.worktree_parent_directory.is_none());
     }
 
     #[test]
@@ -494,6 +501,7 @@ mod tests {
                 worktree_path TEXT,
                 worktree_branch TEXT,
                 base_branch TEXT,
+                worktree_parent_directory TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )"#,
@@ -528,6 +536,7 @@ mod tests {
         assert!(project.worktree_path.is_none());
         assert!(project.worktree_branch.is_none());
         assert!(project.base_branch.is_none());
+        assert!(project.worktree_parent_directory.is_none());
     }
 
     #[test]

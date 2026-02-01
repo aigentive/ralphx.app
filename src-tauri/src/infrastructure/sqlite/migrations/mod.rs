@@ -34,6 +34,7 @@ mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
 mod v8_task_git_fields;
+mod v9_project_git_fields;
 
 #[cfg(test)]
 mod tests;
@@ -51,9 +52,11 @@ mod v6_review_issues_tests;
 mod v7_session_status_converted_to_accepted_tests;
 #[cfg(test)]
 mod v8_task_git_fields_tests;
+#[cfg(test)]
+mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 8;
+pub const SCHEMA_VERSION: i32 = 9;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -107,6 +110,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 8,
         name: "task_git_fields",
         migrate: v8_task_git_fields::migrate,
+    },
+    Migration {
+        version: 9,
+        name: "project_git_fields",
+        migrate: v9_project_git_fields::migrate,
     },
 ];
 

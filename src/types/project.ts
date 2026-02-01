@@ -20,6 +20,7 @@ export const ProjectResponseSchema = z.object({
   worktree_path: z.string().nullable(),
   worktree_branch: z.string().nullable(),
   base_branch: z.string().nullable(),
+  worktree_parent_directory: z.string().nullable(),
   // Accept RFC3339 timestamps with offset (e.g., +00:00) not just Z
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
@@ -36,6 +37,7 @@ export interface Project {
   worktreePath: string | null;
   worktreeBranch: string | null;
   baseBranch: string | null;
+  worktreeParentDirectory: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,6 +56,7 @@ export function transformProject(
     worktreePath: response.worktree_path,
     worktreeBranch: response.worktree_branch,
     baseBranch: response.base_branch,
+    worktreeParentDirectory: response.worktree_parent_directory,
     createdAt: response.created_at,
     updatedAt: response.updated_at,
   };
@@ -73,6 +76,7 @@ export const CreateProjectSchema = z.object({
   worktreePath: z.string().optional(),
   worktreeBranch: z.string().optional(),
   baseBranch: z.string().optional(),
+  worktreeParentDirectory: z.string().optional(),
 });
 
 export type CreateProject = z.infer<typeof CreateProjectSchema>;
@@ -88,6 +92,7 @@ export const UpdateProjectSchema = z.object({
   worktreePath: z.string().nullable().optional(),
   worktreeBranch: z.string().nullable().optional(),
   baseBranch: z.string().nullable().optional(),
+  worktreeParentDirectory: z.string().nullable().optional(),
 });
 
 export type UpdateProject = z.infer<typeof UpdateProjectSchema>;
