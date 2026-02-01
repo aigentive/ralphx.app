@@ -203,16 +203,6 @@ function ActionButtonsCard({
 
   return (
     <DetailCard data-testid="action-buttons">
-      {/* Label */}
-      <div className="flex items-center justify-between mb-4">
-        <span
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "hsl(220 10% 50%)" }}
-        >
-          Your Decision
-        </span>
-      </div>
-
       {/* Feedback input */}
       {showFeedback && (
         <div className="mb-4 space-y-3">
@@ -236,8 +226,15 @@ function ActionButtonsCard({
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex gap-2 justify-end">
+      {/* Label and action buttons on same row */}
+      <div className="flex items-center justify-between">
+        <span
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "hsl(220 10% 50%)" }}
+        >
+          Your Decision
+        </span>
+        <div className="flex gap-2">
         <Button
           data-testid="approve-button"
           onClick={handleApprove}
@@ -275,6 +272,7 @@ function ActionButtonsCard({
           )}
           {showFeedback ? "Submit" : "Request Changes"}
         </Button>
+        </div>
       </div>
 
       {/* Cancel link */}
