@@ -214,8 +214,10 @@ export function IntegratedChatPanel({
     [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
   );
 
-  // Debug logging for history mode
+  // History mode: viewing past task state via time-travel navigation
   const isHistoryMode = !!taskHistoryState;
+
+  // Debug logging for history mode
   console.log('[IntegratedChatPanel] Context mode:', {
     isHistoryMode,
     effectiveStatus,
@@ -289,6 +291,18 @@ export function IntegratedChatPanel({
 
   const isSending = sendMessage.isPending;
 
+  // Status badge helpers - disabled in history mode (no live agent)
+  const isAgentActive = !isHistoryMode && (isSending || isAgentRunning || isExecutionMode);
+  const agentType: AgentType = isHistoryMode
+    ? "idle"
+    : isExecutionMode
+      ? "worker"
+      : isReviewMode
+        ? "reviewer"
+        : (isSending || isAgentRunning)
+          ? "agent"
+          : "idle";
+
   // Empty state: only show when we KNOW there are no messages (not while loading)
   // Also don't show empty if conversations are loading - we might auto-select one
   const hasNoConversations = !isConversationsLoading && (conversations.data?.length ?? 0) === 0;
@@ -337,16 +351,8 @@ export function IntegratedChatPanel({
 
             {/* Unified status + activity badge */}
             <StatusActivityBadge
-              isAgentActive={isSending || isAgentRunning || isExecutionMode}
-              agentType={
-                isExecutionMode
-                  ? "worker"
-                  : isReviewMode
-                    ? "reviewer"
-                    : (isSending || isAgentRunning)
-                      ? "agent"
-                      : "idle" as AgentType
-              }
+              isAgentActive={isAgentActive}
+              agentType={agentType}
               contextType={chatContext.view}
               contextId={ideationSessionId || selectedTaskId || null}
             />
@@ -425,6 +431,7 @@ export function IntegratedChatPanel({
                 isSending={isSending}
                 hasQueuedMessages={queuedMessages.length > 0}
                 onEditLastQueued={handleEditLastQueuedWrapper}
+                isReadOnly={isHistoryMode}
                 placeholder={
                   ideationSessionId
                     ? "Send a message..."

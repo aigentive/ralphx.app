@@ -39,6 +39,8 @@ export interface ChatInputProps {
   onEditLastQueued?: () => void;
   /** Callback to stop the running agent */
   onStop?: () => void;
+  /** Whether the input is in read-only mode (e.g., viewing historical state) */
+  isReadOnly?: boolean;
 }
 
 // ============================================================================
@@ -111,6 +113,7 @@ export function ChatInput({
   hasQueuedMessages = false,
   onEditLastQueued,
   onStop,
+  isReadOnly = false,
 }: ChatInputProps) {
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
@@ -120,9 +123,11 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Determine the actual placeholder text
-  const effectivePlaceholder = isAgentRunning
-    ? `${placeholder} (will be queued)`
-    : placeholder;
+  const effectivePlaceholder = isReadOnly
+    ? "Viewing historical state (read-only)"
+    : isAgentRunning
+      ? `${placeholder} (will be queued)`
+      : placeholder;
 
   // Auto-focus on mount if requested
   useEffect(() => {
@@ -212,9 +217,9 @@ export function ChatInput({
     [handleSend, value, hasQueuedMessages, onEditLastQueued]
   );
 
-  // Allow typing and queueing when agent is running
-  const isDisabled = isSending && !isAgentRunning;
-  const canSend = value.trim().length > 0 && (!isSending || isAgentRunning);
+  // Allow typing and queueing when agent is running, but not in read-only mode
+  const isDisabled = isReadOnly || (isSending && !isAgentRunning);
+  const canSend = value.trim().length > 0 && !isReadOnly && (!isSending || isAgentRunning);
 
   return (
     <div data-testid="chat-input" className="flex flex-col">
@@ -245,7 +250,8 @@ export function ChatInput({
         />
 
         {/* Send/Stop Button - macOS Tahoe flat styling */}
-        {isAgentRunning && onStop ? (
+        {/* Only show stop button if agent is running AND not in read-only mode */}
+        {isAgentRunning && onStop && !isReadOnly ? (
           <button
             data-testid="chat-input-stop"
             type="button"
