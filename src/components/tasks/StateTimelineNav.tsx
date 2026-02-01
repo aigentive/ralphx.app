@@ -270,7 +270,10 @@ export function StateTimelineNav({
   // Derive unique timeline entries from transitions
   const timelineEntries = useMemo((): TimelineEntry[] => {
     // Transient states to skip in the timeline
-    const transientStatuses: InternalStatus[] = ["ready"];
+    // - ready: brief transition between draft and executing
+    // - pending_review: brief wait for AI reviewer
+    // - reviewing: AI review in progress (info shown in review_passed)
+    const transientStatuses: InternalStatus[] = ["ready", "pending_review", "reviewing"];
 
     if (!transitions || transitions.length === 0) {
       // Don't show timeline for transient states with no history
