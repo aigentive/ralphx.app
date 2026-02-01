@@ -230,18 +230,23 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   // Confirmation dialog for archive/restore
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
-  // Close overlay on Escape key
+  // Close overlay on Escape key (exit edit mode first, then close overlay)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setSelectedTaskId(null);
-        setIsEditing(false);
+        if (isEditing) {
+          // If editing, just exit edit mode (go back to view)
+          setIsEditing(false);
+        } else {
+          // If viewing, close the overlay
+          setSelectedTaskId(null);
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setSelectedTaskId]);
+  }, [setSelectedTaskId, isEditing]);
 
   // Reset editing state when task changes
   useEffect(() => {
