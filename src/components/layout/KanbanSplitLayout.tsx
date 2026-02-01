@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 const MIN_LEFT_PERCENT = 40; // Minimum left panel width as percentage
 const MAX_LEFT_PERCENT = 75; // Maximum left panel width as percentage
-const DEFAULT_LEFT_PERCENT = 60; // Default: 60% left, 40% chat
+const DEFAULT_LEFT_PERCENT = 75; // Default: 75% left, 25% chat (minimum chat size)
 const LEFT_WIDTH_STORAGE_KEY = "ralphx-kanban-split-left-width";
 
 // ============================================================================
