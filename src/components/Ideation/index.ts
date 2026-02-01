@@ -1,4 +1,6 @@
-export { ApplyModal } from "./ApplyModal";
+export { AcceptModal } from "./AcceptModal";
+// Backward compatibility alias
+export { AcceptModal as ApplyModal } from "./AcceptModal";
 export { DependencyVisualization } from "./DependencyVisualization";
 export { ConversationEmptyState, ProposalsEmptyState } from "./EmptyStates";
 export { PlanningView, IdeationView } from "./PlanningView";

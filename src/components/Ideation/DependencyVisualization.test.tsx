@@ -6,7 +6,7 @@
  * - Lines connecting dependent proposals (SVG)
  * - Critical path highlighting
  * - Cycle warning indicators
- * - Compact mode for ApplyModal
+ * - Compact mode for AcceptModal
  * - Empty state
  * - Accessibility
  * - Styling

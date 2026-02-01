@@ -239,7 +239,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(ideation): rename ApplyModal to AcceptModal with full plan accept"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 9,
