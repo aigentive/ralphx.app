@@ -19,7 +19,7 @@
 ### Priority 2 - Secondary Dialogs
 - [x] **BlockReasonDialog** - Modal for capturing task block reason
 - [x] **TaskPickerDialog** - Select draft tasks for ideation
-- [ ] **ScreenshotGallery** - Professional gallery with lightbox and comparison mode
+- [x] **ScreenshotGallery** - Professional gallery with lightbox and comparison mode
 
 ## Mock Parity Issues
 

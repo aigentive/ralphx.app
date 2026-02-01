@@ -68,6 +68,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
+import { ScreenshotGalleryTestPage } from "@/test-pages/ScreenshotGalleryTest";
 
 // Local storage key for persisting chat panel width
 const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
@@ -75,6 +76,22 @@ const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 const queryClient = getQueryClient();
 
 function AppContent() {
+  // Test page routing for visual regression tests
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    const testPage = params.get("test");
+    const scenario = params.get("scenario") || "default";
+
+    if (testPage === "screenshot-gallery") {
+      const scenarios: Record<string, React.ReactElement> = {
+        default: <ScreenshotGalleryTestPage />,
+        empty: <ScreenshotGalleryTestPage screenshots={[]} />,
+        twoColumns: <ScreenshotGalleryTestPage columns={2} />,
+        fourColumns: <ScreenshotGalleryTestPage columns={4} />,
+      };
+      return scenarios[scenario] || scenarios.default;
+    }
+  }
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
   const toggleReviewsPanel = useUiStore((s) => s.toggleReviewsPanel);
   const setReviewsPanelOpen = useUiStore((s) => s.setReviewsPanelOpen);

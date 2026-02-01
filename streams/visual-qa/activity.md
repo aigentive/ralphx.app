@@ -1,3 +1,27 @@
+### 2026-02-01 03:48:18 - ScreenshotGallery Visual Tests
+**What:** Created page object + spec + baseline for ScreenshotGallery component
+**Mock parity:** ready - component uses screenshots prop, test page created with mock data
+- Created src/test-pages/ScreenshotGalleryTest.tsx with mock screenshot data (SVG-based)
+- Added test routing to App.tsx (?test=screenshot-gallery&scenario={default|empty|twoColumns|fourColumns})
+- Created tests/helpers/screenshot-gallery.helpers.ts with openScreenshotGalleryTestPage helper
+- Created tests/pages/components/screenshot-gallery.page.ts with all selectors (gallery, lightbox, thumbnails, comparison view)
+- Created tests/visual/components/screenshot-gallery/screenshot-gallery.spec.ts with 14 tests
+- Generated 14 baseline snapshots covering:
+  - Empty state
+  - Thumbnail grid with passed/failed/comparison indicators
+  - Lightbox open/navigation/keyboard/zoom
+  - Comparison mode (expected vs actual)
+  - Failure details display
+  - Thumbnail strip in lightbox
+  - 2-column and 4-column grid layouts
+- All tests passing on first run
+**Commands:**
+- `npx playwright test tests/visual/components/screenshot-gallery/screenshot-gallery.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/components/screenshot-gallery/screenshot-gallery.spec.ts`
+**Result:** Success - 14/14 tests passing, all baseline snapshots created
+
+---
+
 ### 2026-02-01 01:26:27 - TaskFullView Visual Tests
 **What:** Created page object + spec + baseline for TaskFullView component
 **Mock parity:** ready - uses existing mock tasks from store, no additional mocks needed
