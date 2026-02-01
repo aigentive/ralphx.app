@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-01 18:23:54 - Phase 60 Task 6: Add execute agent issue tracking commands
+**What:**
+- Added `MarkIssueInProgressInput` and `MarkIssueAddressedInput` input types to review_commands_types.rs
+- Added `mark_issue_in_progress` Tauri command for Open → InProgress transition
+- Added `mark_issue_addressed` Tauri command for Open/InProgress → Addressed transition
+- Registered both new commands in Tauri invoke handler (lib.rs)
+- Commands follow the same pattern as existing verify_issue and reopen_issue commands
+
+**Files:**
+- `src-tauri/src/commands/review_commands_types.rs` (added input types)
+- `src-tauri/src/commands/review_commands.rs` (added commands)
+- `src-tauri/src/lib.rs` (registered commands)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3305+ tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 07:45:00 - Phase 60 Task 5: Add Tauri commands for review issues (review agent tools)
 **What:**
 - Added `review_issue_repo` field to AppState with both SQLite and memory implementations
