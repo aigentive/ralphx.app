@@ -1,11 +1,10 @@
 /**
- * DetailCard - macOS Tahoe-inspired material card
+ * DetailCard - macOS Tahoe-inspired card
  *
- * Features:
- * - Vibrancy-style translucent background
- * - Prominent yet soft shadows (Tahoe signature)
- * - Large corner radius (16px - Tahoe standard)
- * - Subtle inner highlight for depth
+ * Tahoe principles:
+ * - NO decorative borders
+ * - Flat background with subtle color differentiation
+ * - Minimal shadows (only for floating elements)
  */
 
 import type { ReactNode } from "react";
@@ -19,30 +18,25 @@ interface DetailCardProps {
   noPadding?: boolean;
 }
 
-const VARIANT_STYLES: Record<CardVariant, { border: string; glow: string }> = {
+// Flat backgrounds only - no borders, no glows
+const VARIANT_STYLES: Record<CardVariant, { bg: string }> = {
   default: {
-    border: "rgba(255,255,255,0.08)",
-    glow: "transparent",
+    bg: "hsl(220 10% 12%)",
   },
   success: {
-    border: "rgba(52, 199, 89, 0.35)",
-    glow: "rgba(52, 199, 89, 0.05)",
+    bg: "hsla(145 60% 45% / 0.08)",
   },
   warning: {
-    border: "rgba(255, 159, 10, 0.35)",
-    glow: "rgba(255, 159, 10, 0.05)",
+    bg: "hsla(35 100% 50% / 0.08)",
   },
   error: {
-    border: "rgba(255, 69, 58, 0.35)",
-    glow: "rgba(255, 69, 58, 0.05)",
+    bg: "hsla(0 70% 55% / 0.08)",
   },
   info: {
-    border: "rgba(10, 132, 255, 0.35)",
-    glow: "rgba(10, 132, 255, 0.05)",
+    bg: "hsla(217 90% 55% / 0.08)",
   },
   accent: {
-    border: "rgba(255, 107, 53, 0.35)",
-    glow: "rgba(255, 107, 53, 0.05)",
+    bg: "hsla(14 100% 60% / 0.08)",
   },
 };
 
@@ -56,20 +50,10 @@ export function DetailCard({
 
   return (
     <div
-      className={`rounded-2xl transition-all duration-200 ${className}`}
+      className={`rounded-xl ${className}`}
       style={{
-        backgroundColor: "rgba(30, 30, 30, 0.6)",
-        backdropFilter: "blur(40px) saturate(180%)",
-        WebkitBackdropFilter: "blur(40px) saturate(180%)",
-        border: `0.5px solid ${styles.border}`,
-        boxShadow: `
-          0 0 0 0.5px rgba(0,0,0,0.3),
-          0 2px 4px rgba(0,0,0,0.2),
-          0 8px 24px rgba(0,0,0,0.25),
-          inset 0 0.5px 0 rgba(255,255,255,0.06),
-          0 0 60px ${styles.glow}
-        `,
-        padding: noPadding ? undefined : "16px",
+        backgroundColor: styles.bg,
+        padding: noPadding ? undefined : "14px 16px",
       }}
     >
       {children}

@@ -256,12 +256,11 @@ function DecisionButtonsCard({
           data-testid="request-changes-button"
           onClick={handleRequestChangesClick}
           disabled={isLoading || (showFeedback && !feedback.trim())}
-          variant="outline"
+          variant="ghost"
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
-            borderColor: "hsla(220 10% 100% / 0.15)",
             color: "hsl(35 100% 55%)",
-            backgroundColor: "transparent",
+            backgroundColor: "hsl(220 10% 16%)",
           }}
         >
           {requestChangesMutation.isPending ? (
