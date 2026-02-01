@@ -17,7 +17,7 @@ import {
 import { FileEdit, Trash2, Eye, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskProposal } from "@/types/ideation";
-import { PRIORITY_CONFIG } from "./IdeationView.constants";
+import { PRIORITY_CONFIG } from "./PlanningView.constants";
 
 // ============================================================================
 // Types

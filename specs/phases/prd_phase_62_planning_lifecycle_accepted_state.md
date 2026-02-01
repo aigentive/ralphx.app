@@ -182,7 +182,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(ideation): rename IdeationView to PlanningView with read-only support"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

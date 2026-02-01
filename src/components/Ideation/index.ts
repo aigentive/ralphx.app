@@ -1,7 +1,7 @@
 export { ApplyModal } from "./ApplyModal";
 export { DependencyVisualization } from "./DependencyVisualization";
 export { ConversationEmptyState, ProposalsEmptyState } from "./EmptyStates";
-export { IdeationView } from "./IdeationView";
+export { PlanningView, IdeationView } from "./PlanningView";
 export { PriorityBadge } from "./PriorityBadge";
 export { ProposalCard } from "./ProposalCard";
 export { ProposalEditModal } from "./ProposalEditModal";

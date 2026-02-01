@@ -1,5 +1,5 @@
 /**
- * IdeationView - Premium Ideation Interface
+ * PlanningView - Premium Planning Interface
  *
  * Design: macOS Tahoe Liquid Glass
  * - Flat translucent surfaces with backdrop-blur
@@ -29,7 +29,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
-import { animationStyles } from "./IdeationView.constants";
+import { animationStyles } from "./PlanningView.constants";
 import { PlanBrowser } from "./PlanBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
 import { ProposalsToolbar } from "./ProposalsToolbar";
@@ -46,7 +46,7 @@ import { ideationApi } from "@/api/ideation";
 // Types
 // ============================================================================
 
-interface IdeationViewProps {
+interface PlanningViewProps {
   session: IdeationSession | null;
   sessions: IdeationSession[];
   proposals: TaskProposal[];
@@ -77,7 +77,7 @@ interface IdeationViewProps {
 // Main Component
 // ============================================================================
 
-export function IdeationView({
+export function PlanningView({
   session,
   sessions,
   proposals,
@@ -90,7 +90,7 @@ export function IdeationView({
   onRemoveProposal,
   onReorderProposals,
   onApply,
-}: IdeationViewProps) {
+}: PlanningViewProps) {
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // 60/40 split like Kanban
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +116,9 @@ export function IdeationView({
 
   // Dependency analysis loading state
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
+
+  // Read-only mode: plans that are not active are read-only
+  const isReadOnly = session?.status !== "active";
 
   // Get the event bus from context (TauriEventBus or MockEventBus)
   const eventBus = useEventBus();
@@ -407,6 +410,7 @@ export function IdeationView({
                   <ProposalsToolbar
                     proposals={proposals}
                     graph={dependencyGraph}
+                    isReadOnly={isReadOnly}
                     onClearAll={handleClearAll}
                     onAcceptPlan={handleAcceptPlan}
                     onAnalyzeDependencies={handleReanalyzeDependencies}
@@ -572,3 +576,6 @@ export function IdeationView({
     </>
   );
 }
+
+// Backward compatibility alias
+export { PlanningView as IdeationView };
