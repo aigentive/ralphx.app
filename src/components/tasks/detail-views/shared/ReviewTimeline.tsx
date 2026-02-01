@@ -217,7 +217,10 @@ export function ReviewTimeline({
           key={entry.id}
           entry={entry}
           isLast={index === displayedHistory.length - 1}
-          {...(showAttemptNumbers && { attemptNumber: index + 1 })}
+          {...(showAttemptNumbers && {
+            // Array is newest-first, so invert: oldest = #1, newest = #N
+            attemptNumber: displayedHistory.length - index,
+          })}
         />
       ))}
     </div>
