@@ -25,6 +25,7 @@ import {
   safeJsonParse,
   cleanToolName,
   formatToolArguments,
+  generateResultPreview,
 } from "./ActivityView.utils";
 import { ActivityContext } from "./ActivityContext";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
@@ -53,24 +54,42 @@ export function ActivityMessage({
   const renderedContent = useMemo(() => {
     switch (type) {
       case "tool_result": {
-        // Parse content as JSON and display with syntax highlighting
+        // Semantic tool result rendering with human-readable preview
+        const { preview, isError } = generateResultPreview(content);
         const result = safeJsonParse(content);
-        if (!result.error && typeof result.data === "object" && result.data !== null) {
-          const jsonString = JSON.stringify(result.data, null, 2);
-          const truncated = !isExpanded && jsonString.length > 200;
-          const displayJson = truncated ? jsonString.slice(0, 200) + "..." : jsonString;
-          return (
-            <pre className="text-xs font-mono p-2 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[200px] overflow-y-auto mt-1">
-              {highlightJSON(displayJson)}
-            </pre>
-          );
-        }
-        // Fallback: display as plain text if not valid JSON
-        const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
+        const hasValidJson = !result.error && typeof result.data === "object" && result.data !== null;
+
         return (
-          <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
-            {truncatedContent}
-          </p>
+          <div className="mt-1 space-y-1">
+            {/* Human-readable preview */}
+            <div className="flex items-start gap-2">
+              <span
+                className={cn(
+                  "text-xs font-medium shrink-0",
+                  isError ? "text-[var(--status-error)]" : "text-[var(--status-success)]"
+                )}
+              >
+                {isError ? "✗" : "✓"}
+              </span>
+              <p className="text-sm text-[var(--text-secondary)]">{preview}</p>
+            </div>
+
+            {/* Expandable full JSON (only in expanded state with valid JSON) */}
+            {isExpanded && hasValidJson && (
+              <div className="pt-2">
+                <pre className="text-xs font-mono p-2 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[200px] overflow-y-auto">
+                  {highlightJSON(JSON.stringify(result.data, null, 2))}
+                </pre>
+              </div>
+            )}
+
+            {/* Fallback for non-JSON content when expanded */}
+            {isExpanded && !hasValidJson && content.length > 100 && (
+              <pre className="text-xs font-mono p-2 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[200px] overflow-y-auto mt-1 whitespace-pre-wrap">
+                {content}
+              </pre>
+            )}
+          </div>
         );
       }
 

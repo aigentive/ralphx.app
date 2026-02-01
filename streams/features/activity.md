@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 19:00:00 - Phase 65 Task 3: Add semantic tool result rendering
+**What:**
+- Added `generateResultPreview()` helper to extract human-readable summaries from tool results
+- Handles common patterns: task data, lists, success/error messages, generic objects
+- Updated `tool_result` case in ActivityMessage.tsx to show preview with success/error indicator (✓/✗)
+- Added expandable full JSON section for detailed inspection when expanded
+
+**Files Modified:**
+- `src/components/activity/ActivityView.utils.ts` (added generateResultPreview)
+- `src/components/activity/ActivityMessage.tsx` (updated import, rewrote tool_result rendering)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - data formatting change (content already visible, just cleaner format)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 18:30:00 - Phase 65 Task 2: Add semantic tool call rendering
 **What:**
 - Added `cleanToolName()` helper to strip `mcp__ralphx__` and similar MCP prefixes from tool names
