@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,6 +16,8 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
+import { IssueList } from "@/components/reviews/IssueList";
+import { reviewIssuesApi } from "@/api/review-issues";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -30,7 +32,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import type { Task } from "@/types/task";
-import type { ReviewNoteResponse, ReviewIssue } from "@/lib/tauri";
+import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface EscalatedTaskDetailProps {
   task: Task;
@@ -45,57 +47,9 @@ function getLatestEscalationReview(
 }
 
 /**
- * IssueCard - Individual issue with severity indicator
- */
-const DEFAULT_SEVERITY = { color: "#8e8e93", bg: "rgba(142, 142, 147, 0.15)", label: "Minor" };
-
-function IssueCard({ issue }: { issue: ReviewIssue }) {
-  const severityConfig: Record<string, { color: string; bg: string; label: string }> = {
-    critical: { color: "#ff453a", bg: "rgba(255, 69, 58, 0.15)", label: "Critical" },
-    major: { color: "#ff9f0a", bg: "rgba(255, 159, 10, 0.15)", label: "Major" },
-    minor: DEFAULT_SEVERITY,
-    suggestion: { color: "#ff6b35", bg: "rgba(255, 107, 53, 0.15)", label: "Suggestion" },
-  };
-
-  const config = severityConfig[issue.severity] ?? DEFAULT_SEVERITY;
-
-  return (
-    <div
-      className="flex items-start gap-3 p-3 rounded-xl"
-      style={{ backgroundColor: "rgba(0,0,0,0.2)" }}
-    >
-      {/* Severity badge */}
-      <div
-        className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider shrink-0"
-        style={{ backgroundColor: config.bg, color: config.color }}
-      >
-        {config.label}
-      </div>
-
-      {/* Issue details */}
-      <div className="flex-1 min-w-0">
-        {issue.file && (
-          <code
-            className="text-[11px] text-white/40 block truncate mb-1 font-mono"
-          >
-            {issue.file}
-            {issue.line !== null && issue.line !== undefined && `:${issue.line}`}
-          </code>
-        )}
-        <p className="text-[13px] text-white/65 leading-relaxed">
-          {issue.description}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/**
- * EscalationReasonCard - Shows why AI escalated
+ * EscalationReasonCard - Shows why AI escalated (reason text only)
  */
 function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null }) {
-  const issues = review?.issues ?? [];
-
   return (
     <DetailCard variant="warning">
       {/* Header */}
@@ -118,28 +72,13 @@ function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null })
 
       {/* Reason text */}
       {review?.notes ? (
-        <p className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12">
+        <p className="text-[13px] text-white/55 leading-relaxed pl-12">
           {review.notes}
         </p>
       ) : (
-        <p className="text-[13px] text-white/35 italic mb-4 pl-12">
+        <p className="text-[13px] text-white/35 italic pl-12">
           No escalation reason provided
         </p>
-      )}
-
-      {/* Issues list */}
-      {issues.length > 0 && (
-        <div className="mt-4 pl-12 space-y-2">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-4 h-4" style={{ color: "#ff9f0a" }} />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
-              Issues Found ({issues.length})
-            </span>
-          </div>
-          {issues.map((issue, i) => (
-            <IssueCard key={i} issue={issue} />
-          ))}
-        </div>
       )}
     </DetailCard>
   );
@@ -299,6 +238,12 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const escalationReview = getLatestEscalationReview(history);
 
+  // Fetch structured issues from review issues API
+  const { data: issues = [] } = useQuery({
+    queryKey: ["review-issues", task.id],
+    queryFn: () => reviewIssuesApi.getByTaskId(task.id),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -336,6 +281,16 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
         <SectionTitle>Why AI Escalated</SectionTitle>
         <EscalationReasonCard review={escalationReview} />
       </section>
+
+      {/* Issues Found */}
+      {issues.length > 0 && (
+        <section data-testid="issues-section">
+          <SectionTitle>Issues Found ({issues.length})</SectionTitle>
+          <DetailCard>
+            <IssueList issues={issues} groupBy="severity" compact />
+          </DetailCard>
+        </section>
+      )}
 
       {/* Previous Attempts */}
       <section data-testid="previous-attempts-section">
