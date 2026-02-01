@@ -31,7 +31,7 @@ Phase: IN PROGRESS (discovered 10 new components)
 | TaskFullView | ✅ | task-fullview.spec.ts | ✅ | covered |
 | BlockReasonDialog | ✅ | block-reason-dialog.spec.ts | ✅ | covered |
 | TaskPickerDialog | ✅ | task-picker-dialog.spec.ts | ✅ | covered |
-| ScreenshotGallery | — | — | — | uncovered |
+| ScreenshotGallery | ✅ | screenshot-gallery.spec.ts | ✅ | covered |
 
 ## States & Edge Cases
 | State | View/Modal | Spec | Status |
