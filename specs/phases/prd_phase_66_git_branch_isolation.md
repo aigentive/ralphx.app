@@ -122,7 +122,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(task): add task_branch, worktree_path, merge_commit_sha fields with migration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
