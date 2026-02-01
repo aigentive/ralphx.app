@@ -9,6 +9,7 @@ import { mockWorkflowsApi, mockProjectsApi } from "@/api-mock/projects";
 import { mockTasksApi } from "@/api-mock/tasks";
 import { mockListConversations, mockGetConversation } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
+import { mockIdeationApi } from "@/api-mock/ideation";
 import type { ContextType } from "@/types/chat-conversation";
 
 /**
@@ -88,8 +89,109 @@ const commandHandlers: Record<
     mockGetConversation(args.conversationId as string),
 
   // Ideation commands
-  list_ideation_sessions: async () => [],
-  get_ideation_session: async () => null,
+  list_ideation_sessions: async (args) => {
+    const sessions = await mockIdeationApi.sessions.list(args.projectId as string);
+    // Transform to snake_case as backend would return
+    return sessions.map((s) => ({
+      id: s.id,
+      project_id: s.projectId,
+      title: s.title,
+      status: s.status,
+      plan_artifact_id: s.planArtifactId,
+      seed_task_id: s.seedTaskId,
+      created_at: s.createdAt,
+      updated_at: s.updatedAt,
+      archived_at: s.archivedAt,
+      converted_at: s.convertedAt,
+    }));
+  },
+  get_ideation_session: async (args) => {
+    const session = await mockIdeationApi.sessions.get(args.sessionId as string);
+    if (!session) return null;
+    // Transform to snake_case as backend would return
+    return {
+      id: session.id,
+      project_id: session.projectId,
+      title: session.title,
+      status: session.status,
+      plan_artifact_id: session.planArtifactId,
+      seed_task_id: session.seedTaskId,
+      created_at: session.createdAt,
+      updated_at: session.updatedAt,
+      archived_at: session.archivedAt,
+      converted_at: session.convertedAt,
+    };
+  },
+  get_ideation_session_with_data: async (args) => {
+    const data = await mockIdeationApi.sessions.getWithData(args.id as string);
+    if (!data) return null;
+    // Transform to snake_case as backend would return
+    return {
+      session: {
+        id: data.session.id,
+        project_id: data.session.projectId,
+        title: data.session.title,
+        status: data.session.status,
+        plan_artifact_id: data.session.planArtifactId,
+        seed_task_id: data.session.seedTaskId,
+        created_at: data.session.createdAt,
+        updated_at: data.session.updatedAt,
+        archived_at: data.session.archivedAt,
+        converted_at: data.session.convertedAt,
+      },
+      proposals: data.proposals.map((p) => ({
+        id: p.id,
+        session_id: p.sessionId,
+        title: p.title,
+        description: p.description,
+        category: p.category,
+        steps: p.steps,
+        acceptance_criteria: p.acceptanceCriteria,
+        suggested_priority: p.suggestedPriority,
+        priority_score: p.priorityScore,
+        priority_reason: p.priorityReason,
+        estimated_complexity: p.estimatedComplexity,
+        user_priority: p.userPriority,
+        user_modified: p.userModified,
+        status: p.status,
+        selected: p.selected,
+        created_task_id: p.createdTaskId,
+        plan_artifact_id: p.planArtifactId,
+        plan_version_at_creation: p.planVersionAtCreation,
+        sort_order: p.sortOrder,
+        created_at: p.createdAt,
+        updated_at: p.updatedAt,
+      })),
+      messages: data.messages,
+    };
+  },
+  list_session_proposals: async (args) => {
+    const proposals = await mockIdeationApi.proposals.list(args.session_id as string);
+    // Transform to snake_case as backend would return
+    return proposals.map((p) => ({
+      id: p.id,
+      session_id: p.sessionId,
+      title: p.title,
+      description: p.description,
+      category: p.category,
+      steps: p.steps,
+      acceptance_criteria: p.acceptanceCriteria,
+      suggested_priority: p.suggestedPriority,
+      priority_score: p.priorityScore,
+      priority_reason: p.priorityReason,
+      estimated_complexity: p.estimatedComplexity,
+      user_priority: p.userPriority,
+      user_modified: p.userModified,
+      status: p.status,
+      selected: p.selected,
+      created_task_id: p.createdTaskId,
+      plan_artifact_id: p.planArtifactId,
+      plan_version_at_creation: p.planVersionAtCreation,
+      sort_order: p.sortOrder,
+      created_at: p.createdAt,
+      updated_at: p.updatedAt,
+    }));
+  },
 
   // Review commands
   list_reviews: async (args) => mockReviewsApi.getPending(args.projectId as string),

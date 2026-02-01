@@ -7,6 +7,20 @@
 
 <!-- Populated after bootstrap phase completes or when new components are added -->
 
+### Priority 1 - Major Views/Modals
+- [ ] **WelcomeScreen** - Full-screen welcome/onboarding view with animated constellation
+- [ ] **MergeWorkflowDialog** - Post-completion workflow options (merge/rebase/PR/keep/discard)
+- [ ] **ApplyModal** - Apply proposals to Kanban with dependency preview
+- [ ] **ReviewDetailModal** - Full-width review modal with diff viewer and history
+- [ ] **ReviewNotesModal** - Modal for adding review notes with fix descriptions
+- [ ] **TaskRerunDialog** - Task re-run workflow modal (keep/revert/create new)
+- [ ] **TaskFullView** - Full-screen task view component
+
+### Priority 2 - Secondary Dialogs
+- [ ] **BlockReasonDialog** - Modal for capturing task block reason
+- [ ] **TaskPickerDialog** - Select draft tasks for ideation
+- [ ] **ScreenshotGallery** - Professional gallery with lightbox and comparison mode
+
 ## Mock Parity Issues
 
 <!-- Items discovered during testing where mock data is missing or incomplete -->
