@@ -297,7 +297,7 @@ export const stepsApi = {
   ): Promise<TaskStep> =>
     typedInvokeWithTransform(
       "create_task_step",
-      { taskId, ...data },
+      { taskId, input: data },
       TaskStepResponseSchema,
       transformTaskStep
     ),
