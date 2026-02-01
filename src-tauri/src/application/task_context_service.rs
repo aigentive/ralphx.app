@@ -298,7 +298,7 @@ mod tests {
         InternalStatus, Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId,
         TaskStep, TaskStepId,
     };
-    use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository};
+    use crate::domain::repositories::{ArtifactRepository, StateHistoryMetadata, TaskProposalRepository, TaskRepository, TaskStepRepository};
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -453,6 +453,14 @@ mod tests {
 
         async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
             Ok(None)
+        }
+
+        async fn update_latest_state_history_metadata(
+            &self,
+            _task_id: &TaskId,
+            _metadata: &StateHistoryMetadata,
+        ) -> AppResult<()> {
+            Ok(())
         }
     }
 

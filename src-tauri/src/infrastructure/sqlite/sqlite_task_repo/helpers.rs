@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{InternalStatus, TaskId};
+use crate::domain::repositories::StateHistoryMetadata;
 use crate::error::{AppError, AppResult};
 
 /// Execute a status change transaction atomically
@@ -53,6 +54,47 @@ pub(super) fn persist_status_change_transaction(
 
     conn.execute("COMMIT", [])
         .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Update the metadata of the most recent state history entry for a task
+///
+/// This finds the latest state history entry by task_id and created_at,
+/// then updates its metadata JSON column with conversation_id and agent_run_id.
+pub(super) fn update_latest_state_history_metadata_sync(
+    conn: &Connection,
+    task_id: &TaskId,
+    metadata: &StateHistoryMetadata,
+) -> AppResult<()> {
+    // Build JSON for metadata
+    let metadata_json = serde_json::json!({
+        "conversation_id": metadata.conversation_id,
+        "agent_run_id": metadata.agent_run_id
+    })
+    .to_string();
+
+    // Update the most recent state history entry for this task
+    // We use a subquery to find the id of the latest entry
+    let rows_affected = conn.execute(
+        "UPDATE task_state_history
+         SET metadata = ?2
+         WHERE id = (
+             SELECT id FROM task_state_history
+             WHERE task_id = ?1
+             ORDER BY created_at DESC
+             LIMIT 1
+         )",
+        rusqlite::params![task_id.as_str(), metadata_json],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+
+    if rows_affected == 0 {
+        return Err(AppError::Database(format!(
+            "No state history entry found for task {}",
+            task_id.as_str()
+        )));
+    }
 
     Ok(())
 }

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
-use crate::domain::repositories::{StatusTransition, TaskRepository};
+use crate::domain::repositories::{StateHistoryMetadata, StatusTransition, TaskRepository};
 use crate::error::AppResult;
 
 /// In-memory implementation of TaskRepository for testing
@@ -397,6 +397,15 @@ impl TaskRepository for MemoryTaskRepository {
         ready_tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
         Ok(ready_tasks.first().cloned().cloned())
+    }
+
+    async fn update_latest_state_history_metadata(
+        &self,
+        _task_id: &TaskId,
+        _metadata: &StateHistoryMetadata,
+    ) -> AppResult<()> {
+        // In-memory implementation doesn't persist metadata
+        Ok(())
     }
 }
 
