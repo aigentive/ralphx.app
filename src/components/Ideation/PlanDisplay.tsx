@@ -1,10 +1,8 @@
 /**
- * PlanDisplay - Display plan artifacts in IdeationView
+ * PlanDisplay - macOS Tahoe styled plan artifact display
  *
- * Refined design matching app aesthetic:
- * - Subtle, minimal chrome
- * - Smooth transitions
- * - Warm accent integration
+ * Design: Glass-morphism collapsible with refined typography,
+ * warm orange accent for actions, and smooth animations.
  */
 
 import { useState, useCallback, useEffect } from "react";
@@ -199,6 +197,7 @@ export function PlanDisplay({
   isExpanded,
   onExpandedChange,
 }: PlanDisplayProps) {
+  const [isHovered, setIsHovered] = useState(false);
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -282,146 +281,281 @@ export function PlanDisplay({
   }, [planContent, plan.name, onExport]);
 
   return (
-    <div className="group">
+    <div
+      className="group"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        {/* Minimal Header */}
-        <div className="flex items-center gap-2 mb-2">
-          <CollapsibleTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center gap-2 text-left flex-1 min-w-0",
-                "hover:opacity-80 transition-opacity"
+        {/* Header with glass-morphism */}
+        <div
+          className="rounded-xl transition-all duration-200"
+          style={{
+            padding: "12px 14px",
+            background: isOpen
+              ? "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,107,53,0.02) 100%)"
+              : isHovered
+                ? "rgba(255,255,255,0.03)"
+                : "rgba(255,255,255,0.02)",
+            border: isOpen
+              ? "1px solid rgba(255,107,53,0.2)"
+              : "1px solid rgba(255,255,255,0.06)",
+            boxShadow: isOpen
+              ? "0 4px 16px rgba(255,107,53,0.06)"
+              : "none",
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <CollapsibleTrigger asChild>
+              <button
+                className="flex items-center gap-3 text-left flex-1 min-w-0"
+              >
+                {/* Icon with glow */}
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                  style={{
+                    background: isOpen
+                      ? "linear-gradient(135deg, rgba(255,107,53,0.2) 0%, rgba(255,107,53,0.1) 100%)"
+                      : "rgba(255,255,255,0.04)",
+                    border: isOpen
+                      ? "1px solid rgba(255,107,53,0.3)"
+                      : "1px solid rgba(255,255,255,0.06)",
+                    boxShadow: isOpen
+                      ? "0 2px 8px rgba(255,107,53,0.15)"
+                      : "none",
+                  }}
+                >
+                  <FileText
+                    className="w-4 h-4 transition-colors duration-200"
+                    style={{ color: isOpen ? "#ff6b35" : "var(--text-muted)" }}
+                  />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="text-[13px] font-medium truncate tracking-[-0.01em]"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {plan.name}
+                    </span>
+
+                    <span
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      v{plan.metadata.version}
+                    </span>
+                  </div>
+
+                  {linkedProposalsCount > 0 && (
+                    <span
+                      className="text-[11px] mt-0.5 block"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {linkedProposalsCount} linked proposal{linkedProposalsCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 transition-transform duration-200 flex-shrink-0",
+                    !isOpen && "-rotate-90"
+                  )}
+                  style={{ color: "var(--text-muted)" }}
+                />
+              </button>
+            </CollapsibleTrigger>
+
+            {/* Actions - appear on hover, stay visible when dropdown is open */}
+            <div className={cn(
+              "flex items-center gap-1 transition-opacity duration-150",
+              isVersionDropdownOpen || isHovered ? "opacity-100" : "opacity-0"
+            )}>
+              {showApprove && !isApproved && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onApprove}
+                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg"
+                  style={{
+                    color: "#ff6b35",
+                    background: "rgba(255,107,53,0.1)",
+                    border: "1px solid rgba(255,107,53,0.2)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(255,107,53,0.15)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(255,107,53,0.1)";
+                  }}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Approve
+                </Button>
               )}
-            >
-              <div className="flex items-center justify-center w-5 h-5 rounded bg-accent-primary/10">
-                <FileText className="w-3 h-3 text-accent-primary" />
-              </div>
 
-              <span className="text-sm font-medium text-text-primary truncate">
-                {plan.name}
-              </span>
-
-              <span className="text-xs text-text-muted px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
-                v{plan.metadata.version}
-              </span>
-
-              {linkedProposalsCount > 0 && (
-                <span className="text-xs text-text-muted">
-                  · {linkedProposalsCount} linked
+              {isApproved && (
+                <span
+                  className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
+                  style={{
+                    background: "rgba(34,197,94,0.1)",
+                    border: "1px solid rgba(34,197,94,0.2)",
+                    color: "#22c55e",
+                  }}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  Approved
                 </span>
               )}
 
-              <ChevronDown
-                className={cn(
-                  "w-3.5 h-3.5 text-text-muted transition-transform duration-200",
-                  !isOpen && "-rotate-90"
-                )}
-              />
-            </button>
-          </CollapsibleTrigger>
+              {plan.metadata.version > 1 && (
+                <DropdownMenu open={isVersionDropdownOpen} onOpenChange={setIsVersionDropdownOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-[11px] gap-1 rounded-lg"
+                      style={{ color: "var(--text-muted)" }}
+                      title="View version history"
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                        e.currentTarget.style.color = "var(--text-primary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "var(--text-muted)";
+                      }}
+                    >
+                      <History className="w-3 h-3" />
+                      v{selectedVersion}
+                      <ChevronDown className="w-3 h-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-36"
+                    style={{
+                      background: "rgba(30,30,30,0.95)",
+                      backdropFilter: "blur(20px)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    }}
+                  >
+                    {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
+                      const isSelected = version === selectedVersion;
+                      const isLatest = version === plan.metadata.version;
+                      return (
+                        <DropdownMenuItem
+                          key={version}
+                          onClick={() => handleVersionSelect(version)}
+                          className="text-[12px] cursor-pointer px-3 py-2"
+                          style={{
+                            background: isSelected ? "rgba(255,107,53,0.1)" : "transparent",
+                            borderLeft: isSelected ? "2px solid #ff6b35" : "2px solid transparent",
+                          }}
+                        >
+                          <span className="flex items-center gap-2 w-full">
+                            {isSelected && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ background: "#ff6b35" }}
+                              />
+                            )}
+                            <span>v{version}</span>
+                            {isLatest && (
+                              <span className="ml-auto" style={{ color: "var(--text-muted)" }}>
+                                (latest)
+                              </span>
+                            )}
+                          </span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
-          {/* Actions - appear on hover, stay visible when dropdown is open */}
-          <div className={cn(
-            "flex items-center gap-1 transition-opacity",
-            isVersionDropdownOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          )}>
-            {showApprove && !isApproved && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={onApprove}
-                className="h-6 px-2 text-xs gap-1 text-accent-primary hover:text-accent-primary hover:bg-accent-primary/10"
+                onClick={onEdit}
+                className="h-7 w-7 p-0 rounded-lg"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                  e.currentTarget.style.color = "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
               >
-                <Sparkles className="w-3 h-3" />
-                Approve
+                <FileEdit className="w-3.5 h-3.5" />
               </Button>
-            )}
 
-            {isApproved && (
-              <span className="flex items-center gap-1 text-xs text-green-500 px-2">
-                <CheckCircle2 className="w-3 h-3" />
-                Approved
-              </span>
-            )}
-
-            {plan.metadata.version > 1 && (
-              <DropdownMenu open={isVersionDropdownOpen} onOpenChange={setIsVersionDropdownOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs gap-1 text-text-muted hover:text-text-primary"
-                    title="View version history"
-                  >
-                    <History className="w-3 h-3" />
-                    v{selectedVersion}
-                    <ChevronDown className="w-3 h-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-36 bg-[#1a1a1a] border-white/[0.1]">
-                  {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
-                    const isSelected = version === selectedVersion;
-                    const isLatest = version === plan.metadata.version;
-                    return (
-                      <DropdownMenuItem
-                        key={version}
-                        onClick={() => handleVersionSelect(version)}
-                        className={cn(
-                          "text-xs cursor-pointer px-3 py-2",
-                          isSelected && "bg-[var(--accent-muted)] border-l-2 border-[var(--accent-primary)]"
-                        )}
-                      >
-                        <span className="flex items-center gap-2">
-                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />}
-                          <span>v{version}</span>
-                          {isLatest && <span className="text-text-muted ml-auto">(latest)</span>}
-                        </span>
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onEdit}
-              className="h-6 w-6 p-0 text-text-muted hover:text-text-primary"
-            >
-              <FileEdit className="w-3.5 h-3.5" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleExport}
-              className="h-6 w-6 p-0 text-text-muted hover:text-text-primary"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExport}
+                className="h-7 w-7 p-0 rounded-lg"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                  e.currentTarget.style.color = "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+              >
+                <Download className="w-3.5 h-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Content */}
         <CollapsibleContent>
           <div
-            className={cn(
-              "pl-7 pr-2 pb-4",
-              "border-l border-white/[0.04] ml-2.5"
-            )}
+            className="mt-3 pl-6 pr-2 pb-4"
+            style={{
+              marginLeft: "16px",
+              borderLeft: "2px solid rgba(255,107,53,0.15)",
+            }}
           >
             {/* Version banner when viewing historical */}
             {isViewingHistorical && (
-              <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/20">
-                <span className="text-xs text-amber-400">
+              <div
+                className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-lg"
+                style={{
+                  background: "rgba(245,158,11,0.1)",
+                  border: "1px solid rgba(245,158,11,0.2)",
+                }}
+              >
+                <span className="text-[12px] font-medium" style={{ color: "#f59e0b" }}>
                   Viewing version {selectedVersion} of {plan.metadata.version}
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleBackToLatest}
-                  className="h-6 px-2 text-xs gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                  className="h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md"
+                  style={{
+                    color: "#f59e0b",
+                    background: "rgba(245,158,11,0.1)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(245,158,11,0.2)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(245,158,11,0.1)";
+                  }}
                 >
                   <ArrowLeft className="w-3 h-3" />
                   Back to latest
@@ -431,17 +565,27 @@ export function PlanDisplay({
 
             {/* Loading state */}
             {isLoadingVersion ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
+              <div className="flex items-center justify-center py-12">
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#ff6b35" }} />
+                  <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                    Loading version...
+                  </span>
+                </div>
               </div>
             ) : displayContent ? (
-              <div className="text-sm">
+              <div className="text-[13px] leading-relaxed">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {displayContent}
                 </ReactMarkdown>
               </div>
             ) : (
-              <p className="text-sm text-text-muted italic">No content</p>
+              <p
+                className="text-[13px] italic py-8 text-center"
+                style={{ color: "var(--text-muted)" }}
+              >
+                No content available
+              </p>
             )}
           </div>
         </CollapsibleContent>

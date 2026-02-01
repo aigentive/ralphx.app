@@ -1,13 +1,8 @@
 /**
- * TieredProposalList - Orchestrates rendering proposals grouped by dependency tiers
+ * TieredProposalList - macOS Tahoe styled proposal tier system
  *
- * Features:
- * - Groups proposals by topological tier using useDependencyTiers
- * - Renders ProposalTierGroup for each tier (Foundation, Core, Integration)
- * - Passes dependency details to each ProposalCard
- * - Maintains sortOrder as tiebreaker within same tier
- * - Preserves selection and highlight functionality
- * - SVG tier connectors with critical path highlighting
+ * Design: Clean vertical flow with subtle connectors,
+ * warm orange critical path highlighting, and refined animations.
  */
 
 import React, { useMemo } from "react";
@@ -27,9 +22,7 @@ interface TierConnectorProps {
 }
 
 /**
- * SVG connector rendered between tier groups to show dependency flow direction
- * - Dashed line for normal connections
- * - Solid orange line for critical path
+ * Refined connector between tier groups with subtle animation
  */
 const TierConnector = React.memo(function TierConnector({
   isOnCriticalPath,
@@ -37,37 +30,54 @@ const TierConnector = React.memo(function TierConnector({
   return (
     <div
       data-testid="tier-connector"
-      className="flex justify-center py-1"
+      className="flex justify-center py-2"
       aria-hidden="true"
     >
-      <svg
-        width="24"
-        height="20"
-        viewBox="0 0 24 20"
-        fill="none"
-        className="opacity-60"
-      >
-        {/* Vertical connector line */}
-        <line
-          x1="12"
-          y1="0"
-          x2="12"
-          y2="14"
-          stroke={isOnCriticalPath ? "#ff6b35" : "var(--border-subtle, rgba(255,255,255,0.1))"}
-          strokeWidth={isOnCriticalPath ? "2" : "1.5"}
-          strokeDasharray={isOnCriticalPath ? "none" : "3 2"}
-          strokeLinecap="round"
-        />
-        {/* Downward arrow */}
-        <path
-          d="M8 11L12 17L16 11"
-          stroke={isOnCriticalPath ? "#ff6b35" : "var(--border-subtle, rgba(255,255,255,0.1))"}
-          strokeWidth={isOnCriticalPath ? "2" : "1.5"}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <div className="relative">
+        {/* Glow effect for critical path */}
+        {isOnCriticalPath && (
+          <div
+            className="absolute inset-0 blur-md"
+            style={{
+              background: "radial-gradient(circle, rgba(255,107,53,0.3) 0%, transparent 70%)",
+            }}
+          />
+        )}
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
           fill="none"
-        />
-      </svg>
+          className="relative"
+        >
+          {/* Vertical connector line */}
+          <line
+            x1="12"
+            y1="0"
+            x2="12"
+            y2="16"
+            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.1)"}
+            strokeWidth={isOnCriticalPath ? "2" : "1"}
+            strokeDasharray={isOnCriticalPath ? "none" : "4 3"}
+            strokeLinecap="round"
+            style={{
+              filter: isOnCriticalPath ? "drop-shadow(0 0 4px rgba(255,107,53,0.5))" : "none",
+            }}
+          />
+          {/* Downward chevron */}
+          <path
+            d="M8 14L12 20L16 14"
+            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.15)"}
+            strokeWidth={isOnCriticalPath ? "2" : "1.5"}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            style={{
+              filter: isOnCriticalPath ? "drop-shadow(0 0 4px rgba(255,107,53,0.5))" : "none",
+            }}
+          />
+        </svg>
+      </div>
     </div>
   );
 });
@@ -275,7 +285,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   }
 
   return (
-    <div data-testid="tiered-proposal-list" className="space-y-2">
+    <div data-testid="tiered-proposal-list" className="space-y-1">
       {tierNumbers.map((tier, tierIndex) => {
         const tierProposals = proposalsByTier.get(tier) ?? [];
 
@@ -292,7 +302,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
               tier={tier}
               proposalCount={tierProposals.length}
             >
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {tierProposals.map((proposal, index) => {
                   const dependsOnDetails = buildDependencyDetails(
                     proposal.id,
@@ -335,7 +345,15 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                   }
 
                   return (
-                    <div key={proposal.id} style={{ animationDelay: `${index * 50}ms` }}>
+                    <div
+                      key={proposal.id}
+                      className="animate-in fade-in slide-in-from-bottom-2"
+                      style={{
+                        animationDelay: `${index * 40}ms`,
+                        animationDuration: "300ms",
+                        animationFillMode: "both",
+                      }}
+                    >
                       <ProposalCard
                         proposal={proposal}
                         onSelect={onSelect}
