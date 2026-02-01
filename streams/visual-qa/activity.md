@@ -456,3 +456,11 @@
 
 ---
 
+
+### 2026-02-01 01:40:22 - TaskPickerDialog Visual Tests
+**What:** Created page object + spec + baseline for TaskPickerDialog modal
+**Mock parity:** ✅ Ready - mockTasksApi.list provides backlog tasks
+**Commands:**
+- `npx playwright test tests/visual/modals/task-picker-dialog/task-picker-dialog.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/task-picker-dialog/task-picker-dialog.spec.ts` (6 passed)
+**Result:** Success - All 6 tests pass. Baselines created.

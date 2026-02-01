@@ -24,13 +24,13 @@ Phase: IN PROGRESS (discovered 10 new components)
 | PermissionDialog | 🚧 | — | — | blocked |
 | WelcomeScreen | ✅ | welcome-screen.spec.ts | ✅ | covered |
 | MergeWorkflowDialog | — | — | — | ~~skipped~~ (no-trigger) |
-| ApplyModal | — | — | — | uncovered |
+| ApplyModal | — | — | — | ~~skipped~~ (orphan) |
 | ReviewDetailModal | ✅ | review-detail.spec.ts | ✅ | covered |
 | ReviewNotesModal | — | — | — | ~~skipped~~ (orphan) |
 | TaskRerunDialog | — | — | — | ~~skipped~~ (orphan) |
 | TaskFullView | ✅ | task-fullview.spec.ts | ✅ | covered |
 | BlockReasonDialog | ✅ | block-reason-dialog.spec.ts | ✅ | covered |
-| TaskPickerDialog | — | — | — | uncovered |
+| TaskPickerDialog | ✅ | task-picker-dialog.spec.ts | ✅ | covered |
 | ScreenshotGallery | — | — | — | uncovered |
 
 ## States & Edge Cases
