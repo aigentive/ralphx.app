@@ -11,12 +11,10 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import {
   MessageSquare,
-  ListTodo,
   Archive,
   Loader2,
   Upload,
   Sparkles,
-  Network,
 } from "lucide-react";
 import { useEventBus } from "@/providers/EventProvider";
 import { toast } from "sonner";
@@ -43,7 +41,6 @@ import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
 import { ideationApi } from "@/api/ideation";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ============================================================================
 // Types
@@ -406,69 +403,8 @@ export function IdeationView({
               >
                 {/* Drop zone overlay - shown during drag */}
                 <DropZoneOverlay isVisible={isDragging} message="Drop to import plan" />
-                {/* Panel Header */}
-                <div
-                  className="flex items-center justify-between px-4 h-10"
-                  style={{
-                    borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
-                    background: "hsla(220 10% 8% / 0.6)",
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <ListTodo className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
-                    <h2 className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Proposals</h2>
-                    {isAnalyzingDependencies && (
-                      <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "hsl(14 100% 60%)" }}>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Analyzing...</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {proposals.length >= 2 && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={handleReanalyzeDependencies}
-                              disabled={isAnalyzingDependencies}
-                              className="h-7 w-7 disabled:opacity-50 transition-colors duration-150"
-                              style={{ color: "hsl(220 10% 50%)" }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.color = "hsl(220 10% 90%)";
-                                e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.color = "hsl(220 10% 50%)";
-                                e.currentTarget.style.background = "transparent";
-                              }}
-                            >
-                              <Network className="w-3.5 h-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p>Re-analyze dependencies</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {proposals.length > 0 && (
-                      <span
-                        className="px-2 py-0.5 rounded-md text-[11px] font-medium"
-                        style={{
-                          background: "hsla(220 10% 100% / 0.05)",
-                          color: "hsl(220 10% 60%)",
-                          border: "1px solid hsla(220 10% 100% / 0.06)",
-                        }}
-                      >
-                        {proposals.length}
-                      </span>
-                    )}
-                  </div>
-                </div>
 
+                {/* Proposals Toolbar (replaces panel header) */}
                 {proposals.length > 0 && (
                   <ProposalsToolbar
                     selectedCount={selectedCount}
@@ -478,6 +414,8 @@ export function IdeationView({
                     onSortByPriority={handleSortByPriority}
                     onClearAll={handleClearAll}
                     onApply={handleApply}
+                    onAnalyzeDependencies={handleReanalyzeDependencies}
+                    isAnalyzingDependencies={isAnalyzingDependencies}
                   />
                 )}
 
