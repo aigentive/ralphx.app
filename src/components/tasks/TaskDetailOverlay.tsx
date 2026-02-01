@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskDetailPanel } from "./TaskDetailPanel";
 import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
+import { StateTimelineNav } from "./StateTimelineNav";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
@@ -28,6 +29,7 @@ import {
   Trash,
   Loader2,
   Lightbulb,
+  History,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -215,6 +217,16 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
+  // History mode state - for viewing historical task states
+  const [historyState, setHistoryState] = useState<{
+    status: InternalStatus;
+    timestamp: string;
+  } | null>(null);
+
+  // Derived values for history mode
+  const isHistoryMode = historyState !== null;
+  const viewStatus = historyState?.status ?? task?.internalStatus;
+
   // Get mutations
   const {
     updateMutation,
@@ -248,10 +260,16 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setSelectedTaskId, isEditing]);
 
-  // Reset editing state when task changes
+  // Reset editing and history state when task changes
   useEffect(() => {
     setIsEditing(false);
+    setHistoryState(null);
   }, [selectedTaskId]);
+
+  // Handler to exit history mode
+  const handleReturnToCurrent = useCallback(() => {
+    setHistoryState(null);
+  }, []);
 
   // Handle backdrop click
   const handleBackdropClick = useCallback(
@@ -568,6 +586,45 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
             </div>
           </div>
 
+          {/* State Timeline Navigation - for viewing historical states */}
+          <StateTimelineNav
+            taskId={task.id}
+            currentStatus={task.internalStatus}
+            onStateSelect={setHistoryState}
+            selectedState={historyState}
+          />
+
+          {/* History Mode Banner */}
+          {isHistoryMode && (
+            <div
+              data-testid="history-mode-banner"
+              className="px-4 py-2.5 flex items-center justify-between shrink-0"
+              style={{
+                background: "linear-gradient(90deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.05) 100%)",
+                borderBottom: "1px solid rgba(255,107,53,0.2)",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-[#ff6b35]" />
+                <span className="text-[13px] font-medium text-[#ff6b35]">
+                  Viewing historical state: {STATUS_CONFIG[historyState.status]?.label ?? historyState.status}
+                </span>
+                <span className="text-[11px] text-white/50">
+                  ({new Date(historyState.timestamp).toLocaleString()})
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReturnToCurrent}
+                data-testid="return-to-current-button"
+                className="text-[#ff6b35] hover:text-[#ff6b35] hover:bg-[#ff6b35]/10"
+              >
+                Return to Current
+              </Button>
+            </div>
+          )}
+
           {/* Scrollable Content */}
           {isEditing ? (
             /* Edit Mode - No ScrollArea, form handles its own layout */
@@ -589,6 +646,7 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   showContext={true}
                   showHistory={true}
                   useViewRegistry={true}
+                  {...(isHistoryMode && viewStatus ? { viewAsStatus: viewStatus } : {})}
                 />
               </div>
             </ScrollArea>

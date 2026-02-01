@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-01 02:04:53 - Phase 59 Task 4: Add history mode state and banner to TaskDetailOverlay
+**What:**
+- Added `historyState` useState to TaskDetailOverlay for tracking selected historical state
+- Computed `isHistoryMode` and `viewStatus` derived values from historyState
+- Imported and inserted `StateTimelineNav` component below header in overlay
+- Added history mode banner with accent styling (#ff6b35) showing selected state label and timestamp
+- Added "Return to Current" button to exit history mode
+- Reset historyState when task selection changes (switching tasks)
+- Added `viewAsStatus` optional prop to TaskDetailPanel interface
+- Updated TaskDetailPanel to use `viewAsStatus` for view registry lookup when in history mode
+
+**Files:**
+- `src/components/tasks/TaskDetailOverlay.tsx` (added history mode state management + banner UI)
+- `src/components/tasks/TaskDetailPanel.tsx` (added viewAsStatus prop for history mode)
+
+**Commands:**
+- `npx eslint src/components/tasks/TaskDetailOverlay.tsx src/components/tasks/TaskDetailPanel.tsx` (passed)
+- `npm run typecheck` (passed - no new errors in modified files)
+
+**Visual Verification:** N/A - TaskChatPanel integration is Task 6 (next tasks will complete the feature)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 02:00:52 - Phase 59 Task 3: Create StateTimelineNav component
 **What:**
 - Created `src/components/tasks/StateTimelineNav.tsx` - horizontal timeline navigation for task history
