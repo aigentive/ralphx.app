@@ -32,6 +32,7 @@ mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
+mod v7_session_status_converted_to_accepted;
 
 #[cfg(test)]
 mod tests;
@@ -45,9 +46,11 @@ mod v3_add_activity_events_tests;
 mod v4_add_blocked_reason_tests;
 #[cfg(test)]
 mod v6_review_issues_tests;
+#[cfg(test)]
+mod v7_session_status_converted_to_accepted_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 6;
+pub const SCHEMA_VERSION: i32 = 7;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -91,6 +94,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 6,
         name: "review_issues",
         migrate: v6_review_issues::migrate,
+    },
+    Migration {
+        version: 7,
+        name: "session_status_converted_to_accepted",
+        migrate: v7_session_status_converted_to_accepted::migrate,
     },
 ];
 

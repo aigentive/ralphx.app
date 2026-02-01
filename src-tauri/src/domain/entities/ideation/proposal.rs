@@ -106,8 +106,8 @@ impl TaskProposal {
         self.status == ProposalStatus::Accepted
     }
 
-    /// Returns true if the proposal has been converted to a task
-    pub fn is_converted(&self) -> bool {
+    /// Returns true if the proposal has been applied and created a task
+    pub fn has_created_task(&self) -> bool {
         self.created_task_id.is_some()
     }
 

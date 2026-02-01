@@ -108,7 +108,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             IdeationSessionStatus::Archived => {
                 "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = ?4 WHERE id = ?1"
             }
-            IdeationSessionStatus::Converted => {
+            IdeationSessionStatus::Accepted => {
                 "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, converted_at = ?4 WHERE id = ?1"
             }
             IdeationSessionStatus::Active => {
@@ -118,7 +118,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         };
 
         match status {
-            IdeationSessionStatus::Archived | IdeationSessionStatus::Converted => {
+            IdeationSessionStatus::Archived | IdeationSessionStatus::Accepted => {
                 conn.execute(
                     query,
                     rusqlite::params![
@@ -515,11 +515,11 @@ mod tests {
 
         repo.create(session.clone()).await.unwrap();
 
-        let result = repo.update_status(&session.id, IdeationSessionStatus::Converted).await;
+        let result = repo.update_status(&session.id, IdeationSessionStatus::Accepted).await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
-        assert_eq!(found.status, IdeationSessionStatus::Converted);
+        assert_eq!(found.status, IdeationSessionStatus::Accepted);
         assert!(found.converted_at.is_some());
     }
 
@@ -665,12 +665,12 @@ mod tests {
         let active = create_test_session(&project_id, Some("Active"));
         let mut archived = create_test_session(&project_id, Some("Archived"));
         archived.archive();
-        let mut converted = create_test_session(&project_id, Some("Converted"));
-        converted.mark_converted();
+        let mut accepted = create_test_session(&project_id, Some("Accepted"));
+        accepted.mark_accepted();
 
         repo.create(active.clone()).await.unwrap();
         repo.create(archived).await.unwrap();
-        repo.create(converted).await.unwrap();
+        repo.create(accepted).await.unwrap();
 
         let result = repo.get_active_by_project(&project_id).await;
 
@@ -757,21 +757,21 @@ mod tests {
         let active2 = create_test_session(&project_id, Some("Active 2"));
         let mut archived = create_test_session(&project_id, Some("Archived"));
         archived.archive();
-        let mut converted = create_test_session(&project_id, Some("Converted"));
-        converted.mark_converted();
+        let mut accepted = create_test_session(&project_id, Some("Accepted"));
+        accepted.mark_accepted();
 
         repo.create(active1).await.unwrap();
         repo.create(active2).await.unwrap();
         repo.create(archived).await.unwrap();
-        repo.create(converted).await.unwrap();
+        repo.create(accepted).await.unwrap();
 
         let active_count = repo.count_by_status(&project_id, IdeationSessionStatus::Active).await.unwrap();
         let archived_count = repo.count_by_status(&project_id, IdeationSessionStatus::Archived).await.unwrap();
-        let converted_count = repo.count_by_status(&project_id, IdeationSessionStatus::Converted).await.unwrap();
+        let accepted_count = repo.count_by_status(&project_id, IdeationSessionStatus::Accepted).await.unwrap();
 
         assert_eq!(active_count, 2);
         assert_eq!(archived_count, 1);
-        assert_eq!(converted_count, 1);
+        assert_eq!(accepted_count, 1);
     }
 
     #[tokio::test]

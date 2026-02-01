@@ -185,9 +185,9 @@ impl IdeationSession {
         self.status == IdeationSessionStatus::Archived
     }
 
-    /// Returns true if all proposals have been converted
-    pub fn is_converted(&self) -> bool {
-        self.status == IdeationSessionStatus::Converted
+    /// Returns true if all proposals have been accepted and applied
+    pub fn is_accepted(&self) -> bool {
+        self.status == IdeationSessionStatus::Accepted
     }
 
     /// Archives the session
@@ -198,10 +198,10 @@ impl IdeationSession {
         self.updated_at = now;
     }
 
-    /// Marks the session as converted (all proposals applied)
-    pub fn mark_converted(&mut self) {
+    /// Marks the session as accepted (all proposals applied)
+    pub fn mark_accepted(&mut self) {
         let now = Utc::now();
-        self.status = IdeationSessionStatus::Converted;
+        self.status = IdeationSessionStatus::Accepted;
         self.converted_at = Some(now);
         self.updated_at = now;
     }

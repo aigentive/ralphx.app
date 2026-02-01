@@ -382,7 +382,7 @@ mod tests {
         assert_eq!(archived_count.unwrap(), 1);
 
         let converted_count = repo
-            .count_by_status(&project_id, IdeationSessionStatus::Converted)
+            .count_by_status(&project_id, IdeationSessionStatus::Accepted)
             .await;
         assert!(converted_count.is_ok());
         assert_eq!(converted_count.unwrap(), 0);
@@ -413,7 +413,7 @@ mod tests {
 
         // Test update_status through trait object
         let result = repo
-            .update_status(&session.id, IdeationSessionStatus::Converted)
+            .update_status(&session.id, IdeationSessionStatus::Accepted)
             .await;
         assert!(result.is_ok());
 

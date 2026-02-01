@@ -34,7 +34,7 @@ import { taskKeys } from "./useTasks";
  *   }
  *
  *   if (result.sessionConverted) {
- *     toast.info("All proposals applied - session converted");
+ *     toast.info("All proposals applied - session accepted");
  *     navigate("/kanban");
  *   }
  * };
@@ -61,7 +61,7 @@ export function useApplyProposals() {
         queryKey: ideationKeys.sessionWithData(variables.sessionId),
       });
 
-      // If session was converted, also invalidate session list
+      // If session was accepted, also invalidate session list
       if (result.sessionConverted) {
         queryClient.invalidateQueries({
           queryKey: ideationKeys.sessions(),

@@ -13,8 +13,8 @@ pub enum IdeationSessionStatus {
     Active,
     /// Session has been archived (completed or paused for later)
     Archived,
-    /// All proposals from this session have been applied to Kanban
-    Converted,
+    /// All proposals from this session have been accepted and applied to Kanban
+    Accepted,
 }
 
 impl Default for IdeationSessionStatus {
@@ -28,7 +28,7 @@ impl std::fmt::Display for IdeationSessionStatus {
         match self {
             IdeationSessionStatus::Active => write!(f, "active"),
             IdeationSessionStatus::Archived => write!(f, "archived"),
-            IdeationSessionStatus::Converted => write!(f, "converted"),
+            IdeationSessionStatus::Accepted => write!(f, "accepted"),
         }
     }
 }
@@ -54,7 +54,7 @@ impl FromStr for IdeationSessionStatus {
         match s {
             "active" => Ok(IdeationSessionStatus::Active),
             "archived" => Ok(IdeationSessionStatus::Archived),
-            "converted" => Ok(IdeationSessionStatus::Converted),
+            "accepted" => Ok(IdeationSessionStatus::Accepted),
             _ => Err(ParseIdeationSessionStatusError {
                 value: s.to_string(),
             }),

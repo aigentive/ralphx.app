@@ -180,7 +180,7 @@ pub async fn apply_proposals_to_kanban(
     if session_converted {
         state
             .ideation_session_repo
-            .update_status(&session_id, IdeationSessionStatus::Converted)
+            .update_status(&session_id, IdeationSessionStatus::Accepted)
             .await
             .map_err(|e| e.to_string())?;
     }
