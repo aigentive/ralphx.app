@@ -30,6 +30,8 @@ import type { ReviewNoteResponse, ReviewIssue } from "@/lib/tauri";
 
 interface EscalatedTaskDetailProps {
   task: Task;
+  /** True when viewing a historical state - disables action buttons */
+  isHistorical?: boolean;
 }
 
 /**
@@ -365,7 +367,7 @@ function getLatestEscalationReview(
  * Renders task information for escalated state.
  * Shows: Warning banner, escalation reason, previous attempts, and action buttons.
  */
-export function EscalatedTaskDetail({ task }: EscalatedTaskDetailProps) {
+export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTaskDetailProps) {
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(task.id);
 
   const latestEscalationReview = getLatestEscalationReview(history);
@@ -484,8 +486,8 @@ export function EscalatedTaskDetail({ task }: EscalatedTaskDetailProps) {
         )}
       </div>
 
-      {/* Action Buttons */}
-      {!isLoading && (
+      {/* Action Buttons - hidden in historical mode */}
+      {!isLoading && !isHistorical && (
         <ActionButtons
           taskId={task.id}
         />

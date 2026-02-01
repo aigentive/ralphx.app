@@ -30,6 +30,8 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface HumanReviewTaskDetailProps {
   task: Task;
+  /** True when viewing a historical state - disables action buttons */
+  isHistorical?: boolean;
 }
 
 /**
@@ -367,7 +369,7 @@ function getLatestApprovedReview(
  * Renders task information for review_passed state.
  * Shows: AI approved banner, review summary, previous attempts, and action buttons.
  */
-export function HumanReviewTaskDetail({ task }: HumanReviewTaskDetailProps) {
+export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanReviewTaskDetailProps) {
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(task.id);
 
   const latestApprovedReview = getLatestApprovedReview(history);
@@ -476,8 +478,8 @@ export function HumanReviewTaskDetail({ task }: HumanReviewTaskDetailProps) {
         )}
       </div>
 
-      {/* Action Buttons */}
-      {!isLoading && (
+      {/* Action Buttons - hidden in historical mode */}
+      {!isLoading && !isHistorical && (
         <ActionButtons
           taskId={task.id}
         />

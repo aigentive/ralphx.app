@@ -30,6 +30,8 @@ import { useGitDiff } from "@/hooks/useGitDiff";
 
 interface CompletedTaskDetailProps {
   task: Task;
+  /** True when viewing a historical state - disables action buttons */
+  isHistorical?: boolean;
 }
 
 /**
@@ -136,7 +138,7 @@ function ActionButtons({
  * Renders task information for approved state.
  * Shows: completed banner, final summary, review history timeline, and action buttons.
  */
-export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
+export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTaskDetailProps) {
   const queryClient = useQueryClient();
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(
     task.id
@@ -314,8 +316,10 @@ export function CompletedTaskDetail({ task }: CompletedTaskDetailProps) {
         </div>
       )}
 
-      {/* Action Buttons */}
-      <ActionButtons onViewDiff={handleViewDiff} onReopenTask={handleReopenTask} />
+      {/* Action Buttons - hidden in historical mode */}
+      {!isHistorical && (
+        <ActionButtons onViewDiff={handleViewDiff} onReopenTask={handleReopenTask} />
+      )}
 
       {/* Task Rerun Dialog */}
       <TaskRerunDialog

@@ -55,6 +55,8 @@ interface TaskDetailPanelProps {
  */
 interface TaskDetailProps {
   task: Task;
+  /** True when viewing a historical state - disables action buttons */
+  isHistorical?: boolean;
 }
 
 /**
@@ -308,7 +310,9 @@ export function TaskDetailPanel({
     const statusForView = viewAsStatus ?? task.internalStatus;
     const ViewComponent =
       TASK_DETAIL_VIEWS[statusForView] ?? BasicTaskDetail;
-    return <ViewComponent task={task} />;
+    // Pass isHistorical when viewing a historical state (viewAsStatus is set)
+    const isHistorical = viewAsStatus !== undefined;
+    return <ViewComponent task={task} isHistorical={isHistorical} />;
   }
 
   const hasReviews = reviews.length > 0;
