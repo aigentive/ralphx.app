@@ -87,7 +87,7 @@ export function TaskFormFields({
             className={selectBaseStyles}
           >
             {TASK_CATEGORIES.map((cat) => (
-              <option key={cat} value={cat} className="bg-[#1a1a1a] text-white">
+              <option key={cat} value={cat} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">
                 {cat.charAt(0).toUpperCase() + cat.slice(1)}
               </option>
             ))}
@@ -106,10 +106,10 @@ export function TaskFormFields({
             disabled={disabled}
             className={selectBaseStyles}
           >
-            <option value={1} className="bg-[#1a1a1a] text-white">P1 - Critical</option>
-            <option value={2} className="bg-[#1a1a1a] text-white">P2 - High</option>
-            <option value={3} className="bg-[#1a1a1a] text-white">P3 - Medium</option>
-            <option value={4} className="bg-[#1a1a1a] text-white">P4 - Low</option>
+            <option value={1} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P1 - Critical</option>
+            <option value={2} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P2 - High</option>
+            <option value={3} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P3 - Medium</option>
+            <option value={4} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P4 - Low</option>
           </select>
         </div>
       </div>
@@ -130,17 +130,17 @@ export function TaskFormFields({
         />
       </div>
 
-      {/* Error Display */}
+      {/* Error Display - Tahoe flat styling */}
       {validationError && (
         <div
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-lg text-[13px]"
           style={{
-            background: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.05) 100%)",
-            border: "1px solid rgba(239,68,68,0.25)",
+            backgroundColor: "hsla(0 70% 55% / 0.12)",
+            border: "1px solid hsla(0 70% 55% / 0.2)",
           }}
         >
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          <span className="text-red-300">{validationError}</span>
+          <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "hsl(0 70% 60%)" }} />
+          <span style={{ color: "hsl(0 70% 70%)" }}>{validationError}</span>
         </div>
       )}
     </div>
@@ -173,7 +173,7 @@ export function TaskFormActions({
   return (
     <div
       className="flex justify-end gap-3 pt-4 mt-auto border-t"
-      style={{ borderColor: "rgba(255,255,255,0.06)" }}
+      style={{ borderColor: "hsla(220 10% 100% / 0.06)" }}
     >
       <button
         type="button"

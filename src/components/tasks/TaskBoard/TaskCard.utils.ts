@@ -2,35 +2,32 @@
  * TaskCard utility functions
  *
  * Contains styling helpers extracted from TaskCard.tsx to reduce component size.
+ * Design: macOS Tahoe (2025) - Clean, flat, minimal like Finder
  */
 
 import { type InternalStatus, NON_DRAGGABLE_STATUSES } from "@/types/status";
 
 /**
- * Get priority color for the left border stripe (Refined Studio aesthetic)
+ * Priority colors - simple, flat
+ */
+const PRIORITY_COLORS: Record<number, string> = {
+  1: "hsl(0 70% 55%)",      // Critical - Red
+  2: "hsl(25 90% 55%)",     // High - Orange
+  3: "hsl(14 100% 60%)",    // Medium - Accent orange
+  4: "hsl(220 10% 35%)",    // Low - Gray
+};
+
+/**
+ * Get priority color for the left border stripe
  */
 export function getPriorityColor(priority: number, isArchived: boolean): string {
-  // Archived tasks always use gray
-  if (isArchived) {
-    return "#525252"; // neutral-600
-  }
-
-  switch (priority) {
-    case 1: // Critical
-      return "#ef4444"; // red-500
-    case 2: // High
-      return "#f97316"; // orange-500
-    case 3: // Medium
-      return "#ff6b35"; // accent-primary
-    case 4: // Low
-      return "#525252"; // neutral-600
-    default: // None or unknown
-      return "transparent";
-  }
+  if (isArchived) return "hsl(220 10% 25%)";
+  return PRIORITY_COLORS[priority] ?? "transparent";
 }
 
 /**
- * Build base card styles (macOS Tahoe - Liquid Glass)
+ * Build base card styles (macOS Tahoe - subtle floating elevation)
+ * Content cards get light elevation to distinguish them as distinct items.
  */
 export function getBaseCardStyles(
   priority: number,
@@ -39,14 +36,14 @@ export function getBaseCardStyles(
 ): React.CSSProperties {
   return {
     cursor: isDraggable ? "grab" : "default",
-    transition: "all 180ms ease-out",
-    background: "rgba(255,255,255,0.04)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    // Priority stripe - must come AFTER border shorthand to override left border
+    transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
+    borderRadius: "8px",
+    background: "hsla(220 10% 14% / 0.85)",
+    backdropFilter: "blur(12px) saturate(150%)",
+    WebkitBackdropFilter: "blur(12px) saturate(150%)",
+    border: "1px solid hsla(220 10% 100% / 0.06)",
+    boxShadow: "0 2px 8px hsla(220 10% 0% / 0.25)",
     borderLeft: `3px solid ${getPriorityColor(priority, isArchived)}`,
-    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
   };
 }
 
@@ -67,18 +64,18 @@ export function getCardStyles(
       ...baseStyles,
       cursor: "grabbing",
       transform: "scale(1.02)",
-      boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
-      background: "rgba(255,255,255,0.06)",
+      background: "hsla(220 10% 18% / 0.95)",
+      boxShadow: "0 8px 24px hsla(220 10% 0% / 0.4), 0 2px 8px hsla(220 10% 0% / 0.3)",
       zIndex: 50,
     };
   }
 
+  // Selected state - subtle blue tint like Finder selection
   if (isSelected) {
     return {
       ...baseStyles,
-      background: "rgba(255,107,53,0.08)",
-      borderColor: "rgba(255,107,53,0.25)",
-      boxShadow: "0 0 0 1px rgba(255,107,53,0.15), 0 2px 8px rgba(0,0,0,0.15)",
+      background: "hsla(220 60% 50% / 0.25)",
+      border: "1px solid hsla(220 60% 60% / 0.3)",
     };
   }
 

@@ -152,14 +152,8 @@ export function TaskCreationForm({
         validationError={validationError}
       />
 
-      {/* Steps Section */}
-      <div
-        className="rounded-lg p-4 mt-5"
-        style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
+      {/* Steps Section - no boxing, just spacing */}
+      <div className="mt-6">
         <label className={labelStyles}>Steps (Optional)</label>
 
         {/* Steps List */}
@@ -170,14 +164,20 @@ export function TaskCreationForm({
                 key={index}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg"
                 style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  backgroundColor: "hsla(220 10% 100% / 0.03)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
                 }}
               >
-                <span className="text-[11px] text-white/40 font-medium w-5">
+                <span
+                  className="text-[11px] font-medium w-5"
+                  style={{ color: "hsl(220 10% 40%)" }}
+                >
                   {index + 1}.
                 </span>
-                <span className="flex-1 text-[13px] text-white/80 truncate">
+                <span
+                  className="flex-1 text-[13px] truncate"
+                  style={{ color: "hsl(220 10% 80%)" }}
+                >
                   {step}
                 </span>
                 <div className="flex items-center gap-1">
@@ -185,7 +185,8 @@ export function TaskCreationForm({
                     type="button"
                     onClick={() => moveStepUp(index)}
                     disabled={isSubmitting || index === 0}
-                    className="p-1 rounded text-white/40 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    style={{ color: "hsl(220 10% 40%)" }}
                     title="Move up"
                   >
                     <ChevronUp className="w-3.5 h-3.5" />
@@ -194,7 +195,8 @@ export function TaskCreationForm({
                     type="button"
                     onClick={() => moveStepDown(index)}
                     disabled={isSubmitting || index === steps.length - 1}
-                    className="p-1 rounded text-white/40 hover:text-white/70 hover:bg-white/[0.05] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    style={{ color: "hsl(220 10% 40%)" }}
                     title="Move down"
                   >
                     <ChevronDown className="w-3.5 h-3.5" />
@@ -203,7 +205,8 @@ export function TaskCreationForm({
                     type="button"
                     onClick={() => removeStep(index)}
                     disabled={isSubmitting}
-                    className="p-1 rounded text-white/40 hover:text-red-400 hover:bg-red-400/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(0_70%_55%/0.1)]"
+                    style={{ color: "hsl(220 10% 40%)" }}
                     title="Remove step"
                   >
                     <X className="w-3.5 h-3.5" />

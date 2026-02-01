@@ -56,43 +56,35 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
 
   return (
     <>
-      {/* Backdrop with blur */}
+      {/* Full-page container - same bg as Kanban */}
       <div
         data-testid="task-creation-overlay-backdrop"
-        className="absolute inset-0 z-40"
+        className="absolute inset-0 z-40 flex"
         style={{
-          backgroundColor: "rgba(0, 0, 0, 0.6)",
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
+          backgroundColor: "hsl(220 10% 8%)", /* Same as Kanban background */
         }}
         onClick={handleBackdropClick}
       >
-        {/* Overlay content */}
+        {/* Content area - full width, no boxing */}
         <div
           data-testid="task-creation-overlay"
-          className="absolute inset-6 flex flex-col rounded-xl overflow-hidden"
-          style={{
-            background: "linear-gradient(180deg, rgba(24,24,24,0.98) 0%, rgba(18,18,18,0.99) 100%)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow:
-              "0 8px 16px rgba(0,0,0,0.4), 0 16px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03)",
-          }}
-          onClick={(e) => e.stopPropagation()} // Prevent backdrop click
+          className="flex-1 flex flex-col"
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Header - Glass effect */}
+          {/* Header - minimal, integrated */}
           <div
-            className="px-5 pt-5 pb-4 shrink-0 backdrop-blur-sm flex items-center justify-between"
+            className="px-6 h-14 shrink-0 flex items-center justify-between"
             style={{
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-              background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, transparent 100%)",
+              borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           >
             <h2
               data-testid="task-creation-overlay-title"
-              className="text-base font-semibold text-white/90"
               style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "hsl(220 10% 90%)",
                 letterSpacing: "-0.02em",
-                lineHeight: "1.3",
               }}
             >
               Create Task
@@ -105,15 +97,16 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
               onClick={closeTaskCreation}
               data-testid="task-creation-overlay-close"
               aria-label="Close"
-              className="hover:bg-white/5"
+              style={{ color: "hsl(220 10% 50%)" }}
+              className="hover:bg-[hsla(220_10%_100%/0.05)]"
             >
               <X className="w-4 h-4" />
             </Button>
           </div>
 
-          {/* Scrollable Content with Form */}
+          {/* Scrollable Content with Form - full width */}
           <ScrollArea className="flex-1">
-            <div className="px-6 py-4">
+            <div className="px-6 py-6">
               <TaskCreationForm
                 projectId={taskCreationContext.projectId || projectId}
                 {...(taskCreationContext.defaultTitle !== undefined && { defaultTitle: taskCreationContext.defaultTitle })}

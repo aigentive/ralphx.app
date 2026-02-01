@@ -37,25 +37,23 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
     <div
       className={cn(
         "relative group px-3 py-2 text-[13px] leading-relaxed",
-        isUser
-          ? "rounded-[10px_10px_4px_10px]"
-          : "rounded-[10px_10px_10px_4px]"
+        /* macOS Tahoe: uniform rounded corners */
+        "rounded-xl"
       )}
       style={{
+        /* macOS Tahoe: flat solid colors, no gradients */
         background: isUser
-          ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
-          : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
-        color: isUser ? "white" : "var(--text-primary)",
-        border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
-        boxShadow: isUser
-          ? "0 2px 8px rgba(255,107,53,0.2)"
-          : "0 1px 4px rgba(0,0,0,0.15)",
+          ? "hsl(14 100% 60%)" /* Accent orange - flat */
+          : "hsl(220 10% 14%)", /* Dark surface - flat */
+        color: isUser ? "white" : "hsl(220 10% 90%)",
+        border: "none",
+        boxShadow: "none",
       }}
     >
       {isUser ? (
-        <p className="whitespace-pre-wrap break-words overflow-hidden">{text}</p>
+        <p className="whitespace-pre-wrap break-words overflow-hidden leading-relaxed">{text}</p>
       ) : (
-        <div className="prose prose-sm prose-invert max-w-none overflow-hidden">
+        <div className="max-w-none overflow-hidden [&>p]:mb-0">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {text}
           </ReactMarkdown>

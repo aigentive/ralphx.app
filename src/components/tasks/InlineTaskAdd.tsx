@@ -135,8 +135,8 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         style={{
           padding: "10px 12px",
           borderRadius: "10px",
-          border: `1.5px dashed ${isHovered ? "var(--accent-primary)" : "var(--border-subtle)"}`,
-          backgroundColor: isHovered ? "hsla(14, 100%, 60%, 0.04)" : "transparent",
+          border: `1.5px dashed ${isHovered ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.08)"}`,
+          backgroundColor: isHovered ? "hsla(14 100% 60% / 0.04)" : "transparent",
           transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
           cursor: "pointer",
         }}
@@ -144,7 +144,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         <div
           className="flex items-center gap-2"
           style={{
-            color: isHovered ? "var(--accent-primary)" : "var(--text-muted)",
+            color: isHovered ? "hsl(14 100% 60%)" : "hsl(220 10% 45%)",
             transition: "color 180ms ease",
           }}
         >
@@ -156,7 +156,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               width: "18px",
               height: "18px",
               borderRadius: "5px",
-              backgroundColor: isHovered ? "hsla(14, 100%, 60%, 0.12)" : "transparent",
+              backgroundColor: isHovered ? "hsla(14 100% 60% / 0.12)" : "transparent",
               transition: "background-color 180ms ease",
             }}
           >
@@ -173,7 +173,6 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               fontSize: "13px",
               fontWeight: 500,
               letterSpacing: "-0.01em",
-              fontFamily: "var(--font-body)",
             }}
           >
             Add task
@@ -183,7 +182,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
     );
   }
 
-  // Expanded state: Frosted glass card with refined inputs
+  // Expanded state: Flat card with Tahoe styling
   return (
     <div
       data-testid="inline-task-add-expanded"
@@ -191,13 +190,9 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       style={{
         padding: "12px",
         borderRadius: "12px",
-        backgroundColor: "var(--bg-elevated)",
-        border: "1px solid var(--border-default)",
-        boxShadow: `
-          0 0 0 1px hsla(0, 0%, 100%, 0.04) inset,
-          0 1px 2px hsla(0, 0%, 0%, 0.2),
-          0 4px 12px hsla(0, 0%, 0%, 0.15)
-        `,
+        backgroundColor: "hsl(220 10% 14%)",
+        border: "1px solid hsla(220 10% 100% / 0.08)",
+        boxShadow: "0 4px 12px hsla(220 10% 0% / 0.3)",
         animation: "fadeInScale 180ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }}
     >
@@ -223,11 +218,10 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
           disabled={createMutation.isPending}
           className="flex-1 bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
           style={{
-            color: "var(--text-primary)",
+            color: "hsl(220 10% 90%)",
             fontSize: "13px",
             fontWeight: 500,
             letterSpacing: "-0.01em",
-            fontFamily: "var(--font-body)",
             boxShadow: "none",
             outline: "none",
           }}
@@ -240,16 +234,15 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             style={{
               padding: "3px 6px",
               borderRadius: "5px",
-              backgroundColor: "hsla(0, 0%, 100%, 0.05)",
-              border: "1px solid hsla(0, 0%, 100%, 0.08)",
+              backgroundColor: "hsla(220 10% 100% / 0.05)",
+              border: "1px solid hsla(220 10% 100% / 0.08)",
             }}
           >
             <span
               style={{
                 fontSize: "10px",
                 fontWeight: 500,
-                color: "var(--text-muted)",
-                fontFamily: "var(--font-body)",
+                color: "hsl(220 10% 45%)",
                 letterSpacing: "0.02em",
                 textTransform: "uppercase",
               }}
@@ -259,7 +252,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             <span
               style={{
                 fontSize: "10px",
-                color: "var(--text-muted)",
+                color: "hsl(220 10% 45%)",
                 opacity: 0.6,
               }}
             >
@@ -298,14 +291,13 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             rows={2}
             className="w-full bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 resize-none"
             style={{
-              color: "var(--text-secondary)",
+              color: "hsl(220 10% 65%)",
               fontSize: "12px",
               lineHeight: 1.5,
-              fontFamily: "var(--font-body)",
               letterSpacing: "-0.006em",
               marginTop: "8px",
               paddingTop: "8px",
-              borderTop: "1px solid hsla(0, 0%, 100%, 0.06)",
+              borderTop: "1px solid hsla(220 10% 100% / 0.06)",
               boxShadow: "none",
               outline: "none",
             }}
@@ -319,7 +311,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         style={{
           marginTop: "10px",
           paddingTop: "10px",
-          borderTop: "1px solid hsla(0, 0%, 100%, 0.06)",
+          borderTop: "1px solid hsla(220 10% 100% / 0.06)",
         }}
       >
         {/* Left: More options */}
@@ -339,7 +331,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             transition: "background-color 150ms ease",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "hsla(0, 0%, 100%, 0.05)";
+            e.currentTarget.style.backgroundColor = "hsla(220 10% 100% / 0.05)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = "transparent";
@@ -349,8 +341,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             style={{
               fontSize: "12px",
               fontWeight: 500,
-              color: "var(--accent-primary)",
-              fontFamily: "var(--font-body)",
+              color: "hsl(14 100% 60%)",
               letterSpacing: "-0.006em",
             }}
           >
@@ -373,19 +364,18 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               border: "none",
               fontSize: "12px",
               fontWeight: 500,
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-body)",
+              color: "hsl(220 10% 45%)",
               letterSpacing: "-0.006em",
               cursor: "pointer",
               transition: "all 150ms ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "hsla(0, 0%, 100%, 0.05)";
-              e.currentTarget.style.color = "var(--text-secondary)";
+              e.currentTarget.style.backgroundColor = "hsla(220 10% 100% / 0.05)";
+              e.currentTarget.style.color = "hsl(220 10% 65%)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--text-muted)";
+              e.currentTarget.style.color = "hsl(220 10% 45%)";
             }}
           >
             Cancel
@@ -399,12 +389,11 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             style={{
               padding: "5px 12px",
               borderRadius: "6px",
-              backgroundColor: title.trim() ? "var(--accent-primary)" : "hsla(0, 0%, 100%, 0.06)",
+              backgroundColor: title.trim() ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.06)",
               border: "none",
               fontSize: "12px",
               fontWeight: 600,
-              color: title.trim() ? "white" : "var(--text-muted)",
-              fontFamily: "var(--font-body)",
+              color: title.trim() ? "white" : "hsl(220 10% 45%)",
               letterSpacing: "-0.006em",
               cursor: title.trim() ? "pointer" : "default",
               transition: "all 150ms ease",
@@ -412,15 +401,13 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             }}
             onMouseEnter={(e) => {
               if (title.trim() && !createMutation.isPending) {
-                e.currentTarget.style.backgroundColor = "var(--accent-hover)";
-                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.backgroundColor = "hsl(14 100% 55%)";
               }
             }}
             onMouseLeave={(e) => {
               if (title.trim()) {
-                e.currentTarget.style.backgroundColor = "var(--accent-primary)";
+                e.currentTarget.style.backgroundColor = "hsl(14 100% 60%)";
               }
-              e.currentTarget.style.transform = "translateY(0)";
             }}
           >
             <span className="flex items-center gap-1.5">
@@ -435,7 +422,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
                       alignItems: "center",
                       padding: "1px 4px",
                       borderRadius: "3px",
-                      backgroundColor: "hsla(0, 0%, 100%, 0.15)",
+                      backgroundColor: "hsla(0 0% 100% / 0.15)",
                       fontSize: "10px",
                       fontWeight: 500,
                       opacity: 0.8,

@@ -38,9 +38,9 @@ interface ExecutionControlBarProps {
  * Get status indicator color based on execution state
  */
 function getStatusColor(running: number, paused: boolean): string {
-  if (paused) return "var(--status-warning)";
-  if (running > 0) return "var(--status-success)";
-  return "var(--text-muted)";
+  if (paused) return "hsl(45 90% 55%)"; /* warning */
+  if (running > 0) return "hsl(145 60% 45%)"; /* success */
+  return "hsl(220 10% 45%)"; /* muted */
 }
 
 /**
@@ -69,22 +69,32 @@ export function ExecutionControlBar({
 
   return (
     <TooltipProvider>
-      <div
-        data-testid="execution-control-bar"
-        data-paused={isPaused ? "true" : "false"}
-        data-running={runningCount}
-        data-loading={isLoading ? "true" : undefined}
-        data-status={statusState}
-        role="region"
-        aria-label="Execution controls"
-        aria-live="polite"
-        className="flex py-3 items-center justify-between px-4 border-t z-10"
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          borderColor: "var(--border-subtle)",
-          boxShadow: "0 -2px 8px rgba(0,0,0,0.15)",
-        }}
-      >
+      {/* Outer container with padding for floating effect */}
+      <div className="p-2" style={{ backgroundColor: "hsl(220 10% 8%)" }}>
+        {/* Inner floating glass container */}
+        <div
+          data-testid="execution-control-bar"
+          data-paused={isPaused ? "true" : "false"}
+          data-running={runningCount}
+          data-loading={isLoading ? "true" : undefined}
+          data-status={statusState}
+          role="region"
+          aria-label="Execution controls"
+          aria-live="polite"
+          className="flex py-3 items-center justify-between px-4 z-10"
+          style={{
+            /* macOS Tahoe: floating panel - FLAT with blur */
+            borderRadius: "10px",
+            background: "hsla(220 10% 10% / 0.92)",
+            backdropFilter: "blur(20px) saturate(180%)",
+            WebkitBackdropFilter: "blur(20px) saturate(180%)",
+            border: "1px solid hsla(220 20% 100% / 0.08)",
+            boxShadow: `
+              0 4px 16px hsla(220 20% 0% / 0.4),
+              0 12px 32px hsla(220 20% 0% / 0.3)
+            `,
+          }}
+        >
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
@@ -103,20 +113,20 @@ export function ExecutionControlBar({
           {/* Running Count */}
           <span
             data-testid="running-count"
-            className="text-sm font-medium"
-            style={{ color: "var(--text-primary)" }}
+            className="text-[13px] font-medium"
+            style={{ color: "hsl(220 10% 90%)" }}
           >
             Running: {runningCount}/{maxConcurrent}
           </span>
 
           {/* Separator */}
-          <span style={{ color: "var(--text-muted)" }}>•</span>
+          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
 
           {/* Queued Count */}
           <span
             data-testid="queued-count"
-            className="text-sm"
-            style={{ color: "var(--text-secondary)" }}
+            className="text-[13px]"
+            style={{ color: "hsl(220 10% 65%)" }}
           >
             Queued: {queuedCount}
           </span>
@@ -130,11 +140,11 @@ export function ExecutionControlBar({
           >
             <Loader2
               className="w-4 h-4 animate-spin shrink-0"
-              style={{ color: "var(--accent-primary)" }}
+              style={{ color: "hsl(14 100% 60%)" }}
             />
             <span
-              className="text-sm truncate"
-              style={{ color: "var(--text-secondary)" }}
+              className="text-[13px] truncate"
+              style={{ color: "hsl(220 10% 65%)" }}
             >
               {currentTaskName}
             </span>
@@ -154,12 +164,13 @@ export function ExecutionControlBar({
                 disabled={isLoading}
                 aria-label={isPaused ? "Resume execution" : "Pause execution"}
                 aria-pressed={isPaused}
-                className={cn(
-                  "gap-2 border h-9 px-4 transition-all duration-150 active:scale-[0.96]",
-                  isPaused
-                    ? "bg-[var(--accent-muted)] border-[var(--accent-primary)]/30 text-[var(--accent-primary)] hover:bg-[var(--accent-muted)] hover:border-[var(--accent-primary)]/50"
-                    : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                )}
+                className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
+                style={{
+                  /* macOS Tahoe: flat button styling */
+                  backgroundColor: isPaused ? "hsla(14 100% 60% / 0.15)" : "hsl(220 10% 18%)",
+                  color: isPaused ? "hsl(14 100% 60%)" : "hsl(220 10% 90%)",
+                  border: "none",
+                }}
               >
                 {isLoading ? (
                   <Loader2 className="w-[18px] h-[18px] animate-spin" />
@@ -193,12 +204,14 @@ export function ExecutionControlBar({
                 disabled={!canStop}
                 aria-label="Stop all running tasks"
                 aria-disabled={!canStop}
-                className={cn(
-                  "gap-2 border h-9 px-4 transition-all duration-150 active:scale-[0.96]",
-                  canStop
-                    ? "bg-[rgba(239,68,68,0.15)] border-[var(--status-error)]/30 text-[var(--status-error)] hover:bg-[rgba(239,68,68,0.25)] hover:border-[var(--status-error)]/50"
-                    : "bg-[var(--bg-hover)] border-[var(--border-subtle)] text-[var(--text-muted)] opacity-50"
-                )}
+                className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
+                style={{
+                  /* macOS Tahoe: flat button styling */
+                  backgroundColor: canStop ? "hsla(0 70% 55% / 0.15)" : "hsl(220 10% 18%)",
+                  color: canStop ? "hsl(0 70% 60%)" : "hsl(220 10% 45%)",
+                  border: "none",
+                  opacity: canStop ? 1 : 0.5,
+                }}
               >
                 <Square className="w-4 h-4 fill-current" />
                 <span className="hidden sm:inline">Stop</span>
@@ -212,6 +225,7 @@ export function ExecutionControlBar({
               </p>
             </TooltipContent>
           </Tooltip>
+        </div>
         </div>
       </div>
     </TooltipProvider>

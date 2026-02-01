@@ -298,124 +298,146 @@ export function IntegratedChatPanel({
   return (
     <>
       <style>{animationStyles}</style>
+      {/* Outer container - matches main content bg for unified surface */}
       <div
         data-testid="integrated-chat-panel"
-        className="h-full flex flex-col border-l overflow-hidden"
+        className="h-full flex flex-col overflow-hidden"
         style={{
-          backgroundColor: "var(--bg-surface)",
-          borderColor: "var(--border-subtle)",
+          backgroundColor: "transparent", /* Let parent bg show through */
+          padding: "8px", /* Equal padding all sides - floating glass element */
         }}
       >
-        {/* Header - Glass effect */}
+        {/* Inner rounded container - flat with blur */}
         <div
-          data-testid="integrated-chat-header"
-          className="flex items-center justify-between h-11 px-3 border-b backdrop-blur-sm shrink-0"
+          className="flex-1 flex flex-col overflow-hidden"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
+            borderRadius: "10px",
+            /* FLAT semi-transparent (no gradient) */
+            background: "hsla(220 10% 10% / 0.92)",
+            backdropFilter: "blur(20px) saturate(180%)",
+            WebkitBackdropFilter: "blur(20px) saturate(180%)",
+            /* Luminous perimeter edge */
+            border: "1px solid hsla(220 20% 100% / 0.08)",
+            boxShadow: `
+              0 4px 16px hsla(220 20% 0% / 0.4),
+              0 12px 32px hsla(220 20% 0% / 0.3)
+            `,
           }}
         >
-          {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
+          {/* Header - subtle separation within glass container */}
+          <div
+            data-testid="integrated-chat-header"
+            className="flex items-center justify-between h-11 px-3 shrink-0"
+            style={{
+              backgroundColor: "hsla(220 15% 5% / 0.5)",
+              borderBottom: "1px solid hsla(220 20% 100% / 0.04)",
+            }}
+          >
+            {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
 
-          {/* Unified status + activity badge */}
-          <StatusActivityBadge
-            isAgentActive={isSending || isAgentRunning || isExecutionMode}
-            agentType={
-              isExecutionMode
-                ? "worker"
-                : isReviewMode
-                  ? "reviewer"
-                  : (isSending || isAgentRunning)
-                    ? "agent"
-                    : "idle" as AgentType
-            }
-            contextType={chatContext.view}
-            contextId={ideationSessionId || selectedTaskId || null}
-          />
-
-          {/* Conversation Selector */}
-          <ConversationSelector
-            contextType={
-              ideationSessionId
-                ? "ideation"
-                : isExecutionMode
-                  ? "task_execution"
+            {/* Unified status + activity badge */}
+            <StatusActivityBadge
+              isAgentActive={isSending || isAgentRunning || isExecutionMode}
+              agentType={
+                isExecutionMode
+                  ? "worker"
                   : isReviewMode
-                    ? "review"
-                    : selectedTaskId
-                      ? "task"
-                      : "project"
-            }
-            contextId={ideationSessionId || selectedTaskId || projectId}
-            conversations={conversations.data ?? []}
-            activeConversationId={activeConversationId}
-            onSelectConversation={handleSelectConversation}
-            onNewConversation={handleNewConversation}
-            isLoading={conversations.isLoading}
-          />
-        </div>
+                    ? "reviewer"
+                    : (isSending || isAgentRunning)
+                      ? "agent"
+                      : "idle" as AgentType
+              }
+              contextType={chatContext.view}
+              contextId={ideationSessionId || selectedTaskId || null}
+            />
 
-        {/* Messages Area */}
-        {isLoading ? (
-          <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
-            <LoadingState />
+            {/* Conversation Selector */}
+            <ConversationSelector
+              contextType={
+                ideationSessionId
+                  ? "ideation"
+                  : isExecutionMode
+                    ? "task_execution"
+                    : isReviewMode
+                      ? "review"
+                      : selectedTaskId
+                        ? "task"
+                        : "project"
+              }
+              contextId={ideationSessionId || selectedTaskId || projectId}
+              conversations={conversations.data ?? []}
+              activeConversationId={activeConversationId}
+              onSelectConversation={handleSelectConversation}
+              onNewConversation={handleNewConversation}
+              isLoading={conversations.isLoading}
+            />
           </div>
-        ) : isEmpty ? (
-          <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
-            {emptyState ?? <EmptyState />}
-          </div>
-        ) : (
-          <ChatMessageList
-            ref={virtuosoRef}
-            messages={sortedMessages}
-            conversationId={activeConversationId}
-            failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
-            onDismissFailedRun={setDismissedErrorId}
-            isSending={isSending}
-            isAgentRunning={isAgentRunning}
-            streamingToolCalls={streamingToolCalls}
-            messagesEndRef={messagesEndRef}
-          />
-        )}
 
-        {/* Input Area */}
-        <div
-          className={inputContainerClassName ?? "border-t shrink-0"}
-          style={inputContainerClassName ? undefined : { borderColor: "var(--border-subtle)" }}
-        >
-          {/* Queued Messages - unified queue with context-aware keys */}
-          {queuedMessages.length > 0 && (
-            <div className="p-3 pb-0">
-              <QueuedMessageList
-                messages={queuedMessages}
-                onEdit={handleEditQueuedMessage}
-                onDelete={handleDeleteQueuedMessage}
-              />
+          {/* Messages Area */}
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
+              <LoadingState />
             </div>
+          ) : isEmpty ? (
+            <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
+              {emptyState ?? <EmptyState />}
+            </div>
+          ) : (
+            <ChatMessageList
+              ref={virtuosoRef}
+              messages={sortedMessages}
+              conversationId={activeConversationId}
+              failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
+              onDismissFailedRun={setDismissedErrorId}
+              isSending={isSending}
+              isAgentRunning={isAgentRunning}
+              streamingToolCalls={streamingToolCalls}
+              messagesEndRef={messagesEndRef}
+            />
           )}
 
-          {/* Chat Input */}
-          <div className="p-3">
-            <ChatInput
-              onSend={handleSend}
-              onQueue={handleQueue}
-              onStop={handleStopAgentWrapper}
-              isAgentRunning={isExecutionMode || isAgentRunning}
-              isSending={isSending}
-              hasQueuedMessages={queuedMessages.length > 0}
-              onEditLastQueued={handleEditLastQueuedWrapper}
-              placeholder={
-                ideationSessionId
-                  ? "Send a message..."
-                  : isExecutionMode
-                    ? "Message worker... (will be sent when current response completes)"
-                    : selectedTaskId
-                      ? "Ask about this task..."
-                      : "Send a message..."
-              }
-              showHelperText={showHelperTextAlways || queuedMessages.length > 0}
-              autoFocus
-            />
+          {/* Input Area - subtle separation within glass container */}
+          <div
+            className={inputContainerClassName ?? "shrink-0"}
+            style={inputContainerClassName ? undefined : {
+              backgroundColor: "hsla(220 15% 5% / 0.5)",
+              borderTop: "1px solid hsla(220 20% 100% / 0.04)",
+            }}
+          >
+            {/* Queued Messages - unified queue with context-aware keys */}
+            {queuedMessages.length > 0 && (
+              <div className="p-3 pb-0">
+                <QueuedMessageList
+                  messages={queuedMessages}
+                  onEdit={handleEditQueuedMessage}
+                  onDelete={handleDeleteQueuedMessage}
+                />
+              </div>
+            )}
+
+            {/* Chat Input */}
+            <div className="p-3">
+              <ChatInput
+                onSend={handleSend}
+                onQueue={handleQueue}
+                onStop={handleStopAgentWrapper}
+                isAgentRunning={isExecutionMode || isAgentRunning}
+                isSending={isSending}
+                hasQueuedMessages={queuedMessages.length > 0}
+                onEditLastQueued={handleEditLastQueuedWrapper}
+                placeholder={
+                  ideationSessionId
+                    ? "Send a message..."
+                    : isExecutionMode
+                      ? "Message worker... (will be sent when current response completes)"
+                      : selectedTaskId
+                        ? "Ask about this task..."
+                        : "Send a message..."
+                }
+                showHelperText={showHelperTextAlways || queuedMessages.length > 0}
+                autoFocus
+              />
+            </div>
           </div>
         </div>
       </div>

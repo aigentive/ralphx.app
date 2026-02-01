@@ -6,146 +6,134 @@ The definitive design guide for RalphX. All UI work must follow these specificat
 
 ## 1. Design Philosophy
 
-### The "Refined Studio" Aesthetic
+### macOS Tahoe Style (2025)
 
-RalphX embodies a **Refined Studio** aesthetic—a luxurious, sophisticated dark interface with editorial typography and warm jewel accents. Think of a high-end creative tool meets premium Mac app.
+> **Primary Reference:** `specs/design/macos-tahoe-style-guide.md`
+
+RalphX now follows the **macOS Tahoe** aesthetic—clean, flat, and minimal like the native Finder app.
 
 **Core Principles:**
 
 | Principle | Description |
 |-----------|-------------|
-| **Sophisticated Depth** | Multiple subtle layers create dimensionality through gradient backgrounds, layered shadows, and glass panels |
-| **Editorial Typography** | Clean, purposeful text hierarchy with SF Pro Display, tight tracking, generous breathing room |
-| **Jewel Accents** | Warm orange (#ff6b35) used sparingly as precious highlights—3-5% of surface area |
-| **Atmospheric Backgrounds** | Rich, textured dark surfaces using gradient meshes, subtle blur effects |
-| **Premium Motion** | Deliberate, refined animations—subtle glow pulses, smooth fades, elegant transitions |
+| **Flat Surfaces** | Solid colors only. No gradients, no glass effects, no backdrop blur |
+| **Blue-Gray Palette** | All grays use `hsl(220 10% xx%)` for subtle cool undertone |
+| **Invisible Structure** | Separation through color difference, not borders |
+| **Quiet Typography** | Small (11-13px), understated, never demanding attention |
+| **Blue Selection** | Selected items use blue tint, not accent orange |
 
-**What makes it feel premium:**
-- **Intentionality** - Every element has a purpose; no visual noise
-- **Restraint** - Strategic use of color, especially accent (5% rule)
-- **Polish** - Micro-interactions, layered shadows, refined typography
-- **Consistency** - Same patterns applied everywhere
-- **Depth** - Not flat; surfaces have subtle elevation and dimensionality through gradients
-- **Atmosphere** - Backgrounds have texture and warmth, never flat black
+**What makes it feel native:**
+- **Simplicity** - Remove everything that doesn't need to be there
+- **Flatness** - No shadows, no depth simulation, no elevation
+- **Consistency** - Same patterns as macOS Finder
+- **Compactness** - Tight spacing, small text, dense information
+- **Quietness** - UI fades into background, content is the focus
 
 ### Reference Apps
+- **macOS Finder** - Section headers, selection style, sidebar layout
 - **Linear** - Board layout, card interactions, keyboard-first UX
-- **Raycast** - Mac-native feel, glass effects, spacing discipline
-- **Arc** - Spatial organization, bold typography, warm palette
-- **Vercel Dashboard** - Typography scale, dark theme execution, status indicators
-- **Notion** - Clean panels, sophisticated simplicity
-- **Figma** - Premium dark UI, atmospheric depth
+- **Things 3** - Clean lists, subtle interactions
 
 ### Detailed Pattern Reference
-See **[Refined Studio Patterns](design/refined-studio-patterns.md)** for comprehensive code examples and implementation patterns.
+See **[macOS Tahoe Style Guide](design/macos-tahoe-style-guide.md)** for comprehensive code examples and implementation patterns.
 
 ---
 
-## 2. Anti-AI-Slop Guardrails
+## 2. Style Guardrails (macOS Tahoe)
 
 **NEVER use these patterns:**
-- ❌ Purple or blue gradients (the #1 AI design cliché)
-- ❌ Inter font (use SF Pro instead)
-- ❌ Generic icon grids (4x4 squares of identical icons)
-- ❌ High saturation colors on dark backgrounds
-- ❌ Flat, lifeless surfaces without depth (plain `#0f0f0f` backgrounds)
-- ❌ Rainbow gradients or excessive color variety
-- ❌ Overly rounded corners (pill shapes everywhere)
-- ❌ Generic stock-photo-style illustrations
-- ❌ Single-value box shadows (always layer multiple shadows)
-- ❌ Static hover states (just color change, no transform)
-- ❌ Uniform card grids without hierarchy
-- ❌ Harsh borders without gradient softening
+- ❌ Gradients on surfaces (no linear-gradient, no radial-gradient)
+- ❌ Box shadows for depth (only for focus rings)
+- ❌ Backdrop blur / glass effects
+- ❌ Decorative borders (separation via color, not lines)
+- ❌ Glowing accents (no box-shadow color bleeds)
+- ❌ Large typography (keep it 11-13px)
+- ❌ Orange/accent for selection (use blue tint instead)
+- ❌ Pure black backgrounds (use blue-gray: `hsl(220 10% xx%)`)
+- ❌ Inter font (use SF Pro / system fonts)
+- ❌ Transform animations on hover (no translateY, no scale)
 
 **ALWAYS use these patterns:**
-- ✅ Warm orange accent (#ff6b35) - distinctive and intentional
-- ✅ Layered shadows for realistic depth (multiple shadow values)
-- ✅ Micro-interactions (hover lift with translateY, subtle scale)
-- ✅ Typography refinement (letter-spacing -0.02em for headings)
-- ✅ Strategic accent usage (3-5% of surface area max)
-- ✅ Glass effects with backdrop-blur for panels and overlays
-- ✅ Subtle gradient backgrounds (warm radial at top, cool at bottom)
-- ✅ Gradient borders (transparent border with gradient background)
-- ✅ Premium empty states with icon glow effects
-- ✅ Staggered entry animations for lists
-- ✅ Subtle glow pulses for selected/active states
+- ✅ Flat, solid background colors
+- ✅ Blue-gray palette: `hsl(220 10% xx%)` for all grays
+- ✅ Blue selection highlight: `hsla(220 60% 50% / 0.20)`
+- ✅ Small, uppercase section headers in muted gray
+- ✅ Compact spacing (4px base unit)
+- ✅ Simple hover = background color change only
+- ✅ Warm orange accent ONLY for primary actions (buttons)
+- ✅ Focus rings: `0 0 0 2px hsla(220 80% 60% / 0.5)`
+- ✅ Minimal borders (only on inputs if needed)
+- ✅ System fonts (SF Pro, -apple-system)
 
 ---
 
 ## 3. Color System
 
-### Backgrounds
-Dark grays with **gradient depth**, NOT pure black. Create atmospheric layering.
+> **Full reference:** `specs/design/macos-tahoe-style-guide.md`
+
+### Backgrounds (Blue-Gray Tinted)
+
+All grays use `hsl(220 10% xx%)` for subtle cool undertone like macOS Finder.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--bg-base` | `#0a0a0a` | Deepest background layer |
-| `--bg-surface` | `#141414` | Primary surface, panels |
-| `--bg-elevated` | `#1a1a1a` | Cards, elevated containers |
-| `--bg-hover` | `#262626` | Hover states on interactive elements |
+| `--bg-base` | `hsl(220 10% 8%)` | Main canvas |
+| `--bg-surface` | `hsl(220 10% 12%)` | Cards, sidebar, surfaces |
+| `--bg-elevated` | `hsl(220 10% 16%)` | Hover backgrounds |
+| `--bg-hover` | `hsl(220 10% 20%)` | Active hover |
 
-### Atmospheric Gradients (Preferred over flat colors)
+**No gradients. Solid colors only.**
 
-| Pattern | CSS | Usage |
-|---------|-----|-------|
-| **Page Background** | `linear-gradient(180deg, #141414 0%, #0a0a0a 100%)` | Main canvas |
-| **Warm Radial** | `radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.04) 0%, transparent 50%)` | Top-left warmth |
-| **Glass Panel** | `linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)` | Floating panels |
-| **Card Surface** | `linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)` | Interactive cards |
-
-```css
-/* Full atmospheric background stack */
-.atmospheric-bg {
-  background:
-    radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.04) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139,92,246,0.02) 0%, transparent 50%),
-    linear-gradient(180deg, #141414 0%, #0a0a0a 100%);
-}
-```
-
-### Text
-Off-white, NOT pure white. Reduce eye strain with softer contrast.
+### Text (Blue-Gray Tinted)
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--text-primary` | `#f0f0f0` | Headings, primary content, labels |
-| `--text-secondary` | `#a0a0a0` | Descriptions, secondary info, timestamps |
-| `--text-muted` | `#666666` | Placeholders, disabled, tertiary info |
+| `--text-primary` | `hsl(220 10% 90%)` | Primary text, file names |
+| `--text-secondary` | `hsl(220 10% 60%)` | Secondary info |
+| `--text-muted` | `hsl(220 10% 45%)` | Section headers, hints |
+| `--text-faint` | `hsl(220 10% 35%)` | Disabled, placeholder |
 
-### Accent
-Warm orange - the signature RalphX color. Use sparingly for maximum impact.
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--accent-primary` | `#ff6b35` | Primary actions, active states, focus rings |
-| `--accent-secondary` | `#ffa94d` | Secondary highlights, hover accents |
-| `--accent-hover` | `#ff8050` | Hover state for accent buttons |
-| `--accent-muted` | `rgba(255, 107, 53, 0.15)` | Subtle tinted backgrounds |
-
-### Status Colors
-Semantic colors for feedback and state communication.
+### Selection & Focus
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--status-success` | `#10b981` | Success states, completed, passed |
-| `--status-warning` | `#f59e0b` | Warnings, caution, pending review |
-| `--status-error` | `#ef4444` | Errors, failures, destructive actions |
-| `--status-info` | `#3b82f6` | Information (use sparingly - blue) |
+| `--selection-bg` | `hsla(220 60% 50% / 0.20)` | Selected item background |
+| `--focus-ring` | `hsla(220 80% 60% / 0.5)` | Focus outline |
 
-### Borders
-Subtle dividers and containers. Never harsh lines.
+**Selection is BLUE, not orange.**
+
+### Accent (Use Sparingly)
+
+Warm orange for **primary action buttons only**.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--border-subtle` | `rgba(255, 255, 255, 0.06)` | Dividers, separators, subtle cards |
-| `--border-default` | `rgba(255, 255, 255, 0.1)` | Card borders, input borders |
-| `--border-focus` | `rgba(255, 107, 53, 0.5)` | Focus states, selected items |
+| `--accent-primary` | `hsl(14 100% 60%)` | Primary buttons only |
+| `--accent-hover` | `hsl(14 100% 55%)` | Button hover |
+
+### Status Colors (Badges/Indicators Only)
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--status-success` | `hsl(145 60% 45%)` | Success badges |
+| `--status-warning` | `hsl(45 90% 55%)` | Warning badges |
+| `--status-error` | `hsl(0 70% 55%)` | Error badges |
+| `--status-info` | `hsl(220 80% 60%)` | Info badges |
+
+### Borders (Minimal)
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--border-subtle` | `hsl(220 10% 18%)` | Only if needed |
+| `--border-default` | `hsl(220 10% 22%)` | Input borders |
+
+**Prefer no borders. Separate with color difference.**
 
 ### Usage Guidelines
-1. **5% Rule**: Accent color should cover ~5% of any given screen
-2. **One Primary Button**: Only one accent button per section/card
-3. **Status Over Accent**: Use status colors for feedback, not accent
-4. **Borders Are Optional**: Often shadow alone is enough
+1. **No borders on containers** - Use color difference instead
+2. **Selection = blue** - Never use accent orange for selection
+3. **Accent for buttons only** - Primary action buttons, nothing else
+4. **Status colors for badges** - Never for backgrounds
 
 ---
 
