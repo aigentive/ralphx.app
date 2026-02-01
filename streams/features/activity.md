@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 16:00:00 - Phase 64 Task 3: Expose metadata in state transitions API response
+**What:**
+- Updated `get_status_history` SQL query to also fetch `metadata` column
+- Added JSON parsing to extract `conversation_id` and `agent_run_id` from metadata
+- Used `StatusTransition::with_metadata` constructor to include the new fields
+- `StateTransitionResponse` already had the fields; command handler already mapped them
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs` (MODIFIED - added metadata fetch and parse)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - 3557 tests OK)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 15:30:00 - Phase 64 Task 2: Capture conversation_id and agent_run_id in chat service
 **What:**
 - Added import for `StateHistoryMetadata` from domain repositories
