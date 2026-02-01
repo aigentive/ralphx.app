@@ -1,11 +1,8 @@
 /**
- * ProposalTierGroup - Collapsible tier section for grouping proposals by dependency level
+ * ProposalTierGroup - macOS Tahoe styled collapsible tier section
  *
- * Features:
- * - Collapsible section with expand/collapse toggle
- * - Tier labels: Foundation (0), Core (1), Integration (2+)
- * - Auto-collapse when proposalCount >= 5
- * - Warm accent border-left styling (#ff6b35)
+ * Design: Clean collapsible with warm orange accent bar,
+ * refined typography, and smooth animations.
  */
 
 import React, { useState, useEffect } from "react";
@@ -22,21 +19,13 @@ import { cn } from "@/lib/utils";
 // ============================================================================
 
 export interface ProposalTierGroupProps {
-  /** Tier level (0, 1, 2, etc.) */
   tier: number;
-  /** Optional custom label, otherwise computed from tier */
   label?: string;
-  /** Number of proposals in this tier (for auto-collapse logic) */
   proposalCount: number;
-  /** Whether to start collapsed - defaults based on proposalCount >= 5 */
   defaultCollapsed?: boolean;
-  /** Controlled expanded state - if provided, component is controlled */
   isExpanded?: boolean;
-  /** Callback when expanded state changes */
   onExpandedChange?: (expanded: boolean) => void;
-  /** Children to render inside the collapsible content */
   children: React.ReactNode;
-  /** Additional className for the root element */
   className?: string;
 }
 
@@ -44,12 +33,6 @@ export interface ProposalTierGroupProps {
 // Helpers
 // ============================================================================
 
-/**
- * Get tier label based on tier level
- * - Tier 0: Foundation (no dependencies)
- * - Tier 1: Core (depends on foundation)
- * - Tier 2+: Integration (depends on multiple tiers)
- */
 export function getTierLabel(tier: number): string {
   switch (tier) {
     case 0:
@@ -61,9 +44,6 @@ export function getTierLabel(tier: number): string {
   }
 }
 
-/**
- * Auto-collapse threshold - tiers with 5+ proposals auto-collapse
- */
 const AUTO_COLLAPSE_THRESHOLD = 5;
 
 // ============================================================================
@@ -80,17 +60,12 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
   children,
   className,
 }: ProposalTierGroupProps) {
-  // Compute whether to auto-collapse based on proposalCount
   const shouldAutoCollapse = defaultCollapsed ?? proposalCount >= AUTO_COLLAPSE_THRESHOLD;
-
-  // Internal state for uncontrolled mode (default: NOT collapsed, unless auto-collapse kicks in)
   const [internalIsOpen, setInternalIsOpen] = useState(!shouldAutoCollapse);
 
-  // Use controlled state if isExpanded prop is provided, otherwise use internal state
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
-  // Update internal state if defaultCollapsed or proposalCount changes
   useEffect(() => {
     if (isExpanded === undefined) {
       setInternalIsOpen(!shouldAutoCollapse);
@@ -109,40 +84,76 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
         <CollapsibleTrigger asChild>
           <button
             className={cn(
-              "flex items-center gap-2 w-full text-left py-2 px-3",
-              "rounded-md transition-all duration-200",
-              "hover:bg-white/[0.02]",
+              "flex items-center gap-3 w-full text-left py-2.5 px-3",
+              "rounded-lg transition-all duration-200",
               "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ff6b35]/50"
             )}
+            style={{
+              background: isOpen ? "rgba(255,255,255,0.02)" : "transparent",
+            }}
+            onMouseEnter={(e) => {
+              if (!isOpen) {
+                e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isOpen) {
+                e.currentTarget.style.background = "transparent";
+              }
+            }}
           >
             {/* Accent bar */}
             <div
-              className={cn(
-                "w-0.5 h-4 rounded-full transition-colors",
-                isOpen ? "bg-[#ff6b35]" : "bg-white/20"
-              )}
+              className="w-[3px] h-5 rounded-full transition-all duration-200"
+              style={{
+                background: isOpen
+                  ? "linear-gradient(180deg, #ff6b35 0%, #ff8050 100%)"
+                  : "rgba(255,255,255,0.15)",
+                boxShadow: isOpen ? "0 0 8px rgba(255,107,53,0.3)" : "none",
+              }}
             />
 
             {/* Tier info */}
-            <span className="text-xs font-medium text-[var(--text-primary)] uppercase tracking-wider">
-              Tier {tier}
-            </span>
-            <span className="text-xs text-[var(--text-muted)]">·</span>
-            <span className="text-xs text-[var(--text-secondary)]">
-              {displayLabel}
+            <div className="flex items-center gap-2 flex-1">
+              <span
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: isOpen ? "#ff6b35" : "var(--text-muted)" }}
+              >
+                Tier {tier}
+              </span>
+              <span
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)", opacity: 0.5 }}
+              >
+                ·
+              </span>
+              <span
+                className="text-[12px] font-medium"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                {displayLabel}
+              </span>
+            </div>
+
+            {/* Proposal count */}
+            <span
+              className="text-[11px] font-medium px-2 py-0.5 rounded-md"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                color: "var(--text-muted)",
+              }}
+            >
+              {proposalCount}
             </span>
 
-            {/* Proposal count - always show */}
-            <span className="text-xs text-[var(--text-muted)] px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
-              {proposalCount} {proposalCount === 1 ? "proposal" : "proposals"}
-            </span>
-
-            {/* Chevron indicator */}
+            {/* Chevron */}
             <ChevronDown
               className={cn(
-                "w-3.5 h-3.5 ml-auto text-[var(--text-muted)] transition-transform duration-200",
+                "w-4 h-4 transition-transform duration-200",
                 !isOpen && "-rotate-90"
               )}
+              style={{ color: "var(--text-muted)" }}
             />
           </button>
         </CollapsibleTrigger>
@@ -150,11 +161,10 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
         {/* Content */}
         <CollapsibleContent>
           <div
-            className={cn(
-              "pl-4 pr-1 pb-2 pt-1",
-              // Left border accent line connecting to header
-              "border-l-2 border-[#ff6b35]/20 ml-[11px]"
-            )}
+            className="pl-5 pr-1 pb-3 pt-2 ml-[14px]"
+            style={{
+              borderLeft: "2px solid rgba(255,107,53,0.15)",
+            }}
           >
             {children}
           </div>
