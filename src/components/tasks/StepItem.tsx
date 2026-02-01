@@ -60,15 +60,15 @@ function getStatusColor(status: TaskStepStatus): string {
 }
 
 /**
- * Get container styles based on step status (Tahoe design)
+ * Get container styles based on step status (Tahoe design - minimal, no borders)
  */
 function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
   const base: React.CSSProperties = {
     display: 'flex',
     alignItems: 'flex-start',
-    gap: '12px',
+    gap: '10px',
     padding: '10px 12px',
-    borderRadius: '8px',
+    borderRadius: '6px',
     transition: 'all 150ms ease',
   };
 
@@ -76,34 +76,28 @@ function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
     case 'in_progress':
       return {
         ...base,
-        backgroundColor: 'hsla(14 100% 60% / 0.08)',
-        border: '1px solid hsla(14 100% 60% / 0.3)',
+        backgroundColor: 'hsla(14 100% 60% / 0.06)',
       };
     case 'completed':
       return {
         ...base,
-        backgroundColor: 'hsla(220 10% 100% / 0.02)',
-        border: '1px solid hsla(220 10% 100% / 0.06)',
-        opacity: 0.7,
+        backgroundColor: 'transparent',
       };
     case 'skipped':
       return {
         ...base,
         backgroundColor: 'transparent',
-        border: '1px solid hsla(220 10% 100% / 0.04)',
         opacity: 0.5,
       };
     case 'failed':
       return {
         ...base,
-        backgroundColor: 'hsla(0 70% 55% / 0.08)',
-        border: '1px solid hsla(0 70% 55% / 0.3)',
+        backgroundColor: 'hsla(0 70% 55% / 0.06)',
       };
     default:
       return {
         ...base,
-        backgroundColor: 'hsla(220 10% 100% / 0.02)',
-        border: '1px solid hsla(220 10% 100% / 0.06)',
+        backgroundColor: 'transparent',
       };
   }
 }
@@ -140,23 +134,24 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
       <div className="flex-1 min-w-0">
         {/* Step number and title */}
         <div
-          className="flex items-baseline gap-1.5"
+          className="flex items-baseline gap-1"
           style={{ textDecoration: isSkipped ? 'line-through' : 'none' }}
         >
           <span
             style={{
-              fontSize: '12px',
-              fontWeight: 500,
-              color: 'hsl(220 10% 50%)',
+              fontSize: '13px',
+              fontWeight: 400,
+              color: 'hsl(220 10% 45%)',
             }}
           >
-            {index + 1}.
+            Step {index + 1}:
           </span>
           <span
             style={{
               fontSize: '13px',
-              fontWeight: 500,
-              color: 'hsl(220 10% 85%)',
+              fontWeight: 400,
+              color: 'hsl(220 10% 80%)',
+              marginLeft: '4px',
             }}
           >
             {step.title}
@@ -167,10 +162,10 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
         {step.description && (
           <p
             style={{
-              marginTop: '4px',
+              marginTop: '2px',
               fontSize: '12px',
-              color: 'hsl(220 10% 55%)',
-              lineHeight: 1.4,
+              color: 'hsl(220 10% 50%)',
+              lineHeight: 1.5,
               textDecoration: isSkipped ? 'line-through' : 'none',
             }}
           >
@@ -180,26 +175,17 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
 
         {/* Completion note (shown for completed, skipped, failed - hidden in historical views) */}
         {step.completionNote && !hideCompletionNote && (
-          <div
+          <p
             style={{
-              marginTop: '8px',
-              padding: '8px 10px',
-              backgroundColor: 'hsla(220 10% 100% / 0.03)',
-              borderRadius: '6px',
-              border: '1px solid hsla(220 10% 100% / 0.06)',
+              marginTop: '4px',
+              fontSize: '11px',
+              color: 'hsl(220 10% 45%)',
+              fontStyle: 'italic',
+              lineHeight: 1.5,
             }}
           >
-            <p
-              style={{
-                fontSize: '11px',
-                color: 'hsl(220 10% 50%)',
-                fontStyle: 'italic',
-                lineHeight: 1.4,
-              }}
-            >
-              {step.completionNote}
-            </p>
-          </div>
+            {step.completionNote}
+          </p>
         )}
       </div>
 
