@@ -5,6 +5,7 @@ pub mod activity_commands;
 pub mod chat_responses;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
+pub mod diff_commands;
 pub mod execution_commands;
 pub mod health;
 pub mod ideation_commands;
@@ -40,6 +41,7 @@ pub use artifact_commands::{
     get_buckets, get_system_buckets, update_artifact, AddRelationInput, ArtifactRelationResponse,
     ArtifactResponse, BucketResponse, CreateArtifactInput, CreateBucketInput, UpdateArtifactInput,
 };
+pub use diff_commands::{get_file_diff, get_task_file_changes};
 pub use execution_commands::{
     get_execution_status, pause_execution, resume_execution, stop_execution, ExecutionState,
 };
