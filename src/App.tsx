@@ -25,6 +25,7 @@ import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
+import { MergeWorkflowDialogTestPage } from "@/components/projects/MergeWorkflowDialog/MergeWorkflowDialog.test-page";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
@@ -774,6 +775,9 @@ function AppContent() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* MergeWorkflowDialog Test Page (visual testing only) */}
+      <MergeWorkflowDialogTestPage />
 
       {/* Toast notifications */}
       <Toaster />
