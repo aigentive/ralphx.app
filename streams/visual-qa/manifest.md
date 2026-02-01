@@ -25,7 +25,7 @@ Phase: IN PROGRESS (discovered 10 new components)
 | WelcomeScreen | ✅ | welcome-screen.spec.ts | ✅ | covered |
 | MergeWorkflowDialog | — | — | — | ~~skipped~~ (no-trigger) |
 | ApplyModal | — | — | — | uncovered |
-| ReviewDetailModal | — | — | — | uncovered |
+| ReviewDetailModal | ✅ | review-detail.spec.ts | ✅ | covered |
 | ReviewNotesModal | — | — | — | uncovered |
 | TaskRerunDialog | — | — | — | uncovered |
 | TaskFullView | — | — | — | uncovered |

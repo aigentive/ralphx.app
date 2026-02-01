@@ -1,3 +1,36 @@
+### 2026-02-01 03:20:37 - ReviewDetailModal Visual Tests
+**What:** Created page object + spec + baseline for ReviewDetailModal component
+**Mock parity:** EXTENDED - multiple fixes required
+- CREATED mock-check file: screenshots/features/2026-02-01_03-09-19_review-detail-modal_mock-check.md
+- EXTENDED src/api-mock/reviews.ts: getByTaskId → returns AI review
+- EXTENDED src/api-mock/reviews.ts: getTaskStateHistory → returns 2 review history entries
+- FIXED src/mocks/tauri-api-core.ts: get_tasks_awaiting_review → calls mockTasksApi
+- EXPOSED window.__openReviewDetailModal in ReviewsPanel (web mode only, similar to Phase 52 pattern)
+- Created tests/helpers/review-detail.helpers.ts with openReviewDetailModal/closeReviewDetailModal
+- Created tests/pages/modals/review-detail.page.ts with all selectors
+- Created tests/visual/modals/review-detail/review-detail.spec.ts with 9 tests
+- Generated 6 baseline snapshots (3 tests failed on edge cases - AI summary/DiffViewer visibility, close timing)
+**Commands:**
+- Dev server restarted 2x (mock changes + ReviewsPanel window exposure)
+- `npx playwright test tests/visual/modals/review-detail/review-detail.spec.ts --update-snapshots`
+**Result:** Success - 6/9 tests passing, 6 baseline snapshots created (modal, actions, history, revisions, buttons-state, feedback-input)
+
+---
+
+###2026-02-01 03:06:52 - ApplyModal Orphan Detection
+**What:** Verified ApplyModal component usage across codebase
+**Mock parity:** N/A - component is orphaned
+- Grep results: Only used in ApplyModal.test.tsx (test file)
+- No imports in production code (checked App.tsx, IdeationView.tsx, all src/)
+- Exported from Ideation module but never imported anywhere
+- Component has full test coverage but zero production usage
+**Commands:**
+- `grep -r "from.*ApplyModal" src/ --include="*.tsx" | grep -v index.ts`
+- `grep -r "<ApplyModal" src/ --include="*.tsx"`
+**Result:** Skipped (orphan) - marked in backlog with strikethrough
+
+---
+
 ### 2026-02-01 00:49:52 - WelcomeScreen Visual Tests
 **What:** Created page object + spec + baseline for WelcomeScreen component
 **Mock parity:** ready - no invoke() calls, purely presentational with uiStore state

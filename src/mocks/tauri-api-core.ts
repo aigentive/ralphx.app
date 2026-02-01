@@ -77,7 +77,22 @@ const commandHandlers: Record<
       has_more: response.hasMore,
     };
   },
-  get_tasks_awaiting_review: async () => [],
+  get_tasks_awaiting_review: async (args) => {
+    const response = await mockTasksApi.getTasksAwaitingReview(args.project_id);
+    // Convert to snake_case for Tauri response
+    return response.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      category: task.category,
+      priority: task.priority,
+      internal_status: task.internalStatus,
+      created_at: task.createdAt,
+      updated_at: task.updatedAt,
+      project_id: task.projectId,
+      blocked_reason: task.blockedReason,
+    }));
+  },
 
   // Chat commands
   list_agent_conversations: async (args) =>
