@@ -59,8 +59,8 @@ export function getQueryClient(): QueryClient {
     queryClient = createQueryClient();
 
     // Expose queryClient to window in web mode for Playwright testing
-    if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) {
-      (window as any).__queryClient = queryClient;
+    if (typeof window !== 'undefined' && !window.__TAURI_INTERNALS__) {
+      window.__queryClient = queryClient;
     }
   }
   return queryClient;

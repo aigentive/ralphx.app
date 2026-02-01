@@ -212,11 +212,11 @@ export function ReviewsPanel({
     if (window.__TAURI_INTERNALS__) {
       return;
     }
-    (window as any).__openReviewDetailModal = (taskId: string) => {
+    window.__openReviewDetailModal = (taskId: string) => {
       setSelectedTaskId(taskId);
     };
     return () => {
-      delete (window as any).__openReviewDetailModal;
+      delete window.__openReviewDetailModal;
     };
   }, []);
 

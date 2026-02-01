@@ -74,23 +74,34 @@ const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
 
 const queryClient = getQueryClient();
 
-function AppContent() {
-  // Test page routing for visual regression tests
-  if (typeof window !== "undefined") {
-    const params = new URLSearchParams(window.location.search);
-    const testPage = params.get("test");
-    const scenario = params.get("scenario") || "default";
+/**
+ * Test page router - checks URL params and returns test page if applicable
+ * This is extracted to avoid hooks being called after conditional returns
+ */
+function getTestPage(): React.ReactElement | null {
+  if (typeof window === "undefined") return null;
 
-    if (testPage === "screenshot-gallery") {
-      const scenarios: Record<string, React.ReactElement> = {
-        default: <ScreenshotGalleryTestPage />,
-        empty: <ScreenshotGalleryTestPage screenshots={[]} />,
-        twoColumns: <ScreenshotGalleryTestPage columns={2} />,
-        fourColumns: <ScreenshotGalleryTestPage columns={4} />,
-      };
-      return scenarios[scenario] || scenarios.default;
-    }
+  const params = new URLSearchParams(window.location.search);
+  const testPage = params.get("test");
+  const scenario = params.get("scenario") || "default";
+
+  if (testPage === "screenshot-gallery") {
+    const scenarios: Record<string, React.ReactElement> = {
+      default: <ScreenshotGalleryTestPage />,
+      empty: <ScreenshotGalleryTestPage screenshots={[]} />,
+      twoColumns: <ScreenshotGalleryTestPage columns={2} />,
+      fourColumns: <ScreenshotGalleryTestPage columns={4} />,
+    };
+    return scenarios[scenario] ?? scenarios.default ?? null;
   }
+
+  return null;
+}
+
+function AppContent() {
+  // Check for test page first (must happen before any hooks for ESLint compliance)
+  const testPage = useMemo(() => getTestPage(), []);
+
   const reviewsPanelOpen = useUiStore((s) => s.reviewsPanelOpen);
   const toggleReviewsPanel = useUiStore((s) => s.toggleReviewsPanel);
   const setReviewsPanelOpen = useUiStore((s) => s.setReviewsPanelOpen);
@@ -500,6 +511,11 @@ function AppContent() {
     closeWelcomeOverlay,
     welcomeOverlayReturnView,
   });
+
+  // Test page routing - return early if on a test page
+  if (testPage) {
+    return testPage;
+  }
 
   return (
     <main
