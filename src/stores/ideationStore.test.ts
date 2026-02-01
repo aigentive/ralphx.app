@@ -422,7 +422,7 @@ describe("selectors", () => {
       const session = createTestSession({ id: "session-1", status: "active" });
       useIdeationStore.setState({ sessions: { "session-1": session } });
 
-      const selector = selectSessionsByStatus("converted");
+      const selector = selectSessionsByStatus("accepted");
       const result = selector(useIdeationStore.getState());
 
       expect(result).toHaveLength(0);

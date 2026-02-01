@@ -3,7 +3,7 @@
  *
  * Features:
  * - Dropdown listing sessions for project
- * - Session status indicators (active/archived/converted)
+ * - Session status indicators (active/archived/accepted)
  * - New session button
  * - Archive action per session
  * - Keyboard navigation (Escape to close)
@@ -33,7 +33,7 @@ interface SessionSelectorProps {
 const STATUS_CONFIG: Record<IdeationSessionStatus, { color: string; label: string }> = {
   active: { color: "var(--status-success)", label: "Active" },
   archived: { color: "var(--text-muted)", label: "Archived" },
-  converted: { color: "var(--status-info)", label: "Converted" },
+  accepted: { color: "var(--status-info)", label: "Accepted" },
 };
 
 // ============================================================================

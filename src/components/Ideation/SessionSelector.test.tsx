@@ -29,14 +29,14 @@ const createMockSession = (overrides: Partial<IdeationSession> = {}): IdeationSe
   createdAt: "2026-01-24T10:00:00Z",
   updatedAt: "2026-01-24T12:00:00Z",
   archivedAt: null,
-  convertedAt: null,
+  acceptedAt: null,
   ...overrides,
 });
 
 const mockSessions: IdeationSession[] = [
   createMockSession({ id: "session-1", title: "Session 1", status: "active" }),
   createMockSession({ id: "session-2", title: "Session 2", status: "archived" }),
-  createMockSession({ id: "session-3", title: "Session 3", status: "converted" }),
+  createMockSession({ id: "session-3", title: "Session 3", status: "accepted" }),
   createMockSession({ id: "session-4", title: null, status: "active" }),
 ];
 
@@ -218,14 +218,14 @@ describe("SessionSelector", () => {
       );
     });
 
-    it("shows converted status indicator", () => {
+    it("shows accepted status indicator", () => {
       render(<SessionSelector {...defaultProps} />);
       fireEvent.click(screen.getByTestId("dropdown-trigger"));
 
       const sessionItems = screen.getAllByTestId("session-item");
       expect(within(sessionItems[2]).getByTestId("status-indicator")).toHaveAttribute(
         "data-status",
-        "converted"
+        "accepted"
       );
     });
 
@@ -247,7 +247,7 @@ describe("SessionSelector", () => {
       expect(indicator).toHaveStyle({ backgroundColor: "var(--text-muted)" });
     });
 
-    it("uses correct color for converted status", () => {
+    it("uses correct color for accepted status", () => {
       render(<SessionSelector {...defaultProps} />);
       fireEvent.click(screen.getByTestId("dropdown-trigger"));
 
@@ -298,12 +298,12 @@ describe("SessionSelector", () => {
       expect(within(sessionItems[1]).queryByRole("button", { name: /archive/i })).not.toBeInTheDocument();
     });
 
-    it("does not show archive button for converted sessions", () => {
+    it("does not show archive button for accepted sessions", () => {
       render(<SessionSelector {...defaultProps} />);
       fireEvent.click(screen.getByTestId("dropdown-trigger"));
 
       const sessionItems = screen.getAllByTestId("session-item");
-      // Session 3 is converted, should not have archive button
+      // Session 3 is accepted, should not have archive button
       expect(within(sessionItems[2]).queryByRole("button", { name: /archive/i })).not.toBeInTheDocument();
     });
 

@@ -39,7 +39,7 @@ describe("IdeationSessionStatusSchema", () => {
   it("should include expected statuses", () => {
     expect(IDEATION_SESSION_STATUS_VALUES).toContain("active");
     expect(IDEATION_SESSION_STATUS_VALUES).toContain("archived");
-    expect(IDEATION_SESSION_STATUS_VALUES).toContain("converted");
+    expect(IDEATION_SESSION_STATUS_VALUES).toContain("accepted");
   });
 
   it("should reject invalid status", () => {

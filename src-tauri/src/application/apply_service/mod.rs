@@ -249,7 +249,7 @@ where
 
         if all_converted && !proposals.is_empty() {
             self.session_repo
-                .update_status(session_id, IdeationSessionStatus::Converted)
+                .update_status(session_id, IdeationSessionStatus::Accepted)
                 .await?;
             return Ok(true);
         }

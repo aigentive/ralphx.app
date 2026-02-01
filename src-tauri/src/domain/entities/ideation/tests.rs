@@ -19,30 +19,30 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
     }
 
     #[test]
-    fn status_display_converted() {
-        assert_eq!(format!("{}", IdeationSessionStatus::Converted), "converted");
+    fn status_display_accepted() {
+        assert_eq!(format!("{}", IdeationSessionStatus::Accepted), "accepted");
     }
 
     #[test]
     fn status_serializes_to_snake_case() {
         let active_json = serde_json::to_string(&IdeationSessionStatus::Active).expect("Should serialize");
         let archived_json = serde_json::to_string(&IdeationSessionStatus::Archived).expect("Should serialize");
-        let converted_json = serde_json::to_string(&IdeationSessionStatus::Converted).expect("Should serialize");
+        let accepted_json = serde_json::to_string(&IdeationSessionStatus::Accepted).expect("Should serialize");
 
         assert_eq!(active_json, "\"active\"");
         assert_eq!(archived_json, "\"archived\"");
-        assert_eq!(converted_json, "\"converted\"");
+        assert_eq!(accepted_json, "\"accepted\"");
     }
 
     #[test]
     fn status_deserializes_from_snake_case() {
         let active: IdeationSessionStatus = serde_json::from_str("\"active\"").expect("Should deserialize");
         let archived: IdeationSessionStatus = serde_json::from_str("\"archived\"").expect("Should deserialize");
-        let converted: IdeationSessionStatus = serde_json::from_str("\"converted\"").expect("Should deserialize");
+        let accepted: IdeationSessionStatus = serde_json::from_str("\"accepted\"").expect("Should deserialize");
 
         assert_eq!(active, IdeationSessionStatus::Active);
         assert_eq!(archived, IdeationSessionStatus::Archived);
-        assert_eq!(converted, IdeationSessionStatus::Converted);
+        assert_eq!(accepted, IdeationSessionStatus::Accepted);
     }
 
     #[test]
@@ -58,9 +58,9 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
     }
 
     #[test]
-    fn status_from_str_converted() {
-        let status: IdeationSessionStatus = "converted".parse().unwrap();
-        assert_eq!(status, IdeationSessionStatus::Converted);
+    fn status_from_str_accepted() {
+        let status: IdeationSessionStatus = "accepted".parse().unwrap();
+        assert_eq!(status, IdeationSessionStatus::Accepted);
     }
 
     #[test]
@@ -90,10 +90,10 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
     fn status_equality_works() {
         assert_eq!(IdeationSessionStatus::Active, IdeationSessionStatus::Active);
         assert_eq!(IdeationSessionStatus::Archived, IdeationSessionStatus::Archived);
-        assert_eq!(IdeationSessionStatus::Converted, IdeationSessionStatus::Converted);
+        assert_eq!(IdeationSessionStatus::Accepted, IdeationSessionStatus::Accepted);
         assert_ne!(IdeationSessionStatus::Active, IdeationSessionStatus::Archived);
-        assert_ne!(IdeationSessionStatus::Active, IdeationSessionStatus::Converted);
-        assert_ne!(IdeationSessionStatus::Archived, IdeationSessionStatus::Converted);
+        assert_ne!(IdeationSessionStatus::Active, IdeationSessionStatus::Accepted);
+        assert_ne!(IdeationSessionStatus::Archived, IdeationSessionStatus::Accepted);
     }
 
     // ===== IdeationSession Creation Tests =====
@@ -222,10 +222,10 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
     }
 
     #[test]
-    fn session_is_converted_returns_true_for_converted() {
+    fn session_is_accepted_returns_true_for_accepted() {
         let mut session = IdeationSession::new(ProjectId::new());
-        session.mark_converted();
-        assert!(session.is_converted());
+        session.mark_accepted();
+        assert!(session.is_accepted());
     }
 
     #[test]
@@ -242,13 +242,13 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
     }
 
     #[test]
-    fn session_mark_converted_sets_status_and_timestamp() {
+    fn session_mark_accepted_sets_status_and_timestamp() {
         let mut session = IdeationSession::new(ProjectId::new());
         let before = Utc::now();
 
-        session.mark_converted();
+        session.mark_accepted();
 
-        assert_eq!(session.status, IdeationSessionStatus::Converted);
+        assert_eq!(session.status, IdeationSessionStatus::Accepted);
         assert!(session.converted_at.is_some());
         assert!(session.converted_at.unwrap() >= before);
         assert!(session.updated_at >= before);
@@ -433,11 +433,11 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
     }
 
     #[test]
-    fn session_from_row_converted() {
+    fn session_from_row_accepted() {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at, converted_at)
-               VALUES ('sess-3', 'proj-1', 'Done Session', 'converted',
+               VALUES ('sess-3', 'proj-1', 'Done Session', 'accepted',
                '2026-01-24T08:00:00Z', '2026-01-24T14:00:00Z', '2026-01-24T14:00:00Z')"#,
             [],
         )
@@ -449,7 +449,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
             })
             .unwrap();
 
-        assert_eq!(session.status, IdeationSessionStatus::Converted);
+        assert_eq!(session.status, IdeationSessionStatus::Accepted);
         assert!(session.converted_at.is_some());
     }
 
@@ -502,7 +502,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at, archived_at, converted_at)
-               VALUES ('sess-full', 'proj-1', 'Full', 'converted',
+               VALUES ('sess-full', 'proj-1', 'Full', 'accepted',
                '2026-01-24T08:00:00Z', '2026-01-24T16:00:00Z',
                '2026-01-24T12:00:00Z', '2026-01-24T16:00:00Z')"#,
             [],
@@ -788,7 +788,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
             Priority::Medium,
         );
         assert!(proposal.is_pending());
-        assert!(!proposal.is_accepted());
+        assert!(!proposal.has_created_task());
     }
 
     #[test]
@@ -847,7 +847,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
         proposal.link_to_task(task_id.clone());
 
         assert_eq!(proposal.created_task_id, Some(task_id));
-        assert!(proposal.is_converted());
+        assert!(proposal.has_created_task());
     }
 
     #[test]
@@ -1083,7 +1083,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
         conn.execute(
             r#"INSERT INTO task_proposals (id, session_id, title, category, suggested_priority,
                priority_score, status, selected, created_task_id, sort_order, created_at, updated_at)
-               VALUES ('prop-4', 'sess-1', 'Converted', 'feature', 'medium',
+               VALUES ('prop-4', 'sess-1', 'Has Created Task', 'feature', 'medium',
                50, 'accepted', 1, 'task-abc', 0, '2026-01-24T10:00:00Z', '2026-01-24T14:00:00Z')"#,
             [],
         )
@@ -1097,7 +1097,7 @@ use crate::domain::entities::{ProjectId, TaskId, IdeationSessionId, TaskProposal
 
         assert!(proposal.created_task_id.is_some());
         assert_eq!(proposal.created_task_id.as_ref().unwrap().as_str(), "task-abc");
-        assert!(proposal.is_converted());
+        assert!(proposal.has_created_task());
     }
 
     #[test]

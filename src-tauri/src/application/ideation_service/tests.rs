@@ -77,7 +77,7 @@ use std::sync::{Arc, Mutex};
                 if status == IdeationSessionStatus::Archived {
                     session.archived_at = Some(Utc::now());
                 }
-                if status == IdeationSessionStatus::Converted {
+                if status == IdeationSessionStatus::Accepted {
                     session.converted_at = Some(Utc::now());
                 }
             }

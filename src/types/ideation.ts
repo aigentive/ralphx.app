@@ -13,7 +13,7 @@ import { z } from "zod";
 export const IDEATION_SESSION_STATUS_VALUES = [
   "active",
   "archived",
-  "converted",
+  "accepted",
 ] as const;
 
 export const IdeationSessionStatusSchema = z.enum(IDEATION_SESSION_STATUS_VALUES);
