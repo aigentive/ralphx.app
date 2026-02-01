@@ -22,17 +22,22 @@ import {
   type TaskStep,
   type StepProgressSummary,
 } from "@/types/task-step";
-import { InjectTaskResponseSchemaRaw } from "./tasks.schemas";
-import { transformInjectTaskResponse, type InjectTaskResponse } from "./tasks.transforms";
+import { InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import {
+  transformInjectTaskResponse,
+  transformStateTransition,
+  type InjectTaskResponse,
+  type StateTransition,
+} from "./tasks.transforms";
 
 // Re-export types for convenience
-export type { InjectTaskResponse } from "./tasks.transforms";
+export type { InjectTaskResponse, StateTransition } from "./tasks.transforms";
 
 // Re-export schemas for consumers that need validation
-export { InjectTaskResponseSchemaRaw } from "./tasks.schemas";
+export { InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 
 // Re-export transforms for consumers that need manual transformation
-export { transformInjectTaskResponse } from "./tasks.transforms";
+export { transformInjectTaskResponse, transformStateTransition } from "./tasks.transforms";
 
 // ============================================================================
 // Input Types
@@ -262,6 +267,21 @@ export const tasksApi = {
    */
   unblock: (taskId: string): Promise<Task> =>
     typedInvokeWithTransform("unblock_task", { taskId }, TaskSchema, transformTask),
+
+  /**
+   * Get historical state transitions for a task
+   * Returns chronological list of all state changes the task has gone through.
+   * Used by StateTimelineNav for displaying task history and enabling time travel.
+   * @param taskId The task ID
+   * @returns Array of state transitions in chronological order
+   */
+  getStateTransitions: (taskId: string): Promise<StateTransition[]> =>
+    typedInvokeWithTransform(
+      "get_task_state_transitions",
+      { taskId },
+      z.array(StateTransitionResponseSchemaRaw),
+      (transitions) => transitions.map(transformStateTransition)
+    ),
 } as const;
 
 // ============================================================================
