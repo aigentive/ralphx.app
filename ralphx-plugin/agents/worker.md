@@ -95,7 +95,45 @@ For complex tasks, related artifacts may provide valuable context:
 get_related_artifacts(artifact_id: "<plan_artifact.id>")
 ```
 
-### Step 4: Begin Implementation
+### Step 4: Check Task Dependencies
+
+The `get_task_context` response includes dependency information:
+
+- **blocked_by**: Tasks that must complete BEFORE you can start this task
+  - If not empty: **STOP. Do not proceed.** Report that the task is blocked.
+- **blocks**: Tasks waiting for THIS task to complete
+  - For context: your work unblocks these downstream tasks
+- **tier**: Execution tier (lower = earlier in dependency chain)
+  - Tier 1 tasks have no blockers
+  - Higher tiers depend on lower tiers
+
+### Decision Flow
+
+```
+1. Call get_task_context(task_id)
+2. Check blocked_by:
+   - If NOT empty → Cannot proceed. Report: "Task is blocked by: [task names]"
+   - If empty → Proceed with execution
+3. Use tier to understand priority context
+4. Note which tasks you will unblock (blocks field) for downstream awareness
+5. Work through task steps in order
+```
+
+**Example Response:**
+```json
+{
+  "task": { ... },
+  "blocked_by": [],
+  "blocks": [
+    { "id": "task-456", "title": "Add user authentication UI" }
+  ],
+  "tier": 1
+}
+```
+
+This means: No blockers (tier 1), can proceed. Task "Add user authentication UI" is waiting on your completion.
+
+### Step 5: Begin Implementation
 
 Now that you have full context, proceed with implementation following:
 1. The acceptance criteria from the task/proposal

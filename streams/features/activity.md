@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 06:45:00 - Phase 62 Task 10: Update worker agent prompt with dependency context guidance
+**What:**
+- Added "Step 4: Check Task Dependencies" section to worker agent prompt
+- Documented `blocked_by`, `blocks`, and `tier` fields from `get_task_context` response
+- Added decision flow: check blocked_by first, STOP if not empty
+- Included example JSON response showing dependency structure
+- Explained tier context for priority understanding (tier 1 = no blockers)
+
+**Files Modified:**
+- `ralphx-plugin/agents/worker.md` (MODIFIED - added dependency context section)
+
+**Commands:**
+- N/A (documentation only)
+
+**Visual Verification:** N/A - plugin documentation
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 06:15:00 - Phase 62 Task 9: Add dependency context fields to TaskContext for worker
 **What:**
 - Added `blocked_by`, `blocks`, and `tier` fields to `TaskContext` entity
