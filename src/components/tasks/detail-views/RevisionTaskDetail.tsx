@@ -14,17 +14,20 @@ import {
 } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
+import { useQuery } from "@tanstack/react-query";
+import { reviewIssuesApi } from "@/api/review-issues";
+import { IssueList } from "@/components/reviews/IssueList";
 import {
   Loader2,
   AlertTriangle,
   Bot,
   User,
   RotateCcw,
-  FileCode2,
   MessageCircleWarning,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import type { ReviewIssue } from "@/types/review-issue";
 
 interface RevisionTaskDetailProps {
   task: Task;
@@ -58,84 +61,17 @@ function getLatestRevisionFeedback(
   return revisionEntries[0] ?? null;
 }
 
-/**
- * Parse issues from notes text
- */
-function parseIssuesFromNotes(notes: string | null | undefined): {
-  mainText: string;
-  items: string[];
-} {
-  if (!notes) return { mainText: "", items: [] };
-
-  const lines = notes.split("\n");
-  const items: string[] = [];
-  const mainTextLines: string[] = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (/^[-*•]/.test(trimmed) || /^\d+\./.test(trimmed)) {
-      const itemText = trimmed.replace(/^[-*•]\s*/, "").replace(/^\d+\.\s*/, "");
-      if (itemText) items.push(itemText);
-    } else if (trimmed) {
-      mainTextLines.push(trimmed);
-    }
-  }
-
-  return { mainText: mainTextLines.join(" "), items };
-}
-
-/**
- * IssueItem - Renders a single issue with optional file:line reference
- */
-function IssueItem({ issue }: { issue: string }) {
-  const fileLineMatch = issue.match(/([a-zA-Z0-9_/./-]+\.[a-zA-Z]+):(\d+)/);
-
-  if (fileLineMatch) {
-    const [fullMatch, file, line] = fileLineMatch;
-    const beforeMatch = issue.substring(0, issue.indexOf(fullMatch));
-    const afterMatch = issue.substring(issue.indexOf(fullMatch) + fullMatch.length);
-
-    return (
-      <li className="flex items-start gap-2.5 py-1.5">
-        <FileCode2
-          className="w-4 h-4 mt-0.5 shrink-0"
-          style={{ color: "#ff9f0a" }}
-        />
-        <span className="text-[13px] text-white/60 leading-relaxed">
-          {beforeMatch}
-          <code
-            className="px-1.5 py-0.5 rounded-md text-[11px] font-mono mx-1"
-            style={{
-              backgroundColor: "rgba(255, 107, 53, 0.15)",
-              color: "#ff8050",
-            }}
-          >
-            {file}:{line}
-          </code>
-          {afterMatch}
-        </span>
-      </li>
-    );
-  }
-
-  return (
-    <li className="flex items-start gap-2.5 py-1.5">
-      <div
-        className="w-1.5 h-1.5 rounded-full mt-2 shrink-0"
-        style={{ backgroundColor: "rgba(255,255,255,0.3)" }}
-      />
-      <span className="text-[13px] text-white/60 leading-relaxed">{issue}</span>
-    </li>
-  );
+interface FeedbackCardProps {
+  review: ReviewNoteResponse;
+  issues: ReviewIssue[];
 }
 
 /**
  * FeedbackCard - Shows the review feedback that triggered revision
  */
-function FeedbackCard({ review }: { review: ReviewNoteResponse }) {
+function FeedbackCard({ review, issues }: FeedbackCardProps) {
   const isAiReviewer = review.reviewer === "ai";
   const timeAgo = formatTimeAgo(review.created_at);
-  const issues = parseIssuesFromNotes(review.notes);
 
   return (
     <DetailCard variant="warning">
@@ -163,15 +99,15 @@ function FeedbackCard({ review }: { review: ReviewNoteResponse }) {
         </div>
       </div>
 
-      {/* Main feedback text */}
-      {(issues.mainText || (!issues.items.length && review.notes)) && (
+      {/* Main feedback text (show notes only if no structured issues) */}
+      {issues.length === 0 && review.notes && (
         <p className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12">
-          {issues.mainText || review.notes}
+          {review.notes}
         </p>
       )}
 
-      {/* Issues list */}
-      {issues.items.length > 0 && (
+      {/* Structured Issues list */}
+      {issues.length > 0 && (
         <div className="pl-12">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#ff9f0a" }} />
@@ -179,11 +115,7 @@ function FeedbackCard({ review }: { review: ReviewNoteResponse }) {
               Issues to Address
             </span>
           </div>
-          <ul className="space-y-0.5">
-            {issues.items.map((issue, index) => (
-              <IssueItem key={index} issue={issue} />
-            ))}
-          </ul>
+          <IssueList issues={issues} groupBy="status" compact />
         </div>
       )}
     </DetailCard>
@@ -193,6 +125,10 @@ function FeedbackCard({ review }: { review: ReviewNoteResponse }) {
 export function RevisionTaskDetail({ task }: RevisionTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(task.id);
+  const { data: issues = [] } = useQuery({
+    queryKey: ["review-issues", task.id],
+    queryFn: () => reviewIssuesApi.getByTaskId(task.id),
+  });
   const hasSteps = (steps?.length ?? 0) > 0;
 
   const attemptNumber = calculateAttemptNumber(history);
@@ -230,7 +166,7 @@ export function RevisionTaskDetail({ task }: RevisionTaskDetailProps) {
       ) : latestFeedback ? (
         <section data-testid="revision-feedback-section">
           <SectionTitle>Feedback to Address</SectionTitle>
-          <FeedbackCard review={latestFeedback} />
+          <FeedbackCard review={latestFeedback} issues={issues} />
         </section>
       ) : null}
 
