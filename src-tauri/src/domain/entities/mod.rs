@@ -11,6 +11,7 @@ pub mod methodology;
 pub mod research;
 pub mod project;
 pub mod review;
+pub mod review_issue;
 pub mod status;
 pub mod task;
 pub mod task_context;
@@ -38,7 +39,7 @@ pub use review::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_qa::TaskQA;
-pub use types::{ChatMessageId, IdeationSessionId, ProjectId, TaskId, TaskProposalId, TaskQAId, TaskStepId};
+pub use types::{ChatMessageId, IdeationSessionId, ProjectId, ReviewIssueId, TaskId, TaskProposalId, TaskQAId, TaskStepId};
 pub use workflow::{
     ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,
     ParseSyncDirectionError, SyncDirection, SyncProvider, SyncSettings, WorkflowColumn,
@@ -70,4 +71,9 @@ pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
 pub use activity_event::{
     ActivityEvent, ActivityEventId, ActivityEventRole, ActivityEventType,
     ParseActivityEventRoleError, ParseActivityEventTypeError,
+};
+pub use review_issue::{
+    IssueCategory, IssueProgressSummary, IssueSeverity, IssueStatus, ParseIssueCategoryError,
+    ParseIssueSeverityError, ParseIssueStatusError, ReviewIssue as ReviewIssueEntity,
+    SeverityBreakdown, SeverityCount,
 };
