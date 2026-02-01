@@ -20,6 +20,7 @@ pub use types::{
     TaskResponse,
     TaskListResponse,
     StatusTransition,
+    StateTransitionResponse,
 };
 
 // Re-export helpers (for use by other command modules)
@@ -38,6 +39,7 @@ pub use query::{
     search_tasks,
     get_valid_transitions,
     get_tasks_awaiting_review,
+    get_task_state_transitions,
 };
 
 // Re-export mutation commands

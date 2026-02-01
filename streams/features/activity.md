@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-01 18:15:00 - Phase 59 Task 1: Add get_task_state_transitions command
+**What:**
+- Added StateTransitionResponse type to task_commands/types.rs
+- Added get_task_state_transitions Tauri command to task_commands/query.rs
+- Command queries existing task_repo.get_status_history() method
+- Returns chronological list of state transitions (from_status, to_status, trigger, timestamp)
+- Exported from task_commands/mod.rs and commands/mod.rs
+- Registered in lib.rs invoke_handler
+
+**Files:**
+- `src-tauri/src/commands/task_commands/types.rs` (added StateTransitionResponse)
+- `src-tauri/src/commands/task_commands/query.rs` (added get_task_state_transitions command)
+- `src-tauri/src/commands/task_commands/mod.rs` (exported new type and command)
+- `src-tauri/src/commands/mod.rs` (re-exported)
+- `src-tauri/src/lib.rs` (registered command)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 17:00:00 - Phase 58 Complete - ALL PHASES COMPLETE
 **What:**
 - All Phase 58 tasks completed with passes: true (1/1)
