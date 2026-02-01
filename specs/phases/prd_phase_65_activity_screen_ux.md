@@ -165,7 +165,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(activity): improve visual hierarchy and reduce badge noise"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

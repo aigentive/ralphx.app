@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 20:00:00 - Phase 65 Task 5: Visual cleanup
+**What:**
+- Reduced badge noise: Show tool name OR type label (not both) - tool calls now display clean tool name only
+- Removed redundant `internalStatus` badge from header
+- Improved timestamp styling: smaller size (11px), tabular-nums for consistent width, subtle opacity (60%)
+- Improved whitespace: Tighter message list spacing (p-3, space-y-1.5), cleaner expanded section margins
+- Consistent card styling: Updated "Raw JSON" label to uppercase tracking-wide for better visual hierarchy
+
+**Files Modified:**
+- `src/components/activity/ActivityMessage.tsx` (header badges, timestamp styling, expanded section)
+- `src/components/activity/ActivityView.tsx` (message list padding)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - styling/layout change (visual polish, no new data)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:30:00 - Phase 65 Task 4: Add markdown rendering for text messages
 **What:**
 - Updated `text` case in ActivityMessage.tsx to use ReactMarkdown with remarkGfm (same as thinking blocks)
