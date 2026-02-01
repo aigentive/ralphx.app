@@ -177,7 +177,7 @@ impl TaskRepository for SqliteTaskRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT from_status, to_status, changed_by, created_at
+                "SELECT from_status, to_status, changed_by, created_at, metadata
                  FROM task_state_history WHERE task_id = ?1
                  ORDER BY created_at ASC",
             )
@@ -189,12 +189,23 @@ impl TaskRepository for SqliteTaskRepository {
                 let to_str: String = row.get(1)?;
                 let trigger: String = row.get(2)?;
                 let created_at_str: String = row.get(3)?;
+                let metadata_json: Option<String> = row.get(4)?;
 
                 let from = from_str.parse().unwrap_or(InternalStatus::Backlog);
                 let to = to_str.parse().unwrap_or(InternalStatus::Backlog);
                 let timestamp = Task::parse_datetime(created_at_str);
 
-                Ok(StatusTransition::with_timestamp(from, to, trigger, timestamp))
+                // Parse metadata JSON to extract conversation_id and agent_run_id
+                let (conversation_id, agent_run_id) = metadata_json
+                    .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                    .map(|v| {
+                        let conv_id = v.get("conversation_id").and_then(|v| v.as_str()).map(String::from);
+                        let run_id = v.get("agent_run_id").and_then(|v| v.as_str()).map(String::from);
+                        (conv_id, run_id)
+                    })
+                    .unwrap_or((None, None));
+
+                Ok(StatusTransition::with_metadata(from, to, trigger, timestamp, conversation_id, agent_run_id))
             })
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()

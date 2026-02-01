@@ -201,6 +201,8 @@ pub async fn get_task_state_transitions(
             to_status: t.to.as_str().to_string(),
             trigger: t.trigger,
             timestamp: t.timestamp.to_rfc3339(),
+            conversation_id: t.conversation_id,
+            agent_run_id: t.agent_run_id,
         })
         .collect();
 

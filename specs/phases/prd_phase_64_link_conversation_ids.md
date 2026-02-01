@@ -124,7 +124,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(query): expose conversation_id and agent_run_id in state transitions API"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
