@@ -110,6 +110,26 @@ const STATUS_CONFIG: Record<
     color: "#ff9f0a",
     bgColor: "rgba(255, 159, 10, 0.15)",
   },
+  pending_merge: {
+    label: "Pending Merge",
+    color: "#ff6b35",
+    bgColor: "rgba(255, 107, 53, 0.15)",
+  },
+  merging: {
+    label: "Merging",
+    color: "#ff6b35",
+    bgColor: "rgba(255, 107, 53, 0.15)",
+  },
+  merge_conflict: {
+    label: "Merge Conflict",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
+  },
+  merged: {
+    label: "Merged",
+    color: "#34c759",
+    bgColor: "rgba(52, 199, 89, 0.15)",
+  },
 };
 
 interface TimelineEntry {

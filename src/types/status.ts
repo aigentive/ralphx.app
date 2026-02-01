@@ -1,10 +1,10 @@
 // Internal status types and Zod schema
-// Must match the 14 internal statuses from the Rust backend
+// Must match the 21 internal statuses from the Rust backend
 
 import { z } from "zod";
 
 /**
- * All 14 internal status values matching the Rust backend
+ * All 21 internal status values matching the Rust backend
  * Uses snake_case to match Rust serde serialization
  */
 export const InternalStatusSchema = z.enum([
@@ -23,6 +23,10 @@ export const InternalStatusSchema = z.enum([
   "revision_needed",
   "re_executing",
   "approved",
+  "pending_merge",
+  "merging",
+  "merge_conflict",
+  "merged",
   "failed",
   "cancelled",
 ]);
@@ -56,6 +60,8 @@ export const ACTIVE_STATUSES: readonly InternalStatus[] = [
   "review_passed",
   "escalated",
   "revision_needed",
+  "pending_merge",
+  "merging",
 ] as const;
 
 /**
@@ -63,8 +69,19 @@ export const ACTIVE_STATUSES: readonly InternalStatus[] = [
  */
 export const TERMINAL_STATUSES: readonly InternalStatus[] = [
   "approved",
+  "merged",
   "failed",
   "cancelled",
+] as const;
+
+/**
+ * Merge statuses where tasks are in the merge workflow
+ */
+export const MERGE_STATUSES: readonly InternalStatus[] = [
+  "pending_merge",
+  "merging",
+  "merge_conflict",
+  "merged",
 ] as const;
 
 /**
@@ -160,6 +177,9 @@ export const NON_DRAGGABLE_STATUSES = [
   "review_passed",
   "escalated",
   "revision_needed",
+  "pending_merge",
+  "merging",
+  "merge_conflict",
 ] as const satisfies readonly InternalStatus[];
 
 // ============================================================================
@@ -192,4 +212,11 @@ export function isHumanReviewStatus(status: InternalStatus): boolean {
  */
 export function isNonDraggableStatus(status: InternalStatus): boolean {
   return (NON_DRAGGABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Check if a status is a merge status
+ */
+export function isMergeStatus(status: InternalStatus): boolean {
+  return (MERGE_STATUSES as readonly string[]).includes(status);
 }

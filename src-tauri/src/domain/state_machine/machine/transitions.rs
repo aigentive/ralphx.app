@@ -221,12 +221,13 @@ impl TaskStateMachine {
     }
 
     // ==================
-    // Terminal States
+    // Approval and Merge States
     // ==================
 
-    /// Approved state - complete and verified
+    /// Approved state - complete and verified, leads to merge workflow
     pub fn approved(&mut self, event: &TaskEvent) -> Response {
         match event {
+            TaskEvent::StartMerge => Response::Transition(State::PendingMerge),
             TaskEvent::Retry => {
                 self.context.clear_review_feedback();
                 Response::Transition(State::Ready)
@@ -234,6 +235,44 @@ impl TaskStateMachine {
             _ => Response::NotHandled,
         }
     }
+
+    /// PendingMerge state - awaiting programmatic merge attempt
+    pub fn pending_merge(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::MergeComplete => Response::Transition(State::Merged),
+            TaskEvent::MergeConflict => Response::Transition(State::Merging),
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// Merging state - merge agent is attempting to resolve conflicts
+    pub fn merging(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::MergeComplete => Response::Transition(State::Merged),
+            TaskEvent::MergeAgentFailed => Response::Transition(State::MergeConflict),
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// MergeConflict state - merge failed, needs manual resolution
+    pub fn merge_conflict(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::ConflictResolved => Response::Transition(State::Merged),
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// Merged state - successfully merged to base branch
+    pub fn merged(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::Retry => Response::Transition(State::Ready),
+            _ => Response::NotHandled,
+        }
+    }
+
+    // ==================
+    // Terminal States
+    // ==================
 
     /// Failed state - requires manual intervention
     pub fn failed(&mut self, event: &TaskEvent, _data: &FailedData) -> Response {

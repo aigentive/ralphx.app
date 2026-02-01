@@ -38,8 +38,16 @@ pub enum State {
     Escalated,
     RevisionNeeded,
 
-    // Terminal states
+    // Approval (leads to merge workflow)
     Approved,
+
+    // Merge states
+    PendingMerge,
+    Merging,
+    MergeConflict,
+    Merged,
+
+    // Terminal states
     Failed(FailedData),
     Cancelled,
 }
@@ -47,7 +55,10 @@ pub enum State {
 impl State {
     /// Returns true if this is a terminal state
     pub fn is_terminal(&self) -> bool {
-        matches!(self, State::Approved | State::Failed(_) | State::Cancelled)
+        matches!(
+            self,
+            State::Merged | State::Failed(_) | State::Cancelled
+        )
     }
 
     /// Returns true if this is an idle state
@@ -58,6 +69,14 @@ impl State {
     /// Returns true if this is an active (non-idle, non-terminal) state
     pub fn is_active(&self) -> bool {
         !self.is_idle() && !self.is_terminal()
+    }
+
+    /// Returns true if this is a merge state
+    pub fn is_merge(&self) -> bool {
+        matches!(
+            self,
+            State::PendingMerge | State::Merging | State::MergeConflict | State::Merged
+        )
     }
 }
 
@@ -102,6 +121,10 @@ impl TaskStateMachine {
             State::Escalated => self.escalated(event),
             State::RevisionNeeded => self.revision_needed(event),
             State::Approved => self.approved(event),
+            State::PendingMerge => self.pending_merge(event),
+            State::Merging => self.merging(event),
+            State::MergeConflict => self.merge_conflict(event),
+            State::Merged => self.merged(event),
             State::Failed(data) => self.failed(event, data),
             State::Cancelled => self.cancelled(event),
         };
@@ -161,6 +184,10 @@ impl State {
             State::Escalated => "Escalated",
             State::RevisionNeeded => "RevisionNeeded",
             State::Approved => "Approved",
+            State::PendingMerge => "PendingMerge",
+            State::Merging => "Merging",
+            State::MergeConflict => "MergeConflict",
+            State::Merged => "Merged",
             State::Failed(_) => "Failed",
             State::Cancelled => "Cancelled",
         }
@@ -187,6 +214,10 @@ impl State {
             State::Escalated => "escalated",
             State::RevisionNeeded => "revision_needed",
             State::Approved => "approved",
+            State::PendingMerge => "pending_merge",
+            State::Merging => "merging",
+            State::MergeConflict => "merge_conflict",
+            State::Merged => "merged",
             State::Failed(_) => "failed",
             State::Cancelled => "cancelled",
         }
@@ -237,6 +268,10 @@ impl FromStr for State {
             "escalated" => Ok(State::Escalated),
             "revision_needed" => Ok(State::RevisionNeeded),
             "approved" => Ok(State::Approved),
+            "pending_merge" => Ok(State::PendingMerge),
+            "merging" => Ok(State::Merging),
+            "merge_conflict" => Ok(State::MergeConflict),
+            "merged" => Ok(State::Merged),
             "failed" => Ok(State::Failed(FailedData::default())),
             "cancelled" => Ok(State::Cancelled),
             _ => Err(ParseStateError {

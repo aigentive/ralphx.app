@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// The 14 internal statuses that a task can be in.
+/// The 21 internal statuses that a task can be in.
 /// These map to external Kanban columns via WorkflowSchema (Phase 11).
 ///
 /// State machine transitions are validated - not all transitions are allowed.
@@ -43,6 +43,14 @@ pub enum InternalStatus {
     ReExecuting,
     /// Task has been approved and is complete
     Approved,
+    /// Approved, awaiting merge (auto-transition from Approved)
+    PendingMerge,
+    /// Merge agent attempting to resolve conflicts
+    Merging,
+    /// Merge failed, needs manual resolution
+    MergeConflict,
+    /// Successfully merged to base branch
+    Merged,
     /// Task has permanently failed after max retries
     Failed,
     /// Task was cancelled by user
@@ -77,8 +85,16 @@ impl InternalStatus {
             RevisionNeeded => &[ReExecuting, Cancelled],
             ReExecuting => &[PendingReview, Failed, Blocked],
 
+            // Approval leads to merge workflow
+            Approved => &[PendingMerge, Ready],
+
+            // Merge states
+            PendingMerge => &[Merged, Merging], // Success → Merged, Conflict → Merging (agent)
+            Merging => &[Merged, MergeConflict], // Agent success → Merged, Agent failure → MergeConflict
+            MergeConflict => &[Merged], // Manual resolution → Merged
+
             // Terminal states (can be re-opened)
-            Approved => &[Ready],
+            Merged => &[Ready],
             Failed => &[Ready],
             Cancelled => &[Ready],
         }
@@ -109,6 +125,10 @@ impl InternalStatus {
             RevisionNeeded,
             ReExecuting,
             Approved,
+            PendingMerge,
+            Merging,
+            MergeConflict,
+            Merged,
             Failed,
             Cancelled,
         ]
@@ -132,6 +152,10 @@ impl InternalStatus {
             InternalStatus::RevisionNeeded => "revision_needed",
             InternalStatus::ReExecuting => "re_executing",
             InternalStatus::Approved => "approved",
+            InternalStatus::PendingMerge => "pending_merge",
+            InternalStatus::Merging => "merging",
+            InternalStatus::MergeConflict => "merge_conflict",
+            InternalStatus::Merged => "merged",
             InternalStatus::Failed => "failed",
             InternalStatus::Cancelled => "cancelled",
         }
@@ -178,6 +202,10 @@ impl FromStr for InternalStatus {
             "revision_needed" => Ok(InternalStatus::RevisionNeeded),
             "re_executing" => Ok(InternalStatus::ReExecuting),
             "approved" => Ok(InternalStatus::Approved),
+            "pending_merge" => Ok(InternalStatus::PendingMerge),
+            "merging" => Ok(InternalStatus::Merging),
+            "merge_conflict" => Ok(InternalStatus::MergeConflict),
+            "merged" => Ok(InternalStatus::Merged),
             "failed" => Ok(InternalStatus::Failed),
             "cancelled" => Ok(InternalStatus::Cancelled),
             _ => Err(ParseInternalStatusError {
@@ -194,8 +222,8 @@ mod tests {
     // ===== All 14 Variants Exist Tests =====
 
     #[test]
-    fn internal_status_has_17_variants() {
-        assert_eq!(InternalStatus::all_variants().len(), 17);
+    fn internal_status_has_21_variants() {
+        assert_eq!(InternalStatus::all_variants().len(), 21);
     }
 
     #[test]
@@ -217,6 +245,10 @@ mod tests {
             RevisionNeeded,
             ReExecuting,
             Approved,
+            PendingMerge,
+            Merging,
+            MergeConflict,
+            Merged,
             Failed,
             Cancelled,
         ];
@@ -274,6 +306,10 @@ mod tests {
             ("revision_needed", InternalStatus::RevisionNeeded),
             ("re_executing", InternalStatus::ReExecuting),
             ("approved", InternalStatus::Approved),
+            ("pending_merge", InternalStatus::PendingMerge),
+            ("merging", InternalStatus::Merging),
+            ("merge_conflict", InternalStatus::MergeConflict),
+            ("merged", InternalStatus::Merged),
             ("failed", InternalStatus::Failed),
             ("cancelled", InternalStatus::Cancelled),
         ];
@@ -420,7 +456,7 @@ mod tests {
     fn approved_transitions() {
         use InternalStatus::*;
         let transitions = Approved.valid_transitions();
-        assert_eq!(transitions, &[Ready]); // Re-open
+        assert_eq!(transitions, &[PendingMerge, Ready]); // Merge workflow + Re-open
     }
 
     #[test]
@@ -501,7 +537,8 @@ mod tests {
         use InternalStatus::*;
 
         // Terminal states can only go to Ready (re-open)
-        for terminal in &[Approved, Failed, Cancelled] {
+        // Note: Approved now also transitions to PendingMerge, so it's not purely terminal
+        for terminal in &[Merged, Failed, Cancelled] {
             assert!(terminal.can_transition_to(Ready));
 
             // But can't go anywhere else
@@ -651,6 +688,135 @@ mod tests {
 
         // Can also block during execution
         assert!(Executing.can_transition_to(Blocked));
+    }
+
+    // ===== Merge State Transition Tests =====
+
+    #[test]
+    fn approved_to_pending_merge() {
+        use InternalStatus::*;
+        assert!(Approved.can_transition_to(PendingMerge));
+    }
+
+    #[test]
+    fn pending_merge_transitions() {
+        use InternalStatus::*;
+        let transitions = PendingMerge.valid_transitions();
+        assert_eq!(transitions, &[Merged, Merging]);
+    }
+
+    #[test]
+    fn pending_merge_to_merged() {
+        use InternalStatus::*;
+        // Programmatic merge success - skips agent
+        assert!(PendingMerge.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn pending_merge_to_merging() {
+        use InternalStatus::*;
+        // Conflict detected - needs agent
+        assert!(PendingMerge.can_transition_to(Merging));
+    }
+
+    #[test]
+    fn merging_transitions() {
+        use InternalStatus::*;
+        let transitions = Merging.valid_transitions();
+        assert_eq!(transitions, &[Merged, MergeConflict]);
+    }
+
+    #[test]
+    fn merging_to_merged() {
+        use InternalStatus::*;
+        // Agent resolved conflicts
+        assert!(Merging.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn merging_to_merge_conflict() {
+        use InternalStatus::*;
+        // Agent couldn't resolve - needs manual intervention
+        assert!(Merging.can_transition_to(MergeConflict));
+    }
+
+    #[test]
+    fn merge_conflict_transitions() {
+        use InternalStatus::*;
+        let transitions = MergeConflict.valid_transitions();
+        assert_eq!(transitions, &[Merged]);
+    }
+
+    #[test]
+    fn merge_conflict_to_merged() {
+        use InternalStatus::*;
+        // User manually resolved
+        assert!(MergeConflict.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn merged_transitions() {
+        use InternalStatus::*;
+        let transitions = Merged.valid_transitions();
+        assert_eq!(transitions, &[Ready]); // Re-open only
+    }
+
+    #[test]
+    fn merged_to_ready() {
+        use InternalStatus::*;
+        // Re-open completed task
+        assert!(Merged.can_transition_to(Ready));
+    }
+
+    #[test]
+    fn merge_workflow_happy_path() {
+        use InternalStatus::*;
+        // Approved -> PendingMerge -> Merged (no conflicts)
+        assert!(Approved.can_transition_to(PendingMerge));
+        assert!(PendingMerge.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn merge_workflow_with_agent() {
+        use InternalStatus::*;
+        // Approved -> PendingMerge -> Merging -> Merged
+        assert!(Approved.can_transition_to(PendingMerge));
+        assert!(PendingMerge.can_transition_to(Merging));
+        assert!(Merging.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn merge_workflow_manual_resolution() {
+        use InternalStatus::*;
+        // Approved -> PendingMerge -> Merging -> MergeConflict -> Merged
+        assert!(Approved.can_transition_to(PendingMerge));
+        assert!(PendingMerge.can_transition_to(Merging));
+        assert!(Merging.can_transition_to(MergeConflict));
+        assert!(MergeConflict.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn serializes_to_snake_case_pending_merge() {
+        let json = serde_json::to_string(&InternalStatus::PendingMerge).unwrap();
+        assert_eq!(json, "\"pending_merge\"");
+    }
+
+    #[test]
+    fn serializes_to_snake_case_merging() {
+        let json = serde_json::to_string(&InternalStatus::Merging).unwrap();
+        assert_eq!(json, "\"merging\"");
+    }
+
+    #[test]
+    fn serializes_to_snake_case_merge_conflict() {
+        let json = serde_json::to_string(&InternalStatus::MergeConflict).unwrap();
+        assert_eq!(json, "\"merge_conflict\"");
+    }
+
+    #[test]
+    fn serializes_to_snake_case_merged() {
+        let json = serde_json::to_string(&InternalStatus::Merged).unwrap();
+        assert_eq!(json, "\"merged\"");
     }
 
     // ===== Clone, Copy, Eq, Hash Tests =====

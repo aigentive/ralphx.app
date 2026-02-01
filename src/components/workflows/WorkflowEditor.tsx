@@ -57,6 +57,10 @@ const STATUS_LABELS: Record<InternalStatus, string> = {
   review_passed: "AI Review Passed",
   escalated: "Escalated",
   re_executing: "Re-executing",
+  pending_merge: "Pending Merge",
+  merging: "Merging",
+  merge_conflict: "Merge Conflict",
+  merged: "Merged",
 };
 
 // ============================================================================

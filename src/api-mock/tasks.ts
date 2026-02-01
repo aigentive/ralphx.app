@@ -280,7 +280,7 @@ export const mockTasksApi = {
     });
 
     // Common progression based on current status
-    // Uses all 17 InternalStatus values from status.ts
+    // Uses all 21 InternalStatus values from status.ts
     const statusProgression: Record<InternalStatus, InternalStatus[]> = {
       backlog: [],
       ready: ["ready"],
@@ -297,6 +297,10 @@ export const mockTasksApi = {
       re_executing: ["ready", "executing", "pending_review", "reviewing", "revision_needed", "re_executing"],
       escalated: ["ready", "executing", "pending_review", "reviewing", "escalated"],
       approved: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved"],
+      pending_merge: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge"],
+      merging: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging"],
+      merge_conflict: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging", "merge_conflict"],
+      merged: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merged"],
       cancelled: ["ready", "cancelled"],
       failed: ["ready", "executing", "failed"],
     };

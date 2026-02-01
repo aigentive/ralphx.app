@@ -84,6 +84,24 @@ pub enum TaskEvent {
     },
 
     // ==================
+    // Merge events
+    // ==================
+    /// System starts merge workflow (Approved → PendingMerge)
+    StartMerge,
+
+    /// Programmatic merge completed successfully (PendingMerge → Merged)
+    MergeComplete,
+
+    /// Programmatic merge detected conflicts, needs agent (PendingMerge → Merging)
+    MergeConflict,
+
+    /// Merge agent failed to resolve conflicts (Merging → MergeConflict)
+    MergeAgentFailed,
+
+    /// User manually resolved merge conflicts (MergeConflict → Merged)
+    ConflictResolved,
+
+    // ==================
     // System signals
     // ==================
     /// All blocking tasks have been completed
@@ -109,6 +127,7 @@ impl TaskEvent {
                 | TaskEvent::HumanRequestChanges { .. }
                 | TaskEvent::Retry
                 | TaskEvent::SkipQa
+                | TaskEvent::ConflictResolved
         )
     }
 
@@ -122,6 +141,7 @@ impl TaskEvent {
                 | TaskEvent::QaRefinementComplete
                 | TaskEvent::QaTestsComplete { .. }
                 | TaskEvent::ReviewComplete { .. }
+                | TaskEvent::MergeAgentFailed
         )
     }
 
@@ -133,6 +153,21 @@ impl TaskEvent {
                 | TaskEvent::BlockerDetected { .. }
                 | TaskEvent::StartReview
                 | TaskEvent::StartRevision
+                | TaskEvent::StartMerge
+                | TaskEvent::MergeComplete
+                | TaskEvent::MergeConflict
+        )
+    }
+
+    /// Returns true if this is a merge-related event
+    pub fn is_merge_event(&self) -> bool {
+        matches!(
+            self,
+            TaskEvent::StartMerge
+                | TaskEvent::MergeComplete
+                | TaskEvent::MergeConflict
+                | TaskEvent::MergeAgentFailed
+                | TaskEvent::ConflictResolved
         )
     }
 
@@ -155,6 +190,11 @@ impl TaskEvent {
             TaskEvent::QaRefinementComplete => "QaRefinementComplete",
             TaskEvent::QaTestsComplete { .. } => "QaTestsComplete",
             TaskEvent::ReviewComplete { .. } => "ReviewComplete",
+            TaskEvent::StartMerge => "StartMerge",
+            TaskEvent::MergeComplete => "MergeComplete",
+            TaskEvent::MergeConflict => "MergeConflict",
+            TaskEvent::MergeAgentFailed => "MergeAgentFailed",
+            TaskEvent::ConflictResolved => "ConflictResolved",
             TaskEvent::BlockersResolved => "BlockersResolved",
             TaskEvent::BlockerDetected { .. } => "BlockerDetected",
         }

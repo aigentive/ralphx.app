@@ -13,10 +13,13 @@ fn create_machine() -> TaskStateMachine {
 
 #[test]
 fn test_state_is_terminal() {
-    assert!(State::Approved.is_terminal());
+    // Merged, Failed, Cancelled are terminal
+    assert!(State::Merged.is_terminal());
     assert!(State::Failed(FailedData::default()).is_terminal());
     assert!(State::Cancelled.is_terminal());
 
+    // Approved is no longer terminal - it leads to merge workflow
+    assert!(!State::Approved.is_terminal());
     assert!(!State::Backlog.is_terminal());
     assert!(!State::Executing.is_terminal());
 }
@@ -39,9 +42,15 @@ fn test_state_is_active() {
     assert!(State::PendingReview.is_active());
     assert!(State::Reviewing.is_active());
     assert!(State::ReviewPassed.is_active());
+    // Approved and merge states are now active (part of workflow)
+    assert!(State::Approved.is_active());
+    assert!(State::PendingMerge.is_active());
+    assert!(State::Merging.is_active());
+    assert!(State::MergeConflict.is_active());
 
     assert!(!State::Backlog.is_active());
-    assert!(!State::Approved.is_active());
+    // Only Merged, Failed, Cancelled are terminal (not active)
+    assert!(!State::Merged.is_active());
 }
 
 // ==================
