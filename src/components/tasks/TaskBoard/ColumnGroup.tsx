@@ -51,6 +51,7 @@ export function ColumnGroup({
     <Collapsible
       open={isExpanded}
       {...(handleOpenChange && { onOpenChange: handleOpenChange })}
+      className="mt-1 first:mt-0"
     >
       <div
         className="overflow-hidden"
@@ -66,10 +67,19 @@ export function ColumnGroup({
           <button
             type="button"
             className={cn(
-              "w-full flex items-center gap-1.5 px-1 py-1 text-left",
-              "transition-colors rounded",
-              "hover:bg-white/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50"
+              "w-full flex items-center gap-1.5 px-2 py-1.5 text-left",
+              "transition-colors rounded-md",
+              "focus:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(14_100%_60%)]/50"
             )}
+            style={{
+              background: "transparent",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
           >
             {/* Chevron indicator */}
             <ChevronDown

@@ -56,12 +56,12 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
         <AgentConstellation />
       </div>
 
-      {/* Gradient overlay for text readability - small dark mask only at center */}
+      {/* Gradient overlay for text readability - subtle dark mask at center */}
       <div
         className="absolute inset-0 pointer-events-none z-30"
         style={{
           background:
-            "radial-gradient(circle at center, rgba(12, 12, 12, 0.95) 0%, rgba(12, 12, 12, 0.8) 150px, rgba(12, 12, 12, 0.3) 200px, transparent 280px)",
+            "radial-gradient(circle at center, hsla(220 10% 8% / 0.85) 0%, hsla(220 10% 8% / 0.6) 180px, hsla(220 10% 8% / 0.2) 280px, transparent 380px)",
           isolation: "isolate",
         }}
       />
