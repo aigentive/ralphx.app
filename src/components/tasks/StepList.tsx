@@ -14,6 +14,8 @@ import { useStepMutations } from '@/hooks/useStepMutations';
 interface StepListProps {
   taskId: string;
   editable?: boolean;
+  /** Hide completion notes (useful for historical views before execution) */
+  hideCompletionNotes?: boolean;
 }
 
 /**
@@ -27,7 +29,7 @@ interface StepListProps {
  * <StepList taskId="task-123" editable={true} />
  * ```
  */
-export function StepList({ taskId, editable = false }: StepListProps) {
+export function StepList({ taskId, editable = false, hideCompletionNotes = false }: StepListProps) {
   const { data: steps, isLoading, isError } = useTaskSteps(taskId);
   const { delete: deleteStep } = useStepMutations(taskId);
 
@@ -68,12 +70,13 @@ export function StepList({ taskId, editable = false }: StepListProps) {
 
   // Steps list
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {steps.map((step, index) => {
         const props = {
           step,
           index,
           editable,
+          hideCompletionNote: hideCompletionNotes,
           ...(editable && { onDelete: (stepId: string) => deleteStep.mutate(stepId) }),
         };
         return <StepItem key={step.id} {...props} />;

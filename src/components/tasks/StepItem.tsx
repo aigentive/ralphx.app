@@ -13,6 +13,8 @@ interface StepItemProps {
   step: TaskStep;
   index: number;
   editable?: boolean;
+  /** Hide completion notes (useful for historical views before execution) */
+  hideCompletionNote?: boolean;
   onUpdate?: (step: TaskStep) => void;
   onDelete?: (stepId: string) => void;
 }
@@ -20,60 +22,89 @@ interface StepItemProps {
 /**
  * Render the appropriate status icon
  */
-function StatusIcon({ status, className }: { status: TaskStepStatus; className: string }) {
+function StatusIcon({ status, className, style }: { status: TaskStepStatus; className: string; style?: React.CSSProperties }) {
   switch (status) {
     case 'pending':
-      return <Circle className={className} />;
+      return <Circle className={className} style={style} />;
     case 'in_progress':
-      return <Loader2 className={`${className} animate-spin`} />;
+      return <Loader2 className={`${className} animate-spin`} style={style} />;
     case 'completed':
-      return <CheckCircle2 className={className} />;
+      return <CheckCircle2 className={className} style={style} />;
     case 'skipped':
-      return <MinusCircle className={className} />;
+      return <MinusCircle className={className} style={style} />;
     case 'failed':
-      return <XCircle className={className} />;
+      return <XCircle className={className} style={style} />;
     case 'cancelled':
-      return <XCircle className={className} />;
+      return <XCircle className={className} style={style} />;
   }
 }
 
 /**
- * Get color classes for step status
+ * Get color for step status icon (Tahoe HSL colors)
  */
 function getStatusColor(status: TaskStepStatus): string {
   switch (status) {
     case 'pending':
-      return 'text-text-muted';
+      return 'hsl(220 10% 40%)';
     case 'in_progress':
-      return 'text-accent-primary';
+      return 'hsl(14 100% 60%)'; // accent orange
     case 'completed':
-      return 'text-status-success';
+      return 'hsl(142 70% 45%)'; // green
     case 'skipped':
-      return 'text-text-muted';
+      return 'hsl(220 10% 40%)';
     case 'failed':
-      return 'text-status-error';
+      return 'hsl(0 70% 55%)'; // red
     case 'cancelled':
-      return 'text-text-muted';
+      return 'hsl(220 10% 40%)';
   }
 }
 
 /**
- * Get container classes based on step status
+ * Get container styles based on step status (Tahoe design)
  */
-function getContainerClasses(status: TaskStepStatus): string {
-  const base = 'flex items-start gap-3 p-3 rounded-lg transition-all';
+function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    transition: 'all 150ms ease',
+  };
 
   switch (status) {
     case 'in_progress':
-      return `${base} border-2 border-accent-primary bg-accent-muted`;
+      return {
+        ...base,
+        backgroundColor: 'hsla(14 100% 60% / 0.08)',
+        border: '1px solid hsla(14 100% 60% / 0.3)',
+      };
     case 'completed':
-      return `${base} opacity-75`;
+      return {
+        ...base,
+        backgroundColor: 'hsla(220 10% 100% / 0.02)',
+        border: '1px solid hsla(220 10% 100% / 0.06)',
+        opacity: 0.7,
+      };
     case 'skipped':
-      return `${base} opacity-50`;
+      return {
+        ...base,
+        backgroundColor: 'transparent',
+        border: '1px solid hsla(220 10% 100% / 0.04)',
+        opacity: 0.5,
+      };
     case 'failed':
-      return `${base} border border-status-error bg-status-error/5`;
+      return {
+        ...base,
+        backgroundColor: 'hsla(0 70% 55% / 0.08)',
+        border: '1px solid hsla(0 70% 55% / 0.3)',
+      };
     default:
-      return `${base} border border-border-default`;
+      return {
+        ...base,
+        backgroundColor: 'hsla(220 10% 100% / 0.02)',
+        border: '1px solid hsla(220 10% 100% / 0.06)',
+      };
   }
 }
 
@@ -93,41 +124,79 @@ function getContainerClasses(status: TaskStepStatus): string {
  * />
  * ```
  */
-export function StepItem({ step, index, editable = false, onDelete }: StepItemProps) {
+export function StepItem({ step, index, editable = false, hideCompletionNote = false, onDelete }: StepItemProps) {
   const iconColor = getStatusColor(step.status);
-  const containerClasses = getContainerClasses(step.status);
+  const containerStyles = getContainerStyles(step.status);
   const isSkipped = step.status === 'skipped';
 
   return (
-    <div className={containerClasses}>
+    <div style={containerStyles}>
       {/* Status Icon */}
       <div className="flex-shrink-0 mt-0.5">
-        <StatusIcon status={step.status} className={`h-5 w-5 ${iconColor}`} />
+        <StatusIcon status={step.status} className="h-4 w-4" style={{ color: iconColor }} />
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Step number and title */}
-        <div className={`flex items-baseline gap-2 ${isSkipped ? 'line-through' : ''}`}>
-          <span className="text-sm font-medium text-text-secondary">
+        <div
+          className="flex items-baseline gap-1.5"
+          style={{ textDecoration: isSkipped ? 'line-through' : 'none' }}
+        >
+          <span
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: 'hsl(220 10% 50%)',
+            }}
+          >
             {index + 1}.
           </span>
-          <h4 className="text-sm font-medium text-text-primary">
+          <span
+            style={{
+              fontSize: '13px',
+              fontWeight: 500,
+              color: 'hsl(220 10% 85%)',
+            }}
+          >
             {step.title}
-          </h4>
+          </span>
         </div>
 
         {/* Description */}
         {step.description && (
-          <p className={`mt-1 text-sm text-text-secondary ${isSkipped ? 'line-through' : ''}`}>
+          <p
+            style={{
+              marginTop: '4px',
+              fontSize: '12px',
+              color: 'hsl(220 10% 55%)',
+              lineHeight: 1.4,
+              textDecoration: isSkipped ? 'line-through' : 'none',
+            }}
+          >
             {step.description}
           </p>
         )}
 
-        {/* Completion note (shown for completed, skipped, failed) */}
-        {step.completionNote && (
-          <div className="mt-2 px-3 py-2 bg-bg-surface rounded border border-border-subtle">
-            <p className="text-xs text-text-muted italic">
+        {/* Completion note (shown for completed, skipped, failed - hidden in historical views) */}
+        {step.completionNote && !hideCompletionNote && (
+          <div
+            style={{
+              marginTop: '8px',
+              padding: '8px 10px',
+              backgroundColor: 'hsla(220 10% 100% / 0.03)',
+              borderRadius: '6px',
+              border: '1px solid hsla(220 10% 100% / 0.06)',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '11px',
+                color: 'hsl(220 10% 50%)',
+                fontStyle: 'italic',
+                lineHeight: 1.4,
+              }}
+            >
               {step.completionNote}
             </p>
           </div>
@@ -140,10 +209,10 @@ export function StepItem({ step, index, editable = false, onDelete }: StepItemPr
           variant="ghost"
           size="sm"
           onClick={() => onDelete(step.id)}
-          className="flex-shrink-0 h-8 w-8 p-0"
+          className="flex-shrink-0 h-7 w-7 p-0"
           aria-label="Delete step"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3.5 w-3.5" style={{ color: 'hsl(220 10% 50%)' }} />
         </Button>
       )}
     </div>

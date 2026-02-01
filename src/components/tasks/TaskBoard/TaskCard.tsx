@@ -329,8 +329,8 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Drag handle - appears on hover (hidden if archived or executing) */}
-      {!isArchived && !executionState.isActive && (
+      {/* Drag handle - appears on hover (hidden if not draggable) */}
+      {isDraggable && !isArchived && (
         <div
           data-testid="drag-handle"
           className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
@@ -339,8 +339,8 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Card content */}
-      <div className="pr-5">
+      {/* Card content - extra padding when review badges are shown */}
+      <div className={showReviewState ? "pr-20" : "pr-5"}>
         {/* Title - clean, simple */}
         <div
           data-testid="task-title"

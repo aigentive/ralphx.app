@@ -184,9 +184,7 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
       {!stepsLoading && hasSteps && (
         <section data-testid="waiting-steps-section">
           <SectionTitle>Steps</SectionTitle>
-          <DetailCard noPadding className="overflow-hidden">
-            <StepList taskId={task.id} editable={false} />
-          </DetailCard>
+          <StepList taskId={task.id} editable={false} />
         </section>
       )}
 

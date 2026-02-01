@@ -6,16 +6,17 @@
  */
 
 import { StepList } from "../StepList";
-import { SectionTitle, DetailCard, DescriptionBlock } from "./shared";
+import { SectionTitle, DescriptionBlock } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { Loader2 } from "lucide-react";
 import type { Task } from "@/types/task";
 
 interface BasicTaskDetailProps {
   task: Task;
+  isHistorical?: boolean;
 }
 
-export function BasicTaskDetail({ task }: BasicTaskDetailProps) {
+export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const hasSteps = (steps?.length ?? 0) > 0;
 
@@ -50,9 +51,7 @@ export function BasicTaskDetail({ task }: BasicTaskDetailProps) {
       {!stepsLoading && hasSteps && (
         <section data-testid="basic-task-steps-section">
           <SectionTitle>Steps</SectionTitle>
-          <DetailCard noPadding className="overflow-hidden">
-            <StepList taskId={task.id} editable={false} />
-          </DetailCard>
+          <StepList taskId={task.id} editable={false} hideCompletionNotes={isHistorical} />
         </section>
       )}
     </div>

@@ -570,9 +570,8 @@ body {
   }
 }
 
-/* Task card executing state - border and glow */
+/* Task card executing state - static border only (step indicators show progress) */
 .task-card-executing {
-  animation: var(--animation-executing-pulse);
   border-color: var(--accent-primary);
   border-width: 2px;
 }
@@ -641,4 +640,24 @@ body {
  * ============================================================================ */
 [data-testid="chat-input-textarea"]::placeholder {
   color: hsl(220 10% 40%);
+}
+
+/* ============================================================================
+ * Priority Badge Animations
+ * ============================================================================ */
+
+/* Critical priority pulse - subtle opacity and scale animation */
+@keyframes pulse-critical {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-critical {
+  animation: pulse-critical 2s ease-in-out infinite;
 }

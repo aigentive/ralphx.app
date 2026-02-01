@@ -188,9 +188,7 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
       {!stepsLoading && hasSteps && (
         <section data-testid="execution-steps-section">
           <SectionTitle>Steps</SectionTitle>
-          <DetailCard noPadding className="overflow-hidden">
-            <StepList taskId={task.id} editable={false} />
-          </DetailCard>
+          <StepList taskId={task.id} editable={false} />
         </section>
       )}
 
