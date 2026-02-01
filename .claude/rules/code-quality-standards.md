@@ -43,7 +43,7 @@ See @.claude/rules/api-layer.md for complete API patterns.
 | 1 | Create `vN_description.rs` with `IF NOT EXISTS` |
 | 2 | Register in `MIGRATIONS` array |
 | 3 | Bump `SCHEMA_VERSION` |
-| 4 | Add tests |
+| 4 | Add tests to `vN_description_tests.rs` |
 
 **Helpers:** `column_exists`, `table_exists`, `add_column_if_not_exists(conn, table, col, "TYPE DEFAULT x")`
 

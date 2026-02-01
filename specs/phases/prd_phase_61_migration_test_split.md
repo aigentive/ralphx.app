@@ -84,7 +84,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify the change by reading the file",
       "Commit: docs: add migration test file naming convention to code quality standards"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
