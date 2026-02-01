@@ -107,15 +107,17 @@ export function useTaskChat(taskId: string, contextType: TaskContextType) {
   // Track previous context to detect changes
   const prevContextRef = useRef<string | null>(null);
 
-  // Reset activeConversationId when context type or task changes
+  // Reset activeConversationId and clear stale agent state when context type or task changes
   useEffect(() => {
     const currentContext = `${contextType}:${taskId}`;
     if (prevContextRef.current !== null && prevContextRef.current !== currentContext) {
-      // Context changed, reset active conversation
+      // Context changed - clear agent state on OLD context key and reset conversation
+      // This prevents stale isAgentRunning entries from previous context types
+      setAgentRunning(prevContextRef.current, false);
       setActiveConversation(null);
     }
     prevContextRef.current = currentContext;
-  }, [contextType, taskId, setActiveConversation]);
+  }, [contextType, taskId, setActiveConversation, setAgentRunning]);
 
   // Auto-select the most recent conversation for this context
   // Use a ref to track initialization and prevent infinite loops

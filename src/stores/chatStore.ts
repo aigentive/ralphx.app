@@ -83,6 +83,8 @@ interface ChatActions {
   setActiveConversation: (conversationId: string | null) => void;
   /** Set whether an agent is currently running for a context */
   setAgentRunning: (contextKey: string, isRunning: boolean) => void;
+  /** Clear all agent running states for a task (all context types) */
+  clearAgentRunningForTask: (taskId: string) => void;
   /** Queue a message to be sent when the agent finishes */
   queueMessage: (contextKey: string, content: string, clientId?: string) => void;
   /** Edit a queued message */
@@ -158,6 +160,16 @@ export const useChatStore = create<ChatState & ChatActions>()(
         } else {
           delete state.isAgentRunning[contextKey];
         }
+      }),
+
+    clearAgentRunningForTask: (taskId) =>
+      set((state) => {
+        // Clear all context keys ending with :taskId (task:id, task_execution:id, review:id)
+        Object.keys(state.isAgentRunning).forEach((key) => {
+          if (key.endsWith(`:${taskId}`)) {
+            delete state.isAgentRunning[key];
+          }
+        });
       }),
 
     queueMessage: (contextKey, content, clientId) =>
