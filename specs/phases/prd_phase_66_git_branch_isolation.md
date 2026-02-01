@@ -86,7 +86,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "category": "backend",
     "description": "Create GitService with branch, worktree, and merge operations",
     "plan_section": "1.1 GitService Creation (BLOCKING)",
-    "blocking": [5, 6, 7, 8, 10, 14],
+    "blocking": [5, 7, 9, 11, 14, 16],
     "blockedBy": [],
     "atomic_commit": "feat(git): create GitService with branch, worktree, and merge operations",
     "steps": [
@@ -109,7 +109,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "category": "backend",
     "description": "Add task_branch, worktree_path, merge_commit_sha fields to Task entity",
     "plan_section": "1.2 Task Entity Extension (BLOCKING)",
-    "blocking": [5, 14, 16],
+    "blocking": [5, 8, 16, 20],
     "blockedBy": [],
     "atomic_commit": "feat(task): add task_branch, worktree_path, merge_commit_sha fields with migration",
     "steps": [
@@ -127,20 +127,24 @@ After completing the task: update `"passes": true`, commit, and stop.
   {
     "id": 3,
     "category": "backend",
-    "description": "Add worktree_parent_directory field to Project entity",
+    "description": "Add git_mode and worktree_parent_directory fields to Project entity",
     "plan_section": "1.3 Project Entity Extension (BLOCKING)",
-    "blocking": [5, 6, 15, 16],
+    "blocking": [5, 6, 8, 17, 18],
     "blockedBy": [],
-    "atomic_commit": "feat(project): add worktree_parent_directory field with migration",
+    "atomic_commit": "feat(project): add git_mode and worktree_parent_directory fields with migration",
     "steps": [
       "Read specs/plans/per_task_git_branch_isolation.md section '1.3 Project Entity Extension'",
+      "Add GitMode enum (Local, Worktree) to project.rs or a shared types file",
+      "Add git_mode: GitMode field to Project entity (default: Worktree)",
       "Add worktree_parent_directory: Option<String> to Project entity (default: ~/ralphx-worktrees)",
-      "Create migration v25_project_worktree_parent.rs",
+      "Create migration v25_project_git_fields.rs with git_mode and worktree_parent_directory columns",
       "Register migration and bump SCHEMA_VERSION",
-      "Update ProjectRepository to handle new field",
+      "Update ProjectRepository to handle new fields",
+      "Update frontend types and Zod schemas for git_mode field",
       "Add tests",
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
-      "Commit: feat(project): add worktree_parent_directory field with migration"
+      "Run npm run lint && npm run typecheck",
+      "Commit: feat(project): add git_mode and worktree_parent_directory fields with migration"
     ],
     "passes": false
   },
@@ -149,7 +153,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "category": "backend",
     "description": "Add PendingMerge, Merging, MergeConflict, Merged internal states",
     "plan_section": "1.4 New Internal States (BLOCKING)",
-    "blocking": [9, 10, 11, 12, 14, 17, 18],
+    "blocking": [10, 11, 13, 14, 16, 19, 21],
     "blockedBy": [],
     "atomic_commit": "feat(status): add PendingMerge, Merging, MergeConflict, Merged states",
     "steps": [
@@ -169,11 +173,12 @@ After completing the task: update `"passes": true`, commit, and stop.
     "category": "backend",
     "description": "Create branch/worktree on task execution start",
     "plan_section": "2.1 Branch/Worktree Setup on Executing",
-    "blocking": [7, 8],
+    "blocking": [7, 9],
     "blockedBy": [1, 2, 3],
     "atomic_commit": "feat(execution): create branch/worktree on task execution start",
     "steps": [
       "Read specs/plans/per_task_git_branch_isolation.md section '2.1 Branch/Worktree Setup on Executing'",
+      "Add AppError::ExecutionBlocked(String) variant to error.rs if not exists",
       "Modify on_enter(Executing) in side_effects.rs",
       "For Local mode: check has_uncommitted_changes, create and checkout branch",
       "For Worktree mode: create worktree with branch using naming convention",
@@ -318,7 +323,7 @@ After completing the task: update `"passes": true`, commit, and stop.
     "category": "mcp",
     "description": "Add complete_merge and report_conflict MCP tools",
     "plan_section": "3.2 Merge MCP Tools (BLOCKING)",
-    "blocking": [14],
+    "blocking": [15],
     "blockedBy": [4, 12],
     "atomic_commit": "feat(mcp): add complete_merge and report_conflict tools",
     "steps": [
