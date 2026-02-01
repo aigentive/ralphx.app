@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-01 04:15:00 - Phase 60 Task 2: Create ReviewIssue domain entity and enums
+**What:**
+- Added ReviewIssueId newtype in types.rs with all standard methods (new, from_string, as_str, Display, Default)
+- Created review_issue.rs with full domain entity and lifecycle tracking
+- Defined IssueStatus enum (Open, InProgress, Addressed, Verified, WontFix) with is_terminal(), is_resolved() helpers
+- Defined IssueSeverity enum (Critical, Major, Minor, Suggestion) with priority_order() helper
+- Defined IssueCategory enum (Bug, Missing, Quality, Design)
+- Added ReviewIssue struct with all fields from plan: step linking (step_id/no_step_reason), issue details, code location, status lifecycle, resolution tracking
+- Added lifecycle methods: start_work(), mark_addressed(), verify(), reopen(), wont_fix()
+- Added IssueProgressSummary and SeverityBreakdown for aggregation
+- Exported from entities/mod.rs as ReviewIssueEntity (to avoid conflict with existing ReviewIssue)
+- Added comprehensive tests for all enums, entity methods, and progress summary calculation
+
+**Files:**
+- `src-tauri/src/domain/entities/types.rs` (added ReviewIssueId)
+- `src-tauri/src/domain/entities/review_issue.rs` (NEW)
+- `src-tauri/src/domain/entities/mod.rs` (added exports)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test review_issue` (47 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 03:30:00 - Phase 60 Task 1: Create review_issues database migration
 **What:**
 - Created v6_review_issues.rs migration file with review_issues table schema
