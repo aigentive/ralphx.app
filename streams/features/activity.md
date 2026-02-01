@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 12:15:00 - Phase 63 Task 2: Wire RevisionTaskDetail to review issues API
+**What:**
+- Added imports for `useQuery`, `reviewIssuesApi`, `IssueList` and `ReviewIssue` type
+- Added query in `RevisionTaskDetail` to fetch structured issues via `reviewIssuesApi.getByTaskId(task.id)`
+- Updated `FeedbackCard` component to accept `issues: ReviewIssue[]` prop
+- Replaced manual `parseIssuesFromNotes()` text parsing with `<IssueList issues={issues} groupBy="status" compact />`
+- Removed `parseIssuesFromNotes` function and `IssueItem` component (70+ lines of code removed)
+- FeedbackCard still shows reviewer context (AI/human, timestamp) and falls back to notes if no structured issues
+
+**Files Modified:**
+- `src/components/tasks/detail-views/RevisionTaskDetail.tsx` (MODIFIED - simplified from 264 to 195 lines)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - no new errors, only pre-existing warnings)
+
+**Visual Verification:** N/A - additive change using existing tested IssueList component
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 11:30:00 - Phase 63 Task 1: Wire HumanReviewTaskDetail to review issues API
 **What:**
 - Added imports for `useQuery`, `reviewIssuesApi`, `IssueList`, `IssueProgressBar`
