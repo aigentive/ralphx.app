@@ -90,14 +90,19 @@ function ChecklistItem({ label, passed }: { label: string; passed: boolean }) {
 }
 
 /**
- * AIReviewCard - Summary of AI review findings
+ * AIReviewCard - Summary of AI review findings with collapsible content
  */
 function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const MAX_HEIGHT = 120; // collapsed height in pixels
+
   const checks = [
     { label: "Code follows project patterns", passed: true },
     { label: "Tests are passing", passed: true },
     { label: "No linting errors", passed: true },
   ];
+
+  const hasLongContent = review?.notes && review.notes.length > 200;
 
   return (
     <DetailCard>
@@ -119,20 +124,48 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
         </div>
       </div>
 
-      {/* Summary text with markdown rendering - aligned with header text */}
+      {/* Summary text with collapsible container */}
       {review?.notes && (
-        <div className="pl-12 text-[13px] text-white/65 leading-relaxed mb-4 prose prose-sm prose-invert max-w-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={markdownComponents}
+        <div className="relative">
+          <div
+            className="pl-12 text-[13px] text-white/65 leading-relaxed mb-4 prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300"
+            style={{
+              maxHeight: isExpanded ? "none" : `${MAX_HEIGHT}px`,
+            }}
           >
-            {review.notes}
-          </ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {review.notes}
+            </ReactMarkdown>
+          </div>
+
+          {/* Gradient fade overlay when collapsed */}
+          {hasLongContent && !isExpanded && (
+            <div
+              className="absolute bottom-4 left-12 right-0 h-16 pointer-events-none"
+              style={{
+                background: "linear-gradient(to bottom, transparent, hsl(220 10% 12%))",
+              }}
+            />
+          )}
+
+          {/* Expand/collapse button */}
+          {hasLongContent && (
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="pl-12 text-[12px] font-medium transition-colors"
+              style={{ color: "hsl(217 90% 60%)" }}
+            >
+              {isExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
         </div>
       )}
 
       {/* Checklist */}
-      <div className="pl-12 space-y-0.5">
+      <div className="pl-12 space-y-0.5 mt-3">
         {checks.map((check, i) => (
           <ChecklistItem key={i} {...check} />
         ))}
