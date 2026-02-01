@@ -4,6 +4,38 @@
 
 ---
 
+### 2026-02-01 22:45:00 - Phase 60 Task 13: Integrate issue progress into StateHistoryTimeline
+**What:**
+- Updated `src/components/tasks/StateHistoryTimeline.tsx` to integrate issue tracking:
+  - Added `useTaskIssues` hook to fetch all issues for a task using `reviewIssuesApi.getByTaskId`
+  - Added `useTaskIssueProgress` hook to fetch issue progress summary using `reviewIssuesApi.getProgress`
+  - Added `IssueSummaryHeader` component displaying:
+    - Total issues and resolved count
+    - `IssueProgressBar` with severity breakdown (critical/major/minor/suggestion)
+  - Added `ReviewEntryIssues` component for each timeline entry showing:
+    - Collapsible issue list with chevron toggle
+    - New issues created by each review (blue color)
+    - Issues verified in each review (green color)
+  - Added `CompactIssueCard` component for inline display with severity/status badges
+  - Added `computeIssueDiff` function to calculate new/resolved/verified issues between reviews
+  - State management for expand/collapse via `expandedReviews` Set
+- Integrated existing components from `@/components/reviews`:
+  - `IssueProgressBar` for summary header
+  - `SeverityBadge` and `StatusBadge` for compact cards
+
+**Files:**
+- `src/components/tasks/StateHistoryTimeline.tsx` (updated - 461 LOC)
+
+**Commands:**
+- `npm run lint` (0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component updated but requires review data with issues to test
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 22:25:00 - Phase 60 Task 12: Add IssueList and IssueTimeline UI components
 **What:**
 - Created `src/components/Reviews/IssueList.tsx` with:
