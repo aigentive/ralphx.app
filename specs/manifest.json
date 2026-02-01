@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 60,
+  "currentPhase": 61,
   "phases": [
     {
       "phase": 0,
@@ -434,14 +434,14 @@
       "phase": 60,
       "name": "Review Issues as First-Class Entities",
       "prd": "specs/phases/prd_phase_60_review_issues.md",
-      "status": "active",
+      "status": "complete",
       "description": "Structured issue tracking in reviews with lifecycle management and UI integration"
     },
     {
       "phase": 61,
       "name": "Migration Test File Split",
       "prd": "specs/phases/prd_phase_61_migration_test_split.md",
-      "status": "pending",
+      "status": "active",
       "description": "Split migration tests.rs into per-migration test files for code quality"
     }
   ]

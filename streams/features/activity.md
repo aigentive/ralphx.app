@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-01 23:15:00 - Phase 60 Complete: Review Issues as First-Class Entities
+**What:**
+- All 13 PRD tasks completed with `"passes": true`
+- Gap verification passed: All API wiring verified (6 Tauri commands → frontend API → UI hooks)
+- Visual gap verification passed: All components (IssueList, IssueTimeline, StateHistoryTimeline) properly wired
+- No P0 items found during verification
+- Updated manifest.json: Phase 60 → complete, Phase 61 → active
+
+**Phase Summary:**
+- Added review_issues table with lifecycle tracking (open/in_progress/addressed/verified/wontfix)
+- Created ReviewIssue domain entity with severity/category enums
+- Added 6 Tauri commands for issue lifecycle management
+- Created IssueList and IssueTimeline UI components
+- Integrated issues display into StateHistoryTimeline
+- Updated worker and reviewer agents for structured issue workflow
+
+**Result:** Phase 60 complete, Phase 61 (Migration Test File Split) now active
+
+---
+
 ### 2026-02-01 22:45:00 - Phase 60 Task 13: Integrate issue progress into StateHistoryTimeline
 **What:**
 - Updated `src/components/tasks/StateHistoryTimeline.tsx` to integrate issue tracking:
