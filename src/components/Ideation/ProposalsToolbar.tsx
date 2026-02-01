@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CheckSquare, Square, ArrowUpDown, Trash2, ChevronDown, FileEdit, Inbox, ListTodo } from "lucide-react";
+import { CheckSquare, Square, ArrowUpDown, Trash2, ChevronDown, FileEdit, Inbox, ListTodo, Network, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ============================================================================
@@ -33,6 +33,8 @@ interface ProposalsToolbarProps {
   onSortByPriority: () => void;
   onClearAll: () => void;
   onApply: (targetColumn: string) => void;
+  onAnalyzeDependencies?: () => void;
+  isAnalyzingDependencies?: boolean;
 }
 
 // ============================================================================
@@ -47,28 +49,75 @@ export function ProposalsToolbar({
   onSortByPriority,
   onClearAll,
   onApply,
+  onAnalyzeDependencies,
+  isAnalyzingDependencies = false,
 }: ProposalsToolbarProps) {
   const canApply = selectedCount > 0;
+  const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies;
 
   return (
     <div
       className="flex items-center justify-between px-4 h-11"
       style={{
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
-        background: "rgba(0,0,0,0.3)",
+        borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+        background: "hsla(220 10% 8% / 0.6)",
       }}
     >
-      {/* Selection count */}
-      <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-        <span style={{ color: "var(--text-primary)" }} className="font-semibold">
-          {selectedCount}
+      {/* Left: Selection count and analyzing status */}
+      <div className="flex items-center gap-3">
+        <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+          <span style={{ color: "hsl(220 10% 90%)" }} className="font-semibold">
+            {selectedCount}
+          </span>
+          {" "}of {totalCount} selected
         </span>
-        {" "}of {totalCount} selected
-      </span>
 
-      {/* Actions */}
+        {isAnalyzingDependencies && (
+          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "hsl(14 100% 60%)" }}>
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Analyzing...</span>
+          </div>
+        )}
+      </div>
+
+      {/* Right: Actions */}
       <div className="flex items-center gap-1">
         <TooltipProvider>
+          {/* Analyze Dependencies */}
+          {showAnalyzeButton && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onAnalyzeDependencies}
+                  disabled={isAnalyzingDependencies}
+                  className="h-7 w-7 rounded-lg disabled:opacity-50 transition-colors duration-150"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "hsl(220 10% 90%)";
+                    e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <Network className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Re-analyze dependencies</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Separator after analyze button */}
+          {showAnalyzeButton && (
+            <div
+              className="w-px h-4 mx-1"
+              style={{ background: "hsla(220 10% 100% / 0.08)" }}
+            />
+          )}
+
           {/* Select All */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -77,14 +126,14 @@ export function ProposalsToolbar({
                 size="icon"
                 className="h-7 w-7 rounded-lg"
                 onClick={onSelectAll}
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.color = "hsl(220 10% 90%)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
                 }}
               >
                 <CheckSquare className="w-3.5 h-3.5" />
@@ -101,14 +150,14 @@ export function ProposalsToolbar({
                 size="icon"
                 className="h-7 w-7 rounded-lg"
                 onClick={onDeselectAll}
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.color = "hsl(220 10% 90%)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
                 }}
               >
                 <Square className="w-3.5 h-3.5" />
@@ -121,7 +170,7 @@ export function ProposalsToolbar({
         {/* Separator */}
         <div
           className="w-px h-4 mx-1"
-          style={{ background: "rgba(255,255,255,0.08)" }}
+          style={{ background: "hsla(220 10% 100% / 0.08)" }}
         />
 
         <TooltipProvider>
@@ -133,14 +182,14 @@ export function ProposalsToolbar({
                 size="icon"
                 className="h-7 w-7 rounded-lg"
                 onClick={onSortByPriority}
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.color = "hsl(220 10% 90%)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
                 }}
               >
                 <ArrowUpDown className="w-3.5 h-3.5" />
@@ -157,14 +206,14 @@ export function ProposalsToolbar({
                 size="icon"
                 className="h-7 w-7 rounded-lg"
                 onClick={onClearAll}
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(239,68,68,0.1)";
-                  e.currentTarget.style.color = "#ef4444";
+                  e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)";
+                  e.currentTarget.style.color = "hsl(0 70% 60%)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
                 }}
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -177,7 +226,7 @@ export function ProposalsToolbar({
         {/* Separator */}
         <div
           className="w-px h-4 mx-1"
-          style={{ background: "rgba(255,255,255,0.08)" }}
+          style={{ background: "hsla(220 10% 100% / 0.08)" }}
         />
 
         {/* Apply dropdown */}
@@ -192,18 +241,18 @@ export function ProposalsToolbar({
                 "transition-all duration-150"
               )}
               style={{
-                color: canApply ? "#ff6b35" : "var(--text-muted)",
-                background: canApply ? "rgba(255,107,53,0.1)" : "transparent",
-                border: canApply ? "1px solid rgba(255,107,53,0.2)" : "1px solid transparent",
+                color: canApply ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
+                background: canApply ? "hsla(14 100% 60% / 0.1)" : "transparent",
+                border: canApply ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid transparent",
               }}
               onMouseEnter={(e) => {
                 if (canApply) {
-                  e.currentTarget.style.background = "rgba(255,107,53,0.15)";
+                  e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (canApply) {
-                  e.currentTarget.style.background = "rgba(255,107,53,0.1)";
+                  e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
                 }
               }}
             >
@@ -215,10 +264,10 @@ export function ProposalsToolbar({
             align="end"
             className="w-36"
             style={{
-              background: "rgba(30,30,30,0.95)",
+              background: "hsl(220 10% 14%)",
               backdropFilter: "blur(20px)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              border: "1px solid hsla(220 10% 100% / 0.1)",
+              boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
             }}
           >
             <DropdownMenuItem
