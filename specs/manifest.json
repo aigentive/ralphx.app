@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 63,
+  "currentPhase": 64,
   "phases": [
     {
       "phase": 0,
@@ -455,14 +455,14 @@
       "phase": 63,
       "name": "Wire Review Issues to UI Detail Views",
       "prd": "specs/phases/prd_phase_63_wire_review_issues_ui.md",
-      "status": "active",
+      "status": "complete",
       "description": "Wire Phase 60 review issues API to detail views with IssueList component"
     },
     {
       "phase": 64,
       "name": "Link Conversation IDs to Task State History",
       "prd": "specs/phases/prd_phase_64_link_conversation_ids.md",
-      "status": "pending",
+      "status": "active",
       "description": "Store conversation_id and agent_run_id in state history for history navigation"
     }
   ]
