@@ -135,7 +135,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         style={{
           padding: "10px 12px",
           borderRadius: "10px",
-          border: `1.5px dashed ${isHovered ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.08)"}`,
+          border: `1.5px dashed ${isHovered ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.15)"}`,
           backgroundColor: isHovered ? "hsla(14 100% 60% / 0.04)" : "transparent",
           transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
           cursor: "pointer",
@@ -189,15 +189,15 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       className="w-full relative"
       style={{
         padding: "12px",
-        borderRadius: "12px",
-        backgroundColor: "hsl(220 10% 14%)",
-        border: "1px solid hsla(220 10% 100% / 0.08)",
-        boxShadow: "0 4px 12px hsla(220 10% 0% / 0.3)",
+        borderRadius: "10px",
+        backgroundColor: "hsl(220 10% 12%)",
+        border: "1px solid hsla(220 10% 100% / 0.06)",
+        boxShadow: "0 2px 8px hsla(220 10% 0% / 0.2)",
         animation: "fadeInScale 180ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }}
     >
       {/* Title input row */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 overflow-hidden">
         <input
           ref={inputRef}
           data-testid="inline-task-add-input"
@@ -216,7 +216,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
           }}
           placeholder="Task title"
           disabled={createMutation.isPending}
-          className="flex-1 bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+          className="flex-1 min-w-0 bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
           style={{
             color: "hsl(220 10% 90%)",
             fontSize: "13px",
@@ -230,19 +230,19 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         {/* Tab hint - keyboard badge style */}
         {!showDescription && (
           <div
-            className="flex items-center gap-1 shrink-0"
+            className="flex items-center gap-0.5 shrink-0"
             style={{
-              padding: "3px 6px",
-              borderRadius: "5px",
-              backgroundColor: "hsla(220 10% 100% / 0.05)",
-              border: "1px solid hsla(220 10% 100% / 0.08)",
+              padding: "2px 5px",
+              borderRadius: "4px",
+              backgroundColor: "hsla(220 10% 100% / 0.04)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           >
             <span
               style={{
-                fontSize: "10px",
-                fontWeight: 500,
-                color: "hsl(220 10% 45%)",
+                fontSize: "9px",
+                fontWeight: 600,
+                color: "hsl(220 10% 40%)",
                 letterSpacing: "0.02em",
                 textTransform: "uppercase",
               }}
@@ -251,9 +251,9 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             </span>
             <span
               style={{
-                fontSize: "10px",
-                color: "hsl(220 10% 45%)",
-                opacity: 0.6,
+                fontSize: "9px",
+                color: "hsl(220 10% 40%)",
+                opacity: 0.5,
               }}
             >
               +desc
@@ -307,11 +307,11 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
 
       {/* Action row */}
       <div
-        className="flex items-center justify-between"
+        className="flex items-center justify-between gap-3"
         style={{
           marginTop: "10px",
           paddingTop: "10px",
-          borderTop: "1px solid hsla(220 10% 100% / 0.06)",
+          borderTop: "1px solid hsla(220 10% 100% / 0.04)",
         }}
       >
         {/* Left: More options */}
@@ -320,15 +320,16 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
           onClick={handleMoreOptions}
           onMouseDown={(e) => e.preventDefault()}
           disabled={createMutation.isPending}
-          className="group/btn flex items-center gap-1"
+          className="group/btn flex items-center shrink-0"
           style={{
-            padding: "4px 8px",
-            marginLeft: "-8px",
-            borderRadius: "6px",
+            padding: "4px 6px",
+            marginLeft: "-6px",
+            borderRadius: "4px",
             backgroundColor: "transparent",
             border: "none",
             cursor: "pointer",
             transition: "background-color 150ms ease",
+            whiteSpace: "nowrap",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = "hsla(220 10% 100% / 0.05)";
@@ -339,18 +340,18 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         >
           <span
             style={{
-              fontSize: "12px",
+              fontSize: "11px",
               fontWeight: 500,
               color: "hsl(14 100% 60%)",
               letterSpacing: "-0.006em",
             }}
           >
-            More options
+            More
           </span>
         </button>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Cancel */}
           <button
             data-testid="inline-task-add-cancel"
@@ -358,24 +359,23 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             onMouseDown={(e) => e.preventDefault()}
             disabled={createMutation.isPending}
             style={{
-              padding: "5px 10px",
-              borderRadius: "6px",
+              padding: "4px 8px",
+              borderRadius: "5px",
               backgroundColor: "transparent",
               border: "none",
-              fontSize: "12px",
+              fontSize: "11px",
               fontWeight: 500,
-              color: "hsl(220 10% 45%)",
-              letterSpacing: "-0.006em",
+              color: "hsl(220 10% 50%)",
               cursor: "pointer",
               transition: "all 150ms ease",
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = "hsla(220 10% 100% / 0.05)";
-              e.currentTarget.style.color = "hsl(220 10% 65%)";
+              e.currentTarget.style.color = "hsl(220 10% 70%)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "hsl(220 10% 45%)";
+              e.currentTarget.style.color = "hsl(220 10% 50%)";
             }}
           >
             Cancel
@@ -387,14 +387,13 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             onMouseDown={(e) => e.preventDefault()}
             disabled={createMutation.isPending || !title.trim()}
             style={{
-              padding: "5px 12px",
-              borderRadius: "6px",
+              padding: "4px 10px",
+              borderRadius: "5px",
               backgroundColor: title.trim() ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.06)",
               border: "none",
-              fontSize: "12px",
+              fontSize: "11px",
               fontWeight: 600,
-              color: title.trim() ? "white" : "hsl(220 10% 45%)",
-              letterSpacing: "-0.006em",
+              color: title.trim() ? "white" : "hsl(220 10% 40%)",
               cursor: title.trim() ? "pointer" : "default",
               transition: "all 150ms ease",
               opacity: createMutation.isPending ? 0.6 : 1,
@@ -410,9 +409,9 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               }
             }}
           >
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1">
               {createMutation.isPending ? (
-                "Creating..."
+                "..."
               ) : (
                 <>
                   Create
@@ -420,12 +419,12 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      padding: "1px 4px",
-                      borderRadius: "3px",
-                      backgroundColor: "hsla(0 0% 100% / 0.15)",
-                      fontSize: "10px",
+                      padding: "1px 3px",
+                      borderRadius: "2px",
+                      backgroundColor: title.trim() ? "hsla(0 0% 100% / 0.15)" : "hsla(220 10% 100% / 0.08)",
+                      fontSize: "9px",
                       fontWeight: 500,
-                      opacity: 0.8,
+                      opacity: 0.7,
                     }}
                   >
                     ↵
