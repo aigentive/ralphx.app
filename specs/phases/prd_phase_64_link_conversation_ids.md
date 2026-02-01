@@ -161,7 +161,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ui): wire conversation selection to state history navigation"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

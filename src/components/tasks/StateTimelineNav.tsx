@@ -116,6 +116,10 @@ interface TimelineEntry {
   status: InternalStatus;
   timestamp: string;
   isCurrent: boolean;
+  /** Conversation ID from the state transition metadata (for states that spawn conversations) */
+  conversationId?: string | undefined;
+  /** Agent run ID from the state transition metadata */
+  agentRunId?: string | undefined;
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -253,8 +257,18 @@ function TimelineConnector({ isActive, color }: TimelineConnectorProps) {
 export interface StateTimelineNavProps {
   taskId: string;
   currentStatus: InternalStatus;
-  onStateSelect: (state: { status: InternalStatus; timestamp: string } | null) => void;
-  selectedState?: { status: InternalStatus; timestamp: string } | null;
+  onStateSelect: (state: {
+    status: InternalStatus;
+    timestamp: string;
+    conversationId?: string | undefined;
+    agentRunId?: string | undefined;
+  } | null) => void;
+  selectedState?: {
+    status: InternalStatus;
+    timestamp: string;
+    conversationId?: string | undefined;
+    agentRunId?: string | undefined;
+  } | null;
 }
 
 export function StateTimelineNav({
@@ -304,6 +318,8 @@ export function StateTimelineNav({
         status: transition.toStatus,
         timestamp: transition.timestamp,
         isCurrent: transition.toStatus === currentStatus,
+        conversationId: transition.conversationId,
+        agentRunId: transition.agentRunId,
       });
     }
 
@@ -323,7 +339,12 @@ export function StateTimelineNav({
     if (entry.isCurrent) {
       onStateSelect(null);
     } else {
-      onStateSelect({ status: entry.status, timestamp: entry.timestamp });
+      onStateSelect({
+        status: entry.status,
+        timestamp: entry.timestamp,
+        conversationId: entry.conversationId,
+        agentRunId: entry.agentRunId,
+      });
     }
   };
 

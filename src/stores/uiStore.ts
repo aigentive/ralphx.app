@@ -119,7 +119,14 @@ interface UiState {
   /** ID of selected task for split-screen overlay (kanban view only) */
   selectedTaskId: string | null;
   /** History state for time-travel feature - shared between TaskDetailOverlay and IntegratedChatPanel */
-  taskHistoryState: { status: InternalStatus; timestamp: string } | null;
+  taskHistoryState: {
+    status: InternalStatus;
+    timestamp: string;
+    /** Conversation ID from the state transition metadata (for states that spawn conversations) */
+    conversationId?: string | undefined;
+    /** Agent run ID from the state transition metadata */
+    agentRunId?: string | undefined;
+  } | null;
   /** Task creation overlay context, or null if closed */
   taskCreationContext: { projectId: string; defaultTitle?: string } | null;
   /** Chat visibility per view (persisted to localStorage) */
@@ -184,7 +191,12 @@ interface UiActions {
   /** Set selected task ID for split-screen overlay */
   setSelectedTaskId: (taskId: string | null) => void;
   /** Set task history state for time-travel feature */
-  setTaskHistoryState: (state: { status: InternalStatus; timestamp: string } | null) => void;
+  setTaskHistoryState: (state: {
+    status: InternalStatus;
+    timestamp: string;
+    conversationId?: string | undefined;
+    agentRunId?: string | undefined;
+  } | null) => void;
   /** Open task creation overlay */
   openTaskCreation: (projectId: string, defaultTitle?: string) => void;
   /** Close task creation overlay */
