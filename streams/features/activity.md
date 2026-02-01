@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-02 13:45:00 - Phase 63 Task 5: Add issue progress bar to WaitingTaskDetail
+**What:**
+- Added imports for `useQuery`, `reviewIssuesApi`, `IssueProgressBar`
+- Added query to fetch issue progress via `reviewIssuesApi.getProgress(task.id)`
+- Added new "Issue Resolution" section with `<IssueProgressBar progress={issueProgress} showSeverityBreakdown />`
+- Section only renders when `issueProgress.total > 0` (tasks with issues from previous review cycles)
+
+**Files Modified:**
+- `src/components/tasks/detail-views/WaitingTaskDetail.tsx` (MODIFIED - added issue progress query and display section)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - no new errors, only pre-existing warnings)
+
+**Visual Verification:** N/A - additive change using existing tested IssueProgressBar component
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 13:15:00 - Phase 63 Task 4: Wire EscalatedTaskDetail to review issues API
 **What:**
 - Added imports for `useQuery`, `reviewIssuesApi`, `IssueList`

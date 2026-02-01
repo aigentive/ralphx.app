@@ -6,6 +6,7 @@
  */
 
 import { Clock, CheckCircle2, Loader2, Hourglass } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { StepList } from "../StepList";
 import {
   SectionTitle,
@@ -15,6 +16,8 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
+import { reviewIssuesApi } from "@/api/review-issues";
+import { IssueProgressBar } from "@/components/reviews/IssueList";
 import type { Task } from "@/types/task";
 
 interface WaitingTaskDetailProps {
@@ -130,10 +133,15 @@ function WorkSummaryCard({
 export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const { data: progress } = useStepProgress(task.id);
+  const { data: issueProgress } = useQuery({
+    queryKey: ["issue-progress", task.id],
+    queryFn: () => reviewIssuesApi.getProgress(task.id),
+  });
 
   const hasSteps = (steps?.length ?? 0) > 0;
   const stepsCompleted = progress?.completed ?? 0;
   const totalSteps = progress?.total ?? 0;
+  const hasIssueProgress = issueProgress && issueProgress.total > 0;
 
   return (
     <TwoColumnLayout
@@ -166,6 +174,16 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
           isLoading={stepsLoading}
         />
       </section>
+
+      {/* Issue Resolution Progress */}
+      {hasIssueProgress && (
+        <section data-testid="issue-progress-section">
+          <SectionTitle>Issue Resolution</SectionTitle>
+          <DetailCard>
+            <IssueProgressBar progress={issueProgress} showSeverityBreakdown />
+          </DetailCard>
+        </section>
+      )}
 
       {/* Steps Section */}
       {stepsLoading && (
