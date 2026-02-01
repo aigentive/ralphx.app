@@ -33,6 +33,7 @@ import { useReviewsByTaskId, useTaskStateHistory, reviewKeys } from "@/hooks/use
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
@@ -344,9 +345,15 @@ export function ReviewDetailModal({
   const { data: fetchedHistory } = useTaskStateHistory(taskId, { enabled: !historyProp });
   const history = historyProp ?? fetchedHistory ?? [];
 
+  // Get project path for diff operations
+  const projects = useProjectStore((s) => s.projects);
+  const activeProject = useProjectStore(selectActiveProject);
+  const project = task?.projectId ? projects[task.projectId] : activeProject;
+  const projectPath = project?.workingDirectory;
+
   // Git diff data
   const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =
-    useGitDiff({ taskId, enabled: true });
+    useGitDiff({ taskId, projectPath, enabled: !!projectPath });
 
   // Check if task is in a state that allows human approval
   // (review_passed or escalated)
