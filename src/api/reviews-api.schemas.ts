@@ -47,8 +47,8 @@ export type ReviewActionResponse = z.infer<typeof ReviewActionResponseSchema>;
  */
 export const ReviewIssueSchema = z.object({
   severity: z.string(), // "critical" | "major" | "minor" | "suggestion"
-  file: z.string().nullable(),
-  line: z.number().int().nullable(),
+  file: z.string().nullish(), // can be string, null, or missing
+  line: z.number().int().nullish(), // can be number, null, or missing
   description: z.string(),
 });
 

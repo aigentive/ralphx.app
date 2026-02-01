@@ -4,7 +4,10 @@
  * Shows a vertical timeline of review events with native styling.
  */
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { CheckCircle2, RotateCcw, Bot, User } from "lucide-react";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
 export interface ReviewTimelineProps {
@@ -117,9 +120,14 @@ function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
           </span>
         </div>
         {entry.notes && (
-          <p className="text-[12px] text-white/50 mt-1.5 pl-5 leading-relaxed">
-            {entry.notes}
-          </p>
+          <div className="text-[12px] text-white/50 mt-1.5 pl-5 leading-relaxed prose prose-sm prose-invert max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {entry.notes}
+            </ReactMarkdown>
+          </div>
         )}
       </div>
     </div>
