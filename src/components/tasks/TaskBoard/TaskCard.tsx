@@ -446,15 +446,21 @@ export function TaskCard({
           )}
         </div>
 
-        {/* Step progress indicator - shown when task is executing, in QA, or pending review */}
+        {/* Step progress indicator - shown for all post-execution statuses */}
         {(task.internalStatus === "executing" ||
+          task.internalStatus === "re_executing" ||
           task.internalStatus.startsWith("qa_") ||
-          task.internalStatus === "pending_review") && (
+          task.internalStatus === "pending_review" ||
+          task.internalStatus === "reviewing" ||
+          task.internalStatus === "review_passed" ||
+          task.internalStatus === "escalated" ||
+          task.internalStatus === "revision_needed" ||
+          task.internalStatus === "approved") && (
           <div className="flex items-center gap-2 mt-2" data-testid="step-progress-footer">
             <StepProgressBar taskId={task.id} compact={true} />
 
             {/* Duration badge - shown when executing */}
-            {task.internalStatus === "executing" && executionState.duration !== null && (
+            {(task.internalStatus === "executing" || task.internalStatus === "re_executing") && executionState.duration !== null && (
               <div className="flex items-center gap-1 text-xs text-white/50">
                 <Clock className="w-3 h-3" />
                 <span>{formatDuration(executionState.duration)}</span>

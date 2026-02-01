@@ -49,15 +49,16 @@ function getStepDotColor(
 /**
  * StepProgressBar Component
  *
- * Renders a visual progress indicator using dots, where each dot represents
- * a step with color-coded status.
+ * Renders a visual progress indicator:
+ * - Compact mode: thin progress bar with percentage (for TaskCard)
+ * - Full mode: dots with count (for detail views)
  *
  * @example
  * ```tsx
- * // Compact mode for TaskCard
+ * // Compact mode for TaskCard - shows bar + percentage
  * <StepProgressBar taskId="task-123" compact />
  *
- * // Full mode with text
+ * // Full mode with dots
  * <StepProgressBar taskId="task-123" />
  * ```
  */
@@ -71,7 +72,66 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
 
   const { total, completed, skipped, failed, inProgress } = progress;
   const completedAndSkipped = completed + skipped;
+  const percentComplete = Math.round((completedAndSkipped / total) * 100);
 
+  // Compact mode: progress bar + percentage + dots for TaskCard
+  if (compact) {
+    return (
+      <div className="flex-1 space-y-1.5">
+        {/* Progress bar row with percentage */}
+        <div className="flex items-center gap-2">
+          <div
+            className="flex-1 h-1 rounded-full overflow-hidden"
+            style={{ backgroundColor: "hsl(220 10% 14%)" }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${percentComplete}%`,
+                backgroundColor: failed > 0
+                  ? "hsl(0 70% 55%)"
+                  : inProgress > 0
+                  ? "hsl(14 100% 60%)"
+                  : percentComplete === 100
+                  ? "hsl(145 60% 45%)"
+                  : "hsl(220 10% 50%)",
+              }}
+            />
+          </div>
+          <span
+            className="text-[10px] tabular-nums shrink-0"
+            style={{
+              color: failed > 0
+                ? "hsl(0 70% 55%)"
+                : percentComplete === 100
+                ? "hsl(145 60% 45%)"
+                : "hsl(220 10% 40%)",
+            }}
+          >
+            {percentComplete}%
+          </span>
+        </div>
+        {/* Dots row */}
+        <div className="flex items-center gap-1">
+          {Array.from({ length: total }).map((_, index) => (
+            <div
+              key={index}
+              className={`h-1.5 w-1.5 rounded-full transition-colors ${getStepDotColor(
+                index,
+                completed,
+                skipped,
+                failed,
+                inProgress
+              )}`}
+              aria-hidden="true"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Full mode: dots with count
   return (
     <div className="flex items-center gap-2">
       {/* Progress dots */}
@@ -92,11 +152,9 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
       </div>
 
       {/* Text summary */}
-      {!compact && (
-        <span className="text-xs text-text-muted">
-          {completedAndSkipped}/{total}
-        </span>
-      )}
+      <span className="text-xs text-text-muted">
+        {completedAndSkipped}/{total}
+      </span>
     </div>
   );
 }
