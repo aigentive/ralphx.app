@@ -223,6 +223,30 @@ where
                     dependencies_created += 1;
                 }
             }
+
+            // Set initial Blocked/Ready status based on dependency graph
+            // Tasks with blockers start as Blocked; tasks without blockers start as Ready
+            for task in &created_tasks {
+                let blockers = self.task_dep_repo.get_blockers(&task.id).await?;
+                if !blockers.is_empty() {
+                    // Get blocker names for the blocked_reason
+                    let blocker_names: Vec<String> = blockers
+                        .iter()
+                        .filter_map(|blocker_id| {
+                            created_tasks.iter()
+                                .find(|t| t.id == *blocker_id)
+                                .map(|t| t.title.clone())
+                        })
+                        .collect();
+
+                    // Update task to Blocked status with reason
+                    let mut blocked_task = task.clone();
+                    blocked_task.internal_status = crate::domain::entities::InternalStatus::Blocked;
+                    blocked_task.blocked_reason = Some(format!("Waiting for: {}", blocker_names.join(", ")));
+                    blocked_task.touch();
+                    self.task_repo.update(&blocked_task).await?;
+                }
+            }
         }
 
         // Check if all proposals in session are now converted

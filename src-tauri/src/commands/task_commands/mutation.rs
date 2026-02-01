@@ -171,6 +171,7 @@ pub async fn move_task(
         Arc::clone(&execution_state),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
         Arc::clone(&state.agent_run_repo),
@@ -184,6 +185,7 @@ pub async fn move_task(
     // Create the transition service with all required dependencies
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
@@ -559,6 +561,7 @@ pub async fn block_task(
         Arc::clone(&execution_state),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
         Arc::clone(&state.agent_run_repo),
@@ -572,6 +575,7 @@ pub async fn block_task(
     // Create the transition service
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
@@ -658,6 +662,7 @@ pub async fn unblock_task(
         Arc::clone(&execution_state),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
         Arc::clone(&state.agent_run_repo),
@@ -671,6 +676,7 @@ pub async fn unblock_task(
     // Create the transition service
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),

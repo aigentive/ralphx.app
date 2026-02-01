@@ -31,7 +31,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
+    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 
@@ -173,6 +173,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
@@ -189,6 +190,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         agent_run_repo: Arc<dyn AgentRunRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         task_repo: Arc<dyn TaskRepository>,
+        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
@@ -208,6 +210,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             agent_run_repo,
             project_repo,
             task_repo,
+            task_dependency_repo,
             ideation_session_repo,
             activity_event_repo,
             message_queue,
@@ -454,6 +457,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let conversation_repo = Arc::clone(&self.conversation_repo);
         let agent_run_repo = Arc::clone(&self.agent_run_repo);
         let task_repo = Arc::clone(&self.task_repo);
+        let task_dependency_repo = Arc::clone(&self.task_dependency_repo);
         let project_repo = Arc::clone(&self.project_repo);
         let ideation_session_repo = Arc::clone(&self.ideation_session_repo);
         let activity_event_repo = Arc::clone(&self.activity_event_repo);
@@ -481,6 +485,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             conversation_repo,
             agent_run_repo,
             task_repo,
+            task_dependency_repo,
             project_repo,
             ideation_session_repo,
             activity_event_repo,

@@ -4,6 +4,46 @@
 
 ---
 
+### 2026-02-02 08:30:00 - Phase 62 Task 11: Implement automatic task blocking/unblocking based on dependencies
+**What:**
+- Created `RepoBackedDependencyManager` in `task_transition_service.rs` implementing the `DependencyManager` trait
+- Implements real unblock logic: when a task completes, checks all dependent tasks and transitions them from Blocked→Ready if all blockers are done
+- Wired `task_dependency_repo` through entire application:
+  - `TaskTransitionService::new()` - added `task_dep_repo` parameter
+  - `TaskSchedulerService::new()` - added `task_dependency_repo` parameter
+  - `ClaudeChatService` - added field and constructor parameter
+  - `ChatResumptionRunner` - added field and wiring
+  - All command handlers (execution_commands, task_commands/mutation, review_commands, http_server/handlers/reviews)
+  - Ideation orchestrator commands
+- Updated `ApplyService` to set initial Blocked/Ready status on plan accept:
+  - Tasks with blockers start as `Blocked` with reason listing blocker names
+  - Tasks without blockers start as `Ready`
+- Removed obsolete `NoOpDependencyManager` test
+
+**Files Modified:**
+- `src-tauri/src/application/task_transition_service.rs` (MODIFIED - RepoBackedDependencyManager, removed NoOp test)
+- `src-tauri/src/application/task_scheduler_service.rs` (MODIFIED - added task_dependency_repo param, fixed test)
+- `src-tauri/src/application/chat_service/mod.rs` (MODIFIED - added task_dependency_repo field)
+- `src-tauri/src/application/chat_resumption.rs` (MODIFIED - added task_dependency_repo)
+- `src-tauri/src/application/apply_service/mod.rs` (MODIFIED - initial blocking logic)
+- `src-tauri/src/commands/execution_commands.rs` (MODIFIED - 7 call sites)
+- `src-tauri/src/commands/task_commands/mutation.rs` (MODIFIED - 3 call sites)
+- `src-tauri/src/commands/review_commands.rs` (MODIFIED - 2 call sites)
+- `src-tauri/src/commands/unified_chat_commands.rs` (MODIFIED)
+- `src-tauri/src/commands/ideation_commands/ideation_commands_orchestrator.rs` (MODIFIED - 2 call sites)
+- `src-tauri/src/http_server/handlers/reviews.rs` (MODIFIED - 3 call sites)
+- `src-tauri/src/lib.rs` (MODIFIED - ChatResumptionRunner wiring)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - all 3321 tests)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 06:45:00 - Phase 62 Task 10: Update worker agent prompt with dependency context guidance
 **What:**
 - Added "Step 4: Check Task Dependencies" section to worker agent prompt
