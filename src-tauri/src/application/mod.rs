@@ -7,6 +7,7 @@ pub mod chat_resumption;
 pub mod chat_service;
 pub mod dependency_service;
 pub mod diff_service;
+pub mod git_service;
 pub mod ideation_service;
 pub mod permission_state;
 pub mod priority_service;
@@ -26,6 +27,9 @@ pub use apply_service::{
 };
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
 pub use diff_service::{DiffService, FileChange, FileChangeStatus, FileDiff};
+pub use git_service::{
+    CommitInfo, DiffStats, GitService, MergeAttemptResult, MergeResult, RebaseResult,
+};
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
 };

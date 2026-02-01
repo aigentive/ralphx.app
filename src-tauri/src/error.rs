@@ -31,6 +31,12 @@ pub enum AppError {
 
     #[error("Infrastructure error: {0}")]
     Infrastructure(String),
+
+    #[error("Git operation error: {0}")]
+    GitOperation(String),
+
+    #[error("Execution blocked: {0}")]
+    ExecutionBlocked(String),
 }
 
 impl From<AgentError> for AppError {
