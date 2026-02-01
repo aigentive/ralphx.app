@@ -37,23 +37,25 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
     <div className="relative group my-2 max-w-full overflow-hidden">
       {language && (
         <span
-          className="absolute top-1 left-3 text-[11px]"
-          style={{ color: "var(--text-muted)" }}
+          className="absolute top-1.5 left-3 text-[10px] uppercase tracking-wide"
+          style={{ color: "hsl(220 10% 45%)" }}
         >
           {language}
         </span>
       )}
       <pre
-        className="rounded-md overflow-x-auto max-w-full"
+        className="rounded-lg overflow-x-auto max-w-full"
         style={{
-          backgroundColor: "var(--bg-base)",
-          border: "1px solid var(--border-subtle)",
+          /* macOS Tahoe: flat dark background, no border */
+          backgroundColor: "hsl(220 10% 10%)",
+          border: "none",
         }}
       >
         <code
-          className={cn("block p-3 text-[13px]", language && "pt-6")}
+          className={cn("block p-3 text-[12px]", language && "pt-7")}
           style={{
             fontFamily: "var(--font-mono)",
+            color: "hsl(220 10% 80%)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -93,7 +95,7 @@ export const markdownComponents = {
       target="_blank"
       rel="noopener noreferrer"
       className="underline hover:no-underline"
-      style={{ color: "var(--accent-primary)" }}
+      style={{ color: "hsl(14 100% 60%)" }} /* macOS Tahoe accent */
       {...props}
     >
       {children}
@@ -113,9 +115,11 @@ export const markdownComponents = {
     }
     return (
       <code
-        className="px-1 py-0.5 rounded text-[13px] break-all"
+        className="px-1.5 py-0.5 rounded text-[12px] break-all"
         style={{
-          backgroundColor: "var(--bg-base)",
+          /* macOS Tahoe: subtle inline code background */
+          backgroundColor: "hsl(220 10% 18%)",
+          color: "hsl(220 10% 85%)",
           fontFamily: "var(--font-mono)",
         }}
         {...props}
@@ -126,7 +130,7 @@ export const markdownComponents = {
   },
   pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <>{children}</>,
   p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p className="mb-2 last:mb-0 leading-normal" {...props}>
+    <p className="leading-relaxed [&:not(:last-child)]:mb-2" {...props}>
       {children}
     </p>
   ),
@@ -172,21 +176,28 @@ export const markdownComponents = {
   ),
   hr: ({ ...props }: React.HTMLAttributes<HTMLHRElement>) => (
     <hr
-      className="border-t"
       style={{
-        borderColor: "var(--border-subtle)",
-        marginTop: "8px",
-        marginBottom: "8px",
+        /* macOS Tahoe: very subtle separator */
+        border: "none",
+        borderTop: "1px solid hsla(220 10% 100% / 0.06)",
+        marginTop: "12px",
+        marginBottom: "12px",
       }}
       {...props}
     />
   ),
-  // Table support
+  // Table support - macOS Tahoe flat styling with horizontal scroll
   table: ({ children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
-    <div className="overflow-x-auto my-2">
+    <div
+      className="overflow-x-auto my-3 rounded-lg"
+      style={{
+        /* macOS Tahoe: subtle background for table container */
+        backgroundColor: "hsl(220 10% 12%)",
+      }}
+    >
       <table
-        className="min-w-full text-[12px] border-collapse"
-        style={{ borderColor: "var(--border-subtle)" }}
+        className="text-[12px] border-collapse"
+        style={{ minWidth: "max-content" }} /* Prevent column shrinking */
         {...props}
       >
         {children}
@@ -195,7 +206,10 @@ export const markdownComponents = {
   ),
   thead: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
     <thead
-      style={{ backgroundColor: "var(--bg-base)" }}
+      style={{
+        /* macOS Tahoe: slightly elevated header */
+        backgroundColor: "hsl(220 10% 16%)",
+      }}
       {...props}
     >
       {children}
@@ -206,8 +220,10 @@ export const markdownComponents = {
   ),
   tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
     <tr
-      className="border-b"
-      style={{ borderColor: "var(--border-subtle)" }}
+      style={{
+        /* macOS Tahoe: very subtle row separator */
+        borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+      }}
       {...props}
     >
       {children}
@@ -215,8 +231,11 @@ export const markdownComponents = {
   ),
   th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
     <th
-      className="px-2 py-1.5 text-left font-semibold"
-      style={{ color: "var(--text-primary)", borderColor: "var(--border-subtle)" }}
+      className="px-3 py-2 text-left font-medium text-[11px] uppercase tracking-wide"
+      style={{
+        color: "hsl(220 10% 55%)",
+        whiteSpace: "nowrap", /* Prevent text wrapping */
+      }}
       {...props}
     >
       {children}
@@ -224,8 +243,11 @@ export const markdownComponents = {
   ),
   td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
     <td
-      className="px-2 py-1.5"
-      style={{ color: "var(--text-secondary)", borderColor: "var(--border-subtle)" }}
+      className="px-3 py-2"
+      style={{
+        color: "hsl(220 10% 80%)",
+        whiteSpace: "nowrap", /* Prevent text wrapping */
+      }}
       {...props}
     >
       {children}

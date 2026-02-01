@@ -47,7 +47,8 @@ interface ToolCallIndicatorProps {
  * Render tool icon based on tool name
  */
 function ToolIcon({ name, hasError }: { name: string; hasError: boolean }) {
-  const style = { color: hasError ? "var(--text-primary)" : "var(--accent-primary)" };
+  /* macOS Tahoe: flat colors */
+  const style = { color: hasError ? "hsl(0 70% 65%)" : "hsl(14 100% 60%)" };
   const className = "flex-shrink-0";
 
   switch (name) {
@@ -76,13 +77,11 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   return (
     <div
       data-testid="tool-call-indicator"
-      className={`rounded-md border overflow-hidden max-w-full ${className}`}
+      className={`rounded-lg overflow-hidden max-w-full ${className}`}
       style={{
-        backgroundColor: hasError ? "var(--status-error)" : "var(--bg-elevated)",
-        borderColor: hasError
-          ? "rgba(239, 68, 68, 0.3)"
-          : "var(--border-subtle)",
-        opacity: hasError ? 0.9 : 1,
+        /* macOS Tahoe: flat solid background, no border */
+        backgroundColor: hasError ? "hsla(0 70% 55% / 0.15)" : "hsl(220 10% 14%)",
+        border: "none",
       }}
     >
       {/* Header - Always visible */}
@@ -98,25 +97,26 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
           <ChevronDown
             size={14}
             className="flex-shrink-0"
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "hsl(220 10% 45%)" }}
           />
         ) : (
           <ChevronRight
             size={14}
             className="flex-shrink-0"
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "hsl(220 10% 45%)" }}
           />
         )}
 
         {/* Tool icon */}
         <ToolIcon name={toolCall.name} hasError={hasError} />
 
-        {/* Tool name badge */}
+        {/* Tool name badge - macOS Tahoe flat style */}
         <span
           className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
           style={{
-            backgroundColor: hasError ? "rgba(0,0,0,0.2)" : "var(--bg-base)",
-            color: hasError ? "var(--text-primary)" : "var(--text-muted)",
+            /* macOS Tahoe: subtle solid background */
+            backgroundColor: hasError ? "hsla(0 0% 0% / 0.2)" : "hsl(220 10% 10%)",
+            color: hasError ? "hsl(220 10% 90%)" : "hsl(220 10% 55%)",
             fontFamily: "var(--font-mono)",
           }}
         >
@@ -128,7 +128,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
           <span
             className="text-xs truncate font-mono"
             style={{
-              color: hasError ? "var(--text-primary)" : "var(--text-secondary)",
+              color: hasError ? "hsl(0 70% 75%)" : "hsl(220 10% 75%)",
             }}
           >
             {summary.title}
@@ -136,7 +136,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
           {summary.subtitle && (
             <span
               className="text-[10px] truncate"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: "hsl(220 10% 50%)" }}
             >
               {summary.subtitle}
             </span>
@@ -148,8 +148,9 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
           <span
             className="text-[10px] font-medium px-1.5 py-0.5 rounded"
             style={{
-              backgroundColor: "rgba(0,0,0,0.2)",
-              color: "var(--text-primary)",
+              /* macOS Tahoe: subtle error background */
+              backgroundColor: "hsla(0 70% 50% / 0.2)",
+              color: "hsl(0 70% 70%)",
             }}
           >
             Failed
@@ -161,8 +162,11 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
       {isExpanded && (
         <div
           data-testid="tool-call-details"
-          className="px-3 pb-3 space-y-2 border-t pt-3"
-          style={{ borderColor: "var(--border-subtle)" }}
+          className="px-3 pb-3 space-y-2 pt-2"
+          style={{
+            /* macOS Tahoe: no border separator */
+            borderTop: "1px solid hsla(220 10% 100% / 0.04)",
+          }}
         >
           {/* Artifact preview for context tools */}
           {isArtifactContextTool(toolCall.name) && toolCall.result && !hasError ? (
@@ -175,15 +179,16 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
           <div>
             <div
               className="text-[10px] font-medium mb-1 uppercase tracking-wide"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: "hsl(220 10% 45%)" }}
             >
               Arguments
             </div>
             <pre
               className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-w-full max-h-48"
               style={{
-                backgroundColor: "var(--bg-base)",
-                color: "var(--text-primary)",
+                /* macOS Tahoe: flat dark background */
+                backgroundColor: "hsl(220 10% 10%)",
+                color: "hsl(220 10% 80%)",
                 fontFamily: "var(--font-mono)",
                 wordBreak: "break-word",
                 whiteSpace: "pre-wrap",
@@ -198,15 +203,16 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
             <div>
               <div
                 className="text-[10px] font-medium mb-1 uppercase tracking-wide"
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "hsl(220 10% 45%)" }}
               >
                 Result
               </div>
               <pre
                 className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-w-full max-h-48"
                 style={{
-                  backgroundColor: "var(--bg-base)",
-                  color: "var(--text-primary)",
+                  /* macOS Tahoe: flat dark background */
+                  backgroundColor: "hsl(220 10% 10%)",
+                  color: "hsl(220 10% 80%)",
                   fontFamily: "var(--font-mono)",
                   wordBreak: "break-word",
                   whiteSpace: "pre-wrap",
@@ -222,15 +228,16 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
             <div>
               <div
                 className="text-[10px] font-medium mb-1 uppercase tracking-wide"
-                style={{ color: "var(--text-primary)" }}
+                style={{ color: "hsl(0 70% 70%)" }}
               >
                 Error
               </div>
               <pre
                 className="text-[11px] px-2 py-1.5 rounded overflow-x-auto"
                 style={{
-                  backgroundColor: "rgba(0, 0, 0, 0.2)",
-                  color: "var(--text-primary)",
+                  /* macOS Tahoe: error tinted background */
+                  backgroundColor: "hsla(0 70% 50% / 0.1)",
+                  color: "hsl(0 70% 75%)",
                   fontFamily: "var(--font-mono)",
                 }}
               >

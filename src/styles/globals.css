@@ -3,40 +3,49 @@
 
 /*
  * RalphX Design System Tokens
- * Anti-AI-Slop: NO purple gradients, NO Inter font, NO generic icon grids
+ * Style: macOS Tahoe (2025) - Clean, flat, minimal
+ * Reference: specs/design/macos-tahoe-style-guide.md
  */
 
 :root {
   /* ============================================================================
-   * Original RalphX Design Tokens
+   * macOS Tahoe Color System
+   * All grays use 220 hue, 10% saturation for subtle blue-gray tint
    * ============================================================================ */
 
-  /* Backgrounds - dark grays, NOT pure black */
-  --bg-base: hsl(0 0% 6%);
-  --bg-surface: hsl(0 0% 10%);
-  --bg-elevated: hsl(0 0% 14%);
-  --bg-hover: hsl(0 0% 18%);
+  /* Backgrounds - blue-gray tinted, NOT pure black */
+  --bg-base: hsl(220 10% 8%);
+  --bg-surface: hsl(220 10% 12%);
+  --bg-elevated: hsl(220 10% 16%);
+  --bg-hover: hsl(220 10% 20%);
 
-  /* Text - off-white, NOT pure white */
-  --text-primary: hsl(0 0% 94%);
-  --text-secondary: hsl(0 0% 63%);
-  --text-muted: hsl(0 0% 40%);
+  /* Text - blue-gray tinted */
+  --text-primary: hsl(220 10% 90%);
+  --text-secondary: hsl(220 10% 60%);
+  --text-muted: hsl(220 10% 45%);
 
-  /* Accent - warm, distinctive (NOT purple/blue) */
+  /* Selection - blue tint (like Finder) */
+  --selection-bg: hsla(220 60% 50% / 0.20);
+  --selection-text: hsl(220 80% 70%);
+
+  /* Focus - blue ring */
+  --focus-ring: hsla(220 80% 60% / 0.5);
+
+  /* Accent - warm orange (use sparingly, primary actions only) */
   --accent-primary: hsl(14 100% 60%);      /* Warm orange #ff6b35 */
   --accent-secondary: hsl(32 100% 65%);    /* Soft amber #ffa94d */
-  --accent-hover: hsl(19 100% 65%);        /* Lighter orange for hover #ff8050 */
+  --accent-hover: hsl(14 100% 55%);        /* Darker orange for hover */
 
-  /* Status colors */
-  --status-success: hsl(142 76% 36%);      /* Emerald #10b981 */
-  --status-warning: hsl(38 92% 50%);       /* Amber #f59e0b */
-  --status-error: hsl(0 84% 60%);          /* Red #ef4444 */
-  --status-info: hsl(217 91% 60%);         /* Blue #3b82f6 */
+  /* Status colors - for badges/indicators only */
+  --status-success: hsl(145 60% 45%);
+  --status-warning: hsl(45 90% 55%);
+  --status-error: hsl(0 70% 55%);
+  --status-info: hsl(220 80% 60%);
 
-  /* Borders & Dividers */
-  --border-subtle: hsla(0 0% 100% / 0.06);
-  --border-default: hsla(0 0% 100% / 0.1);
-  --border-focus: hsla(14 100% 60% / 0.5);
+  /* Borders - minimal, only for inputs */
+  --border-subtle: hsl(220 10% 18%);
+  --border-default: hsl(220 10% 22%);
+  --border-focus: hsl(220 80% 60%);
 
   /* Typography - system fonts, NOT Inter */
   --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -338,23 +347,33 @@ body {
   outline-offset: 2px;
 }
 
-/* Scrollbar styling (WebKit) */
+/* Scrollbar styling (WebKit) - macOS Tahoe style */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-surface);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: var(--radius-full);
+  background: hsl(220 10% 25%);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: hsl(220 10% 35%);
+}
+
+/* Kanban columns - thin scrollbar */
+[data-testid^="drop-zone-"]::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-testid^="drop-zone-"]::-webkit-scrollbar-thumb {
+  background: hsl(220 10% 20%);
+  border-radius: 3px;
 }
 
 /* ============================================================================
@@ -460,13 +479,13 @@ body {
 }
 
 /* ============================================================================
- * Kanban Drag-Drop Animations
+ * Kanban Drag-Drop Animations (macOS Tahoe - minimal)
  * ============================================================================ */
 
 @keyframes card-pop-in {
   from {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.96);
   }
   to {
     opacity: 1;
@@ -615,4 +634,11 @@ body {
   50% {
     background-color: rgba(59, 130, 246, 0.35);
   }
+}
+
+/* ============================================================================
+ * Chat Input Placeholder - macOS Tahoe muted style
+ * ============================================================================ */
+[data-testid="chat-input-textarea"]::placeholder {
+  color: hsl(220 10% 40%);
 }

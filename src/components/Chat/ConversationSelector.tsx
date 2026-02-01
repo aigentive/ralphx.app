@@ -22,7 +22,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ChatConversation, ContextType, AgentRunStatus } from "@/types/chat-conversation";
-import { cn } from "@/lib/utils";
 import { useQueries } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 
@@ -99,13 +98,13 @@ function getConversationTitle(conversation: ChatConversation, index?: number): s
 function getStatusIcon(status: AgentRunStatus | null) {
   switch (status) {
     case "running":
-      return <Circle className="h-3 w-3 text-[var(--accent-primary)] fill-[var(--accent-primary)] animate-pulse" />;
+      return <Circle className="h-3 w-3 animate-pulse" style={{ color: "hsl(14 100% 60%)", fill: "hsl(14 100% 60%)" }} />;
     case "completed":
-      return <CheckCircle2 className="h-3 w-3 text-green-500" />;
+      return <CheckCircle2 className="h-3 w-3" style={{ color: "hsl(145 60% 50%)" }} />;
     case "failed":
-      return <XCircle className="h-3 w-3 text-red-500" />;
+      return <XCircle className="h-3 w-3" style={{ color: "hsl(0 70% 60%)" }} />;
     case "cancelled":
-      return <AlertCircle className="h-3 w-3 text-yellow-500" />;
+      return <AlertCircle className="h-3 w-3" style={{ color: "hsl(45 90% 55%)" }} />;
     default:
       return null;
   }
@@ -185,10 +184,20 @@ export function ConversationSelector({
 
       <DropdownMenuContent
         align="end"
-        className="w-[320px] bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg shadow-lg"
+        className="w-[320px] rounded-xl overflow-y-auto"
+        style={{
+          /* macOS Tahoe: flat dark background, subtle border */
+          backgroundColor: "hsl(220 10% 14%)",
+          border: "1px solid hsla(220 10% 100% / 0.08)",
+          boxShadow: "0 8px 32px hsla(0 0% 0% / 0.4)",
+          maxHeight: "400px",
+        }}
         data-testid="conversation-selector-menu"
       >
-        <DropdownMenuLabel className="text-[var(--text-secondary)] text-xs font-medium tracking-wide uppercase px-3 py-2">
+        <DropdownMenuLabel
+          className="text-[11px] font-medium tracking-wide uppercase px-3 py-2"
+          style={{ color: "hsl(220 10% 50%)" }}
+        >
           {isExecutionContext ? "Execution History" : contextType === "review" ? "Review History" : "Conversation History"}
         </DropdownMenuLabel>
 
@@ -197,34 +206,31 @@ export function ConversationSelector({
           <>
             <DropdownMenuItem
               onClick={onNewConversation}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 cursor-pointer",
-                "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
-                "transition-colors"
-              )}
+              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors"
+              style={{ color: "hsl(220 10% 90%)" }}
               data-testid="conversation-selector-new"
             >
-              <Plus className="h-4 w-4 text-[var(--accent-primary)]" />
-              <span className="text-sm font-medium">New Conversation</span>
+              <Plus className="h-4 w-4" style={{ color: "hsl(14 100% 60%)" }} />
+              <span className="text-[13px] font-medium">New Conversation</span>
             </DropdownMenuItem>
 
             {/* Separator */}
             {sortedConversations.length > 0 && (
-              <DropdownMenuSeparator className="bg-[var(--border-subtle)] my-1" />
+              <DropdownMenuSeparator style={{ backgroundColor: "hsla(220 10% 100% / 0.06)", margin: "4px 0" }} />
             )}
           </>
         )}
 
         {/* Loading State */}
         {isLoading && (
-          <div className="px-3 py-6 text-center text-[var(--text-muted)] text-sm">
+          <div className="px-3 py-6 text-center text-[13px]" style={{ color: "hsl(220 10% 50%)" }}>
             Loading conversations...
           </div>
         )}
 
         {/* Empty State */}
         {!isLoading && sortedConversations.length === 0 && (
-          <div className="px-3 py-6 text-center text-[var(--text-muted)] text-sm">
+          <div className="px-3 py-6 text-center text-[13px]" style={{ color: "hsl(220 10% 50%)" }}>
             No conversations yet
           </div>
         )}
@@ -249,11 +255,10 @@ export function ConversationSelector({
                 <DropdownMenuItem
                   key={conversation.id}
                   onClick={() => onSelectConversation(conversation.id)}
-                  className={cn(
-                    "flex items-start gap-3 px-3 py-2.5 cursor-pointer",
-                    "hover:bg-[var(--bg-hover)] transition-colors",
-                    isActive && "bg-[var(--accent-muted)]"
-                  )}
+                  className="flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors rounded-lg mx-1"
+                  style={{
+                    backgroundColor: isActive ? "hsla(14 100% 60% / 0.15)" : "transparent",
+                  }}
                   data-testid={`conversation-item-${conversation.id}`}
                   data-active={isActive}
                 >
@@ -261,12 +266,11 @@ export function ConversationSelector({
                   <div className="mt-1.5 flex-shrink-0">
                     {statusIcon || (
                       <Circle
-                        className={cn(
-                          "h-2 w-2",
-                          isActive
-                            ? "fill-[var(--accent-primary)] text-[var(--accent-primary)]"
-                            : "text-transparent"
-                        )}
+                        className="h-2 w-2"
+                        style={{
+                          color: isActive ? "hsl(14 100% 60%)" : "transparent",
+                          fill: isActive ? "hsl(14 100% 60%)" : "transparent",
+                        }}
                       />
                     )}
                   </div>
@@ -276,33 +280,36 @@ export function ConversationSelector({
                     {/* Title with status */}
                     <div className="flex items-center gap-2">
                       <div
-                        className={cn(
-                          "text-sm font-medium truncate",
-                          isActive
-                            ? "text-[var(--text-primary)]"
-                            : "text-[var(--text-secondary)]"
-                        )}
+                        className="text-[13px] font-medium truncate"
+                        style={{ color: isActive ? "hsl(220 10% 95%)" : "hsl(220 10% 75%)" }}
                       >
                         {title}
                       </div>
                       {agentRunStatus === "running" && (
-                        <span className="text-[10px] text-[var(--accent-primary)] font-medium uppercase tracking-wide">
+                        <span
+                          className="text-[10px] font-medium uppercase tracking-wide"
+                          style={{ color: "hsl(14 100% 60%)" }}
+                        >
                           Running
                         </span>
                       )}
                     </div>
 
                     {/* Date and status */}
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-[var(--text-muted)]">
+                    <div
+                      className="flex items-center gap-2 mt-0.5 text-[11px]"
+                      style={{ color: "hsl(220 10% 50%)" }}
+                    >
                       <span>{executionDate}</span>
                       {agentRunStatus && agentRunStatus !== "running" && (
                         <>
                           <span>•</span>
-                          <span className={cn(
-                            agentRunStatus === "completed" && "text-green-500",
-                            agentRunStatus === "failed" && "text-red-500",
-                            agentRunStatus === "cancelled" && "text-yellow-500"
-                          )}>
+                          <span style={{
+                            color: agentRunStatus === "completed" ? "hsl(145 60% 50%)"
+                              : agentRunStatus === "failed" ? "hsl(0 70% 60%)"
+                              : agentRunStatus === "cancelled" ? "hsl(45 90% 55%)"
+                              : undefined
+                          }}>
                             {agentRunStatus.charAt(0).toUpperCase() + agentRunStatus.slice(1)}
                           </span>
                         </>
@@ -319,40 +326,37 @@ export function ConversationSelector({
                 <DropdownMenuItem
                   key={conversation.id}
                   onClick={() => onSelectConversation(conversation.id)}
-                  className={cn(
-                    "flex items-start gap-3 px-3 py-2.5 cursor-pointer",
-                    "hover:bg-[var(--bg-hover)] transition-colors",
-                    isActive && "bg-[var(--accent-muted)]"
-                  )}
+                  className="flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors rounded-lg mx-1"
+                  style={{
+                    backgroundColor: isActive ? "hsla(14 100% 60% / 0.15)" : "transparent",
+                  }}
                   data-testid={`conversation-item-${conversation.id}`}
                   data-active={isActive}
                 >
                   {/* Active Indicator */}
                   <Circle
-                    className={cn(
-                      "h-2 w-2 mt-1.5 flex-shrink-0",
-                      isActive
-                        ? "fill-[var(--accent-primary)] text-[var(--accent-primary)]"
-                        : "text-transparent"
-                    )}
+                    className="h-2 w-2 mt-1.5 flex-shrink-0"
+                    style={{
+                      color: isActive ? "hsl(14 100% 60%)" : "transparent",
+                      fill: isActive ? "hsl(14 100% 60%)" : "transparent",
+                    }}
                   />
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     {/* Title */}
                     <div
-                      className={cn(
-                        "text-sm font-medium truncate",
-                        isActive
-                          ? "text-[var(--text-primary)]"
-                          : "text-[var(--text-secondary)]"
-                      )}
+                      className="text-[13px] font-medium truncate"
+                      style={{ color: isActive ? "hsl(220 10% 95%)" : "hsl(220 10% 75%)" }}
                     >
                       {title}
                     </div>
 
                     {/* Date and Message Count */}
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-[var(--text-muted)]">
+                    <div
+                      className="flex items-center gap-2 mt-0.5 text-[11px]"
+                      style={{ color: "hsl(220 10% 50%)" }}
+                    >
                       <span>{date}</span>
                       <span>•</span>
                       <span>

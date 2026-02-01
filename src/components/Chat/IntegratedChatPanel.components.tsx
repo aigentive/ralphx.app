@@ -34,18 +34,30 @@ export function TypingIndicator() {
       data-testid="chat-typing-indicator"
       className="flex items-start gap-2 mb-2"
     >
-      <Bot className="w-3.5 h-3.5 mt-2 shrink-0 text-white/40" />
+      <Bot
+        className="w-3.5 h-3.5 mt-2 shrink-0"
+        style={{ color: "hsl(220 10% 45%)" }}
+      />
       <div
-        className="px-3 py-2 rounded-[10px_10px_10px_4px]"
+        className="px-3 py-2 rounded-lg"
         style={{
-          background: "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          /* macOS Tahoe: flat solid color, no gradient, no border */
+          backgroundColor: "hsl(220 10% 14%)",
         }}
       >
         <div className="flex items-center gap-1">
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
-          <div className="typing-dot w-1.5 h-1.5 rounded-full bg-white/30" />
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "hsl(220 10% 40%)" }}
+          />
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "hsl(220 10% 40%)" }}
+          />
+          <div
+            className="typing-dot w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "hsl(220 10% 40%)" }}
+          />
         </div>
       </div>
     </div>
@@ -59,18 +71,27 @@ export function EmptyState() {
       className="flex flex-col items-center justify-center h-full p-6 text-center"
     >
       <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+        className="w-12 h-12 rounded-lg flex items-center justify-center mb-3"
         style={{
-          background: "linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(255,107,53,0.05) 100%)",
-          border: "1px solid rgba(255,107,53,0.15)",
+          /* macOS Tahoe: subtle solid background, no gradient, no border */
+          backgroundColor: "hsl(220 10% 16%)",
         }}
       >
-        <MessageSquare className="w-5 h-5 text-[#ff6b35]" />
+        <MessageSquare
+          className="w-5 h-5"
+          style={{ color: "hsl(220 10% 50%)" }}
+        />
       </div>
-      <p className="text-[13px] font-medium text-white/80">
+      <p
+        className="text-[13px] font-medium"
+        style={{ color: "hsl(220 10% 85%)" }}
+      >
         Start a conversation
       </p>
-      <p className="text-xs mt-1 text-white/40">
+      <p
+        className="text-xs mt-1"
+        style={{ color: "hsl(220 10% 50%)" }}
+      >
         Ask questions or get help with your tasks
       </p>
     </div>
@@ -92,16 +113,25 @@ export function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProp
       data-testid="failed-run-banner"
       className="flex items-start gap-2 px-3 py-2 mb-2 rounded-lg"
       style={{
-        background: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.05) 100%)",
-        border: "1px solid rgba(239,68,68,0.25)",
+        /* macOS Tahoe: subtle solid background with error tint, no gradient, no border */
+        backgroundColor: "hsla(0 70% 55% / 0.12)",
       }}
     >
-      <Activity className="w-3.5 h-3.5 mt-0.5 text-red-400 shrink-0" />
+      <Activity
+        className="w-3.5 h-3.5 mt-0.5 shrink-0"
+        style={{ color: "hsl(0 70% 60%)" }}
+      />
       <div className="flex-1 min-w-0">
-        <span className="text-[13px] font-medium text-red-300 block">
+        <span
+          className="text-[13px] font-medium block"
+          style={{ color: "hsl(0 70% 70%)" }}
+        >
           Agent run failed
         </span>
-        <span className="text-[12px] text-red-300/70 block mt-0.5 break-words">
+        <span
+          className="text-[12px] block mt-0.5 break-words"
+          style={{ color: "hsl(0 70% 60%)" }}
+        >
           {errorMessage.slice(0, 200)}
           {errorMessage.length > 200 && "..."}
         </span>
@@ -111,7 +141,8 @@ export function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProp
           variant="ghost"
           size="icon-sm"
           onClick={onDismiss}
-          className="shrink-0 text-red-300/60 hover:text-red-300"
+          className="shrink-0"
+          style={{ color: "hsl(0 70% 60%)" }}
           aria-label="Dismiss error"
         >
           <X className="w-3.5 h-3.5" />
@@ -158,8 +189,16 @@ export function ContextIndicator({ context, isExecutionMode = false, isReviewMod
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
-      <Icon className="w-3.5 h-3.5 shrink-0 text-white/50" />
-      <span className="text-[13px] font-medium truncate text-white/80">{label}</span>
+      <Icon
+        className="w-3.5 h-3.5 shrink-0"
+        style={{ color: "hsl(220 10% 50%)" }}
+      />
+      <span
+        className="text-[13px] font-medium truncate"
+        style={{ color: "hsl(220 10% 85%)" }}
+      >
+        {label}
+      </span>
     </div>
   );
 }

@@ -47,20 +47,20 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "sonner";
 
 // ============================================================================
-// Priority Colors
+// Priority Colors (Tahoe HSL palette)
 // ============================================================================
 
 const PRIORITY_COLORS: Record<number, { bg: string; text: string }> = {
-  1: { bg: "var(--status-error)", text: "white" },
-  2: { bg: "var(--accent-primary)", text: "white" },
-  3: { bg: "var(--status-warning)", text: "var(--bg-base)" },
-  4: { bg: "var(--bg-hover)", text: "var(--text-secondary)" },
+  1: { bg: "hsl(0 70% 55%)", text: "white" },
+  2: { bg: "hsl(14 100% 60%)", text: "white" },
+  3: { bg: "hsl(45 90% 55%)", text: "hsl(220 10% 10%)" },
+  4: { bg: "hsl(220 10% 20%)", text: "hsl(220 10% 65%)" },
 };
 
-const DEFAULT_PRIORITY_COLOR = { bg: "var(--bg-hover)", text: "var(--text-secondary)" };
+const DEFAULT_PRIORITY_COLOR = { bg: "hsl(220 10% 20%)", text: "hsl(220 10% 65%)" };
 
 // ============================================================================
-// Status Badge Configuration
+// Status Badge Configuration (Tahoe HSL palette)
 // ============================================================================
 
 const STATUS_CONFIG: Record<
@@ -69,88 +69,88 @@ const STATUS_CONFIG: Record<
 > = {
   backlog: {
     label: "Backlog",
-    bg: "var(--bg-hover)",
-    text: "var(--text-muted)",
+    bg: "hsl(220 10% 20%)",
+    text: "hsl(220 10% 50%)",
   },
   ready: {
     label: "Ready",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
+    bg: "hsla(220 80% 60% / 0.15)",
+    text: "hsl(220 80% 65%)",
   },
   blocked: {
     label: "Blocked",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
   },
   executing: {
     label: "Executing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    bg: "hsla(14 100% 60% / 0.15)",
+    text: "hsl(14 100% 60%)",
   },
   qa_refining: {
     label: "QA Refining",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    bg: "hsla(14 100% 60% / 0.15)",
+    text: "hsl(14 100% 60%)",
   },
   qa_testing: {
     label: "QA Testing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    bg: "hsla(14 100% 60% / 0.15)",
+    text: "hsl(14 100% 60%)",
   },
   qa_passed: {
     label: "QA Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
+    bg: "hsla(145 60% 45% / 0.15)",
+    text: "hsl(145 60% 50%)",
   },
   qa_failed: {
     label: "QA Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
-    text: "var(--status-error)",
+    bg: "hsla(0 70% 55% / 0.15)",
+    text: "hsl(0 70% 60%)",
   },
   pending_review: {
     label: "Pending Review",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
   },
   revision_needed: {
     label: "Revision Needed",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
   },
   approved: {
     label: "Approved",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
+    bg: "hsla(145 60% 45% / 0.15)",
+    text: "hsl(145 60% 50%)",
   },
   failed: {
     label: "Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
-    text: "var(--status-error)",
+    bg: "hsla(0 70% 55% / 0.15)",
+    text: "hsl(0 70% 60%)",
   },
   cancelled: {
     label: "Cancelled",
-    bg: "var(--bg-hover)",
-    text: "var(--text-muted)",
+    bg: "hsl(220 10% 20%)",
+    text: "hsl(220 10% 50%)",
   },
   reviewing: {
     label: "AI Review in Progress",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
+    bg: "hsla(220 80% 60% / 0.15)",
+    text: "hsl(220 80% 65%)",
   },
   review_passed: {
     label: "AI Review Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
+    bg: "hsla(145 60% 45% / 0.15)",
+    text: "hsl(145 60% 50%)",
   },
   escalated: {
     label: "Escalated",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
   },
   re_executing: {
     label: "Re-executing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    bg: "hsla(14 100% 60% / 0.15)",
+    text: "hsl(14 100% 60%)",
   },
 };
 
@@ -400,36 +400,27 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
 
   return (
     <>
-      {/* Backdrop with blur */}
+      {/* Full-page container - same bg as Kanban */}
       <div
         data-testid="task-overlay-backdrop"
-        className="absolute inset-0 z-40"
+        className="absolute inset-0 z-40 flex"
         style={{
-          backgroundColor: "rgba(0, 0, 0, 0.6)",
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
+          backgroundColor: "hsl(220 10% 8%)",
         }}
         onClick={handleBackdropClick}
       >
-        {/* Overlay content */}
+        {/* Content area - full width, no boxing */}
         <div
           data-testid="task-detail-overlay"
           data-task-id={task.id}
-          className="absolute inset-6 flex flex-col rounded-xl overflow-hidden"
-          style={{
-            background: "linear-gradient(180deg, rgba(24,24,24,0.98) 0%, rgba(18,18,18,0.99) 100%)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow:
-              "0 8px 16px rgba(0,0,0,0.4), 0 16px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03)",
-          }}
-          onClick={(e) => e.stopPropagation()} // Prevent backdrop click
+          className="flex-1 flex flex-col"
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Header - Glass effect */}
+          {/* Header - flat Tahoe styling */}
           <div
-            className="px-5 pt-5 pb-4 shrink-0 backdrop-blur-sm"
+            className="px-6 pt-5 pb-4 shrink-0"
             style={{
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-              background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, transparent 100%)",
+              borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           >
             {/* Archived Badge */}
@@ -438,12 +429,12 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                 data-testid="archived-badge"
                 className="mb-3 px-2.5 py-1.5 rounded-lg flex items-center gap-2 w-fit"
                 style={{
-                  background: "linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(255,107,53,0.05) 100%)",
-                  border: "1px solid rgba(255,107,53,0.2)",
+                  backgroundColor: "hsla(14 100% 60% / 0.1)",
+                  border: "1px solid hsla(14 100% 60% / 0.2)",
                 }}
               >
-                <Archive className="w-3.5 h-3.5 text-[#ff6b35]" />
-                <span className="text-[12px] font-medium text-[#ff6b35]">Archived</span>
+                <Archive className="w-3.5 h-3.5" style={{ color: "hsl(14 100% 60%)" }} />
+                <span className="text-[12px] font-medium" style={{ color: "hsl(14 100% 60%)" }}>Archived</span>
               </div>
             )}
             <div className="flex items-start gap-2.5 pr-28">
@@ -451,8 +442,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
               <div className="flex-1 min-w-0">
                 <h2
                   data-testid="task-overlay-title"
-                  className="text-base font-semibold truncate text-white/90"
+                  className="text-base font-semibold truncate"
                   style={{
+                    color: "hsl(220 10% 90%)",
                     letterSpacing: "-0.02em",
                     lineHeight: "1.3",
                   }}
@@ -464,9 +456,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                     data-testid="task-overlay-category"
                     className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                     style={{
-                      backgroundColor: "rgba(255,255,255,0.05)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      color: "rgba(255,255,255,0.6)",
+                      backgroundColor: "hsla(220 10% 100% / 0.05)",
+                      border: "1px solid hsla(220 10% 100% / 0.08)",
+                      color: "hsl(220 10% 60%)",
                     }}
                   >
                     {task.category}
@@ -496,7 +488,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   disabled={createSession.isPending}
                   data-testid="task-overlay-ideation-button"
                   aria-label="Start Ideation"
-                  className="hover:bg-white/5"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   {createSession.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -513,7 +506,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   onClick={() => setIsEditing(!isEditing)}
                   data-testid="task-overlay-edit-button"
                   aria-label={isEditing ? "Cancel editing" : "Edit task"}
-                  className="hover:bg-white/5"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
@@ -527,7 +521,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   disabled={isArchiving}
                   data-testid="task-overlay-archive-button"
                   aria-label="Archive task"
-                  className="hover:bg-white/5"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   {isArchiving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -545,7 +540,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   disabled={isRestoring}
                   data-testid="task-overlay-restore-button"
                   aria-label="Restore task"
-                  className="hover:bg-white/5"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   {isRestoring ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -563,7 +559,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   disabled={isPermanentlyDeleting}
                   data-testid="task-overlay-delete-button"
                   aria-label="Delete permanently"
-                  className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                  style={{ color: "hsl(0 70% 60%)" }}
+                  className="hover:bg-[hsla(0_70%_55%/0.1)]"
                 >
                   {isPermanentlyDeleting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -579,7 +576,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                 onClick={handleClose}
                 data-testid="task-overlay-close"
                 aria-label="Close"
-                className="hover:bg-white/5"
+                style={{ color: "hsl(220 10% 50%)" }}
+                className="hover:bg-[hsla(220_10%_100%/0.05)]"
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -602,16 +600,16 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
               data-testid="history-mode-banner"
               className="px-4 py-2.5 flex items-center justify-between shrink-0"
               style={{
-                background: "linear-gradient(90deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.05) 100%)",
-                borderBottom: "1px solid rgba(255,107,53,0.2)",
+                backgroundColor: "hsla(14 100% 60% / 0.1)",
+                borderBottom: "1px solid hsla(14 100% 60% / 0.2)",
               }}
             >
               <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-[#ff6b35]" />
-                <span className="text-[13px] font-medium text-[#ff6b35]">
+                <History className="w-4 h-4" style={{ color: "hsl(14 100% 60%)" }} />
+                <span className="text-[13px] font-medium" style={{ color: "hsl(14 100% 60%)" }}>
                   Viewing historical state: {STATUS_CONFIG[historyState.status]?.label ?? historyState.status}
                 </span>
-                <span className="text-[11px] text-white/50">
+                <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
                   ({new Date(historyState.timestamp).toLocaleString()})
                 </span>
               </div>
@@ -620,7 +618,8 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                 size="sm"
                 onClick={handleReturnToCurrent}
                 data-testid="return-to-current-button"
-                className="text-[#ff6b35] hover:text-[#ff6b35] hover:bg-[#ff6b35]/10"
+                style={{ color: "hsl(14 100% 60%)" }}
+                className="hover:bg-[hsla(14_100%_60%/0.1)]"
               >
                 Return to Current
               </Button>

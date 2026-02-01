@@ -1,10 +1,11 @@
 /**
  * TaskBoard - Main kanban board component with drag-drop support
  *
- * Design: macOS Tahoe Liquid Glass
- * - Clean, flat background
- * - Horizontal scroll with CSS scroll-snap
- * - Minimal visual noise
+ * Design: macOS Tahoe "Liquid Glass" (2024 WWDC aesthetic)
+ * - Multi-layer translucent depth with precise backdrop-blur
+ * - Warm ambient luminosity from accent glow
+ * - Horizontal scroll with momentum and snap
+ * - Premium Apple-grade typography and spacing
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -319,51 +320,59 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     >
       {/* Container for the entire board including header */}
       <div className="flex flex-col h-full">
-        {/* Header with Show Archived toggle and Search Bar - only render when there's content */}
+        {/* Header bar - macOS Tahoe: minimal, flat */}
         {(searchOpen || archivedCount > 0) && (
-          <div className="px-4 py-3 border-b border-border/40 space-y-3">
+          <div className="px-4 py-2 flex items-center gap-3">
             {/* Search Bar (when search is open) */}
             {searchOpen && (
-              <TaskSearchBar
-                value={boardSearchQuery || ''}
-                onChange={setBoardSearchQuery}
-                onClose={() => {
-                  setSearchOpen(false);
-                  setBoardSearchQuery(null);
-                }}
-                resultCount={searchResults.length}
-                isSearching={isSearchLoading}
-              />
+              <div className="flex-1 max-w-md">
+                <TaskSearchBar
+                  value={boardSearchQuery || ''}
+                  onChange={setBoardSearchQuery}
+                  onClose={() => {
+                    setSearchOpen(false);
+                    setBoardSearchQuery(null);
+                  }}
+                  resultCount={searchResults.length}
+                  isSearching={isSearchLoading}
+                />
+              </div>
             )}
 
-            {/* Show Archived toggle (only visible when there are archived tasks) */}
+            {/* Show Archived toggle - simple Tahoe style */}
             {archivedCount > 0 && (
               <Toggle
                 pressed={showArchived}
                 onPressedChange={setShowArchived}
                 aria-label="Toggle show archived tasks"
-                className="gap-2 data-[state=on]:bg-accent/10 data-[state=on]:text-accent"
+                className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
+                style={{
+                  background: showArchived
+                    ? "hsla(220 60% 50% / 0.2)"
+                    : "transparent",
+                  color: showArchived
+                    ? "hsl(220 80% 70%)"
+                    : "hsl(220 10% 55%)",
+                }}
               >
-                <Archive className="h-4 w-4" />
-                <span className="text-sm font-medium">
-                  Show archived ({archivedCount})
-                </span>
+                <Archive className="h-3.5 w-3.5" />
+                <span>Archived ({archivedCount})</span>
               </Toggle>
             )}
           </div>
         )}
 
-        {/* TaskBoard container - macOS Tahoe with warm ambient glow */}
+        {/* TaskBoard container - macOS Tahoe: clean, flat, minimal */}
         <div
           data-testid="task-board"
-          className="task-board relative flex items-stretch gap-3 py-5 overflow-x-auto flex-1"
+          className="task-board relative flex items-stretch gap-3 py-4 overflow-x-auto flex-1"
           style={{
-            background: `
-              radial-gradient(ellipse 90% 60% at 50% 30%, rgba(255,107,53,0.05) 0%, transparent 60%),
-              var(--bg-base)
-            `,
+            /* Solid dark background with subtle cool tint - like Tahoe Finder */
+            background: "hsl(220 10% 8%)",
             scrollSnapType: "x proximity",
             scrollPaddingLeft: "16px",
+            scrollPaddingRight: "16px",
+            WebkitOverflowScrolling: "touch",
           }}
         >
           {/* Show empty search state when search has no results */}
@@ -423,7 +432,13 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             </>
           )}
         </div>
-        <DragOverlay dropAnimation={null}>
+        {/* Drag overlay with premium floating appearance */}
+        <DragOverlay
+          dropAnimation={{
+            duration: 200,
+            easing: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+          }}
+        >
           {activeTask && <TaskCard task={activeTask} isDragging />}
         </DragOverlay>
       </div>

@@ -1,16 +1,14 @@
 /**
  * ColumnGroup - Collapsible group within a kanban column
  *
- * Design: macOS Tahoe Liquid Glass
- * - Frosted glass header with backdrop-blur
- * - Chevron rotation on collapse
- * - Accent color left border when expanded
- * - Smooth transitions
+ * Design: macOS Tahoe (2025)
+ * - Clean, minimal section header like Finder
+ * - Simple chevron rotation
+ * - Subtle left accent when expanded
  */
 
 import { type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -55,59 +53,69 @@ export function ColumnGroup({
       {...(handleOpenChange && { onOpenChange: handleOpenChange })}
     >
       <div
-        className="rounded-md overflow-hidden transition-all duration-200"
+        className="overflow-hidden"
         style={{
           borderLeft: isExpanded && accentColor
             ? `2px solid ${accentColor}`
             : "2px solid transparent",
+          paddingLeft: "4px",
         }}
       >
-        {/* Group header - Liquid Glass style */}
+        {/* Group header - simple like Finder section headers */}
         <CollapsibleTrigger asChild>
           <button
             type="button"
             className={cn(
-              "w-full flex items-center gap-2 px-2 py-1.5 text-left",
-              "rounded-md transition-all duration-150",
-              "hover:bg-white/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+              "w-full flex items-center gap-1.5 px-1 py-1 text-left",
+              "transition-colors rounded",
+              "hover:bg-white/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50"
             )}
-            style={{
-              background: "rgba(255,255,255,0.02)",
-            }}
           >
             {/* Chevron indicator */}
             <ChevronDown
               className={cn(
-                "w-3.5 h-3.5 text-white/40 transition-transform duration-200 flex-shrink-0",
+                "w-3 h-3 flex-shrink-0 transition-transform duration-200",
                 collapsed && "-rotate-90"
               )}
+              style={{ color: "hsl(220 10% 45%)" }}
             />
 
             {/* Optional icon */}
             {icon && (
-              <span className="flex-shrink-0 text-white/50">
+              <span className="flex-shrink-0" style={{ color: "hsl(220 10% 50%)" }}>
                 {icon}
               </span>
             )}
 
-            {/* Group label */}
-            <span className="text-[11px] font-medium text-white/60 flex-1 truncate tracking-tight">
+            {/* Group label - small, gray like Finder */}
+            <span
+              className="flex-1 truncate"
+              style={{
+                fontSize: "11px",
+                fontWeight: 500,
+                color: "hsl(220 10% 50%)",
+              }}
+            >
               {label}
             </span>
 
-            {/* Count badge */}
-            <Badge
-              variant="secondary"
-              className="text-[9px] px-1 py-0 min-w-[16px] text-center bg-white/[0.03] text-white/40 border-white/[0.06]"
+            {/* Count - simple */}
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 500,
+                color: "hsl(220 10% 40%)",
+                fontVariantNumeric: "tabular-nums",
+              }}
             >
               {count}
-            </Badge>
+            </span>
           </button>
         </CollapsibleTrigger>
 
         {/* Group content */}
-        <CollapsibleContent className="pt-1.5">
-          <div className="flex flex-col gap-2 pl-1">
+        <CollapsibleContent className="pt-1">
+          <div className="flex flex-col gap-1.5 pl-1">
             {children}
           </div>
         </CollapsibleContent>

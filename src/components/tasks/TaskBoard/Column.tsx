@@ -1,11 +1,11 @@
 /**
  * Column - Droppable column for the kanban board
  *
- * Design: macOS Tahoe Liquid Glass
- * - Frosted glass header with backdrop-blur
- * - Clean, flat surfaces
- * - Subtle accent dot
- * - Minimal drop zone styling
+ * Design: macOS Tahoe (2025)
+ * - Clean, flat surfaces - no gradients or glows
+ * - Subtle rounded rectangles for grouping
+ * - Small, understated section headers
+ * - Minimal visual noise
  */
 
 import { useDroppable, useDndContext } from "@dnd-kit/core";
@@ -17,7 +17,6 @@ import type { InternalStatus } from "@/types/status";
 import type { Task } from "@/types/task";
 import { TaskCard } from "./TaskCard";
 import { ColumnGroup } from "./ColumnGroup";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InlineTaskAdd } from "../InlineTaskAdd";
 import {
@@ -57,25 +56,22 @@ function InvalidDropIcon() {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
-      <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center"
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <Inbox className="w-5 h-5 text-white/25" />
-      </div>
-      <p className="text-xs text-white/35">No tasks</p>
+      <Inbox className="w-8 h-8" style={{ color: "hsl(220 10% 35%)" }} />
+      <p style={{ fontSize: "12px", color: "hsl(220 10% 45%)" }}>
+        No tasks
+      </p>
     </div>
   );
 }
 
 function TaskSkeleton() {
   return (
-    <div className="rounded-lg p-2.5 space-y-2 bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/[0.06]">
-      <Skeleton className="h-3 w-3/4 bg-white/5" />
-      <Skeleton className="h-2.5 w-1/2 bg-white/5" />
+    <div
+      className="rounded-lg p-2.5 space-y-2"
+      style={{ background: "hsl(220 10% 12%)" }}
+    >
+      <Skeleton className="h-3 w-3/4 rounded" style={{ background: "hsl(220 10% 18%)" }} />
+      <Skeleton className="h-2.5 w-1/2 rounded" style={{ background: "hsl(220 10% 16%)" }} />
     </div>
   );
 }
@@ -204,22 +200,23 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
     };
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Drop zone styles (macOS Tahoe - clean, subtle)
+  // Drop zone styles (macOS Tahoe - clean, flat)
   const getDropZoneStyles = (): React.CSSProperties => {
     if (isOver && isInvalid) {
       return {
-        border: "1px dashed rgba(239, 68, 68, 0.4)",
-        background: "rgba(239, 68, 68, 0.03)",
+        background: "hsla(0 70% 50% / 0.08)",
+        borderRadius: "10px",
       };
     }
     if (isOver) {
       return {
-        border: "1px dashed rgba(255, 107, 53, 0.4)",
-        background: "rgba(255, 107, 53, 0.03)",
+        background: "hsla(220 60% 50% / 0.1)",
+        borderRadius: "10px",
       };
     }
     return {
-      border: "1px solid transparent",
+      background: "transparent",
+      borderRadius: "10px",
     };
   };
 
@@ -243,36 +240,44 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Liquid Glass header (macOS Tahoe) */}
-      <div
-        className="flex items-center gap-2.5 px-3 py-2 rounded-lg mb-2"
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        {/* Accent dot */}
-        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#ff6b35]" />
-        <h3 className="text-[13px] font-medium flex-1 text-white/80 tracking-tight m-0">
+      {/* Column header - macOS Tahoe: small, gray, understated like Finder section headers */}
+      <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+        {/* Column title - small caps style like Finder */}
+        <h3
+          className="flex-1 m-0 truncate"
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "hsl(220 10% 50%)",
+            textTransform: "uppercase",
+            letterSpacing: "0.02em",
+          }}
+        >
           {column.name}
         </h3>
-        <Badge
-          variant="secondary"
-          className="text-[10px] px-1.5 py-0.5 bg-white/[0.03] text-white/40 border-white/[0.06]"
+
+        {/* Count - simple, muted */}
+        <span
+          style={{
+            fontSize: "11px",
+            fontWeight: 500,
+            color: "hsl(220 10% 40%)",
+            fontVariantNumeric: "tabular-nums",
+          }}
         >
           {tasks.length}
-          {matchCount !== undefined && ` (${matchCount})`}
-        </Badge>
+          {matchCount !== undefined && ` / ${matchCount}`}
+        </span>
+
+        {/* Invalid drop indicator */}
         {isOver && isInvalid && <InvalidDropIcon />}
       </div>
 
-      {/* Drop zone with task list - scrollable */}
+      {/* Drop zone with task list - clean, minimal */}
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
-        className="flex-1 flex flex-col gap-2 p-2 rounded-lg transition-all bg-white/[0.02] overflow-y-auto"
+        className="flex-1 flex flex-col gap-1.5 p-1 overflow-y-auto transition-colors duration-150"
         style={getDropZoneStyles()}
       >
         {/* Show skeleton cards during initial load */}
@@ -317,10 +322,10 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
             {/* Sentinel element for infinite scroll */}
             <div ref={sentinelRef} className="h-1" aria-hidden="true" />
 
-            {/* Loading spinner when fetching next page */}
+            {/* Loading spinner when fetching next page - simple */}
             {isFetchingNextPage && (
               <div className="flex items-center justify-center py-3">
-                <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--accent-primary)" }} />
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
               </div>
             )}
           </>
@@ -339,10 +344,10 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
             {/* Sentinel element for infinite scroll */}
             <div ref={sentinelRef} className="h-1" aria-hidden="true" />
 
-            {/* Loading spinner when fetching next page */}
+            {/* Loading spinner when fetching next page - simple */}
             {isFetchingNextPage && (
               <div className="flex items-center justify-center py-3">
-                <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--accent-primary)" }} />
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
               </div>
             )}
           </>

@@ -1,11 +1,11 @@
 /**
  * TaskCard - Draggable task card for the kanban board
  *
- * Design: macOS Tahoe Liquid Glass
- * - Frosted glass background with backdrop-blur
- * - Priority stripe on left border
- * - Subtle shadows, no heavy gradients
- * - Clean hover/drag states
+ * Design: macOS Tahoe (2025)
+ * - Clean, flat surfaces - no gradients or glows
+ * - Priority stripe on left edge
+ * - Subtle selection highlight (blue tint like Finder)
+ * - Minimal visual noise
  *
  * Styling utilities extracted to TaskCard.utils.ts
  */
@@ -241,15 +241,15 @@ export function TaskCard({
           onClick={() => {
             handleViewDetails();
           }}
-          className={`group relative p-2.5 rounded-lg hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6b35]/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${executionStateClass}`}
+          className={`group relative p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${executionStateClass}`}
           style={{ ...cardStyles, ...executionBorderStyles, ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
       {/* Archive badge overlay - only shown for archived tasks */}
       {isArchived && (
-        <div className="absolute top-1.5 right-1.5 bg-white/10 rounded-full p-0.5" data-testid="archive-badge">
-          <Archive className="w-2.5 h-2.5 text-white/50" />
+        <div data-testid="archive-badge" className="absolute top-1.5 right-1.5">
+          <Archive className="w-3 h-3" style={{ color: "hsl(220 10% 40%)" }} />
         </div>
       )}
 
@@ -330,29 +330,42 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Drag handle - appears on hover (hidden if archived or executing to show indicator) */}
+      {/* Drag handle - appears on hover (hidden if archived or executing) */}
       {!isArchived && !executionState.isActive && (
         <div
           data-testid="drag-handle"
           className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
         >
-          <GripVertical className="w-3.5 h-3.5 text-white/30 hover:text-white/50" />
+          <GripVertical className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 40%)" }} />
         </div>
       )}
 
       {/* Card content */}
       <div className="pr-5">
-        {/* Title */}
+        {/* Title - clean, simple */}
         <div
           data-testid="task-title"
-          className="text-[13px] font-medium truncate text-white/90 tracking-tight leading-snug"
+          className="truncate"
+          style={{
+            fontSize: "13px",
+            fontWeight: 500,
+            color: "hsl(220 10% 90%)",
+            lineHeight: 1.4,
+          }}
         >
           {task.title}
         </div>
 
         {/* Description - 2 line clamp */}
         {task.description && (
-          <div className="text-xs mt-1 line-clamp-2 text-white/50 leading-relaxed">
+          <div
+            className="mt-1 line-clamp-2"
+            style={{
+              fontSize: "12px",
+              color: "hsl(220 10% 55%)",
+              lineHeight: 1.45,
+            }}
+          >
             {task.description}
           </div>
         )}
@@ -378,11 +391,18 @@ export function TaskCard({
           </TooltipProvider>
         )}
 
-        {/* Badge row */}
+        {/* Badge row - simple, muted */}
         <div className="flex flex-wrap items-center gap-1 mt-1.5">
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 bg-white/5 text-white/60 border-white/10">
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 500,
+              color: "hsl(220 10% 45%)",
+              textTransform: "capitalize",
+            }}
+          >
             {task.category}
-          </Badge>
+          </span>
           {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}
           <TaskQABadge {...qaBadgeProps} />
           {hasCheckpoint && <CheckpointIndicator />}

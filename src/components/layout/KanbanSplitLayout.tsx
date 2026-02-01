@@ -16,7 +16,6 @@ import { useUiStore } from "@/stores/uiStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
-import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Constants
@@ -97,8 +96,9 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
       ref={containerRef}
       data-testid="kanban-split-layout"
       className="flex h-full overflow-hidden"
+      style={{ backgroundColor: "hsl(220 10% 8%)" }}
     >
-      {/* Left Section - Kanban board with overlay and footer */}
+      {/* Left Section - Kanban board */}
       <div
         data-testid="kanban-split-left"
         className="relative flex flex-col overflow-hidden"
@@ -108,48 +108,39 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
           transition: isResizing ? "none" : "width 150ms ease-out",
         }}
       >
-        {/* Kanban Board - takes remaining space */}
+        {/* Kanban Board */}
         <div className="flex-1 overflow-hidden">
           {children}
         </div>
 
-        {/* Footer (e.g., ExecutionControlBar) - fixed at bottom of left section */}
+        {/* Footer (e.g., ExecutionControlBar) */}
         {footer && (
-          <div className="flex-shrink-0 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="flex-shrink-0">
             {footer}
           </div>
         )}
 
-        {/* Task Detail Overlay - renders when a task is selected */}
+        {/* Task Detail Overlay */}
         {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}
 
-        {/* Task Creation Overlay - renders when creating a new task */}
+        {/* Task Creation Overlay */}
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {/* Resize Handle (only when chat is visible) */}
+      {/* Resize Handle - subtle separator line */}
       {chatVisible && (
         <div
           data-testid="split-layout-resize-handle"
-          className={cn(
-            "w-1 cursor-ew-resize relative group shrink-0",
-            isResizing && "bg-[#ff6b35]/50"
-          )}
+          className="cursor-ew-resize relative shrink-0"
+          style={{
+            width: "1px",
+            background: "hsla(220 20% 100% / 0.04)",
+          }}
           onMouseDown={handleResizeStart}
-        >
-          {/* Visual indicator line */}
-          <div
-            className={cn(
-              "absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all duration-150",
-              isResizing
-                ? "bg-[#ff6b35] shadow-[0_0_12px_rgba(255,107,53,0.5)]"
-                : "bg-white/[0.06] group-hover:bg-[#ff6b35]/60 group-hover:shadow-[0_0_8px_rgba(255,107,53,0.3)]"
-            )}
-          />
-        </div>
+        />
       )}
 
-      {/* Right Section - Integrated Chat Panel (hidden when collapsed) */}
+      {/* Right Section - Chat Panel with floating glass container */}
       {chatVisible && (
         <div
           data-testid="kanban-split-right"

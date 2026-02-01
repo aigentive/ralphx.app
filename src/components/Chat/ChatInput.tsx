@@ -219,7 +219,7 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Textarea - Refined Studio styling */}
+        {/* Textarea - macOS Tahoe flat styling */}
         <textarea
           ref={textareaRef}
           data-testid="chat-input-textarea"
@@ -230,11 +230,12 @@ export function ChatInput({
           placeholder={effectivePlaceholder}
           rows={1}
           aria-label="Message input"
-          className="flex-1 px-3 py-2 text-[13px] resize-none rounded-lg outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0 placeholder:text-white/30"
+          className="flex-1 px-3 py-2 text-[13px] resize-none rounded-lg outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
           style={{
-            background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
-            color: "rgba(255,255,255,0.9)",
-            border: "1px solid rgba(255,255,255,0.06)",
+            /* macOS Tahoe: flat solid color, no gradient */
+            background: "hsl(220 10% 12%)",
+            color: "hsl(220 10% 90%)",
+            border: "none",
             minHeight: "38px",
             maxHeight: "100px",
             overflowY: "auto",
@@ -243,18 +244,19 @@ export function ChatInput({
           }}
         />
 
-        {/* Send/Stop Button - Refined Studio gradient */}
+        {/* Send/Stop Button - macOS Tahoe flat styling */}
         {isAgentRunning && onStop ? (
           <button
             data-testid="chat-input-stop"
             type="button"
             onClick={onStop}
             aria-label="Stop agent"
-            className="px-3 py-2 rounded-lg transition-all shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+            className="px-3 py-2 rounded-lg transition-colors shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
             style={{
-              background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+              /* macOS Tahoe: flat solid color */
+              background: "hsl(0 70% 55%)",
               color: "white",
-              boxShadow: "0 2px 8px rgba(239,68,68,0.3)",
+              boxShadow: "none",
             }}
           >
             <StopIcon />
@@ -267,13 +269,14 @@ export function ChatInput({
             disabled={!canSend}
             aria-label="Send message"
             aria-busy={isSending}
-            className="px-3 py-2 rounded-lg transition-all disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
             style={{
+              /* macOS Tahoe: flat solid color */
               background: canSend
-                ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
-                : "rgba(255,107,53,0.3)",
+                ? "hsl(14 100% 60%)"
+                : "hsla(14 100% 60% / 0.3)",
               color: "white",
-              boxShadow: canSend ? "0 2px 8px rgba(255,107,53,0.3)" : "none",
+              boxShadow: "none",
             }}
           >
             {isSending ? <LoadingSpinner /> : <SendIcon />}
@@ -281,9 +284,12 @@ export function ChatInput({
         )}
       </div>
 
-      {/* Helper Text */}
+      {/* Helper Text - macOS Tahoe muted styling */}
       {showHelperText && (
-        <p className="text-[10px] mt-1.5 text-white/35">
+        <p
+          className="text-[10px] mt-1.5"
+          style={{ color: "hsl(220 10% 45%)" }}
+        >
           {hasQueuedMessages
             ? "Enter to send · Shift+Enter for new line · ↑ to edit queued"
             : "Enter to send · Shift+Enter for new line"}
