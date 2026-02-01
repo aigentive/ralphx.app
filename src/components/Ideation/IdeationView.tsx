@@ -397,7 +397,7 @@ export function IdeationView({
                   width: `${leftPanelWidth}%`,
                   minWidth: "360px",
                   borderRight: "1px solid hsla(220 10% 100% / 0.06)",
-                  background: "hsla(220 10% 10% / 0.5)",
+                  background: "hsl(220 10% 8%)",
                 }}
                 {...dropProps}
               >
