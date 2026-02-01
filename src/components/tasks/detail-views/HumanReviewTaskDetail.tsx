@@ -15,7 +15,7 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
@@ -400,66 +400,58 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
   }
 
   return (
-    <div
-      data-testid="human-review-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
-    >
-      {/* Status Banner */}
-      <StatusBanner
-        icon={ShieldCheck}
-        title="AI Review Passed"
-        subtitle="Awaiting your final approval"
-        variant="success"
-        badge={
-          <StatusPill
-            icon={CheckCircle2}
-            label="AI Approved"
-            variant="success"
-            size="md"
-          />
-        }
-      />
-
-      {/* AI Review Summary */}
-      <section data-testid="ai-review-summary-section">
-        <SectionTitle>AI Review Summary</SectionTitle>
-        <AIReviewCard review={latestApprovedReview} />
-      </section>
-
-      {/* Previous Attempts (if any) */}
-      {history.filter((e) => e.outcome === "changes_requested").length > 0 && (
-        <section data-testid="previous-attempts-section">
-          <SectionTitle>Previous Attempts</SectionTitle>
-          <DetailCard>
-            <ReviewTimeline
-              history={history}
-              filter={(e) => e.outcome === "changes_requested"}
-              showAttemptNumbers
-              emptyMessage="No previous attempts"
+    <>
+      <TwoColumnLayout
+        description={task.description}
+        testId="human-review-task-detail"
+      >
+        {/* Status Banner */}
+        <StatusBanner
+          icon={ShieldCheck}
+          title="AI Review Passed"
+          subtitle="Awaiting your final approval"
+          variant="success"
+          badge={
+            <StatusPill
+              icon={CheckCircle2}
+              label="AI Approved"
+              variant="success"
+              size="md"
             />
-          </DetailCard>
-        </section>
-      )}
-
-      {/* Description */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="human-review-task-description"
+          }
         />
-      </section>
 
-      {/* Action Buttons (hidden in historical mode) */}
-      {!isHistorical && (
-        <section>
-          <ActionButtonsCard
-            taskId={task.id}
-            onReviewCode={() => setShowReviewModal(true)}
-          />
+        {/* AI Review Summary */}
+        <section data-testid="ai-review-summary-section">
+          <SectionTitle>AI Review Summary</SectionTitle>
+          <AIReviewCard review={latestApprovedReview} />
         </section>
-      )}
+
+        {/* Previous Attempts (if any) */}
+        {history.filter((e) => e.outcome === "changes_requested").length > 0 && (
+          <section data-testid="previous-attempts-section">
+            <SectionTitle>Previous Attempts</SectionTitle>
+            <DetailCard>
+              <ReviewTimeline
+                history={history}
+                filter={(e) => e.outcome === "changes_requested"}
+                showAttemptNumbers
+                emptyMessage="No previous attempts"
+              />
+            </DetailCard>
+          </section>
+        )}
+
+        {/* Action Buttons (hidden in historical mode) */}
+        {!isHistorical && (
+          <section>
+            <ActionButtonsCard
+              taskId={task.id}
+              onReviewCode={() => setShowReviewModal(true)}
+            />
+          </section>
+        )}
+      </TwoColumnLayout>
 
       {/* Review Detail Modal */}
       {showReviewModal && (
@@ -468,6 +460,6 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
           onClose={() => setShowReviewModal(false)}
         />
       )}
-    </div>
+    </>
   );
 }

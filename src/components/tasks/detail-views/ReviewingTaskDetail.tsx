@@ -10,7 +10,7 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import type { Task } from "@/types/task";
 
@@ -109,10 +109,9 @@ function ReviewStepsCard({ isHistorical }: { isHistorical?: boolean }) {
 
 export function ReviewingTaskDetail({ task, isHistorical }: ReviewingTaskDetailProps) {
   return (
-    <div
-      data-testid="reviewing-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
+    <TwoColumnLayout
+      description={task.description}
+      testId="reviewing-task-detail"
     >
       {/* Status Banner */}
       <StatusBanner
@@ -145,15 +144,6 @@ export function ReviewingTaskDetail({ task, isHistorical }: ReviewingTaskDetailP
           File list will appear once review gathers context
         </p>
       </section>
-
-      {/* Description Section */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="reviewing-task-description"
-        />
-      </section>
-    </div>
+    </TwoColumnLayout>
   );
 }

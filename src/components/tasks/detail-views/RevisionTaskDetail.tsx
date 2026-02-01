@@ -10,7 +10,7 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -199,10 +199,9 @@ export function RevisionTaskDetail({ task }: RevisionTaskDetailProps) {
   const latestFeedback = getLatestRevisionFeedback(history);
 
   return (
-    <div
-      data-testid="revision-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
+    <TwoColumnLayout
+      description={task.description}
+      testId="revision-task-detail"
     >
       {/* Status Banner */}
       <StatusBanner
@@ -235,15 +234,6 @@ export function RevisionTaskDetail({ task }: RevisionTaskDetailProps) {
         </section>
       ) : null}
 
-      {/* Description */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="revision-task-description"
-        />
-      </section>
-
       {/* Steps */}
       {stepsLoading && (
         <div
@@ -260,11 +250,9 @@ export function RevisionTaskDetail({ task }: RevisionTaskDetailProps) {
       {!stepsLoading && hasSteps && (
         <section data-testid="revision-steps-section">
           <SectionTitle>Steps</SectionTitle>
-          <DetailCard noPadding className="overflow-hidden">
-            <StepList taskId={task.id} editable={false} />
-          </DetailCard>
+          <StepList taskId={task.id} editable={false} />
         </section>
       )}
-    </div>
+    </TwoColumnLayout>
   );
 }

@@ -11,7 +11,7 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -248,63 +248,55 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
   }
 
   return (
-    <div
-      data-testid="completed-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
-    >
-      {/* Status Banner */}
-      <StatusBanner
-        icon={CheckCircle2}
-        title="Task Completed"
-        subtitle="All work has been reviewed and approved"
-        variant="success"
-        badge={
-          <StatusPill
-            icon={CheckCircle2}
-            label="Done"
-            variant="success"
-            size="md"
-          />
-        }
-      />
-
-      {/* Approval Details */}
-      <section>
-        <SectionTitle>Approval</SectionTitle>
-        <ApprovalDetailsCard
-          humanApproval={humanApproval}
-          aiApproval={aiApproval}
-          completedAt={task.completedAt}
+    <>
+      <TwoColumnLayout
+        description={task.description}
+        testId="completed-task-detail"
+      >
+        {/* Status Banner */}
+        <StatusBanner
+          icon={CheckCircle2}
+          title="Task Completed"
+          subtitle="All work has been reviewed and approved"
+          variant="success"
+          badge={
+            <StatusPill
+              icon={CheckCircle2}
+              label="Done"
+              variant="success"
+              size="md"
+            />
+          }
         />
-      </section>
 
-      {/* Final Summary (Description) */}
-      <section>
-        <SectionTitle>Final Summary</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="completed-task-summary"
-        />
-      </section>
-
-      {/* Review History */}
-      <section data-testid="review-history-section">
-        <SectionTitle>Review History</SectionTitle>
-        <DetailCard>
-          <ReviewTimeline history={history} />
-        </DetailCard>
-      </section>
-
-      {/* Actions (hidden in historical mode) */}
-      {!isHistorical && (
-        <section data-testid="action-buttons">
-          <ActionButtonsCard
-            onViewDiff={handleViewDiff}
-            onReopenTask={handleReopenTask}
+        {/* Approval Details */}
+        <section>
+          <SectionTitle>Approval</SectionTitle>
+          <ApprovalDetailsCard
+            humanApproval={humanApproval}
+            aiApproval={aiApproval}
+            completedAt={task.completedAt}
           />
         </section>
-      )}
+
+        {/* Review History */}
+        <section data-testid="review-history-section">
+          <SectionTitle>Review History</SectionTitle>
+          <DetailCard>
+            <ReviewTimeline history={history} />
+          </DetailCard>
+        </section>
+
+        {/* Actions (hidden in historical mode) */}
+        {!isHistorical && (
+          <section data-testid="action-buttons">
+            <ActionButtonsCard
+              onViewDiff={handleViewDiff}
+              onReopenTask={handleReopenTask}
+            />
+          </section>
+        )}
+      </TwoColumnLayout>
 
       {/* Task Rerun Dialog */}
       <TaskRerunDialog
@@ -316,6 +308,6 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
         isProcessing={isProcessing}
         error={error}
       />
-    </div>
+    </>
   );
 }
