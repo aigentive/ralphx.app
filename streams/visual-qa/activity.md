@@ -1,3 +1,17 @@
+### 2026-02-01 00:49:52 - WelcomeScreen Visual Tests
+**What:** Created page object + spec + baseline for WelcomeScreen component
+**Mock parity:** ready - no invoke() calls, purely presentational with uiStore state
+- Created tests/helpers/welcome-screen.helpers.ts for openWelcomeScreen/closeWelcomeScreen helpers
+- Created tests/pages/modals/welcome-screen.page.ts with selectors
+- Created tests/visual/modals/welcome-screen/welcome-screen.spec.ts with 6 tests
+- Generated 6 baseline snapshots
+**Commands:**
+- `npx playwright test tests/visual/modals/welcome-screen/welcome-screen.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/welcome-screen/welcome-screen.spec.ts`
+**Result:** Success - 6 tests passing, all baselines created
+
+---
+
 ### 2026-01-31 23:16:27 - loading-state Visual Tests
 **What:** Created page object + spec + baseline for loading states (skeleton loaders)
 **Mock parity:** Extended mock invoke to support __mockInvokeDelay for loading state testing
