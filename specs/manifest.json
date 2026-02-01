@@ -436,6 +436,13 @@
       "prd": "specs/phases/prd_phase_60_review_issues.md",
       "status": "active",
       "description": "Structured issue tracking in reviews with lifecycle management and UI integration"
+    },
+    {
+      "phase": 61,
+      "name": "Migration Test File Split",
+      "prd": "specs/phases/prd_phase_61_migration_test_split.md",
+      "status": "pending",
+      "description": "Split migration tests.rs into per-migration test files for code quality"
     }
   ]
 }
