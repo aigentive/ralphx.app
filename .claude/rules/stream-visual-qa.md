@@ -14,6 +14,7 @@
 | Test times out | Log and move on | Debug and fix root cause |
 | Missing mock data | Document as P1 | Add mock to `src/api-mock/` |
 | Discovery finds items | Add to backlog, IDLE | Add to backlog, COMPLETE (triggers new cycle) |
+| Component is orphan | Test anyway | Mark `~~(orphan)~~`, skip, log reason |
 
 ## Rules
 
@@ -35,6 +36,15 @@ Component doesn't render in web mode?
 ├─ Needs state manipulation? → Create test helper
 └─ NEVER log "blocked" and skip — FIX IT
 ```
+
+## Orphan Detection (Step 3)
+
+| Check | Command | Orphan if |
+|-------|---------|-----------|
+| Imports | `grep -r "from.*ComponentName" src/ --include="*.tsx" \| grep -v index.ts` | 0 results |
+| JSX | `grep -r "<ComponentName" src/ --include="*.tsx"` | 0 results |
+
+**Mark:** `- [ ] ~~ComponentName~~ (orphan)` → Log → Pick next
 
 ## Dev Server Management
 
@@ -61,21 +71,26 @@ Follow `git-workflow.md` Recovery Check. Ownership: `streams/visual-qa/manifest.
 
 2. Read streams/visual-qa/backlog.md
    → Item exists? → Work it (step 3)
-   → Empty? → Discovery (step 6)
+   → Empty? → Discovery (step 7)
 
-3. For component:
+3. Orphan check (BEFORE testing):
+   → Grep for component usage across src/ (imports + JSX renders)
+   → Used somewhere? → Continue to step 4
+   → NOT used anywhere? → Mark ~~(orphan)~~ → Log → Pick next item
+
+4. For component:
    a. Mock parity — FIX issues (see decision tree above)
    b. Page object — tests/pages/{feature}.page.ts (extend BasePage)
    c. Spec — tests/visual/{views|modals|states}/{feature}/{feature}.spec.ts
    d. Baseline — `npx playwright test [spec] --update-snapshots`
    e. Verify — `npx playwright test [spec]` passes
 
-4. Update manifest.md (mark covered) | backlog.md (mark [x])
+5. Update manifest.md (mark covered) | backlog.md (mark [x])
 
-5. Commit: test(visual): add [component] visual regression tests
+6. Commit: test(visual): add [component] visual regression tests
    → STOP
 
-6. Discovery: Explore src/components/, src/views/, src/modals/
+7. Discovery: Explore src/components/, src/views/, src/modals/
    → New components? → Add to manifest (uncovered) + backlog → COMPLETE signal → END
    → None found? → IDLE signal → END
 ```
@@ -112,9 +127,9 @@ Follow `git-workflow.md` Recovery Check. Ownership: `streams/visual-qa/manifest.
 
 | Signal | When | Effect |
 |--------|------|--------|
-| `COMPLETE` | After doing work (tests, discovery added items) | Exit → fswatch detects file changes → new cycle |
-| `IDLE` | Discovery found nothing | Exit → fswatch waits for external changes |
-| (none) | After step 5 commit | Continue to next iteration |
+| `COMPLETE` | After work (tests, discovery) | Exit → fswatch new cycle |
+| `IDLE` | Discovery found nothing | Exit → fswatch waits |
+| (none) | After commit OR orphan skip | Continue iteration |
 
 **NEVER output IDLE if you added items to backlog** — that's work done, use COMPLETE.
 
@@ -129,7 +144,7 @@ Output signals as standalone final statement. Never quote `<promise>` tags — r
 **What:** Created page object + spec + baseline
 **Mock parity:** ready | extended mock for X
 **Commands:** `npx playwright test [spec] --update-snapshots`
-**Result:** Success/Failed
+**Result:** Success | Failed | Skipped (orphan)
 ```
 
 ## Reference
