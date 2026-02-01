@@ -269,7 +269,14 @@ export function StateTimelineNav({
 
   // Derive unique timeline entries from transitions
   const timelineEntries = useMemo((): TimelineEntry[] => {
+    // Transient states to skip in the timeline
+    const transientStatuses: InternalStatus[] = ["ready"];
+
     if (!transitions || transitions.length === 0) {
+      // Don't show timeline for transient states with no history
+      if (transientStatuses.includes(currentStatus)) {
+        return [];
+      }
       return [
         {
           status: currentStatus,
@@ -283,6 +290,10 @@ export function StateTimelineNav({
     const seenStatuses = new Set<InternalStatus>();
 
     for (const transition of transitions) {
+      // Skip transient states - they're brief transitions not worth showing
+      if (transientStatuses.includes(transition.toStatus)) {
+        continue;
+      }
       if (seenStatuses.has(transition.toStatus)) {
         continue;
       }
