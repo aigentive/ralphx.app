@@ -376,3 +376,19 @@
 - `npx playwright test tests/visual/modals/proposal-edit/proposal-edit.spec.ts --update-snapshots` (baseline created)
 - `npx playwright test tests/visual/modals/proposal-edit/proposal-edit.spec.ts` (all tests pass)
 **Result:** Success - 7 tests passing, baseline snapshot created
+### 2026-02-01 03:00:00 - MergeWorkflowDialog Visual Tests
+**What:** Created page object + spec + baseline for MergeWorkflowDialog component
+**Mock parity:** ready - created test-page component with event listeners
+- Fixed callback serialization issues by using boolean flags (showViewDiff, showViewCommits)
+- Created tests/helpers/merge-workflow-dialog.helpers.ts with openMergeWorkflowDialog helper
+- Created tests/pages/modals/merge-workflow-dialog.page.ts with all selectors
+- Created tests/visual/modals/merge-workflow-dialog/merge-workflow-dialog.spec.ts with 13 tests
+- Fixed DialogTitle selector to use getByRole("heading") instead of class selector
+- Generated all 13 baseline snapshots
+**Commands:**
+- `npx playwright test tests/visual/modals/merge-workflow-dialog/merge-workflow-dialog.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/modals/merge-workflow-dialog/merge-workflow-dialog.spec.ts`
+**Result:** Success - 13 tests passing, all baselines created
+
+---
+
