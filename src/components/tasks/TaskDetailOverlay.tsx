@@ -152,6 +152,26 @@ const STATUS_CONFIG: Record<
     bg: "hsla(14 100% 60% / 0.15)",
     text: "hsl(14 100% 60%)",
   },
+  pending_merge: {
+    label: "Pending Merge",
+    bg: "hsla(14 100% 60% / 0.15)",
+    text: "hsl(14 100% 60%)",
+  },
+  merging: {
+    label: "Merging",
+    bg: "hsla(14 100% 60% / 0.15)",
+    text: "hsl(14 100% 60%)",
+  },
+  merge_conflict: {
+    label: "Merge Conflict",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
+  },
+  merged: {
+    label: "Merged",
+    bg: "hsla(145 60% 45% / 0.15)",
+    text: "hsl(145 60% 50%)",
+  },
 };
 
 // ============================================================================

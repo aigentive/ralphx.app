@@ -39,6 +39,10 @@ const STATUS_CONFIG: Record<InternalStatus, { label: string; color: string }> = 
   review_passed: { label: "AI Review Passed", color: "var(--status-success)" },
   escalated: { label: "Escalated", color: "var(--status-warning)" },
   re_executing: { label: "Re-executing", color: "var(--accent-primary)" },
+  pending_merge: { label: "Pending Merge", color: "var(--accent-primary)" },
+  merging: { label: "Merging", color: "var(--accent-primary)" },
+  merge_conflict: { label: "Merge Conflict", color: "var(--status-warning)" },
+  merged: { label: "Merged", color: "var(--status-success)" },
 };
 
 function StatusBadge({ status }: { status: InternalStatus }) {

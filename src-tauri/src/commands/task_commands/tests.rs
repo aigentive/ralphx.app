@@ -901,11 +901,12 @@ use super::*;
 
     #[tokio::test]
     async fn test_get_valid_transitions_from_approved() {
-        // Test valid transitions from approved state (terminal)
+        // Test valid transitions from approved state (leads to merge workflow)
         let transitions = InternalStatus::Approved.valid_transitions();
 
-        // From approved, can be re-opened to Ready
-        assert_eq!(transitions.len(), 1);
+        // From approved, can transition to PendingMerge or re-opened to Ready
+        assert_eq!(transitions.len(), 2);
+        assert!(transitions.iter().any(|t| *t == InternalStatus::PendingMerge));
         assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
 
         // Test label

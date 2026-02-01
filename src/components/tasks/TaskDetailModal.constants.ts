@@ -102,6 +102,26 @@ export const STATUS_CONFIG: Record<
     bg: "rgba(255, 107, 53, 0.15)",
     text: "var(--accent-primary)",
   },
+  pending_merge: {
+    label: "Pending Merge",
+    bg: "rgba(255, 107, 53, 0.15)",
+    text: "var(--accent-primary)",
+  },
+  merging: {
+    label: "Merging",
+    bg: "rgba(255, 107, 53, 0.15)",
+    text: "var(--accent-primary)",
+  },
+  merge_conflict: {
+    label: "Merge Conflict",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
+  },
+  merged: {
+    label: "Merged",
+    bg: "rgba(16, 185, 129, 0.15)",
+    text: "var(--status-success)",
+  },
 };
 
 export const DEFAULT_PRIORITY_COLOR = { bg: "var(--bg-hover)", text: "var(--text-secondary)" };
@@ -119,4 +139,7 @@ export const SYSTEM_CONTROLLED_STATUSES: InternalStatus[] = [
   "review_passed",
   "escalated",
   "re_executing",
+  "pending_merge",
+  "merging",
+  "merge_conflict",
 ];

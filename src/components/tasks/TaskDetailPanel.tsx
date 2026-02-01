@@ -93,8 +93,14 @@ const TASK_DETAIL_VIEWS: Record<
   review_passed: HumanReviewTaskDetail,
   escalated: EscalatedTaskDetail,
   revision_needed: RevisionTaskDetail,
-  // Terminal states
+  // Approval leads to merge
   approved: CompletedTaskDetail,
+  // Merge states - use basic view (specialized views added in Task 19)
+  pending_merge: BasicTaskDetail,
+  merging: BasicTaskDetail,
+  merge_conflict: BasicTaskDetail,
+  // Terminal states
+  merged: CompletedTaskDetail,
   failed: BasicTaskDetail,
   cancelled: BasicTaskDetail,
 };
@@ -196,6 +202,26 @@ const STATUS_CONFIG: Record<
     label: "Re-executing",
     bg: "rgba(255, 107, 53, 0.15)",
     text: "var(--accent-primary)",
+  },
+  pending_merge: {
+    label: "Pending Merge",
+    bg: "rgba(255, 107, 53, 0.15)",
+    text: "var(--accent-primary)",
+  },
+  merging: {
+    label: "Merging",
+    bg: "rgba(255, 107, 53, 0.15)",
+    text: "var(--accent-primary)",
+  },
+  merge_conflict: {
+    label: "Merge Conflict",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
+  },
+  merged: {
+    label: "Merged",
+    bg: "rgba(16, 185, 129, 0.15)",
+    text: "var(--status-success)",
   },
 };
 

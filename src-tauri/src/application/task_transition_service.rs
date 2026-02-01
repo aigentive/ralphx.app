@@ -304,6 +304,10 @@ fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_mach
         InternalStatus::RevisionNeeded => State::RevisionNeeded,
         InternalStatus::ReExecuting => State::ReExecuting,
         InternalStatus::Approved => State::Approved,
+        InternalStatus::PendingMerge => State::PendingMerge,
+        InternalStatus::Merging => State::Merging,
+        InternalStatus::MergeConflict => State::MergeConflict,
+        InternalStatus::Merged => State::Merged,
         InternalStatus::Failed => State::Failed(Default::default()),
         InternalStatus::Cancelled => State::Cancelled,
     }
@@ -329,6 +333,10 @@ fn state_to_internal_status(state: &crate::domain::state_machine::machine::State
         State::RevisionNeeded => InternalStatus::RevisionNeeded,
         State::ReExecuting => InternalStatus::ReExecuting,
         State::Approved => InternalStatus::Approved,
+        State::PendingMerge => InternalStatus::PendingMerge,
+        State::Merging => InternalStatus::Merging,
+        State::MergeConflict => InternalStatus::MergeConflict,
+        State::Merged => InternalStatus::Merged,
         State::Failed(_) => InternalStatus::Failed,
         State::Cancelled => InternalStatus::Cancelled,
     }
