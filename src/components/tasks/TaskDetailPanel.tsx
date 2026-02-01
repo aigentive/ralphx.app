@@ -46,6 +46,8 @@ interface TaskDetailPanelProps {
   showHistory?: boolean;
   /** Use state-specific view from registry instead of default panel */
   useViewRegistry?: boolean;
+  /** Override status for view registry lookup (used in history mode) */
+  viewAsStatus?: InternalStatus;
 }
 
 /**
@@ -289,6 +291,7 @@ export function TaskDetailPanel({
   showContext: showContextProp = false,
   showHistory: showHistoryProp = true,
   useViewRegistry = false,
+  viewAsStatus,
 }: TaskDetailPanelProps) {
   const [showContext, setShowContext] = useState(showContextProp);
 
@@ -301,8 +304,10 @@ export function TaskDetailPanel({
   // If using View Registry Pattern, render the appropriate state-specific component
   // This check must come AFTER all hooks to satisfy React hooks rules
   if (useViewRegistry) {
+    // Use viewAsStatus for history mode, otherwise use current status
+    const statusForView = viewAsStatus ?? task.internalStatus;
     const ViewComponent =
-      TASK_DETAIL_VIEWS[task.internalStatus] ?? BasicTaskDetail;
+      TASK_DETAIL_VIEWS[statusForView] ?? BasicTaskDetail;
     return <ViewComponent task={task} />;
   }
 
