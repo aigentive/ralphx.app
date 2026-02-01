@@ -5,7 +5,6 @@
  */
 
 import { useState, useMemo, useCallback } from "react";
-import { DiffView, DiffModeEnum } from "@git-diff-view/react";
 import {
   Folder,
   FolderOpen,
@@ -21,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SimpleDiffView } from "./SimpleDiffView";
 
 import {
   type FileChange,
@@ -30,7 +30,6 @@ import {
   getStatusColor,
   getStatusLetter,
   formatRelativeDate,
-  getLanguageFromPath,
   getFileIcon,
   buildFileTree,
 } from "./DiffViewer.types";
@@ -348,13 +347,13 @@ export function DiffPanel({
         className="flex items-center justify-between px-4 shrink-0"
         style={{
           height: "40px",
-          borderBottom: "1px solid var(--border-subtle)",
-          backgroundColor: "var(--bg-surface)",
+          borderBottom: "1px solid hsl(220 10% 15%)",
+          backgroundColor: "hsl(220 10% 10%)",
         }}
       >
         <span
           className="font-mono text-sm truncate"
-          style={{ color: "var(--text-primary)" }}
+          style={{ color: "hsl(220 10% 75%)" }}
         >
           {filePath}
         </span>
@@ -380,27 +379,12 @@ export function DiffPanel({
         )}
       </div>
 
-      {/* Diff view */}
-      <div className="flex-1 overflow-auto diff-viewer-container bg-[var(--bg-base)]">
-        <DiffView
-          data={{
-            oldFile: {
-              fileName: diffData.filePath,
-              content: diffData.oldContent,
-              fileLang: diffData.language ?? getLanguageFromPath(diffData.filePath),
-            },
-            newFile: {
-              fileName: diffData.filePath,
-              content: diffData.newContent,
-              fileLang: diffData.language ?? getLanguageFromPath(diffData.filePath),
-            },
-            hunks: diffData.hunks,
-          }}
-          diffViewMode={DiffModeEnum.Unified}
-          diffViewFontSize={13}
-          diffViewHighlight={true}
-          diffViewAddWidget={false}
-          diffViewWrap={false}
+      {/* Diff view - using SimpleDiffView for reliable rendering */}
+      <div className="flex-1 overflow-hidden">
+        <SimpleDiffView
+          oldContent={diffData.oldContent}
+          newContent={diffData.newContent}
+          language={diffData.language}
         />
       </div>
     </div>

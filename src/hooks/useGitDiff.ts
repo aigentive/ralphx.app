@@ -1,20 +1,23 @@
 /**
  * useGitDiff - Hook for fetching git diff data for reviews
  *
- * Provides file changes, commit history, and diff data for a task
- * Used primarily in the ReviewsPanel with integrated DiffViewer
+ * Provides file changes, commit history, and diff data for a task.
+ * Connects to Tauri backend to fetch real diff data from agent activity events.
+ * Used primarily in the ReviewsPanel with integrated DiffViewer.
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { diffApi } from "@/api/diff";
+import { getLanguageFromPath } from "@/components/diff/DiffViewer.types";
 import type { FileChange, Commit, DiffData } from "@/components/diff";
 
 export interface UseGitDiffOptions {
   /** Task ID to fetch diff data for */
   taskId: string;
-  /** Project path for git operations */
-  projectPath?: string;
+  /** Project path for git operations (required for real API) */
+  projectPath?: string | undefined;
   /** Whether to enable the hook */
-  enabled?: boolean;
+  enabled?: boolean | undefined;
 }
 
 export interface UseGitDiffResult {
@@ -35,178 +38,92 @@ export interface UseGitDiffResult {
 }
 
 /**
- * Mock implementation for git diff operations
+ * Hook for fetching git diff data from agent activity events
  *
- * In the future, this will connect to Tauri backend commands:
- * - get_git_changes(projectPath) -> FileChange[]
- * - get_git_commits(projectPath, limit) -> Commit[]
- * - get_file_diff(projectPath, filePath, commitSha?) -> DiffData
+ * Connects to Tauri backend commands:
+ * - get_task_file_changes(taskId, projectPath) -> FileChange[]
+ * - get_file_diff(filePath, projectPath) -> FileDiff
  *
- * For now, returns mock data for UI development and testing
+ * Note: Commit history is not yet implemented in backend
  */
 export function useGitDiff({
   taskId,
-  projectPath: _projectPath,
+  projectPath,
   enabled = true,
 }: UseGitDiffOptions): UseGitDiffResult {
   const [changes, setChanges] = useState<FileChange[]>([]);
-  const [commits, setCommits] = useState<Commit[]>([]);
+  const [commits] = useState<Commit[]>([]); // Not yet implemented
   const [isLoadingChanges, setIsLoadingChanges] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isLoadingHistory] = useState(false); // Not yet implemented
   const [error, setError] = useState<Error | null>(null);
 
   // Fetch changes on mount/enable
   useEffect(() => {
-    if (!enabled || !taskId) return;
+    if (!enabled || !taskId || !projectPath) return;
 
     const fetchData = async () => {
       setIsLoadingChanges(true);
-      setIsLoadingHistory(true);
       setError(null);
 
       try {
-        // Simulate network delay
-        await new Promise((resolve) => setTimeout(resolve, 300));
-
-        // Mock changes data based on taskId for deterministic testing
-        const mockChanges: FileChange[] = [
-          {
-            path: "src/components/auth/LoginForm.tsx",
-            status: "modified",
-            additions: 25,
-            deletions: 10,
-          },
-          {
-            path: "src/hooks/useAuth.ts",
-            status: "modified",
-            additions: 15,
-            deletions: 3,
-          },
-          {
-            path: "src/lib/api/auth.ts",
-            status: "added",
-            additions: 45,
-            deletions: 0,
-          },
-          {
-            path: "src/types/auth.ts",
-            status: "added",
-            additions: 20,
-            deletions: 0,
-          },
-        ];
-
-        const mockCommits: Commit[] = [
-          {
-            sha: "a1b2c3d4e5f6789012345678901234567890abcd",
-            shortSha: "a1b2c3d",
-            message: "feat: implement login form validation",
-            author: "Claude Worker",
-            date: new Date(Date.now() - 1000 * 60 * 5), // 5 min ago
-          },
-          {
-            sha: "b2c3d4e5f6789012345678901234567890abcde",
-            shortSha: "b2c3d4e",
-            message: "feat: add authentication hook",
-            author: "Claude Worker",
-            date: new Date(Date.now() - 1000 * 60 * 30), // 30 min ago
-          },
-          {
-            sha: "c3d4e5f6789012345678901234567890abcdef",
-            shortSha: "c3d4e5f",
-            message: "chore: initial task setup",
-            author: "Claude Worker",
-            date: new Date(Date.now() - 1000 * 60 * 60), // 1 hr ago
-          },
-        ];
-
-        setChanges(mockChanges);
-        setCommits(mockCommits);
+        const fileChanges = await diffApi.getTaskFileChanges(taskId, projectPath);
+        setChanges(fileChanges);
       } catch (err) {
         setError(
           err instanceof Error ? err : new Error("Failed to fetch git data")
         );
+        setChanges([]);
       } finally {
         setIsLoadingChanges(false);
-        setIsLoadingHistory(false);
       }
     };
 
     fetchData();
-  }, [enabled, taskId]);
+  }, [enabled, taskId, projectPath]);
 
   // Fetch diff for a specific file
   const fetchDiff = useCallback(
-    async (filePath: string, commitSha?: string): Promise<DiffData | null> => {
-      if (!enabled) return null;
+    async (filePath: string, _commitSha?: string): Promise<DiffData | null> => {
+      if (!enabled || !projectPath) return null;
 
       try {
-        // Simulate network delay
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        const fileDiff = await diffApi.getFileDiff(filePath, projectPath);
 
-        // Generate mock diff based on file path
-        const fileName = filePath.split("/").pop() ?? "file";
-        const isTypeScript = filePath.endsWith(".ts") || filePath.endsWith(".tsx");
-        const language = isTypeScript ? "typescript" : "plaintext";
-
-        // Mock diff content
-        const oldContent = commitSha
-          ? `// Previous version of ${fileName}\n// Commit: ${commitSha}\n\nexport function example() {\n  return "old";\n}\n`
-          : `// ${fileName}\n\nexport function example() {\n  return "old";\n}\n`;
-
-        const newContent = `// ${fileName}\n// Updated for task\n\nexport function example() {\n  // Improved implementation\n  return "new";\n}\n\nexport function newFunction() {\n  return "added";\n}\n`;
-
-        const mockDiff: DiffData = {
-          filePath,
-          oldContent,
-          newContent,
-          hunks: [
-            "@@ -1,5 +1,12 @@",
-            `-// ${fileName}`,
-            `+// ${fileName}`,
-            "+// Updated for task",
-            " ",
-            " export function example() {",
-            `-  return "old";`,
-            `+  // Improved implementation`,
-            `+  return "new";`,
-            " }",
-            "+",
-            "+export function newFunction() {",
-            `+  return "added";`,
-            "+}",
-          ],
-          language,
+        // Convert API response to DiffData format
+        const diffData: DiffData = {
+          filePath: fileDiff.filePath,
+          oldContent: fileDiff.oldContent,
+          newContent: fileDiff.newContent,
+          hunks: [], // SimpleDiffView computes hunks from content
+          language: fileDiff.language || getLanguageFromPath(filePath),
         };
 
-        return mockDiff;
+        return diffData;
       } catch {
         return null;
       }
     },
-    [enabled]
+    [enabled, projectPath]
   );
 
   // Refresh all data
   const refresh = useCallback(async () => {
-    if (!enabled || !taskId) return;
+    if (!enabled || !taskId || !projectPath) return;
 
     setIsLoadingChanges(true);
-    setIsLoadingHistory(true);
     setError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      // Data would be refetched from backend
+      const fileChanges = await diffApi.getTaskFileChanges(taskId, projectPath);
+      setChanges(fileChanges);
     } catch (err) {
       setError(
         err instanceof Error ? err : new Error("Failed to refresh git data")
       );
     } finally {
       setIsLoadingChanges(false);
-      setIsLoadingHistory(false);
     }
-  }, [enabled, taskId]);
+  }, [enabled, taskId, projectPath]);
 
   return {
     changes,

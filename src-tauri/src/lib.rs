@@ -407,7 +407,10 @@ pub fn run() {
             commands::activity_commands::list_session_activity_events,
             commands::activity_commands::list_all_activity_events,
             commands::activity_commands::count_task_activity_events,
-            commands::activity_commands::count_session_activity_events
+            commands::activity_commands::count_session_activity_events,
+            // Diff commands
+            commands::diff_commands::get_task_file_changes,
+            commands::diff_commands::get_file_diff
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

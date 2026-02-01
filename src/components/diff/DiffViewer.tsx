@@ -15,7 +15,6 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import "@git-diff-view/react/styles/diff-view.css";
 import {
   GitBranch,
   History,
