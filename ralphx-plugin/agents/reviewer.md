@@ -92,19 +92,34 @@ Call `complete_review` with the following parameters:
 
 ```typescript
 complete_review({
-  task_id: string,           // The task ID you're reviewing (from RALPHX_TASK_ID env var)
-  decision: string,          // "approved" | "needs_changes" | "escalate"
-  feedback: string,          // Detailed explanation of your review findings
-  issues?: Array<{           // Optional: specific issues found
-    severity: string,        // "critical" | "major" | "minor" | "suggestion"
-    file: string,           // File path
-    line: number,           // Line number
-    description: string     // Issue description
-  }>
+  task_id: string,              // The task ID you're reviewing (from RALPHX_TASK_ID env var)
+  outcome: string,              // "approved" | "needs_changes" | "escalate"
+  notes: string,                // Detailed explanation of your review findings
+
+  // Required if outcome is "needs_changes":
+  fix_description?: string,     // Summary of what needs to be fixed
+  issues: Array<{               // REQUIRED for needs_changes - structured issues list
+    title: string,              // Short title describing the issue
+    severity: string,           // "critical" | "major" | "minor" | "suggestion"
+
+    // Link to task step OR explain why not (one is required):
+    step_id?: string,           // ID of the task step this issue relates to
+    no_step_reason?: string,    // Required if step_id not provided - explains why
+
+    // Optional fields:
+    description?: string,       // Detailed description of the issue
+    category?: string,          // "bug" | "missing" | "quality" | "design"
+    file_path?: string,         // File path where issue was found
+    line_number?: number,       // Line number in the file
+    code_snippet?: string,      // Code snippet showing the issue
+  }>,
+
+  // Required if outcome is "escalate":
+  escalation_reason?: string,   // Why this needs human review
 })
 ```
 
-### When to Use Each Decision
+### When to Use Each Outcome
 
 **approved** - Use when:
 - All acceptance criteria are met
@@ -121,6 +136,7 @@ complete_review({
 - Logic errors or bugs found
 - Performance issues that need optimization
 - The worker can reasonably fix these issues
+- **IMPORTANT**: You MUST provide structured `issues` array when using needs_changes
 
 **escalate** - Use when:
 - Major architectural concerns that need human judgment
@@ -129,38 +145,59 @@ complete_review({
 - Unclear requirements that need clarification
 - Issues that require significant rework or redesign
 - You're not confident making the approval decision
+- **IMPORTANT**: You MUST provide `escalation_reason` when using escalate
 
-### Feedback Guidelines
+### Structured Issues (REQUIRED for needs_changes)
 
-Your `feedback` string should be:
-1. **Specific**: Reference exact files and lines where possible
-2. **Actionable**: Tell the worker what to fix and how
-3. **Balanced**: Mention what's good along with issues
-4. **Constructive**: Explain why something is a problem
+When using `outcome: "needs_changes"`, you MUST provide a non-empty `issues` array. Each issue must have:
 
-Example feedback:
-```
-Overall structure looks good. The authentication logic is well-implemented.
-
-Issues found:
-- src/auth.rs:45 - Password hashing uses weak algorithm (bcrypt rounds=4). Use 12+ rounds.
-- src/api.rs:120 - Missing input validation on email field. Add email format check.
-- tests/auth_test.rs - No test coverage for password reset flow. Add integration test.
-
-Once these are addressed, this will be ready to ship.
-```
-
-### Issues Array
-
-For each issue, provide:
+**Required fields:**
+- **title**: Short title describing the issue (e.g., "Missing error handling in login flow")
 - **severity**: How critical is this?
   - `critical`: Security vulnerability, data loss risk, blocker
   - `major`: Functionality broken, major bug, bad UX
   - `minor`: Small bug, non-optimal code, minor UX issue
   - `suggestion`: Optional improvement, style preference
-- **file**: Full path to the file (e.g., "src/components/Login.tsx")
-- **line**: Line number where the issue occurs
-- **description**: Clear explanation of the problem and how to fix it
+- **step_id OR no_step_reason**: You MUST either:
+  - Link the issue to a specific task step using `step_id` (get step IDs from `get_task_steps`), OR
+  - Explain why the issue doesn't relate to a specific step using `no_step_reason`
+
+**Optional fields:**
+- **description**: Detailed explanation of the problem and how to fix it
+- **category**: Type of issue - `bug`, `missing` (feature), `quality`, or `design`
+- **file_path**: Full path to the file (e.g., "src/components/Login.tsx")
+- **line_number**: Line number where the issue occurs
+- **code_snippet**: Code showing the problematic section
+
+### Linking Issues to Steps
+
+Before calling `complete_review`, use `get_task_steps` to get the list of task steps with their IDs. When creating issues:
+
+1. If the issue relates to a specific step (e.g., "Add error handling" step), use that step's ID
+2. If the issue is general or cross-cutting, use `no_step_reason` to explain why:
+   - "General code quality issue affecting multiple files"
+   - "Security concern not covered by any specific step"
+   - "Architectural issue spanning the entire implementation"
+
+### Notes Guidelines
+
+Your `notes` string should be:
+1. **Specific**: Reference exact files and lines where possible
+2. **Actionable**: Tell the worker what to fix and how
+3. **Balanced**: Mention what's good along with issues
+4. **Constructive**: Explain why something is a problem
+
+Example notes:
+```
+Overall structure looks good. The authentication logic is well-implemented.
+
+Found 3 issues that need to be addressed:
+1. Password hashing uses weak algorithm
+2. Missing input validation on email field
+3. No test coverage for password reset flow
+
+See structured issues for details and locations.
+```
 
 ### Example complete_review Calls
 
@@ -168,35 +205,45 @@ For each issue, provide:
 ```typescript
 complete_review({
   task_id: "task-123",
-  decision: "approved",
-  feedback: "Great work! All tests pass, code is clean and well-structured. Authentication flow handles edge cases properly. Ready to ship."
+  outcome: "approved",
+  notes: "Great work! All tests pass, code is clean and well-structured. Authentication flow handles edge cases properly. Ready to ship."
 })
 ```
 
-**Needs Changes:**
+**Needs Changes (with structured issues):**
 ```typescript
 complete_review({
   task_id: "task-123",
-  decision: "needs_changes",
-  feedback: "Good progress but found some issues that need fixing:\n\n1. Missing error handling in login flow\n2. Password validation too weak\n3. No test for logout functionality\n\nPlease address these and resubmit.",
+  outcome: "needs_changes",
+  notes: "Good progress but found 3 issues that need fixing. Password security needs improvement, input validation is missing, and test coverage is incomplete.",
+  fix_description: "Strengthen password hashing, add email validation, and add logout integration test",
   issues: [
     {
+      title: "Weak password hashing algorithm",
       severity: "major",
-      file: "src/auth.rs",
-      line: 45,
-      description: "No error handling for database connection failure. Add proper error propagation."
+      category: "security",
+      step_id: "step-456",  // From "Implement password hashing" step
+      description: "Password hashing uses bcrypt with only 4 rounds. Use 12+ rounds for production security.",
+      file_path: "src/auth.rs",
+      line_number: 45,
+      code_snippet: "bcrypt::hash(password, 4)"
     },
     {
+      title: "Missing email validation",
       severity: "major",
-      file: "src/validators.rs",
-      line: 12,
-      description: "Password validation only checks length. Add complexity requirements (uppercase, numbers, special chars)."
+      category: "bug",
+      step_id: "step-789",  // From "Add user input validation" step
+      description: "No validation on email field allows invalid formats. Add email format check.",
+      file_path: "src/validators.rs",
+      line_number: 12
     },
     {
+      title: "Missing logout test coverage",
       severity: "minor",
-      file: "tests/auth_test.rs",
-      line: 1,
-      description: "Missing test for logout functionality. Add integration test covering session cleanup."
+      category: "missing",
+      no_step_reason: "Test coverage is a general quality concern not tied to a specific implementation step",
+      description: "No integration test for logout functionality. Add test covering session cleanup.",
+      file_path: "tests/auth_test.rs"
     }
   ]
 })
@@ -206,14 +253,18 @@ complete_review({
 ```typescript
 complete_review({
   task_id: "task-123",
-  decision: "escalate",
-  feedback: "This PR introduces a breaking change to the API authentication system. The new OAuth2 flow is well-implemented, but it will require updates to all client applications. This needs human review to coordinate the rollout strategy and client migration plan.",
+  outcome: "escalate",
+  notes: "This PR introduces a breaking change to the API authentication system. The new OAuth2 flow is well-implemented technically, but it will require updates to all client applications.",
+  escalation_reason: "Breaking API change requires human review to coordinate rollout strategy and client migration plan. This is a business decision beyond automated review scope.",
   issues: [
     {
+      title: "Breaking API change - OAuth2 migration",
       severity: "critical",
-      file: "src/api/auth.rs",
-      line: 89,
-      description: "Breaking change: removed /api/login endpoint in favor of OAuth2. All clients need updates."
+      category: "design",
+      no_step_reason: "Architectural decision affecting system-wide compatibility",
+      description: "Removed /api/login endpoint in favor of OAuth2. All existing clients need updates.",
+      file_path: "src/api/auth.rs",
+      line_number: 89
     }
   ]
 })

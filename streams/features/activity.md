@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-01 21:05:00 - Phase 60 Task 9: Update reviewer agent for structured issues
+**What:**
+- Updated reviewer agent system prompt in `ralphx-plugin/agents/reviewer.md`
+- Changed field names to match backend: `decision` → `outcome`, `feedback` → `notes`
+- Added `fix_description` field documentation (required for needs_changes)
+- Updated `issues` array to use new structured format:
+  - Required: `title`, `severity`, `step_id` OR `no_step_reason`
+  - Optional: `description`, `category`, `file_path`, `line_number`, `code_snippet`
+- Added "Structured Issues (REQUIRED for needs_changes)" section explaining requirements
+- Added "Linking Issues to Steps" section explaining step_id vs no_step_reason
+- Updated all example complete_review calls with new format
+- Emphasized MUST provide issues for needs_changes and escalation_reason for escalate
+
+**Files:**
+- `ralphx-plugin/agents/reviewer.md` (updated)
+
+**Commands:**
+- N/A - documentation-only change (agent prompt)
+
+**Visual Verification:** N/A - agent prompt, no UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 20:37:00 - Phase 60 Task 8: Add ReviewIssue types and Zod schemas
 **What:**
 - Created `src/types/review-issue.ts` with complete type system for review issues
