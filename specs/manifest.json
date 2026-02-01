@@ -457,6 +457,13 @@
       "prd": "specs/phases/prd_phase_63_wire_review_issues_ui.md",
       "status": "active",
       "description": "Wire Phase 60 review issues API to detail views with IssueList component"
+    },
+    {
+      "phase": 64,
+      "name": "Link Conversation IDs to Task State History",
+      "prd": "specs/phases/prd_phase_64_link_conversation_ids.md",
+      "status": "pending",
+      "description": "Store conversation_id and agent_run_id in state history for history navigation"
     }
   ]
 }
