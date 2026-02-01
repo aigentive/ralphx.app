@@ -93,7 +93,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(backend): add review_issues table migration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
