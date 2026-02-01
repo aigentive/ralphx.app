@@ -87,26 +87,28 @@ impl DiffService {
         // Extract file paths from Write/Edit tool calls
         let mut modified_files = HashSet::new();
 
-        for event in all_events {
+        for event in &all_events {
+            // Parse the tool call metadata (not content - content is human-readable string)
+            // Metadata format: { "tool_name": "Write", "arguments": {...} }
+            if let Some(ref metadata) = event.metadata {
+                if let Ok(tool_meta) = serde_json::from_str::<ToolCallMetadata>(metadata) {
+                    let tool_name = tool_meta.tool_name.to_lowercase();
 
-            // Parse the tool call content
-            if let Ok(tool_call) = serde_json::from_str::<ToolCallContent>(&event.content) {
-                let tool_name = tool_call.name.to_lowercase();
-
-                if tool_name == "write" || tool_name == "edit" {
-                    if let Some(file_path) = tool_call.arguments.get("file_path") {
-                        if let Some(path_str) = file_path.as_str() {
-                            // Convert absolute path to relative if needed
-                            let relative_path = if path_str.starts_with(project_path) {
-                                path_str
-                                    .strip_prefix(project_path)
-                                    .unwrap_or(path_str)
-                                    .trim_start_matches('/')
-                                    .to_string()
-                            } else {
-                                path_str.to_string()
-                            };
-                            modified_files.insert(relative_path);
+                    if tool_name == "write" || tool_name == "edit" {
+                        if let Some(file_path) = tool_meta.arguments.get("file_path") {
+                            if let Some(path_str) = file_path.as_str() {
+                                // Convert absolute path to relative if needed
+                                let relative_path = if path_str.starts_with(project_path) {
+                                    path_str
+                                        .strip_prefix(project_path)
+                                        .unwrap_or(path_str)
+                                        .trim_start_matches('/')
+                                        .to_string()
+                                } else {
+                                    path_str.to_string()
+                                };
+                                modified_files.insert(relative_path);
+                            }
                         }
                     }
                 }
@@ -129,7 +131,7 @@ impl DiffService {
 
     /// Get the change status for a single file using git
     fn get_file_change_status(&self, file_path: &str, project_path: &str) -> Option<FileChange> {
-        // Use git diff --numstat to get additions/deletions
+        // First check for tracked changes using git diff
         let output = Command::new("git")
             .args(["diff", "--numstat", "HEAD", "--", file_path])
             .current_dir(project_path)
@@ -137,54 +139,54 @@ impl DiffService {
             .ok()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let line = stdout.lines().next()?;
+        if let Some(line) = stdout.lines().next() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let additions: u32 = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0);
+                let deletions: u32 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
 
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            let additions: u32 = parts.first()?.parse().unwrap_or(0);
-            let deletions: u32 = parts.get(1)?.parse().unwrap_or(0);
+                // Determine status
+                let status = if additions > 0 && deletions == 0 {
+                    // Check if file existed before
+                    let existed = Command::new("git")
+                        .args(["ls-files", "--error-unmatch", file_path])
+                        .current_dir(project_path)
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false);
 
-            // Determine status
-            let status = if additions > 0 && deletions == 0 {
-                // Check if file existed before
-                let existed = Command::new("git")
-                    .args(["ls-files", "--error-unmatch", file_path])
-                    .current_dir(project_path)
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false);
-
-                if existed {
-                    FileChangeStatus::Modified
+                    if existed {
+                        FileChangeStatus::Modified
+                    } else {
+                        FileChangeStatus::Added
+                    }
+                } else if additions == 0 && deletions > 0 {
+                    FileChangeStatus::Deleted
                 } else {
-                    FileChangeStatus::Added
-                }
-            } else if additions == 0 && deletions > 0 {
-                FileChangeStatus::Deleted
-            } else {
-                FileChangeStatus::Modified
-            };
+                    FileChangeStatus::Modified
+                };
 
-            return Some(FileChange {
-                path: file_path.to_string(),
-                status,
-                additions,
-                deletions,
-            });
+                return Some(FileChange {
+                    path: file_path.to_string(),
+                    status,
+                    additions,
+                    deletions,
+                });
+            }
         }
 
-        // File might be untracked (new)
+        // File might be untracked (new file not yet added to git)
         let untracked = Command::new("git")
             .args(["ls-files", "--others", "--exclude-standard", file_path])
             .current_dir(project_path)
             .output()
             .ok()?;
 
-        if !String::from_utf8_lossy(&untracked.stdout).trim().is_empty() {
+        let stdout = String::from_utf8_lossy(&untracked.stdout);
+        if !stdout.trim().is_empty() {
             // Count lines in the new file
-            let content = std::fs::read_to_string(
-                std::path::Path::new(project_path).join(file_path)
-            ).unwrap_or_default();
+            let full_path = std::path::Path::new(project_path).join(file_path);
+            let content = std::fs::read_to_string(&full_path).unwrap_or_default();
             let additions = content.lines().count() as u32;
 
             return Some(FileChange {
@@ -227,10 +229,11 @@ impl DiffService {
     }
 }
 
-/// Parsed tool call from activity event content
+/// Parsed tool call from activity event metadata
+/// Format: { "tool_name": "Write", "arguments": {...} }
 #[derive(Debug, Deserialize)]
-struct ToolCallContent {
-    name: String,
+struct ToolCallMetadata {
+    tool_name: String,
     arguments: serde_json::Value,
 }
 
