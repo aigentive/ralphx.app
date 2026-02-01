@@ -337,8 +337,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         task.internal_status = new_status;
         task.touch();
 
-        // 4. Persist the update first (so UI can see the change)
+        // 4. Persist the update and record history (so UI can see the change)
         self.task_repo.update(&task).await?;
+
+        // 4.1 Record state transition history for time-travel feature
+        if let Err(e) = self.task_repo.persist_status_change(task_id, old_status, new_status, "system").await {
+            tracing::warn!(error = %e, "Failed to record state history (non-fatal)");
+        }
         tracing::debug!("Task status persisted to database");
 
         // 5. Emit event for UI update
@@ -451,10 +456,15 @@ impl<R: Runtime> TaskTransitionService<R> {
 
             // Persist the auto-transition to the database
             if let Ok(Some(mut updated_task)) = self.task_repo.get_by_id(task_id).await {
+                let from_status = updated_task.internal_status;
                 updated_task.internal_status = auto_status;
                 updated_task.touch();
                 if let Err(e) = self.task_repo.update(&updated_task).await {
                     tracing::error!(error = %e, "Failed to persist auto-transition");
+                }
+                // Record auto-transition in history
+                if let Err(e) = self.task_repo.persist_status_change(task_id, from_status, auto_status, "auto").await {
+                    tracing::warn!(error = %e, "Failed to record auto-transition history (non-fatal)");
                 }
             }
 

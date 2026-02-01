@@ -115,8 +115,6 @@ interface UiState {
   boardSearchQuery: string | null;
   /** Whether a search request is in flight */
   isSearching: boolean;
-  /** ID of task to show in full-screen view, or null if none */
-  taskFullViewId: string | null;
   /** ID of selected task for split-screen overlay (kanban view only) */
   selectedTaskId: string | null;
   /** Task creation overlay context, or null if closed */
@@ -180,10 +178,6 @@ interface UiActions {
   setBoardSearchQuery: (query: string | null) => void;
   /** Set whether a search is in progress */
   setIsSearching: (searching: boolean) => void;
-  /** Open task in full-screen view */
-  openTaskFullView: (taskId: string) => void;
-  /** Close task full-screen view */
-  closeTaskFullView: () => void;
   /** Set selected task ID for split-screen overlay */
   setSelectedTaskId: (taskId: string | null) => void;
   /** Open task creation overlay */
@@ -230,7 +224,6 @@ export const useUiStore = create<UiState & UiActions>()(
     showArchived: false,
     boardSearchQuery: null,
     isSearching: false,
-    taskFullViewId: null,
     selectedTaskId: null,
     taskCreationContext: null,
     chatVisibleByView: loadChatVisibility(),
@@ -349,16 +342,6 @@ export const useUiStore = create<UiState & UiActions>()(
     setIsSearching: (searching) =>
       set((state) => {
         state.isSearching = searching;
-      }),
-
-    openTaskFullView: (taskId) =>
-      set((state) => {
-        state.taskFullViewId = taskId;
-      }),
-
-    closeTaskFullView: () =>
-      set((state) => {
-        state.taskFullViewId = null;
       }),
 
     setSelectedTaskId: (taskId) =>
