@@ -2,16 +2,16 @@
 
 /// Standard task SELECT columns
 pub(super) const TASK_COLUMNS: &str =
-    "id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason";
+    "id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha";
 
 /// Get task by ID
 pub(super) const GET_BY_ID: &str =
-    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason
+    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha
      FROM tasks WHERE id = ?1";
 
 /// Get tasks by project (sorted by priority and creation date)
 pub(super) const GET_BY_PROJECT: &str =
-    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason
+    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha
      FROM tasks WHERE project_id = ?1
      ORDER BY priority DESC, created_at ASC";
 
@@ -21,7 +21,7 @@ pub(super) const DELETE_TASK: &str = "DELETE FROM tasks WHERE id = ?1";
 /// Get the oldest Ready task across all projects (Phase 26 - Auto-Scheduler)
 /// Returns the task with earliest created_at that is in Ready status and not archived
 pub(super) const GET_OLDEST_READY_TASK: &str =
-    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason
+    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha
      FROM tasks
      WHERE internal_status = 'ready'
        AND archived_at IS NULL

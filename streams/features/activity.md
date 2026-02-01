@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-02 22:30:00 - Phase 66 Task 2: Add task_branch, worktree_path, merge_commit_sha fields
+**What:**
+- Added 3 new fields to Task entity: task_branch, worktree_path, merge_commit_sha
+- Created migration v8_task_git_fields.rs with IF NOT EXISTS columns
+- Updated TaskRepository INSERT/UPDATE statements to handle new fields
+- Updated all SQL queries (14+ locations) to include new columns
+- Updated test setup_test_db to include new columns
+- Created comprehensive migration tests in v8_task_git_fields_tests.rs
+- Bumped SCHEMA_VERSION to 8
+
+**Files Modified:**
+- `src-tauri/src/domain/entities/task.rs` (entity + from_row + tests)
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs` (version bump + registration)
+- `src-tauri/src/infrastructure/sqlite/migrations/v8_task_git_fields.rs` (new)
+- `src-tauri/src/infrastructure/sqlite/migrations/v8_task_git_fields_tests.rs` (new)
+- `src-tauri/src/infrastructure/sqlite/migrations/v1_initial_schema_tests.rs` (version constant)
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs` (INSERT/UPDATE + queries)
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs` (TASK_COLUMNS + queries)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - all 3334 tests)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:15:00 - Phase 66 Task 1: Create GitService
 **What:**
 - Created GitService in src-tauri/src/application/git_service.rs (810 LOC)

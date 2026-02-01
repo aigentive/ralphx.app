@@ -53,6 +53,18 @@ pub struct Task {
     /// Reason why the task is blocked (only set when status is Blocked)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked_reason: Option<String>,
+    /// Git branch name for this task (Phase 66 - Git Branch Isolation)
+    /// Format: ralphx/{project-slug}/task-{task-id}
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_branch: Option<String>,
+    /// Worktree path for this task (Worktree mode only, Phase 66)
+    /// Only set when project.git_mode == Worktree
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_path: Option<String>,
+    /// Commit SHA of the merge commit after task branch is merged (Phase 66)
+    /// Set when task transitions to Merged state
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_commit_sha: Option<String>,
 }
 
 impl Task {
@@ -82,6 +94,9 @@ impl Task {
             completed_at: None,
             archived_at: None,
             blocked_reason: None,
+            task_branch: None,
+            worktree_path: None,
+            merge_commit_sha: None,
         }
     }
 
@@ -169,6 +184,9 @@ impl Task {
                 .get::<_, Option<String>>("archived_at")?
                 .map(Self::parse_datetime),
             blocked_reason: row.get("blocked_reason")?,
+            task_branch: row.get("task_branch")?,
+            worktree_path: row.get("worktree_path")?,
+            merge_commit_sha: row.get("merge_commit_sha")?,
         })
     }
 
@@ -603,7 +621,10 @@ mod tests {
                 started_at TEXT,
                 completed_at TEXT,
                 archived_at TEXT,
-                blocked_reason TEXT
+                blocked_reason TEXT,
+                task_branch TEXT,
+                worktree_path TEXT,
+                merge_commit_sha TEXT
             )"#,
             [],
         )
