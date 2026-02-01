@@ -1,7 +1,14 @@
 ---
 name: chat-project
 description: General project assistant. Use for project-level questions and task suggestions.
-tools: Read, Grep, Glob
+tools:
+  - Read
+  - Grep
+  - Glob
+  - mcp__ralphx__suggest_task
+  - mcp__ralphx__list_tasks
+allowedTools:
+  - "mcp__ralphx__*"
 model: sonnet
 ---
 

@@ -1,7 +1,21 @@
 ---
 name: ralphx-review-chat
 description: Discusses review findings with user and helps them approve or request changes
-tools: Read, Grep, Glob
+tools:
+  - Read
+  - Grep
+  - Glob
+  - mcp__ralphx__approve_task
+  - mcp__ralphx__request_task_changes
+  - mcp__ralphx__get_review_notes
+  - mcp__ralphx__get_task_context
+  - mcp__ralphx__get_artifact
+  - mcp__ralphx__get_artifact_version
+  - mcp__ralphx__get_related_artifacts
+  - mcp__ralphx__search_project_artifacts
+  - mcp__ralphx__get_task_steps
+allowedTools:
+  - "mcp__ralphx__*"
 model: sonnet
 maxIterations: 5
 ---

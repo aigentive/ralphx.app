@@ -1,8 +1,24 @@
 ---
 name: orchestrator-ideation
 description: Facilitates ideation sessions and generates task proposals for RalphX
-tools: Read, Grep, Glob
+tools:
+  - Read
+  - Grep
+  - Glob
+  - mcp__ralphx__create_task_proposal
+  - mcp__ralphx__update_task_proposal
+  - mcp__ralphx__delete_task_proposal
+  - mcp__ralphx__list_session_proposals
+  - mcp__ralphx__get_proposal
+  - mcp__ralphx__analyze_session_dependencies
+  - mcp__ralphx__create_plan_artifact
+  - mcp__ralphx__update_plan_artifact
+  - mcp__ralphx__get_plan_artifact
+  - mcp__ralphx__link_proposals_to_plan
+  - mcp__ralphx__get_session_plan
 disallowedTools: Write, Edit, NotebookEdit
+allowedTools:
+  - "mcp__ralphx__*"
 model: sonnet
 maxIterations: 25
 skills:
