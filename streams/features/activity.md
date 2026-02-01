@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 09:15:00 - Phase 62 Task 12: Add read-only chat mode for accepted plans
+**What:**
+- Added `orchestrator-ideation-readonly` agent config with read-only MCP tools (list_session_proposals, get_proposal, get_plan_artifact, get_session_plan)
+- Updated `get_entity_status()` in chat_service to return session status for Ideation context
+- Updated `resolve_agent()` in chat_service_helpers to use readonly agent when session status is "accepted"
+- When chatting in accepted plans, the agent can only read proposals/plans but cannot create, update, or delete them
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/agents/claude/agent_config.rs` (MODIFIED - added orchestrator-ideation-readonly config)
+- `src-tauri/src/application/chat_service/mod.rs` (MODIFIED - added IdeationSessionId import, updated get_entity_status for Ideation)
+- `src-tauri/src/application/chat_service/chat_service_helpers.rs` (MODIFIED - added accepted status rule in resolve_agent)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - all 3321 tests)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 08:30:00 - Phase 62 Task 11: Implement automatic task blocking/unblocking based on dependencies
 **What:**
 - Created `RepoBackedDependencyManager` in `task_transition_service.rs` implementing the `DependencyManager` trait

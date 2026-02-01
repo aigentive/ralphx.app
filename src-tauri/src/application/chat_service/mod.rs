@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Command;
 use crate::domain::entities::{
-    AgentRun, ChatConversation, ChatConversationId, ChatContextType, TaskId,
+    AgentRun, ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -307,8 +307,17 @@ impl<R: Runtime> ClaudeChatService<R> {
                     None
                 }
             }
+            // Ideation context: look up session status for read-only mode
+            ChatContextType::Ideation => {
+                let session_id = IdeationSessionId::from_string(context_id);
+                if let Ok(Some(session)) = self.ideation_session_repo.get_by_id(&session_id).await {
+                    Some(session.status.to_string())
+                } else {
+                    None
+                }
+            }
             // Other contexts don't have status-based agent resolution yet
-            ChatContextType::Ideation | ChatContextType::Project => None,
+            ChatContextType::Project => None,
         }
     }
 

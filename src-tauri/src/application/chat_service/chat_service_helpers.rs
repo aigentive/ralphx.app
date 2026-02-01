@@ -28,6 +28,9 @@ pub fn resolve_agent(context_type: &ChatContextType, entity_status: Option<&str>
             // Review: after AI review passes, use chat agent for user discussion
             (ChatContextType::Review, "review_passed") => return "ralphx-review-chat",
 
+            // Ideation: accepted plans use read-only agent (no mutation tools)
+            (ChatContextType::Ideation, "accepted") => return "orchestrator-ideation-readonly",
+
             // Add more status-specific rules here as needed:
             // (ChatContextType::Task, "blocked") => return "task-unblock-helper",
             // (ChatContextType::TaskExecution, "failed") => return "failure-analyzer",
