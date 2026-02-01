@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 03:15:00 - Phase 62 Task 5: Rename IdeationView to PlanningView with read-only support
+**What:**
+- Renamed `src/components/Ideation/IdeationView.tsx` to `PlanningView.tsx`
+- Renamed `src/components/Ideation/IdeationView.constants.ts` to `PlanningView.constants.ts`
+- Renamed `src/components/Ideation/IdeationView.test.tsx` to `PlanningView.test.tsx`
+- Added `isReadOnly` computed property based on session status (`session?.status !== "active"`)
+- Passed `isReadOnly` prop to ProposalsToolbar for read-only plan support
+- Updated `src/components/Ideation/index.ts` to export PlanningView (with IdeationView alias for backward compatibility)
+- Updated `src/components/Ideation/ProposalCard.tsx` to import from PlanningView.constants
+- Added read-only mode tests to PlanningView.test.tsx
+
+**Files Modified:**
+- `src/components/Ideation/IdeationView.tsx` → `PlanningView.tsx` (RENAMED + MODIFIED)
+- `src/components/Ideation/IdeationView.constants.ts` → `PlanningView.constants.ts` (RENAMED)
+- `src/components/Ideation/IdeationView.test.tsx` → `PlanningView.test.tsx` (RENAMED + MODIFIED)
+- `src/components/Ideation/index.ts` (MODIFIED)
+- `src/components/Ideation/ProposalCard.tsx` (MODIFIED)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - renaming files with isReadOnly logic; visual verification requires accepted session to test read-only mode
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 02:45:00 - Phase 62 Task 4: Rename SessionBrowser to PlanBrowser with history section
 **What:**
 - Renamed `src/components/Ideation/SessionBrowser.tsx` to `PlanBrowser.tsx`

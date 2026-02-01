@@ -1,14 +1,14 @@
 /**
- * IdeationView Constants
+ * PlanningView Constants
  *
- * Shared design tokens and configuration for ideation components.
+ * Shared design tokens and configuration for planning components.
  */
 
 import type { Priority } from "@/types/ideation";
 
 /**
  * Priority styling configuration
- * Used by ProposalCard and IdeationView for consistent priority appearance
+ * Used by ProposalCard and PlanningView for consistent priority appearance
  */
 export const PRIORITY_CONFIG: Record<Priority, { gradient: string; glow: string; label: string }> = {
   critical: {
@@ -34,7 +34,7 @@ export const PRIORITY_CONFIG: Record<Priority, { gradient: string; glow: string;
 };
 
 /**
- * CSS animation styles for ideation components
+ * CSS animation styles for planning components
  * Injected via <style> tag for keyframe animations
  */
 export const animationStyles = `
