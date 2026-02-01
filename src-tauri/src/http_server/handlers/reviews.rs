@@ -7,10 +7,9 @@ use tauri::Emitter;
 
 use super::*;
 use crate::application::{TaskTransitionService, TaskSchedulerService};
-use crate::commands::review_helpers::parse_issues_from_notes;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::entities::{
-    InternalStatus, Review, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
+    InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
 use crate::domain::tools::complete_review::ReviewToolOutcome;
 use std::sync::Arc;
@@ -50,18 +49,8 @@ pub async fn complete_review(
         }
     };
 
-    // 3. Get feedback (with issues serialized to JSON if present)
-    let mut feedback_text = req.feedback.unwrap_or_else(|| "No comments provided".to_string());
-
-    // Serialize issues to JSON and prepend to feedback for storage
-    if let Some(ref issues) = req.issues {
-        if !issues.is_empty() {
-            if let Ok(issues_json) = serde_json::to_string(issues) {
-                feedback_text = format!("{{\"issues\":{}}}\n{}", issues_json, feedback_text);
-            }
-        }
-    }
-    let feedback = feedback_text;
+    // 3. Get feedback - stored separately from issues now
+    let feedback = req.feedback.clone();
 
     // 4. Get or create Review record for this task
     let reviews = state
@@ -90,13 +79,13 @@ pub async fn complete_review(
     // Update review status
     match outcome {
         ReviewToolOutcome::Approved => {
-            review.approve(Some(feedback.clone()));
+            review.approve(feedback.clone());
         }
         ReviewToolOutcome::NeedsChanges => {
-            review.request_changes(feedback.clone());
+            review.request_changes(feedback.clone().unwrap_or_default());
         }
         ReviewToolOutcome::Escalate => {
-            review.reject(feedback.clone());
+            review.reject(feedback.clone().unwrap_or_default());
         }
     }
 
@@ -119,12 +108,27 @@ pub async fn complete_review(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
+    // Convert issues from HTTP type to domain type
+    let domain_issues = req.issues.as_ref().map(|issues| {
+        issues
+            .iter()
+            .map(|i| ReviewIssue {
+                severity: i.severity.clone(),
+                file: i.file.clone(),
+                line: i.line.map(|l| l as i32),
+                description: i.description.clone(),
+            })
+            .collect()
+    });
+
     // Create review note for history
-    let review_note = ReviewNote::with_notes(
+    let review_note = ReviewNote::with_content(
         task_id.clone(),
         ReviewerType::Ai,
         review_outcome,
+        req.summary.clone(),
         feedback.clone(),
+        domain_issues,
     );
     state
         .app_state
@@ -246,16 +250,12 @@ pub async fn get_review_notes(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let max_revisions = review_settings.max_revision_cycles;
 
-    // 4. Convert notes to response format, parsing issues from notes if present
+    // 4. Convert notes to response format
     let reviews: Vec<ReviewNoteResponse> = notes
         .into_iter()
         .map(|note| {
-            // Parse issues from notes field if present
-            // Format: {"issues":[...]}\n<feedback_text>
-            let (parsed_issues, clean_notes) = parse_issues_from_notes(&note.notes);
-
-            // Convert from commands::ReviewIssue (i32) to http_server::ReviewIssue (u32)
-            let issues = parsed_issues.map(|issues| {
+            // Convert issues from domain type to HTTP type
+            let issues = note.issues.map(|issues| {
                 issues
                     .into_iter()
                     .map(|i| super::ReviewIssue {
@@ -271,7 +271,8 @@ pub async fn get_review_notes(
                 id: note.id.as_str().to_string(),
                 reviewer: note.reviewer.to_string(),
                 outcome: note.outcome.to_string(),
-                notes: clean_notes,
+                summary: note.summary,
+                notes: note.notes,
                 issues,
                 created_at: note.created_at.to_rfc3339(),
             }

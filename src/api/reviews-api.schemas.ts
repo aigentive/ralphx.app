@@ -62,8 +62,9 @@ export const ReviewNoteResponseSchema = z.object({
   task_id: z.string(),
   reviewer: ReviewerTypeSchema,
   outcome: ReviewOutcomeSchema,
-  notes: z.string().nullable().optional(),
-  issues: z.array(ReviewIssueSchema).nullable().optional(),
+  summary: z.string().nullish(),
+  notes: z.string().nullish(),
+  issues: z.array(ReviewIssueSchema).nullish(),
   created_at: z.string(),
 });
 

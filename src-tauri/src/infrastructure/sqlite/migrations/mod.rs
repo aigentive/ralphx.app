@@ -30,12 +30,13 @@ mod v1_initial_schema;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
+mod v5_add_review_summary_issues;
 
 #[cfg(test)]
 mod tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 4;
+pub const SCHEMA_VERSION: i32 = 5;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -69,6 +70,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 4,
         name: "add_blocked_reason",
         migrate: v4_add_blocked_reason::migrate,
+    },
+    Migration {
+        version: 5,
+        name: "add_review_summary_issues",
+        migrate: v5_add_review_summary_issues::migrate,
     },
 ];
 

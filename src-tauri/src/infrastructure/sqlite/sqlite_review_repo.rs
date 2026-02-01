@@ -10,8 +10,8 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    ProjectId, Review, ReviewAction, ReviewActionId, ReviewActionType, ReviewId, ReviewNote,
-    ReviewNoteId, ReviewOutcome, ReviewStatus, ReviewerType, TaskId,
+    ProjectId, Review, ReviewAction, ReviewActionId, ReviewActionType, ReviewId, ReviewIssue,
+    ReviewNote, ReviewNoteId, ReviewOutcome, ReviewStatus, ReviewerType, TaskId,
 };
 use crate::domain::repositories::ReviewRepository;
 use crate::error::{AppError, AppResult};
@@ -112,7 +112,9 @@ impl SqliteReviewRepository {
         task_id: String,
         reviewer: String,
         outcome: String,
+        summary: Option<String>,
         notes: Option<String>,
+        issues_json: Option<String>,
         created_at: String,
     ) -> AppResult<ReviewNote> {
         let reviewer = ReviewerType::from_str(&reviewer)
@@ -123,12 +125,19 @@ impl SqliteReviewRepository {
 
         let created_at = Self::parse_datetime(&created_at).unwrap_or_else(Utc::now);
 
+        // Parse issues from JSON if present
+        let issues = issues_json.and_then(|json| {
+            serde_json::from_str::<Vec<ReviewIssue>>(&json).ok()
+        });
+
         Ok(ReviewNote {
             id: ReviewNoteId::from_string(id),
             task_id: TaskId::from_string(task_id),
             reviewer,
             outcome,
+            summary,
             notes,
+            issues,
             created_at,
         })
     }
@@ -416,15 +425,23 @@ impl ReviewRepository for SqliteReviewRepository {
     async fn add_note(&self, note: &ReviewNote) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
+        // Serialize issues to JSON if present
+        let issues_json = note
+            .issues
+            .as_ref()
+            .and_then(|issues| serde_json::to_string(issues).ok());
+
         conn.execute(
-            "INSERT INTO review_notes (id, task_id, reviewer, outcome, notes, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO review_notes (id, task_id, reviewer, outcome, summary, notes, issues, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             (
                 note.id.as_str(),
                 note.task_id.as_str(),
                 note.reviewer.to_string(),
                 note.outcome.to_string(),
+                note.summary.as_ref(),
                 note.notes.as_ref(),
+                issues_json.as_ref(),
                 Self::format_datetime(&note.created_at),
             ),
         )
@@ -438,7 +455,7 @@ impl ReviewRepository for SqliteReviewRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, task_id, reviewer, outcome, notes, created_at
+                "SELECT id, task_id, reviewer, outcome, summary, notes, issues, created_at
                  FROM review_notes WHERE task_id = ?1 ORDER BY created_at ASC",
             )
             .map_err(|e| AppError::Database(format!("Failed to prepare statement: {}", e)))?;
@@ -451,17 +468,19 @@ impl ReviewRepository for SqliteReviewRepository {
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
-                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             })
             .map_err(|e| AppError::Database(format!("Failed to query notes: {}", e)))?;
 
         let mut notes = Vec::new();
         for row in rows {
-            let (id, task_id, reviewer, outcome, note_text, created_at) =
+            let (id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at) =
                 row.map_err(|e| AppError::Database(format!("Failed to read row: {}", e)))?;
             notes.push(Self::row_to_note(
-                id, task_id, reviewer, outcome, note_text, created_at,
+                id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at,
             )?);
         }
 
@@ -472,7 +491,7 @@ impl ReviewRepository for SqliteReviewRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, task_id, reviewer, outcome, notes, created_at
+            "SELECT id, task_id, reviewer, outcome, summary, notes, issues, created_at
              FROM review_notes WHERE id = ?1",
             [id.as_str()],
             |row| {
@@ -482,15 +501,26 @@ impl ReviewRepository for SqliteReviewRepository {
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
-                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             },
         );
 
         match result {
-            Ok((id, task_id, reviewer, outcome, note_text, created_at)) => Ok(Some(
-                Self::row_to_note(id, task_id, reviewer, outcome, note_text, created_at)?,
-            )),
+            Ok((id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at)) => {
+                Ok(Some(Self::row_to_note(
+                    id,
+                    task_id,
+                    reviewer,
+                    outcome,
+                    summary,
+                    note_text,
+                    issues_json,
+                    created_at,
+                )?))
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(format!("Failed to get note: {}", e))),
         }

@@ -283,6 +283,7 @@ pub struct ReviewIssue {
 pub struct CompleteReviewRequest {
     pub task_id: String,
     pub decision: String, // "approved" | "needs_changes" | "escalate"
+    pub summary: Option<String>,
     pub feedback: Option<String>,
     pub issues: Option<Vec<ReviewIssue>>,
 }
@@ -292,6 +293,7 @@ pub struct ReviewNoteResponse {
     pub id: String,
     pub reviewer: String,
     pub outcome: String,
+    pub summary: Option<String>,
     pub notes: Option<String>,
     pub issues: Option<Vec<ReviewIssue>>,
     pub created_at: String,
