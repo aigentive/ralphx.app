@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 11:30:00 - Phase 63 Task 1: Wire HumanReviewTaskDetail to review issues API
+**What:**
+- Added imports for `useQuery`, `reviewIssuesApi`, `IssueList`, `IssueProgressBar`
+- Added queries in `HumanReviewTaskDetail` to fetch structured issues via `reviewIssuesApi.getByTaskId(task.id)`
+- Added query for issue progress summary via `reviewIssuesApi.getProgress(task.id)`
+- Updated `AIReviewCard` props to accept `issues: ReviewIssue[]` and `progress?: IssueProgressSummary`
+- Replaced custom inline issue rendering (severity badges, file paths) with `<IssueList issues={issues} compact />`
+- Added `<IssueProgressBar progress={progress} />` when progress data exists
+- Fixed `exactOptionalPropertyTypes` type error using conditional spread `{...(progress && { progress })}`
+
+**Files Modified:**
+- `src/components/tasks/detail-views/HumanReviewTaskDetail.tsx` (MODIFIED - added API queries, replaced custom rendering with IssueList)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - no new errors, only pre-existing warnings)
+
+**Visual Verification:** N/A - component already visible in app, additive change using existing tested components
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 10:45:00 - Phase 62 Complete, Phase 63 Active
 **What:**
 - Ran gap verification on Phase 62 - all wiring checks passed

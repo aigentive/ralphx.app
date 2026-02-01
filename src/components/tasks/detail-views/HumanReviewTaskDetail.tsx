@@ -5,9 +5,12 @@
  */
 
 import { useState, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { reviewIssuesApi } from "@/api/review-issues";
+import { IssueList, IssueProgressBar } from "@/components/reviews/IssueList";
+import type { ReviewIssue, IssueProgressSummary } from "@/types/review-issue";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -56,14 +59,20 @@ function getLatestApprovedReview(
 /**
  * AIReviewCard - Summary of AI review findings with collapsible content
  *
- * Uses review.issues (parsed by backend) and review.notes (clean description)
+ * Uses issues from reviewIssuesApi and review.notes (clean description)
  */
-function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
+function AIReviewCard({
+  review,
+  issues,
+  progress,
+}: {
+  review: ReviewNoteResponse | null;
+  issues: ReviewIssue[];
+  progress?: IssueProgressSummary;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
   const COLLAPSED_HEIGHT = 120; // pixels
 
-  // Backend parses issues and notes separately
-  const issues = review?.issues ?? [];
   const summary = review?.notes ?? "";
   const hasContent = summary.length > 100 || issues.length > 0;
 
@@ -110,43 +119,15 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
                 maxHeight: isExpanded ? "2000px" : `${COLLAPSED_HEIGHT}px`,
               }}
             >
-              {/* Issues list */}
+              {/* Issues list using shared IssueList component */}
               {issues.length > 0 && (
-                <div className="space-y-2 mb-4">
-                  {issues.map((issue, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2 text-[13px]"
-                    >
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase shrink-0 mt-0.5"
-                        style={{
-                          backgroundColor:
-                            issue.severity === "critical"
-                              ? "rgba(255, 69, 58, 0.2)"
-                              : issue.severity === "major"
-                              ? "rgba(255, 159, 10, 0.2)"
-                              : "rgba(48, 209, 88, 0.2)",
-                          color:
-                            issue.severity === "critical"
-                              ? "#ff453a"
-                              : issue.severity === "major"
-                              ? "#ff9f0a"
-                              : "#30d158",
-                        }}
-                      >
-                        {issue.severity}
-                      </span>
-                      <span className="text-white/65">
-                        {issue.file && (
-                          <span className="text-white/40 font-mono text-[12px]">
-                            {issue.file}:{" "}
-                          </span>
-                        )}
-                        {issue.description}
-                      </span>
+                <div className="mb-4">
+                  {progress && (
+                    <div className="mb-3">
+                      <IssueProgressBar progress={progress} />
                     </div>
-                  ))}
+                  )}
+                  <IssueList issues={issues} compact />
                 </div>
               )}
 
@@ -391,6 +372,18 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const latestApprovedReview = getLatestApprovedReview(history);
 
+  // Fetch structured issues from review issues API
+  const { data: issues = [] } = useQuery({
+    queryKey: ["review-issues", task.id],
+    queryFn: () => reviewIssuesApi.getByTaskId(task.id),
+  });
+
+  // Fetch issue progress summary
+  const { data: progress } = useQuery({
+    queryKey: ["issue-progress", task.id],
+    queryFn: () => reviewIssuesApi.getProgress(task.id),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -427,7 +420,11 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
         {/* AI Review Summary */}
         <section data-testid="ai-review-summary-section">
           <SectionTitle>AI Review Summary</SectionTitle>
-          <AIReviewCard review={latestApprovedReview} />
+          <AIReviewCard
+            review={latestApprovedReview}
+            issues={issues}
+            {...(progress && { progress })}
+          />
         </section>
 
         {/* Previous Attempts (if any) */}
