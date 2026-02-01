@@ -1,13 +1,17 @@
 /**
- * Project store using Zustand with immer middleware
+ * Project store using Zustand with immer + persist middleware
  *
  * Manages project state for the frontend. Projects are stored in a Record
  * keyed by project ID for O(1) lookup. The active project determines
  * which tasks are displayed in the kanban board.
+ *
+ * The activeProjectId is persisted to localStorage so the app remembers
+ * which project was selected between sessions.
  */
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { persist } from "zustand/middleware";
 import type { Project } from "@/types/project";
 
 // ============================================================================
@@ -43,44 +47,51 @@ interface ProjectActions {
 // ============================================================================
 
 export const useProjectStore = create<ProjectState & ProjectActions>()(
-  immer((set) => ({
-    // Initial state
-    projects: {},
-    activeProjectId: null,
+  persist(
+    immer((set) => ({
+      // Initial state
+      projects: {},
+      activeProjectId: null,
 
-    // Actions
-    setProjects: (projects) =>
-      set((state) => {
-        state.projects = Object.fromEntries(projects.map((p) => [p.id, p]));
-      }),
+      // Actions
+      setProjects: (projects) =>
+        set((state) => {
+          state.projects = Object.fromEntries(projects.map((p) => [p.id, p]));
+        }),
 
-    updateProject: (projectId, changes) =>
-      set((state) => {
-        const project = state.projects[projectId];
-        if (project) {
-          Object.assign(project, changes);
-        }
-      }),
+      updateProject: (projectId, changes) =>
+        set((state) => {
+          const project = state.projects[projectId];
+          if (project) {
+            Object.assign(project, changes);
+          }
+        }),
 
-    selectProject: (projectId) =>
-      set((state) => {
-        state.activeProjectId = projectId;
-      }),
+      selectProject: (projectId) =>
+        set((state) => {
+          state.activeProjectId = projectId;
+        }),
 
-    addProject: (project) =>
-      set((state) => {
-        state.projects[project.id] = project;
-      }),
+      addProject: (project) =>
+        set((state) => {
+          state.projects[project.id] = project;
+        }),
 
-    removeProject: (projectId) =>
-      set((state) => {
-        delete state.projects[projectId];
-        // Clear selection if removing active project
-        if (state.activeProjectId === projectId) {
-          state.activeProjectId = null;
-        }
-      }),
-  }))
+      removeProject: (projectId) =>
+        set((state) => {
+          delete state.projects[projectId];
+          // Clear selection if removing active project
+          if (state.activeProjectId === projectId) {
+            state.activeProjectId = null;
+          }
+        }),
+    })),
+    {
+      name: "ralphx-project-store",
+      // Only persist the activeProjectId, not the projects (those come from backend)
+      partialize: (state) => ({ activeProjectId: state.activeProjectId }),
+    }
+  )
 );
 
 // ============================================================================
