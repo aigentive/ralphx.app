@@ -9,12 +9,13 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useCallback, useRef } from "react";
-import { chatApi, type SendAgentMessageResult } from "@/api/chat";
+import { useEffect, useCallback, useRef, useMemo } from "react";
+import { chatApi, type SendAgentMessageResult, type ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, AgentRun } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
 import { chatKeys, useConversation } from "./useChat";
 import { useAgentEvents } from "./useAgentEvents";
+import { useTaskStateTransitions } from "./useTaskStateTransitions";
 
 /**
  * Task-specific context types
@@ -40,9 +41,11 @@ function buildTaskContextKey(contextType: TaskContextType, taskId: string): stri
  * - Uses the correct context type for conversation queries
  * - Resets active conversation when context type changes
  * - Builds context keys in the format `${contextType}:${taskId}`
+ * - Supports historical message filtering via historicalStatus
  *
  * @param taskId - The task ID
  * @param contextType - The context type (task, task_execution, or review)
+ * @param historicalStatus - Optional status to filter messages by time period
  * @returns Object with conversations, messages, loading state, and actions
  *
  * @example
@@ -56,13 +59,18 @@ function buildTaskContextKey(contextType: TaskContextType, taskId: string): stri
  *   switchConversation,
  *   createConversation,
  *   contextKey,
- * } = useTaskChat(taskId, "review");
+ *   isHistoricalMode,
+ * } = useTaskChat(taskId, "review", "executing");
  * ```
  */
-export function useTaskChat(taskId: string, contextType: TaskContextType) {
+export function useTaskChat(taskId: string, contextType: TaskContextType, historicalStatus?: string) {
   const queryClient = useQueryClient();
   const contextKey = buildTaskContextKey(contextType, taskId);
-  console.log(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}`);
+  const isHistoricalMode = !!historicalStatus;
+  console.log(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}, historicalStatus=${historicalStatus}`);
+
+  // Fetch state transitions for historical message filtering
+  const stateTransitions = useTaskStateTransitions(isHistoricalMode ? taskId : undefined);
 
   const {
     activeConversationId,
@@ -180,7 +188,46 @@ export function useTaskChat(taskId: string, contextType: TaskContextType) {
   const isLoading =
     conversations.isLoading ||
     (activeConversation.isPending && !!activeConversationId) ||
-    (!activeConversationId && conversations.data && conversations.data.length > 0);
+    (!activeConversationId && conversations.data && conversations.data.length > 0) ||
+    (isHistoricalMode && stateTransitions.isLoading);
+
+  // Filter messages by historical status time period
+  const filteredMessages = useMemo((): ChatMessageResponse[] => {
+    const allMessages = activeConversation.data?.messages ?? [];
+
+    // If not in historical mode, return all messages
+    if (!isHistoricalMode || !historicalStatus) {
+      return allMessages;
+    }
+
+    // Need state transitions to determine time range
+    if (!stateTransitions.data || stateTransitions.data.length === 0) {
+      return allMessages;
+    }
+
+    // Find the time range when the task was in the historical status
+    // First, find when the task entered this status
+    const entryTransition = stateTransitions.data.find(t => t.toStatus === historicalStatus);
+    if (!entryTransition) {
+      // Status never entered, show no messages
+      return [];
+    }
+
+    const startTime = new Date(entryTransition.timestamp).getTime();
+
+    // Find when the task left this status (next transition after entry)
+    const transitionIndex = stateTransitions.data.findIndex(t => t.toStatus === historicalStatus);
+    const exitTransition = stateTransitions.data[transitionIndex + 1];
+    // If no exit transition exists, the task is still in this state - include all messages after entry
+    // Use Number.MAX_SAFE_INTEGER as a stable "infinity" value for comparison
+    const endTime = exitTransition ? new Date(exitTransition.timestamp).getTime() : Number.MAX_SAFE_INTEGER;
+
+    // Filter messages within this time range
+    return allMessages.filter(msg => {
+      const msgTime = new Date(msg.createdAt).getTime();
+      return msgTime >= startTime && msgTime <= endTime;
+    });
+  }, [activeConversation.data?.messages, isHistoricalMode, historicalStatus, stateTransitions.data]);
 
   // Send message mutation
   const sendMessage = useMutation<SendAgentMessageResult, Error, string>({
@@ -243,10 +290,11 @@ export function useTaskChat(taskId: string, contextType: TaskContextType) {
     // Data
     conversations,
     activeConversation,
-    messages: activeConversation.data?.messages ?? [],
+    messages: filteredMessages,
     agentRunStatus,
     // State
     isLoading,
+    isHistoricalMode,
     activeConversationId,
     contextKey,
     contextType,

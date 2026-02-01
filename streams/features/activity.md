@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-01 02:30:15 - Phase 59 Task 6: Add historical message filtering to TaskChatPanel
+**What:**
+- Added `historicalStatus` optional prop to TaskChatPanel interface
+- Modified `useTaskChat` hook to accept `historicalStatus` parameter
+- Implemented message filtering using state transition timestamps from `useTaskStateTransitions`
+- Added "Historical" badge with History icon in chat header when in history mode
+- Added read-only footer in historical mode with accent styling
+- Disabled message input in historical mode
+
+**Files:**
+- `src/components/tasks/TaskChatPanel.tsx` (added historicalStatus prop, History badge, read-only footer)
+- `src/hooks/useTaskChat.ts` (added historicalStatus parameter, message filtering via useMemo)
+
+**Commands:**
+- `npx eslint src/components/tasks/TaskChatPanel.tsx src/hooks/useTaskChat.ts` (passed)
+- `npm run typecheck` (no errors in modified files)
+
+**Visual Verification:** N/A - TaskChatPanel is not in the split overlay; historical prop ready for wiring
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 02:08:29 - Phase 59 Task 5: Add isHistorical prop to detail views
 **What:**
 - Extended `TaskDetailProps` interface with optional `isHistorical` boolean prop

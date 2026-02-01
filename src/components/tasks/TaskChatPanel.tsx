@@ -20,6 +20,7 @@ import {
   Bot,
   Loader2,
   Hammer,
+  History,
 } from "lucide-react";
 import { StatusActivityBadge, type AgentType } from "../Chat/StatusActivityBadge";
 import { ConversationSelector } from "../Chat/ConversationSelector";
@@ -181,10 +182,15 @@ export interface TaskChatPanelProps {
   contextType: TaskContextType;
   /** Current task internal status - used to determine if chat is live or historical */
   taskStatus: string;
+  /** Historical status filter - when set, chat is read-only and shows only messages from that status period */
+  historicalStatus?: string;
 }
 
-export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanelProps) {
-  console.log(`[TaskChatPanel] props: taskId=${taskId}, contextType=${contextType}, taskStatus=${taskStatus}`);
+export function TaskChatPanel({ taskId, contextType, taskStatus, historicalStatus }: TaskChatPanelProps) {
+  console.log(`[TaskChatPanel] props: taskId=${taskId}, contextType=${contextType}, taskStatus=${taskStatus}, historicalStatus=${historicalStatus}`);
+
+  // Historical mode is active when historicalStatus is provided
+  const isHistoricalMode = !!historicalStatus;
   const queryClient = useQueryClient();
   const {
     queueMessage,
@@ -195,6 +201,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
   } = useChatStore();
 
   // Use the new useTaskChat hook - single hook call handles all context types
+  // Pass historicalStatus to enable message filtering by time period
   const {
     conversations,
     messages: messagesData,
@@ -204,7 +211,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
     sendMessage,
     switchConversation: handleSelectConversation,
     createConversation: handleNewConversation,
-  } = useTaskChat(taskId, contextType);
+  } = useTaskChat(taskId, contextType, historicalStatus);
 
   const isExecutionMode = contextType === "task_execution";
   const isReviewMode = contextType === "review";
@@ -382,11 +389,27 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
         >
           <ContextIndicator isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />
 
-          {/* Chat mode indicator */}
-          <ChatModeIndicator isLive={isLive} />
+          {/* Chat mode indicator - show Historical when in history mode */}
+          {isHistoricalMode ? (
+            <Badge
+              data-testid="historical-view-badge"
+              variant="secondary"
+              className="shrink-0 text-xs flex items-center gap-1"
+              style={{
+                background: "rgba(255,107,53,0.1)",
+                border: "1px solid rgba(255,107,53,0.2)",
+                color: "#ff6b35",
+              }}
+            >
+              <History className="w-3 h-3" />
+              Historical
+            </Badge>
+          ) : (
+            <ChatModeIndicator isLive={isLive} />
+          )}
 
           {/* Unified status + activity badge */}
-          {isLive && (
+          {isLive && !isHistoricalMode && (
             <StatusActivityBadge
               isAgentActive={isSending || isAgentRunning || isExecutionMode}
               agentType={
@@ -450,7 +473,21 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
 
         {/* Input Area */}
         <div className="border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-          {isLive ? (
+          {isHistoricalMode ? (
+            /* Historical time-travel mode - read-only with accent styling */
+            <div
+              data-testid="historical-mode-footer"
+              className="px-4 py-3 text-center flex items-center justify-center gap-2"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,107,53,0.05) 0%, transparent 100%)",
+              }}
+            >
+              <History className="w-4 h-4 text-[#ff6b35]" />
+              <p className="text-[13px] text-white/50">
+                Viewing historical messages from this state
+              </p>
+            </div>
+          ) : isLive ? (
             <>
               {/* Queued Messages - unified queue with context-aware keys */}
               {queuedMessages.length > 0 && (
@@ -485,7 +522,7 @@ export function TaskChatPanel({ taskId, contextType, taskStatus }: TaskChatPanel
               </div>
             </>
           ) : (
-            /* Historical mode - read-only */
+            /* Completed mode - read-only */
             <div
               className="px-4 py-3 text-center"
               style={{
