@@ -13,7 +13,7 @@ import {
   StatusBanner,
   StatusPill,
   ProgressIndicator,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -123,10 +123,9 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
   const total = progress?.total ?? 0;
 
   return (
-    <div
-      data-testid="execution-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
+    <TwoColumnLayout
+      description={task.description}
+      testId="execution-task-detail"
     >
       {/* Status Banner */}
       <StatusBanner
@@ -191,15 +190,6 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
           <StepList taskId={task.id} editable={false} />
         </section>
       )}
-
-      {/* Description Section */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="execution-task-description"
-        />
-      </section>
-    </div>
+    </TwoColumnLayout>
   );
 }

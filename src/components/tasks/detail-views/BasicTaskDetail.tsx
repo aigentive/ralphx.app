@@ -6,7 +6,7 @@
  */
 
 import { StepList } from "../StepList";
-import { SectionTitle, DescriptionBlock } from "./shared";
+import { SectionTitle, TwoColumnLayout } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { Loader2 } from "lucide-react";
 import type { Task } from "@/types/task";
@@ -21,20 +21,10 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
   const hasSteps = (steps?.length ?? 0) > 0;
 
   return (
-    <div
-      data-testid="basic-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
+    <TwoColumnLayout
+      description={task.description}
+      testId="basic-task-detail"
     >
-      {/* Description Section */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="basic-task-description"
-        />
-      </section>
-
       {/* Steps Section */}
       {stepsLoading && (
         <div
@@ -54,6 +44,12 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
           <StepList taskId={task.id} editable={false} hideCompletionNotes={isHistorical} />
         </section>
       )}
-    </div>
+
+      {!stepsLoading && !hasSteps && (
+        <div className="text-[13px] text-white/40 italic py-4">
+          No steps defined yet
+        </div>
+      )}
+    </TwoColumnLayout>
   );
 }

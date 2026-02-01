@@ -12,7 +12,7 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import type { Task } from "@/types/task";
@@ -136,10 +136,9 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
   const totalSteps = progress?.total ?? 0;
 
   return (
-    <div
-      data-testid="waiting-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
+    <TwoColumnLayout
+      description={task.description}
+      testId="waiting-task-detail"
     >
       {/* Status Banner */}
       <StatusBanner
@@ -187,15 +186,6 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
           <StepList taskId={task.id} editable={false} />
         </section>
       )}
-
-      {/* Description Section */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="waiting-task-description"
-        />
-      </section>
-    </div>
+    </TwoColumnLayout>
   );
 }

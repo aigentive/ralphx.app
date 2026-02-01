@@ -13,7 +13,7 @@ import {
   DetailCard,
   StatusBanner,
   StatusPill,
-  DescriptionBlock,
+  TwoColumnLayout,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
@@ -312,10 +312,9 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
   }
 
   return (
-    <div
-      data-testid="escalated-task-detail"
-      data-task-id={task.id}
-      className="space-y-6"
+    <TwoColumnLayout
+      description={task.description}
+      testId="escalated-task-detail"
     >
       {/* Status Banner */}
       <StatusBanner
@@ -352,15 +351,6 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
         </DetailCard>
       </section>
 
-      {/* Description */}
-      <section>
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock
-          description={task.description}
-          testId="escalated-task-description"
-        />
-      </section>
-
       {/* Decision Buttons (hidden in historical mode) */}
       {!isHistorical && (
         <section data-testid="action-buttons">
@@ -368,6 +358,6 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
           <DecisionButtonsCard taskId={task.id} />
         </section>
       )}
-    </div>
+    </TwoColumnLayout>
   );
 }
