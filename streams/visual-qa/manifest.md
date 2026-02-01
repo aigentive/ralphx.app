@@ -1,7 +1,7 @@
 # Visual Coverage Manifest
 
 ## Bootstrap Status
-Phase: COMPLETE
+Phase: IN PROGRESS (discovered 10 new components)
 
 ## Views (6 total)
 | View | Mock Ready | Spec File | Baseline | Status |
@@ -13,7 +13,7 @@ Phase: COMPLETE
 | extensibility | ✅ | extensibility.spec.ts | ✅ | covered |
 | task_detail | ✅ | task-detail.spec.ts | ✅ | covered |
 
-## Modals (6 total)
+## Modals (16 total)
 | Modal | Mock Ready | Spec File | Baseline | Status |
 |-------|------------|-----------|----------|--------|
 | TaskDetailModal | ✅ | task-detail-modal.spec.ts | ✅ | covered |
@@ -22,6 +22,16 @@ Phase: COMPLETE
 | ProjectCreationWizard | ✅ | project-creation-wizard.spec.ts | ✅ | covered |
 | ProposalEditModal | ✅ | proposal-edit.spec.ts | ✅ | covered |
 | PermissionDialog | 🚧 | — | — | blocked |
+| WelcomeScreen | — | — | — | uncovered |
+| MergeWorkflowDialog | — | — | — | uncovered |
+| ApplyModal | — | — | — | uncovered |
+| ReviewDetailModal | — | — | — | uncovered |
+| ReviewNotesModal | — | — | — | uncovered |
+| TaskRerunDialog | — | — | — | uncovered |
+| TaskFullView | — | — | — | uncovered |
+| BlockReasonDialog | — | — | — | uncovered |
+| TaskPickerDialog | — | — | — | uncovered |
+| ScreenshotGallery | — | — | — | uncovered |
 
 ## States & Edge Cases
 | State | View/Modal | Spec | Status |
