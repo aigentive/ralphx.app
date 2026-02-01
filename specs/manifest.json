@@ -450,6 +450,13 @@
       "prd": "specs/phases/prd_phase_62_planning_lifecycle_accepted_state.md",
       "status": "active",
       "description": "Accept entire plans, history section, worker dependency context, auto-blocking"
+    },
+    {
+      "phase": 63,
+      "name": "Wire Review Issues to UI Detail Views",
+      "prd": "specs/phases/prd_phase_63_wire_review_issues_ui.md",
+      "status": "pending",
+      "description": "Wire Phase 60 review issues API to detail views with IssueList component"
     }
   ]
 }
