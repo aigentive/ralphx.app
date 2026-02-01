@@ -96,8 +96,8 @@ export const reviewIssuesApi = {
     typedInvokeWithTransform(
       "get_task_issues",
       {
-        task_id: taskId,
-        status_filter: statusFilter ?? null,
+        taskId,
+        statusFilter: statusFilter ?? null,
       },
       ReviewIssueListResponseSchema,
       transformReviewIssueList
@@ -111,7 +111,7 @@ export const reviewIssuesApi = {
   getProgress: (taskId: string): Promise<IssueProgressSummary> =>
     typedInvokeWithTransform(
       "get_issue_progress",
-      { task_id: taskId },
+      { taskId },
       IssueProgressSummaryResponseSchema,
       transformIssueProgressSummary
     ),
