@@ -13,7 +13,7 @@
  * throughout the application lifecycle.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useEffect, type ReactNode } from "react";
 import {
   useTaskEvents,
   useSupervisorAlerts,
@@ -115,16 +115,14 @@ interface EventProviderProps {
  */
 export function EventProvider({ children }: EventProviderProps) {
   // Create event bus once based on environment (Tauri or browser mode)
-  const eventBus = useMemo(() => {
-    const bus = createEventBus();
+  const eventBus = useMemo(() => createEventBus(), []);
 
-    // Expose event bus to window in web mode for Playwright testing
+  // Expose event bus to window in web mode for Playwright testing
+  useEffect(() => {
     if (typeof window !== 'undefined' && !window.__TAURI_INTERNALS__) {
-      (window as any).__eventBus = bus;
+      window.__eventBus = eventBus;
     }
-
-    return bus;
-  }, []);
+  }, [eventBus]);
 
   return (
     <EventBusContext.Provider value={eventBus}>

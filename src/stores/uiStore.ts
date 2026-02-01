@@ -423,6 +423,6 @@ export const useUiStore = create<UiState & UiActions>()(
 );
 
 // Expose uiStore to window in web mode for Playwright testing
-if (typeof window !== "undefined" && !(window as any).__TAURI_INTERNALS__) {
-  (window as any).__uiStore = useUiStore;
+if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
+  window.__uiStore = useUiStore;
 }
