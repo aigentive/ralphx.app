@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 18:30:00 - Phase 65 Task 2: Add semantic tool call rendering
+**What:**
+- Added `cleanToolName()` helper to strip `mcp__ralphx__` and similar MCP prefixes from tool names
+- Added `formatToolArguments()` helper to convert metadata to key-value pairs for display
+- Updated ActivityMessage.tsx tool_call case to show clean tool names with formatted arguments
+- Changed expanded details section to show "Raw JSON" label for tool_call messages
+
+**Files Modified:**
+- `src/components/activity/ActivityView.utils.ts` (added cleanToolName, formatToolArguments)
+- `src/components/activity/ActivityMessage.tsx` (updated imports, tool_call rendering, details label)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - data formatting change (content already visible, just cleaner format)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 18:00:00 - Phase 65 Task 1: Fix scroll behavior in ActivityView
 **What:**
 - Modified `autoScroll` state initialization to depend on `initialMode` (false for historical, true for live)

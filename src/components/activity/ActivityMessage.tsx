@@ -23,6 +23,8 @@ import {
   formatTimestamp,
   highlightJSON,
   safeJsonParse,
+  cleanToolName,
+  formatToolArguments,
 } from "./ActivityView.utils";
 import { ActivityContext } from "./ActivityContext";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
@@ -44,7 +46,8 @@ export function ActivityMessage({
 }: ActivityMessageProps) {
   const { type, content, timestamp, metadata, internalStatus } = message;
   const hasDetails = type === "tool_call" || type === "tool_result" || metadata;
-  const toolName = getToolName(content);
+  const rawToolName = getToolName(content);
+  const toolName = rawToolName ? cleanToolName(rawToolName) : null;
 
   // Smart content rendering based on event type
   const renderedContent = useMemo(() => {
@@ -72,20 +75,26 @@ export function ActivityMessage({
       }
 
       case "tool_call": {
-        // For tool_call, show tool arguments from metadata as formatted JSON
-        // Content usually contains the raw call string like "Read ({...})"
-        // We prefer to show the structured metadata if available
-        if (metadata && typeof metadata === "object") {
-          const jsonString = JSON.stringify(metadata, null, 2);
-          const truncated = !isExpanded && jsonString.length > 200;
-          const displayJson = truncated ? jsonString.slice(0, 200) + "..." : jsonString;
+        // Semantic tool call rendering with clean name and formatted arguments
+        const formattedArgs = formatToolArguments(metadata as Record<string, unknown> | undefined);
+
+        if (formattedArgs.length > 0) {
           return (
-            <pre className="text-xs font-mono p-2 rounded-md bg-[var(--bg-base)] text-[var(--text-secondary)] overflow-x-auto max-h-[200px] overflow-y-auto mt-1">
-              {highlightJSON(displayJson)}
-            </pre>
+            <div className="mt-1 space-y-1">
+              {/* Formatted key-value arguments */}
+              <div className="space-y-0.5">
+                {formattedArgs.map(({ key, value }) => (
+                  <div key={key} className="flex gap-2 text-xs font-mono">
+                    <span className="text-[var(--text-muted)] shrink-0">{key}</span>
+                    <span className="text-[var(--text-secondary)] break-all">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           );
         }
-        // Fallback to plain content
+
+        // Fallback to plain content if no structured metadata
         const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
         return (
           <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words mt-1">
@@ -208,12 +217,14 @@ export function ActivityMessage({
         </span>
       </div>
 
-      {/* Expanded Details */}
+      {/* Expanded Details / Raw JSON */}
       {hasDetails && isExpanded && metadata && (
         <div className="ml-9 mr-3 pb-3 border-t border-[var(--border-subtle)]">
           <div className="pt-3 relative">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-[var(--text-muted)]">Details</span>
+              <span className="text-xs font-medium text-[var(--text-muted)]">
+                {type === "tool_call" ? "Raw JSON" : "Details"}
+              </span>
               <Button
                 variant="ghost"
                 size="icon"
