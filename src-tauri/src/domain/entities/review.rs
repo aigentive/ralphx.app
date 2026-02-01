@@ -467,6 +467,17 @@ impl std::fmt::Display for ParseReviewOutcomeError {
 
 impl std::error::Error for ParseReviewOutcomeError {}
 
+/// Issue found during review
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReviewIssue {
+    pub severity: String, // "critical" | "major" | "minor" | "suggestion"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<i32>,
+    pub description: String,
+}
+
 /// A note from a reviewer (part of review history)
 ///
 /// ReviewNotes store the feedback from each review attempt.
@@ -482,9 +493,15 @@ pub struct ReviewNote {
     pub reviewer: ReviewerType,
     /// Outcome of the review
     pub outcome: ReviewOutcome,
-    /// Notes/feedback from the reviewer
+    /// Short summary for display in timeline
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Full notes/feedback from the reviewer
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Issues found during review (stored as JSON in DB)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issues: Option<Vec<ReviewIssue>>,
     /// When the note was created
     pub created_at: DateTime<Utc>,
 }
@@ -497,21 +514,42 @@ impl ReviewNote {
             task_id,
             reviewer,
             outcome,
+            summary: None,
             notes: None,
+            issues: None,
             created_at: Utc::now(),
         }
     }
 
-    /// Create a review note with notes
+    /// Create a review note with all fields
+    pub fn with_content(
+        task_id: TaskId,
+        reviewer: ReviewerType,
+        outcome: ReviewOutcome,
+        summary: Option<String>,
+        notes: Option<String>,
+        issues: Option<Vec<ReviewIssue>>,
+    ) -> Self {
+        Self {
+            id: ReviewNoteId::new(),
+            task_id,
+            reviewer,
+            outcome,
+            summary,
+            notes,
+            issues,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Create a review note with just notes (convenience method)
     pub fn with_notes(
         task_id: TaskId,
         reviewer: ReviewerType,
         outcome: ReviewOutcome,
         notes: String,
     ) -> Self {
-        let mut note = Self::new(task_id, reviewer, outcome);
-        note.notes = Some(notes);
-        note
+        Self::with_content(task_id, reviewer, outcome, None, Some(notes), None)
     }
 
     /// Create a review note with a specific ID (for testing or database restoration)

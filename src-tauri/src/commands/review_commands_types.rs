@@ -81,6 +81,8 @@ pub struct ReviewNoteResponse {
     pub reviewer: String,
     pub outcome: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issues: Option<Vec<ReviewIssue>>,
@@ -89,13 +91,27 @@ pub struct ReviewNoteResponse {
 
 impl From<ReviewNote> for ReviewNoteResponse {
     fn from(note: ReviewNote) -> Self {
+        // Convert domain issues to command issues
+        let issues = note.issues.map(|issues| {
+            issues
+                .into_iter()
+                .map(|i| ReviewIssue {
+                    severity: i.severity,
+                    file: i.file,
+                    line: i.line,
+                    description: i.description,
+                })
+                .collect()
+        });
+
         Self {
             id: note.id.as_str().to_string(),
             task_id: note.task_id.as_str().to_string(),
             reviewer: note.reviewer.to_string(),
             outcome: note.outcome.to_string(),
+            summary: note.summary,
             notes: note.notes,
-            issues: None, // Will be populated by parse_issues_from_notes in Task 3
+            issues,
             created_at: note.created_at.to_rfc3339(),
         }
     }

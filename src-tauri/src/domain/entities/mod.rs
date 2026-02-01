@@ -33,7 +33,7 @@ pub use project::{GitMode, Project};
 pub use review::{
     ParseReviewActionTypeError, ParseReviewOutcomeError, ParseReviewStatusError,
     ParseReviewerTypeError, Review, ReviewAction, ReviewActionId, ReviewActionType, ReviewId,
-    ReviewNote, ReviewNoteId, ReviewOutcome, ReviewStatus, ReviewerType,
+    ReviewIssue, ReviewNote, ReviewNoteId, ReviewOutcome, ReviewStatus, ReviewerType,
 };
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;

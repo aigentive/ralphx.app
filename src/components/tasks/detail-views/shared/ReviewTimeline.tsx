@@ -11,8 +11,6 @@ import { CheckCircle2, RotateCcw, Bot, User } from "lucide-react";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
-const COLLAPSED_HEIGHT = 80; // pixels
-
 export interface ReviewTimelineProps {
   history: ReviewNoteResponse[];
   filter?: (entry: ReviewNoteResponse) => boolean;
@@ -48,11 +46,16 @@ function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
   const isChangesRequested = entry.outcome === "changes_requested";
   const isHuman = entry.reviewer === "human";
 
-  // Content is collapsible if notes are long enough
-  const hasLongContent = (entry.notes?.length ?? 0) > 150;
+  // Use summary if available, otherwise fall back to notes
+  const hasSummary = !!entry.summary;
+  const hasNotes = !!entry.notes;
+  const hasContent = hasSummary || hasNotes;
+
+  // Expandable if there are full notes different from summary
+  const isExpandable = hasSummary && hasNotes;
 
   const handleContentClick = () => {
-    if (hasLongContent && !isExpanded) {
+    if (isExpandable && !isExpanded) {
       setIsExpanded(true);
     }
   };
@@ -132,60 +135,60 @@ function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
             {formatRelativeTime(entry.created_at)}
           </span>
         </div>
-        {entry.notes && (
+        {hasContent && (
           <div className="mt-1.5 pl-5">
-            {/* Clickable content area */}
+            {/* Summary (always shown) or notes if no summary */}
             <div
               onClick={handleContentClick}
-              className={hasLongContent && !isExpanded ? "cursor-pointer" : ""}
+              className={isExpandable && !isExpanded ? "cursor-pointer" : ""}
             >
-              <div className="relative">
-                <div
-                  className="text-[12px] text-white/50 leading-relaxed prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300 ease-out"
-                  style={{
-                    maxHeight: isExpanded ? "2000px" : `${COLLAPSED_HEIGHT}px`,
-                  }}
-                >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownComponents}
-                  >
-                    {entry.notes}
-                  </ReactMarkdown>
-                </div>
-
-                {/* Gradient fade overlay when collapsed */}
-                {hasLongContent && !isExpanded && (
-                  <div
-                    className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
-                    style={{
-                      background:
-                        "linear-gradient(to bottom, transparent, hsl(220 10% 14%))",
-                    }}
-                  />
+              <div className="text-[12px] text-white/50 leading-relaxed">
+                {hasSummary ? (
+                  // Show summary as plain text
+                  <p>{entry.summary}</p>
+                ) : (
+                  // No summary - show notes as markdown
+                  <div className="prose prose-sm prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {entry.notes ?? ""}
+                    </ReactMarkdown>
+                  </div>
                 )}
               </div>
 
-              {/* Show more link */}
-              {hasLongContent && !isExpanded && (
+              {/* Show more link when expandable and collapsed */}
+              {isExpandable && !isExpanded && (
                 <div
                   className="mt-1 text-[11px] font-medium"
                   style={{ color: "hsl(217 90% 60%)" }}
                 >
-                  Show more
+                  Show details
                 </div>
               )}
             </div>
 
-            {/* Show less button */}
-            {hasLongContent && isExpanded && (
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="mt-2 text-[11px] font-medium transition-colors hover:opacity-80"
-                style={{ color: "hsl(217 90% 60%)" }}
-              >
-                Show less
-              </button>
+            {/* Expanded notes */}
+            {isExpandable && isExpanded && (
+              <div className="mt-3">
+                <div className="text-[12px] text-white/50 leading-relaxed prose prose-sm prose-invert max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {entry.notes ?? ""}
+                  </ReactMarkdown>
+                </div>
+                <button
+                  onClick={() => setIsExpanded(false)}
+                  className="mt-2 text-[11px] font-medium transition-colors hover:opacity-80"
+                  style={{ color: "hsl(217 90% 60%)" }}
+                >
+                  Show less
+                </button>
+              </div>
             )}
           </div>
         )}
