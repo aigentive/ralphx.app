@@ -13,6 +13,7 @@
 | Component has no UI trigger | Mark blocked | Create test helper to trigger |
 | Test times out | Log and move on | Debug and fix root cause |
 | Missing mock data | Document as P1 | Add mock to `src/api-mock/` |
+| Discovery finds items | Add to backlog, IDLE | Add to backlog, COMPLETE (triggers new cycle) |
 
 ## Rules
 
@@ -75,8 +76,8 @@ Follow `git-workflow.md` Recovery Check. Ownership: `streams/visual-qa/manifest.
    → STOP
 
 6. Discovery: Explore src/components/, src/views/, src/modals/
-   → New components? → Add to manifest (uncovered) + backlog → Work first one
-   → None found? → Output IDLE signal → END
+   → New components? → Add to manifest (uncovered) + backlog → COMPLETE signal → END
+   → None found? → IDLE signal → END
 ```
 
 ## File Patterns
@@ -107,11 +108,15 @@ Follow `git-workflow.md` Recovery Check. Ownership: `streams/visual-qa/manifest.
 | UI changed | `npx playwright test [spec] --update-snapshots` |
 | Debug | `npx playwright test [spec] --debug` |
 
-## IDLE Detection
+## Signals
 
-At iteration START only: Bootstrap complete AND backlog empty AND discovery finds nothing → `<promise>IDLE</promise>`
+| Signal | When | Effect |
+|--------|------|--------|
+| `COMPLETE` | After doing work (tests, discovery added items) | Exit → fswatch detects file changes → new cycle |
+| `IDLE` | Discovery found nothing | Exit → fswatch waits for external changes |
+| (none) | After step 5 commit | Continue to next iteration |
 
-**NEVER output IDLE after completing work.** Just end iteration.
+**NEVER output IDLE if you added items to backlog** — that's work done, use COMPLETE.
 
 ## Signal Output Rules
 
