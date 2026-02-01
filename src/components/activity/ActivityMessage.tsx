@@ -46,7 +46,7 @@ export function ActivityMessage({
   copied,
   onCopy,
 }: ActivityMessageProps) {
-  const { type, content, timestamp, metadata, internalStatus } = message;
+  const { type, content, timestamp, metadata } = message;
   const hasDetails = type === "tool_call" || type === "tool_result" || metadata;
   const rawToolName = getToolName(content);
   const toolName = rawToolName ? cleanToolName(rawToolName) : null;
@@ -217,21 +217,18 @@ export function ActivityMessage({
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {toolName && (
+          <div className="flex items-center gap-2">
+            {/* Show tool name badge for tool calls, or type label for other messages */}
+            {toolName ? (
               <span
-                className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--bg-base)]"
+                className="text-xs font-mono font-medium"
                 style={{ color: getMessageColor(type) }}
               >
                 {toolName}
               </span>
-            )}
-            <span className="text-xs text-[var(--text-muted)] capitalize">
-              {type.replace("_", " ")}
-            </span>
-            {internalStatus && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-muted)]">
-                {internalStatus}
+            ) : (
+              <span className="text-xs text-[var(--text-muted)] capitalize">
+                {type.replace("_", " ")}
               </span>
             )}
           </div>
@@ -245,18 +242,18 @@ export function ActivityMessage({
           {renderedContent}
         </div>
 
-        {/* Timestamp */}
-        <span className="text-xs text-[var(--text-muted)] shrink-0 ml-2">
+        {/* Timestamp - right-aligned with subtle styling */}
+        <span className="text-[11px] text-[var(--text-muted)] opacity-60 shrink-0 ml-auto pl-3 tabular-nums">
           {formatTimestamp(timestamp)}
         </span>
       </div>
 
       {/* Expanded Details / Raw JSON */}
       {hasDetails && isExpanded && metadata && (
-        <div className="ml-9 mr-3 pb-3 border-t border-[var(--border-subtle)]">
-          <div className="pt-3 relative">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-[var(--text-muted)]">
+        <div className="mx-3 pb-3 border-t border-[var(--border-subtle)]">
+          <div className="pt-2.5 relative">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
                 {type === "tool_call" ? "Raw JSON" : "Details"}
               </span>
               <Button

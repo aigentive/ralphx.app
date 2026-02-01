@@ -388,7 +388,7 @@ export function ActivityView({
 
       {/* Messages List */}
       <ScrollArea ref={containerRef} data-testid="activity-messages" className="flex-1" onScroll={handleScroll}>
-        <div className="p-4 space-y-2">
+        <div className="p-3 space-y-1.5">
           {isHistoricalMode && historyQuery?.isLoading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-primary)]" />
