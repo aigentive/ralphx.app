@@ -7,7 +7,6 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tooltip,
   TooltipContent,
@@ -142,16 +141,6 @@ export const ProposalCard = React.memo(function ProposalCard({
       />
 
       <div className="flex items-start gap-3 pl-2">
-        {/* Checkbox */}
-        <div className="pt-0.5">
-          <Checkbox
-            checked={isSelected}
-            onCheckedChange={() => onSelect(proposal.id)}
-            aria-label={`Select ${proposal.title}`}
-            className="h-4 w-4 rounded-[5px] data-[state=checked]:bg-[#ff6b35] data-[state=checked]:border-[#ff6b35] border-white/20 transition-all duration-150"
-          />
-        </div>
-
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">

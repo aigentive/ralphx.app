@@ -292,19 +292,13 @@ describe("PlanningView", () => {
       expect(screen.getByText(/1 of 2 selected/i)).toBeInTheDocument();
     });
 
-    it("proposal cards use shadcn Checkbox", async () => {
-      render(<PlanningView {...defaultProps} />);
-      const checkboxes = screen.getAllByRole("checkbox");
-      expect(checkboxes.length).toBeGreaterThan(0);
-    });
-
-    it("calls onSelectProposal when checkbox clicked", async () => {
+    it("calls onSelectProposal when proposal card clicked", async () => {
       const onSelectProposal = vi.fn();
       const user = userEvent.setup();
       render(<PlanningView {...defaultProps} onSelectProposal={onSelectProposal} />);
 
-      const checkbox = screen.getByRole("checkbox", { name: /Select Create login form/i });
-      await user.click(checkbox);
+      const card = screen.getByTestId("proposal-card-proposal-2");
+      await user.click(card);
 
       expect(onSelectProposal).toHaveBeenCalledWith("proposal-2");
     });
@@ -603,12 +597,6 @@ describe("PlanningView", () => {
       render(<PlanningView {...defaultProps} />);
       expect(screen.getByRole("button", { name: /New Session/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Archive/i })).toBeInTheDocument();
-    });
-
-    it("proposal checkboxes have accessible labels", () => {
-      render(<PlanningView {...defaultProps} />);
-      expect(screen.getByRole("checkbox", { name: /Select Setup database/i })).toBeInTheDocument();
-      expect(screen.getByRole("checkbox", { name: /Select Create login form/i })).toBeInTheDocument();
     });
 
     it("toolbar buttons have tooltips", () => {
