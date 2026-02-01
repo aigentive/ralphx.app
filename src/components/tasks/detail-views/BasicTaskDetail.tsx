@@ -1,14 +1,12 @@
 /**
- * BasicTaskDetail - Basic task detail view for backlog, ready, blocked states
+ * BasicTaskDetail - macOS Tahoe-inspired basic task view
  *
- * This component renders core task information without state-specific behavior.
- * Used as the default view for tasks that don't need specialized UI.
- *
- * Part of the View Registry Pattern for state-specific task detail views.
+ * Clean, spacious layout for simple task states (backlog, ready, blocked).
+ * Features native vibrancy materials and refined typography.
  */
 
 import { StepList } from "../StepList";
-import { SectionTitle } from "./shared";
+import { SectionTitle, DetailCard, DescriptionBlock } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { Loader2 } from "lucide-react";
 import type { Task } from "@/types/task";
@@ -17,13 +15,6 @@ interface BasicTaskDetailProps {
   task: Task;
 }
 
-/**
- * BasicTaskDetail Component
- *
- * Renders basic task information suitable for backlog, ready, and blocked states.
- * Shows: status badge, title, priority, category, description, and steps (if any).
- * Does not include edit buttons - parent component handles those.
- */
 export function BasicTaskDetail({ task }: BasicTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const hasSteps = (steps?.length ?? 0) > 0;
@@ -35,42 +26,34 @@ export function BasicTaskDetail({ task }: BasicTaskDetailProps) {
       className="space-y-6"
     >
       {/* Description Section */}
-      {task.description ? (
-        <div>
-          <p
-            data-testid="basic-task-description"
-            className="text-[13px] text-white/60"
-            style={{
-              lineHeight: "1.6",
-              wordBreak: "break-word",
-            }}
-          >
-            {task.description}
-          </p>
-        </div>
-      ) : (
-        <p className="text-[13px] italic text-white/35">
-          No description provided
-        </p>
-      )}
+      <section>
+        <SectionTitle>Description</SectionTitle>
+        <DescriptionBlock
+          description={task.description}
+          testId="basic-task-description"
+        />
+      </section>
 
       {/* Steps Section */}
       {stepsLoading && (
         <div
           data-testid="basic-task-steps-loading"
-          className="flex justify-center py-4"
+          className="flex items-center justify-center py-8"
         >
           <Loader2
-            className="w-6 h-6 animate-spin"
-            style={{ color: "var(--text-muted)" }}
+            className="w-5 h-5 animate-spin"
+            style={{ color: "rgba(255,255,255,0.3)" }}
           />
         </div>
       )}
+
       {!stepsLoading && hasSteps && (
-        <div data-testid="basic-task-steps-section">
+        <section data-testid="basic-task-steps-section">
           <SectionTitle>Steps</SectionTitle>
-          <StepList taskId={task.id} editable={false} />
-        </div>
+          <DetailCard noPadding className="overflow-hidden">
+            <StepList taskId={task.id} editable={false} />
+          </DetailCard>
+        </section>
       )}
     </div>
   );

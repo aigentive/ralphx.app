@@ -1,21 +1,26 @@
 /**
- * CompletedTaskDetail - Task detail view for approved state
+ * CompletedTaskDetail - macOS Tahoe-inspired completed task view
  *
- * Shows completed task with approval info, final summary, review history timeline,
- * and action buttons for viewing diff or reopening task.
- *
- * Part of the View Registry Pattern for state-specific task detail views.
+ * Shows final summary, review history, and actions for completed tasks.
  */
 
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { SectionTitle, ReviewTimeline } from "./shared";
+import {
+  SectionTitle,
+  DetailCard,
+  StatusBanner,
+  StatusPill,
+  DescriptionBlock,
+} from "./shared";
+import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import {
   CheckCircle2,
   Loader2,
   ExternalLink,
   RefreshCw,
+  User,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
@@ -30,36 +35,10 @@ import { useGitDiff } from "@/hooks/useGitDiff";
 
 interface CompletedTaskDetailProps {
   task: Task;
-  /** True when viewing a historical state - disables action buttons */
   isHistorical?: boolean;
 }
 
-/**
- * CompletedBadge - Shows green indicator for completed status
- */
-function CompletedBadge() {
-  return (
-    <div
-      data-testid="completed-badge"
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{
-        backgroundColor: "rgba(16, 185, 129, 0.15)",
-        color: "var(--status-success)",
-      }}
-    >
-      <CheckCircle2
-        className="w-3 h-3"
-        style={{ color: "var(--status-success)" }}
-      />
-      Done
-    </div>
-  );
-}
-
-/**
- * Format relative time from date
- */
-function formatRelativeTime(date: Date | string | undefined): string {
+function formatRelativeTime(date: Date | string | null | undefined): string {
   if (!date) return "Unknown";
 
   const now = new Date();
@@ -75,25 +54,87 @@ function formatRelativeTime(date: Date | string | undefined): string {
   return `${diffDays}d ago`;
 }
 
-/**
- * Get approval info from history
- */
 function getApprovalInfo(history: ReviewNoteResponse[]): {
   humanApproval: ReviewNoteResponse | null;
   aiApproval: ReviewNoteResponse | null;
 } {
   const approvedEntries = history.filter((entry) => entry.outcome === "approved");
-
   const humanApproval = approvedEntries.find((e) => e.reviewer === "human") ?? null;
   const aiApproval = approvedEntries.find((e) => e.reviewer === "ai") ?? null;
-
   return { humanApproval, aiApproval };
 }
 
 /**
- * ActionButtons - View Diff and Reopen Task buttons
+ * ApprovalDetailsCard - Shows approval info (who, when, notes)
  */
-function ActionButtons({
+function ApprovalDetailsCard({
+  humanApproval,
+  aiApproval,
+  completedAt,
+}: {
+  humanApproval: ReviewNoteResponse | null;
+  aiApproval: ReviewNoteResponse | null;
+  completedAt: Date | string | null | undefined;
+}) {
+  const approval = humanApproval ?? aiApproval;
+  const isHuman = humanApproval !== null;
+  const approvalTime = approval
+    ? formatRelativeTime(approval.created_at)
+    : formatRelativeTime(completedAt);
+
+  return (
+    <DetailCard>
+      <div className="space-y-3">
+        {/* Approved by */}
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
+            style={{
+              backgroundColor: isHuman
+                ? "rgba(52, 199, 89, 0.15)"
+                : "rgba(10, 132, 255, 0.15)",
+            }}
+          >
+            {isHuman ? (
+              <User className="w-4 h-4" style={{ color: "#34c759" }} />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" style={{ color: "#0a84ff" }} />
+            )}
+          </div>
+          <div>
+            <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+              Approved by
+            </span>
+            <span className="text-[13px] text-white/70 font-medium">
+              {isHuman ? "Human Reviewer" : "AI Reviewer"}
+            </span>
+          </div>
+          <span className="ml-auto text-[12px] text-white/40">
+            {approvalTime}
+          </span>
+        </div>
+
+        {/* Approval notes if present */}
+        {approval?.notes && (
+          <>
+            <div
+              className="h-px"
+              style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+            />
+            <p className="text-[13px] text-white/55 leading-relaxed pl-11">
+              "{approval.notes}"
+            </p>
+          </>
+        )}
+      </div>
+    </DetailCard>
+  );
+}
+
+/**
+ * ActionButtonsCard - View Diff and Reopen actions
+ */
+function ActionButtonsCard({
   onViewDiff,
   onReopenTask,
 }: {
@@ -101,15 +142,16 @@ function ActionButtons({
   onReopenTask?: () => void;
 }) {
   return (
-    <div data-testid="action-buttons" className="flex items-center gap-2">
+    <div className="flex gap-3">
       <Button
         data-testid="view-diff-button"
         onClick={onViewDiff}
         variant="outline"
-        className="flex-1 gap-1.5"
+        className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
         style={{
-          borderColor: "rgba(255,255,255,0.15)",
+          borderColor: "rgba(255,255,255,0.12)",
           color: "rgba(255,255,255,0.7)",
+          backgroundColor: "rgba(255,255,255,0.04)",
         }}
       >
         <ExternalLink className="w-4 h-4" />
@@ -119,10 +161,11 @@ function ActionButtons({
         data-testid="reopen-task-button"
         onClick={onReopenTask}
         variant="outline"
-        className="flex-1 gap-1.5"
+        className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
         style={{
-          borderColor: "rgba(255,255,255,0.15)",
+          borderColor: "rgba(255,255,255,0.12)",
           color: "rgba(255,255,255,0.7)",
+          backgroundColor: "rgba(255,255,255,0.04)",
         }}
       >
         <RefreshCw className="w-4 h-4" />
@@ -132,27 +175,15 @@ function ActionButtons({
   );
 }
 
-/**
- * CompletedTaskDetail Component
- *
- * Renders task information for approved state.
- * Shows: completed banner, final summary, review history timeline, and action buttons.
- */
 export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTaskDetailProps) {
   const queryClient = useQueryClient();
-  const { data: history, isLoading: historyLoading } = useTaskStateHistory(
-    task.id
-  );
+  const { data: history, isLoading } = useTaskStateHistory(task.id);
 
-  // Dialog state
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Git diff data for commit info
   const { commits } = useGitDiff({ taskId: task.id });
-
-  // Build commitInfo from the latest commit
   const latestCommit = commits[0];
   const commitInfo = {
     sha: latestCommit?.shortSha ?? "unknown",
@@ -160,19 +191,17 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
     hasDependentCommits: commits.length > 1,
   };
 
-  const { humanApproval } = getApprovalInfo(history);
+  const { humanApproval, aiApproval } = getApprovalInfo(history);
 
   const handleViewDiff = () => {
     // Diff viewer not yet implemented
   };
 
-  // Open the dialog instead of directly moving the task
   const handleReopenTask = () => {
     setError(null);
     setIsRerunDialogOpen(true);
   };
 
-  // Handle dialog close
   const handleDialogClose = useCallback(() => {
     if (!isProcessing) {
       setIsRerunDialogOpen(false);
@@ -180,14 +209,12 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
     }
   }, [isProcessing]);
 
-  // Handle rerun confirmation
   const handleRerunConfirm = useCallback(
     async (result: TaskRerunResult) => {
       setIsProcessing(true);
       setError(null);
 
       try {
-        // All options currently move to ready (full revert/duplicate is future work)
         switch (result.option) {
           case "keep_changes":
           case "revert_commit":
@@ -209,99 +236,74 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
     [task.id, task.projectId, queryClient]
   );
 
-  const approvalTimeDisplay = humanApproval
-    ? formatRelativeTime(humanApproval.created_at)
-    : task.completedAt
-      ? formatRelativeTime(task.completedAt)
-      : "Unknown";
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2
+          className="w-6 h-6 animate-spin"
+          style={{ color: "rgba(255,255,255,0.3)" }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
       data-testid="completed-task-detail"
       data-task-id={task.id}
-      className="space-y-5"
+      className="space-y-6"
     >
-      {/* Completed Banner */}
-      <div
-        data-testid="completed-banner"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg"
-        style={{
-          backgroundColor: "rgba(16, 185, 129, 0.1)",
-          border: "1px solid rgba(16, 185, 129, 0.25)",
-        }}
-      >
-        <CheckCircle2
-          className="w-4 h-4 shrink-0"
-          style={{ color: "var(--status-success)" }}
-        />
-        <div className="flex-1">
-          <span
-            className="text-[13px] font-medium"
-            style={{ color: "var(--status-success)" }}
-          >
-            COMPLETED
-          </span>
-          <span className="text-[12px] text-white/50 ml-2">
-            Approved {approvalTimeDisplay}
-            {humanApproval ? " by Human" : ""}
-          </span>
-        </div>
-        <CompletedBadge />
-      </div>
-
-      {/* Final Summary Section */}
-      <div>
-        <SectionTitle>Final Summary</SectionTitle>
-        {task.description ? (
-          <p
-            data-testid="completed-task-summary"
-            className="text-[13px] text-white/60"
-            style={{
-              lineHeight: "1.6",
-              wordBreak: "break-word",
-            }}
-          >
-            {task.description}
-          </p>
-        ) : (
-          <p className="text-[13px] italic text-white/35">
-            No description provided
-          </p>
-        )}
-      </div>
-
-      {/* Loading state for history */}
-      {historyLoading && (
-        <div
-          data-testid="completed-history-loading"
-          className="flex justify-center py-4"
-        >
-          <Loader2
-            className="w-5 h-5 animate-spin"
-            style={{ color: "var(--text-muted)" }}
+      {/* Status Banner */}
+      <StatusBanner
+        icon={CheckCircle2}
+        title="Task Completed"
+        subtitle="All work has been reviewed and approved"
+        variant="success"
+        badge={
+          <StatusPill
+            icon={CheckCircle2}
+            label="Done"
+            variant="success"
+            size="md"
           />
-        </div>
-      )}
+        }
+      />
 
-      {/* Review History Section */}
-      {!historyLoading && (
-        <div data-testid="review-history-section">
-          <SectionTitle>Review History</SectionTitle>
-          <div
-            className="rounded-lg p-3"
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.2)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <ReviewTimeline history={history} />
-          </div>
-        </div>
-      )}
+      {/* Approval Details */}
+      <section>
+        <SectionTitle>Approval</SectionTitle>
+        <ApprovalDetailsCard
+          humanApproval={humanApproval}
+          aiApproval={aiApproval}
+          completedAt={task.completedAt}
+        />
+      </section>
 
-      {/* Action Buttons - hidden in historical mode */}
+      {/* Final Summary (Description) */}
+      <section>
+        <SectionTitle>Final Summary</SectionTitle>
+        <DescriptionBlock
+          description={task.description}
+          testId="completed-task-summary"
+        />
+      </section>
+
+      {/* Review History */}
+      <section data-testid="review-history-section">
+        <SectionTitle>Review History</SectionTitle>
+        <DetailCard>
+          <ReviewTimeline history={history} />
+        </DetailCard>
+      </section>
+
+      {/* Actions (hidden in historical mode) */}
       {!isHistorical && (
-        <ActionButtons onViewDiff={handleViewDiff} onReopenTask={handleReopenTask} />
+        <section data-testid="action-buttons">
+          <ActionButtonsCard
+            onViewDiff={handleViewDiff}
+            onReopenTask={handleReopenTask}
+          />
+        </section>
       )}
 
       {/* Task Rerun Dialog */}

@@ -1,12 +1,7 @@
 /**
- * ReviewTimeline - Shared review history timeline component
+ * ReviewTimeline - macOS Tahoe-inspired review history timeline
  *
- * Extracted from CompletedTaskDetail for use in both CompletedTaskDetail
- * and EscalatedTaskDetail with configurable filtering.
- *
- * Usage:
- * - CompletedTaskDetail: <ReviewTimeline history={history} /> (shows all)
- * - EscalatedTaskDetail: <ReviewTimeline history={history} filter={(e) => e.outcome === "changes_requested"} showAttemptNumbers />
+ * Shows a vertical timeline of review events with native styling.
  */
 
 import { CheckCircle2, RotateCcw, Bot, User } from "lucide-react";
@@ -14,17 +9,11 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 
 export interface ReviewTimelineProps {
   history: ReviewNoteResponse[];
-  /** Filter function to select which entries to display */
   filter?: (entry: ReviewNoteResponse) => boolean;
-  /** Message to display when filtered list is empty */
   emptyMessage?: string;
-  /** Show attempt numbers (#1, #2) for filtered entries - used in EscalatedTaskDetail */
   showAttemptNumbers?: boolean;
 }
 
-/**
- * Format relative time from date
- */
 function formatRelativeTime(date: Date | string | undefined): string {
   if (!date) return "Unknown";
 
@@ -41,49 +30,46 @@ function formatRelativeTime(date: Date | string | undefined): string {
   return `${diffDays}d ago`;
 }
 
-/**
- * HistoryTimelineItem - Individual item in the review history timeline
- */
-function HistoryTimelineItem({
-  entry,
-  isLast,
-  attemptNumber,
-}: {
+interface TimelineItemProps {
   entry: ReviewNoteResponse;
   isLast: boolean;
   attemptNumber?: number;
-}) {
+}
+
+function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
   const isApproved = entry.outcome === "approved";
   const isChangesRequested = entry.outcome === "changes_requested";
   const isHuman = entry.reviewer === "human";
 
-  const getIconAndColor = () => {
+  const getConfig = () => {
     if (isApproved) {
       return {
         Icon: CheckCircle2,
-        color: "var(--status-success)",
-        bgColor: "rgba(16, 185, 129, 0.15)",
+        color: "#34c759",
+        bgColor: "rgba(52, 199, 89, 0.15)",
+        lineColor: "rgba(52, 199, 89, 0.3)",
       };
     }
     if (isChangesRequested) {
       return {
         Icon: RotateCcw,
-        color: "var(--status-warning)",
-        bgColor: "rgba(245, 158, 11, 0.15)",
+        color: "#ff9f0a",
+        bgColor: "rgba(255, 159, 10, 0.15)",
+        lineColor: "rgba(255, 159, 10, 0.3)",
       };
     }
     return {
       Icon: CheckCircle2,
-      color: "rgba(255,255,255,0.5)",
-      bgColor: "rgba(255,255,255,0.08)",
+      color: "#8e8e93",
+      bgColor: "rgba(142, 142, 147, 0.15)",
+      lineColor: "rgba(142, 142, 147, 0.2)",
     };
   };
 
-  const { Icon, color, bgColor } = getIconAndColor();
+  const config = getConfig();
   const ReviewerIcon = isHuman ? User : Bot;
 
   const getLabel = () => {
-    // When showing attempt numbers, use "Attempt #N: Changes requested" format
     if (attemptNumber !== undefined && isChangesRequested) {
       return `Attempt #${attemptNumber}: Changes requested`;
     }
@@ -91,45 +77,47 @@ function HistoryTimelineItem({
       return `${isHuman ? "Human" : "AI"} approved`;
     }
     if (isChangesRequested) {
-      return `${isHuman ? "Human" : "AI"} changes requested`;
+      return `${isHuman ? "Human" : "AI"} requested changes`;
     }
     return `${isHuman ? "Human" : "AI"} reviewed`;
   };
 
   return (
     <div className="flex gap-3">
-      {/* Timeline line and dot */}
+      {/* Timeline connector */}
       <div className="flex flex-col items-center">
+        {/* Icon circle */}
         <div
-          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-          style={{ backgroundColor: bgColor }}
+          className="flex items-center justify-center w-7 h-7 rounded-xl shrink-0"
+          style={{ backgroundColor: config.bgColor }}
         >
-          <Icon className="w-3.5 h-3.5" style={{ color }} />
+          <config.Icon className="w-4 h-4" style={{ color: config.color }} />
         </div>
+        {/* Vertical line */}
         {!isLast && (
           <div
-            className="w-px flex-1 min-h-[16px]"
-            style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+            className="w-0.5 flex-1 min-h-[20px] mt-1"
+            style={{ backgroundColor: config.lineColor }}
           />
         )}
       </div>
 
       {/* Content */}
-      <div className="flex-1 pb-3">
+      <div className="flex-1 pb-4">
         <div className="flex items-center gap-2">
           <ReviewerIcon
             className="w-3.5 h-3.5"
-            style={{ color: "rgba(255,255,255,0.5)" }}
+            style={{ color: isHuman ? "#34c759" : "#0a84ff" }}
           />
-          <span className="text-[12px] font-medium text-white/70">
+          <span className="text-[12px] font-semibold text-white/75">
             {getLabel()}
           </span>
-          <span className="text-[11px] text-white/40">
+          <span className="text-[11px] text-white/40 ml-auto">
             {formatRelativeTime(entry.created_at)}
           </span>
         </div>
         {entry.notes && (
-          <p className="text-[11px] text-white/50 mt-1 pl-5">
+          <p className="text-[12px] text-white/50 mt-1.5 pl-5 leading-relaxed">
             {entry.notes}
           </p>
         )}
@@ -138,21 +126,17 @@ function HistoryTimelineItem({
   );
 }
 
-/**
- * ReviewTimeline - Shows timeline of review events with optional filtering
- */
 export function ReviewTimeline({
   history,
   filter,
   emptyMessage = "No review history available",
   showAttemptNumbers = false,
 }: ReviewTimelineProps) {
-  // Apply filter if provided
   const displayedHistory = filter ? history.filter(filter) : history;
 
   if (displayedHistory.length === 0) {
     return (
-      <p className="text-[12px] text-white/40 italic">
+      <p className="text-[12px] text-white/35 italic py-2">
         {emptyMessage}
       </p>
     );
@@ -161,7 +145,7 @@ export function ReviewTimeline({
   return (
     <div data-testid="review-history-timeline">
       {displayedHistory.map((entry, index) => (
-        <HistoryTimelineItem
+        <TimelineItem
           key={entry.id}
           entry={entry}
           isLast={index === displayedHistory.length - 1}

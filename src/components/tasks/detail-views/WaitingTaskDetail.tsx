@@ -1,15 +1,19 @@
 /**
- * WaitingTaskDetail - Task detail view for pending_review state
+ * WaitingTaskDetail - macOS Tahoe-inspired pending review view
  *
- * Shows task waiting for AI reviewer with work completed summary,
- * step list (all completed), and description.
- *
- * Part of the View Registry Pattern for state-specific task detail views.
+ * Shows task waiting for AI reviewer with completion summary
+ * and clean step list presentation.
  */
 
-import { Clock, CheckCircle2, FileCode2, Loader2 } from "lucide-react";
+import { Clock, CheckCircle2, Loader2, Hourglass } from "lucide-react";
 import { StepList } from "../StepList";
-import { SectionTitle } from "./shared";
+import {
+  SectionTitle,
+  DetailCard,
+  StatusBanner,
+  StatusPill,
+  DescriptionBlock,
+} from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import type { Task } from "@/types/task";
 
@@ -17,31 +21,6 @@ interface WaitingTaskDetailProps {
   task: Task;
 }
 
-/**
- * PendingReviewBadge - Shows waiting status indicator
- */
-function PendingReviewBadge() {
-  return (
-    <div
-      data-testid="pending-review-badge"
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{
-        backgroundColor: "rgba(255,255,255,0.08)",
-        color: "rgba(255,255,255,0.6)",
-      }}
-    >
-      <Clock
-        className="w-3 h-3"
-        style={{ color: "rgba(255,255,255,0.5)" }}
-      />
-      Pending Review
-    </div>
-  );
-}
-
-/**
- * Format relative time from date
- */
 function formatRelativeTime(date: Date | string | undefined): string {
   if (!date) return "Just now";
 
@@ -59,9 +38,9 @@ function formatRelativeTime(date: Date | string | undefined): string {
 }
 
 /**
- * WorkCompletedSection - Shows summary of completed work
+ * WorkSummaryCard - Shows completion statistics
  */
-function WorkCompletedSection({
+function WorkSummaryCard({
   submittedAt,
   stepsCompleted,
   totalSteps,
@@ -72,92 +51,82 @@ function WorkCompletedSection({
   totalSteps: number;
   isLoading: boolean;
 }) {
-  const allStepsCompleted = stepsCompleted === totalSteps && totalSteps > 0;
+  const allComplete = stepsCompleted === totalSteps && totalSteps > 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2
+          className="w-5 h-5 animate-spin"
+          style={{ color: "rgba(255,255,255,0.3)" }}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div
-      data-testid="work-completed-section"
-      className="rounded-lg p-3 space-y-2"
-      style={{
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      {isLoading ? (
-        <div className="flex justify-center py-2">
-          <Loader2
-            className="w-5 h-5 animate-spin"
-            style={{ color: "var(--text-muted)" }}
-          />
+    <DetailCard>
+      <div className="space-y-3">
+        {/* Submitted time */}
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
+            style={{ backgroundColor: "rgba(142, 142, 147, 0.15)" }}
+          >
+            <Clock className="w-4 h-4" style={{ color: "#8e8e93" }} />
+          </div>
+          <div>
+            <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+              Submitted
+            </span>
+            <span className="text-[13px] text-white/70 font-medium">
+              {formatRelativeTime(submittedAt)}
+            </span>
+          </div>
         </div>
-      ) : (
-        <>
-          {/* Submitted time */}
-          <div className="flex items-center gap-2">
-            <Clock
-              className="w-3.5 h-3.5 shrink-0"
-              style={{ color: "rgba(255,255,255,0.4)" }}
-            />
-            <span
-              data-testid="submitted-time"
-              className="text-[12px] text-white/60"
-            >
-              Submitted {formatRelativeTime(submittedAt)}
-            </span>
-          </div>
 
-          {/* Files changed - placeholder since git diff not available */}
-          <div className="flex items-center gap-2">
-            <FileCode2
-              className="w-3.5 h-3.5 shrink-0"
-              style={{ color: "rgba(255,255,255,0.4)" }}
-            />
-            <span className="text-[12px] text-white/60">
-              Files changed info pending
-            </span>
-          </div>
+        {/* Divider */}
+        <div
+          className="h-px"
+          style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        />
 
-          {/* Steps completed indicator */}
-          <div className="flex items-center gap-2">
-            {allStepsCompleted ? (
-              <CheckCircle2
-                className="w-3.5 h-3.5 shrink-0"
-                style={{ color: "var(--status-success)" }}
-              />
-            ) : (
-              <CheckCircle2
-                className="w-3.5 h-3.5 shrink-0"
-                style={{ color: "rgba(255,255,255,0.4)" }}
-              />
-            )}
+        {/* Steps status */}
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
+            style={{
+              backgroundColor: allComplete
+                ? "rgba(52, 199, 89, 0.15)"
+                : "rgba(142, 142, 147, 0.15)",
+            }}
+          >
+            <CheckCircle2
+              className="w-4 h-4"
+              style={{ color: allComplete ? "#34c759" : "#8e8e93" }}
+            />
+          </div>
+          <div>
+            <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+              Steps
+            </span>
             <span
-              data-testid="steps-completed-indicator"
-              className="text-[12px]"
-              style={{
-                color: allStepsCompleted
-                  ? "var(--status-success)"
-                  : "rgba(255,255,255,0.6)",
-              }}
+              className="text-[13px] font-medium"
+              style={{ color: allComplete ? "#30d158" : "rgba(255,255,255,0.7)" }}
             >
               {totalSteps > 0
-                ? allStepsCompleted
-                  ? "All steps completed"
-                  : `${stepsCompleted} of ${totalSteps} steps completed`
+                ? allComplete
+                  ? "All completed"
+                  : `${stepsCompleted} of ${totalSteps} completed`
                 : "No steps defined"}
             </span>
           </div>
-        </>
-      )}
-    </div>
+        </div>
+      </div>
+    </DetailCard>
   );
 }
 
-/**
- * WaitingTaskDetail Component
- *
- * Renders task information for pending_review state.
- * Shows: waiting banner, work completed summary, steps (all completed), and description.
- */
 export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const { data: progress } = useStepProgress(task.id);
@@ -170,79 +139,65 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
     <div
       data-testid="waiting-task-detail"
       data-task-id={task.id}
-      className="space-y-5"
+      className="space-y-6"
     >
-      {/* Waiting for AI Reviewer Banner */}
-      <div
-        data-testid="waiting-banner"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg"
-        style={{
-          backgroundColor: "rgba(255,255,255,0.05)",
-          border: "1px solid rgba(255,255,255,0.1)",
-        }}
-      >
-        <Clock
-          className="w-4 h-4 shrink-0"
-          style={{ color: "rgba(255,255,255,0.5)" }}
-        />
-        <span className="text-[13px] font-medium text-white/70">
-          WAITING FOR AI REVIEWER
-        </span>
-        <div className="ml-auto">
-          <PendingReviewBadge />
-        </div>
-      </div>
+      {/* Status Banner */}
+      <StatusBanner
+        icon={Hourglass}
+        title="Awaiting AI Review"
+        subtitle="Work complete — waiting for automated review"
+        variant="neutral"
+        badge={
+          <StatusPill
+            icon={Clock}
+            label="Pending"
+            variant="neutral"
+            size="md"
+          />
+        }
+      />
 
-      {/* Work Completed Section */}
-      <div data-testid="work-completed-wrapper">
-        <SectionTitle>Work Completed</SectionTitle>
-        <WorkCompletedSection
+      {/* Work Summary */}
+      <section data-testid="work-completed-wrapper">
+        <SectionTitle>Work Summary</SectionTitle>
+        <WorkSummaryCard
           submittedAt={task.updatedAt}
           stepsCompleted={stepsCompleted}
           totalSteps={totalSteps}
           isLoading={stepsLoading}
         />
-      </div>
+      </section>
 
       {/* Steps Section */}
       {stepsLoading && (
         <div
           data-testid="waiting-steps-loading"
-          className="flex justify-center py-4"
+          className="flex items-center justify-center py-8"
         >
           <Loader2
-            className="w-6 h-6 animate-spin"
-            style={{ color: "var(--text-muted)" }}
+            className="w-5 h-5 animate-spin"
+            style={{ color: "rgba(255,255,255,0.3)" }}
           />
         </div>
       )}
+
       {!stepsLoading && hasSteps && (
-        <div data-testid="waiting-steps-section">
+        <section data-testid="waiting-steps-section">
           <SectionTitle>Steps</SectionTitle>
-          <StepList taskId={task.id} editable={false} />
-        </div>
+          <DetailCard noPadding className="overflow-hidden">
+            <StepList taskId={task.id} editable={false} />
+          </DetailCard>
+        </section>
       )}
 
       {/* Description Section */}
-      <div>
+      <section>
         <SectionTitle>Description</SectionTitle>
-        {task.description ? (
-          <p
-            data-testid="waiting-task-description"
-            className="text-[13px] text-white/60"
-            style={{
-              lineHeight: "1.6",
-              wordBreak: "break-word",
-            }}
-          >
-            {task.description}
-          </p>
-        ) : (
-          <p className="text-[13px] italic text-white/35">
-            No description provided
-          </p>
-        )}
-      </div>
+        <DescriptionBlock
+          description={task.description}
+          testId="waiting-task-description"
+        />
+      </section>
     </div>
   );
 }
