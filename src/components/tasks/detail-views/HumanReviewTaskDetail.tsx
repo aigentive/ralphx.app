@@ -18,6 +18,7 @@ import {
   DescriptionBlock,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
+import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -32,6 +33,7 @@ import {
   MessageSquare,
   ShieldCheck,
   ThumbsUp,
+  Code,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
@@ -144,10 +146,12 @@ function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
  */
 function ActionButtonsCard({
   taskId,
+  onReviewCode,
   onApproveSuccess,
   onRequestChangesSuccess,
 }: {
   taskId: string;
+  onReviewCode?: () => void;
   onApproveSuccess?: () => void;
   onRequestChangesSuccess?: () => void;
 }) {
@@ -228,12 +232,26 @@ function ActionButtonsCard({
 
       {/* Label and action buttons on same row */}
       <div className="flex items-center justify-between">
-        <span
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "hsl(220 10% 50%)" }}
-        >
-          Your Decision
-        </span>
+        <div className="flex items-center gap-3">
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "hsl(220 10% 50%)" }}
+          >
+            Your Decision
+          </span>
+          {onReviewCode && (
+            <Button
+              data-testid="review-code-button"
+              onClick={onReviewCode}
+              variant="ghost"
+              className="h-7 px-3 gap-1.5 rounded-lg font-medium text-[12px]"
+              style={{ color: "hsl(217 90% 60%)" }}
+            >
+              <Code className="w-3.5 h-3.5" />
+              Review Code
+            </Button>
+          )}
+        </div>
         <div className="flex gap-2">
         <Button
           data-testid="approve-button"
@@ -301,6 +319,7 @@ function ActionButtonsCard({
 }
 
 export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanReviewTaskDetailProps) {
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const latestApprovedReview = getLatestApprovedReview(history);
 
@@ -370,8 +389,19 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
       {/* Action Buttons (hidden in historical mode) */}
       {!isHistorical && (
         <section>
-          <ActionButtonsCard taskId={task.id} />
+          <ActionButtonsCard
+            taskId={task.id}
+            onReviewCode={() => setShowReviewModal(true)}
+          />
         </section>
+      )}
+
+      {/* Review Detail Modal */}
+      {showReviewModal && (
+        <ReviewDetailModal
+          taskId={task.id}
+          onClose={() => setShowReviewModal(false)}
+        />
       )}
     </div>
   );
