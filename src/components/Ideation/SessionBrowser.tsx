@@ -232,11 +232,11 @@ export function SessionBrowser({
                   key={session.id}
                   data-testid={`session-item-${session.id}`}
                   className={cn(
-                    "group relative rounded-lg cursor-pointer",
+                    "group relative rounded-md cursor-pointer",
                     "transition-all duration-150 ease-out"
                   )}
                   style={{
-                    padding: "10px 12px",
+                    padding: "6px 8px",
                     background: isSelected
                       ? "hsla(14 100% 60% / 0.12)"
                       : isMenuOpen
@@ -258,10 +258,10 @@ export function SessionBrowser({
                     }
                   }}
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-2">
                     {/* Session icon */}
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors duration-150"
+                      className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-colors duration-150"
                       style={{
                         background: isSelected
                           ? "hsla(14 100% 60% / 0.15)"
@@ -272,13 +272,13 @@ export function SessionBrowser({
                       }}
                     >
                       <MessageSquare
-                        className="w-3.5 h-3.5"
+                        className="w-3 h-3"
                         style={{ color: isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
                       />
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 min-w-0 pt-0.5">
+                    <div className="flex-1 min-w-0">
                       {isEditing ? (
                         <Input
                           ref={inputRef}
@@ -295,10 +295,10 @@ export function SessionBrowser({
                         />
                       ) : (
                         <>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <span
                               className={cn(
-                                "text-[13px] font-medium truncate tracking-[-0.01em]",
+                                "text-[12px] font-medium truncate tracking-[-0.01em]",
                                 "transition-colors duration-150"
                               )}
                               style={{
@@ -307,20 +307,12 @@ export function SessionBrowser({
                             >
                               {session.title || "Untitled Session"}
                             </span>
-                            {isSelected && (
-                              <span
-                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                style={{
-                                  background: "hsl(14 100% 60%)",
-                                }}
-                              />
-                            )}
                           </div>
                           <div
-                            className="flex items-center gap-1.5 mt-1 text-[11px]"
-                            style={{ color: "hsl(220 10% 50%)" }}
+                            className="flex items-center gap-1 text-[10px]"
+                            style={{ color: "hsl(220 10% 45%)" }}
                           >
-                            <Clock className="w-3 h-3" />
+                            <Clock className="w-2.5 h-2.5" />
                             <span>{formatRelativeTime(session.updatedAt)}</span>
                           </div>
                         </>
@@ -333,7 +325,7 @@ export function SessionBrowser({
                         <DropdownMenuTrigger asChild>
                           <button
                             className={cn(
-                              "w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0",
+                              "w-6 h-6 rounded flex items-center justify-center flex-shrink-0",
                               "transition-all duration-150",
                               (isMenuOpen || isSelected)
                                 ? "opacity-100"
@@ -352,7 +344,7 @@ export function SessionBrowser({
                               }
                             }}
                           >
-                            <MoreHorizontal className="w-4 h-4" style={{ color: "hsl(220 10% 50%)" }} />
+                            <MoreHorizontal className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
