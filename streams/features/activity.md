@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-01 21:30:00 - Phase 60 Task 10: Update worker agent for issue tracking
+**What:**
+- Updated worker agent system prompt in `ralphx-plugin/agents/worker.md`
+- Added 3 new MCP tools to tools list:
+  - `mcp__ralphx__get_task_issues` - fetch structured issues to address
+  - `mcp__ralphx__mark_issue_in_progress` - when starting work on an issue
+  - `mcp__ralphx__mark_issue_addressed` - when finished fixing an issue
+- Updated "MANDATORY: Fetch Review Feedback" section to include issue fetching
+- Added `get_task_issues(task_id, status_filter: "open")` as MUST step 3
+- Added "Prioritize by severity — Critical issues MUST be fixed first"
+- Updated example re-execution flow with structured issues and issue tracking
+- Added key points for revisions: fetch issues, prioritize severity, track progress
+- Updated Available MCP Tools table with 3 new issue tracking tools
+- Updated Workflow with steps 4 (Fetch Open Issues) and 9 (Verify All Issues Addressed)
+- Added issue tracking to "Execute Steps" section
+- Added "All open issues addressed" to Quality Checks
+
+**Files:**
+- `ralphx-plugin/agents/worker.md` (updated)
+
+**Commands:**
+- N/A - documentation-only change (agent prompt)
+
+**Visual Verification:** N/A - agent prompt, no UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 21:05:00 - Phase 60 Task 9: Update reviewer agent for structured issues
 **What:**
 - Updated reviewer agent system prompt in `ralphx-plugin/agents/reviewer.md`
