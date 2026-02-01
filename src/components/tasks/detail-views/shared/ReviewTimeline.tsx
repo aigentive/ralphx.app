@@ -1,14 +1,17 @@
 /**
  * ReviewTimeline - macOS Tahoe-inspired review history timeline
  *
- * Shows a vertical timeline of review events with native styling.
+ * Shows a vertical timeline of review events with collapsible markdown content.
  */
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CheckCircle2, RotateCcw, Bot, User } from "lucide-react";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+
+const COLLAPSED_HEIGHT = 80; // pixels
 
 export interface ReviewTimelineProps {
   history: ReviewNoteResponse[];
@@ -40,9 +43,19 @@ interface TimelineItemProps {
 }
 
 function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isApproved = entry.outcome === "approved";
   const isChangesRequested = entry.outcome === "changes_requested";
   const isHuman = entry.reviewer === "human";
+
+  // Content is collapsible if notes are long enough
+  const hasLongContent = (entry.notes?.length ?? 0) > 150;
+
+  const handleContentClick = () => {
+    if (hasLongContent && !isExpanded) {
+      setIsExpanded(true);
+    }
+  };
 
   const getConfig = () => {
     if (isApproved) {
@@ -120,13 +133,60 @@ function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
           </span>
         </div>
         {entry.notes && (
-          <div className="text-[12px] text-white/50 mt-1.5 pl-5 leading-relaxed prose prose-sm prose-invert max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
+          <div className="mt-1.5 pl-5">
+            {/* Clickable content area */}
+            <div
+              onClick={handleContentClick}
+              className={hasLongContent && !isExpanded ? "cursor-pointer" : ""}
             >
-              {entry.notes}
-            </ReactMarkdown>
+              <div className="relative">
+                <div
+                  className="text-[12px] text-white/50 leading-relaxed prose prose-sm prose-invert max-w-none overflow-hidden transition-all duration-300 ease-out"
+                  style={{
+                    maxHeight: isExpanded ? "2000px" : `${COLLAPSED_HEIGHT}px`,
+                  }}
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {entry.notes}
+                  </ReactMarkdown>
+                </div>
+
+                {/* Gradient fade overlay when collapsed */}
+                {hasLongContent && !isExpanded && (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+                    style={{
+                      background:
+                        "linear-gradient(to bottom, transparent, hsl(220 10% 14%))",
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Show more link */}
+              {hasLongContent && !isExpanded && (
+                <div
+                  className="mt-1 text-[11px] font-medium"
+                  style={{ color: "hsl(217 90% 60%)" }}
+                >
+                  Show more
+                </div>
+              )}
+            </div>
+
+            {/* Show less button */}
+            {hasLongContent && isExpanded && (
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="mt-2 text-[11px] font-medium transition-colors hover:opacity-80"
+                style={{ color: "hsl(217 90% 60%)" }}
+              >
+                Show less
+              </button>
+            )}
           </div>
         )}
       </div>
