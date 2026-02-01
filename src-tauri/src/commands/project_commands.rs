@@ -88,12 +88,57 @@ pub async fn get_project(
         .map_err(|e| e.to_string())
 }
 
+/// Check if git is initialized in the given directory
+fn is_git_initialized(path: &str) -> bool {
+    Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Initialize git in the given directory if not already initialized
+fn ensure_git_initialized(path: &str) -> Result<(), String> {
+    if is_git_initialized(path) {
+        return Ok(());
+    }
+
+    // Check if directory exists
+    if !std::path::Path::new(path).exists() {
+        return Err(format!("Directory does not exist: {}", path));
+    }
+
+    // Initialize git
+    let output = Command::new("git")
+        .args(["init"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| format!("Failed to run git init: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git init failed: {}", stderr));
+    }
+
+    // Create initial commit so HEAD exists (needed for diff operations)
+    let _ = Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "Initial commit (auto-created by RalphX)"])
+        .current_dir(path)
+        .output();
+
+    Ok(())
+}
+
 /// Create a new project
 #[tauri::command]
 pub async fn create_project(
     input: CreateProjectInput,
     state: State<'_, AppState>,
 ) -> Result<ProjectResponse, String> {
+    // Ensure git is initialized in the working directory
+    ensure_git_initialized(&input.working_directory)?;
+
     let project = if let (Some(worktree_path), Some(worktree_branch)) =
         (input.worktree_path, input.worktree_branch)
     {
@@ -142,6 +187,8 @@ pub async fn update_project(
         project.name = name;
     }
     if let Some(working_directory) = input.working_directory {
+        // Ensure git is initialized in the new working directory
+        ensure_git_initialized(&working_directory)?;
         project.working_directory = working_directory;
     }
     if let Some(git_mode_str) = input.git_mode {
