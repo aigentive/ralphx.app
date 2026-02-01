@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-01 16:30:00 - Phase 58 Task 1: Wire TaskRerunDialog to CompletedTaskDetail
+**What:**
+- Imported TaskRerunDialog, TaskRerunResult types from @/components/tasks/TaskRerunDialog
+- Imported useGitDiff hook from @/hooks/useGitDiff
+- Added useState for isRerunDialogOpen, isProcessing, error
+- Used useGitDiff(task.id) to get commit data for commitInfo prop
+- Changed handleReopenTask to open dialog instead of direct api.tasks.move
+- Added handleRerunConfirm callback to handle all three options (keep_changes, revert_commit, create_new)
+- All options currently move task to ready status (full revert/duplicate is future work)
+- Rendered TaskRerunDialog at bottom of component with proper props
+
+**Files:**
+- `src/components/tasks/detail-views/CompletedTaskDetail.tsx` (modified)
+
+**Commands:**
+- `npm run lint` (passed - pre-existing warnings/errors not related to this task)
+- `npm run typecheck` (passed - no errors in CompletedTaskDetail.tsx)
+
+**Visual Verification:** N/A - backend wiring only (dialog component already exists)
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 15:00:00 - Phase 57 Complete
 **What:**
 - All 12 tasks completed with passes: true
