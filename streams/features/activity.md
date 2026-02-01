@@ -4,6 +4,48 @@
 
 ---
 
+### 2026-02-02 01:15:00 - Phase 66 Task 4: Add PendingMerge, Merging, MergeConflict, Merged internal states
+**What:**
+- Added 4 new internal states to backend InternalStatus enum: PendingMerge, Merging, MergeConflict, Merged
+- Updated valid_transitions() with new state transition rules (Approved → PendingMerge → Merged/Merging)
+- Updated state machine types.rs with new State variants, is_terminal() (Merged now terminal, Approved not), and added is_merge() helper
+- Updated state machine transitions.rs with handler methods for all 4 new states
+- Added 5 new TaskEvent variants: StartMerge, MergeComplete, MergeConflict, MergeAgentFailed, ConflictResolved
+- Updated task_transition_service.rs conversion functions for new states
+- Updated status_to_label() helper with merge state labels
+- Updated frontend InternalStatusSchema in src/types/status.ts with new states
+- Updated MERGE_STATUSES, ACTIVE_STATUSES, TERMINAL_STATUSES, NON_DRAGGABLE_STATUSES
+- Added isMergeStatus() helper function
+- Updated all Record<InternalStatus, ...> in 7 frontend files to include new states
+
+**Files Modified:**
+- `src-tauri/src/domain/entities/status.rs` (enum + transitions + tests)
+- `src-tauri/src/domain/state_machine/machine/types.rs` (State enum + helpers)
+- `src-tauri/src/domain/state_machine/machine/transitions.rs` (handlers)
+- `src-tauri/src/domain/state_machine/events.rs` (TaskEvent enum + helpers)
+- `src-tauri/src/application/task_transition_service.rs` (conversions)
+- `src-tauri/src/commands/task_commands/helpers.rs` (labels)
+- `src/types/status.ts` (Zod schema + helpers)
+- `src/api-mock/tasks.ts` (statusProgression)
+- `src/components/tasks/StateTimelineNav.tsx` (STATUS_CONFIG)
+- `src/components/tasks/TaskDetailModal.constants.ts` (STATUS_CONFIG)
+- `src/components/tasks/TaskDetailOverlay.tsx` (STATUS_CONFIG)
+- `src/components/tasks/TaskDetailPanel.tsx` (TASK_DETAIL_VIEWS + STATUS_CONFIG)
+- `src/components/tasks/TaskDetailView.tsx` (STATUS_CONFIG)
+- `src/components/workflows/WorkflowEditor.tsx` (STATUS_LABELS)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (passed - all 3343 tests)
+- `npm run lint` (passed - 0 errors, 13 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - backend only (no UI file changes that require screenshots)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:45:00 - Phase 66 Task 3: Add git_mode and worktree_parent_directory fields to Project
 **What:**
 - Added worktree_parent_directory field to Project entity (git_mode already existed)
