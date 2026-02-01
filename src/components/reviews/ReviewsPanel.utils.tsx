@@ -120,22 +120,22 @@ interface PanelHeaderProps {
 export function PanelHeader({ totalCount, onClose }: PanelHeaderProps) {
   return (
     <div
-      className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+      className="flex items-center justify-between h-11 px-3 border-b shrink-0"
       style={{
-        borderColor: "rgba(255,255,255,0.06)",
-        height: "52px",
-        background: "rgba(18,18,18,0.85)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        borderColor: "hsla(220 10% 100% / 0.04)",
+        background: "hsla(220 10% 100% / 0.02)",
       }}
     >
-      <h2
-        data-testid="reviews-panel-title"
-        className="text-lg font-semibold text-[var(--text-primary)]"
-        style={{ letterSpacing: "-0.02em" }}
-      >
-        Reviews
-      </h2>
+      <div className="flex items-center gap-2">
+        <CheckCircle2 className="w-4 h-4" style={{ color: "hsl(220 10% 50%)" }} />
+        <h2
+          data-testid="reviews-panel-title"
+          className="text-[13px] font-semibold"
+          style={{ color: "hsl(220 10% 90%)", letterSpacing: "-0.01em" }}
+        >
+          Reviews
+        </h2>
+      </div>
       <div className="flex items-center gap-3">
         <CountBadge count={totalCount} />
         {onClose && (
@@ -183,8 +183,7 @@ export function FilterTabs({
     <div
       className="px-4 py-3 border-b"
       style={{
-        borderColor: "rgba(255,255,255,0.06)",
-        background: "rgba(255,255,255,0.02)",
+        borderColor: "hsla(220 10% 100% / 0.04)",
       }}
     >
       <Tabs

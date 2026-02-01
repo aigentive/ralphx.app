@@ -25,7 +25,6 @@ import {
   EmptyState,
   PanelHeader,
   FilterTabs,
-  PANEL_STYLES,
   type FilterTab,
 } from "./ReviewsPanel.utils";
 import type { Task } from "@/types/task";
@@ -197,7 +196,6 @@ interface ReviewsPanelProps {
 export function ReviewsPanel({
   projectId,
   onClose,
-  isClosing = false,
   isApproving = false,
   isRequestingChanges = false,
 }: ReviewsPanelProps) {
@@ -255,25 +253,14 @@ export function ReviewsPanel({
     setSelectedTaskId(null);
   }, []);
 
-  // Panel animation class
-  const animationClass = isClosing
-    ? "animate-[panel-slide-out_250ms_ease-in_forwards]"
-    : "animate-[panel-slide-in_300ms_ease-out]";
-
   // Render list view
   return (
     <>
-      <style>{PANEL_STYLES}</style>
       <div
         data-testid="reviews-panel"
         role="complementary"
         aria-label="Reviews panel"
-        className={cn(
-          "flex flex-col h-full",
-          "bg-[var(--bg-surface)]",
-          "shadow-[var(--shadow-md)]",
-          animationClass
-        )}
+        className="flex flex-col h-full"
       >
         {/* Header */}
         <PanelHeader totalCount={totalCount} onClose={onClose} />
