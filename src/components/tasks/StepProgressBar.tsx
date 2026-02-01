@@ -88,25 +88,13 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
               className="h-full rounded-full transition-all duration-300"
               style={{
                 width: `${percentComplete}%`,
-                backgroundColor: failed > 0
-                  ? "hsl(0 70% 55%)"
-                  : inProgress > 0
-                  ? "hsl(14 100% 60%)"
-                  : percentComplete === 100
-                  ? "hsl(145 60% 45%)"
-                  : "hsl(220 10% 50%)",
+                backgroundColor: "hsl(220 10% 35%)",
               }}
             />
           </div>
           <span
             className="text-[10px] tabular-nums shrink-0"
-            style={{
-              color: failed > 0
-                ? "hsl(0 70% 55%)"
-                : percentComplete === 100
-                ? "hsl(145 60% 45%)"
-                : "hsl(220 10% 40%)",
-            }}
+            style={{ color: "hsl(220 10% 40%)" }}
           >
             {percentComplete}%
           </span>
