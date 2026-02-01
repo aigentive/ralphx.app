@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-01 06:30:00 - Phase 60 Task 4: Create ReviewIssue service with business logic
+**What:**
+- Created ReviewIssueService in application layer with full business logic
+- Implemented CreateIssueInput struct with validation (step_id OR no_step_reason required, title not empty)
+- Implemented create_issues_from_review to bulk create issues from review input
+- Implemented mark_issue_in_progress for Open → InProgress transition
+- Implemented mark_issue_addressed for Open/InProgress → Addressed transition
+- Implemented verify_issue for Addressed → Verified transition
+- Implemented reopen_issue for Addressed → Open transition
+- Implemented mark_issue_wontfix for any non-terminal → WontFix transition
+- Implemented get_issue_progress, get_issues_by_task, get_open_issues_by_task queries
+- Added comprehensive test suite (20 tests covering all operations, state transitions, and edge cases)
+- Exported service and CreateIssueInput from application/mod.rs
+
+**Files:**
+- `src-tauri/src/application/review_issue_service.rs` (NEW)
+- `src-tauri/src/application/mod.rs` (added exports)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test review_issue_service` (20 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 05:30:00 - Phase 60 Task 3: Create ReviewIssue repository with CRUD operations
 **What:**
 - Added `from_row` method to ReviewIssue entity for SQLite row deserialization

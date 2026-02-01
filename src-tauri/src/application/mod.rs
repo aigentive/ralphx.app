@@ -11,6 +11,7 @@ pub mod ideation_service;
 pub mod permission_state;
 pub mod priority_service;
 pub mod qa_service;
+pub mod review_issue_service;
 pub mod review_service;
 pub mod startup_jobs;
 pub mod supervisor_service;
@@ -30,6 +31,7 @@ pub use ideation_service::{
 };
 pub use priority_service::PriorityService;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
+pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
 pub use review_service::ReviewService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
