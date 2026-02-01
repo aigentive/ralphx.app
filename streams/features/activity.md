@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 02:15:00 - Phase 62 Task 3: Replace per-proposal selection with Accept Plan button
+**What:**
+- Modified `src/components/Ideation/ProposalsToolbar.tsx` to replace per-proposal selection with plan-level acceptance
+- Removed selection count display, select all/deselect all buttons, and sort by priority button
+- Added `proposals` and `graph` props for dependency validation
+- Added `isReadOnly` prop for read-only plan support
+- Added `useDependencyGraphValidation` hook usage for graph completeness checking
+- Replaced "Apply" dropdown with "Accept Plan" dropdown (same target column options)
+- Added AlertCircle warning icon with tooltip when dependency graph is incomplete
+- Updated `src/components/Ideation/IdeationView.tsx`:
+  - Changed `handleApply` to `handleAcceptPlan` to accept ALL proposals (no selection)
+  - Removed unused destructured handlers (handleSelectAll, handleDeselectAll, handleSortByPriority)
+  - Updated ProposalsToolbar prop passing
+
+**Files Modified:**
+- `src/components/Ideation/ProposalsToolbar.tsx` (MODIFIED)
+- `src/components/Ideation/IdeationView.tsx` (MODIFIED)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI changes require Task 4 (PlanBrowser) to be functional; will verify at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 01:45:00 - Phase 62 Task 2: Add useDependencyGraphComplete hook
 **What:**
 - Created `src/hooks/useDependencyGraphComplete.ts` with graph validation logic
