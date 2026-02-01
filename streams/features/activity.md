@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-01 23:30:00 - Phase 61 Task 1: Update code quality standards with migration test file naming convention
+**What:**
+- Updated `.claude/rules/code-quality-standards.md` Database section
+- Changed step 4 from `| 4 | Add tests |` to `| 4 | Add tests to \`vN_description_tests.rs\` |`
+- Documents the convention that migration tests should be in per-migration test files
+
+**Files:**
+- `.claude/rules/code-quality-standards.md` (line 46 updated)
+
+**Visual Verification:** N/A - documentation only
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 23:15:00 - Phase 60 Complete: Review Issues as First-Class Entities
 **What:**
 - All 13 PRD tasks completed with `"passes": true`
