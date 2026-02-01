@@ -105,7 +105,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ideation): rename Converted status to Accepted with migration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
