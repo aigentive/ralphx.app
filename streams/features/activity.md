@@ -4,6 +4,38 @@
 
 ---
 
+### 2026-02-02 00:15:00 - Phase 61 Task 2: Split tests.rs into per-migration test files
+**What:**
+- Split monolithic `tests.rs` (1431 LOC) into 6 focused test files
+- Created `v1_initial_schema_tests.rs` (479 LOC) with core migration system, core tables, relationships, state tracking, review, ideation, chat, artifacts, and settings tests
+- Created `v2_add_dependency_reason_tests.rs` (105 LOC) with v2 dependency reason tests
+- Created `v3_add_activity_events_tests.rs` (235 LOC) with v3 activity events tests
+- Created `v4_add_blocked_reason_tests.rs` (125 LOC) with v4 blocked reason tests
+- Created `v6_review_issues_tests.rs` (396 LOC) with v6 review issues tests
+- Kept shared helper function tests and cascade delete tests in `tests.rs` (102 LOC)
+- Updated `mod.rs` to include new test modules under `#[cfg(test)]`
+- All 52 migration tests pass
+
+**Files:**
+- `src-tauri/src/infrastructure/sqlite/migrations/v1_initial_schema_tests.rs` (NEW - 479 LOC)
+- `src-tauri/src/infrastructure/sqlite/migrations/v2_add_dependency_reason_tests.rs` (NEW - 105 LOC)
+- `src-tauri/src/infrastructure/sqlite/migrations/v3_add_activity_events_tests.rs` (NEW - 235 LOC)
+- `src-tauri/src/infrastructure/sqlite/migrations/v4_add_blocked_reason_tests.rs` (NEW - 125 LOC)
+- `src-tauri/src/infrastructure/sqlite/migrations/v6_review_issues_tests.rs` (NEW - 396 LOC)
+- `src-tauri/src/infrastructure/sqlite/migrations/tests.rs` (UPDATED - 102 LOC from 1431 LOC)
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs` (UPDATED - added test module declarations)
+
+**Commands:**
+- `cargo test -- migrations::` (52 tests pass)
+- `cargo clippy --all-targets --all-features -- -D warnings` (no warnings)
+- `wc -l migrations/*_tests.rs migrations/tests.rs` (all files <500 LOC)
+
+**Visual Verification:** N/A - backend-only refactoring
+
+**Result:** Success
+
+---
+
 ### 2026-02-01 23:30:00 - Phase 61 Task 1: Update code quality standards with migration test file naming convention
 **What:**
 - Updated `.claude/rules/code-quality-standards.md` Database section

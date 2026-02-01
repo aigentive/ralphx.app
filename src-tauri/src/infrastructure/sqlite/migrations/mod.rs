@@ -35,6 +35,16 @@ mod v6_review_issues;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod v1_initial_schema_tests;
+#[cfg(test)]
+mod v2_add_dependency_reason_tests;
+#[cfg(test)]
+mod v3_add_activity_events_tests;
+#[cfg(test)]
+mod v4_add_blocked_reason_tests;
+#[cfg(test)]
+mod v6_review_issues_tests;
 
 /// Current schema version - bump this when adding a new migration
 pub const SCHEMA_VERSION: i32 = 6;

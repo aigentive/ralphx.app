@@ -110,7 +110,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify no single file >500 LOC with wc -l",
       "Commit: refactor(migrations): split tests.rs into per-migration test files"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
