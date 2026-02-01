@@ -41,6 +41,10 @@ export interface StateTransition {
   trigger: string;
   /** When the transition occurred (RFC3339 format) */
   timestamp: string;
+  /** Conversation ID for states that spawn conversations (executing, re_executing, reviewing) */
+  conversationId?: string;
+  /** Agent run ID for the specific execution within the conversation */
+  agentRunId?: string;
 }
 
 /**
@@ -54,5 +58,7 @@ export function transformStateTransition(
     toStatus: raw.to_status as InternalStatus,
     trigger: raw.trigger,
     timestamp: raw.timestamp,
+    ...(raw.conversation_id !== undefined && { conversationId: raw.conversation_id }),
+    ...(raw.agent_run_id !== undefined && { agentRunId: raw.agent_run_id }),
   };
 }
