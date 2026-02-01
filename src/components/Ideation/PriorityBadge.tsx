@@ -13,6 +13,7 @@ interface PriorityConfig {
   backgroundColor: string;
   textColor: string;
   label: string;
+  animate?: boolean;
 }
 
 const PRIORITY_CONFIG: Record<Priority, PriorityConfig> = {
@@ -20,6 +21,7 @@ const PRIORITY_CONFIG: Record<Priority, PriorityConfig> = {
     backgroundColor: "#ef4444",
     textColor: "#ffffff",
     label: "Critical",
+    animate: true,
   },
   high: {
     backgroundColor: "#ff6b35",
@@ -58,13 +60,15 @@ export function PriorityBadge({
       ? "text-xs px-1.5 py-0.5"
       : "text-sm px-2 py-1";
 
+  const animationClass = config.animate ? "animate-pulse-critical" : "";
+
   return (
     <span
       data-testid="priority-badge"
       data-priority={priority}
       role="status"
       aria-label={`Priority: ${config.label}`}
-      className={`inline-flex items-center justify-center rounded font-medium ${sizeClasses} ${className}`}
+      className={`inline-flex items-center justify-center rounded font-medium ${sizeClasses} ${animationClass} ${className}`.trim()}
       style={{
         backgroundColor: config.backgroundColor,
         color: config.textColor,
