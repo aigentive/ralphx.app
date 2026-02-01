@@ -1,17 +1,21 @@
 /**
- * EscalatedTaskDetail - Task detail view for escalated state
+ * EscalatedTaskDetail - macOS Tahoe-inspired escalation view
  *
- * Shows AI escalated state with warning banner, escalation reason,
- * and action buttons for human decision (approve or request changes).
- *
- * Part of the View Registry Pattern for state-specific task detail views.
+ * Shows AI escalation with clear reasoning and actionable decision buttons.
  */
 
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { SectionTitle, ReviewTimeline } from "./shared";
+import {
+  SectionTitle,
+  DetailCard,
+  StatusBanner,
+  StatusPill,
+  DescriptionBlock,
+} from "./shared";
+import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -20,183 +24,131 @@ import {
   Loader2,
   AlertTriangle,
   Bot,
-  ExternalLink,
   RotateCcw,
-  CheckCircle2,
   MessageSquare,
+  HelpCircle,
+  ThumbsUp,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse, ReviewIssue } from "@/lib/tauri";
 
 interface EscalatedTaskDetailProps {
   task: Task;
-  /** True when viewing a historical state - disables action buttons */
   isHistorical?: boolean;
 }
 
+function getLatestEscalationReview(
+  history: ReviewNoteResponse[]
+): ReviewNoteResponse | null {
+  if (history.length === 0) return null;
+  return history[0] ?? null;
+}
+
 /**
- * EscalatedBadge - Shows warning indicator for AI-escalated status
+ * IssueCard - Individual issue with severity indicator
  */
-function EscalatedBadge() {
+const DEFAULT_SEVERITY = { color: "#8e8e93", bg: "rgba(142, 142, 147, 0.15)", label: "Minor" };
+
+function IssueCard({ issue }: { issue: ReviewIssue }) {
+  const severityConfig: Record<string, { color: string; bg: string; label: string }> = {
+    critical: { color: "#ff453a", bg: "rgba(255, 69, 58, 0.15)", label: "Critical" },
+    major: { color: "#ff9f0a", bg: "rgba(255, 159, 10, 0.15)", label: "Major" },
+    minor: DEFAULT_SEVERITY,
+    suggestion: { color: "#ff6b35", bg: "rgba(255, 107, 53, 0.15)", label: "Suggestion" },
+  };
+
+  const config = severityConfig[issue.severity] ?? DEFAULT_SEVERITY;
+
   return (
     <div
-      data-testid="escalated-badge"
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{
-        backgroundColor: "rgba(245, 158, 11, 0.15)",
-        color: "var(--status-warning)",
-      }}
+      className="flex items-start gap-3 p-3 rounded-xl"
+      style={{ backgroundColor: "rgba(0,0,0,0.2)" }}
     >
-      <AlertTriangle
-        className="w-3 h-3"
-        style={{ color: "var(--status-warning)" }}
-      />
-      Needs Human Decision
+      {/* Severity badge */}
+      <div
+        className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider shrink-0"
+        style={{ backgroundColor: config.bg, color: config.color }}
+      >
+        {config.label}
+      </div>
+
+      {/* Issue details */}
+      <div className="flex-1 min-w-0">
+        {issue.file && (
+          <code
+            className="text-[11px] text-white/40 block truncate mb-1 font-mono"
+          >
+            {issue.file}
+            {issue.line !== null && issue.line !== undefined && `:${issue.line}`}
+          </code>
+        )}
+        <p className="text-[13px] text-white/65 leading-relaxed">
+          {issue.description}
+        </p>
+      </div>
     </div>
   );
 }
 
 /**
- * AIEscalationReasonCard - Displays AI escalation reason and issues
+ * EscalationReasonCard - Shows why AI escalated
  */
-function AIEscalationReasonCard({
-  review,
-  onViewDiff,
-}: {
-  review: ReviewNoteResponse | null;
-  onViewDiff?: () => void;
-}) {
+function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null }) {
   const issues = review?.issues ?? [];
 
   return (
-    <div
-      data-testid="ai-escalation-reason-card"
-      className="rounded-lg p-3 space-y-3"
-      style={{
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
-        border: "1px solid rgba(245, 158, 11, 0.2)",
-      }}
-    >
-      {/* Header: AI icon + label */}
-      <div className="flex items-center gap-2">
+    <DetailCard variant="warning">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
         <div
-          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-          style={{ backgroundColor: "rgba(245, 158, 11, 0.15)" }}
+          className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
+          style={{ backgroundColor: "rgba(255, 159, 10, 0.2)" }}
         >
-          <Bot
-            className="w-3.5 h-3.5"
-            style={{ color: "var(--status-warning)" }}
-          />
+          <Bot className="w-5 h-5" style={{ color: "#ff9f0a" }} />
         </div>
-        <span className="text-[12px] font-medium text-white/70">
-          Escalation Reason
-        </span>
+        <div>
+          <span className="text-[13px] font-semibold text-white/80 block">
+            Escalation Reason
+          </span>
+          <span className="text-[11px] text-white/45">
+            AI couldn't make a decision
+          </span>
+        </div>
       </div>
 
       {/* Reason text */}
       {review?.notes ? (
-        <p
-          data-testid="ai-escalation-reason-text"
-          className="text-[12px] text-white/60"
-          style={{ lineHeight: "1.5" }}
-        >
+        <p className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12">
           {review.notes}
         </p>
       ) : (
-        <p className="text-[12px] italic text-white/40">
+        <p className="text-[13px] text-white/35 italic mb-4 pl-12">
           No escalation reason provided
         </p>
       )}
 
       {/* Issues list */}
-      {issues.length > 0 && <ReviewIssuesList issues={issues} />}
-
-      {/* View Diff link */}
-      {onViewDiff && (
-        <button
-          onClick={onViewDiff}
-          className="flex items-center gap-1.5 text-[12px] font-medium mt-2 transition-opacity hover:opacity-80"
-          style={{ color: "var(--accent-primary)" }}
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          View Diff
-        </button>
-      )}
-    </div>
-  );
-}
-
-/**
- * ReviewIssuesList - Displays review issues with severity badges and file:line references
- */
-function ReviewIssuesList({ issues }: { issues: ReviewIssue[] }) {
-  const severityColors: Record<string, string> = {
-    critical: "var(--status-error)",
-    major: "var(--status-warning)",
-    minor: "var(--text-muted)",
-    suggestion: "var(--accent-primary)",
-  };
-
-  const severityIcons: Record<string, string> = {
-    critical: "\u26d4", // no entry sign
-    major: "\u26a0", // warning sign
-    minor: "\u2139", // info sign
-    suggestion: "\u2728", // sparkle
-  };
-
-  return (
-    <div data-testid="review-issues-list" className="space-y-2 mt-3">
-      <div className="flex items-center gap-2 mb-2">
-        <AlertTriangle
-          className="w-3.5 h-3.5"
-          style={{ color: "var(--status-warning)" }}
-        />
-        <span className="text-[11px] font-medium text-white/60 uppercase tracking-wider">
-          Issues Found ({issues.length})
-        </span>
-      </div>
-      {issues.map((issue, i) => (
-        <div
-          key={i}
-          data-testid={`review-issue-${i}`}
-          className="flex items-start gap-2 p-2 rounded"
-          style={{
-            backgroundColor: "rgba(0, 0, 0, 0.2)",
-            border: "1px solid rgba(255,255,255,0.05)",
-          }}
-        >
-          <span
-            className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
-            style={{
-              backgroundColor: `color-mix(in srgb, ${severityColors[issue.severity] || severityColors.minor} 15%, transparent)`,
-              color: severityColors[issue.severity] || severityColors.minor,
-            }}
-          >
-            {severityIcons[issue.severity] || "\u2022"} {issue.severity}
-          </span>
-          <div className="flex-1 min-w-0">
-            {issue.file && (
-              <span className="text-[11px] text-white/40 block truncate">
-                {issue.file}
-                {issue.line !== null && issue.line !== undefined && `:${issue.line}`}
-              </span>
-            )}
-            <p className="text-[12px] text-white/70" style={{ lineHeight: "1.4" }}>
-              {issue.description}
-            </p>
+      {issues.length > 0 && (
+        <div className="mt-4 pl-12 space-y-2">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-4 h-4" style={{ color: "#ff9f0a" }} />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
+              Issues Found ({issues.length})
+            </span>
           </div>
+          {issues.map((issue, i) => (
+            <IssueCard key={i} issue={issue} />
+          ))}
         </div>
-      ))}
-    </div>
+      )}
+    </DetailCard>
   );
 }
 
-
 /**
- * ActionButtons - Approve and Request Changes buttons
- * Uses task-based API (not review-based) for human approval actions.
+ * DecisionButtonsCard - Human decision actions
  */
-function ActionButtons({
+function DecisionButtonsCard({
   taskId,
   onApproveSuccess,
   onRequestChangesSuccess,
@@ -206,7 +158,7 @@ function ActionButtons({
   onRequestChangesSuccess?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [showFeedbackInput, setShowFeedbackInput] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState("");
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
@@ -228,25 +180,25 @@ function ActionButtons({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reviewKeys.all });
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      setShowFeedbackInput(false);
+      setShowFeedback(false);
       setFeedback("");
       onRequestChangesSuccess?.();
     },
   });
 
   const handleRequestChangesClick = () => {
-    if (showFeedbackInput && feedback.trim()) {
+    if (showFeedback && feedback.trim()) {
       requestChangesMutation.mutate(feedback.trim());
     } else {
-      setShowFeedbackInput(true);
+      setShowFeedback(true);
     }
   };
 
   const handleApprove = useCallback(async () => {
     const confirmed = await confirm({
-      title: "Approve this task?",
-      description: "The task will be marked as approved and completed.",
-      confirmText: "Approve",
+      title: "Approve despite concerns?",
+      description: "The AI flagged potential issues. Are you sure you want to approve?",
+      confirmText: "Approve Anyway",
       variant: "default",
     });
     if (!confirmed) return;
@@ -256,13 +208,13 @@ function ActionButtons({
   const isLoading = approveMutation.isPending || requestChangesMutation.isPending;
 
   return (
-    <div data-testid="action-buttons" className="space-y-3">
-      {/* Feedback input (shown when Request Changes is clicked) */}
-      {showFeedbackInput && (
-        <div className="space-y-2">
+    <DetailCard>
+      {/* Feedback input */}
+      {showFeedback && (
+        <div className="mb-4 space-y-3">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-white/50" />
-            <span className="text-[12px] font-medium text-white/60">
+            <MessageSquare className="w-4 h-4 text-white/40" />
+            <span className="text-[12px] font-semibold text-white/60">
               What needs to be changed?
             </span>
           </div>
@@ -271,43 +223,46 @@ function ActionButtons({
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             placeholder="Describe the changes needed..."
-            className="min-h-[80px] text-[13px] resize-none"
+            className="min-h-[100px] text-[13px] resize-none rounded-xl"
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.2)",
+              backgroundColor: "rgba(0, 0, 0, 0.3)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
           />
         </div>
       )}
 
-      {/* Buttons */}
-      <div className="flex items-center gap-2">
+      {/* Decision buttons */}
+      <div className="flex gap-3">
         <Button
           data-testid="approve-button"
           onClick={handleApprove}
-          disabled={isLoading || showFeedbackInput}
-          className="flex-1 gap-1.5"
+          disabled={isLoading || showFeedback}
+          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
           style={{
-            backgroundColor: "var(--status-success)",
+            background: "linear-gradient(180deg, #34c759 0%, #28a745 100%)",
             color: "white",
+            boxShadow: "0 2px 8px rgba(52, 199, 89, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}
         >
           {approveMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
-            <CheckCircle2 className="w-4 h-4" />
+            <ThumbsUp className="w-4 h-4" />
           )}
-          Approve
+          Approve Anyway
         </Button>
+
         <Button
           data-testid="request-changes-button"
           onClick={handleRequestChangesClick}
-          disabled={isLoading || (showFeedbackInput && !feedback.trim())}
+          disabled={isLoading || (showFeedback && !feedback.trim())}
           variant="outline"
-          className="flex-1 gap-1.5"
+          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
           style={{
-            borderColor: "var(--status-warning)",
-            color: "var(--status-warning)",
+            borderColor: "#ff9f0a",
+            color: "#ffd60a",
+            backgroundColor: "rgba(255, 159, 10, 0.1)",
           }}
         >
           {requestChangesMutation.isPending ? (
@@ -315,165 +270,104 @@ function ActionButtons({
           ) : (
             <RotateCcw className="w-4 h-4" />
           )}
-          {showFeedbackInput ? "Submit" : "Request Changes"}
+          {showFeedback ? "Submit" : "Request Changes"}
         </Button>
       </div>
 
-      {/* Cancel button when in feedback mode */}
-      {showFeedbackInput && (
+      {showFeedback && (
         <button
           onClick={() => {
-            setShowFeedbackInput(false);
+            setShowFeedback(false);
             setFeedback("");
           }}
-          className="text-[12px] text-white/40 hover:text-white/60 transition-colors"
+          className="mt-3 text-[12px] text-white/40 hover:text-white/60 transition-colors"
         >
           Cancel
         </button>
       )}
 
-      {/* Error display */}
       {(approveMutation.error || requestChangesMutation.error) && (
-        <p className="text-[12px] text-red-400">
+        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
           {approveMutation.error?.message || requestChangesMutation.error?.message}
         </p>
       )}
 
       <ConfirmationDialog {...confirmationDialogProps} />
-    </div>
+    </DetailCard>
   );
 }
 
-/**
- * Get the latest review entry with escalation reason
- *
- * When AI escalates, the review outcome is stored as "rejected" with the
- * escalation reason in the notes field. We get the most recent entry
- * since the task is already in escalated status.
- */
-function getLatestEscalationReview(
-  history: ReviewNoteResponse[]
-): ReviewNoteResponse | null {
-  // Get the most recent entry - when task is in escalated state,
-  // the latest review note contains the escalation reason
-  if (history.length === 0) return null;
-  // History is already sorted newest first by useTaskStateHistory
-  return history[0] ?? null;
-}
-
-/**
- * EscalatedTaskDetail Component
- *
- * Renders task information for escalated state.
- * Shows: Warning banner, escalation reason, previous attempts, and action buttons.
- */
 export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTaskDetailProps) {
-  const { data: history, isLoading: historyLoading } = useTaskStateHistory(task.id);
+  const { data: history, isLoading } = useTaskStateHistory(task.id);
+  const escalationReview = getLatestEscalationReview(history);
 
-  const latestEscalationReview = getLatestEscalationReview(history);
-
-  const handleViewDiff = () => {
-    // TODO: Implement DiffViewer/ReviewDetailModal (deferred to PRD:20)
-  };
-
-  const isLoading = historyLoading;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2
+          className="w-6 h-6 animate-spin"
+          style={{ color: "rgba(255,255,255,0.3)" }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
       data-testid="escalated-task-detail"
       data-task-id={task.id}
-      className="space-y-5"
+      className="space-y-6"
     >
-      {/* AI Escalated Banner */}
-      <div
-        data-testid="escalated-banner"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg"
-        style={{
-          backgroundColor: "rgba(245, 158, 11, 0.1)",
-          border: "1px solid rgba(245, 158, 11, 0.25)",
-        }}
-      >
-        <AlertTriangle
-          className="w-4 h-4 shrink-0"
-          style={{ color: "var(--status-warning)" }}
-        />
-        <div className="flex-1">
-          <span
-            className="text-[13px] font-medium"
-            style={{ color: "var(--status-warning)" }}
-          >
-            AI ESCALATED TO HUMAN
-          </span>
-          <span className="text-[12px] text-white/50 ml-2">
-            AI reviewer couldn't decide - needs your input
-          </span>
-        </div>
-        <EscalatedBadge />
-      </div>
-
-      {/* Loading state */}
-      {isLoading && (
-        <div
-          data-testid="escalated-loading"
-          className="flex justify-center py-4"
-        >
-          <Loader2
-            className="w-5 h-5 animate-spin"
-            style={{ color: "var(--text-muted)" }}
+      {/* Status Banner */}
+      <StatusBanner
+        icon={HelpCircle}
+        title="Escalated to Human"
+        subtitle="AI reviewer couldn't make a decision"
+        variant="warning"
+        badge={
+          <StatusPill
+            icon={AlertTriangle}
+            label="Needs Decision"
+            variant="warning"
+            size="md"
           />
-        </div>
-      )}
+        }
+      />
 
-      {/* AI Escalation Reason */}
-      {!isLoading && (
-        <div data-testid="ai-escalation-reason-section">
-          <SectionTitle>Why AI Escalated</SectionTitle>
-          <AIEscalationReasonCard
-            review={latestEscalationReview}
-            onViewDiff={handleViewDiff}
-          />
-        </div>
-      )}
+      {/* Escalation Reason */}
+      <section data-testid="ai-escalation-reason-section">
+        <SectionTitle>Why AI Escalated</SectionTitle>
+        <EscalationReasonCard review={escalationReview} />
+      </section>
 
       {/* Previous Attempts */}
-      {!isLoading && (
-        <div data-testid="previous-attempts-section">
-          <SectionTitle>Previous Attempts</SectionTitle>
+      <section data-testid="previous-attempts-section">
+        <SectionTitle>Previous Attempts</SectionTitle>
+        <DetailCard>
           <ReviewTimeline
             history={history}
             filter={(e) => e.outcome === "changes_requested"}
             showAttemptNumbers
             emptyMessage="No previous attempts"
           />
-        </div>
-      )}
+        </DetailCard>
+      </section>
 
-      {/* Description Section */}
-      <div>
+      {/* Description */}
+      <section>
         <SectionTitle>Description</SectionTitle>
-        {task.description ? (
-          <p
-            data-testid="escalated-task-description"
-            className="text-[13px] text-white/60"
-            style={{
-              lineHeight: "1.6",
-              wordBreak: "break-word",
-            }}
-          >
-            {task.description}
-          </p>
-        ) : (
-          <p className="text-[13px] italic text-white/35">
-            No description provided
-          </p>
-        )}
-      </div>
-
-      {/* Action Buttons - hidden in historical mode */}
-      {!isLoading && !isHistorical && (
-        <ActionButtons
-          taskId={task.id}
+        <DescriptionBlock
+          description={task.description}
+          testId="escalated-task-description"
         />
+      </section>
+
+      {/* Decision Buttons (hidden in historical mode) */}
+      {!isHistorical && (
+        <section data-testid="action-buttons">
+          <SectionTitle>Your Decision</SectionTitle>
+          <DecisionButtonsCard taskId={task.id} />
+        </section>
       )}
     </div>
   );

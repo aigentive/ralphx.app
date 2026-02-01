@@ -1,17 +1,21 @@
 /**
- * HumanReviewTaskDetail - Task detail view for review_passed state
+ * HumanReviewTaskDetail - macOS Tahoe-inspired human review view
  *
- * Shows AI review passed state with summary, checklist of passed items,
- * and action buttons for human approval or requesting changes.
- *
- * Part of the View Registry Pattern for state-specific task detail views.
+ * Shows AI-approved state awaiting human confirmation with premium action buttons.
  */
 
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { SectionTitle } from "./shared";
+import {
+  SectionTitle,
+  DetailCard,
+  StatusBanner,
+  StatusPill,
+  DescriptionBlock,
+} from "./shared";
+import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -20,191 +24,117 @@ import {
   Loader2,
   CheckCircle2,
   Bot,
-  ExternalLink,
-  RotateCcw,
   Check,
+  RotateCcw,
   MessageSquare,
+  ShieldCheck,
+  ThumbsUp,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface HumanReviewTaskDetailProps {
   task: Task;
-  /** True when viewing a historical state - disables action buttons */
   isHistorical?: boolean;
 }
 
 /**
- * ReviewPassedBadge - Shows green indicator for AI-approved status
+ * Get the latest approved review entry
  */
-function ReviewPassedBadge() {
-  return (
-    <div
-      data-testid="review-passed-badge"
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{
-        backgroundColor: "rgba(16, 185, 129, 0.15)",
-        color: "var(--status-success)",
-      }}
-    >
-      <CheckCircle2
-        className="w-3 h-3"
-        style={{ color: "var(--status-success)" }}
-      />
-      AI Approved
-    </div>
-  );
+function getLatestApprovedReview(
+  history: ReviewNoteResponse[]
+): ReviewNoteResponse | null {
+  const approvedEntries = history.filter((entry) => entry.outcome === "approved");
+  if (approvedEntries.length === 0) return null;
+  return approvedEntries[0] ?? null;
 }
 
 /**
- * ChecklistItem - Individual item in the AI review checklist
+ * ChecklistItem - Individual check with native styling
  */
 function ChecklistItem({ label, passed }: { label: string; passed: boolean }) {
   return (
-    <div
-      className="flex items-center gap-2 py-1"
-      style={{ color: passed ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }}
-    >
-      {passed ? (
-        <Check
-          className="w-3.5 h-3.5 shrink-0"
-          style={{ color: "var(--status-success)" }}
-        />
-      ) : (
-        <div
-          className="w-3.5 h-3.5 rounded-full border shrink-0"
-          style={{ borderColor: "rgba(255,255,255,0.3)" }}
-        />
-      )}
-      <span className="text-[12px]">{label}</span>
+    <div className="flex items-center gap-3 py-2">
+      <div
+        className="flex items-center justify-center w-5 h-5 rounded-md shrink-0"
+        style={{
+          backgroundColor: passed
+            ? "rgba(52, 199, 89, 0.15)"
+            : "rgba(255,255,255,0.06)",
+        }}
+      >
+        {passed ? (
+          <Check className="w-3 h-3" style={{ color: "#34c759" }} />
+        ) : (
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{ backgroundColor: "rgba(255,255,255,0.2)" }}
+          />
+        )}
+      </div>
+      <span
+        className="text-[13px]"
+        style={{
+          color: passed ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.4)",
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
 
 /**
- * AIReviewSummaryCard - Displays AI review summary with checklist
+ * AIReviewCard - Summary of AI review findings
  */
-function AIReviewSummaryCard({
-  review,
-  onViewDiff,
-}: {
-  review: ReviewNoteResponse | null;
-  onViewDiff?: () => void;
-}) {
-  // Default checklist items (these would ideally come from the review data)
-  const checklistItems = [
+function AIReviewCard({ review }: { review: ReviewNoteResponse | null }) {
+  const checks = [
     { label: "Code follows project patterns", passed: true },
     { label: "Tests are passing", passed: true },
     { label: "No linting errors", passed: true },
   ];
 
   return (
-    <div
-      data-testid="ai-review-summary-card"
-      className="rounded-lg p-3 space-y-3"
-      style={{
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
-        border: "1px solid rgba(16, 185, 129, 0.2)",
-      }}
-    >
-      {/* Header: AI icon + confidence */}
-      <div className="flex items-center gap-2">
+    <DetailCard variant="success">
+      {/* AI Badge header */}
+      <div className="flex items-center gap-3 mb-4">
         <div
-          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-          style={{ backgroundColor: "rgba(59, 130, 246, 0.15)" }}
+          className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
+          style={{ backgroundColor: "rgba(10, 132, 255, 0.15)" }}
         >
-          <Bot
-            className="w-3.5 h-3.5"
-            style={{ color: "var(--status-info)" }}
-          />
+          <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
         </div>
-        <span className="text-[12px] font-medium text-white/70">
-          AI Review Summary
-        </span>
+        <div>
+          <span className="text-[13px] font-semibold text-white/80 block">
+            AI Review Summary
+          </span>
+          <span className="text-[11px] text-white/45">
+            Automated checks passed
+          </span>
+        </div>
       </div>
 
       {/* Summary text */}
       {review?.notes && (
-        <p
-          data-testid="ai-review-summary-text"
-          className="text-[12px] text-white/60"
-          style={{ lineHeight: "1.5" }}
-        >
+        <p className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12">
           {review.notes}
         </p>
       )}
 
       {/* Checklist */}
-      <div className="space-y-0.5">
-        {checklistItems.map((item, index) => (
-          <ChecklistItem key={index} label={item.label} passed={item.passed} />
+      <div className="pl-12 space-y-0.5">
+        {checks.map((check, i) => (
+          <ChecklistItem key={i} {...check} />
         ))}
       </div>
-
-      {/* View Diff link */}
-      {onViewDiff && (
-        <button
-          onClick={onViewDiff}
-          className="flex items-center gap-1.5 text-[12px] font-medium mt-2 transition-opacity hover:opacity-80"
-          style={{ color: "var(--accent-primary)" }}
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          View Diff
-        </button>
-      )}
-    </div>
+    </DetailCard>
   );
 }
 
 /**
- * PreviousAttemptsSection - Shows previous revision attempts if any
+ * ActionButtonsCard - Approve/Request Changes with premium styling
  */
-function PreviousAttemptsSection({ history }: { history: ReviewNoteResponse[] }) {
-  const changesRequestedEntries = history.filter(
-    (entry) => entry.outcome === "changes_requested"
-  );
-
-  if (changesRequestedEntries.length === 0) return null;
-
-  return (
-    <div data-testid="previous-attempts-section">
-      <SectionTitle>Previous Attempts</SectionTitle>
-      <div className="space-y-2">
-        {changesRequestedEntries.map((entry, index) => (
-          <div
-            key={entry.id}
-            className="flex items-start gap-2 py-1.5 px-2 rounded"
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.15)",
-              border: "1px solid rgba(255,255,255,0.05)",
-            }}
-          >
-            <RotateCcw
-              className="w-3.5 h-3.5 mt-0.5 shrink-0"
-              style={{ color: "var(--status-warning)" }}
-            />
-            <div className="flex-1 min-w-0">
-              <span className="text-[11px] font-medium text-white/60">
-                Attempt #{changesRequestedEntries.length - index}: Changes requested
-              </span>
-              {entry.notes && (
-                <p className="text-[11px] text-white/40 truncate mt-0.5">
-                  {entry.notes}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * ActionButtons - Approve and Request Changes buttons
- * Uses task-based API (not review-based) for human approval actions.
- */
-function ActionButtons({
+function ActionButtonsCard({
   taskId,
   onApproveSuccess,
   onRequestChangesSuccess,
@@ -214,7 +144,7 @@ function ActionButtons({
   onRequestChangesSuccess?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [showFeedbackInput, setShowFeedbackInput] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState("");
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
@@ -236,17 +166,17 @@ function ActionButtons({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reviewKeys.all });
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      setShowFeedbackInput(false);
+      setShowFeedback(false);
       setFeedback("");
       onRequestChangesSuccess?.();
     },
   });
 
   const handleRequestChangesClick = () => {
-    if (showFeedbackInput && feedback.trim()) {
+    if (showFeedback && feedback.trim()) {
       requestChangesMutation.mutate(feedback.trim());
     } else {
-      setShowFeedbackInput(true);
+      setShowFeedback(true);
     }
   };
 
@@ -264,13 +194,13 @@ function ActionButtons({
   const isLoading = approveMutation.isPending || requestChangesMutation.isPending;
 
   return (
-    <div data-testid="action-buttons" className="space-y-3">
-      {/* Feedback input (shown when Request Changes is clicked) */}
-      {showFeedbackInput && (
-        <div className="space-y-2">
+    <DetailCard data-testid="action-buttons">
+      {/* Feedback input */}
+      {showFeedback && (
+        <div className="mb-4 space-y-3">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-white/50" />
-            <span className="text-[12px] font-medium text-white/60">
+            <MessageSquare className="w-4 h-4 text-white/40" />
+            <span className="text-[12px] font-semibold text-white/60">
               What needs to be changed?
             </span>
           </div>
@@ -279,43 +209,46 @@ function ActionButtons({
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             placeholder="Describe the changes needed..."
-            className="min-h-[80px] text-[13px] resize-none"
+            className="min-h-[100px] text-[13px] resize-none rounded-xl"
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.2)",
+              backgroundColor: "rgba(0, 0, 0, 0.3)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
           />
         </div>
       )}
 
-      {/* Buttons */}
-      <div className="flex items-center gap-2">
+      {/* Action buttons */}
+      <div className="flex gap-3">
         <Button
           data-testid="approve-button"
           onClick={handleApprove}
-          disabled={isLoading || showFeedbackInput}
-          className="flex-1 gap-1.5"
+          disabled={isLoading || showFeedback}
+          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px] transition-all"
           style={{
-            backgroundColor: "var(--status-success)",
+            background: "linear-gradient(180deg, #34c759 0%, #28a745 100%)",
             color: "white",
+            boxShadow: "0 2px 8px rgba(52, 199, 89, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}
         >
           {approveMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
-            <CheckCircle2 className="w-4 h-4" />
+            <ThumbsUp className="w-4 h-4" />
           )}
           Approve
         </Button>
+
         <Button
           data-testid="request-changes-button"
           onClick={handleRequestChangesClick}
-          disabled={isLoading || (showFeedbackInput && !feedback.trim())}
+          disabled={isLoading || (showFeedback && !feedback.trim())}
           variant="outline"
-          className="flex-1 gap-1.5"
+          className="flex-1 h-11 gap-2 rounded-xl font-semibold text-[13px]"
           style={{
-            borderColor: "var(--status-warning)",
-            color: "var(--status-warning)",
+            borderColor: "#ff9f0a",
+            color: "#ffd60a",
+            backgroundColor: "rgba(255, 159, 10, 0.1)",
           }}
         >
           {requestChangesMutation.isPending ? (
@@ -323,18 +256,18 @@ function ActionButtons({
           ) : (
             <RotateCcw className="w-4 h-4" />
           )}
-          {showFeedbackInput ? "Submit" : "Request Changes"}
+          {showFeedback ? "Submit" : "Request Changes"}
         </Button>
       </div>
 
-      {/* Cancel button when in feedback mode */}
-      {showFeedbackInput && (
+      {/* Cancel link */}
+      {showFeedback && (
         <button
           onClick={() => {
-            setShowFeedbackInput(false);
+            setShowFeedback(false);
             setFeedback("");
           }}
-          className="text-[12px] text-white/40 hover:text-white/60 transition-colors"
+          className="mt-3 text-[12px] text-white/40 hover:text-white/60 transition-colors"
         >
           Cancel
         </button>
@@ -342,130 +275,89 @@ function ActionButtons({
 
       {/* Error display */}
       {(approveMutation.error || requestChangesMutation.error) && (
-        <p className="text-[12px] text-red-400">
+        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
           {approveMutation.error?.message || requestChangesMutation.error?.message}
         </p>
       )}
+
       <ConfirmationDialog {...confirmationDialogProps} />
-    </div>
+    </DetailCard>
   );
 }
 
-/**
- * Get the latest approved review entry
- */
-function getLatestApprovedReview(
-  history: ReviewNoteResponse[]
-): ReviewNoteResponse | null {
-  const approvedEntries = history.filter((entry) => entry.outcome === "approved");
-  if (approvedEntries.length === 0) return null;
-  // History is already sorted newest first by useTaskStateHistory
-  return approvedEntries[0] ?? null;
-}
-
-/**
- * HumanReviewTaskDetail Component
- *
- * Renders task information for review_passed state.
- * Shows: AI approved banner, review summary, previous attempts, and action buttons.
- */
 export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanReviewTaskDetailProps) {
-  const { data: history, isLoading: historyLoading } = useTaskStateHistory(task.id);
-
+  const { data: history, isLoading } = useTaskStateHistory(task.id);
   const latestApprovedReview = getLatestApprovedReview(history);
 
-  const handleViewDiff = () => {
-    // TODO: Implement DiffViewer/ReviewDetailModal (deferred to PRD:20)
-  };
-
-  const isLoading = historyLoading;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2
+          className="w-6 h-6 animate-spin"
+          style={{ color: "rgba(255,255,255,0.3)" }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
       data-testid="human-review-task-detail"
       data-task-id={task.id}
-      className="space-y-5"
+      className="space-y-6"
     >
-      {/* AI Review Passed Banner */}
-      <div
-        data-testid="review-passed-banner"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg"
-        style={{
-          backgroundColor: "rgba(16, 185, 129, 0.1)",
-          border: "1px solid rgba(16, 185, 129, 0.25)",
-        }}
-      >
-        <CheckCircle2
-          className="w-4 h-4 shrink-0"
-          style={{ color: "var(--status-success)" }}
-        />
-        <div className="flex-1">
-          <span
-            className="text-[13px] font-medium"
-            style={{ color: "var(--status-success)" }}
-          >
-            AI REVIEW PASSED
-          </span>
-          <span className="text-[12px] text-white/50 ml-2">
-            Awaiting your approval
-          </span>
-        </div>
-        <ReviewPassedBadge />
-      </div>
-
-      {/* Loading state */}
-      {isLoading && (
-        <div
-          data-testid="human-review-loading"
-          className="flex justify-center py-4"
-        >
-          <Loader2
-            className="w-5 h-5 animate-spin"
-            style={{ color: "var(--text-muted)" }}
+      {/* Status Banner */}
+      <StatusBanner
+        icon={ShieldCheck}
+        title="AI Review Passed"
+        subtitle="Awaiting your final approval"
+        variant="success"
+        badge={
+          <StatusPill
+            icon={CheckCircle2}
+            label="AI Approved"
+            variant="success"
+            size="md"
           />
-        </div>
-      )}
+        }
+      />
 
       {/* AI Review Summary */}
-      {!isLoading && (
-        <div data-testid="ai-review-summary-section">
-          <SectionTitle>AI Review Summary</SectionTitle>
-          <AIReviewSummaryCard
-            review={latestApprovedReview}
-            onViewDiff={handleViewDiff}
-          />
-        </div>
+      <section data-testid="ai-review-summary-section">
+        <SectionTitle>AI Review Summary</SectionTitle>
+        <AIReviewCard review={latestApprovedReview} />
+      </section>
+
+      {/* Previous Attempts (if any) */}
+      {history.filter((e) => e.outcome === "changes_requested").length > 0 && (
+        <section data-testid="previous-attempts-section">
+          <SectionTitle>Previous Attempts</SectionTitle>
+          <DetailCard>
+            <ReviewTimeline
+              history={history}
+              filter={(e) => e.outcome === "changes_requested"}
+              showAttemptNumbers
+              emptyMessage="No previous attempts"
+            />
+          </DetailCard>
+        </section>
       )}
 
-      {/* Previous Attempts */}
-      {!isLoading && <PreviousAttemptsSection history={history} />}
-
-      {/* Description Section */}
-      <div>
+      {/* Description */}
+      <section>
         <SectionTitle>Description</SectionTitle>
-        {task.description ? (
-          <p
-            data-testid="human-review-task-description"
-            className="text-[13px] text-white/60"
-            style={{
-              lineHeight: "1.6",
-              wordBreak: "break-word",
-            }}
-          >
-            {task.description}
-          </p>
-        ) : (
-          <p className="text-[13px] italic text-white/35">
-            No description provided
-          </p>
-        )}
-      </div>
-
-      {/* Action Buttons - hidden in historical mode */}
-      {!isLoading && !isHistorical && (
-        <ActionButtons
-          taskId={task.id}
+        <DescriptionBlock
+          description={task.description}
+          testId="human-review-task-description"
         />
+      </section>
+
+      {/* Action Buttons (hidden in historical mode) */}
+      {!isHistorical && (
+        <section>
+          <SectionTitle>Your Decision</SectionTitle>
+          <ActionButtonsCard taskId={task.id} />
+        </section>
       )}
     </div>
   );

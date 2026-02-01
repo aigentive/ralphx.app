@@ -1,15 +1,17 @@
 /**
- * StateTimelineNav - Horizontal timeline navigation for task state history
+ * StateTimelineNav - macOS Tahoe-inspired timeline navigation
  *
- * Displays a clickable timeline of all states a task has been through,
- * enabling users to "time travel" and view historical task states.
- *
- * Part of Phase 59: State Time Travel feature.
+ * A beautiful horizontal timeline showing task state history.
+ * Features:
+ * - Vibrancy material background
+ * - Smooth hover transitions
+ * - Connected state dots with animated connectors
+ * - Premium badge styling per status
  */
 
 import { useMemo } from "react";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
-import { Loader2, Clock, Circle } from "lucide-react";
+import { Loader2, History, ChevronRight } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -18,102 +20,98 @@ import {
 } from "@/components/ui/tooltip";
 import type { InternalStatus } from "@/types/task";
 
-// Status badge configuration - matches TaskDetailOverlay.tsx
+// macOS Tahoe system colors (dark mode)
 const STATUS_CONFIG: Record<
   InternalStatus,
-  { label: string; bg: string; text: string }
+  { label: string; color: string; bgColor: string }
 > = {
   backlog: {
     label: "Backlog",
-    bg: "var(--bg-hover)",
-    text: "var(--text-muted)",
+    color: "#8e8e93",
+    bgColor: "rgba(142, 142, 147, 0.15)",
   },
   ready: {
     label: "Ready",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
+    color: "#0a84ff",
+    bgColor: "rgba(10, 132, 255, 0.15)",
   },
   blocked: {
     label: "Blocked",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
   },
   executing: {
     label: "Executing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    color: "#ff6b35",
+    bgColor: "rgba(255, 107, 53, 0.15)",
   },
   qa_refining: {
     label: "QA Refining",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    color: "#ff6b35",
+    bgColor: "rgba(255, 107, 53, 0.15)",
   },
   qa_testing: {
     label: "QA Testing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    color: "#ff6b35",
+    bgColor: "rgba(255, 107, 53, 0.15)",
   },
   qa_passed: {
     label: "QA Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
+    color: "#34c759",
+    bgColor: "rgba(52, 199, 89, 0.15)",
   },
   qa_failed: {
     label: "QA Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
-    text: "var(--status-error)",
+    color: "#ff453a",
+    bgColor: "rgba(255, 69, 58, 0.15)",
   },
   pending_review: {
     label: "Pending Review",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    color: "#8e8e93",
+    bgColor: "rgba(142, 142, 147, 0.15)",
   },
   revision_needed: {
     label: "Revision Needed",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
   },
   approved: {
     label: "Approved",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
+    color: "#34c759",
+    bgColor: "rgba(52, 199, 89, 0.15)",
   },
   failed: {
     label: "Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
-    text: "var(--status-error)",
+    color: "#ff453a",
+    bgColor: "rgba(255, 69, 58, 0.15)",
   },
   cancelled: {
     label: "Cancelled",
-    bg: "var(--bg-hover)",
-    text: "var(--text-muted)",
+    color: "#8e8e93",
+    bgColor: "rgba(142, 142, 147, 0.15)",
   },
   reviewing: {
     label: "Reviewing",
-    bg: "rgba(59, 130, 246, 0.15)",
-    text: "var(--status-info)",
+    color: "#0a84ff",
+    bgColor: "rgba(10, 132, 255, 0.15)",
   },
   review_passed: {
     label: "Review Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
-    text: "var(--status-success)",
+    color: "#34c759",
+    bgColor: "rgba(52, 199, 89, 0.15)",
   },
   escalated: {
     label: "Escalated",
-    bg: "rgba(245, 158, 11, 0.15)",
-    text: "var(--status-warning)",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
   },
   re_executing: {
     label: "Re-executing",
-    bg: "rgba(255, 107, 53, 0.15)",
-    text: "var(--accent-primary)",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
   },
 };
 
-/**
- * A unique state entry in the timeline
- * Derived from transitions - each toStatus becomes an entry
- */
 interface TimelineEntry {
   status: InternalStatus;
   timestamp: string;
@@ -143,10 +141,10 @@ interface TimelineBadgeProps {
 
 function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
   const config = STATUS_CONFIG[entry.status];
-  const isHighlighted = isSelected || entry.isCurrent;
+  const isActive = isSelected || entry.isCurrent;
 
   return (
-    <Tooltip delayDuration={300}>
+    <Tooltip delayDuration={200}>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -155,36 +153,76 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           data-status={entry.status}
           data-current={entry.isCurrent}
           data-selected={isSelected}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+          className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-all duration-200"
           style={{
-            backgroundColor: isHighlighted ? config.bg : "transparent",
-            color: config.text,
-            border: `1px solid ${isHighlighted ? "transparent" : "rgba(255,255,255,0.1)"}`,
-            boxShadow: isSelected ? `0 0 0 2px ${config.text}40` : undefined,
-            opacity: isHighlighted ? 1 : 0.7,
+            backgroundColor: isActive ? config.bgColor : "transparent",
+            boxShadow: isSelected
+              ? `0 0 0 2px ${config.color}50, 0 2px 8px ${config.color}30`
+              : undefined,
           }}
         >
-          {/* Status indicator dot */}
-          {entry.isCurrent ? (
-            <Circle className="w-2 h-2 fill-current" />
-          ) : (
-            <Circle className="w-2 h-2" style={{ opacity: 0.5 }} />
-          )}
+          {/* Status dot */}
+          <div
+            className="relative w-2 h-2 rounded-full shrink-0 transition-transform duration-200 group-hover:scale-125"
+            style={{
+              backgroundColor: config.color,
+              boxShadow: isActive ? `0 0 8px ${config.color}60` : undefined,
+            }}
+          >
+            {/* Pulse ring for current */}
+            {entry.isCurrent && (
+              <div
+                className="absolute inset-0 rounded-full animate-ping"
+                style={{
+                  backgroundColor: config.color,
+                  opacity: 0.4,
+                }}
+              />
+            )}
+          </div>
 
           {/* Label */}
-          <span>{config.label}</span>
+          <span
+            className="text-[11px] font-semibold tracking-tight transition-colors duration-200"
+            style={{
+              color: isActive ? config.color : "rgba(255,255,255,0.45)",
+            }}
+          >
+            {config.label}
+          </span>
         </button>
       </TooltipTrigger>
       <TooltipContent
         side="bottom"
-        className="px-2 py-1 text-[10px]"
+        sideOffset={8}
+        className="px-3 py-1.5 text-[11px] font-medium rounded-lg"
         style={{
-          backgroundColor: "var(--bg-elevated)",
-          color: "var(--text-secondary)",
-          border: "1px solid rgba(255,255,255,0.1)",
+          backgroundColor: "rgba(30, 30, 30, 0.95)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "0.5px solid rgba(255,255,255,0.1)",
+          color: "rgba(255,255,255,0.7)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
         }}
       >
-        {formatRelativeTime(entry.timestamp)}
+        <div className="flex items-center gap-2">
+          <div
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: config.color }}
+          />
+          <span>{formatRelativeTime(entry.timestamp)}</span>
+          {entry.isCurrent && (
+            <span
+              className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
+              style={{
+                backgroundColor: config.bgColor,
+                color: config.color,
+              }}
+            >
+              Current
+            </span>
+          )}
+        </div>
       </TooltipContent>
     </Tooltip>
   );
@@ -192,16 +230,19 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
 
 interface TimelineConnectorProps {
   isActive: boolean;
+  color: string;
 }
 
-function TimelineConnector({ isActive }: TimelineConnectorProps) {
+function TimelineConnector({ isActive, color }: TimelineConnectorProps) {
   return (
-    <div
-      className="w-4 h-0.5 shrink-0"
-      style={{
-        backgroundColor: isActive ? "var(--accent-primary)" : "rgba(255,255,255,0.1)",
-      }}
-    />
+    <div className="flex items-center px-0.5">
+      <ChevronRight
+        className="w-3.5 h-3.5 transition-colors duration-200"
+        style={{
+          color: isActive ? color : "rgba(255,255,255,0.15)",
+        }}
+      />
+    </div>
   );
 }
 
@@ -227,10 +268,8 @@ export function StateTimelineNav({
   console.log('[StateTimelineNav] Render:', { taskId, currentStatus, transitions, isLoading, error });
 
   // Derive unique timeline entries from transitions
-  // Each toStatus becomes an entry, preserving chronological order
   const timelineEntries = useMemo((): TimelineEntry[] => {
     if (!transitions || transitions.length === 0) {
-      // If no transitions, show just the current status
       return [
         {
           status: currentStatus,
@@ -240,12 +279,10 @@ export function StateTimelineNav({
       ];
     }
 
-    // Build entries from transitions - use toStatus from each
     const entries: TimelineEntry[] = [];
     const seenStatuses = new Set<InternalStatus>();
 
     for (const transition of transitions) {
-      // Skip if we've already seen this status (show only first occurrence)
       if (seenStatuses.has(transition.toStatus)) {
         continue;
       }
@@ -258,11 +295,8 @@ export function StateTimelineNav({
       });
     }
 
-    // Ensure current status is marked (in case last transition doesn't match)
     const lastEntry = entries[entries.length - 1];
     if (lastEntry && lastEntry.status !== currentStatus) {
-      // Current status might be different from last transition
-      // This can happen if we filtered duplicates
       const existingEntry = entries.find((e) => e.status === currentStatus);
       if (existingEntry) {
         existingEntry.isCurrent = true;
@@ -276,11 +310,9 @@ export function StateTimelineNav({
   const handleBadgeClick = (entry: TimelineEntry) => {
     console.log('[StateTimelineNav] Badge clicked:', entry);
     if (entry.isCurrent) {
-      // Clicking current state exits history mode
       console.log('[StateTimelineNav] Exiting history mode (clicked current)');
       onStateSelect(null);
     } else {
-      // Clicking historical state enters history mode
       console.log('[StateTimelineNav] Entering history mode:', { status: entry.status, timestamp: entry.timestamp });
       onStateSelect({ status: entry.status, timestamp: entry.timestamp });
     }
@@ -291,11 +323,11 @@ export function StateTimelineNav({
     return (
       <div
         data-testid="timeline-loading"
-        className="flex items-center gap-2 px-4 py-2"
-        style={{ color: "var(--text-muted)" }}
+        className="flex items-center gap-2.5 px-4 py-3"
+        style={{ color: "rgba(255,255,255,0.4)" }}
       >
         <Loader2 className="w-4 h-4 animate-spin" />
-        <span className="text-xs">Loading history...</span>
+        <span className="text-[11px] font-medium">Loading history...</span>
       </div>
     );
   }
@@ -305,65 +337,108 @@ export function StateTimelineNav({
     return (
       <div
         data-testid="timeline-error"
-        className="flex items-center gap-2 px-4 py-2 text-xs"
-        style={{ color: "var(--status-error)" }}
+        className="flex items-center gap-2 px-4 py-3 text-[11px] font-medium"
+        style={{ color: "#ff453a" }}
       >
-        <Clock className="w-4 h-4" />
+        <History className="w-4 h-4" />
         <span>Failed to load history</span>
       </div>
     );
   }
 
-  // Empty state - shouldn't happen but handle gracefully
-  if (timelineEntries.length === 0) {
+  // Hide if single state
+  if (timelineEntries.length <= 1) {
     return null;
   }
 
-  // Single state - no need for timeline navigation
-  if (timelineEntries.length === 1) {
-    return null;
-  }
+  // Get the color of the last active entry for connectors
+  const selectedIndex = selectedState
+    ? timelineEntries.findIndex(
+        (e) =>
+          e.status === selectedState.status &&
+          e.timestamp === selectedState.timestamp
+      )
+    : -1;
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={200}>
       <div
         data-testid="state-timeline-nav"
         className="flex items-center gap-1 px-4 py-3 overflow-x-auto"
         style={{
-          backgroundColor: "rgba(0,0,0,0.2)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          backgroundColor: "rgba(20, 20, 20, 0.6)",
+          backdropFilter: "blur(40px) saturate(150%)",
+          WebkitBackdropFilter: "blur(40px) saturate(150%)",
+          borderBottom: "0.5px solid rgba(255,255,255,0.06)",
         }}
       >
-        <Clock
-          className="w-4 h-4 shrink-0 mr-2"
-          style={{ color: "var(--text-muted)" }}
-        />
+        {/* History icon */}
+        <div
+          className="flex items-center gap-2 mr-2 pr-3"
+          style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <History
+            className="w-4 h-4"
+            style={{ color: "rgba(255,255,255,0.35)" }}
+          />
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: "rgba(255,255,255,0.35)" }}
+          >
+            History
+          </span>
+        </div>
 
-        {timelineEntries.map((entry, index) => (
-          <div key={`${entry.status}-${entry.timestamp}`} className="flex items-center">
-            <TimelineBadge
-              entry={entry}
-              isSelected={
-                selectedState?.status === entry.status &&
-                selectedState?.timestamp === entry.timestamp
-              }
-              onClick={() => handleBadgeClick(entry)}
-            />
-            {index < timelineEntries.length - 1 && (
-              <TimelineConnector
-                isActive={
-                  selectedState
-                    ? index < timelineEntries.findIndex(
-                        (e) =>
-                          e.status === selectedState.status &&
-                          e.timestamp === selectedState.timestamp
-                      )
-                    : true
+        {/* Timeline entries */}
+        {timelineEntries.map((entry, index) => {
+          const isConnectorActive =
+            selectedState === null || (selectedIndex !== -1 && index < selectedIndex);
+          const nextEntry = timelineEntries[index + 1];
+
+          return (
+            <div key={`${entry.status}-${entry.timestamp}`} className="flex items-center">
+              <TimelineBadge
+                entry={entry}
+                isSelected={
+                  selectedState?.status === entry.status &&
+                  selectedState?.timestamp === entry.timestamp
                 }
+                onClick={() => handleBadgeClick(entry)}
               />
-            )}
+              {nextEntry && (
+                <TimelineConnector
+                  isActive={isConnectorActive}
+                  color={STATUS_CONFIG[entry.status].color}
+                />
+              )}
+            </div>
+          );
+        })}
+
+        {/* Viewing historical state indicator */}
+        {selectedState && (
+          <div
+            className="ml-auto pl-3 flex items-center gap-2"
+            style={{ borderLeft: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            <span
+              className="text-[10px] font-medium"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              Viewing past state
+            </span>
+            <button
+              onClick={() => onStateSelect(null)}
+              className="px-2 py-1 rounded-md text-[10px] font-semibold transition-colors"
+              style={{
+                backgroundColor: "rgba(255, 107, 53, 0.15)",
+                color: "#ff8050",
+              }}
+            >
+              Back to Current
+            </button>
           </div>
-        ))}
+        )}
       </div>
     </TooltipProvider>
   );

@@ -11,6 +11,7 @@ import { TaskEventSchema } from "@/types/events";
 import { useTaskStore } from "@/stores/taskStore";
 import { taskKeys } from "@/hooks/useTasks";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
+import { stateTransitionKeys } from "@/hooks/useTaskStateTransitions";
 import { transformTask, type Task } from "@/types/task";
 
 /**
@@ -87,6 +88,8 @@ export function useTaskEvents() {
           // Invalidate both regular and infinite task queries so Kanban refetches
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+          // Invalidate state transitions so StateTimelineNav updates
+          queryClient.invalidateQueries({ queryKey: stateTransitionKeys.task(taskEvent.taskId) });
           break;
       }
     });

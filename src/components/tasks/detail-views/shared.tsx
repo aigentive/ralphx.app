@@ -8,3 +8,8 @@
 export { SectionTitle } from "./shared/SectionTitle";
 export { ReviewTimeline } from "./shared/ReviewTimeline";
 export type { ReviewTimelineProps } from "./shared/ReviewTimeline";
+export { DetailCard } from "./shared/DetailCard";
+export { StatusBanner } from "./shared/StatusBanner";
+export { StatusPill } from "./shared/StatusPill";
+export { ProgressIndicator } from "./shared/ProgressIndicator";
+export { DescriptionBlock } from "./shared/DescriptionBlock";
