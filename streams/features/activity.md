@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 13:15:00 - Phase 63 Task 4: Wire EscalatedTaskDetail to review issues API
+**What:**
+- Added imports for `useQuery`, `reviewIssuesApi`, `IssueList`
+- Added query to fetch structured issues via `reviewIssuesApi.getByTaskId(task.id)`
+- Added new "Issues Found" section with `<IssueList issues={issues} groupBy="severity" compact />`
+- Simplified `EscalationReasonCard` to show only escalation reason text (removed inline issue rendering)
+- Removed local `IssueCard` component (~40 lines of code removed)
+
+**Files Modified:**
+- `src/components/tasks/detail-views/EscalatedTaskDetail.tsx` (MODIFIED - replaced custom issue rendering with IssueList)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - no new errors, only pre-existing warnings)
+
+**Visual Verification:** N/A - additive change using existing tested IssueList component
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 12:45:00 - Phase 63 Task 3: Show open issues in ExecutionTaskDetail for re-execution
 **What:**
 - Added imports for `useQuery`, `reviewIssuesApi`, `IssueList`
