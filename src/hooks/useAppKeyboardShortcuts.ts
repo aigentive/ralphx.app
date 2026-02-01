@@ -10,6 +10,7 @@ interface UseAppKeyboardShortcutsProps {
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
   toggleChatVisible: (view: ViewType) => void;
+  toggleReviewsPanel?: () => void;
   openProjectWizard?: () => void;
   hasProjects?: boolean;
   showWelcomeOverlay?: boolean;
@@ -22,6 +23,7 @@ export function useAppKeyboardShortcuts({
   currentView,
   setCurrentView,
   toggleChatVisible,
+  toggleReviewsPanel,
   openProjectWizard,
   hasProjects,
   showWelcomeOverlay,
@@ -135,13 +137,30 @@ export function useAppKeyboardShortcuts({
             }
             break;
           }
+          case "r":
+          case "R": {
+            // Cmd+Shift+R: Toggle reviews panel
+            if (!e.shiftKey || !toggleReviewsPanel) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            toggleReviewsPanel();
+            break;
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);

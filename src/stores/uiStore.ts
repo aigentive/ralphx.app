@@ -250,12 +250,27 @@ export const useUiStore = create<UiState & UiActions>()(
 
     toggleReviewsPanel: () =>
       set((state) => {
-        state.reviewsPanelOpen = !state.reviewsPanelOpen;
+        const willOpen = !state.reviewsPanelOpen;
+        state.reviewsPanelOpen = willOpen;
+        // Mutual exclusion: close chat when opening reviews
+        if (willOpen) {
+          Object.keys(state.chatVisibleByView).forEach((view) => {
+            state.chatVisibleByView[view as ViewType] = false;
+          });
+          saveChatVisibility(state.chatVisibleByView);
+        }
       }),
 
     setReviewsPanelOpen: (open) =>
       set((state) => {
         state.reviewsPanelOpen = open;
+        // Mutual exclusion: close chat when opening reviews
+        if (open) {
+          Object.keys(state.chatVisibleByView).forEach((view) => {
+            state.chatVisibleByView[view as ViewType] = false;
+          });
+          saveChatVisibility(state.chatVisibleByView);
+        }
       }),
 
     setCurrentView: (view) =>
@@ -390,8 +405,13 @@ export const useUiStore = create<UiState & UiActions>()(
 
     toggleChatVisible: (view) =>
       set((state) => {
-        state.chatVisibleByView[view] = !state.chatVisibleByView[view];
+        const willOpen = !state.chatVisibleByView[view];
+        state.chatVisibleByView[view] = willOpen;
         saveChatVisibility(state.chatVisibleByView);
+        // Mutual exclusion: close reviews when opening chat
+        if (willOpen) {
+          state.reviewsPanelOpen = false;
+        }
       }),
 
     openWelcomeOverlay: () =>

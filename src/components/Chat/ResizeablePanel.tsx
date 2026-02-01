@@ -29,20 +29,31 @@ export function ResizeablePanel({
       role="complementary"
       aria-label={ariaLabel}
       className={cn(
-        "fixed top-14 right-0 bottom-0 flex flex-col",
+        "fixed top-14 right-0 flex flex-col",
         isExiting ? "chat-panel-exit" : "chat-panel-enter"
       )}
       style={{
-        width: `${width}px`,
-        minWidth: `${MIN_WIDTH}px`,
-        backgroundColor: "var(--bg-surface)",
-        borderLeft: "1px solid var(--border-subtle)",
-        boxShadow: "var(--shadow-md)",
+        width: `${width + 16}px`,
+        minWidth: `${MIN_WIDTH + 16}px`,
+        bottom: "76px",
         zIndex: 40,
       }}
     >
-      <ResizeHandle />
-      {children}
+      {/* Floating panel inner container */}
+      <div
+        className="flex flex-col flex-1 rounded-[10px] overflow-hidden"
+        style={{
+          margin: "8px",
+          background: "hsla(220 10% 10% / 0.92)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          border: "1px solid hsla(220 20% 100% / 0.08)",
+          boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+        }}
+      >
+        <ResizeHandle />
+        {children}
+      </div>
     </aside>
   );
 }
