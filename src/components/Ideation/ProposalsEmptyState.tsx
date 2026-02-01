@@ -24,19 +24,18 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
               className="flex items-center gap-3 p-3 rounded-lg"
               style={{
                 opacity,
-                border: "1.5px dashed rgba(255,107,53,0.25)",
-                background: "rgba(255,107,53,0.02)",
+                border: "1.5px dashed hsla(14 100% 60% / 0.25)",
+                background: "hsla(14 100% 60% / 0.02)",
               }}
             >
               <div
                 className="w-4 h-4 rounded border-[1.5px] border-dashed flex-shrink-0"
-                style={{ borderColor: "rgba(255,107,53,0.4)" }}
+                style={{ borderColor: "hsla(14 100% 60% / 0.4)" }}
               />
               <div
                 className="h-2 rounded-full flex-1"
                 style={{
-                  background:
-                    "linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+                  background: "hsla(220 10% 100% / 0.06)",
                   maxWidth: `${70 - i * 15}%`,
                 }}
               />
@@ -44,27 +43,25 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
           ))}
         </div>
 
-        {/* Central icon */}
+        {/* Central icon - flat style */}
         <div className="flex justify-center mb-4">
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center relative"
             style={{
-              background:
-                "linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)",
-              border: "1px solid rgba(251,191,36,0.25)",
-              boxShadow: "0 0 24px rgba(251,191,36,0.1)",
+              background: "hsla(45 93% 50% / 0.12)",
+              border: "1px solid hsla(45 93% 50% / 0.25)",
             }}
           >
-            <Lightbulb className="w-5 h-5 text-amber-400" />
+            <Lightbulb className="w-5 h-5" style={{ color: "hsl(45 93% 55%)" }} />
           </div>
         </div>
 
         {/* Text */}
         <div className="text-center">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
+          <h3 className="text-sm font-semibold mb-1.5 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
             No proposals yet
           </h3>
-          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          <p className="text-xs leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
             Ideas from the conversation will appear here as task proposals
           </p>
         </div>
@@ -74,8 +71,8 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
           <div
             className="flex items-center gap-2 px-3 py-1.5 rounded-full"
             style={{
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              background: "hsla(220 10% 100% / 0.03)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           >
             <svg
@@ -83,7 +80,7 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
               height="14"
               viewBox="0 0 14 14"
               fill="none"
-              className="text-[var(--text-muted)]"
+              style={{ color: "hsl(220 10% 50%)" }}
             >
               <path
                 d="M12 7H2m0 0l3-3m-3 3l3 3"
@@ -93,7 +90,7 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
                 strokeLinejoin="round"
               />
             </svg>
-            <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: "hsl(220 10% 50%)" }}>
               From chat
             </span>
           </div>
@@ -103,20 +100,14 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
         <div className="flex items-center gap-3 mt-6">
           <div
             className="flex-1 h-px"
-            style={{
-              background:
-                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
-            }}
+            style={{ background: "hsla(220 10% 100% / 0.08)" }}
           />
-          <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: "hsl(220 10% 50%)" }}>
             or
           </span>
           <div
             className="flex-1 h-px"
-            style={{
-              background:
-                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
-            }}
+            style={{ background: "hsla(220 10% 100% / 0.08)" }}
           />
         </div>
 
@@ -125,13 +116,20 @@ export function ProposalsEmptyState({ onBrowse }: ProposalsEmptyStateProps) {
           data-testid="drop-hint"
           type="button"
           onClick={onBrowse}
-          className="w-full flex flex-col items-center gap-2 mt-4 p-3 rounded-lg transition-colors hover:bg-white/[0.03] cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ff6b35]/50"
+          className="w-full flex flex-col items-center gap-2 mt-4 p-3 rounded-lg transition-colors cursor-pointer focus:outline-none"
+          style={{ color: "hsl(220 10% 50%)" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+          }}
         >
-          <FileDown className="w-4 h-4 text-[var(--text-muted)]" />
-          <p className="text-xs text-[var(--text-muted)] text-center leading-relaxed">
+          <FileDown className="w-4 h-4" />
+          <p className="text-xs text-center leading-relaxed">
             Drag a markdown file here
             <br />
-            or <span className="text-[#ff6b35]/80 underline underline-offset-2">click to browse</span>
+            or <span style={{ color: "hsla(14 100% 60% / 0.8)" }} className="underline underline-offset-2">click to browse</span>
           </p>
         </button>
       </div>

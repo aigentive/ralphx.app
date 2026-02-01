@@ -132,94 +132,96 @@ export function SessionBrowser({
         width: "260px",
         minWidth: "260px",
         flexShrink: 0,
-        background: "linear-gradient(180deg, rgba(20,20,20,0.98) 0%, rgba(12,12,12,0.98) 100%)",
-        backdropFilter: "blur(40px) saturate(180%)",
-        WebkitBackdropFilter: "blur(40px) saturate(180%)",
-        borderRight: "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      {/* Header */}
+      {/* Floating panel inner container */}
       <div
-        className="px-4 pt-4 pb-3"
+        className="flex flex-col h-full m-2 rounded-[10px]"
         style={{
-          borderBottom: "1px solid rgba(255,255,255,0.04)",
+          background: "hsla(220 10% 10% / 0.92)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          border: "1px solid hsla(220 20% 100% / 0.08)",
+          boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
         }}
       >
-        {/* Title */}
-        <div className="flex items-center gap-2.5 mb-4">
-          <div
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.08) 100%)",
-              border: "1px solid rgba(255,107,53,0.2)",
-              boxShadow: "0 2px 8px rgba(255,107,53,0.1)",
-            }}
-          >
-            <Sparkles className="w-4 h-4 text-[#ff6b35]" />
-          </div>
-          <div>
-            <h2
-              className="text-[13px] font-semibold tracking-[-0.01em]"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Sessions
-            </h2>
-            <p
-              className="text-[11px] tracking-[-0.005em]"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
-            </p>
-          </div>
-        </div>
-
-        {/* New Session Button */}
-        <Button
-          onClick={onNewSession}
-          className="w-full h-9 text-[13px] font-medium tracking-[-0.01em] border-0"
+        {/* Header */}
+        <div
+          className="px-4 pt-4 pb-3"
           style={{
-            background: "linear-gradient(180deg, #ff7a4d 0%, #ff6b35 100%)",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.2), 0 4px 12px rgba(255,107,53,0.15), inset 0 1px 0 rgba(255,255,255,0.1)",
-            color: "white",
-            transition: "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "translateY(-1px)";
-            e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.25), 0 8px 20px rgba(255,107,53,0.2), inset 0 1px 0 rgba(255,255,255,0.1)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.2), 0 4px 12px rgba(255,107,53,0.15), inset 0 1px 0 rgba(255,255,255,0.1)";
+            borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
           }}
         >
-          <Plus className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
-          New Session
-        </Button>
-      </div>
-
-      {/* Session List */}
-      <div className="flex-1 overflow-y-auto px-2 py-2">
-        {sortedSessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+          {/* Title */}
+          <div className="flex items-center gap-2.5 mb-4">
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+              className="w-8 h-8 rounded-[10px] flex items-center justify-center"
               style={{
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                background: "hsla(14 100% 60% / 0.12)",
+                border: "1px solid hsla(14 100% 60% / 0.2)",
               }}
             >
-              <MessageSquare className="w-5 h-5" style={{ color: "var(--text-muted)" }} />
+              <Sparkles className="w-4 h-4" style={{ color: "hsl(14 100% 60%)" }} />
             </div>
-            <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
-              No sessions yet
-            </p>
-            <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
-              Start your first brainstorm
-            </p>
+            <div>
+              <h2
+                className="text-[13px] font-semibold tracking-[-0.01em]"
+                style={{ color: "hsl(220 10% 90%)" }}
+              >
+                Sessions
+              </h2>
+              <p
+                className="text-[11px] tracking-[-0.005em]"
+                style={{ color: "hsl(220 10% 50%)" }}
+              >
+                {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+              </p>
+            </div>
           </div>
-        ) : (
+
+          {/* New Session Button - flat Tahoe style */}
+          <Button
+            onClick={onNewSession}
+            className="w-full h-9 text-[13px] font-medium tracking-[-0.01em] border-0 transition-colors duration-150"
+            style={{
+              background: "hsl(14 100% 60%)",
+              color: "white",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "hsl(14 100% 55%)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "hsl(14 100% 60%)";
+            }}
+          >
+            <Plus className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
+            New Session
+          </Button>
+        </div>
+
+        {/* Session List */}
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {sortedSessions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+                style={{
+                  background: "hsla(220 10% 100% / 0.03)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                <MessageSquare className="w-5 h-5" style={{ color: "hsl(220 10% 50%)" }} />
+              </div>
+              <p className="text-[13px] font-medium" style={{ color: "hsl(220 10% 70%)" }}>
+                No sessions yet
+              </p>
+              <p className="text-[11px] mt-1" style={{ color: "hsl(220 10% 50%)" }}>
+                Start your first brainstorm
+              </p>
+            </div>
+          ) : (
           <div className="space-y-1">
-            {sortedSessions.map((session, index) => {
+            {sortedSessions.map((session) => {
               const isSelected = session.id === currentSessionId;
               const isEditing = editingSessionId === session.id;
               const isMenuOpen = openMenuId === session.id;
@@ -230,53 +232,47 @@ export function SessionBrowser({
                   data-testid={`session-item-${session.id}`}
                   className={cn(
                     "group relative rounded-lg cursor-pointer",
-                    "transition-all duration-200 ease-out"
+                    "transition-all duration-150 ease-out"
                   )}
                   style={{
                     padding: "10px 12px",
-                    animationDelay: `${index * 30}ms`,
                     background: isSelected
-                      ? "linear-gradient(135deg, rgba(255,107,53,0.12) 0%, rgba(255,107,53,0.06) 100%)"
+                      ? "hsla(14 100% 60% / 0.12)"
                       : isMenuOpen
-                        ? "rgba(255,255,255,0.04)"
+                        ? "hsla(220 10% 100% / 0.04)"
                         : "transparent",
                     border: isSelected
-                      ? "1px solid rgba(255,107,53,0.25)"
+                      ? "1px solid hsla(14 100% 60% / 0.2)"
                       : "1px solid transparent",
-                    boxShadow: isSelected
-                      ? "0 2px 8px rgba(255,107,53,0.08)"
-                      : "none",
                   }}
                   onClick={() => !isEditing && onSelectSession(session.id)}
                   onMouseEnter={(e) => {
                     if (!isSelected && !isMenuOpen) {
-                      e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-                      e.currentTarget.style.border = "1px solid rgba(255,255,255,0.06)";
+                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isSelected && !isMenuOpen) {
                       e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.border = "1px solid transparent";
                     }
                   }}
                 >
                   <div className="flex items-start gap-3">
                     {/* Session icon */}
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors duration-150"
                       style={{
                         background: isSelected
-                          ? "rgba(255,107,53,0.15)"
-                          : "rgba(255,255,255,0.04)",
+                          ? "hsla(14 100% 60% / 0.15)"
+                          : "hsla(220 10% 100% / 0.04)",
                         border: isSelected
-                          ? "1px solid rgba(255,107,53,0.2)"
-                          : "1px solid rgba(255,255,255,0.06)",
+                          ? "1px solid hsla(14 100% 60% / 0.2)"
+                          : "1px solid hsla(220 10% 100% / 0.06)",
                       }}
                     >
                       <MessageSquare
                         className="w-3.5 h-3.5"
-                        style={{ color: isSelected ? "#ff6b35" : "var(--text-muted)" }}
+                        style={{ color: isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
                       />
                     </div>
 
@@ -289,7 +285,11 @@ export function SessionBrowser({
                           onChange={(e) => setEditingTitle(e.target.value)}
                           onKeyDown={(e) => handleKeyDown(e, session.id)}
                           onBlur={() => handleConfirmRename(session.id)}
-                          className="h-6 text-[13px] px-2 py-0 bg-black/30 border-white/10 focus:border-[#ff6b35]/50 rounded-md"
+                          className="h-6 text-[13px] px-2 py-0 rounded-md"
+                          style={{
+                            background: "hsl(220 10% 12%)",
+                            border: "1px solid hsla(220 10% 100% / 0.1)",
+                          }}
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
@@ -301,7 +301,7 @@ export function SessionBrowser({
                                 "transition-colors duration-150"
                               )}
                               style={{
-                                color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                                color: isSelected ? "hsl(220 10% 90%)" : "hsl(220 10% 70%)",
                               }}
                             >
                               {session.title || "Untitled Session"}
@@ -310,15 +310,14 @@ export function SessionBrowser({
                               <span
                                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                                 style={{
-                                  background: "#ff6b35",
-                                  boxShadow: "0 0 6px rgba(255,107,53,0.5)",
+                                  background: "hsl(14 100% 60%)",
                                 }}
                               />
                             )}
                           </div>
                           <div
                             className="flex items-center gap-1.5 mt-1 text-[11px]"
-                            style={{ color: "var(--text-muted)" }}
+                            style={{ color: "hsl(220 10% 50%)" }}
                           >
                             <Clock className="w-3 h-3" />
                             <span>{formatRelativeTime(session.updatedAt)}</span>
@@ -340,11 +339,11 @@ export function SessionBrowser({
                                 : "opacity-0 group-hover:opacity-100"
                             )}
                             style={{
-                              background: isMenuOpen ? "rgba(255,255,255,0.08)" : "transparent",
+                              background: isMenuOpen ? "hsla(220 10% 100% / 0.08)" : "transparent",
                             }}
                             onClick={(e) => e.stopPropagation()}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                              e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
                             }}
                             onMouseLeave={(e) => {
                               if (!isMenuOpen) {
@@ -352,17 +351,16 @@ export function SessionBrowser({
                               }
                             }}
                           >
-                            <MoreHorizontal className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+                            <MoreHorizontal className="w-4 h-4" style={{ color: "hsl(220 10% 50%)" }} />
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
                           className="w-40"
                           style={{
-                            background: "rgba(30,30,30,0.95)",
-                            backdropFilter: "blur(20px)",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                            background: "hsl(220 10% 14%)",
+                            border: "1px solid hsla(220 10% 100% / 0.08)",
+                            boxShadow: "0 8px 32px hsla(0 0% 0% / 0.4)",
                           }}
                         >
                           <DropdownMenuItem
@@ -385,13 +383,14 @@ export function SessionBrowser({
                             <Archive className="w-3.5 h-3.5" />
                             Archive
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator style={{ background: "rgba(255,255,255,0.06)" }} />
+                          <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
                               onDeleteSession?.(session.id);
                             }}
-                            className="text-[13px] cursor-pointer gap-2.5 py-2 text-red-400 focus:text-red-400"
+                            className="text-[13px] cursor-pointer gap-2.5 py-2"
+                            style={{ color: "hsl(0 70% 60%)" }}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             Delete
@@ -404,7 +403,8 @@ export function SessionBrowser({
               );
             })}
           </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

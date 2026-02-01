@@ -21,47 +21,46 @@ export function ConversationEmptyState() {
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
             style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              background: "hsla(220 10% 100% / 0.05)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           />
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
             style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "hsla(220 10% 100% / 0.06)",
+              border: "1px solid hsla(220 10% 100% / 0.08)",
             }}
           />
           <div
             className="w-14 h-14 rounded-full flex items-center justify-center"
             style={{
-              background: "linear-gradient(135deg, rgba(255,107,53,0.15) 0%, rgba(255,107,53,0.05) 100%)",
-              border: "1px solid rgba(255,107,53,0.25)",
-              boxShadow: "0 0 30px rgba(255,107,53,0.1)",
+              background: "hsla(14 100% 60% / 0.12)",
+              border: "1px solid hsla(14 100% 60% / 0.25)",
             }}
           >
-            <MessageSquareText className="w-6 h-6 text-[#ff6b35]" />
+            <MessageSquareText className="w-6 h-6" style={{ color: "hsl(14 100% 60%)" }} />
           </div>
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
             style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "hsla(220 10% 100% / 0.06)",
+              border: "1px solid hsla(220 10% 100% / 0.08)",
             }}
           />
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
             style={{
-              background: "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              background: "hsla(220 10% 100% / 0.05)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           />
         </div>
 
-        <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2 tracking-tight">
+        <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
           Start the conversation
         </h3>
-        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+        <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
           Describe your ideas and I'll help create task proposals
         </p>
 
@@ -70,11 +69,11 @@ export function ConversationEmptyState() {
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center animate-bounce"
             style={{
-              background: "rgba(255,107,53,0.1)",
-              border: "1px solid rgba(255,107,53,0.2)",
+              background: "hsla(14 100% 60% / 0.1)",
+              border: "1px solid hsla(14 100% 60% / 0.2)",
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#ff6b35]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: "hsl(14 100% 60%)" }}>
               <path d="M7 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
@@ -101,18 +100,18 @@ export function ProposalsEmptyState() {
               className="flex items-center gap-3 p-3 rounded-lg"
               style={{
                 opacity,
-                border: "1.5px dashed rgba(255,107,53,0.25)",
-                background: "rgba(255,107,53,0.02)",
+                border: "1.5px dashed hsla(14 100% 60% / 0.25)",
+                background: "hsla(14 100% 60% / 0.02)",
               }}
             >
               <div
                 className="w-4 h-4 rounded border-[1.5px] border-dashed flex-shrink-0"
-                style={{ borderColor: "rgba(255,107,53,0.4)" }}
+                style={{ borderColor: "hsla(14 100% 60% / 0.4)" }}
               />
               <div
                 className="h-2 rounded-full flex-1"
                 style={{
-                  background: "linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+                  background: "hsla(220 10% 100% / 0.06)",
                   maxWidth: `${70 - i * 15}%`,
                 }}
               />
@@ -120,26 +119,25 @@ export function ProposalsEmptyState() {
           ))}
         </div>
 
-        {/* Central icon with glow */}
+        {/* Central icon - flat style */}
         <div className="flex justify-center mb-4">
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center relative"
             style={{
-              background: "linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)",
-              border: "1px solid rgba(251,191,36,0.25)",
-              boxShadow: "0 0 24px rgba(251,191,36,0.1)",
+              background: "hsla(45 93% 50% / 0.12)",
+              border: "1px solid hsla(45 93% 50% / 0.25)",
             }}
           >
-            <Lightbulb className="w-5 h-5 text-amber-400" />
+            <Lightbulb className="w-5 h-5" style={{ color: "hsl(45 93% 55%)" }} />
           </div>
         </div>
 
         {/* Text content */}
         <div className="text-center">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1.5 tracking-tight">
+          <h3 className="text-sm font-semibold mb-1.5 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
             No proposals yet
           </h3>
-          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          <p className="text-xs leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
             Ideas from the conversation will appear here as task proposals
           </p>
         </div>
@@ -149,14 +147,14 @@ export function ProposalsEmptyState() {
           <div
             className="flex items-center gap-2 px-3 py-1.5 rounded-full"
             style={{
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              background: "hsla(220 10% 100% / 0.03)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[var(--text-muted)]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: "hsl(220 10% 50%)" }}>
               <path d="M12 7H2m0 0l3-3m-3 3l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">From chat</span>
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: "hsl(220 10% 50%)" }}>From chat</span>
           </div>
         </div>
       </div>
