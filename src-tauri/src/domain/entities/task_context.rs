@@ -1,4 +1,4 @@
-use super::{ArtifactId, ArtifactType, Task, TaskProposalId, TaskStep};
+use super::{ArtifactId, ArtifactType, InternalStatus, Task, TaskId, TaskProposalId, TaskStep};
 use serde::{Deserialize, Serialize};
 
 use super::task_step::StepProgressSummary;
@@ -27,6 +27,18 @@ pub struct TaskContext {
 
     /// Hints for worker about what context might be useful
     pub context_hints: Vec<String>,
+
+    /// Tasks that must complete before this task can start (blockers)
+    /// If not empty, the worker should NOT proceed with execution
+    pub blocked_by: Vec<TaskDependencySummary>,
+
+    /// Tasks that are waiting for this task to complete (dependents)
+    /// For context: completing this task may unblock these downstream tasks
+    pub blocks: Vec<TaskDependencySummary>,
+
+    /// Execution tier from dependency graph (lower = earlier in chain)
+    /// Tier 1 tasks have no blockers, higher tiers depend on lower tiers
+    pub tier: Option<u32>,
 }
 
 /// Summary of a task proposal for context purposes
@@ -41,6 +53,17 @@ pub struct TaskProposalSummary {
     pub implementation_notes: Option<String>,
     /// Version of plan when proposal was created
     pub plan_version_at_creation: Option<u32>,
+    /// Numeric priority score (0-100, higher = more important)
+    pub priority_score: i32,
+}
+
+/// Summary of a task for dependency context (blocker or dependent)
+/// Contains minimal info needed to understand the dependency relationship
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaskDependencySummary {
+    pub id: TaskId,
+    pub title: String,
+    pub internal_status: InternalStatus,
 }
 
 /// Summary of an artifact for context purposes
@@ -58,7 +81,7 @@ pub struct ArtifactSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{ArtifactId, InternalStatus, ProjectId, Task, TaskProposalId};
+    use crate::domain::entities::{ArtifactId, InternalStatus, ProjectId, Task, TaskId, TaskProposalId};
 
     #[test]
     fn test_task_context_creation() {
@@ -72,6 +95,9 @@ mod tests {
             steps: vec![],
             step_progress: None,
             context_hints: vec!["No additional context available".to_string()],
+            blocked_by: vec![],
+            blocks: vec![],
+            tier: None,
         };
 
         assert_eq!(context.task.id, task.id);
@@ -81,6 +107,9 @@ mod tests {
         assert_eq!(context.steps.len(), 0);
         assert!(context.step_progress.is_none());
         assert_eq!(context.context_hints.len(), 1);
+        assert!(context.blocked_by.is_empty());
+        assert!(context.blocks.is_empty());
+        assert!(context.tier.is_none());
     }
 
     #[test]
@@ -92,12 +121,26 @@ mod tests {
             acceptance_criteria: vec!["AC1".to_string(), "AC2".to_string()],
             implementation_notes: Some("Notes here".to_string()),
             plan_version_at_creation: Some(1),
+            priority_score: 75,
         };
 
         assert_eq!(summary.title, "Test Proposal");
         assert_eq!(summary.acceptance_criteria.len(), 2);
         assert!(summary.implementation_notes.is_some());
         assert_eq!(summary.plan_version_at_creation, Some(1));
+        assert_eq!(summary.priority_score, 75);
+    }
+
+    #[test]
+    fn test_task_dependency_summary_creation() {
+        let summary = TaskDependencySummary {
+            id: TaskId::new(),
+            title: "Blocker Task".to_string(),
+            internal_status: InternalStatus::Executing,
+        };
+
+        assert_eq!(summary.title, "Blocker Task");
+        assert_eq!(summary.internal_status, InternalStatus::Executing);
     }
 
     #[test]
@@ -132,6 +175,7 @@ mod tests {
             acceptance_criteria: vec!["AC1".to_string()],
             implementation_notes: Some("Follow pattern X".to_string()),
             plan_version_at_creation: Some(1),
+            priority_score: 80,
         };
 
         let plan_summary = ArtifactSummary {
@@ -150,6 +194,19 @@ mod tests {
             content_preview: "Research findings...".to_string(),
         };
 
+        // Create blocker and dependent tasks for testing dependency context
+        let blocker_task = TaskDependencySummary {
+            id: TaskId::new(),
+            title: "Setup Database".to_string(),
+            internal_status: InternalStatus::Approved,
+        };
+
+        let dependent_task = TaskDependencySummary {
+            id: TaskId::new(),
+            title: "Add UI Components".to_string(),
+            internal_status: InternalStatus::Blocked,
+        };
+
         let context = TaskContext {
             task: task.clone(),
             source_proposal: Some(proposal_summary.clone()),
@@ -161,6 +218,9 @@ mod tests {
                 "Implementation plan available".to_string(),
                 "Related research document found".to_string(),
             ],
+            blocked_by: vec![blocker_task],
+            blocks: vec![dependent_task],
+            tier: Some(2),
         };
 
         assert_eq!(context.task.id, task.id);
@@ -178,6 +238,11 @@ mod tests {
         assert_eq!(context.steps.len(), 0);
         assert!(context.step_progress.is_none());
         assert_eq!(context.context_hints.len(), 2);
+        assert_eq!(context.blocked_by.len(), 1);
+        assert_eq!(context.blocked_by[0].title, "Setup Database");
+        assert_eq!(context.blocks.len(), 1);
+        assert_eq!(context.blocks[0].title, "Add UI Components");
+        assert_eq!(context.tier, Some(2));
     }
 
     #[test]

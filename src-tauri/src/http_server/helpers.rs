@@ -243,6 +243,7 @@ pub async fn get_task_context_impl(
                     acceptance_criteria,
                     implementation_notes: None,
                     plan_version_at_creation: proposal.plan_version_at_creation,
+                    priority_score: proposal.priority_score,
                 })
             }
             None => None,
@@ -300,8 +301,66 @@ pub async fn get_task_context_impl(
         None
     };
 
-    // 7. Generate context hints
+    // 7. Fetch task dependencies (blockers and dependents)
+    let blockers = state.task_repo.get_blockers(task_id).await?;
+    let blocked_by: Vec<crate::domain::entities::TaskDependencySummary> = blockers
+        .into_iter()
+        .map(|t| crate::domain::entities::TaskDependencySummary {
+            id: t.id.clone(),
+            title: t.title.clone(),
+            internal_status: t.internal_status,
+        })
+        .collect();
+
+    let dependents = state.task_repo.get_dependents(task_id).await?;
+    let blocks: Vec<crate::domain::entities::TaskDependencySummary> = dependents
+        .into_iter()
+        .map(|t| crate::domain::entities::TaskDependencySummary {
+            id: t.id.clone(),
+            title: t.title.clone(),
+            internal_status: t.internal_status,
+        })
+        .collect();
+
+    // 8. Compute tier from dependency depth
+    let tier = if blocked_by.is_empty() {
+        Some(1)
+    } else {
+        let incomplete_blockers = blocked_by
+            .iter()
+            .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+            .count();
+        Some((incomplete_blockers as u32) + 1)
+    };
+
+    // 9. Generate context hints
     let mut context_hints = Vec::new();
+
+    // CRITICAL: Dependency hints come first
+    if !blocked_by.is_empty() {
+        let incomplete: Vec<_> = blocked_by
+            .iter()
+            .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+            .collect();
+        if !incomplete.is_empty() {
+            let names: Vec<_> = incomplete.iter().map(|t| t.title.as_str()).collect();
+            context_hints.push(format!(
+                "BLOCKED: Task cannot proceed - waiting for: {}",
+                names.join(", ")
+            ));
+        } else {
+            context_hints.push("All blocking tasks completed - ready to execute".to_string());
+        }
+    }
+
+    if !blocks.is_empty() {
+        let names: Vec<_> = blocks.iter().map(|t| t.title.as_str()).collect();
+        context_hints.push(format!(
+            "Downstream impact: completing this task unblocks: {}",
+            names.join(", ")
+        ));
+    }
+
     if source_proposal.is_some() {
         context_hints.push(
             "Task was created from ideation proposal - check acceptance criteria".to_string(),
@@ -331,7 +390,7 @@ pub async fn get_task_context_impl(
         context_hints.push("No additional context artifacts found - proceed with task description and acceptance criteria".to_string());
     }
 
-    // 8. Return TaskContext
+    // 10. Return TaskContext
     Ok(TaskContext {
         task,
         source_proposal,
@@ -340,6 +399,9 @@ pub async fn get_task_context_impl(
         steps,
         step_progress,
         context_hints,
+        blocked_by,
+        blocks,
+        tier,
     })
 }
 

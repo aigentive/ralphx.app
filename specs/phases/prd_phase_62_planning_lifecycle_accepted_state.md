@@ -258,7 +258,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(backend): add dependency context to TaskContext for worker"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 10,
