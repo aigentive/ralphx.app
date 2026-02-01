@@ -26,10 +26,10 @@ Phase: IN PROGRESS (discovered 10 new components)
 | MergeWorkflowDialog | — | — | — | ~~skipped~~ (no-trigger) |
 | ApplyModal | — | — | — | uncovered |
 | ReviewDetailModal | ✅ | review-detail.spec.ts | ✅ | covered |
-| ReviewNotesModal | — | — | — | uncovered |
-| TaskRerunDialog | — | — | — | uncovered |
+| ReviewNotesModal | — | — | — | ~~skipped~~ (orphan) |
+| TaskRerunDialog | — | — | — | ~~skipped~~ (orphan) |
 | TaskFullView | ✅ | task-fullview.spec.ts | ✅ | covered |
-| BlockReasonDialog | — | — | — | uncovered |
+| BlockReasonDialog | ✅ | block-reason-dialog.spec.ts | ✅ | covered |
 | TaskPickerDialog | — | — | — | uncovered |
 | ScreenshotGallery | — | — | — | uncovered |
 

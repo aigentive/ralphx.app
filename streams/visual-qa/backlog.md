@@ -12,12 +12,12 @@
 - [ ] ~~**MergeWorkflowDialog**~~ (no-trigger)
 - [ ] ~~**ApplyModal**~~ (orphan - not used in production code, only in tests)
 - [x] **ReviewDetailModal** - Full-width review modal with diff viewer and history
-- [ ] **ReviewNotesModal** - Modal for adding review notes with fix descriptions
-- [ ] **TaskRerunDialog** - Task re-run workflow modal (keep/revert/create new)
+- [ ] ~~**ReviewNotesModal**~~ (orphan - exported but never used in production)
+- [ ] ~~**TaskRerunDialog**~~ (orphan - not used in production code)
 - [x] **TaskFullView** - Full-screen task view component
 
 ### Priority 2 - Secondary Dialogs
-- [ ] **BlockReasonDialog** - Modal for capturing task block reason
+- [x] **BlockReasonDialog** - Modal for capturing task block reason
 - [ ] **TaskPickerDialog** - Select draft tasks for ideation
 - [ ] **ScreenshotGallery** - Professional gallery with lightbox and comparison mode
 
