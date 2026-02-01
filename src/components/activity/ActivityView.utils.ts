@@ -127,6 +127,113 @@ export function formatToolArguments(
   });
 }
 
+/**
+ * Generate a human-readable preview for tool result content.
+ * Extracts meaningful summaries from common result structures.
+ * Returns { preview, isError } for display.
+ */
+export function generateResultPreview(
+  content: string,
+  maxLength = 100
+): { preview: string; isError: boolean } {
+  const result = safeJsonParse<Record<string, unknown>>(content);
+
+  // If it's not valid JSON, return truncated text
+  if (result.error || typeof result.data !== "object" || result.data === null) {
+    const text = content.trim();
+    const isError = text.toLowerCase().startsWith("error") || text.includes("failed");
+    return {
+      preview: text.length > maxLength ? text.slice(0, maxLength) + "…" : text,
+      isError,
+    };
+  }
+
+  const data = result.data;
+
+  // Check for error patterns
+  const hasError =
+    "error" in data ||
+    data.status === "error" ||
+    data.success === false;
+
+  if (hasError) {
+    const errorMsg =
+      (data.error as string) ||
+      (data.message as string) ||
+      "Operation failed";
+    return {
+      preview: String(errorMsg).slice(0, maxLength),
+      isError: true,
+    };
+  }
+
+  // Try to extract meaningful content from common patterns
+  // Task-related results
+  if ("title" in data && typeof data.title === "string") {
+    const steps = Array.isArray(data.steps) ? ` with ${data.steps.length} steps` : "";
+    return {
+      preview: `Task "${data.title}"${steps} loaded`,
+      isError: false,
+    };
+  }
+
+  // List results (tasks, artifacts, etc.)
+  if (Array.isArray(data)) {
+    const count = data.length;
+    const itemType = count > 0 && typeof data[0] === "object" && data[0] !== null
+      ? Object.keys(data[0])[0] || "item"
+      : "item";
+    return {
+      preview: `${count} ${itemType}${count !== 1 ? "s" : ""} returned`,
+      isError: false,
+    };
+  }
+
+  // Results with explicit message
+  if ("message" in data && typeof data.message === "string") {
+    return {
+      preview: data.message.slice(0, maxLength),
+      isError: false,
+    };
+  }
+
+  // Results with content field
+  if ("content" in data && typeof data.content === "string") {
+    const text = data.content;
+    return {
+      preview: text.length > maxLength ? text.slice(0, maxLength) + "…" : text,
+      isError: false,
+    };
+  }
+
+  // Success indicators
+  if (data.success === true || data.status === "success" || data.ok === true) {
+    return {
+      preview: "Operation completed successfully",
+      isError: false,
+    };
+  }
+
+  // Fallback: show key count or first meaningful value
+  const keys = Object.keys(data);
+  if (keys.length === 0) {
+    return { preview: "Empty response", isError: false };
+  }
+
+  // Try to find a string value to show
+  for (const key of keys) {
+    const val = data[key];
+    if (typeof val === "string" && val.length > 0 && val.length < maxLength) {
+      return { preview: `${key}: ${val}`, isError: false };
+    }
+  }
+
+  return {
+    preview: `Response with ${keys.length} field${keys.length !== 1 ? "s" : ""}`,
+    isError: false,
+  };
+}
+
 export function generateMessageKey(msg: UnifiedActivityMessage, index: number): string {
   return msg.id || `${msg.taskId || msg.sessionId}-${msg.timestamp}-${index}`;
 }
