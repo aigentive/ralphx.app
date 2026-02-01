@@ -1,3 +1,18 @@
+### 2026-02-01 01:26:27 - TaskFullView Visual Tests
+**What:** Created page object + spec + baseline for TaskFullView component
+**Mock parity:** ready - uses existing mock tasks from store, no additional mocks needed
+- Created tests/helpers/task-fullview.helpers.ts with openTaskFullView/closeTaskFullView helpers
+- Created tests/pages/views/task-fullview.page.ts with all selectors and methods
+- Created tests/visual/views/task-fullview/task-fullview.spec.ts with 10 tests
+- Generated 10 baseline snapshots covering ready/executing/pending_review states, header, actions, split layout, execution controls
+- All tests passing on first run after fixing import path (BasePage → base.page) and test expectation (pending_review footer visibility)
+**Commands:**
+- `npx playwright test tests/visual/views/task-fullview/task-fullview.spec.ts --update-snapshots`
+- `npx playwright test tests/visual/views/task-fullview/task-fullview.spec.ts`
+**Result:** Success - 10/10 tests passing, all baseline snapshots created
+
+---
+
 ### 2026-02-01 03:20:37 - ReviewDetailModal Visual Tests
 **What:** Created page object + spec + baseline for ReviewDetailModal component
 **Mock parity:** EXTENDED - multiple fixes required

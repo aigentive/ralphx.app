@@ -14,7 +14,7 @@
 - [x] **ReviewDetailModal** - Full-width review modal with diff viewer and history
 - [ ] **ReviewNotesModal** - Modal for adding review notes with fix descriptions
 - [ ] **TaskRerunDialog** - Task re-run workflow modal (keep/revert/create new)
-- [ ] **TaskFullView** - Full-screen task view component
+- [x] **TaskFullView** - Full-screen task view component
 
 ### Priority 2 - Secondary Dialogs
 - [ ] **BlockReasonDialog** - Modal for capturing task block reason
