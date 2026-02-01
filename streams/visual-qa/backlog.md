@@ -8,7 +8,7 @@
 <!-- Populated after bootstrap phase completes or when new components are added -->
 
 ### Priority 1 - Major Views/Modals
-- [ ] **WelcomeScreen** - Full-screen welcome/onboarding view with animated constellation
+- [x] **WelcomeScreen** - Full-screen welcome/onboarding view with animated constellation
 - [ ] **MergeWorkflowDialog** - Post-completion workflow options (merge/rebase/PR/keep/discard)
 - [ ] **ApplyModal** - Apply proposals to Kanban with dependency preview
 - [ ] **ReviewDetailModal** - Full-width review modal with diff viewer and history
