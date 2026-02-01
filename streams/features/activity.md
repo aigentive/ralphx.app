@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-02 04:30:00 - Phase 62 Task 7: Remove selection checkboxes from proposal cards
+**What:**
+- Removed `Checkbox` component import from `ProposalCard.tsx`
+- Removed checkbox JSX element from ProposalCard (per-proposal selection is no longer used)
+- Updated `ProposalCard.test.tsx`: removed checkbox test suite and checkbox keyboard accessibility test
+- Updated `ProposalList.test.tsx`: updated card interaction tests to not use checkboxes, added note that component is unused (replaced by TieredProposalList)
+- Updated `PlanningView.test.tsx`: removed checkbox-related tests, changed proposal selection test to use card click
+
+**Note:** Sort dropdown was already removed in Task 3 (commit 0df5365). The tier order is now the canonical order as per the plan.
+
+**Files Modified:**
+- `src/components/Ideation/ProposalCard.tsx` (MODIFIED - removed Checkbox import and JSX)
+- `src/components/Ideation/ProposalCard.test.tsx` (MODIFIED - removed checkbox tests)
+- `src/components/Ideation/ProposalList.test.tsx` (MODIFIED - updated to not use checkboxes)
+- `src/components/Ideation/PlanningView.test.tsx` (MODIFIED - removed checkbox tests)
+
+**Commands:**
+- `npm run lint` (warnings only, no errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - removing UI element, no new visuals to verify
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 03:45:00 - Phase 62 Task 6: Add task link to ProposalCard for accepted plans
 **What:**
 - Added `isReadOnly` and `onNavigateToTask` props to `ProposalCard` component

@@ -4,11 +4,11 @@
  * Tests for the proposal list component with:
  * - List of ProposalCard components
  * - Drag-to-reorder with @dnd-kit
- * - Multi-select with Shift+click
- * - Select all / Deselect all buttons
- * - Sort by priority button
  * - Clear all button
  * - Empty state when no proposals
+ *
+ * NOTE: This component is no longer used in the UI (replaced by TieredProposalList).
+ * Tests retained for documentation purposes.
  */
 
 import { render, screen, fireEvent, within } from "@testing-library/react";
@@ -230,14 +230,13 @@ describe("ProposalList", () => {
   // ============================================================================
 
   describe("card interactions", () => {
-    it("calls onSelect when card checkbox clicked", async () => {
+    it("calls onSelect when card clicked", async () => {
       const onSelect = vi.fn();
       render(<ProposalList {...defaultProps} onSelect={onSelect} />);
 
       const card = screen.getByTestId("proposal-card-p1");
-      const checkbox = within(card).getByTestId("proposal-checkbox");
-      // Use fireEvent.click instead of userEvent to avoid sortable interference
-      fireEvent.click(checkbox);
+      // Click on the card to select
+      fireEvent.click(card);
 
       expect(onSelect).toHaveBeenCalledWith("p1");
     });
@@ -262,54 +261,6 @@ describe("ProposalList", () => {
       fireEvent.click(removeBtn);
 
       expect(onRemove).toHaveBeenCalledWith("p1");
-    });
-  });
-
-  // ============================================================================
-  // Multi-select with Shift+click Tests
-  // ============================================================================
-
-  describe("multi-select with shift+click", () => {
-    it("has onMultiSelect prop wired for shift+click behavior", () => {
-      const onMultiSelect = vi.fn();
-      render(
-        <ProposalList
-          {...defaultProps}
-          onMultiSelect={onMultiSelect}
-        />
-      );
-
-      // The component is set up with onMultiSelect callback
-      // The actual shift+click behavior requires DOM event bubbling
-      // which is complex to test - verify the component renders with the prop
-      expect(screen.getByTestId("proposal-list-sortable")).toBeInTheDocument();
-    });
-
-    it("calls onSelect and tracks last selected on normal click", () => {
-      const onSelect = vi.fn();
-      render(<ProposalList {...defaultProps} onSelect={onSelect} />);
-
-      // Click p1 (sets last selected)
-      const card1 = screen.getByTestId("proposal-card-p1");
-      fireEvent.click(within(card1).getByTestId("proposal-checkbox"));
-
-      // Normal click on p1 calls onSelect
-      expect(onSelect).toHaveBeenCalledWith("p1");
-    });
-
-    it("onSelect can be called for each card", () => {
-      const onSelect = vi.fn();
-      render(<ProposalList {...defaultProps} onSelect={onSelect} />);
-
-      // Click each card
-      fireEvent.click(within(screen.getByTestId("proposal-card-p1")).getByTestId("proposal-checkbox"));
-      fireEvent.click(within(screen.getByTestId("proposal-card-p2")).getByTestId("proposal-checkbox"));
-      fireEvent.click(within(screen.getByTestId("proposal-card-p3")).getByTestId("proposal-checkbox"));
-
-      expect(onSelect).toHaveBeenCalledTimes(3);
-      expect(onSelect).toHaveBeenCalledWith("p1");
-      expect(onSelect).toHaveBeenCalledWith("p2");
-      expect(onSelect).toHaveBeenCalledWith("p3");
     });
   });
 

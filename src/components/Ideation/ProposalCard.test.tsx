@@ -2,7 +2,6 @@
  * ProposalCard Component Tests
  *
  * Tests for the proposal card component with:
- * - Checkbox for selection
  * - Title and description preview
  * - Priority badge
  * - Category badge
@@ -96,43 +95,6 @@ describe("ProposalCard", () => {
       render(<ProposalCard {...defaultProps} proposal={proposal} />);
       const descEl = screen.getByTestId("proposal-description");
       expect(descEl).toHaveClass("line-clamp-2");
-    });
-  });
-
-  // ============================================================================
-  // Checkbox Tests
-  // ============================================================================
-
-  describe("checkbox", () => {
-    it("renders checkbox", () => {
-      render(<ProposalCard {...defaultProps} />);
-      expect(screen.getByTestId("proposal-checkbox")).toBeInTheDocument();
-    });
-
-    it("checkbox is unchecked when not selected", () => {
-      const proposal = createMockProposal({ selected: false });
-      render(<ProposalCard {...defaultProps} proposal={proposal} />);
-      expect(screen.getByTestId("proposal-checkbox")).not.toBeChecked();
-    });
-
-    it("checkbox is checked when selected", () => {
-      const proposal = createMockProposal({ selected: true });
-      render(<ProposalCard {...defaultProps} proposal={proposal} />);
-      expect(screen.getByTestId("proposal-checkbox")).toBeChecked();
-    });
-
-    it("calls onSelect when checkbox clicked", async () => {
-      const user = userEvent.setup();
-      const onSelect = vi.fn();
-      render(<ProposalCard {...defaultProps} onSelect={onSelect} />);
-
-      await user.click(screen.getByTestId("proposal-checkbox"));
-      expect(onSelect).toHaveBeenCalledWith("proposal-1");
-    });
-
-    it("has accessible label for checkbox", () => {
-      render(<ProposalCard {...defaultProps} />);
-      expect(screen.getByLabelText(/select.*implement user authentication/i)).toBeInTheDocument();
     });
   });
 
@@ -437,17 +399,6 @@ describe("ProposalCard", () => {
       render(<ProposalCard {...defaultProps} />);
       const article = screen.getByRole("article");
       expect(article).toHaveAttribute("aria-labelledby", "proposal-title-proposal-1");
-    });
-
-    it("checkbox is keyboard accessible", async () => {
-      const user = userEvent.setup();
-      const onSelect = vi.fn();
-      render(<ProposalCard {...defaultProps} onSelect={onSelect} />);
-
-      const checkbox = screen.getByTestId("proposal-checkbox");
-      await user.click(checkbox);
-
-      expect(onSelect).toHaveBeenCalled();
     });
   });
 
