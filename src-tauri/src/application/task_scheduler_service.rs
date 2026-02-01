@@ -18,7 +18,7 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::InternalStatus;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
+    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -33,6 +33,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     execution_state: Arc<ExecutionState>,
     project_repo: Arc<dyn ProjectRepository>,
     task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
@@ -50,6 +51,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
         execution_state: Arc<ExecutionState>,
         project_repo: Arc<dyn ProjectRepository>,
         task_repo: Arc<dyn TaskRepository>,
+        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
@@ -63,6 +65,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             execution_state,
             project_repo,
             task_repo,
+            task_dependency_repo,
             chat_message_repo,
             conversation_repo,
             agent_run_repo,
@@ -98,6 +101,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
     {
         TaskTransitionService::new(
             Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
             Arc::clone(&self.chat_message_repo),
             Arc::clone(&self.conversation_repo),
@@ -184,6 +188,7 @@ mod tests {
             Arc::clone(execution_state),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
             Arc::clone(&app_state.agent_run_repo),

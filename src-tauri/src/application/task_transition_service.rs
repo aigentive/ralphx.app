@@ -19,7 +19,7 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
+    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
@@ -96,29 +96,175 @@ impl Notifier for LoggingNotifier {
     }
 }
 
-/// No-op DependencyManager - placeholder until dependencies are fully wired
+/// Repository-backed DependencyManager for automatic task blocking/unblocking
 ///
-/// Note: Task dependency repositories exist (TaskDependencyRepository), but are not yet
-/// integrated into the state machine. This stub allows the transition system to function
-/// without blocking on dependency implementation. When ready to wire dependencies:
-/// 1. Create RepoBackedDependencyManager struct with TaskDependencyRepository + TaskRepository
-/// 2. Implement unblock_dependents to query dependencies and update dependent task states
-/// 3. Implement has_unresolved_blockers to check for blocking tasks
-/// 4. Wire into TaskTransitionService initialization
-pub struct NoOpDependencyManager;
+/// When a task completes (enters Approved state), this manager:
+/// 1. Finds all tasks that were blocked by the completed task
+/// 2. For each blocked task, checks if ALL its blockers are now complete
+/// 3. If all blockers complete, transitions the task from Blocked to Ready
+/// 4. Emits task:unblocked event for UI updates
+pub struct RepoBackedDependencyManager<R: Runtime = tauri::Wry> {
+    task_dep_repo: Arc<dyn TaskDependencyRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    app_handle: Option<AppHandle<R>>,
+}
 
-#[async_trait]
-impl DependencyManager for NoOpDependencyManager {
-    async fn unblock_dependents(&self, _task_id: &str) {
-        // No-op: dependency resolution not yet wired to state machine
+impl<R: Runtime> RepoBackedDependencyManager<R> {
+    pub fn new(
+        task_dep_repo: Arc<dyn TaskDependencyRepository>,
+        task_repo: Arc<dyn TaskRepository>,
+        app_handle: Option<AppHandle<R>>,
+    ) -> Self {
+        Self {
+            task_dep_repo,
+            task_repo,
+            app_handle,
+        }
     }
 
-    async fn has_unresolved_blockers(&self, _task_id: &str) -> bool {
+    /// Check if a blocking task is complete (Approved, Failed, or Cancelled)
+    async fn is_blocker_complete(&self, blocker_id: &TaskId) -> bool {
+        if let Ok(Some(task)) = self.task_repo.get_by_id(blocker_id).await {
+            matches!(
+                task.internal_status,
+                InternalStatus::Approved | InternalStatus::Failed | InternalStatus::Cancelled
+            )
+        } else {
+            // If task doesn't exist, consider it "complete" (not blocking)
+            true
+        }
+    }
+
+    /// Get names of incomplete blockers for a task (for blocked_reason message)
+    async fn get_incomplete_blocker_names(&self, task_id: &TaskId) -> Vec<String> {
+        let blockers = match self.task_dep_repo.get_blockers(task_id).await {
+            Ok(b) => b,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut incomplete_names = Vec::new();
+        for blocker_id in blockers {
+            if let Ok(Some(task)) = self.task_repo.get_by_id(&blocker_id).await {
+                if !matches!(
+                    task.internal_status,
+                    InternalStatus::Approved | InternalStatus::Failed | InternalStatus::Cancelled
+                ) {
+                    incomplete_names.push(task.title);
+                }
+            }
+        }
+        incomplete_names
+    }
+}
+
+#[async_trait]
+impl<R: Runtime> DependencyManager for RepoBackedDependencyManager<R> {
+    async fn unblock_dependents(&self, completed_task_id: &str) {
+        let task_id = TaskId::from_string(completed_task_id.to_string());
+
+        // Find all tasks that depend on the completed task
+        let dependents = match self.task_dep_repo.get_blocked_by(&task_id).await {
+            Ok(deps) => deps,
+            Err(e) => {
+                tracing::error!(error = %e, task_id = completed_task_id, "Failed to get dependents");
+                return;
+            }
+        };
+
+        tracing::info!(
+            completed_task_id = completed_task_id,
+            dependent_count = dependents.len(),
+            "Checking dependents for unblocking"
+        );
+
+        for dependent_id in dependents {
+            // Get all blockers for this dependent task
+            let blockers = match self.task_dep_repo.get_blockers(&dependent_id).await {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+
+            // Check if ALL blockers are now complete
+            let mut all_complete = true;
+            for blocker_id in &blockers {
+                if !self.is_blocker_complete(blocker_id).await {
+                    all_complete = false;
+                    break;
+                }
+            }
+
+            // Get the dependent task
+            let mut dependent_task = match self.task_repo.get_by_id(&dependent_id).await {
+                Ok(Some(t)) => t,
+                _ => continue,
+            };
+
+            if all_complete {
+                // All blockers complete - transition from Blocked to Ready
+                if dependent_task.internal_status == InternalStatus::Blocked {
+                    dependent_task.internal_status = InternalStatus::Ready;
+                    dependent_task.blocked_reason = None;
+                    dependent_task.touch();
+
+                    if let Err(e) = self.task_repo.update(&dependent_task).await {
+                        tracing::error!(error = %e, task_id = %dependent_id, "Failed to unblock task");
+                        continue;
+                    }
+
+                    tracing::info!(
+                        task_id = %dependent_id,
+                        task_title = %dependent_task.title,
+                        "Task unblocked - all blockers complete"
+                    );
+
+                    // Emit task:unblocked event for UI update
+                    if let Some(ref handle) = self.app_handle {
+                        let _ = handle.emit(
+                            "task:unblocked",
+                            serde_json::json!({
+                                "taskId": dependent_id.as_str(),
+                                "taskTitle": dependent_task.title,
+                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                            }),
+                        );
+                    }
+                }
+            } else {
+                // Some blockers still incomplete - update blocked_reason with remaining names
+                let incomplete_names = self.get_incomplete_blocker_names(&dependent_id).await;
+                if !incomplete_names.is_empty() {
+                    let new_reason = format!("Waiting for: {}", incomplete_names.join(", "));
+                    if dependent_task.blocked_reason.as_ref() != Some(&new_reason) {
+                        dependent_task.blocked_reason = Some(new_reason);
+                        dependent_task.touch();
+                        let _ = self.task_repo.update(&dependent_task).await;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn has_unresolved_blockers(&self, task_id: &str) -> bool {
+        let task_id = TaskId::from_string(task_id.to_string());
+        let blockers = match self.task_dep_repo.get_blockers(&task_id).await {
+            Ok(b) => b,
+            Err(_) => return false,
+        };
+
+        for blocker_id in blockers {
+            if !self.is_blocker_complete(&blocker_id).await {
+                return true;
+            }
+        }
         false
     }
 
-    async fn get_blocking_tasks(&self, _task_id: &str) -> Vec<String> {
-        Vec::new()
+    async fn get_blocking_tasks(&self, task_id: &str) -> Vec<String> {
+        let task_id = TaskId::from_string(task_id.to_string());
+        match self.task_dep_repo.get_blockers(&task_id).await {
+            Ok(blockers) => blockers.into_iter().map(|id| id.as_str().to_string()).collect(),
+            Err(_) => Vec::new(),
+        }
     }
 }
 
@@ -216,6 +362,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Create a new TaskTransitionService with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
+        task_dep_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -244,6 +391,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                 Arc::clone(&agent_run_repo),
                 Arc::clone(&project_repo),
                 Arc::clone(&task_repo),
+                Arc::clone(&task_dep_repo),
                 Arc::clone(&ideation_session_repo),
                 activity_event_repo,
                 message_queue,
@@ -256,10 +404,15 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::new(service)
         };
 
-        // Create other services (no-ops for now)
+        // Create other services
         let event_emitter: Arc<dyn EventEmitter> = Arc::new(TauriEventEmitter::new(app_handle.clone()));
         let notifier: Arc<dyn Notifier> = Arc::new(LoggingNotifier);
-        let dependency_manager: Arc<dyn DependencyManager> = Arc::new(NoOpDependencyManager);
+        // Use real dependency manager for automatic blocking/unblocking based on dependency graph
+        let dependency_manager: Arc<dyn DependencyManager> = Arc::new(RepoBackedDependencyManager::new(
+            task_dep_repo,
+            Arc::clone(&task_repo),
+            app_handle.clone(),
+        ));
         let review_starter: Arc<dyn ReviewStarter> = Arc::new(NoOpReviewStarter);
 
         Self {
@@ -547,12 +700,6 @@ mod tests {
     #[test]
     fn test_logging_notifier() {
         let _notifier = LoggingNotifier;
-        // Just verify it can be created
-    }
-
-    #[test]
-    fn test_no_op_dependency_manager() {
-        let _manager = NoOpDependencyManager;
         // Just verify it can be created
     }
 

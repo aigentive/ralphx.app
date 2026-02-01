@@ -146,6 +146,7 @@ pub async fn complete_review(
         Arc::clone(&state.execution_state),
         Arc::clone(&state.app_state.project_repo),
         Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
         Arc::clone(&state.app_state.chat_message_repo),
         Arc::clone(&state.app_state.chat_conversation_repo),
         Arc::clone(&state.app_state.agent_run_repo),
@@ -158,6 +159,7 @@ pub async fn complete_review(
 
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
         Arc::clone(&state.app_state.project_repo),
         Arc::clone(&state.app_state.chat_message_repo),
         Arc::clone(&state.app_state.chat_conversation_repo),
@@ -335,6 +337,7 @@ pub async fn approve_task(
     // 3. Transition to Approved
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
         Arc::clone(&state.app_state.project_repo),
         Arc::clone(&state.app_state.chat_message_repo),
         Arc::clone(&state.app_state.chat_conversation_repo),
@@ -419,6 +422,7 @@ pub async fn request_task_changes(
     // 3. Transition to RevisionNeeded (will auto-trigger re-execution)
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
         Arc::clone(&state.app_state.project_repo),
         Arc::clone(&state.app_state.chat_message_repo),
         Arc::clone(&state.app_state.chat_conversation_repo),

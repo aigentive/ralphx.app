@@ -414,6 +414,7 @@ pub async fn approve_task_for_review(
     // 3. Transition to Approved using TaskTransitionService
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),
@@ -490,6 +491,7 @@ pub async fn request_task_changes_for_review(
     // 3. Transition to RevisionNeeded (will auto-trigger re-execution)
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
         Arc::clone(&state.chat_conversation_repo),

@@ -128,6 +128,7 @@ pub fn run() {
             // Clone references needed for the async task
             let startup_task_repo = Arc::clone(&app_state.task_repo);
             let startup_project_repo = Arc::clone(&app_state.project_repo);
+            let startup_task_dependency_repo = Arc::clone(&app_state.task_dependency_repo);
             let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
             let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
             let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
@@ -151,6 +152,7 @@ pub fn run() {
                         Arc::clone(&startup_execution_state),
                         startup_project_repo.clone(),
                         startup_task_repo.clone(),
+                        startup_task_dependency_repo.clone(),
                         startup_chat_message_repo.clone(),
                         startup_conversation_repo.clone(),
                         startup_agent_run_repo.clone(),
@@ -164,6 +166,7 @@ pub fn run() {
                 // Clone repos for ChatResumptionRunner before they're consumed by TaskTransitionService/StartupJobRunner
                 let chat_resumption_agent_run_repo = Arc::clone(&startup_agent_run_repo);
                 let chat_resumption_task_repo = Arc::clone(&startup_task_repo);
+                let chat_resumption_task_dependency_repo = Arc::clone(&startup_task_dependency_repo);
                 let chat_resumption_project_repo = Arc::clone(&startup_project_repo);
                 let chat_resumption_chat_message_repo = Arc::clone(&startup_chat_message_repo);
                 let chat_resumption_conversation_repo = Arc::clone(&startup_conversation_repo);
@@ -176,6 +179,7 @@ pub fn run() {
                 // Create TaskTransitionService for startup resumption
                 let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
                     startup_task_repo.clone(),
+                    startup_task_dependency_repo,
                     startup_project_repo.clone(),
                     startup_chat_message_repo,
                     startup_conversation_repo,
@@ -207,6 +211,7 @@ pub fn run() {
                     chat_resumption_agent_run_repo,
                     chat_resumption_conversation_repo,
                     chat_resumption_task_repo,
+                    chat_resumption_task_dependency_repo,
                     chat_resumption_chat_message_repo,
                     chat_resumption_project_repo,
                     chat_resumption_ideation_session_repo,

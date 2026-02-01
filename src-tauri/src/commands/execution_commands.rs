@@ -229,6 +229,7 @@ pub async fn resume_execution(
         Arc::clone(&execution_state),
         Arc::clone(&app_state.project_repo),
         Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_conversation_repo),
         Arc::clone(&app_state.agent_run_repo),
@@ -263,6 +264,7 @@ pub async fn stop_execution(
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
         Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_conversation_repo),
@@ -348,6 +350,7 @@ pub async fn set_max_concurrent(
             Arc::clone(&execution_state),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
             Arc::clone(&app_state.agent_run_repo),
@@ -708,6 +711,7 @@ mod tests {
         // Build transition service (same as stop_execution does)
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
@@ -856,6 +860,7 @@ mod tests {
         // Build transition service
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
@@ -914,6 +919,7 @@ mod tests {
         // Build transition service with execution state
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
@@ -976,6 +982,7 @@ mod tests {
         // Build transition service
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.chat_message_repo),
             Arc::clone(&app_state.chat_conversation_repo),
