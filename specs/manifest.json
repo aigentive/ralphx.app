@@ -427,7 +427,7 @@
       "phase": 59,
       "name": "State Time Travel",
       "prd": "specs/phases/prd_phase_59_state_time_travel.md",
-      "status": "active",
+      "status": "complete",
       "description": "View historical task states via timeline navigation with filtered chat"
     }
   ]
