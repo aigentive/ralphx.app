@@ -61,6 +61,11 @@
 
 - [x] [Frontend] Missing mock API: all.list() method missing from mockActivityEventsApi - src/api-mock/activity-events.ts:16
 
+## From Phase 59 Verification (2026-02-01)
+
+- [x] [Frontend] Missing wiring: historicalStatus prop not passed to TaskChatPanel - chat filtering feature cannot be used from TaskDetailOverlay - src/components/tasks/TaskDetailOverlay.tsx:641
+  - Fixed by adding StateTimelineNav, history mode state, and historicalStatus wiring to TaskFullView
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

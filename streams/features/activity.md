@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-01 02:45:00 - P0 Fix: Wire historicalStatus to TaskFullView
+**What:**
+- Added StateTimelineNav component to TaskFullView for history navigation
+- Added history mode state (`historyState`) with status and timestamp
+- Added history mode banner with "Return to Current" button
+- Wired `viewAsStatus` prop to TaskDetailPanel for historical view rendering
+- Wired `historicalStatus` prop to TaskChatPanel for message filtering
+- Fixed TypeScript error with exactOptionalPropertyTypes using spread pattern
+
+**Files:**
+- `src/components/tasks/TaskFullView.tsx` (StateTimelineNav, history mode state, banner, prop wiring)
+- `streams/features/backlog.md` (marked P0 as fixed)
+
+**Commands:**
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - wiring change for existing components
+
+**Result:** Success - P0 gap from Phase 59 verification resolved
+
+---
+
 ### 2026-02-01 02:30:15 - Phase 59 Task 6: Add historical message filtering to TaskChatPanel
 **What:**
 - Added `historicalStatus` optional prop to TaskChatPanel interface
