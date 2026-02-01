@@ -1,6 +1,7 @@
 # src/CLAUDE.md — Frontend
 
 Quality standards: @../.claude/rules/code-quality-standards.md
+Task detail views: @../.claude/rules/task-detail-views.md
 
 ## Stack
 React 19.1 | TS 5.8 | Zustand 5.0+immer | TanStack Query 5.90 | Tailwind 4.1 | Zod 4.3
@@ -110,7 +111,7 @@ Component does ONE of: Display UI | Manage State | Coordinate children
 
 ### Document Patterns Inline
 When introducing a new architectural pattern, add a one-liner here. Pattern name + rule only.
-Example: "View Registry Pattern: state-specific views registered in TASK_DETAIL_VIEWS map"
+Example: "View Registry Pattern" — see @../.claude/rules/task-detail-views.md
 
 ### Composition Over Props
 ```tsx
