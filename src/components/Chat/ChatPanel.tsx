@@ -356,15 +356,13 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         ariaLabel="Chat panel"
         ResizeHandle={ResizeHandle}
       >
-        {/* Header - Glass effect */}
+        {/* Header */}
         <div
           data-testid="chat-panel-header"
-          className="flex items-center justify-between h-11 px-3 border-b backdrop-blur-sm"
+          className="flex items-center justify-between h-11 px-3 border-b shrink-0"
           style={{
-            borderColor: "hsla(220 10% 100% / 0.06)",
-            background: "hsla(220 10% 10% / 0.95)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
+            borderColor: "hsla(220 10% 100% / 0.04)",
+            background: "hsla(220 10% 100% / 0.02)",
           }}
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />

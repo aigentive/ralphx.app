@@ -499,11 +499,12 @@ function AppContent() {
     closeWelcomeOverlay();
   }, [welcomeOverlayReturnView, setCurrentView, closeWelcomeOverlay]);
 
-  // Keyboard shortcuts for view switching, chat toggle, and project creation
+  // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView,
     toggleChatVisible,
+    toggleReviewsPanel,
     openProjectWizard: handleOpenProjectWizard,
     hasProjects: !hasNoProjects,
     showWelcomeOverlay,
@@ -670,7 +671,7 @@ function AppContent() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                Toggle Reviews Panel
+                Toggle Reviews <kbd className="ml-1 opacity-70">⌘⇧R</kbd>
               </TooltipContent>
             </Tooltip>
           </div>
