@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-02 16:30:00 - Phase 64 Task 4: Add metadata fields to state transition types
+**What:**
+- Added `conversation_id` and `agent_run_id` optional fields to `StateTransitionResponseSchemaRaw` Zod schema
+- Added `conversationId` and `agentRunId` optional properties to `StateTransition` TypeScript interface
+- Updated `transformStateTransition` to conditionally spread the metadata fields (handles `exactOptionalPropertyTypes`)
+
+**Files Modified:**
+- `src/api/tasks.schemas.ts` (MODIFIED - added conversation_id, agent_run_id to schema)
+- `src/api/tasks.transforms.ts` (MODIFIED - added fields to interface and transform)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - 0 errors, 13 pre-existing warnings)
+
+**Visual Verification:** N/A - API types only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 16:00:00 - Phase 64 Task 3: Expose metadata in state transitions API response
 **What:**
 - Updated `get_status_history` SQL query to also fetch `metadata` column
