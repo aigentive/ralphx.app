@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": null,
+  "currentPhase": 71,
   "phases": [
     {
       "phase": 0,
@@ -506,6 +506,13 @@
       "prd": "specs/phases/prd_phase_70_diff_base_branch_fix.md",
       "status": "complete",
       "description": "Compare against base branch instead of HEAD for file changes"
+    },
+    {
+      "phase": 71,
+      "name": "Per-Commit File Changes in Review Dialog",
+      "prd": "specs/phases/prd_phase_71_per_commit_diff.md",
+      "status": "active",
+      "description": "Add per-commit diff capabilities to review dialog History tab"
     }
   ]
 }
