@@ -4,6 +4,40 @@
 
 ---
 
+### 2026-02-03 10:30:00 - Phase 67 Task 20: Create frontend API for timeline events
+**What:**
+- Added timeline event schemas to `src/api/task-graph.schemas.ts`:
+  - `TimelineEventTypeSchema` (enum: status_change, plan_accepted, plan_completed)
+  - `TimelineEventSchema` with id, timestamp, task_id, task_title, event_type, from/to status, description, trigger, plan_artifact_id, session_title
+  - `TimelineEventsResponseSchema` with events array, total count, has_more pagination flag
+- Added timeline event types to `src/api/task-graph.types.ts`:
+  - `TimelineEventType` type
+  - `TimelineEvent` interface (camelCase)
+  - `TimelineEventsResponse` interface
+- Added timeline event transforms to `src/api/task-graph.transforms.ts`:
+  - `transformTimelineEvent` (snake_case → camelCase)
+  - `transformTimelineEventsResponse`
+- Added `getTimelineEvents` to `taskGraphApi` in `src/api/task-graph.ts`:
+  - Calls `get_task_timeline_events` Tauri command
+  - Accepts projectId, limit (default 50), offset (default 0)
+- Updated all re-exports in task-graph.ts for types, schemas, and transforms
+
+**Files Modified:**
+- `src/api/task-graph.schemas.ts`
+- `src/api/task-graph.types.ts`
+- `src/api/task-graph.transforms.ts`
+- `src/api/task-graph.ts`
+
+**Commands:**
+- `npm run lint` (passed - pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - API layer only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 09:15:00 - Phase 67 Task 19: Add backend endpoint for timeline events
 **What:**
 - Created `TimelineEvent`, `TimelineEventType`, and `TimelineEventsResponse` structs in `src-tauri/src/commands/task_commands/types.rs`:

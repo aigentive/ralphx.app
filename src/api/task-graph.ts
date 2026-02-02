@@ -2,9 +2,18 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import { TaskDependencyGraphResponseSchema } from "./task-graph.schemas";
-import { transformTaskDependencyGraphResponse } from "./task-graph.transforms";
-import type { TaskDependencyGraphResponse } from "./task-graph.types";
+import {
+  TaskDependencyGraphResponseSchema,
+  TimelineEventsResponseSchema,
+} from "./task-graph.schemas";
+import {
+  transformTaskDependencyGraphResponse,
+  transformTimelineEventsResponse,
+} from "./task-graph.transforms";
+import type {
+  TaskDependencyGraphResponse,
+  TimelineEventsResponse,
+} from "./task-graph.types";
 
 // Re-export types for convenience
 export type {
@@ -13,6 +22,9 @@ export type {
   StatusSummary,
   PlanGroupInfo,
   TaskDependencyGraphResponse,
+  TimelineEventType,
+  TimelineEvent,
+  TimelineEventsResponse,
 } from "./task-graph.types";
 
 // Re-export schemas for consumers that need validation
@@ -22,6 +34,9 @@ export {
   StatusSummarySchema,
   PlanGroupInfoSchema,
   TaskDependencyGraphResponseSchema,
+  TimelineEventTypeSchema,
+  TimelineEventSchema,
+  TimelineEventsResponseSchema,
 } from "./task-graph.schemas";
 
 // Re-export transforms for consumers that need manual transformation
@@ -31,6 +46,8 @@ export {
   transformStatusSummary,
   transformPlanGroupInfo,
   transformTaskDependencyGraphResponse,
+  transformTimelineEvent,
+  transformTimelineEventsResponse,
 } from "./task-graph.transforms";
 
 // ============================================================================
@@ -67,5 +84,24 @@ export const taskGraphApi = {
       { projectId },
       TaskDependencyGraphResponseSchema,
       transformTaskDependencyGraphResponse
+    ),
+
+  /**
+   * Get timeline events for the task graph (execution history)
+   * @param projectId - The project ID to get events for
+   * @param limit - Maximum number of events to return (default: 50)
+   * @param offset - Number of events to skip for pagination (default: 0)
+   * @returns Timeline events response with events, total count, and pagination info
+   */
+  getTimelineEvents: (
+    projectId: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<TimelineEventsResponse> =>
+    typedInvokeWithTransform(
+      "get_task_timeline_events",
+      { projectId, limit, offset },
+      TimelineEventsResponseSchema,
+      transformTimelineEventsResponse
     ),
 } as const;
