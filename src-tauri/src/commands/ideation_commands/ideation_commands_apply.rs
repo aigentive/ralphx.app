@@ -26,13 +26,11 @@ pub async fn apply_proposals_to_kanban(
 
     let session_id = IdeationSessionId::from_string(input.session_id);
 
-    // Parse target column and map to internal status
-    let (target_status, should_emit_queue_changed) = match input.target_column.to_lowercase().as_str() {
-        "draft" => (InternalStatus::Backlog, false),
-        "backlog" => (InternalStatus::Backlog, false),
-        "todo" => (InternalStatus::Ready, true),
-        _ => return Err(format!("Invalid target column: {}", input.target_column)),
-    };
+    // Status will be determined automatically based on dependencies:
+    // - Tasks with no blockers → Ready
+    // - Tasks with blockers → Blocked
+    // The target_column field is kept for backwards compatibility but ignored when "auto"
+    let use_auto_status = input.target_column.to_lowercase() == "auto";
 
     // Get the session to know the project_id
     let session = state
@@ -78,7 +76,8 @@ pub async fn apply_proposals_to_kanban(
         let mut task = Task::new(session.project_id.clone(), proposal.title.clone());
         task.description = proposal.description.clone();
         task.category = proposal.category.to_string();
-        task.internal_status = target_status;
+        // Initial status - will be updated after dependencies are created
+        task.internal_status = InternalStatus::Backlog;
 
         // Set priority based on user override or suggested (use priority score as i32)
         if proposal.user_priority.is_some() {
@@ -166,6 +165,58 @@ pub async fn apply_proposals_to_kanban(
         }
     }
 
+    // Auto-status: Set task status based on dependencies
+    // - Tasks with no blockers → Ready
+    // - Tasks with blockers → Blocked (with blocked_reason)
+    let mut any_ready_tasks = false;
+    if use_auto_status {
+        // Build a map of task_id -> task title for blocker names
+        let task_titles: HashMap<TaskId, String> = created_tasks
+            .iter()
+            .map(|t| (t.id.clone(), t.title.clone()))
+            .collect();
+
+        for task in &created_tasks {
+            let blockers = state
+                .task_dependency_repo
+                .get_blockers(&task.id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            // Fetch the task to update it
+            let mut task_to_update = state
+                .task_repo
+                .get_by_id(&task.id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Task {} not found after creation", task.id))?;
+
+            if blockers.is_empty() {
+                // No blockers - set to Ready
+                task_to_update.internal_status = InternalStatus::Ready;
+                task_to_update.blocked_reason = None;
+                any_ready_tasks = true;
+            } else {
+                // Has blockers - set to Blocked with reason
+                let blocker_names: Vec<String> = blockers
+                    .iter()
+                    .filter_map(|blocker_id| task_titles.get(blocker_id))
+                    .cloned()
+                    .collect();
+                let blocked_reason = format!("Waiting for: {}", blocker_names.join(", "));
+
+                task_to_update.internal_status = InternalStatus::Blocked;
+                task_to_update.blocked_reason = Some(blocked_reason);
+            }
+
+            state
+                .task_repo
+                .update(&task_to_update)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
     // Check if all proposals in session are now applied
     let remaining = state
         .task_proposal_repo
@@ -185,8 +236,8 @@ pub async fn apply_proposals_to_kanban(
             .map_err(|e| e.to_string())?;
     }
 
-    // Emit queue_changed if any tasks were created with Ready status
-    if should_emit_queue_changed && !created_tasks.is_empty() {
+    // Emit queue_changed if any tasks were set to Ready status
+    if any_ready_tasks {
         emit_queue_changed(&state, &session.project_id, &app).await;
     }
 
