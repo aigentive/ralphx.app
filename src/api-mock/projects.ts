@@ -63,6 +63,22 @@ export const mockProjectsApi = {
   delete: async (_projectId: string): Promise<boolean> => {
     return true;
   },
+
+  changeGitMode: async (
+    projectId: string,
+    gitMode: "local" | "worktree",
+    worktreeParentDirectory?: string
+  ): Promise<void> => {
+    const store = getStore();
+    const project = store.projects.get(projectId);
+    if (project) {
+      project.gitMode = gitMode;
+      if (worktreeParentDirectory !== undefined) {
+        project.worktreeParentDirectory = worktreeParentDirectory;
+      }
+      store.projects.set(projectId, project);
+    }
+  },
 } as const;
 
 // ============================================================================

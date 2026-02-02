@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-02 15:00:00 - Phase 66 Task 18: Add GitSettingsSection for project git mode configuration
+**What:**
+- Created `src/components/settings/GitSettingsSection.tsx` with:
+  - Git Mode selector: Isolated Worktrees (Recommended) / Local Branches
+  - Warning banner for local mode explaining limitations
+  - Base Branch display (read-only)
+  - Worktree Location input (when in worktree mode)
+- Added `changeGitMode` method to `src/api/projects.ts` (calls `change_project_git_mode` Tauri command)
+- Added mock implementation to `src/api-mock/projects.ts` for web mode testing
+- Wired GitSettingsSection into SettingsView between SupervisorSection and IdeationSettingsPanel
+
+**Files Modified:**
+- `src/components/settings/GitSettingsSection.tsx` (NEW)
+- `src/components/settings/SettingsView.tsx` (import and render GitSettingsSection)
+- `src/api/projects.ts` (add changeGitMode method)
+- `src/api-mock/projects.ts` (add mock changeGitMode method)
+
+**Commands:**
+- `npm run lint` (passed, no new errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI changes require manual testing in Tauri app
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 14:00:00 - Phase 66 Task 17: Update project wizard with git mode selection and worktree defaults
 **What:**
 - Changed default git mode from "local" to "worktree" (recommended for concurrent tasks)

@@ -25,6 +25,7 @@ import type {
 } from "@/types/settings";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
+import { GitSettingsSection } from "./GitSettingsSection";
 import {
   MODEL_OPTIONS,
   SavingIndicator,
@@ -441,6 +442,7 @@ export function SettingsView({
             onChange={handleSupervisorChange}
             disabled={isSaving}
           />
+          <GitSettingsSection />
           <IdeationSettingsPanel />
         </div>
       </ScrollArea>

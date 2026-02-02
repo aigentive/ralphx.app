@@ -123,6 +123,25 @@ export const projectsApi = {
    */
   delete: (projectId: string) =>
     typedInvoke("delete_project", { projectId }, z.boolean()),
+
+  /**
+   * Change project git mode between Local and Worktree
+   * @param projectId The project ID
+   * @param gitMode The new git mode ("local" or "worktree")
+   * @param worktreeParentDirectory Optional custom worktree directory (for worktree mode)
+   */
+  changeGitMode: (
+    projectId: string,
+    gitMode: "local" | "worktree",
+    worktreeParentDirectory?: string
+  ) =>
+    invoke("change_project_git_mode", {
+      projectId,
+      input: {
+        gitMode,
+        worktreeParentDirectory,
+      },
+    }),
 } as const;
 
 /**
