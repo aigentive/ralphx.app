@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-03 01:15:00 - Phase 67 Task 9: Create custom TaskNode component
+**What:**
+- Created `src/components/TaskGraph/nodes/TaskNode.tsx` - Custom React Flow node component
+- 180px width per design spec
+- Status-based border/background colors from nodeStyles.ts
+- Truncated title with tooltip
+- Status badge showing human-readable status label
+- Source/target handles for edge connections (top/bottom)
+- Critical path indicator (ring highlight)
+- Selection indicator
+- Updated `src/components/TaskGraph/index.ts` to export TaskNode component and types
+
+**Files Created:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+
+**Files Modified:**
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - component created, requires wiring in Task B.5 (Task 12) to be visible
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 00:45:00 - Phase 67 Task 8: Create status color mapping
 **What:**
 - Created `src/components/TaskGraph/nodes/nodeStyles.ts` with centralized status color mapping
