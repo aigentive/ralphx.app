@@ -716,7 +716,20 @@ function AppContent() {
                 </KanbanSplitLayout>
               )}
               {currentView === "graph" && (
-                <TaskGraphView projectId={currentProjectId} />
+                <TaskGraphView
+                  projectId={currentProjectId}
+                  footer={
+                    <ExecutionControlBar
+                      runningCount={executionStatus.runningCount}
+                      maxConcurrent={executionStatus.maxConcurrent}
+                      queuedCount={executionStatus.queuedCount}
+                      isPaused={executionStatus.isPaused}
+                      isLoading={isExecutionLoading}
+                      onPauseToggle={handlePauseToggle}
+                      onStop={handleStop}
+                    />
+                  }
+                />
               )}
               {currentView === "ideation" && (
                 <IdeationView
