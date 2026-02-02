@@ -776,37 +776,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         }
     }
 
-    // 4. Merge succeeded! Get commit SHA and complete
-    let commit_sha = match GitService::get_head_sha(worktree) {
-        Ok(sha) => sha,
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get HEAD SHA"
-            );
-            transition_to_merge_conflict(
-                &task_id,
-                &format!("Auto-complete failed: could not get HEAD SHA: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                execution_state,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-    };
-
-    // 5. Get project for complete_merge_internal
+    // 4. Get project for verification and complete_merge_internal
     let project = match project_repo.get_by_id(&task.project_id).await {
         Ok(Some(project)) => project,
         Ok(None) => {
@@ -827,11 +797,134 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         }
     };
 
-    // 6. Complete the merge using shared logic
+    // 5. Verify merge actually happened on main branch
+    // Get the task branch HEAD SHA from worktree
+    let task_branch_head = match GitService::get_head_sha(worktree) {
+        Ok(sha) => sha,
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to get task branch HEAD SHA"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Auto-complete failed: could not get task branch HEAD SHA: {}", e),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+    };
+
+    // Get main repo path and base branch
+    let main_repo_path = PathBuf::from(&project.working_directory);
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+
+    // Verify task branch commit is merged into base branch
+    match GitService::is_commit_on_branch(&main_repo_path, &task_branch_head, base_branch) {
+        Ok(true) => {
+            // Task branch is merged - good to proceed
+        }
+        Ok(false) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                task_branch_head = %task_branch_head,
+                base_branch = %base_branch,
+                "attempt_merge_auto_complete: task branch not merged to main, transitioning to MergeConflict"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Agent exited but task branch {} not merged to {}", task_branch_head, base_branch),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to verify merge on main"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Auto-complete failed: could not verify merge: {}", e),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+    }
+
+    // 6. Get merge commit SHA from main branch HEAD (not worktree)
+    let commit_sha = match GitService::get_head_sha(&main_repo_path) {
+        Ok(sha) => sha,
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to get main branch HEAD SHA"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Auto-complete failed: could not get main branch HEAD SHA: {}", e),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+    };
+
+    // 7. Complete the merge using shared logic
     tracing::info!(
         task_id = task_id_str,
         commit_sha = %commit_sha,
-        "attempt_merge_auto_complete: merge successful, completing"
+        "attempt_merge_auto_complete: merge verified on main, completing"
     );
 
     if let Err(e) = complete_merge_internal(

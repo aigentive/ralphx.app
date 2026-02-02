@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-02 23:15:00 - Phase 78 Task 2: Fix attempt_merge_auto_complete to verify merge on main
+**What:**
+- Fixed attempt_merge_auto_complete() in chat_service_send_background.rs to verify merge on main branch
+- Moved project fetch earlier (from step 5 to step 4) to have project data for verification
+- Added step 5: get task branch HEAD SHA from worktree, then verify it's merged into base branch
+- Uses is_commit_on_branch() helper to check if task branch commit is ancestor of base branch
+- If not merged: transitions to MergeConflict with descriptive message
+- Added step 6: get merge commit SHA from main repo HEAD (not worktree)
+- Updated step numbering from 4-6 to 4-7
+
+**Files:**
+- MODIFIED: src-tauri/src/application/chat_service/chat_service_send_background.rs
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - all tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:45:00 - Phase 78 Task 1: Add is_commit_on_branch helper to GitService
 **What:**
 - Added is_commit_on_branch() function to GitService (Query Operations section)
