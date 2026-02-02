@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-02 19:00:00 - Phase 71 Complete → Phase 72 Active
+**What:**
+- Ran gap verification on Phase 71: No P0 gaps found
+- Verified full wiring from user interaction to backend:
+  - Commit click → handleCommitSelect → onFetchCommitFiles → diffApi.getCommitFileChanges
+  - File click in commit → handleCommitFileSelect → fetchDiff(path, commitSha) → diffApi.getCommitFileDiff
+- Updated manifest.json: Phase 71 status "complete", Phase 72 status "active"
+
+**Verification Summary:**
+- WIRING: All props passed and invoked correctly
+- API: Both commands registered and called from frontend
+- STATE: Loading states and file lists managed properly
+- No orphaned implementations found
+
+**Result:** Phase 71 complete, Phase 72 activated
+
+---
+
 ### 2026-02-02 18:00:00 - Phase 71 Task 3: Wire frontend to use per-commit APIs
 **What:**
 - Updated `useGitDiff.ts`:
