@@ -303,7 +303,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): wire custom nodes and edges"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 13,

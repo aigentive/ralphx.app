@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 03:00:00 - Phase 67 Task 12: Wire custom nodes/edges to React Flow
+**What:**
+- Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
+  - Added `type: "task"` to nodes for custom TaskNode component
+  - Added `type: "dependency"` to edges for custom DependencyEdge component
+  - Added `sourceStatus` to edge data for active edge styling
+  - Removed inline styles (now handled by custom components)
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Imported TaskNode and DependencyEdge components
+  - Defined `nodeTypes` and `edgeTypes` maps (outside component for performance)
+  - Passed nodeTypes/edgeTypes to ReactFlow component
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`
+- `src/components/TaskGraph/TaskGraphView.tsx`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - graph rendering requires project with tasks and dependencies to verify visually
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 02:15:00 - Phase 67 Task 11: Add GraphLegend component
 **What:**
 - Created `src/components/TaskGraph/controls/GraphLegend.tsx` - Status color legend component
