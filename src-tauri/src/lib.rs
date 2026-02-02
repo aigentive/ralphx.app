@@ -313,6 +313,8 @@ pub fn run() {
             commands::execution_commands::resume_execution,
             commands::execution_commands::stop_execution,
             commands::execution_commands::set_max_concurrent,
+            commands::execution_commands::get_execution_settings,
+            commands::execution_commands::update_execution_settings,
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::get_ideation_session,

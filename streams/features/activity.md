@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-02 20:00:00 - Phase 77 Task 3: Add get/update execution settings Tauri commands
+**What:**
+- Added ExecutionSettingsResponse struct with From<ExecutionSettings> impl
+- Added UpdateExecutionSettingsInput struct for Tauri command input
+- Implemented get_execution_settings command - retrieves settings from DB via repository
+- Implemented update_execution_settings command with:
+  - Database persistence via execution_settings_repo
+  - ExecutionState sync when max_concurrent_tasks changes
+  - Scheduler trigger when capacity increases (picks up waiting Ready tasks)
+  - settings:execution:updated event emission for UI updates
+- Registered both commands in lib.rs invoke_handler
+- Added 4 unit tests (serialization, deserialization, from_domain)
+- Added 3 integration tests (repo get_default, repo update, sync_execution_state)
+
+**Files:**
+- MODIFIED: src-tauri/src/commands/execution_commands.rs (added types, commands, tests)
+- MODIFIED: src-tauri/src/lib.rs (registered get_execution_settings, update_execution_settings)
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test test_execution_settings` - 9 tests pass
+- `cargo test commands::execution_commands` - 32 tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:15:00 - Phase 77 Task 2: Add ExecutionSettings domain struct and repository layer
 **What:**
 - Created ExecutionSettings domain struct with max_concurrent_tasks, auto_commit, pause_on_failure fields
