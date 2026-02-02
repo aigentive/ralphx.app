@@ -4,7 +4,11 @@
  * Displays tasks as nodes with dependencies as edges.
  * Uses dagre for hierarchical layout computation.
  * Custom TaskNode and DependencyEdge components provide rich visualization.
- * Includes ExecutionTimeline side panel for timeline-to-node interaction.
+ *
+ * Layout: Uses GraphSplitLayout for split-screen view with:
+ * - Left: Graph canvas with FloatingGraphFilters overlay
+ * - Right: FloatingTimeline (no task selected) or IntegratedChatPanel (task selected)
+ * - Footer: Optional ExecutionControlBar
  */
 
 import { useCallback, useEffect, useMemo, useState, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -30,10 +34,10 @@ import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
-import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
+import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
+import { FloatingGraphFilters } from "./controls/FloatingGraphFilters";
 import {
-  GraphControls,
   COMPACT_MODE_THRESHOLD,
   DEFAULT_GRAPH_FILTERS,
   DEFAULT_LAYOUT_DIRECTION,
@@ -43,10 +47,10 @@ import {
   type LayoutDirection,
   type GroupingOption,
 } from "./controls/GraphControls";
+import { GraphSplitLayout } from "@/components/layout/GraphSplitLayout";
 import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
 import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
-import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
@@ -59,6 +63,8 @@ import { Button } from "@/components/ui/button";
 
 export interface TaskGraphViewProps {
   projectId: string;
+  /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
+  footer?: React.ReactNode;
 }
 
 // ============================================================================
@@ -259,9 +265,11 @@ const edgeTypes: EdgeTypes = {
 
 interface TaskGraphViewInnerProps {
   projectId: string;
+  /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
+  footer?: React.ReactNode;
 }
 
-function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
+function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId);
   const { setCenter, getNodes } = useReactFlow();
 
@@ -661,90 +669,87 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     !filters.showCompleted;
 
   return (
-    <div className="h-full w-full relative flex flex-col" data-testid="task-graph-view">
-      {/* Graph Controls bar */}
-      <GraphControls
-        filters={filters}
-        onFiltersChange={setFilters}
-        layoutDirection={layoutDirection}
-        onLayoutDirectionChange={setLayoutDirection}
-        grouping={grouping}
-        onGroupingChange={setGrouping}
-        nodeMode={effectiveNodeMode}
-        onNodeModeChange={handleNodeModeChange}
-        isAutoCompact={isAutoCompact && nodeModeOverride === null}
-        planGroups={graphData?.planGroups ?? []}
-      />
-
-      {/* Main graph area with timeline */}
-      <div className="flex-1 flex min-h-0">
-        {/* Graph canvas - tabIndex for keyboard navigation */}
-        <div
-          className="flex-1 h-full relative outline-none"
-          tabIndex={0}
-          onKeyDown={handleKeyDown}
-        >
-          {/* Show empty state when filters hide all tasks */}
-          {filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <Filter className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground mb-2">No tasks match current filters</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFilters(DEFAULT_GRAPH_FILTERS)}
-                >
-                  <X className="w-3 h-3 mr-1" />
-                  Clear filters
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={activeNodeTypes}
-              edgeTypes={edgeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={handleNodeClick}
-              onPaneClick={handlePaneClick}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-              minZoom={0.1}
-              maxZoom={2}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background color="hsl(220 10% 25%)" gap={20} />
-              <Controls
-                showInteractive={false}
-                style={{
-                  background: "hsla(220 10% 12% / 0.9)",
-                  border: "1px solid hsla(220 20% 100% / 0.08)",
-                  borderRadius: 8,
-                }}
-              />
-              {/* Status Legend - positioned to right of Controls */}
-              <div className="absolute bottom-4 left-14 z-10">
-                <GraphLegend defaultCollapsed={true} />
-              </div>
-            </ReactFlow>
-          )}
-        </div>
-
-        {/* Execution Timeline side panel */}
-        <ExecutionTimeline
+    <GraphSplitLayout
+      projectId={projectId}
+      footer={footer}
+      timelineContent={
+        <FloatingTimeline
           projectId={projectId}
           onTaskClick={handleTimelineTaskClick}
           highlightedTaskId={highlightedTaskId}
-          defaultCollapsed={false}
         />
-      </div>
+      }
+    >
+      {/* Graph canvas container */}
+      <div
+        className="h-full w-full relative outline-none"
+        data-testid="task-graph-view"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Floating filter controls - positioned over canvas */}
+        <FloatingGraphFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          layoutDirection={layoutDirection}
+          onLayoutDirectionChange={setLayoutDirection}
+          nodeMode={effectiveNodeMode}
+          onNodeModeChange={handleNodeModeChange}
+          isAutoCompact={isAutoCompact && nodeModeOverride === null}
+          grouping={grouping}
+          onGroupingChange={setGrouping}
+          planGroups={graphData?.planGroups ?? []}
+        />
 
-      {/* Task Detail Overlay - renders when a node is selected */}
-      {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}
-    </div>
+        {/* Show empty state when filters hide all tasks */}
+        {filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <Filter className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground mb-2">No tasks match current filters</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFilters(DEFAULT_GRAPH_FILTERS)}
+              >
+                <X className="w-3 h-3 mr-1" />
+                Clear filters
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={activeNodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
+            onPaneClick={handlePaneClick}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            minZoom={0.1}
+            maxZoom={2}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background color="hsl(220 10% 25%)" gap={20} />
+            <Controls
+              showInteractive={false}
+              style={{
+                background: "hsla(220 10% 12% / 0.9)",
+                border: "1px solid hsla(220 20% 100% / 0.08)",
+                borderRadius: 8,
+              }}
+            />
+            {/* Status Legend - positioned to right of Controls */}
+            <div className="absolute bottom-4 left-14 z-10">
+              <GraphLegend defaultCollapsed={true} />
+            </div>
+          </ReactFlow>
+        )}
+      </div>
+    </GraphSplitLayout>
   );
 }
 
@@ -752,10 +757,10 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
 // Main Component (provides ReactFlowProvider)
 // ============================================================================
 
-export function TaskGraphView({ projectId }: TaskGraphViewProps) {
+export function TaskGraphView({ projectId, footer }: TaskGraphViewProps) {
   return (
     <ReactFlowProvider>
-      <TaskGraphViewInner projectId={projectId} />
+      <TaskGraphViewInner projectId={projectId} footer={footer} />
     </ReactFlowProvider>
   );
 }

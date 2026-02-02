@@ -165,7 +165,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(graph): integrate split layout with floating controls"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
