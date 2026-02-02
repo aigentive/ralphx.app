@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 16:45:00 - Phase 67 Task 25: Wire real-time updates for timeline
+**What:**
+- Verified existing implementation in `src/components/TaskGraph/hooks/useExecutionTimeline.ts`:
+  - Hook already subscribes to `task:updated` events via `eventBus.subscribe` (lines 102-113)
+  - Query cache is invalidated on events via `queryClient.invalidateQueries`
+  - `realTimeUpdates` option defaults to `true` (line 96)
+  - `useTimelineEvents` simple hook also subscribes to `task:updated` (lines 186-197)
+- Verified `ExecutionTimeline` component uses hook with `realTimeUpdates: true` (line 333)
+- Task was already fully implemented in prior work; PRD just needed marking as complete
+
+**Files Verified:**
+- `src/components/TaskGraph/hooks/useExecutionTimeline.ts` (real-time subscription implemented)
+- `src/components/TaskGraph/timeline/ExecutionTimeline.tsx` (uses realTimeUpdates: true)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - backend integration, no UI changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 15:30:00 - Phase 67 Task 24: Add timeline event filters
 **What:**
 - Created `src/components/TaskGraph/timeline/timelineFilters.ts`:
