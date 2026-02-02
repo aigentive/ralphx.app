@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 17:00:00 - Phase 76 Complete: Hybrid Merge Completion Detection
+**What:**
+- Ran gap verification on completed phase
+- All 5 tasks verified: wiring, API, state, events all correctly implemented
+- Auto-completion hooks verified on both success and error agent exit paths
+- Detection helpers (is_rebase_in_progress, has_conflict_markers, get_head_sha) all called correctly
+- complete_merge_internal shared by all 3 paths (programmatic, auto-detect, HTTP)
+- HTTP handler idempotent with SHA validation verified
+- Merger agent docs correctly updated
+- Updated manifest.json: Phase 76 status → "complete"
+
+**Visual Verification:** N/A - backend/docs only phase
+
+**Commands:**
+- Gap verification via Explore agent
+
+**Result:** Success - Phase 76 complete, all phases in manifest complete
+
+---
+
 ### 2026-02-02 16:15:00 - Phase 76 Task 5: Update merger agent docs to reflect auto-detection
 **What:**
 - Updated CRITICAL section: changed from "MUST call complete_merge" to "auto-detected on exit"
