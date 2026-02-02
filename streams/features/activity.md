@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 04:15:00 - Phase 68 Task 3: Update StartupJobRunner for auto-transition recovery
+**What:**
+- Updated `StartupJobRunner` to recover tasks stuck in auto-transition states
+- Added import for `AUTO_TRANSITION_STATES` from `execution_commands`
+- Added second loop after agent-active recovery loop that iterates `AUTO_TRANSITION_STATES`
+- For each task in an auto-transition state (QaPassed, PendingReview, RevisionNeeded, Approved):
+  - Checks max_concurrent limit before triggering
+  - Re-executes entry actions via `execute_entry_actions()` which triggers `check_auto_transition()`
+- This ensures tasks stuck mid-transition on crash will complete their auto-transition on restart
+
+**Files Modified:**
+- `src-tauri/src/application/startup_jobs.rs`
+  - Added `AUTO_TRANSITION_STATES` to use statement
+  - Changed first loop to use `&projects` (borrow instead of move)
+  - Added auto-transition recovery loop after agent-active loop (lines 167-210)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3367 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 03:45:00 - Phase 68 Task 2: Add AUTO_TRANSITION_STATES constant
 **What:**
 - Added `AUTO_TRANSITION_STATES` constant to `execution_commands.rs`

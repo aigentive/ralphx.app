@@ -18,7 +18,9 @@ use std::sync::Arc;
 use tauri::Runtime;
 use tracing::info;
 
-use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
+use crate::commands::execution_commands::{
+    ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
+};
 use crate::domain::repositories::{AgentRunRepository, ProjectRepository, TaskRepository};
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -111,7 +113,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         eprintln!("[STARTUP] Found {} projects", projects.len());
 
         // Iterate through all projects and their tasks in agent-active states
-        for project in projects {
+        for project in &projects {
             eprintln!("[STARTUP] Checking project: {}", project.id.as_str());
             for status in AGENT_ACTIVE_STATUSES {
                 // Get tasks in this status for this project
@@ -159,6 +161,58 @@ impl<R: Runtime> StartupJobRunner<R> {
         }
 
         info!(count = resumed, "Task resumption complete");
+
+        // Re-trigger auto-transition states that may have been interrupted mid-transition
+        // These states have on_enter side effects that trigger auto-transitions to spawn agents
+        for project in &projects {
+            for status in AUTO_TRANSITION_STATES {
+                let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
+                    Ok(tasks) => tasks,
+                    Err(e) => {
+                        tracing::warn!(
+                            project_id = project.id.as_str(),
+                            status = ?status,
+                            error = %e,
+                            "Failed to get tasks by status for auto-transition"
+                        );
+                        continue;
+                    }
+                };
+
+                eprintln!(
+                    "[STARTUP] Found {} tasks in {:?} status (auto-transition)",
+                    tasks.len(),
+                    status
+                );
+                for task in tasks {
+                    // Check max_concurrent before triggering (auto-transitions may spawn agents)
+                    if !self.execution_state.can_start_task() {
+                        info!(
+                            max_concurrent = self.execution_state.max_concurrent(),
+                            running_count = self.execution_state.running_count(),
+                            "Max concurrent reached, stopping auto-transition recovery"
+                        );
+                        return;
+                    }
+
+                    eprintln!(
+                        "[STARTUP] Re-triggering auto-transition for task: {} ({})",
+                        task.id.as_str(),
+                        task.title
+                    );
+                    info!(
+                        task_id = task.id.as_str(),
+                        status = ?status,
+                        "Re-triggering auto-transition for stuck task"
+                    );
+
+                    // Re-execute entry actions - this will trigger check_auto_transition()
+                    self.transition_service
+                        .execute_entry_actions(&task.id, &task, *status)
+                        .await;
+                }
+            }
+        }
 
         // After resuming agent-active tasks, try to schedule any Ready tasks
         // that may be waiting in the queue (if scheduler is configured)
