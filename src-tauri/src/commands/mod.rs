@@ -7,6 +7,7 @@ pub mod agent_profile_commands;
 pub mod artifact_commands;
 pub mod diff_commands;
 pub mod execution_commands;
+pub mod git_commands;
 pub mod health;
 pub mod ideation_commands;
 pub mod methodology_commands;
@@ -117,4 +118,10 @@ pub use unified_chat_commands::{
     AgentMessageResponse, AgentRunStatusResponse, CreateAgentConversationInput,
     QueueAgentMessageInput, QueuedMessageResponse as UnifiedQueuedMessageResponse,
     SendAgentMessageInput, SendAgentMessageResponse,
+};
+// Git commands (Phase 66 - Per-task branch isolation)
+pub use git_commands::{
+    change_project_git_mode, cleanup_task_branch, get_task_commits, get_task_diff_stats,
+    resolve_merge_conflict, retry_merge, ChangeGitModeInput, CommitInfoResponse,
+    TaskCommitsResponse, TaskDiffStatsResponse,
 };

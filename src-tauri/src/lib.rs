@@ -422,7 +422,14 @@ pub fn run() {
             commands::activity_commands::count_session_activity_events,
             // Diff commands
             commands::diff_commands::get_task_file_changes,
-            commands::diff_commands::get_file_diff
+            commands::diff_commands::get_file_diff,
+            // Git commands (Phase 66 - Per-task branch isolation)
+            commands::git_commands::get_task_commits,
+            commands::git_commands::get_task_diff_stats,
+            commands::git_commands::resolve_merge_conflict,
+            commands::git_commands::retry_merge,
+            commands::git_commands::cleanup_task_branch,
+            commands::git_commands::change_project_git_mode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

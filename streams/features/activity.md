@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 13:00:00 - Phase 66 Task 16: Add git commands for task commits, diff, merge, and cleanup
+**What:**
+- Created `src-tauri/src/commands/git_commands.rs` with six Tauri commands:
+  - `get_task_commits` - Get commits on task branch since it diverged from base
+  - `get_task_diff_stats` - Get diff statistics for task branch compared to base
+  - `resolve_merge_conflict` - User clicked "Conflicts Resolved" after manual resolution
+  - `retry_merge` - Re-attempt merge after user made changes
+  - `cleanup_task_branch` - Manual cleanup for failed/cancelled tasks
+  - `change_project_git_mode` - Switch between Local/Worktree modes
+- Registered module in `commands/mod.rs` with re-exports
+- Added commands to `invoke_handler` in `lib.rs`
+- Commands delegate to GitService for git operations and TaskTransitionService for state transitions
+
+**Files Modified:**
+- `src-tauri/src/commands/git_commands.rs` (NEW)
+- `src-tauri/src/commands/mod.rs` (register module + re-exports)
+- `src-tauri/src/lib.rs` (register commands)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 12:00:00 - Phase 66 Task 15: Add ralphx-merger agent configuration
 **What:**
 - Added `ralphx-merger` agent configuration to `agent_config.rs`
