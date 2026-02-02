@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 06:30:00 - Phase 66 Task 8: Update working directory resolution for worktree mode
+**What:**
+- Updated `resolve_working_directory()` in chat_service_context.rs to handle worktree mode
+- For task-related contexts (Task, TaskExecution, Review):
+  - Local mode: Always returns project.working_directory
+  - Worktree mode: Returns task.worktree_path if available, else project.working_directory
+- Project and Ideation contexts still use project.working_directory
+- Imported GitMode from domain entities for mode checking
+
+**Files Modified:**
+- `src-tauri/src/application/chat_service/chat_service_context.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 05:15:00 - Phase 66 Task 7: Auto-commit on task execution completion
 **What:**
 - Added auto-commit logic in `on_exit(Executing)` and `on_exit(ReExecuting)` in transition_handler/mod.rs

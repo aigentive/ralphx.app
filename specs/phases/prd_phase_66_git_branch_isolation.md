@@ -244,7 +244,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(chat): update working directory resolution for worktree mode"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 9,
