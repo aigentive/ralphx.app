@@ -612,12 +612,24 @@ use std::sync::{Arc, Mutex};
             Ok(None)
         }
 
+        async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
         async fn update_latest_state_history_metadata(
             &self,
             _task_id: &TaskId,
             _metadata: &StateHistoryMetadata,
         ) -> AppResult<()> {
             Ok(())
+        }
+
+        async fn has_task_in_states(
+            &self,
+            _project_id: &ProjectId,
+            _statuses: &[InternalStatus],
+        ) -> AppResult<bool> {
+            Ok(false)
         }
     }
 

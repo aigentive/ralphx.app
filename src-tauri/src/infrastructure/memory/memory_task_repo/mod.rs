@@ -399,6 +399,25 @@ impl TaskRepository for MemoryTaskRepository {
         Ok(ready_tasks.first().cloned().cloned())
     }
 
+    async fn get_oldest_ready_tasks(&self, limit: u32) -> AppResult<Vec<Task>> {
+        let tasks = self.tasks.read().await;
+
+        // Find all Ready tasks that are not archived
+        let mut ready_tasks: Vec<Task> = tasks
+            .values()
+            .filter(|t| t.internal_status == InternalStatus::Ready && t.archived_at.is_none())
+            .cloned()
+            .collect();
+
+        // Sort by created_at ASC (oldest first) for FIFO
+        ready_tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+        // Apply limit
+        ready_tasks.truncate(limit as usize);
+
+        Ok(ready_tasks)
+    }
+
     async fn update_latest_state_history_metadata(
         &self,
         _task_id: &TaskId,
@@ -406,6 +425,25 @@ impl TaskRepository for MemoryTaskRepository {
     ) -> AppResult<()> {
         // In-memory implementation doesn't persist metadata
         Ok(())
+    }
+
+    async fn has_task_in_states(
+        &self,
+        project_id: &ProjectId,
+        statuses: &[InternalStatus],
+    ) -> AppResult<bool> {
+        if statuses.is_empty() {
+            return Ok(false);
+        }
+
+        let tasks = self.tasks.read().await;
+        let has_match = tasks.values().any(|t| {
+            t.project_id == *project_id
+                && t.archived_at.is_none()
+                && statuses.contains(&t.internal_status)
+        });
+
+        Ok(has_match)
     }
 }
 

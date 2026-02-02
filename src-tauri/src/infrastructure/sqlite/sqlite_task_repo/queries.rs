@@ -27,3 +27,13 @@ pub(super) const GET_OLDEST_READY_TASK: &str =
        AND archived_at IS NULL
      ORDER BY created_at ASC
      LIMIT 1";
+
+/// Get Ready tasks across all projects (Phase 66 - Local Mode Enforcement)
+/// Returns tasks ordered by created_at ASC with a limit
+pub(super) const GET_OLDEST_READY_TASKS: &str =
+    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha
+     FROM tasks
+     WHERE internal_status = 'ready'
+       AND archived_at IS NULL
+     ORDER BY created_at ASC
+     LIMIT ?1";
