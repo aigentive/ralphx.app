@@ -4,6 +4,8 @@
 
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
+use crate::application::GitService;
+use crate::domain::entities::{GitMode, ProjectId, TaskId};
 
 mod side_effects;
 #[cfg(test)]
@@ -127,9 +129,10 @@ impl<'a> TransitionHandler<'a> {
 
         // State-specific exit actions
         match from {
-            State::Executing => {
-                // Stop worker agent if it's still running
-                // (This is a safety net - normally the agent completes naturally)
+            State::Executing | State::ReExecuting => {
+                // Auto-commit on execution completion (Phase 66 - Task 7)
+                // Commit any uncommitted changes with message: {prefix}{task_title}
+                self.auto_commit_on_execution_done().await;
             }
             State::QaTesting => {
                 // Stop QA tester if transitioning away
@@ -183,6 +186,118 @@ impl<'a> TransitionHandler<'a> {
                 "Triggering ready task scheduling"
             );
             scheduler.try_schedule_ready_tasks().await;
+        }
+    }
+
+    /// Auto-commit on execution completion (Phase 66 - Task 7)
+    ///
+    /// When a task exits Executing or ReExecuting state, commit any uncommitted
+    /// changes with message format: {prefix}{task_title}
+    ///
+    /// Default prefix: "feat: "
+    /// TODO: Make configurable via ExecutionSettings when that infrastructure exists
+    async fn auto_commit_on_execution_done(&self) {
+        let task_id_str = &self.machine.context.task_id;
+        let project_id_str = &self.machine.context.project_id;
+
+        // Only proceed if task_repo and project_repo are available
+        let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) else {
+            tracing::debug!(
+                task_id = task_id_str,
+                "Skipping auto-commit: repos not available"
+            );
+            return;
+        };
+
+        let task_id = TaskId::from_string(task_id_str.clone());
+        let project_id = ProjectId::from_string(project_id_str.clone());
+
+        // Fetch task and project
+        let task_result = task_repo.get_by_id(&task_id).await;
+        let project_result = project_repo.get_by_id(&project_id).await;
+
+        let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) else {
+            tracing::warn!(
+                task_id = task_id_str,
+                "Skipping auto-commit: failed to fetch task or project"
+            );
+            return;
+        };
+
+        // Resolve working directory based on git mode
+        let working_path = resolve_working_directory(&task, &project);
+
+        // Check for uncommitted changes
+        match GitService::has_uncommitted_changes(&working_path) {
+            Ok(true) => {
+                // Build commit message: {prefix}{task_title}
+                // Default prefix: "feat: " (configurable in future)
+                let prefix = "feat: ";
+                let message = format!("{}{}", prefix, task.title);
+
+                match GitService::commit_all(&working_path, &message) {
+                    Ok(Some(sha)) => {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            commit_sha = %sha,
+                            message = %message,
+                            "Auto-committed changes on execution completion"
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::debug!(
+                            task_id = task_id_str,
+                            "Auto-commit: no staged changes to commit"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Auto-commit failed (non-fatal)"
+                        );
+                    }
+                }
+            }
+            Ok(false) => {
+                tracing::debug!(
+                    task_id = task_id_str,
+                    "No uncommitted changes to auto-commit"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to check uncommitted changes (non-fatal)"
+                );
+            }
+        }
+    }
+}
+
+/// Resolve the working directory for a task based on git mode.
+///
+/// - Local mode: Always returns project's working directory (branch switching)
+/// - Worktree mode: Returns task's worktree path if available, else project's working directory
+fn resolve_working_directory(
+    task: &crate::domain::entities::Task,
+    project: &crate::domain::entities::Project,
+) -> std::path::PathBuf {
+    match project.git_mode {
+        GitMode::Local => {
+            // Local mode: always use main repo (branch switches handle isolation)
+            std::path::PathBuf::from(&project.working_directory)
+        }
+        GitMode::Worktree => {
+            // Worktree mode: use task's worktree if exists
+            task.worktree_path
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
         }
     }
 }
