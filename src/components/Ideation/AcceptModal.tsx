@@ -1,7 +1,9 @@
 /**
  * AcceptModal - Modal for accepting a plan and creating tasks in Kanban
- * Shows summary, dependency graph preview, target column selector,
- * and warnings before accepting.
+ * Shows summary, dependency graph preview, and warnings before accepting.
+ * Task status is automatically determined based on dependencies:
+ * - Tasks with no blockers → Ready
+ * - Tasks with blockers → Blocked
  */
 
 import { useState, useCallback, useEffect } from "react";
@@ -10,12 +12,6 @@ import type {
   DependencyGraph,
   ApplyProposalsInput,
 } from "@/types/ideation";
-
-const TARGET_COLUMNS = [
-  { value: "draft", label: "Draft" },
-  { value: "backlog", label: "Backlog" },
-  { value: "todo", label: "Todo" },
-];
 
 interface AcceptModalProps {
   isOpen: boolean;
@@ -38,7 +34,6 @@ export function AcceptModal({
   isAccepting = false,
   warnings = [],
 }: AcceptModalProps) {
-  const [targetColumn, setTargetColumn] = useState("backlog");
   const [preserveDependencies, setPreserveDependencies] = useState(true);
 
   // Handle Escape key to close modal
@@ -69,11 +64,14 @@ export function AcceptModal({
     const options: ApplyProposalsInput = {
       sessionId,
       proposalIds: proposals.map((p) => p.id),
-      targetColumn,
+      // Status is determined automatically by backend based on dependencies:
+      // - No blockers → Ready
+      // - Has blockers → Blocked
+      targetColumn: "auto",
       preserveDependencies,
     };
     onAccept(options);
-  }, [sessionId, proposals, targetColumn, preserveDependencies, onAccept]);
+  }, [sessionId, proposals, preserveDependencies, onAccept]);
 
   if (!isOpen) return null;
 
@@ -82,9 +80,6 @@ export function AcceptModal({
   const hasCycles = dependencyGraph.hasCycles;
   const hasCriticalPath = dependencyGraph.criticalPath.length > 0;
   const canAccept = proposalCount > 0 && !isAccepting;
-
-  const inputClasses =
-    "w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <div
@@ -242,33 +237,19 @@ export function AcceptModal({
           </div>
         )}
 
-        {/* Target Column Selector */}
-        <div className="mb-4">
-          <label
-            htmlFor="target-column"
-            className="block text-sm font-medium mb-1"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Target Column
-          </label>
-          <select
-            id="target-column"
-            value={targetColumn}
-            onChange={(e) => setTargetColumn(e.target.value)}
-            disabled={isAccepting}
-            className={inputClasses}
-            style={{
-              backgroundColor: "var(--bg-base)",
-              borderColor: "var(--border-subtle)",
-              color: "var(--text-primary)",
-            }}
-          >
-            {TARGET_COLUMNS.map((col) => (
-              <option key={col.value} value={col.value}>
-                {col.label}
-              </option>
-            ))}
-          </select>
+        {/* Auto-status info */}
+        <div
+          className="mb-4 p-3 rounded text-sm"
+          style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)" }}
+        >
+          <p className="font-medium mb-1" style={{ color: "var(--text-primary)" }}>
+            Task Status
+          </p>
+          <p>Tasks will be automatically assigned status based on dependencies:</p>
+          <ul className="mt-1 ml-4 list-disc text-xs" style={{ color: "var(--text-muted)" }}>
+            <li>Tasks with no blockers → <strong>Ready</strong></li>
+            <li>Tasks with blockers → <strong>Blocked</strong></li>
+          </ul>
         </div>
 
         {/* Preserve Dependencies Checkbox */}
