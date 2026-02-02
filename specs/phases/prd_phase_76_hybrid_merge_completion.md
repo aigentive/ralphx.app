@@ -126,7 +126,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: refactor(state-machine): extract shared merge completion logic"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

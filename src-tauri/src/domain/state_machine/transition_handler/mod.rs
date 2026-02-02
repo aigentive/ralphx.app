@@ -11,6 +11,9 @@ mod side_effects;
 #[cfg(test)]
 mod tests;
 
+// Re-export shared merge completion logic for use by HTTP handlers and auto-completion
+pub use side_effects::complete_merge_internal;
+
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {

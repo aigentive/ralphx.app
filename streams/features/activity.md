@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-02 12:45:00 - Phase 76 Task 2: Extract shared merge completion logic
+**What:**
+- Created `complete_merge_internal()` standalone async function for shared merge completion logic
+- Function handles: update task with SHA, transition to Merged, persist status history, cleanup branch/worktree, emit events
+- Created `cleanup_branch_and_worktree_internal()` standalone function for cleanup operations
+- Refactored `attempt_programmatic_merge()` to use the new shared function
+- Removed duplicate async `cleanup_branch_and_worktree` method (now uses standalone function)
+- Re-exported `complete_merge_internal` from transition_handler/mod.rs for use by HTTP handlers and auto-completion
+
+**Files:**
+- MODIFIED: src-tauri/src/domain/state_machine/transition_handler/side_effects.rs
+- MODIFIED: src-tauri/src/domain/state_machine/transition_handler/mod.rs
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - 3377 tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 11:30:00 - Phase 76 Task 1: Add merge state detection helpers to GitService
 **What:**
 - Added `is_rebase_in_progress()` - checks for `.git/rebase-merge` and `.git/rebase-apply` directories
