@@ -217,7 +217,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: refactor(task-graph): update hover and selection states"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
