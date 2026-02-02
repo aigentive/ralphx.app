@@ -794,7 +794,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             onPaneClick={handlePaneClick}
             fitView
             fitViewOptions={{ padding: 0.2 }}
-            minZoom={0.1}
+            minZoom={0.4}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
           >

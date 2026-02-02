@@ -38,6 +38,8 @@ export interface DependencyEdgeData extends Record<string, unknown> {
   sourceLabel?: string;
   /** Target task title for tooltip */
   targetLabel?: string;
+  /** Whether this is a synthetic edge connecting consecutive groups */
+  isGroupConnector?: boolean;
 }
 
 // ============================================================================
@@ -61,8 +63,19 @@ function DependencyEdgeComponent({
   // Get edge style based on properties
   const isCriticalPath = edgeData?.isCriticalPath ?? false;
   const sourceStatus = edgeData?.sourceStatus;
-  const edgeStyle = getEdgeStyleForEdge(isCriticalPath, sourceStatus);
-  const edgeType = getEdgeType(isCriticalPath, sourceStatus);
+  const isGroupConnector = edgeData?.isGroupConnector ?? false;
+
+  // Group connector edges get a special style
+  const edgeStyle = isGroupConnector
+    ? {
+        stroke: "hsl(220 10% 50%)",
+        strokeWidth: 2,
+        strokeDasharray: "8 4",
+        animated: false,
+        filter: undefined,
+      }
+    : getEdgeStyleForEdge(isCriticalPath, sourceStatus);
+  const edgeType = isGroupConnector ? "normal" : getEdgeType(isCriticalPath, sourceStatus);
 
   // Get marker ID based on edge type
   const markerId = `url(#${MARKER_IDS[edgeType]})`;
