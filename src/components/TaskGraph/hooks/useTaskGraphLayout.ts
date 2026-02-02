@@ -300,7 +300,14 @@ function computeLayoutWithCache(
   // We need positions for collapsed group tasks too, so groups remain visible
   const allNodeIds = graphNodes.map((n) => n.taskId);
   const allEdgePairs = graphEdges.map((e) => ({ source: e.source, target: e.target }));
-  const hash = computeGraphHash(allNodeIds, allEdgePairs, config.direction);
+
+  // Convert PlanGroupInfo to LayoutPlanGroup for layout computation
+  const layoutPlanGroups: LayoutPlanGroup[] = planGroups.map((pg) => ({
+    planArtifactId: pg.planArtifactId,
+    taskIds: pg.taskIds,
+  }));
+
+  const hash = computeGraphHash(allNodeIds, allEdgePairs, config.direction, layoutPlanGroups);
 
   // Check if we can use cached positions
   let positions: Map<string, { x: number; y: number }>;
@@ -308,8 +315,8 @@ function computeLayoutWithCache(
     // Cache hit: reuse positions
     positions = cache.current.positions;
   } else {
-    // Cache miss: compute new layout for ALL nodes and cache it
-    positions = computePositions(allNodeIds, allEdgePairs, config);
+    // Cache miss: compute new layout for ALL nodes using compound graph and cache it
+    positions = computePositions(allNodeIds, allEdgePairs, config, layoutPlanGroups);
     cache.current = { hash, positions };
   }
 
@@ -514,14 +521,23 @@ interface CachedLayout {
 }
 
 /**
+ * Plan group info for compound graph layout
+ */
+interface LayoutPlanGroup {
+  planArtifactId: string;
+  taskIds: string[];
+}
+
+/**
  * Compute a structural hash of the graph for cache key.
- * Hash includes: node IDs (sorted), edge pairs (sorted), and config direction.
+ * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, and plan groups.
  * Does NOT include node data (status, title, priority) since those don't affect layout.
  */
 function computeGraphHash(
   nodeIds: string[],
   edges: { source: string; target: string }[],
-  direction: "TB" | "LR"
+  direction: "TB" | "LR",
+  planGroups: LayoutPlanGroup[] = []
 ): string {
   // Sort for consistent ordering
   const sortedNodes = [...nodeIds].sort().join(",");
@@ -529,19 +545,30 @@ function computeGraphHash(
     .map((e) => `${e.source}>${e.target}`)
     .sort()
     .join(",");
-  return `${direction}:${sortedNodes}|${sortedEdges}`;
+  // Include plan group assignments in hash (affects compound layout)
+  const sortedGroups = [...planGroups]
+    .map((g) => `${g.planArtifactId}:[${[...g.taskIds].sort().join(",")}]`)
+    .sort()
+    .join(";");
+  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}`;
 }
 
 /**
- * Compute layout positions using dagre.
- * Returns only the position map - caller applies node data.
+ * Compute layout positions using dagre with compound graph support.
+ * When planGroups are provided, uses compound graph to keep grouped nodes together
+ * and prevent group overlap.
+ *
+ * Returns position maps for both task nodes and group parent nodes.
  */
 function computePositions(
   nodeIds: string[],
   edges: { source: string; target: string }[],
-  config: LayoutConfig
+  config: LayoutConfig,
+  planGroups: LayoutPlanGroup[] = []
 ): Map<string, { x: number; y: number }> {
-  const g = new dagre.graphlib.Graph();
+  // Use compound graph when we have plan groups to prevent overlap
+  const useCompound = planGroups.length > 0;
+  const g = new dagre.graphlib.Graph({ compound: useCompound });
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: config.direction,
@@ -551,9 +578,53 @@ function computePositions(
     marginy: config.marginy,
   });
 
-  // Add nodes
+  // Build task to group mapping for parent assignment
+  const taskToGroupMap = new Map<string, string>();
+  if (useCompound) {
+    for (const group of planGroups) {
+      for (const taskId of group.taskIds) {
+        taskToGroupMap.set(taskId, group.planArtifactId);
+      }
+    }
+
+    // Add parent nodes for each plan group
+    // These are "invisible" containers that dagre uses for layout
+    for (const group of planGroups) {
+      // Group parent node needs dimensions - we'll use a placeholder
+      // Dagre will expand this based on child nodes
+      g.setNode(group.planArtifactId, {
+        label: group.planArtifactId,
+        // No width/height - dagre computes from children
+      });
+    }
+
+    // Find ungrouped tasks and create a pseudo-group for them
+    const groupedTaskIds = new Set<string>();
+    for (const group of planGroups) {
+      for (const taskId of group.taskIds) {
+        groupedTaskIds.add(taskId);
+      }
+    }
+    const ungroupedTaskIds = nodeIds.filter(id => !groupedTaskIds.has(id));
+    if (ungroupedTaskIds.length > 0) {
+      g.setNode(UNGROUPED_PLAN_ID, { label: UNGROUPED_PLAN_ID });
+      for (const taskId of ungroupedTaskIds) {
+        taskToGroupMap.set(taskId, UNGROUPED_PLAN_ID);
+      }
+    }
+  }
+
+  // Add task nodes
   for (const id of nodeIds) {
     g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+
+    // Set parent relationship for compound graph
+    if (useCompound) {
+      const parentGroupId = taskToGroupMap.get(id);
+      if (parentGroupId) {
+        g.setParent(id, parentGroupId);
+      }
+    }
   }
 
   // Add edges
@@ -564,7 +635,7 @@ function computePositions(
   // Run dagre layout
   dagre.layout(g);
 
-  // Extract positions
+  // Extract positions for task nodes
   const positions = new Map<string, { x: number; y: number }>();
   for (const id of nodeIds) {
     const dagreNode = g.node(id);
