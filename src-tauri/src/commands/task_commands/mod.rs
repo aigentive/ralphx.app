@@ -27,6 +27,10 @@ pub use types::{
     StatusSummary,
     PlanGroupInfo,
     TaskDependencyGraphResponse,
+    // Timeline event types (Phase 67 - Task D.1)
+    TimelineEvent,
+    TimelineEventType,
+    TimelineEventsResponse,
 };
 
 // Re-export helpers (for use by other command modules)
@@ -47,6 +51,7 @@ pub use query::{
     get_tasks_awaiting_review,
     get_task_state_transitions,
     get_task_dependency_graph,
+    get_task_timeline_events,
 };
 
 // Re-export mutation commands

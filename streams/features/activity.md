@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-02-03 09:15:00 - Phase 67 Task 19: Add backend endpoint for timeline events
+**What:**
+- Created `TimelineEvent`, `TimelineEventType`, and `TimelineEventsResponse` structs in `src-tauri/src/commands/task_commands/types.rs`:
+  - `TimelineEventType` enum: `StatusChange`, `PlanAccepted`, `PlanCompleted`
+  - `TimelineEvent` with timestamp, task_id, task_title, event_type, from/to status, description, trigger, plan info
+  - `TimelineEventsResponse` with events, total count, has_more for pagination
+- Added `get_task_timeline_events` Tauri command in `src-tauri/src/commands/task_commands/query.rs`:
+  - Queries task state history for status change events
+  - Generates plan-level events (accepted, completed) from ideation sessions
+  - Returns chronological events (newest first) with pagination support
+  - Human-readable descriptions for all 21 status states
+- Exported types and command in `src-tauri/src/commands/task_commands/mod.rs`
+- Registered command in `src-tauri/src/lib.rs`
+
+**Files Modified:**
+- `src-tauri/src/commands/task_commands/types.rs`
+- `src-tauri/src/commands/task_commands/query.rs`
+- `src-tauri/src/commands/task_commands/mod.rs`
+- `src-tauri/src/lib.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3367 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 08:00:00 - Phase 67 Task 18: Add collapse/expand for plan groups
 **What:**
 - Updated `src/components/TaskGraph/groups/PlanGroup.tsx`:

@@ -233,3 +233,57 @@ pub struct TaskDependencyGraphResponse {
     /// Whether the graph has cycles (should be false in valid graphs)
     pub has_cycles: bool,
 }
+
+// ============================================================================
+// Timeline Event Types (Phase 67 - Task D.1)
+// ============================================================================
+
+/// Event type for timeline entries
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineEventType {
+    /// Task status changed
+    StatusChange,
+    /// Plan was accepted (creates tasks)
+    PlanAccepted,
+    /// All tasks in a plan completed
+    PlanCompleted,
+}
+
+/// A single event in the execution timeline
+#[derive(Debug, Clone, Serialize)]
+pub struct TimelineEvent {
+    /// Unique event ID
+    pub id: String,
+    /// When the event occurred (RFC3339 format)
+    pub timestamp: String,
+    /// Task ID (if applicable)
+    pub task_id: Option<String>,
+    /// Task title for display (if task-related)
+    pub task_title: Option<String>,
+    /// Event type (status_change, plan_accepted, plan_completed)
+    pub event_type: TimelineEventType,
+    /// Previous status (for status_change events)
+    pub from_status: Option<String>,
+    /// New status (for status_change events)
+    pub to_status: Option<String>,
+    /// Human-readable description of the event
+    pub description: String,
+    /// Who/what triggered this event (user, agent, system)
+    pub trigger: Option<String>,
+    /// Plan artifact ID (for plan-level events)
+    pub plan_artifact_id: Option<String>,
+    /// Session title (for plan-level events)
+    pub session_title: Option<String>,
+}
+
+/// Response for the timeline events query
+#[derive(Debug, Serialize)]
+pub struct TimelineEventsResponse {
+    /// Timeline events in chronological order (newest first)
+    pub events: Vec<TimelineEvent>,
+    /// Total count (for pagination)
+    pub total: u32,
+    /// Whether there are more events
+    pub has_more: bool,
+}
