@@ -329,6 +329,10 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::Reviewing => {
+                // For Local mode: checkout task branch before spawning reviewer
+                // (Worktree mode already has isolated directory)
+                self.checkout_task_branch_if_needed("Reviewing").await;
+
                 // Spawn reviewer agent via ChatService with Review context
                 let task_id = &self.machine.context.task_id;
                 let prompt = format!("Review task: {}", task_id);
@@ -405,6 +409,10 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
             }
             State::ReExecuting => {
+                // For Local mode: checkout task branch before spawning worker
+                // (Worktree mode already has isolated directory)
+                self.checkout_task_branch_if_needed("ReExecuting").await;
+
                 // Spawn worker agent with revision context via ChatService
                 let task_id = &self.machine.context.task_id;
                 let prompt = format!("Re-execute task (revision): {}", task_id);
@@ -452,5 +460,75 @@ impl<'a> super::TransitionHandler<'a> {
             _ => {}
         }
         Ok(())
+    }
+
+    /// For Local mode: checkout task branch if current branch differs.
+    /// This is needed when re-entering execution states (ReExecuting, Reviewing)
+    /// where the task already has a branch but we may be on a different branch.
+    /// Worktree mode doesn't need this as each task has its own isolated directory.
+    async fn checkout_task_branch_if_needed(&self, state_name: &str) {
+        let task_id_str = &self.machine.context.task_id;
+        let project_id_str = &self.machine.context.project_id;
+
+        if let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) {
+            let task_id = TaskId::from_string(task_id_str.clone());
+            let project_id = ProjectId::from_string(project_id_str.clone());
+
+            let task_result = task_repo.get_by_id(&task_id).await;
+            let project_result = project_repo.get_by_id(&project_id).await;
+
+            if let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) {
+                // Only checkout for Local mode - Worktree mode already has isolated directory
+                if project.git_mode == GitMode::Local {
+                    if let Some(branch) = &task.task_branch {
+                        let repo_path = Path::new(&project.working_directory);
+                        match GitService::get_current_branch(repo_path) {
+                            Ok(current) if current != *branch => {
+                                match GitService::checkout_branch(repo_path, branch) {
+                                    Ok(_) => {
+                                        tracing::info!(
+                                            task_id = task_id_str,
+                                            branch = %branch,
+                                            from_branch = %current,
+                                            state = state_name,
+                                            "Checked out task branch (Local mode)"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            task_id = task_id_str,
+                                            branch = %branch,
+                                            state = state_name,
+                                            "Failed to checkout task branch (Local mode)"
+                                        );
+                                    }
+                                }
+                            }
+                            Ok(_) => {
+                                // Already on correct branch
+                                tracing::debug!(
+                                    task_id = task_id_str,
+                                    branch = %branch,
+                                    state = state_name,
+                                    "Already on task branch (Local mode)"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    task_id = task_id_str,
+                                    state = state_name,
+                                    "Failed to get current branch"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
