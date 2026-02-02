@@ -71,6 +71,11 @@
 - [x] [Frontend] Missing Implementation: useGitDiff hook doesn't call get_task_commits command - src/hooks/useGitDiff.ts:55
   - Fixed by adding getTaskCommits to diffApi and wiring in useGitDiff to fetch commits on mount
 
+## From Phase 67 Verification (2026-02-03)
+
+- [x] [Frontend] Orphaned Filter Logic: GraphControls allows filter selection but applyFilters() is never called - filters have no effect on graph - src/components/TaskGraph/TaskGraphView.tsx:348
+  - Fixed by adding applyGraphFilters() and filteredGraphData useMemo in TaskGraphView
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

@@ -4,6 +4,39 @@
 
 ---
 
+### 2026-02-03 01:30:00 - P0 Fix: Wire graph filters to layout computation
+**What:**
+- Fixed orphaned filter logic in TaskGraphView
+- Added `applyGraphFilters()` function to filter nodes/edges based on:
+  - Status filter (multi-select by status)
+  - Plan filter (select specific plans)
+  - Show completed toggle
+- Added `filteredGraphData` useMemo to apply filters before layout computation
+- Filters now properly exclude nodes and their edges from the graph
+- Added "No tasks match filters" empty state with "Clear filters" button
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx`
+  - Added imports for TaskGraphNode, TaskGraphEdge, PlanGroupInfo, InternalStatus types
+  - Added COMPLETED_STATUSES constant for filter logic
+  - Added applyGraphFilters() helper function
+  - Added filteredGraphData useMemo before useTaskGraphLayout call
+  - Added hasActiveFilters check for empty state
+  - Added conditional render for "No tasks match filters" state
+
+**Gap Fixed:**
+- [x] [Frontend] Orphaned Filter Logic: GraphControls allows filter selection but applyFilters() is never called - src/components/TaskGraph/TaskGraphView.tsx:348
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - backend logic wiring, no visual changes to test
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 00:15:00 - Phase 67 Task 37: Implement lazy loading for collapsed groups
 **What:**
 - Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
