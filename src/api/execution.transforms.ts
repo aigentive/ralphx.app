@@ -4,10 +4,13 @@ import { z } from "zod";
 import {
   ExecutionStatusResponseSchema,
   ExecutionCommandResponseSchema,
+  ExecutionSettingsResponseSchema,
 } from "./execution.schemas";
 import type {
   ExecutionStatusResponse,
   ExecutionCommandResponse,
+  ExecutionSettingsResponse,
+  UpdateExecutionSettingsInput,
 } from "./execution.types";
 
 /**
@@ -34,5 +37,31 @@ export function transformExecutionCommand(
   return {
     success: raw.success,
     status: transformExecutionStatus(raw.status),
+  };
+}
+
+/**
+ * Transform ExecutionSettingsResponseSchema (snake_case) → ExecutionSettingsResponse (camelCase)
+ */
+export function transformExecutionSettings(
+  raw: z.infer<typeof ExecutionSettingsResponseSchema>
+): ExecutionSettingsResponse {
+  return {
+    maxConcurrentTasks: raw.max_concurrent_tasks,
+    autoCommit: raw.auto_commit,
+    pauseOnFailure: raw.pause_on_failure,
+  };
+}
+
+/**
+ * Transform UpdateExecutionSettingsInput (camelCase) → snake_case for Tauri command
+ */
+export function transformExecutionSettingsInput(
+  input: UpdateExecutionSettingsInput
+): { max_concurrent_tasks: number; auto_commit: boolean; pause_on_failure: boolean } {
+  return {
+    max_concurrent_tasks: input.maxConcurrentTasks,
+    auto_commit: input.autoCommit,
+    pause_on_failure: input.pauseOnFailure,
   };
 }

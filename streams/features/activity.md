@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 20:45:00 - Phase 77 Task 4: Add execution settings API wrapper with schemas and transforms
+**What:**
+- Added ExecutionSettingsResponseSchema and UpdateExecutionSettingsInputSchema to execution.schemas.ts
+- Added ExecutionSettingsResponse and UpdateExecutionSettingsInput types to execution.types.ts (camelCase)
+- Added transformExecutionSettings and transformExecutionSettingsInput functions to execution.transforms.ts
+- Added getSettings() and updateSettings() methods to executionApi in execution.ts
+- Re-exported all new types, schemas, and transforms for consumer access
+- Input transform converts camelCase frontend types to snake_case for Tauri command
+
+**Files:**
+- MODIFIED: src/api/execution.schemas.ts (added settings schemas)
+- MODIFIED: src/api/execution.types.ts (added settings types)
+- MODIFIED: src/api/execution.transforms.ts (added settings transforms)
+- MODIFIED: src/api/execution.ts (added API methods, re-exports)
+
+**Visual Verification:** N/A - API layer only, no UI components modified
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passes (no new errors)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:00:00 - Phase 77 Task 3: Add get/update execution settings Tauri commands
 **What:**
 - Added ExecutionSettingsResponse struct with From<ExecutionSettings> impl

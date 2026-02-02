@@ -5,29 +5,43 @@ import { z } from "zod";
 import {
   ExecutionStatusResponseSchema,
   ExecutionCommandResponseSchema,
+  ExecutionSettingsResponseSchema,
 } from "./execution.schemas";
 import {
   transformExecutionStatus,
   transformExecutionCommand,
+  transformExecutionSettings,
+  transformExecutionSettingsInput,
 } from "./execution.transforms";
 import type {
   ExecutionStatusResponse,
   ExecutionCommandResponse,
+  ExecutionSettingsResponse,
+  UpdateExecutionSettingsInput,
 } from "./execution.types";
 
 // Re-export types for convenience
-export type { ExecutionStatusResponse, ExecutionCommandResponse } from "./execution.types";
+export type {
+  ExecutionStatusResponse,
+  ExecutionCommandResponse,
+  ExecutionSettingsResponse,
+  UpdateExecutionSettingsInput,
+} from "./execution.types";
 
 // Re-export schemas for consumers that need validation
 export {
   ExecutionStatusResponseSchema,
   ExecutionCommandResponseSchema,
+  ExecutionSettingsResponseSchema,
+  UpdateExecutionSettingsInputSchema,
 } from "./execution.schemas";
 
 // Re-export transforms for consumers that need manual transformation
 export {
   transformExecutionStatus,
   transformExecutionCommand,
+  transformExecutionSettings,
+  transformExecutionSettingsInput,
 } from "./execution.transforms";
 
 // ============================================================================
@@ -99,5 +113,31 @@ export const executionApi = {
       {},
       ExecutionCommandResponseSchema,
       transformExecutionCommand
+    ),
+
+  /**
+   * Get execution settings from database
+   * @returns Execution settings with max concurrent tasks, auto-commit, pause on failure
+   */
+  getSettings: (): Promise<ExecutionSettingsResponse> =>
+    typedInvokeWithTransform(
+      "get_execution_settings",
+      {},
+      ExecutionSettingsResponseSchema,
+      transformExecutionSettings
+    ),
+
+  /**
+   * Update execution settings in database
+   * Also syncs ExecutionState when max_concurrent_tasks changes
+   * @param input - Settings to update
+   * @returns Updated execution settings
+   */
+  updateSettings: (input: UpdateExecutionSettingsInput): Promise<ExecutionSettingsResponse> =>
+    typedInvokeWithTransform(
+      "update_execution_settings",
+      { input: transformExecutionSettingsInput(input) },
+      ExecutionSettingsResponseSchema,
+      transformExecutionSettings
     ),
 } as const;
