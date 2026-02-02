@@ -3,7 +3,10 @@
 use tauri::State;
 use crate::application::AppState;
 use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
-use super::types::{TaskResponse, TaskListResponse, StatusTransition, StateTransitionResponse};
+use super::types::{
+    TaskResponse, TaskListResponse, StatusTransition, StateTransitionResponse,
+    TaskGraphNode, TaskGraphEdge, PlanGroupInfo, StatusSummary, TaskDependencyGraphResponse,
+};
 use super::helpers::status_to_label;
 
 /// List tasks for a project with pagination support
@@ -305,4 +308,293 @@ pub async fn get_tasks_awaiting_review(
     let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
 
     Ok(task_responses)
+}
+
+/// Get the task dependency graph for a project
+///
+/// Returns a graph representation of all tasks and their dependencies,
+/// including plan groupings, critical path computation, and cycle detection.
+///
+/// # Arguments
+/// * `project_id` - The project ID
+/// * `include_archived` - Whether to include archived tasks (default: false)
+///
+/// # Returns
+/// * `TaskDependencyGraphResponse` - Contains nodes, edges, plan groups, critical path, and cycle info
+///
+/// # Graph Structure
+/// - **Nodes**: One per task with status, tier, and plan info
+/// - **Edges**: Dependencies (source blocks target)
+/// - **Plan Groups**: Tasks grouped by their originating plan artifact
+/// - **Critical Path**: Longest dependency chain (affects project completion time)
+#[tauri::command]
+pub async fn get_task_dependency_graph(
+    project_id: String,
+    include_archived: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<TaskDependencyGraphResponse, String> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+
+    let project_id_obj = ProjectId::from_string(project_id);
+    let include_archived = include_archived.unwrap_or(false);
+
+    // 1. Get all tasks for the project
+    let tasks = state
+        .task_repo
+        .get_by_project(&project_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Filter out archived tasks if not requested
+    let tasks: Vec<_> = if include_archived {
+        tasks
+    } else {
+        tasks.into_iter().filter(|t| t.archived_at.is_none()).collect()
+    };
+
+    // Build task lookup map
+    let task_map: HashMap<String, &crate::domain::entities::Task> = tasks
+        .iter()
+        .map(|t| (t.id.as_str().to_string(), t))
+        .collect();
+    let task_ids: HashSet<String> = task_map.keys().cloned().collect();
+
+    // 2. Build edges by getting blockers for each task
+    let mut edges: Vec<TaskGraphEdge> = Vec::new();
+    let mut in_degree: HashMap<String, u32> = HashMap::new();
+    let mut out_degree: HashMap<String, u32> = HashMap::new();
+    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new(); // source -> targets
+    let mut reverse_adjacency: HashMap<String, Vec<String>> = HashMap::new(); // target -> sources
+
+    for task in &tasks {
+        let task_id_str = task.id.as_str().to_string();
+        in_degree.entry(task_id_str.clone()).or_insert(0);
+        out_degree.entry(task_id_str.clone()).or_insert(0);
+        adjacency.entry(task_id_str.clone()).or_default();
+        reverse_adjacency.entry(task_id_str.clone()).or_default();
+
+        // Get tasks this task depends on (blockers)
+        let blockers = state
+            .task_dependency_repo
+            .get_blockers(&task.id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for blocker_id in blockers {
+            let blocker_str = blocker_id.as_str().to_string();
+            // Only include edges where both tasks exist in our filtered set
+            if task_ids.contains(&blocker_str) {
+                edges.push(TaskGraphEdge {
+                    source: blocker_str.clone(),
+                    target: task_id_str.clone(),
+                    is_critical_path: false, // Will be set later
+                });
+                *in_degree.entry(task_id_str.clone()).or_insert(0) += 1;
+                *out_degree.entry(blocker_str.clone()).or_insert(0) += 1;
+                adjacency.entry(blocker_str.clone()).or_default().push(task_id_str.clone());
+                reverse_adjacency.entry(task_id_str.clone()).or_default().push(blocker_str.clone());
+            }
+        }
+    }
+
+    // 3. Compute tiers using Kahn's algorithm (topological sort)
+    let mut tier_map: HashMap<String, u32> = HashMap::new();
+    let mut remaining_in_degree = in_degree.clone();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    let mut has_cycles = false;
+
+    // Start with nodes that have no incoming edges
+    for (id, &deg) in &remaining_in_degree {
+        if deg == 0 {
+            queue.push_back(id.clone());
+            tier_map.insert(id.clone(), 0);
+        }
+    }
+
+    let mut processed = 0;
+    while let Some(current) = queue.pop_front() {
+        processed += 1;
+        let current_tier = *tier_map.get(&current).unwrap_or(&0);
+
+        if let Some(targets) = adjacency.get(&current) {
+            for target in targets {
+                if let Some(deg) = remaining_in_degree.get_mut(target) {
+                    *deg -= 1;
+                    // Target tier is max of its current tier and current_tier + 1
+                    let new_tier = current_tier + 1;
+                    tier_map
+                        .entry(target.clone())
+                        .and_modify(|t| *t = (*t).max(new_tier))
+                        .or_insert(new_tier);
+                    if *deg == 0 {
+                        queue.push_back(target.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // If we couldn't process all nodes, there's a cycle
+    if processed < tasks.len() {
+        has_cycles = true;
+        // Assign tier 0 to remaining unprocessed nodes
+        for task in &tasks {
+            let id = task.id.as_str().to_string();
+            tier_map.entry(id).or_insert(0);
+        }
+    }
+
+    // 4. Compute critical path using DP on longest path
+    // critical_path[node] = length of longest path ending at node
+    let mut critical_path_length: HashMap<String, u32> = HashMap::new();
+    let mut critical_path_parent: HashMap<String, Option<String>> = HashMap::new();
+
+    // Process nodes in topological order (by tier)
+    let mut nodes_by_tier: Vec<(String, u32)> = tier_map.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    nodes_by_tier.sort_by_key(|(_, tier)| *tier);
+
+    for (node, _) in &nodes_by_tier {
+        let sources = reverse_adjacency.get(node).cloned().unwrap_or_default();
+        if sources.is_empty() {
+            // Starting node
+            critical_path_length.insert(node.clone(), 1);
+            critical_path_parent.insert(node.clone(), None);
+        } else {
+            // Find longest path from any source
+            let mut max_length = 0u32;
+            let mut best_parent: Option<String> = None;
+            for source in &sources {
+                let source_length = *critical_path_length.get(source).unwrap_or(&0);
+                if source_length >= max_length {
+                    max_length = source_length;
+                    best_parent = Some(source.clone());
+                }
+            }
+            critical_path_length.insert(node.clone(), max_length + 1);
+            critical_path_parent.insert(node.clone(), best_parent);
+        }
+    }
+
+    // Find the endpoint of the critical path (node with max length)
+    let critical_endpoint = critical_path_length
+        .iter()
+        .max_by_key(|(_, &len)| len)
+        .map(|(id, _)| id.clone());
+
+    // Trace back to build critical path
+    let mut critical_path_ids: Vec<String> = Vec::new();
+    let mut critical_path_set: HashSet<String> = HashSet::new();
+    if let Some(mut current) = critical_endpoint {
+        while {
+            critical_path_ids.push(current.clone());
+            critical_path_set.insert(current.clone());
+            if let Some(Some(parent)) = critical_path_parent.get(&current) {
+                current = parent.clone();
+                true
+            } else {
+                false
+            }
+        } {}
+    }
+    critical_path_ids.reverse();
+
+    // Mark edges on the critical path
+    for edge in &mut edges {
+        if critical_path_set.contains(&edge.source) && critical_path_set.contains(&edge.target) {
+            // Check if this is an adjacent pair in the critical path
+            let source_idx = critical_path_ids.iter().position(|x| x == &edge.source);
+            let target_idx = critical_path_ids.iter().position(|x| x == &edge.target);
+            if let (Some(si), Some(ti)) = (source_idx, target_idx) {
+                if ti == si + 1 {
+                    edge.is_critical_path = true;
+                }
+            }
+        }
+    }
+
+    // 5. Build plan groups
+    let mut plan_groups: Vec<PlanGroupInfo> = Vec::new();
+    let mut plan_task_map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for task in &tasks {
+        if let Some(ref artifact_id) = task.plan_artifact_id {
+            plan_task_map
+                .entry(artifact_id.as_str().to_string())
+                .or_default()
+                .push(task.id.as_str().to_string());
+        }
+    }
+
+    // Get session info for each plan
+    for (plan_artifact_id, task_ids_in_plan) in plan_task_map {
+        // Try to find the ideation session for this plan artifact
+        let sessions = state
+            .ideation_session_repo
+            .get_by_plan_artifact_id(&plan_artifact_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let (session_id, session_title) = sessions.first().map_or(
+            (plan_artifact_id.clone(), None),
+            |s| (s.id.as_str().to_string(), s.title.clone()),
+        );
+
+        // Compute status summary
+        let mut summary = StatusSummary::default();
+        for task_id in &task_ids_in_plan {
+            if let Some(task) = task_map.get(task_id) {
+                categorize_status(&task.internal_status, &mut summary);
+            }
+        }
+
+        plan_groups.push(PlanGroupInfo {
+            plan_artifact_id: plan_artifact_id.clone(),
+            session_id,
+            session_title,
+            task_ids: task_ids_in_plan,
+            status_summary: summary,
+        });
+    }
+
+    // 6. Build nodes
+    let nodes: Vec<TaskGraphNode> = tasks
+        .iter()
+        .map(|task| {
+            let task_id_str = task.id.as_str().to_string();
+            TaskGraphNode {
+                task_id: task_id_str.clone(),
+                title: task.title.clone(),
+                internal_status: task.internal_status.as_str().to_string(),
+                priority: task.priority,
+                in_degree: *in_degree.get(&task_id_str).unwrap_or(&0),
+                out_degree: *out_degree.get(&task_id_str).unwrap_or(&0),
+                tier: *tier_map.get(&task_id_str).unwrap_or(&0),
+                plan_artifact_id: task.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()),
+                source_proposal_id: task.source_proposal_id.as_ref().map(|id| id.as_str().to_string()),
+            }
+        })
+        .collect();
+
+    Ok(TaskDependencyGraphResponse {
+        nodes,
+        edges,
+        plan_groups,
+        critical_path: critical_path_ids,
+        has_cycles,
+    })
+}
+
+/// Helper to categorize a status into the summary buckets
+fn categorize_status(status: &InternalStatus, summary: &mut StatusSummary) {
+    match status {
+        InternalStatus::Backlog => summary.backlog += 1,
+        InternalStatus::Ready => summary.ready += 1,
+        InternalStatus::Blocked => summary.blocked += 1,
+        InternalStatus::Executing | InternalStatus::ReExecuting => summary.executing += 1,
+        InternalStatus::QaRefining | InternalStatus::QaTesting | InternalStatus::QaPassed | InternalStatus::QaFailed => summary.qa += 1,
+        InternalStatus::PendingReview | InternalStatus::Reviewing | InternalStatus::ReviewPassed | InternalStatus::Escalated | InternalStatus::RevisionNeeded => summary.review += 1,
+        InternalStatus::PendingMerge | InternalStatus::Merging | InternalStatus::MergeConflict => summary.merge += 1,
+        InternalStatus::Approved | InternalStatus::Merged => summary.completed += 1,
+        InternalStatus::Failed | InternalStatus::Cancelled => summary.terminal += 1,
+    }
 }
