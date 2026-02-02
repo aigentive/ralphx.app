@@ -147,14 +147,17 @@ function DependencyEdgeComponent({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          {/* The dot */}
+          {/* The dot - subtle until hovered */}
           <div
             className={cn(
-              "w-2 h-2 rounded-full transition-transform duration-150",
+              "w-1.5 h-1.5 rounded-full transition-all duration-150",
               hasTooltip && "cursor-pointer",
-              isHovered && "scale-150",
-              isAccentEdge ? "bg-[hsl(14_100%_55%)]" : "bg-[hsl(220_10%_45%)]"
+              isHovered && "scale-[2] opacity-100",
+              !isHovered && "opacity-40"
             )}
+            style={{
+              backgroundColor: isAccentEdge ? "hsl(14 100% 55%)" : "hsl(220 10% 50%)",
+            }}
           />
 
           {/* Custom pill tooltip */}
