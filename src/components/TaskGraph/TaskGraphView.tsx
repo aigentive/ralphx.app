@@ -13,13 +13,13 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  useNodesState,
-  useEdgesState,
   useReactFlow,
   type Node,
   type Edge,
   type NodeTypes,
   type EdgeTypes,
+  type OnNodesChange,
+  type OnEdgesChange,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
@@ -27,10 +27,12 @@ import "@xyflow/react/dist/style.css";
 import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
 import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
+import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
 import { GraphMiniMap } from "./controls/GraphMiniMap";
+import { COMPACT_MODE_THRESHOLD, type NodeMode } from "./controls/GraphControls";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
@@ -61,11 +63,20 @@ const EMPTY_LAYOUT_CONFIG = {};
 // ============================================================================
 
 /**
- * Register custom node types for React Flow
+ * Node types for standard mode (full-size nodes with status badges)
  * IMPORTANT: Defined outside component to prevent unnecessary re-renders
  */
-const nodeTypes: NodeTypes = {
+const standardNodeTypes: NodeTypes = {
   task: TaskNode,
+  [PLAN_GROUP_NODE_TYPE]: PlanGroup,
+};
+
+/**
+ * Node types for compact mode (smaller nodes for 50+ task graphs)
+ * IMPORTANT: Defined outside component to prevent unnecessary re-renders
+ */
+const compactNodeTypes: NodeTypes = {
+  task: TaskNodeCompact,
   [PLAN_GROUP_NODE_TYPE]: PlanGroup,
 };
 
@@ -101,6 +112,29 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
   const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
     new Set()
   );
+
+  // Node mode state (standard or compact)
+  // null means "auto" - will be determined by task count
+  const [nodeModeOverride, setNodeModeOverride] = useState<NodeMode | null>(null);
+
+  // Calculate task count and determine effective node mode
+  const taskCount = graphData?.nodes.length ?? 0;
+  const isAutoCompact = taskCount >= COMPACT_MODE_THRESHOLD;
+  const effectiveNodeMode: NodeMode = nodeModeOverride ?? (isAutoCompact ? "compact" : "standard");
+
+  // Select the appropriate node types based on mode
+  const activeNodeTypes = effectiveNodeMode === "compact" ? compactNodeTypes : standardNodeTypes;
+
+  // Handler for manual node mode toggle
+  const handleNodeModeChange = useCallback((mode: NodeMode) => {
+    // If user sets to what auto would be, clear override (return to auto)
+    const autoMode: NodeMode = isAutoCompact ? "compact" : "standard";
+    if (mode === autoMode) {
+      setNodeModeOverride(null);
+    } else {
+      setNodeModeOverride(mode);
+    }
+  }, [isAutoCompact]);
 
   // Toggle collapse state for a plan group
   const handleToggleCollapse = useCallback((planArtifactId: string) => {
@@ -219,10 +253,6 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     handleToggleCollapse
   );
 
-  // React Flow state
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-
   // Build set of task IDs that belong to collapsed groups
   const collapsedTaskIds = useMemo(() => {
     const hiddenIds = new Set<string>();
@@ -251,12 +281,11 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     return hiddenIds;
   }, [graphData?.planGroups, graphData?.nodes, collapsedPlanIds]);
 
-  // Update React Flow state when layout changes or highlight changes
-  // Group nodes are rendered first (lower z-index) so they appear behind task nodes
-  // Filter out task nodes that belong to collapsed groups
-  useEffect(() => {
-    // Filter task nodes - hide those in collapsed groups
-    // Also inject handlers for context menu actions
+  // Compute visible nodes and edges (controlled mode - no useEffect sync needed)
+  // Filter task nodes - hide those in collapsed groups
+  // Inject handlers for context menu actions
+  // Combine group nodes and visible task nodes - groups first for proper z-ordering
+  const nodes = useMemo<Node[]>(() => {
     const visibleTaskNodes = layoutNodes
       .filter((node) => !collapsedTaskIds.has(node.id))
       .map((node) => ({
@@ -267,15 +296,26 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
           handlers: nodeHandlers,
         },
       }));
-    // Filter edges - hide those connected to hidden nodes
-    const visibleEdges = layoutEdges.filter(
+    return [...groupNodes, ...visibleTaskNodes];
+  }, [layoutNodes, groupNodes, collapsedTaskIds, highlightedTaskId, nodeHandlers]);
+
+  // Filter edges - hide those connected to hidden nodes
+  const edges = useMemo<Edge[]>(() => {
+    return layoutEdges.filter(
       (edge) => !collapsedTaskIds.has(edge.source) && !collapsedTaskIds.has(edge.target)
     );
-    // Combine group nodes and visible task nodes - groups first for proper z-ordering
-    const allNodes = [...groupNodes, ...visibleTaskNodes];
-    setNodes(allNodes);
-    setEdges(visibleEdges);
-  }, [layoutNodes, layoutEdges, groupNodes, collapsedTaskIds, highlightedTaskId, nodeHandlers, setNodes, setEdges]);
+  }, [layoutEdges, collapsedTaskIds]);
+
+  // Handle node changes (for selection, dragging etc.) in controlled mode
+  const onNodesChange: OnNodesChange = useCallback(() => {
+    // We don't allow user-driven node changes (positions come from dagre layout)
+    // Selection is handled via onNodeClick
+  }, []);
+
+  // Handle edge changes in controlled mode
+  const onEdgesChange: OnEdgesChange = useCallback(() => {
+    // We don't allow user-driven edge changes (edges are computed from dependencies)
+  }, []);
 
   // Handle timeline entry click - highlight node and scroll to it
   const handleTimelineTaskClick = useCallback(
@@ -393,7 +433,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          nodeTypes={nodeTypes}
+          nodeTypes={activeNodeTypes}
           edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
