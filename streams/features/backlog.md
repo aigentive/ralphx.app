@@ -76,6 +76,9 @@
 - [x] [Frontend] Orphaned Filter Logic: GraphControls allows filter selection but applyFilters() is never called - filters have no effect on graph - src/components/TaskGraph/TaskGraphView.tsx:348
   - Fixed by adding applyGraphFilters() and filteredGraphData useMemo in TaskGraphView
 
+- [x] [Frontend] Orphaned Implementation: GraphLegend component created but never imported or rendered in TaskGraphView - src/components/TaskGraph/controls/GraphLegend.tsx:1
+  - Fixed by adding import and render in TaskGraphView, positioned bottom-left inside ReactFlow canvas
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

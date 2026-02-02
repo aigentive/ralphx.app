@@ -513,37 +513,44 @@ pub async fn get_task_dependency_graph(
         }
     }
 
-    // 5. Build plan groups by tracing task → proposal → session
-    // This ensures tasks are grouped by the Plan (ideation session) they came from,
-    // regardless of whether a plan_artifact was explicitly created.
+    // 5. Build plan groups by finding proposals that created these tasks
+    // Trace: session → proposals → proposal.created_task_id
+    // This works even when task.source_proposal_id isn't set.
     let mut plan_groups: Vec<PlanGroupInfo> = Vec::new();
-    let mut session_task_map: HashMap<String, Vec<String>> = HashMap::new();
 
-    for task in &tasks {
-        // Trace: task.source_proposal_id → proposal → session_id
-        if let Some(ref proposal_id) = task.source_proposal_id {
-            if let Ok(Some(proposal)) = state.task_proposal_repo.get_by_id(proposal_id).await {
-                session_task_map
-                    .entry(proposal.session_id.as_str().to_string())
-                    .or_default()
-                    .push(task.id.as_str().to_string());
-            }
-        }
-    }
+    // Get all sessions for this project
+    let sessions = state
+        .ideation_session_repo
+        .get_by_project(&project_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    // Get session info for each plan group
-    for (session_id_str, task_ids_in_plan) in session_task_map {
-        let session_id = crate::domain::entities::IdeationSessionId::from_string(session_id_str.clone());
-        let session = state
-            .ideation_session_repo
-            .get_by_id(&session_id)
+    for session in sessions {
+        // Get all proposals for this session
+        let proposals = state
+            .task_proposal_repo
+            .get_by_session(&session.id)
             .await
             .map_err(|e| e.to_string())?;
 
-        let session_title = session.as_ref().and_then(|s| s.title.clone());
+        // Collect task IDs from proposals that have created tasks
+        let task_ids_in_plan: Vec<String> = proposals
+            .iter()
+            .filter_map(|p| p.created_task_id.as_ref())
+            .filter(|tid| task_ids.contains(tid.as_str())) // Only include tasks in our set
+            .map(|tid| tid.as_str().to_string())
+            .collect();
+
+        // Skip sessions with no tasks
+        if task_ids_in_plan.is_empty() {
+            continue;
+        }
+
+        let session_id_str = session.id.as_str().to_string();
+        let session_title = session.title.clone();
         let plan_artifact_id = session
+            .plan_artifact_id
             .as_ref()
-            .and_then(|s| s.plan_artifact_id.as_ref())
             .map(|id| id.as_str().to_string())
             .unwrap_or_else(|| session_id_str.clone());
 
