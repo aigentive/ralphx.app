@@ -111,8 +111,6 @@ cleanup() {
     sleep 0.3
     # Force kill if still running
     pkill -9 -f "ralph-streams.sh $STREAM" 2>/dev/null || true
-    # Kill all remaining child processes (fswatch)
-    pkill -9 -P $$ 2>/dev/null || true
     exit 0
 }
 
@@ -222,29 +220,32 @@ start_watch_loop() {
     # Take initial mtime snapshot
     snapshot_mtimes
 
-    # Start fswatch in background
-    # Using -x to see event flags for debugging spurious triggers
-    fswatch -l "$FSWATCH_LATENCY" -x "${WATCH_FILES[@]}" | while read -r file event_flags; do
-        echo ""
-        echo -e "${PAD}${DIM}[$STREAM] fswatch event: file=$file flags=$event_flags${NC}"
-        # Show current mtimes for debugging
-        for wf in "${WATCH_FILES[@]}"; do
-            echo -e "${PAD}${DIM}[$STREAM] $wf mtime: $(stat -f '%m %Sm' "$wf" 2>/dev/null || echo 'N/A')${NC}"
-        done
-        run_cycle "file change" "$file"
-    done &
-
-    # Give fswatch time to initialize before initial cycle
-    sleep 0.5
-
-    # Initial run (fswatch is already watching, so changes will be caught)
+    # Initial run FIRST (no background processes)
     run_cycle "initial"
 
-    # After initial cycle, show watching status
-    echo -e "${PAD}${BLUE}[$STREAM] Watching: ${WATCH_FILES[*]}${NC}"
-    echo -e "${PAD}${BLUE}[$STREAM] Will auto-start when files change...${NC}"
-    echo ""
+    # Simple synchronous loop: wait → run → repeat
+    # Using fswatch -1 (one-shot mode) eliminates ghost/orphan processes
+    while true; do
+        echo -e "${PAD}${GREEN}[$STREAM] IDLE - waiting for file changes...${NC}"
+        echo -e "${PAD}${DIM}Watched: ${WATCH_FILES[*]}${NC}"
 
-    # Wait for background jobs (or be killed via trap)
-    wait
+        # Check for stop signal before waiting
+        if [[ -f ".ralph-stop" ]]; then
+            echo -e "${PAD}${YELLOW}[$STREAM] Stop signal detected${NC}"
+            break
+        fi
+
+        # fswatch -1 = one-shot mode, exits after first event
+        # No background process, no orphan risk
+        CHANGED_FILE=$(fswatch -1 -l "$FSWATCH_LATENCY" "${WATCH_FILES[@]}" 2>/dev/null)
+
+        # Check for stop signal after waking
+        if [[ -f ".ralph-stop" ]]; then
+            echo -e "${PAD}${YELLOW}[$STREAM] Stop signal detected${NC}"
+            break
+        fi
+
+        # Run cycle synchronously
+        run_cycle "file change" "$CHANGED_FILE"
+    done
 }
