@@ -849,6 +849,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.6}
             maxZoom={1}
+            zoomOnDoubleClick={false}
             proOptions={{ hideAttribution: true }}
           >
             {/* SVG marker definitions for edge arrows */}
