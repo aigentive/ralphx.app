@@ -539,7 +539,7 @@
       "phase": 75,
       "name": "Merge Chat Context",
       "prd": "specs/phases/prd_phase_75_merge_chat_context.md",
-      "status": "active",
+      "status": "complete",
       "description": "Wire up merge conversation context to chat panel for merger agent visibility"
     }
   ]
