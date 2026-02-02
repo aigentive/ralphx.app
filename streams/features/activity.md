@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 10:00:00 - Phase 66 Task 13: Add complete_merge and report_conflict MCP tools
+**What:**
+- Added `complete_merge` and `report_conflict` tool definitions to `ralphx-mcp-server/src/tools.ts`
+- Added `ralphx-merger` agent to TOOL_ALLOWLIST with: complete_merge, report_conflict, get_task_context
+- Added custom routing in `index.ts` for git endpoints:
+  - `complete_merge` → POST `/api/git/tasks/{id}/complete-merge`
+  - `report_conflict` → POST `/api/git/tasks/{id}/report-conflict`
+- Added merge tools to task scope validation
+
+**Files Modified:**
+- `ralphx-plugin/ralphx-mcp-server/src/tools.ts` (tool definitions + TOOL_ALLOWLIST)
+- `ralphx-plugin/ralphx-mcp-server/src/index.ts` (routing + task scope validation)
+
+**Commands:**
+- `npm run build` (passed)
+
+**Visual Verification:** N/A - MCP server only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 09:15:00 - Phase 66 Task 12: Add merger agent definition for conflict resolution
 **What:**
 - Created `ralphx-plugin/agents/merger.md` with YAML frontmatter and agent prompt

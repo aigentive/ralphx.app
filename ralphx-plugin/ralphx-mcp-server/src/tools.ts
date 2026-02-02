@@ -387,6 +387,53 @@ export const ALL_TOOLS: Tool[] = [
   },
 
   // ========================================================================
+  // MERGE TOOLS (merger agent)
+  // ========================================================================
+  {
+    name: "complete_merge",
+    description:
+      "Signal successful merge completion after resolving all conflicts. Call this after staging changes, completing the rebase/merge, and getting the commit SHA. This transitions the task from Merging to Merged state and triggers cleanup of the task branch/worktree.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID that was being merged",
+        },
+        commit_sha: {
+          type: "string",
+          description: "The commit SHA of the merge commit",
+        },
+      },
+      required: ["task_id", "commit_sha"],
+    },
+  },
+  {
+    name: "report_conflict",
+    description:
+      "Signal that merge conflicts could not be resolved automatically. Call this when conflicts are too complex (ambiguous intent, architectural incompatibility, or missing context). This transitions the task from Merging to MergeConflict state, keeping the branch/worktree for manual resolution.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID with unresolved conflicts",
+        },
+        conflict_files: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of file paths that still have conflicts",
+        },
+        reason: {
+          type: "string",
+          description: "Explanation of why the conflicts couldn't be resolved",
+        },
+      },
+      required: ["task_id", "conflict_files", "reason"],
+    },
+  },
+
+  // ========================================================================
   // REVIEW TOOLS (reviewer agent)
   // ========================================================================
   {
@@ -575,6 +622,14 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   "session-namer": ["update_session_title"],
   // Dependency suggester agent - analyzes proposals and auto-applies dependencies
   "dependency-suggester": ["apply_proposal_dependencies"],
+  // Merger agent - resolves merge conflicts when programmatic merge fails
+  "ralphx-merger": [
+    // merge tools
+    "complete_merge",
+    "report_conflict",
+    // common context tools
+    "get_task_context",
+  ],
   // These agents have NO MCP tools - they use filesystem tools only
   supervisor: [],
   "qa-prep": [],
