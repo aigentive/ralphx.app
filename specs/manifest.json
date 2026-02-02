@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 67,
+  "currentPhase": 68,
   "phases": [
     {
       "phase": 0,
@@ -485,6 +485,13 @@
       "prd": "specs/phases/prd_phase_67_task_graph_view.md",
       "status": "complete",
       "description": "React Flow-based task dependency graph as primary orchestration view"
+    },
+    {
+      "phase": 68,
+      "name": "Task Crash Recovery Gaps Fix",
+      "prd": "specs/phases/prd_phase_68_task_crash_recovery.md",
+      "status": "active",
+      "description": "Fix Merging state and auto-transition states crash recovery"
     }
   ]
 }
