@@ -22,15 +22,18 @@ A programmatic rebase + merge was already attempted on this task's branch and fa
 
 The conflict files are stored in the task's metadata under `conflict_files`. Get this information via `get_task_context`.
 
-## CRITICAL: You MUST Call Either complete_merge OR report_conflict
+## CRITICAL: How Merge Completion Works
 
-**You MUST ALWAYS call either `complete_merge` or `report_conflict` before finishing, no exceptions.**
+**Merge completion is AUTO-DETECTED when you exit.** You do NOT need to call `complete_merge` manually.
 
-If you are spawned to resolve merge conflicts, you MUST:
-1. Attempt to resolve all conflicts
-2. Call `complete_merge` if successful, OR `report_conflict` if you cannot resolve
+When you finish and exit:
+1. The system automatically checks git state
+2. If rebase is complete and no conflict markers remain → task auto-transitions to Merged
+3. If rebase is incomplete or conflicts remain → task auto-transitions to MergeConflict
 
-**Never exit without calling one of these tools.** The task will be stuck in `merging` status otherwise.
+**You MUST call `report_conflict` if you cannot resolve the conflicts.** This provides valuable context for human intervention. If you simply exit without resolving, the system will detect the incomplete state but won't have your explanation.
+
+**`complete_merge` is OPTIONAL.** You can still call it for explicit signaling (backwards compatible), but it's not required.
 
 ## Workflow
 
@@ -117,15 +120,17 @@ Once all conflicts are resolved and verified:
    git commit -m "Merge branch 'base' into task-branch: resolve conflicts"
    ```
 
-3. Get the commit SHA:
-   ```bash
-   git rev-parse HEAD
-   ```
+3. **Exit.** The system will auto-detect merge completion by checking:
+   - Rebase state (no `.git/rebase-merge` or `.git/rebase-apply` directories)
+   - No conflict markers in tracked files
+   - HEAD commit SHA
 
-4. Call `complete_merge` with the commit SHA:
-   ```
-   complete_merge(task_id: "...", commit_sha: "...")
-   ```
+**Optional:** If you want explicit confirmation, you can call `complete_merge`:
+```
+git rev-parse HEAD  # Get commit SHA
+complete_merge(task_id: "...", commit_sha: "...")
+```
+This is backwards compatible but not required — the system auto-detects success.
 
 ### When to Report Conflict
 
@@ -149,19 +154,20 @@ The user will be notified to resolve the conflicts manually.
 
 ## MCP Tools Available
 
-| Tool | Purpose |
-|------|---------|
-| `get_task_context` | Get task details and conflict file list |
-| `complete_merge` | Signal successful merge completion with commit SHA |
-| `report_conflict` | Signal that conflicts need manual resolution |
+| Tool | Purpose | Required? |
+|------|---------|-----------|
+| `get_task_context` | Get task details and conflict file list | Yes - start here |
+| `complete_merge` | Explicit merge completion signal (auto-detected otherwise) | No - optional |
+| `report_conflict` | Signal that conflicts need manual resolution with context | Yes - if you cannot resolve |
 
 ## Best Practices
 
 1. **Understand before editing**: Read and understand both sides of each conflict
 2. **Verify after resolving**: Always check for remaining conflict markers
 3. **Test the result**: Run appropriate build/check commands
-4. **Don't guess**: If unsure about the correct resolution, report the conflict
+4. **Don't guess**: If unsure about the correct resolution, call `report_conflict` with context
 5. **Be thorough**: Check ALL conflict files, not just the first one
+6. **Call report_conflict for failures**: If you cannot resolve, always call `report_conflict` — this provides context for human intervention. Simply exiting will auto-transition to MergeConflict but without your explanation.
 
 ## Output
 
