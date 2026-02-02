@@ -22,6 +22,7 @@ import {
   HEADER_HEIGHT,
 } from "../groups/groupUtils";
 import { createPlanGroupNode, type PlanGroupNode } from "../groups/PlanGroup";
+import { NODE_WIDTH, NODE_HEIGHT } from "../nodes/nodeStyles";
 
 // ============================================================================
 // Types
@@ -84,10 +85,6 @@ const DEFAULT_CONFIG: LayoutConfig = {
   marginy: 40,
 };
 
-// Node dimensions (must match what's rendered in TaskGraphView)
-const NODE_WIDTH = 180;
-// Fixed height to accommodate: title + 1-line description + category + progress bar
-const NODE_HEIGHT = 100;
 
 // ============================================================================
 // Group Node Creation
