@@ -22,7 +22,7 @@ import {
   HEADER_HEIGHT,
 } from "../groups/groupUtils";
 import { createPlanGroupNode, type PlanGroupNode } from "../groups/PlanGroup";
-import { NODE_WIDTH, NODE_HEIGHT } from "../nodes/nodeStyles";
+import { NODE_WIDTH, NODE_HEIGHT, COMPACT_NODE_WIDTH, COMPACT_NODE_HEIGHT } from "../nodes/nodeStyles";
 
 // ============================================================================
 // Types
@@ -39,6 +39,8 @@ export interface LayoutConfig {
   marginx: number;
   /** Vertical margin */
   marginy: number;
+  /** Whether to use compact node dimensions */
+  isCompact?: boolean;
 }
 
 export interface LayoutResult {
@@ -115,6 +117,8 @@ function createGroupNodes(
   collapsedPlanIds: Set<string>,
   positions: Map<string, { x: number; y: number }>,
   graphNodes: TaskGraphNode[],
+  nodeWidth: number,
+  nodeHeight: number,
   onToggleCollapse?: (planArtifactId: string) => void
 ): PlanGroupNode[] {
   if (planGroups.length === 0) {
@@ -174,8 +178,8 @@ function createGroupNodes(
       const boundingBoxes = calculateGroupBoundingBoxes(
         groupTaskNodes,
         singleGroupMap,
-        NODE_WIDTH,
-        NODE_HEIGHT
+        nodeWidth,
+        nodeHeight
       );
       const bbox = boundingBoxes[0];
       if (!bbox) continue;
@@ -226,8 +230,8 @@ function createGroupNodes(
         const ungroupedBoxes = calculateGroupBoundingBoxes(
           ungroupedTaskNodes,
           ungroupedMap,
-          NODE_WIDTH,
-          NODE_HEIGHT
+          nodeWidth,
+          nodeHeight
         );
         const ungroupedBbox = ungroupedBoxes[0];
         if (ungroupedBbox) {
@@ -467,6 +471,10 @@ function computeLayoutWithCache(
   onToggleCollapse: ((planArtifactId: string) => void) | undefined,
   cache: React.MutableRefObject<CachedLayout | null>
 ): LayoutResult {
+  // Use correct node dimensions based on compact mode
+  const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
+  const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
+
   // Build set of collapsed task IDs for lazy loading
   const collapsedTaskIds = buildCollapsedTaskIds(graphNodes, planGroups, collapsedPlanIds);
 
@@ -658,7 +666,7 @@ function computeLayoutWithCache(
   });
 
   // Create group nodes for plan groups using ALL positioned nodes
-  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, positions, graphNodes, onToggleCollapse);
+  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, positions, graphNodes, nodeWidth, nodeHeight, onToggleCollapse);
 
   return { nodes, edges, groupNodes };
 }
@@ -813,6 +821,10 @@ function computePositions(
   planGroups: LayoutPlanGroup[] = [],
   collapsedPlanIds: Set<string> = new Set()
 ): Map<string, { x: number; y: number }> {
+  // Use correct node dimensions based on compact mode
+  const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
+  const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
+
   // Use compound graph when we have plan groups to prevent overlap
   const useCompound = planGroups.length > 0;
   const g = new dagre.graphlib.Graph({ compound: useCompound });
@@ -889,7 +901,7 @@ function computePositions(
       continue; // Skip individual collapsed tasks
     }
 
-    g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    g.setNode(id, { width: nodeWidth, height: nodeHeight });
 
     // Set parent relationship for compound graph
     if (useCompound) {
@@ -941,8 +953,8 @@ function computePositions(
     if (dagreNode) {
       // Dagre gives center position, React Flow needs top-left
       positions.set(id, {
-        x: dagreNode.x - NODE_WIDTH / 2,
-        y: dagreNode.y - NODE_HEIGHT / 2,
+        x: dagreNode.x - nodeWidth / 2,
+        y: dagreNode.y - nodeHeight / 2,
       });
     }
   }
