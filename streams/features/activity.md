@@ -4,6 +4,38 @@
 
 ---
 
+### 2026-02-02 20:00:00 - Phase 72 Task 1: Apply glass morphism surface styling to graph nodes
+**What:**
+- Added `GLASS_SURFACE` constant to `nodeStyles.ts` with glass morphism properties:
+  - Background: `hsla(220 10% 14% / 0.85)`
+  - Backdrop filter: `blur(12px) saturate(150%)` with WebKit prefix
+  - Border: `1px solid hsla(220 10% 100% / 0.06)` (subtle divider)
+  - Box shadow: `0 2px 8px hsla(220 10% 0% / 0.25)` (soft elevation)
+- Updated `TaskNode.tsx`:
+  - Imported and applied `GLASS_SURFACE` styles
+  - Removed `hover:scale-105` class (kept `hover:shadow-lg`)
+  - Removed `border-2` class, using inline border from GLASS_SURFACE
+  - Updated transitions to 150ms for background/transform/shadow
+- Updated `TaskNodeCompact.tsx`:
+  - Same glass morphism surface styling
+  - Removed `hover:scale-110` class (kept `hover:shadow-md`)
+  - Updated transitions to match TaskNode
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/nodeStyles.ts`
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - this task modifies surface styling only, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:00:00 - Phase 71 Complete → Phase 72 Active
 **What:**
 - Ran gap verification on Phase 71: No P0 gaps found

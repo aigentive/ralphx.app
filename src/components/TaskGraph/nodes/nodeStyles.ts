@@ -30,6 +30,38 @@ export interface NodeStyle {
   boxShadow?: string;
 }
 
+/**
+ * Glass morphism surface styles for consistent node styling
+ */
+export interface GlassSurface {
+  /** Glass morphism background */
+  background: string;
+  /** Backdrop filter for blur effect */
+  backdropFilter: string;
+  /** Webkit prefix for backdrop filter (Safari support) */
+  WebkitBackdropFilter: string;
+  /** Subtle divider border */
+  border: string;
+  /** Consistent soft shadow */
+  boxShadow: string;
+}
+
+// ============================================================================
+// Glass Morphism Constants
+// ============================================================================
+
+/**
+ * Base glass morphism surface - shared by all nodes
+ * Matches Kanban card styling for visual consistency
+ */
+export const GLASS_SURFACE: GlassSurface = {
+  background: "hsla(220 10% 14% / 0.85)",
+  backdropFilter: "blur(12px) saturate(150%)",
+  WebkitBackdropFilter: "blur(12px) saturate(150%)",
+  border: "1px solid hsla(220 10% 100% / 0.06)",
+  boxShadow: "0 2px 8px hsla(220 10% 0% / 0.25)",
+};
+
 export type StatusCategory =
   | "idle"
   | "blocked"
