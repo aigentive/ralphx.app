@@ -13,6 +13,7 @@ pub mod sqlite_chat_conversation_repo;
 pub mod sqlite_chat_message_repo;
 #[cfg(test)]
 mod sqlite_chat_message_repo_tests;
+pub mod sqlite_execution_settings_repo;
 pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
 pub mod sqlite_methodology_repo;
@@ -41,6 +42,7 @@ pub use sqlite_artifact_flow_repo::SqliteArtifactFlowRepository;
 pub use sqlite_artifact_repo::SqliteArtifactRepository;
 pub use sqlite_chat_conversation_repo::SqliteChatConversationRepository;
 pub use sqlite_chat_message_repo::SqliteChatMessageRepository;
+pub use sqlite_execution_settings_repo::SqliteExecutionSettingsRepository;
 pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
 pub use sqlite_ideation_settings_repo::SqliteIdeationSettingsRepository;
 pub use sqlite_methodology_repo::SqliteMethodologyRepository;
