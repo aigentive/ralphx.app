@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 19:30:00 - Phase 66 Gap Verification P0: Wire get_task_commits to useGitDiff
+**What:**
+- Found P0 gap during phase completion verification: MergedTaskDetail shows "No commit history" because useGitDiff hook didn't fetch commits
+- Added `CommitInfoSchema` and `TaskCommitsResponseSchema` to `src/api/diff.schemas.ts`
+- Added `CommitInfo` type to `src/api/diff.types.ts`
+- Added `transformCommitInfo` function to `src/api/diff.transforms.ts`
+- Added `getTaskCommits` method to `diffApi` in `src/api/diff.ts`
+- Updated `useGitDiff` hook to fetch commits via `diffApi.getTaskCommits(taskId)` on mount
+- Commits now populate in MergedTaskDetail commit history section
+
+**Files Modified:**
+- `src/api/diff.schemas.ts` (add CommitInfo and TaskCommitsResponse schemas)
+- `src/api/diff.types.ts` (add CommitInfo type)
+- `src/api/diff.transforms.ts` (add transformCommitInfo function)
+- `src/api/diff.ts` (add getTaskCommits method and re-exports)
+- `src/hooks/useGitDiff.ts` (wire commits fetching)
+- `streams/features/backlog.md` (add and mark fixed P0 item)
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed, 0 errors, 13 pre-existing warnings)
+
+**Visual Verification:** N/A - backend data flow fix
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 18:00:00 - Phase 66 Task 21: Add merge state subgroups to Done column
 **What:**
 - Updated `src/types/workflow.ts`:

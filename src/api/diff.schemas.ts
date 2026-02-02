@@ -19,3 +19,15 @@ export const FileDiffSchema = z.object({
 });
 
 export const FileChangesResponseSchema = z.array(FileChangeSchema);
+
+export const CommitInfoSchema = z.object({
+  sha: z.string(),
+  short_sha: z.string(),
+  message: z.string(),
+  author: z.string(),
+  timestamp: z.string(),
+});
+
+export const TaskCommitsResponseSchema = z.object({
+  commits: z.array(CommitInfoSchema),
+});

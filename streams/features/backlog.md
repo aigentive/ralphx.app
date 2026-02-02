@@ -66,6 +66,11 @@
 - [x] [Frontend] Missing wiring: historicalStatus prop not passed to TaskChatPanel - chat filtering feature cannot be used from TaskDetailOverlay - src/components/tasks/TaskDetailOverlay.tsx:641
   - Fixed by adding StateTimelineNav, history mode state, and historicalStatus wiring to TaskFullView
 
+## From Phase 66 Verification (2026-02-02)
+
+- [x] [Frontend] Missing Implementation: useGitDiff hook doesn't call get_task_commits command - src/hooks/useGitDiff.ts:55
+  - Fixed by adding getTaskCommits to diffApi and wiring in useGitDiff to fetch commits on mount
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
