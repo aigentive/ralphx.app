@@ -15,3 +15,11 @@ export interface FileDiff {
   newContent: string;
   language: string;
 }
+
+export interface CommitInfo {
+  sha: string;
+  shortSha: string;
+  message: string;
+  author: string;
+  date: Date;
+}

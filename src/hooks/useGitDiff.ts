@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { diffApi } from "@/api/diff";
+import type { CommitInfo } from "@/api/diff";
 import { getLanguageFromPath } from "@/components/diff/DiffViewer.types";
 import type { FileChange, Commit, DiffData } from "@/components/diff";
 
@@ -38,13 +39,26 @@ export interface UseGitDiffResult {
 }
 
 /**
+ * Convert API CommitInfo to UI Commit type
+ * Types are structurally identical but come from different sources
+ */
+function toCommit(info: CommitInfo): Commit {
+  return {
+    sha: info.sha,
+    shortSha: info.shortSha,
+    message: info.message,
+    author: info.author,
+    date: info.date,
+  };
+}
+
+/**
  * Hook for fetching git diff data from agent activity events
  *
  * Connects to Tauri backend commands:
  * - get_task_file_changes(taskId, projectPath) -> FileChange[]
  * - get_file_diff(filePath, projectPath) -> FileDiff
- *
- * Note: Commit history is not yet implemented in backend
+ * - get_task_commits(taskId) -> CommitInfo[]
  */
 export function useGitDiff({
   taskId,
@@ -52,12 +66,12 @@ export function useGitDiff({
   enabled = true,
 }: UseGitDiffOptions): UseGitDiffResult {
   const [changes, setChanges] = useState<FileChange[]>([]);
-  const [commits] = useState<Commit[]>([]); // Not yet implemented
+  const [commits, setCommits] = useState<Commit[]>([]);
   const [isLoadingChanges, setIsLoadingChanges] = useState(false);
-  const [isLoadingHistory] = useState(false); // Not yet implemented
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Fetch changes on mount/enable
+  // Fetch file changes on mount/enable (requires projectPath)
   useEffect(() => {
     if (!enabled || !taskId || !projectPath) return;
 
@@ -80,6 +94,27 @@ export function useGitDiff({
 
     fetchData();
   }, [enabled, taskId, projectPath]);
+
+  // Fetch commit history on mount/enable (only requires taskId)
+  useEffect(() => {
+    if (!enabled || !taskId) return;
+
+    const fetchCommits = async () => {
+      setIsLoadingHistory(true);
+
+      try {
+        const commitInfos = await diffApi.getTaskCommits(taskId);
+        setCommits(commitInfos.map(toCommit));
+      } catch {
+        // Silently fail for commits - not critical and task may not have a branch yet
+        setCommits([]);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    fetchCommits();
+  }, [enabled, taskId]);
 
   // Fetch diff for a specific file
   const fetchDiff = useCallback(
@@ -108,20 +143,34 @@ export function useGitDiff({
 
   // Refresh all data
   const refresh = useCallback(async () => {
-    if (!enabled || !taskId || !projectPath) return;
+    if (!enabled || !taskId) return;
 
-    setIsLoadingChanges(true);
     setError(null);
 
+    // Refresh commits (only requires taskId)
+    setIsLoadingHistory(true);
     try {
-      const fileChanges = await diffApi.getTaskFileChanges(taskId, projectPath);
-      setChanges(fileChanges);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err : new Error("Failed to refresh git data")
-      );
+      const commitInfos = await diffApi.getTaskCommits(taskId);
+      setCommits(commitInfos.map(toCommit));
+    } catch {
+      setCommits([]);
     } finally {
-      setIsLoadingChanges(false);
+      setIsLoadingHistory(false);
+    }
+
+    // Refresh file changes (requires projectPath)
+    if (projectPath) {
+      setIsLoadingChanges(true);
+      try {
+        const fileChanges = await diffApi.getTaskFileChanges(taskId, projectPath);
+        setChanges(fileChanges);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err : new Error("Failed to refresh git data")
+        );
+      } finally {
+        setIsLoadingChanges(false);
+      }
     }
   }, [enabled, taskId, projectPath]);
 

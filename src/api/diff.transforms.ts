@@ -1,11 +1,12 @@
 // Transform functions for diff API (snake_case -> camelCase)
 
 import type { z } from "zod";
-import type { FileChangeSchema, FileDiffSchema } from "./diff.schemas";
-import type { FileChange, FileDiff } from "./diff.types";
+import type { FileChangeSchema, FileDiffSchema, CommitInfoSchema } from "./diff.schemas";
+import type { FileChange, FileDiff, CommitInfo } from "./diff.types";
 
 type RawFileChange = z.infer<typeof FileChangeSchema>;
 type RawFileDiff = z.infer<typeof FileDiffSchema>;
+type RawCommitInfo = z.infer<typeof CommitInfoSchema>;
 
 export function transformFileChange(raw: RawFileChange): FileChange {
   return {
@@ -22,5 +23,15 @@ export function transformFileDiff(raw: RawFileDiff): FileDiff {
     oldContent: raw.old_content,
     newContent: raw.new_content,
     language: raw.language,
+  };
+}
+
+export function transformCommitInfo(raw: RawCommitInfo): CommitInfo {
+  return {
+    sha: raw.sha,
+    shortSha: raw.short_sha,
+    message: raw.message,
+    author: raw.author,
+    date: new Date(raw.timestamp),
   };
 }

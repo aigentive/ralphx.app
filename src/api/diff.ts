@@ -5,15 +5,17 @@ import { z } from "zod";
 import {
   FileChangesResponseSchema,
   FileDiffSchema,
+  TaskCommitsResponseSchema,
 } from "./diff.schemas";
 import {
   transformFileChange,
   transformFileDiff,
+  transformCommitInfo,
 } from "./diff.transforms";
-import type { FileChange, FileDiff } from "./diff.types";
+import type { FileChange, FileDiff, CommitInfo } from "./diff.types";
 
 // Re-export types for convenience
-export type { FileChange, FileDiff, FileChangeStatus } from "./diff.types";
+export type { FileChange, FileDiff, FileChangeStatus, CommitInfo } from "./diff.types";
 
 // Re-export schemas for consumers that need validation
 export {
@@ -21,10 +23,12 @@ export {
   FileChangeStatusSchema,
   FileDiffSchema,
   FileChangesResponseSchema,
+  CommitInfoSchema,
+  TaskCommitsResponseSchema,
 } from "./diff.schemas";
 
 // Re-export transforms for consumers that need manual transformation
-export { transformFileChange, transformFileDiff } from "./diff.transforms";
+export { transformFileChange, transformFileDiff, transformCommitInfo } from "./diff.transforms";
 
 // ============================================================================
 // Typed Invoke Helper
@@ -79,5 +83,18 @@ export const diffApi = {
       { filePath, projectPath },
       FileDiffSchema,
       transformFileDiff
+    ),
+
+  /**
+   * Get commits on task branch since it diverged from base
+   * @param taskId - The task ID to get commits for
+   * @returns Array of commit info
+   */
+  getTaskCommits: (taskId: string): Promise<CommitInfo[]> =>
+    typedInvokeWithTransform(
+      "get_task_commits",
+      { taskId },
+      TaskCommitsResponseSchema,
+      (response) => response.commits.map(transformCommitInfo)
     ),
 } as const;
