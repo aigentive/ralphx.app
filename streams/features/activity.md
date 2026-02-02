@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 05:15:00 - Phase 69 Task 1: Make backend diff commands worktree-aware
+**What:**
+- Updated `get_task_file_changes` and `get_file_diff` commands to be worktree-aware
+- Removed `project_path` parameter from `get_task_file_changes`
+- Added `task_id` parameter to `get_file_diff` (replacing `project_path`)
+- Added `get_task_working_path` helper function that determines correct working path:
+  - Worktree mode: uses `task.worktree_path` (falls back to `project.working_directory`)
+  - Local mode: uses `project.working_directory`
+- Follows same pattern as `get_task_commits` in `git_commands.rs`
+
+**Files Modified:**
+- `src-tauri/src/commands/diff_commands.rs`
+  - Added `get_task_working_path` async helper function
+  - Updated `get_task_file_changes` to use helper (removes `project_path` param)
+  - Updated `get_file_diff` to use helper (adds `task_id` param, removes `project_path`)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 04:45:00 - Phase 68 Task 4: Add tests for crash recovery scenarios
 **What:**
 - Added 6 new tests to `startup_jobs.rs` for crash recovery scenarios:

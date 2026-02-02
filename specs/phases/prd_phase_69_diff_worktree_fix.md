@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(diff): make get_task_file_changes and get_file_diff worktree-aware"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
