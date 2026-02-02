@@ -229,7 +229,49 @@ function createGroupNodes(
 // ============================================================================
 
 /**
+ * Build set of task IDs that belong to collapsed groups.
+ * Used for lazy loading - we skip these tasks in layout computation.
+ */
+function buildCollapsedTaskIds(
+  graphNodes: TaskGraphNode[],
+  planGroups: PlanGroupInfo[],
+  collapsedPlanIds: Set<string>
+): Set<string> {
+  const hiddenIds = new Set<string>();
+
+  // Add tasks from collapsed plan groups
+  for (const pg of planGroups) {
+    if (collapsedPlanIds.has(pg.planArtifactId)) {
+      for (const taskId of pg.taskIds) {
+        hiddenIds.add(taskId);
+      }
+    }
+  }
+
+  // Check for ungrouped tasks if the ungrouped group is collapsed
+  if (collapsedPlanIds.has(UNGROUPED_PLAN_ID)) {
+    const groupedTaskIds = new Set<string>();
+    for (const pg of planGroups) {
+      for (const taskId of pg.taskIds) {
+        groupedTaskIds.add(taskId);
+      }
+    }
+    for (const node of graphNodes) {
+      if (!groupedTaskIds.has(node.taskId)) {
+        hiddenIds.add(node.taskId);
+      }
+    }
+  }
+
+  return hiddenIds;
+}
+
+/**
  * Compute layout using cached positions if structure unchanged, otherwise recompute.
+ *
+ * LAZY LOADING: Tasks in collapsed groups are excluded from layout computation entirely.
+ * This improves performance by avoiding dagre calculations for hidden nodes.
+ * When a group expands, the cache is invalidated (hash changes) and layout is recomputed.
  */
 function computeLayoutWithCache(
   graphNodes: TaskGraphNode[],
@@ -241,9 +283,20 @@ function computeLayoutWithCache(
   onToggleCollapse: ((planArtifactId: string) => void) | undefined,
   cache: React.MutableRefObject<CachedLayout | null>
 ): LayoutResult {
+  // Build set of collapsed task IDs for lazy loading
+  const collapsedTaskIds = buildCollapsedTaskIds(graphNodes, planGroups, collapsedPlanIds);
+
+  // Filter nodes and edges to exclude collapsed groups (lazy loading)
+  // This saves dagre computation for tasks that won't be rendered
+  const visibleNodes = graphNodes.filter((n) => !collapsedTaskIds.has(n.taskId));
+  const visibleEdges = graphEdges.filter(
+    (e) => !collapsedTaskIds.has(e.source) && !collapsedTaskIds.has(e.target)
+  );
+
   // Compute structural hash to check cache
-  const nodeIds = graphNodes.map((n) => n.taskId);
-  const edgePairs = graphEdges.map((e) => ({ source: e.source, target: e.target }));
+  // Hash includes collapsed state so expanding a group invalidates cache
+  const nodeIds = visibleNodes.map((n) => n.taskId);
+  const edgePairs = visibleEdges.map((e) => ({ source: e.source, target: e.target }));
   const hash = computeGraphHash(nodeIds, edgePairs, config.direction);
 
   // Check if we can use cached positions
@@ -279,7 +332,8 @@ function computeLayoutWithCache(
   }
 
   // Transform to React Flow nodes using cached/computed positions
-  const nodes: Node[] = graphNodes.map((graphNode) => {
+  // Only process visible nodes (lazy loading - collapsed group tasks excluded)
+  const nodes: Node[] = visibleNodes.map((graphNode) => {
     const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
 
     return {
@@ -299,11 +353,12 @@ function computeLayoutWithCache(
   });
 
   // Transform graph edges to React Flow edges
+  // Only process visible edges (lazy loading - edges to/from collapsed tasks excluded)
   // Cross-plan edges (source and target in different plan groups) get higher z-index
   // to render on top of plan group regions
   const CROSS_PLAN_EDGE_ZINDEX = 10;
 
-  const edges: Edge[] = graphEdges.map((graphEdge) => {
+  const edges: Edge[] = visibleEdges.map((graphEdge) => {
     const sourceStatus = nodeStatusMap.get(graphEdge.source);
     const sourcePlan = taskToPlanMap.get(graphEdge.source);
     const targetPlan = taskToPlanMap.get(graphEdge.target);

@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-03 00:15:00 - Phase 67 Task 37: Implement lazy loading for collapsed groups
+**What:**
+- Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
+  - Added `buildCollapsedTaskIds()` helper function to compute hidden task IDs
+  - Modified `computeLayoutWithCache()` to filter nodes/edges BEFORE dagre layout computation
+  - Collapsed group tasks are now excluded from layout computation entirely (not just filtered after)
+  - Cache hash includes collapsed state so expanding a group invalidates cache and recomputes layout
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Removed redundant `collapsedTaskIds` useMemo (now handled in layout hook)
+  - Simplified nodes/edges memoization since filtering is done in layout hook
+  - Added clarifying comments about lazy loading architecture
+
+**Performance improvement:**
+- Before: dagre computed layout for ALL nodes, then hidden nodes were filtered in view component
+- After: dagre only computes layout for VISIBLE nodes, saving computation for collapsed groups
+- Expanding a group triggers layout recomputation (cache invalidation via hash change)
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts` (lazy loading in layout)
+- `src/components/TaskGraph/TaskGraphView.tsx` (simplified filtering)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - performance optimization, no visual changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:45:00 - Phase 67 Task 36: Add keyboard navigation
 **What:**
 - Updated `src/components/TaskGraph/TaskGraphView.tsx`:
