@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-02 22:00:00 - Phase 72 Task 3: Add activity dots for active states
+**What:**
+- Added `isActiveStatus()` helper function to detect executing, re_executing, reviewing states
+- Added `getActivityDotColor()` helper to return appropriate color:
+  - Orange (`var(--accent-primary)`) for executing/re_executing
+  - Blue (`var(--status-info)`) for reviewing
+- Updated `TaskNode.tsx`:
+  - Added `showActivityDots` and `activityDotColor` state derivations
+  - Added `relative` class to inner container for absolute positioning
+  - Added 3-dot activity indicator in top-right corner (w-1 h-1 dots)
+  - Staggered bounce animation (1.4s, delays 0s/0.2s/0.4s)
+- Updated `TaskNodeCompact.tsx`:
+  - Same helper functions and activity dots logic
+  - Smaller dots (w-0.5 h-0.5) to match compact node scale
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - activity dots are CSS animations, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:00:00 - Phase 72 Task 2: Add left priority stripe to nodes
 **What:**
 - Added priority color constants to `nodeStyles.ts`:

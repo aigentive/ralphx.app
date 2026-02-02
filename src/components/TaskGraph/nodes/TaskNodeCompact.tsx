@@ -61,9 +61,31 @@ function abbreviateTitle(text: string): string {
 // Component
 // ============================================================================
 
+/**
+ * Check if status should show activity dots
+ */
+function isActiveStatus(status: string): boolean {
+  return status === "executing" || status === "re_executing" || status === "reviewing";
+}
+
+/**
+ * Get activity dot color based on status
+ * - Orange for executing states (matches accent)
+ * - Blue for reviewing states (matches status-info)
+ */
+function getActivityDotColor(status: string): string {
+  if (status === "reviewing") {
+    return "var(--status-info)";
+  }
+  // executing, re_executing
+  return "var(--accent-primary)";
+}
+
 function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactType>) {
   const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
   const style = getNodeStyle(internalStatus);
+  const showActivityDots = isActiveStatus(internalStatus);
+  const activityDotColor = getActivityDotColor(internalStatus);
 
   // Create a minimal task-like object for the context menu
   const minimalTask: Task = {
@@ -138,7 +160,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       {/* Node content - compact version with glass morphism */}
       <div
         className={`
-          rounded px-2 py-1.5
+          relative rounded px-2 py-1.5
           transition-all duration-150 ease-out
           hover:shadow-md
           ${selected ? "ring-2 ring-white/30" : ""}
@@ -165,6 +187,36 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
         }}
       >
+        {/* Activity dots - top-right corner for active states */}
+        {showActivityDots && (
+          <div
+            className="absolute top-1 right-1 flex gap-0.5"
+            data-testid="activity-dots"
+          >
+            <span
+              className="w-0.5 h-0.5 rounded-full"
+              style={{
+                backgroundColor: activityDotColor,
+                animation: "bounce 1.4s ease-in-out 0s infinite",
+              }}
+            />
+            <span
+              className="w-0.5 h-0.5 rounded-full"
+              style={{
+                backgroundColor: activityDotColor,
+                animation: "bounce 1.4s ease-in-out 0.2s infinite",
+              }}
+            />
+            <span
+              className="w-0.5 h-0.5 rounded-full"
+              style={{
+                backgroundColor: activityDotColor,
+                animation: "bounce 1.4s ease-in-out 0.4s infinite",
+              }}
+            />
+          </div>
+        )}
+
         {/* Abbreviated title - no status badge */}
         <div
           className="text-xs font-medium text-[hsl(220_10%_90%)] leading-tight text-center"

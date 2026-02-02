@@ -119,12 +119,34 @@ function truncateText(text: string, maxLength: number): string {
 // Component
 // ============================================================================
 
+/**
+ * Check if status should show activity dots
+ */
+function isActiveStatus(status: string): boolean {
+  return status === "executing" || status === "re_executing" || status === "reviewing";
+}
+
+/**
+ * Get activity dot color based on status
+ * - Orange for executing states (matches accent)
+ * - Blue for reviewing states (matches status-info)
+ */
+function getActivityDotColor(status: string): string {
+  if (status === "reviewing") {
+    return "var(--status-info)";
+  }
+  // executing, re_executing
+  return "var(--accent-primary)";
+}
+
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
   const style = getNodeStyle(internalStatus);
   const category = getStatusCategory(internalStatus as InternalStatus);
   const categoryLabel = CATEGORY_LABELS[category];
   const statusLabel = getStatusDisplayLabel(internalStatus);
+  const showActivityDots = isActiveStatus(internalStatus);
+  const activityDotColor = getActivityDotColor(internalStatus);
 
   // Create a minimal task-like object for the context menu
   // The context menu only uses title and internalStatus
@@ -200,7 +222,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       {/* Node content - Glass morphism surface */}
       <div
         className={`
-          rounded-lg px-3 py-2
+          relative rounded-lg px-3 py-2
           transition-all duration-150 ease-out
           hover:shadow-lg
           ${selected ? "ring-2 ring-white/30" : ""}
@@ -227,6 +249,36 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
         }}
       >
+        {/* Activity dots - top-right corner for active states */}
+        {showActivityDots && (
+          <div
+            className="absolute top-1.5 right-1.5 flex gap-0.5"
+            data-testid="activity-dots"
+          >
+            <span
+              className="w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: activityDotColor,
+                animation: "bounce 1.4s ease-in-out 0s infinite",
+              }}
+            />
+            <span
+              className="w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: activityDotColor,
+                animation: "bounce 1.4s ease-in-out 0.2s infinite",
+              }}
+            />
+            <span
+              className="w-1 h-1 rounded-full"
+              style={{
+                backgroundColor: activityDotColor,
+                animation: "bounce 1.4s ease-in-out 0.4s infinite",
+              }}
+            />
+          </div>
+        )}
+
         {/* Title */}
         <div
           className="text-sm font-medium text-[hsl(220_10%_90%)] mb-1.5 leading-tight"
