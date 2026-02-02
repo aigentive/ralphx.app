@@ -643,7 +643,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): create custom MiniMap with status colors"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 31,

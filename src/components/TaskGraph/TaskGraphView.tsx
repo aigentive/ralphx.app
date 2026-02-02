@@ -13,7 +13,6 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -30,8 +29,8 @@ import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
 import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
-import { getStatusBorderColor } from "./nodes/nodeStyles";
 import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
+import { GraphMiniMap } from "./controls/GraphMiniMap";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
@@ -46,17 +45,6 @@ import { Loader2 } from "lucide-react";
 export interface TaskGraphViewProps {
   projectId: string;
 }
-
-// Use Record<string, unknown> compatible structure for React Flow
-type TaskNodeData = Record<string, unknown> & {
-  label: string;
-  taskId: string;
-  internalStatus: string;
-  priority: number;
-  isCriticalPath: boolean;
-  isHighlighted?: boolean;
-  handlers?: TaskNodeHandlers;
-};
 
 // ============================================================================
 // Constants
@@ -426,18 +414,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
               borderRadius: 8,
             }}
           />
-          <MiniMap
-            nodeColor={(node) => {
-              const data = node.data as TaskNodeData | undefined;
-              return getStatusBorderColor(data?.internalStatus ?? "backlog");
-            }}
-            maskColor="hsla(220 10% 5% / 0.8)"
-            style={{
-              background: "hsla(220 10% 12% / 0.9)",
-              border: "1px solid hsla(220 20% 100% / 0.08)",
-              borderRadius: 8,
-            }}
-          />
+          <GraphMiniMap />
         </ReactFlow>
       </div>
 
