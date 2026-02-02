@@ -12,7 +12,7 @@
  */
 
 import { memo, useCallback, useMemo } from "react";
-import { FileText, GitMerge, CheckCircle2, Circle } from "lucide-react";
+import { FileText, GitMerge, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TimelineEvent, TimelineEventType } from "@/api/task-graph.types";
 import { getNodeStyle, getStatusCategory } from "../nodes/nodeStyles";
@@ -82,7 +82,7 @@ function EventIcon({
   eventType: TimelineEventType;
   style: { color: string };
 }) {
-  const className = "w-3 h-3";
+  const className = "w-2 h-2";
   switch (eventType) {
     case "plan_accepted":
       return <FileText className={className} style={style} />;
@@ -90,7 +90,8 @@ function EventIcon({
       return <CheckCircle2 className={className} style={style} />;
     case "status_change":
     default:
-      return <Circle className={className} style={style} />;
+      // For status_change, use a filled circle (no icon, just the dot)
+      return null;
   }
 }
 
@@ -139,10 +140,13 @@ export const TimelineEntry = memo(function TimelineEntry({
   return (
     <div
       className={cn(
-        "group relative flex items-start gap-3 px-3 py-2 rounded-lg transition-colors",
-        isClickable && "cursor-pointer hover:bg-white/5",
-        isHighlighted && "bg-white/10"
+        "group relative flex items-start gap-2.5 mx-2 px-2 py-2 rounded-md transition-colors",
+        isClickable && "cursor-pointer",
+        statusCategory === "executing" && "animate-pulse"
       )}
+      style={{
+        background: isHighlighted ? "hsla(220 60% 50% / 0.15)" : "transparent",
+      }}
       onClick={isClickable ? handleClick : undefined}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
@@ -156,16 +160,22 @@ export const TimelineEntry = memo(function TimelineEntry({
             }
           : undefined
       }
+      onMouseEnter={(e) => {
+        if (isClickable && !isHighlighted) {
+          e.currentTarget.style.background = "hsl(220 10% 14%)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isHighlighted) {
+          e.currentTarget.style.background = "transparent";
+        }
+      }}
     >
       {/* Status indicator dot with color */}
       <div
-        className={cn(
-          "mt-1 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center",
-          "border transition-shadow",
-          statusCategory === "executing" && "animate-pulse"
-        )}
+        className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center transition-shadow"
         style={{
-          borderColor: statusStyle.borderColor,
+          border: `1.5px solid ${statusStyle.borderColor}`,
           backgroundColor: statusStyle.backgroundColor,
           boxShadow: statusStyle.boxShadow,
         }}
@@ -178,53 +188,67 @@ export const TimelineEntry = memo(function TimelineEntry({
 
       {/* Event content */}
       <div className="flex-1 min-w-0">
-        {/* Timestamp and description row */}
-        <div className="flex items-baseline gap-2">
+        {/* Description as primary line */}
+        <p
+          className="truncate"
+          style={{
+            fontSize: "12px",
+            fontWeight: 400,
+            color: "hsl(220 10% 88%)",
+            lineHeight: 1.4,
+          }}
+        >
+          {event.description}
+        </p>
+
+        {/* Timestamp and status badge row */}
+        <div className="flex items-center gap-2 mt-0.5">
           <span
-            className="text-xs text-muted-foreground flex-shrink-0"
             title={formatFullTimestamp(event.timestamp)}
+            style={{
+              fontSize: "10px",
+              fontWeight: 500,
+              color: "hsl(220 10% 45%)",
+            }}
           >
             {formatRelativeTime(event.timestamp)}
           </span>
-          <span className="text-sm text-foreground/90 truncate">
-            {event.description}
-          </span>
-        </div>
 
-        {/* Task reference (if applicable) */}
-        {event.taskTitle && event.eventType === "status_change" && (
-          <div className="mt-0.5 text-xs text-muted-foreground truncate">
-            {event.toStatus && (
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                style={{
-                  backgroundColor: statusStyle.backgroundColor,
-                  color: statusStyle.borderColor,
-                }}
-              >
-                {event.toStatus.replace(/_/g, " ")}
-              </span>
-            )}
-          </div>
-        )}
+          {/* Status badge (for status_change events) */}
+          {event.taskTitle && event.eventType === "status_change" && event.toStatus && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "1px 5px",
+                borderRadius: "4px",
+                fontSize: "9px",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.02em",
+                backgroundColor: statusStyle.backgroundColor,
+                color: statusStyle.borderColor,
+              }}
+            >
+              {event.toStatus.replace(/_/g, " ")}
+            </span>
+          )}
+        </div>
 
         {/* Plan context (for plan-level events) */}
         {event.sessionTitle && event.eventType !== "status_change" && (
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <div
+            className="flex items-center gap-1 mt-0.5"
+            style={{
+              fontSize: "10px",
+              color: "hsl(220 10% 50%)",
+            }}
+          >
             <GitMerge className="w-3 h-3" />
             <span className="truncate">{event.sessionTitle}</span>
           </div>
         )}
       </div>
-
-      {/* Hover indicator for clickable items */}
-      {isClickable && (
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <span className="text-[10px] text-muted-foreground">
-            Click to focus
-          </span>
-        </div>
-      )}
     </div>
   );
 });

@@ -115,29 +115,55 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
   const isShowingAll = activeCount === 0;
 
   return (
-    <div className="border-b border-[hsl(220_10%_25%)]">
+    <div
+      style={{
+        borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+      }}
+    >
       {/* Compact filter header with toggle */}
       <button
         onClick={handleToggleExpanded}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-[hsl(220_10%_15%)] transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 transition-colors"
+        style={{
+          background: "transparent",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "hsl(220 10% 16%)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+        }}
       >
         <div className="flex items-center gap-2">
-          <Filter className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-          <span className="text-xs text-[hsl(220_10%_70%)]">
+          <Filter
+            className="w-3.5 h-3.5"
+            style={{ color: "hsl(220 10% 45%)" }}
+          />
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 500,
+              color: "hsl(220 10% 60%)",
+            }}
+          >
             {isShowingAll ? "All events" : `${activeCount} filter${activeCount > 1 ? "s" : ""}`}
           </span>
         </div>
         <ChevronRight
           className={cn(
-            "w-3.5 h-3.5 text-[hsl(220_10%_50%)] transition-transform",
+            "w-3.5 h-3.5 transition-transform",
             filters.isExpanded && "rotate-90"
           )}
+          style={{ color: "hsl(220 10% 45%)" }}
         />
       </button>
 
       {/* Expanded filter options */}
       {filters.isExpanded && (
-        <div className="px-2 py-2 space-y-1 bg-[hsl(220_10%_8%)]">
+        <div
+          className="px-2 py-2 space-y-0.5"
+          style={{ background: "hsl(220 10% 8%)" }}
+        >
           {TIMELINE_FILTER_OPTIONS.map((option) => {
             const isActive =
               option.id === "all"
@@ -148,38 +174,52 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
               <button
                 key={option.id}
                 onClick={() => handleCategoryToggle(option.id)}
-                className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors",
-                  isActive
-                    ? "bg-[hsl(220_10%_18%)]"
-                    : "hover:bg-[hsl(220_10%_12%)]"
-                )}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
+                style={{
+                  background: isActive ? "hsla(220 60% 50% / 0.12)" : "transparent",
+                  borderRadius: "6px",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "hsl(220 10% 14%)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = isActive ? "hsla(220 60% 50% / 0.12)" : "transparent";
+                }}
                 aria-pressed={isActive}
               >
                 {/* Color indicator */}
                 <div
-                  className={cn(
-                    "w-2 h-2 rounded-full flex-shrink-0 transition-opacity",
-                    isActive ? "opacity-100" : "opacity-40"
-                  )}
-                  style={{ backgroundColor: option.color }}
+                  className="w-2 h-2 rounded-full flex-shrink-0 transition-opacity"
+                  style={{
+                    backgroundColor: option.color,
+                    opacity: isActive ? 1 : 0.4,
+                  }}
                 />
 
                 {/* Label */}
                 <span
-                  className={cn(
-                    "text-[11px] font-medium flex-1",
-                    isActive
-                      ? "text-[hsl(220_10%_90%)]"
-                      : "text-[hsl(220_10%_55%)]"
-                  )}
+                  className="flex-1"
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    color: isActive ? "hsl(220 10% 90%)" : "hsl(220 10% 55%)",
+                  }}
                 >
                   {option.label}
                 </span>
 
                 {/* Checkmark for active */}
                 {isActive && option.id !== "all" && (
-                  <span className="text-[10px] text-[hsl(var(--accent-primary))]">✓</span>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      color: "hsl(220 80% 65%)",
+                    }}
+                  >
+                    ✓
+                  </span>
                 )}
               </button>
             );
@@ -189,7 +229,17 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
           {!isShowingAll && (
             <button
               onClick={() => handleCategoryToggle("all")}
-              className="w-full mt-1 py-1.5 text-[10px] text-[hsl(220_10%_50%)] hover:text-[hsl(220_10%_80%)] transition-colors"
+              className="w-full mt-1 py-1.5 transition-colors"
+              style={{
+                fontSize: "10px",
+                color: "hsl(220 10% 50%)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "hsl(220 10% 80%)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "hsl(220 10% 50%)";
+              }}
             >
               Clear filters
             </button>
@@ -219,26 +269,60 @@ const TimelineHeader = memo(function TimelineHeader({
   hideCollapseToggle = false,
 }: TimelineHeaderProps) {
   return (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-[hsl(220_10%_25%)]">
+    <div
+      className="flex items-center justify-between px-3"
+      style={{
+        height: "44px",
+        background: "hsla(220 15% 5% / 0.5)",
+        borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+      }}
+    >
       <div className="flex items-center gap-2">
-        <Clock className="w-4 h-4 text-[hsl(220_10%_60%)]" />
+        <Clock
+          className="w-4 h-4"
+          style={{ color: "hsl(220 10% 50%)" }}
+        />
         {!collapsed && (
           <>
-            <span className="text-sm font-medium text-[hsl(220_10%_90%)]">
+            <span
+              style={{
+                fontSize: "13px",
+                fontWeight: 500,
+                color: "hsl(220 10% 90%)",
+                letterSpacing: "-0.01em",
+              }}
+            >
               Timeline
             </span>
-            <span className="text-xs text-[hsl(220_10%_50%)]">
-              ({eventCount})
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 500,
+                color: "hsl(220 10% 45%)",
+              }}
+            >
+              {eventCount}
             </span>
           </>
         )}
       </div>
       {!collapsed && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
-            className="p-1 rounded hover:bg-[hsl(220_10%_20%)] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-md transition-colors disabled:opacity-50"
+            style={{
+              color: "hsl(220 10% 50%)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "hsl(220 10% 16%)";
+              e.currentTarget.style.color = "hsl(220 10% 85%)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "hsl(220 10% 50%)";
+            }}
             title="Refresh timeline"
           >
             <RefreshCw
@@ -248,7 +332,18 @@ const TimelineHeader = memo(function TimelineHeader({
           {!hideCollapseToggle && (
             <button
               onClick={onToggleCollapse}
-              className="p-1 rounded hover:bg-[hsl(220_10%_20%)] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] transition-colors"
+              className="p-1.5 rounded-md transition-colors"
+              style={{
+                color: "hsl(220 10% 50%)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "hsl(220 10% 16%)";
+                e.currentTarget.style.color = "hsl(220 10% 85%)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "hsl(220 10% 50%)";
+              }}
               title="Collapse timeline"
             >
               <ChevronRight className="w-4 h-4" />
@@ -259,7 +354,18 @@ const TimelineHeader = memo(function TimelineHeader({
       {collapsed && !hideCollapseToggle && (
         <button
           onClick={onToggleCollapse}
-          className="p-1 rounded hover:bg-[hsl(220_10%_20%)] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] transition-colors"
+          className="p-1.5 rounded-md transition-colors"
+          style={{
+            color: "hsl(220 10% 50%)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "hsl(220 10% 16%)";
+            e.currentTarget.style.color = "hsl(220 10% 85%)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "hsl(220 10% 50%)";
+          }}
           title="Expand timeline"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -287,7 +393,20 @@ const TimelineLoadMore = memo(function TimelineLoadMore({
       <button
         onClick={onLoadMore}
         disabled={isFetching}
-        className="w-full py-2 text-xs font-medium text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] hover:bg-[hsl(220_10%_20%)] rounded transition-colors disabled:opacity-50"
+        className="w-full py-2 rounded-md transition-colors disabled:opacity-50"
+        style={{
+          fontSize: "11px",
+          fontWeight: 500,
+          color: "hsl(220 10% 55%)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "hsl(220 10% 16%)";
+          e.currentTarget.style.color = "hsl(220 10% 85%)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "hsl(220 10% 55%)";
+        }}
       >
         {isFetching ? (
           <span className="flex items-center justify-center gap-2">
@@ -295,7 +414,7 @@ const TimelineLoadMore = memo(function TimelineLoadMore({
             Loading...
           </span>
         ) : (
-          "Load more events"
+          "Load more"
         )}
       </button>
     </div>
@@ -434,20 +553,41 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
         {/* Loading state */}
         {isLoading && (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="w-6 h-6 animate-spin text-[hsl(220_10%_50%)]" />
+            <Loader2
+              className="w-5 h-5 animate-spin"
+              style={{ color: "hsl(220 10% 45%)" }}
+            />
           </div>
         )}
 
         {/* Error state */}
         {error && (
           <div className="flex flex-col items-center justify-center h-32 px-4 text-center">
-            <AlertCircle className="w-6 h-6 text-destructive mb-2" />
-            <p className="text-xs text-destructive mb-2">
+            <AlertCircle
+              className="w-5 h-5 mb-2"
+              style={{ color: "hsl(0 70% 55%)" }}
+            />
+            <p
+              style={{
+                fontSize: "12px",
+                color: "hsl(0 70% 60%)",
+                marginBottom: "8px",
+              }}
+            >
               Failed to load timeline
             </p>
             <button
               onClick={refresh}
-              className="text-xs text-[hsl(var(--accent-primary))] hover:underline"
+              style={{
+                fontSize: "11px",
+                color: "hsl(220 80% 65%)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.textDecoration = "underline";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.textDecoration = "none";
+              }}
             >
               Try again
             </button>
@@ -457,12 +597,27 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
         {/* Empty state */}
         {!isLoading && !error && events.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 px-4 text-center">
-            <Clock className="w-6 h-6 text-[hsl(220_10%_40%)] mb-2" />
-            <p className="text-xs text-[hsl(220_10%_50%)]">
-              No timeline events yet
+            <Clock
+              className="w-5 h-5 mb-2"
+              style={{ color: "hsl(220 10% 35%)" }}
+            />
+            <p
+              style={{
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "hsl(220 10% 50%)",
+              }}
+            >
+              No events yet
             </p>
-            <p className="text-[10px] text-[hsl(220_10%_40%)] mt-1">
-              Events will appear here as tasks progress
+            <p
+              style={{
+                fontSize: "11px",
+                color: "hsl(220 10% 40%)",
+                marginTop: "4px",
+              }}
+            >
+              Events appear as tasks progress
             </p>
           </div>
         )}
