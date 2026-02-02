@@ -27,13 +27,16 @@ import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
-import { TaskNode } from "./nodes/TaskNode";
+import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { getStatusBorderColor } from "./nodes/nodeStyles";
 import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
+import { useTaskMutation } from "@/hooks/useTaskMutation";
+import { api } from "@/lib/tauri";
+import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 // ============================================================================
@@ -52,6 +55,7 @@ type TaskNodeData = Record<string, unknown> & {
   priority: number;
   isCriticalPath: boolean;
   isHighlighted?: boolean;
+  handlers?: TaskNodeHandlers;
 };
 
 // ============================================================================
@@ -123,6 +127,99 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     });
   }, []);
 
+  // Task mutations for context menu actions
+  const {
+    moveMutation,
+    blockMutation,
+    unblockMutation,
+  } = useTaskMutation(projectId);
+
+  // ============================================================================
+  // Context Menu Handlers
+  // ============================================================================
+
+  // Handler for viewing task details (opens TaskDetailOverlay)
+  const handleViewDetails = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId);
+  }, [setSelectedTaskId]);
+
+  // Handler for starting task execution (move to executing via state machine)
+  const handleStartExecution = useCallback(async (taskId: string) => {
+    try {
+      // Moving to "executing" triggers the scheduler to pick up the task
+      await api.tasks.move(taskId, "executing");
+      toast.success("Task scheduled for execution");
+    } catch (err) {
+      toast.error(`Failed to start task: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  // Handler for blocking a task with reason
+  const handleBlockWithReason = useCallback((taskId: string, reason?: string) => {
+    // Only pass reason if it's defined (satisfies exactOptionalPropertyTypes)
+    if (reason !== undefined) {
+      blockMutation.mutate({ taskId, reason });
+    } else {
+      blockMutation.mutate({ taskId });
+    }
+  }, [blockMutation]);
+
+  // Handler for unblocking a task
+  const handleUnblock = useCallback((taskId: string) => {
+    unblockMutation.mutate(taskId);
+  }, [unblockMutation]);
+
+  // Handler for approving a task
+  const handleApprove = useCallback(async (taskId: string) => {
+    try {
+      await api.reviews.approveTask({ task_id: taskId });
+      toast.success("Task approved");
+    } catch (err) {
+      toast.error(`Failed to approve task: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  // Handler for rejecting a task (move to failed)
+  const handleReject = useCallback((taskId: string) => {
+    moveMutation.mutate({ taskId, toStatus: "failed" });
+  }, [moveMutation]);
+
+  // Handler for requesting changes (move to revision_needed)
+  const handleRequestChanges = useCallback((taskId: string) => {
+    moveMutation.mutate({ taskId, toStatus: "revision_needed" });
+  }, [moveMutation]);
+
+  // Handler for marking merge conflict as resolved
+  const handleMarkResolved = useCallback(async (taskId: string) => {
+    try {
+      await api.tasks.move(taskId, "pending_merge");
+      toast.success("Conflict marked as resolved");
+    } catch (err) {
+      toast.error(`Failed to mark resolved: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  // Memoized handlers object for nodes
+  const nodeHandlers: TaskNodeHandlers = useMemo(() => ({
+    onViewDetails: handleViewDetails,
+    onStartExecution: handleStartExecution,
+    onBlockWithReason: handleBlockWithReason,
+    onUnblock: handleUnblock,
+    onApprove: handleApprove,
+    onReject: handleReject,
+    onRequestChanges: handleRequestChanges,
+    onMarkResolved: handleMarkResolved,
+  }), [
+    handleViewDetails,
+    handleStartExecution,
+    handleBlockWithReason,
+    handleUnblock,
+    handleApprove,
+    handleReject,
+    handleRequestChanges,
+    handleMarkResolved,
+  ]);
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     graphData?.nodes ?? [],
@@ -171,6 +268,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
   // Filter out task nodes that belong to collapsed groups
   useEffect(() => {
     // Filter task nodes - hide those in collapsed groups
+    // Also inject handlers for context menu actions
     const visibleTaskNodes = layoutNodes
       .filter((node) => !collapsedTaskIds.has(node.id))
       .map((node) => ({
@@ -178,6 +276,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
         data: {
           ...node.data,
           isHighlighted: node.id === highlightedTaskId,
+          handlers: nodeHandlers,
         },
       }));
     // Filter edges - hide those connected to hidden nodes
@@ -188,7 +287,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     const allNodes = [...groupNodes, ...visibleTaskNodes];
     setNodes(allNodes);
     setEdges(visibleEdges);
-  }, [layoutNodes, layoutEdges, groupNodes, collapsedTaskIds, highlightedTaskId, setNodes, setEdges]);
+  }, [layoutNodes, layoutEdges, groupNodes, collapsedTaskIds, highlightedTaskId, nodeHandlers, setNodes, setEdges]);
 
   // Handle timeline entry click - highlight node and scroll to it
   const handleTimelineTaskClick = useCallback(
