@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 19:00:00 - Phase 67 Task 28: Create GraphControls component
+**What:**
+- Created `src/components/TaskGraph/controls/GraphControls.tsx`:
+  - Status filter with multi-select by category and individual status
+  - Plan filter dropdown for filtering by originating plan
+  - Layout direction toggle (TB ↔ LR)
+  - Grouping options dropdown (by plan, tier, status, none)
+  - Uses shadcn/ui Popover, Checkbox, Button components
+  - Color-coded status items matching nodeStyles.ts
+  - "Show completed tasks" toggle
+  - Clear all buttons for active filters
+  - Visual indicator when filters are active (orange border)
+- Exports types: `GraphFilters`, `LayoutDirection`, `GroupingOption`
+- Exports defaults: `DEFAULT_GRAPH_FILTERS`, `DEFAULT_LAYOUT_DIRECTION`, `DEFAULT_GROUPING`
+
+**Files Created:**
+- `src/components/TaskGraph/controls/GraphControls.tsx` (NEW - 518 lines)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component only, wiring to TaskGraphView in Task 29
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 18:15:00 - Phase 67 Task 27: Wire context menu to task nodes
 **What:**
 - Updated `src/components/TaskGraph/nodes/TaskNode.tsx`:
