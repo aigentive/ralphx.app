@@ -26,6 +26,19 @@ pub const AGENT_ACTIVE_STATUSES: &[InternalStatus] = &[
     InternalStatus::Merging, // spawns merger agent
 ];
 
+/// States that have automatic transitions on entry.
+/// Tasks stuck in these states on startup should have their entry actions
+/// re-triggered to complete the auto-transition.
+///
+/// Used by:
+/// - `StartupJobRunner` to find tasks needing auto-transition recovery
+pub const AUTO_TRANSITION_STATES: &[InternalStatus] = &[
+    InternalStatus::QaPassed,       // → PendingReview
+    InternalStatus::PendingReview,  // → Reviewing (spawns reviewer)
+    InternalStatus::RevisionNeeded, // → ReExecuting (spawns worker)
+    InternalStatus::Approved,       // → PendingMerge (programmatic merge)
+];
+
 /// Global execution state managed atomically for thread safety
 pub struct ExecutionState {
     /// Whether execution is paused (stops picking up new tasks)

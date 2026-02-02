@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-03 03:45:00 - Phase 68 Task 2: Add AUTO_TRANSITION_STATES constant
+**What:**
+- Added `AUTO_TRANSITION_STATES` constant to `execution_commands.rs`
+- Includes 4 states with automatic transitions: QaPassed, PendingReview, RevisionNeeded, Approved
+- These states have entry actions that trigger auto-transitions
+- Used by `StartupJobRunner` to recover tasks stuck in these states on startup
+
+**Files Modified:**
+- `src-tauri/src/commands/execution_commands.rs`
+  - Added `AUTO_TRANSITION_STATES` constant with doc comment after `AGENT_ACTIVE_STATUSES`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 03:15:00 - Phase 68 Task 1: Add Merging to AGENT_ACTIVE_STATUSES
 **What:**
 - Added `InternalStatus::Merging` to `AGENT_ACTIVE_STATUSES` constant
