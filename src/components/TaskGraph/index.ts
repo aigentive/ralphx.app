@@ -62,3 +62,7 @@ export {
   MIN_GROUP_HEIGHT,
 } from "./groups/groupUtils";
 export type { BoundingBox, GroupBoundingBox } from "./groups/groupUtils";
+
+// Timeline components
+export { TimelineEntry } from "./timeline/TimelineEntry";
+export type { TimelineEntryProps } from "./timeline/TimelineEntry";
