@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-02 22:15:00 - Phase 74 Task 2: Use git diff for file changes instead of activity events
+**What:**
+- Replaced activity-event-based file change detection with direct `git diff --name-status`
+- Modified `src-tauri/src/application/diff_service.rs`:
+  - Removed `activity_repo` dependency from `DiffService` struct
+  - Rewrote `get_task_file_changes` to use `git diff --name-status` against base branch
+  - Added `get_file_line_counts` helper for line additions/deletions
+  - Removed obsolete `get_file_change_status` method and `ToolCallMetadata` struct
+- Updated `src-tauri/src/commands/diff_commands.rs`:
+  - Removed `Arc` import and updated `DiffService::new()` calls
+- This captures ALL changed files (shell commands, git operations) not just Write/Edit tool calls
+
+**Files:**
+- MODIFIED: src-tauri/src/application/diff_service.rs
+- MODIFIED: src-tauri/src/commands/diff_commands.rs
+
+**Visual Verification:** N/A - backend only change
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - 3373+ tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:30:00 - Phase 74 Task 1: Fix commit order to display chronologically
 **What:**
 - Modified `src/hooks/useGitDiff.ts` to reverse commit order after mapping

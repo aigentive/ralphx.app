@@ -6,7 +6,6 @@ use crate::application::{AppState, DiffService, FileChange, FileDiff};
 use crate::domain::entities::{GitMode, Project, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tauri::State;
 
 /// Determine the working path for a task based on git mode.
@@ -59,7 +58,7 @@ pub async fn get_task_file_changes(
     let (_, working_path_str, project) = get_task_working_path(&app_state, &task_id).await?;
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
-    let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
+    let diff_service = DiffService::new();
     diff_service
         .get_task_file_changes(&task_id, &working_path_str, base_branch)
         .await
@@ -78,7 +77,7 @@ pub async fn get_file_diff(
     let (_, working_path_str, project) = get_task_working_path(&app_state, &task_id).await?;
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
-    let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
+    let diff_service = DiffService::new();
     diff_service.get_file_diff(&file_path, &working_path_str, base_branch)
 }
 
@@ -94,7 +93,7 @@ pub async fn get_commit_file_changes(
     // Get the correct working path for this task
     let (_, working_path_str, _) = get_task_working_path(&app_state, &task_id).await?;
 
-    let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
+    let diff_service = DiffService::new();
     diff_service.get_commit_file_changes(&commit_sha, &working_path_str)
 }
 
@@ -111,6 +110,6 @@ pub async fn get_commit_file_diff(
     // Get the correct working path for this task
     let (_, working_path_str, _) = get_task_working_path(&app_state, &task_id).await?;
 
-    let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
+    let diff_service = DiffService::new();
     diff_service.get_commit_file_diff(&commit_sha, &file_path, &working_path_str)
 }
