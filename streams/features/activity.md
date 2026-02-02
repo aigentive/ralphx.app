@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 19:25:00 - Phase 78 Task 4: Handle first task on empty repo case
+**What:**
+- Added get_commit_count() helper to count commits on a branch using `git rev-list --count`
+- Modified try_rebase_and_merge() to detect empty repos (base branch has ≤1 commit)
+- For empty repos: skip rebase (would fail due to unrelated histories), directly merge
+- Task branch becomes base history through normal merge in this edge case
+- Fixes first task on new project failing to merge programmatically
+
+**Files:**
+- MODIFIED: src-tauri/src/application/git_service.rs
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - all tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:45:00 - Phase 78 Task 3: Add verification to complete_merge HTTP handler
 **What:**
 - Added verification in complete_merge handler to check commit is on main branch before accepting
