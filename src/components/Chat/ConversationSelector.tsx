@@ -84,6 +84,11 @@ function getConversationTitle(conversation: ChatConversation, index?: number): s
     return `Review #${index + 1}`;
   }
 
+  // For merge context, show "Merge #N"
+  if (conversation.contextType === "merge" && index !== undefined) {
+    return `Merge #${index + 1}`;
+  }
+
   // Fallback title
   if (conversation.messageCount === 0) {
     return "New conversation";
@@ -133,8 +138,8 @@ export function ConversationSelector({
   onNewConversation,
   isLoading = false,
 }: ConversationSelectorProps) {
-  // Execution and review contexts share similar behavior (agent runs, status polling)
-  const isAgentContext = contextType === "task_execution" || contextType === "review";
+  // Execution, review, and merge contexts share similar behavior (agent runs, status polling)
+  const isAgentContext = contextType === "task_execution" || contextType === "review" || contextType === "merge";
   const isExecutionContext = contextType === "task_execution";
 
   // Sort conversations by creation date for agent contexts, last message date otherwise
@@ -198,7 +203,7 @@ export function ConversationSelector({
           className="text-[11px] font-medium tracking-wide uppercase px-3 py-2"
           style={{ color: "hsl(220 10% 50%)" }}
         >
-          {isExecutionContext ? "Execution History" : contextType === "review" ? "Review History" : "Conversation History"}
+          {isExecutionContext ? "Execution History" : contextType === "review" ? "Review History" : contextType === "merge" ? "Merge History" : "Conversation History"}
         </DropdownMenuLabel>
 
         {/* New Conversation Option - Only for non-agent contexts (not execution or review) */}
