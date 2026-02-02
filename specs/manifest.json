@@ -555,6 +555,13 @@
       "prd": "specs/phases/prd_phase_77_execution_settings_persistence.md",
       "status": "active",
       "description": "Persist execution settings to database, wire SettingsView, initialize on startup"
+    },
+    {
+      "phase": 78,
+      "name": "Git Merge Verification Fix",
+      "prd": "specs/phases/prd_phase_78_git_merge_verification.md",
+      "status": "pending",
+      "description": "Fix merge auto-completion to verify merge on main branch, handle empty repo"
     }
   ]
 }
