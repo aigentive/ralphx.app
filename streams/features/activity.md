@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 07:00:00 - Phase 66 Task 9: Checkout task branch on re-executing/reviewing in local mode
+**What:**
+- Added `checkout_task_branch_if_needed()` helper method to TransitionHandler in side_effects.rs
+- Method checks if task has a branch and if project is in Local mode
+- If current branch differs from task branch, checks out the task branch
+- Called in `on_enter(ReExecuting)` and `on_enter(Reviewing)` before spawning agents
+- Worktree mode skipped (already has isolated directory)
+- Non-fatal: git errors logged but don't block agent spawning
+
+**Files Modified:**
+- `src-tauri/src/domain/state_machine/transition_handler/side_effects.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3363 tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 06:30:00 - Phase 66 Task 8: Update working directory resolution for worktree mode
 **What:**
 - Updated `resolve_working_directory()` in chat_service_context.rs to handle worktree mode
