@@ -176,6 +176,10 @@ pub fn run() {
                 let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
                 let chat_resumption_app_handle = startup_app_handle.clone();
 
+                // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
+                let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
+                let startup_runner_app_handle = startup_app_handle.clone();
+
                 // Create TaskTransitionService for startup resumption
                 let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
                     startup_task_repo.clone(),
@@ -195,12 +199,14 @@ pub fn run() {
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
+                    startup_runner_task_dep_repo,
                     startup_project_repo,
                     startup_agent_run_repo,
                     transition_service,
                     Arc::clone(&startup_execution_state),
                 )
-                .with_task_scheduler(task_scheduler);
+                .with_task_scheduler(task_scheduler)
+                .with_app_handle(startup_runner_app_handle);
 
                 runner.run().await;
 

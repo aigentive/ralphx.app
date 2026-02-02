@@ -679,6 +679,16 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
             }
+            State::Merged => {
+                // Auto-unblock tasks that were waiting on this task
+                // This handles the HTTP handler path where transition_task triggers on_enter
+                self.machine
+                    .context
+                    .services
+                    .dependency_manager
+                    .unblock_dependents(&self.machine.context.task_id)
+                    .await;
+            }
             _ => {}
         }
         Ok(())
@@ -829,6 +839,15 @@ impl<'a> super::TransitionHandler<'a> {
                     app_handle,
                 ).await {
                     tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
+                } else {
+                    // Auto-unblock tasks that were waiting on this task
+                    // (programmatic merge path - on_enter(Merged) won't be triggered)
+                    self.machine
+                        .context
+                        .services
+                        .dependency_manager
+                        .unblock_dependents(task_id_str)
+                        .await;
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {

@@ -15,13 +15,14 @@
 // - Stops early if max_concurrent is reached
 
 use std::sync::Arc;
-use tauri::Runtime;
+use tauri::{AppHandle, Emitter, Runtime};
 use tracing::info;
 
 use crate::commands::execution_commands::{
     ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
-use crate::domain::repositories::{AgentRunRepository, ProjectRepository, TaskRepository};
+use crate::domain::entities::InternalStatus;
+use crate::domain::repositories::{AgentRunRepository, ProjectRepository, TaskDependencyRepository, TaskRepository};
 use crate::domain::state_machine::services::TaskScheduler;
 
 use super::TaskTransitionService;
@@ -33,6 +34,7 @@ use super::TaskTransitionService;
 /// Also cleans up orphaned agent runs from previous sessions.
 pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
+    task_dep_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: TaskTransitionService<R>,
@@ -40,12 +42,15 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     /// Optional task scheduler for auto-starting Ready tasks on startup.
     /// When provided, Ready tasks will be scheduled after resuming agent-active tasks.
     task_scheduler: Option<Arc<dyn TaskScheduler>>,
+    /// Optional app handle for event emission
+    app_handle: Option<AppHandle<R>>,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
     /// Create a new StartupJobRunner with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
+        task_dep_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         transition_service: TaskTransitionService<R>,
@@ -53,11 +58,13 @@ impl<R: Runtime> StartupJobRunner<R> {
     ) -> Self {
         Self {
             task_repo,
+            task_dep_repo,
             project_repo,
             agent_run_repo,
             transition_service,
             execution_state,
             task_scheduler: None,
+            app_handle: None,
         }
     }
 
@@ -67,6 +74,12 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// agent-active tasks, allowing queued Ready tasks to start execution.
     pub fn with_task_scheduler(mut self, scheduler: Arc<dyn TaskScheduler>) -> Self {
         self.task_scheduler = Some(scheduler);
+        self
+    }
+
+    /// Set the app handle for event emission (builder pattern).
+    pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
+        self.app_handle = Some(app_handle);
         self
     }
 
@@ -90,6 +103,10 @@ impl<R: Runtime> StartupJobRunner<R> {
                 tracing::warn!(error = %e, "Failed to clean up orphaned agent runs");
             }
         }
+
+        // Unblock tasks that got stuck due to app crash (safety net)
+        // This runs before pause check since unblocking doesn't spawn agents
+        self.unblock_ready_tasks().await;
 
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
@@ -221,6 +238,155 @@ impl<R: Runtime> StartupJobRunner<R> {
             scheduler.try_schedule_ready_tasks().await;
         }
     }
+
+    /// Unblock tasks whose blockers are all complete.
+    ///
+    /// This is a safety net for cases where the app crashed before real-time
+    /// unblocking could run (e.g., when a task merged but the app closed before
+    /// dependent tasks were unblocked).
+    ///
+    /// Scans all Blocked tasks across all projects and transitions those
+    /// whose blockers are all in terminal states (Approved, Merged, Failed, Cancelled)
+    /// to Ready status.
+    async fn unblock_ready_tasks(&self) {
+        // Get all projects to scan for blocked tasks
+        let projects = match self.project_repo.get_all().await {
+            Ok(projects) => projects,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to fetch projects for startup unblock");
+                return;
+            }
+        };
+
+        let mut unblocked_count = 0u32;
+
+        for project in projects {
+            // Get all blocked tasks for this project
+            let blocked_tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::Blocked)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = project.id.as_str(),
+                        "Failed to fetch blocked tasks for project"
+                    );
+                    continue;
+                }
+            };
+
+            if blocked_tasks.is_empty() {
+                continue;
+            }
+
+            tracing::debug!(
+                project_id = project.id.as_str(),
+                count = blocked_tasks.len(),
+                "Checking blocked tasks for startup unblock"
+            );
+
+            for mut task in blocked_tasks {
+                // Get blockers for this task
+                let blockers = match self.task_dep_repo.get_blockers(&task.id).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            task_id = task.id.as_str(),
+                            "Failed to get blockers for task"
+                        );
+                        continue;
+                    }
+                };
+
+                // Check if all blockers are complete
+                if !self.all_blockers_complete(&blockers).await {
+                    continue;
+                }
+
+                // All blockers complete - transition to Ready
+                task.internal_status = InternalStatus::Ready;
+                task.blocked_reason = None;
+                task.touch();
+
+                if let Err(e) = self.task_repo.update(&task).await {
+                    tracing::error!(
+                        error = %e,
+                        task_id = task.id.as_str(),
+                        "Failed to unblock task on startup"
+                    );
+                    continue;
+                }
+
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    task_title = %task.title,
+                    "Task unblocked on startup - all blockers complete"
+                );
+
+                // Emit task:unblocked event for UI update
+                if let Some(ref handle) = self.app_handle {
+                    let _ = handle.emit(
+                        "task:unblocked",
+                        serde_json::json!({
+                            "taskId": task.id.as_str(),
+                            "taskTitle": task.title,
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                        }),
+                    );
+                }
+
+                unblocked_count += 1;
+            }
+        }
+
+        if unblocked_count > 0 {
+            info!(count = unblocked_count, "Unblocked tasks on startup");
+        } else {
+            tracing::debug!("No blocked tasks needed unblocking on startup");
+        }
+    }
+
+    /// Check if all blocker tasks are in a terminal state.
+    ///
+    /// Terminal states are: Approved, Merged, Failed, Cancelled.
+    /// If a blocker doesn't exist (was deleted), it's considered complete.
+    async fn all_blockers_complete(
+        &self,
+        blocker_ids: &[crate::domain::entities::TaskId],
+    ) -> bool {
+        for blocker_id in blocker_ids {
+            match self.task_repo.get_by_id(blocker_id).await {
+                Ok(Some(task)) => {
+                    if !matches!(
+                        task.internal_status,
+                        InternalStatus::Approved
+                            | InternalStatus::Merged
+                            | InternalStatus::Failed
+                            | InternalStatus::Cancelled
+                    ) {
+                        return false;
+                    }
+                }
+                Ok(None) => {
+                    // Blocker was deleted - consider it complete (not blocking)
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        blocker_id = blocker_id.as_str(),
+                        "Failed to fetch blocker task, assuming incomplete"
+                    );
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -260,6 +426,7 @@ mod tests {
 
         StartupJobRunner::new(
             Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
             agent_run_repo,
             transition_service,
@@ -797,5 +964,281 @@ mod tests {
         // With our mock setup, running_count stays at 0 because the spawner doesn't have
         // execution_state. In production, the spawner would increment_running() on each spawn.
         // The test verifies that run() completes without panic when max_concurrent check exists.
+    }
+
+    // ============================================================
+    // Phase 77 Tests: Startup Unblock Recovery
+    // ============================================================
+
+    #[tokio::test]
+    async fn test_blocked_task_unblocked_when_blocker_is_merged() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a blocker task that is already merged
+        let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
+        blocker_task.internal_status = InternalStatus::Merged;
+        app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+
+        // Create a blocked task
+        let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked_task.internal_status = InternalStatus::Blocked;
+        blocked_task.blocked_reason = Some("Waiting for: Blocker Task".to_string());
+        app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+
+        // Add the dependency relationship
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker_task.id)
+            .await
+            .unwrap();
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run startup - should unblock the blocked task
+        runner.run().await;
+
+        // Verify the blocked task is now Ready
+        let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated_task.internal_status,
+            InternalStatus::Ready,
+            "Blocked task should be unblocked when blocker is Merged"
+        );
+        assert!(
+            updated_task.blocked_reason.is_none(),
+            "blocked_reason should be cleared"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_blocked_task_unblocked_when_blocker_is_approved() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a blocker task that is approved
+        let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
+        blocker_task.internal_status = InternalStatus::Approved;
+        app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+
+        // Create a blocked task
+        let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked_task.internal_status = InternalStatus::Blocked;
+        app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+
+        // Add the dependency relationship
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker_task.id)
+            .await
+            .unwrap();
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run startup
+        runner.run().await;
+
+        // Verify the blocked task is now Ready
+        let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated_task.internal_status,
+            InternalStatus::Ready,
+            "Blocked task should be unblocked when blocker is Approved"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_blocked_task_remains_blocked_when_blocker_incomplete() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a blocker task that is still executing
+        let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
+        blocker_task.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+
+        // Create a blocked task
+        let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked_task.internal_status = InternalStatus::Blocked;
+        blocked_task.blocked_reason = Some("Waiting for: Blocker Task".to_string());
+        app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+
+        // Add the dependency relationship
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker_task.id)
+            .await
+            .unwrap();
+
+        // Pause execution to skip agent resumption (we only want to test unblocking)
+        execution_state.pause();
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run startup
+        runner.run().await;
+
+        // Verify the blocked task is still Blocked
+        let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated_task.internal_status,
+            InternalStatus::Blocked,
+            "Blocked task should remain blocked when blocker is still Executing"
+        );
+        assert!(
+            updated_task.blocked_reason.is_some(),
+            "blocked_reason should be preserved"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_blocked_task_with_multiple_blockers_all_complete() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create two blocker tasks - both complete
+        let mut blocker1 = Task::new(project.id.clone(), "Blocker 1".to_string());
+        blocker1.internal_status = InternalStatus::Merged;
+        app_state.task_repo.create(blocker1.clone()).await.unwrap();
+
+        let mut blocker2 = Task::new(project.id.clone(), "Blocker 2".to_string());
+        blocker2.internal_status = InternalStatus::Failed; // Failed is also a terminal state
+        app_state.task_repo.create(blocker2.clone()).await.unwrap();
+
+        // Create a blocked task
+        let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked_task.internal_status = InternalStatus::Blocked;
+        app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+
+        // Add both dependency relationships
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker1.id)
+            .await
+            .unwrap();
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker2.id)
+            .await
+            .unwrap();
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run startup
+        runner.run().await;
+
+        // Verify the blocked task is now Ready
+        let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated_task.internal_status,
+            InternalStatus::Ready,
+            "Blocked task should be unblocked when all blockers are complete"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_blocked_task_with_multiple_blockers_one_incomplete() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Create a project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create two blocker tasks - one complete, one not
+        let mut blocker1 = Task::new(project.id.clone(), "Blocker 1".to_string());
+        blocker1.internal_status = InternalStatus::Merged;
+        app_state.task_repo.create(blocker1.clone()).await.unwrap();
+
+        let mut blocker2 = Task::new(project.id.clone(), "Blocker 2".to_string());
+        blocker2.internal_status = InternalStatus::Reviewing; // Still in progress
+        app_state.task_repo.create(blocker2.clone()).await.unwrap();
+
+        // Create a blocked task
+        let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked_task.internal_status = InternalStatus::Blocked;
+        app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+
+        // Add both dependency relationships
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker1.id)
+            .await
+            .unwrap();
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker2.id)
+            .await
+            .unwrap();
+
+        // Pause execution to skip agent resumption
+        execution_state.pause();
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run startup
+        runner.run().await;
+
+        // Verify the blocked task is still Blocked
+        let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated_task.internal_status,
+            InternalStatus::Blocked,
+            "Blocked task should remain blocked when any blocker is incomplete"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unblock_runs_even_when_paused() {
+        // Unblocking should run even when execution is paused, since it doesn't spawn agents
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Pause execution
+        execution_state.pause();
+
+        // Create a project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a merged blocker
+        let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
+        blocker_task.internal_status = InternalStatus::Merged;
+        app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+
+        // Create a blocked task
+        let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked_task.internal_status = InternalStatus::Blocked;
+        app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+
+        // Add dependency
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked_task.id, &blocker_task.id)
+            .await
+            .unwrap();
+
+        let runner = build_runner(&app_state, &execution_state);
+
+        // Run startup while paused
+        runner.run().await;
+
+        // Verify the blocked task is still unblocked even though execution is paused
+        let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+        assert_eq!(
+            updated_task.internal_status,
+            InternalStatus::Ready,
+            "Blocked task should be unblocked even when execution is paused"
+        );
     }
 }

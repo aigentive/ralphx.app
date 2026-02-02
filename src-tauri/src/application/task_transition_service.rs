@@ -122,12 +122,12 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         }
     }
 
-    /// Check if a blocking task is complete (Approved, Failed, or Cancelled)
+    /// Check if a blocking task is complete (Approved, Merged, Failed, or Cancelled)
     async fn is_blocker_complete(&self, blocker_id: &TaskId) -> bool {
         if let Ok(Some(task)) = self.task_repo.get_by_id(blocker_id).await {
             matches!(
                 task.internal_status,
-                InternalStatus::Approved | InternalStatus::Failed | InternalStatus::Cancelled
+                InternalStatus::Approved | InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
             )
         } else {
             // If task doesn't exist, consider it "complete" (not blocking)
@@ -147,7 +147,7 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
             if let Ok(Some(task)) = self.task_repo.get_by_id(&blocker_id).await {
                 if !matches!(
                     task.internal_status,
-                    InternalStatus::Approved | InternalStatus::Failed | InternalStatus::Cancelled
+                    InternalStatus::Approved | InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
                 ) {
                     incomplete_names.push(task.title);
                 }

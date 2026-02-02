@@ -848,6 +848,18 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             error = %e,
             "attempt_merge_auto_complete: complete_merge_internal failed"
         );
+    } else {
+        // Auto-unblock tasks that were waiting on this task
+        // (auto-complete merge path - on_enter(Merged) won't be triggered)
+        use crate::application::task_transition_service::RepoBackedDependencyManager;
+        use crate::domain::state_machine::services::DependencyManager;
+
+        let dependency_manager = RepoBackedDependencyManager::new(
+            Arc::clone(task_dependency_repo),
+            Arc::clone(task_repo),
+            app_handle.cloned(),
+        );
+        dependency_manager.unblock_dependents(task_id_str).await;
     }
 }
 

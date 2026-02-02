@@ -68,6 +68,32 @@ export function useIntegratedChatEvents({
       })
     );
 
+    // Unified agent:tool_call event (for merge and all contexts)
+    unsubscribes.push(
+      bus.subscribe<{
+        tool_name: string;
+        arguments: unknown;
+        result?: unknown;
+        conversation_id: string;
+      }>("agent:tool_call", (payload) => {
+        const { tool_name, arguments: args, result, conversation_id } = payload;
+        if (conversation_id === activeConversationIdRef.current) {
+          setStreamingToolCalls((prev) => [
+            ...prev,
+            {
+              id: `streaming-agent-${Date.now()}-${prev.length}`,
+              name: tool_name,
+              arguments: args,
+              result,
+            },
+          ]);
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
+      })
+    );
+
     // Listen for chat run completion - clear streaming state and refresh
     unsubscribes.push(
       bus.subscribe<{
@@ -83,6 +109,26 @@ export function useIntegratedChatEvents({
           });
         }
         // Scroll to bottom after a short delay to let messages render
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 100);
+      })
+    );
+
+    // Unified agent:run_completed event
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+      }>("agent:run_completed", (payload) => {
+        const { conversation_id } = payload;
+        setStreamingToolCalls([]);
+        if (conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
         setTimeout(() => {
           if (messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });

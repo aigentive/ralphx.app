@@ -63,6 +63,9 @@ impl From<DiffStats> for TaskDiffStatsResponse {
 ///
 /// Returns the list of commits made on this task's branch.
 /// Used by UI to show commit history in task detail views.
+///
+/// For merged tasks (where branch/worktree is deleted), uses the merge_commit_sha
+/// to query commit history from the repository.
 #[tauri::command]
 pub async fn get_task_commits(
     task_id: String,
@@ -78,12 +81,6 @@ pub async fn get_task_commits(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
 
-    // Task must have a branch
-    let _task_branch = task
-        .task_branch
-        .as_ref()
-        .ok_or_else(|| "Task has no branch assigned".to_string())?;
-
     // Get project for base branch and working directory
     let project = state
         .project_repo
@@ -93,6 +90,26 @@ pub async fn get_task_commits(
         .ok_or_else(|| format!("Project not found: {}", task.project_id.as_str()))?;
 
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
+    let repo_path = PathBuf::from(&project.working_directory);
+
+    // Handle merged tasks specially - branch/worktree is deleted, use merge_commit_sha
+    if task.internal_status == InternalStatus::Merged {
+        if let Some(ref merge_sha) = task.merge_commit_sha {
+            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha)
+                .map_err(|e| e.to_string())?;
+            return Ok(TaskCommitsResponse {
+                commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
+            });
+        }
+        // Merged but no merge_commit_sha - return empty (shouldn't happen)
+        return Ok(TaskCommitsResponse { commits: vec![] });
+    }
+
+    // Task must have a branch for non-merged states
+    let _task_branch = task
+        .task_branch
+        .as_ref()
+        .ok_or_else(|| "Task has no branch assigned".to_string())?;
 
     // Determine working path based on git mode
     // For worktree mode, the worktree is already checked out to the task branch
