@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 66,
+  "currentPhase": 67,
   "phases": [
     {
       "phase": 0,
@@ -476,14 +476,14 @@
       "phase": 66,
       "name": "Per-Task Git Branch Isolation",
       "prd": "specs/phases/prd_phase_66_git_branch_isolation.md",
-      "status": "active",
+      "status": "complete",
       "description": "Per-task branch/worktree isolation, two-phase merge workflow, merger agent"
     },
     {
       "phase": 67,
       "name": "Task Graph View",
       "prd": "specs/phases/prd_phase_67_task_graph_view.md",
-      "status": "pending",
+      "status": "active",
       "description": "React Flow-based task dependency graph as primary orchestration view"
     }
   ]
