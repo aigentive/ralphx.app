@@ -20,8 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import { DiffViewer } from "@/components/diff";
-import { useTaskStore } from "@/stores/taskStore";
-import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { ReviewResponse } from "@/lib/tauri";
 import type { Commit } from "@/components/diff";
 
@@ -356,20 +354,10 @@ export function ReviewDetailView({
   onOpenInIDE,
   isLoading = false,
 }: ReviewDetailViewProps) {
-  // Get project path from task's project
-  const tasks = useTaskStore((s) => s.tasks);
-  const task = tasks[review.task_id];
-  const projects = useProjectStore((s) => s.projects);
-  const activeProject = useProjectStore(selectActiveProject);
-
-  // Try to get project from task, fall back to active project
-  const project = task?.projectId ? projects[task.projectId] : activeProject;
-  const projectPath = project?.workingDirectory;
-
+  // Git diff data - backend determines working path from task/project
   const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =
     useGitDiff({
       taskId: review.task_id,
-      projectPath,
       enabled: true,
     });
 

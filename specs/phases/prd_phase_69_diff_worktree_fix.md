@@ -66,7 +66,7 @@ Key points:
 **IMPORTANT: Work on ONE task per iteration.**
 
 **BEFORE STARTING:**
-1. Find the first task with `"passes": false`
+1. Find the first task with `"passes": true`
 2. **Read the ENTIRE implementation plan** at `specs/plans/fix_get_task_file_changes_worktree.md`
 3. Locate the relevant section for this task
 4. Only then begin implementation
@@ -112,7 +112,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(diff): update frontend API to match worktree-aware backend"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
