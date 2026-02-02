@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-02 20:00:00 - Phase 67 Task 30: Create custom GraphMiniMap component
+**What:**
+- Created `src/components/TaskGraph/controls/GraphMiniMap.tsx`:
+  - Custom MiniMap component using React Flow's MiniMap with status-based node coloring
+  - Uses `getStatusBorderColor` from `nodeStyles.ts` for consistent color mapping
+  - Handles group nodes separately (returns subtle color for group nodes)
+  - Configurable visibility via `visible` prop
+  - Memoized component for performance
+  - Dark theme styling matching the rest of the UI
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Replaced inline MiniMap with extracted `GraphMiniMap` component
+  - Removed unused `MiniMap` import from `@xyflow/react`
+  - Removed unused `TaskNodeData` type (was only used by inline MiniMap callback)
+  - Removed unused `getStatusBorderColor` import (now used by GraphMiniMap internally)
+
+**Files Created:**
+- `src/components/TaskGraph/controls/GraphMiniMap.tsx` (NEW - 82 lines)
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx` (simplified by extracting MiniMap)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component extraction, behavior unchanged
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:30:00 - Phase 67 Task 29: Create filter/grouping hooks
 **What:**
 - Created `src/components/TaskGraph/hooks/useTaskGraphFilters.ts`:
