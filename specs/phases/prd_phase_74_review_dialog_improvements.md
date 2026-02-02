@@ -177,7 +177,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(reviews): increase dialog size to near full screen"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
