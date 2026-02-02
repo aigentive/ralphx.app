@@ -6,6 +6,7 @@
  */
 
 import { type InternalStatus, NON_DRAGGABLE_STATUSES } from "@/types/status";
+import { getStatusBorderStyles } from "@/types/status-icons";
 
 /**
  * Priority colors - simple, flat
@@ -103,60 +104,10 @@ export function getExecutionStateClass(status: InternalStatus): string {
 
 /**
  * Get execution/review state border styles
+ * Uses shared STATUS_ICON_CONFIG for consistent colors with icons
  */
 export function getExecutionBorderStyles(status: InternalStatus): React.CSSProperties {
-  // QA states: pulsing orange border
-  if (status.startsWith("qa_")) {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--accent-primary)",
-      animation: "var(--animation-executing-pulse)",
-    };
-  }
-  // Pending review: static amber border
-  if (status === "pending_review") {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--status-warning)",
-    };
-  }
-  // Reviewing: blue pulsing border
-  if (status === "reviewing") {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--status-info)",
-      animation: "var(--animation-reviewing-pulse)",
-    };
-  }
-  // Review passed: green accent border
-  if (status === "review_passed") {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--status-success)",
-    };
-  }
-  // Revision needed / Re-executing: orange accent border
-  if (status === "revision_needed" || status === "re_executing") {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--status-warning)",
-    };
-  }
-  // Merge conflict: warning border to draw attention
-  if (status === "merge_conflict") {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--status-warning)",
-    };
-  }
-  // Pending merge / Merging: subtle info border
-  if (status === "pending_merge" || status === "merging") {
-    return {
-      borderWidth: "2px",
-      borderColor: "var(--status-info)",
-    };
-  }
-  return {};
+  return getStatusBorderStyles(status);
 }
 
 /**
@@ -165,29 +116,4 @@ export function getExecutionBorderStyles(status: InternalStatus): React.CSSPrope
  */
 export function isDraggableStatus(status: InternalStatus): boolean {
   return !(NON_DRAGGABLE_STATUSES as readonly string[]).includes(status);
-}
-
-/**
- * Review-related statuses that show the ReviewStateBadge
- */
-export const REVIEW_STATE_STATUSES: readonly InternalStatus[] = [
-  "revision_needed",
-  "pending_review",
-  "reviewing",
-  "review_passed",
-  "re_executing",
-] as const;
-
-/**
- * Check if status should show review state badge
- */
-export function isReviewStateStatus(status: InternalStatus): boolean {
-  return REVIEW_STATE_STATUSES.includes(status);
-}
-
-/**
- * Check if status is actively processing (shows activity dots)
- */
-export function isActivelyProcessing(status: InternalStatus): boolean {
-  return status === "reviewing" || status === "re_executing";
 }

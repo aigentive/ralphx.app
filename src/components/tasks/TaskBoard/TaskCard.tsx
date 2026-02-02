@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban, GitBranch, GitMerge, Loader2 } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Clock, Ban, GitBranch } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -43,13 +43,12 @@ import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { toast } from "sonner";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
-import { ReviewStateBadge } from "./ReviewStateBadge";
+import { TaskStatusBadge } from "./TaskStatusBadge";
 import {
   getCardStyles,
   getExecutionStateClass,
   getExecutionBorderStyles,
   isDraggableStatus,
-  isReviewStateStatus,
 } from "./TaskCard.utils";
 
 interface TaskCardProps {
@@ -153,7 +152,6 @@ export function TaskCard({
   );
   const executionStateClass = getExecutionStateClass(task.internalStatus);
   const executionBorderStyles = getExecutionBorderStyles(task.internalStatus);
-  const showReviewState = isReviewStateStatus(task.internalStatus);
 
   // Context menu handlers - use selectedTaskId for split layout overlay
   const handleViewDetails = () => {
@@ -243,53 +241,16 @@ export function TaskCard({
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
-      {/* Archive badge overlay - only shown for archived tasks */}
-      {isArchived && (
-        <div data-testid="archive-badge" className="absolute top-1.5 right-1.5">
-          <Archive className="w-3 h-3" style={{ color: "hsl(220 10% 40%)" }} />
-        </div>
-      )}
+      {/* Status badge - shown for ALL task states */}
+      <div className="absolute top-1.5 right-1.5" data-testid="status-badge-container">
+        <TaskStatusBadge
+          status={task.internalStatus}
+          isArchived={isArchived}
+          {...(revisionCount !== undefined && { revisionCount })}
+        />
+      </div>
 
-      {/* Completed/merged indicator - icon-only */}
-      {!isArchived && (task.internalStatus === "approved" || task.internalStatus === "merged") && (
-        <div data-testid="completed-indicator" className="absolute top-1.5 right-1.5">
-          <div
-            className="flex items-center justify-center w-5 h-5 rounded"
-            style={{
-              backgroundColor: "hsla(145, 60%, 45%, 0.15)",
-              color: "hsl(145 60% 45%)",
-            }}
-            title={task.internalStatus === "merged" ? "Merged" : "Done"}
-          >
-            <GitMerge className="w-3 h-3" />
-          </div>
-        </div>
-      )}
-
-      {/* Review state badges - shown for review-related states */}
-      {!isArchived && showReviewState && (
-        <div className="absolute top-1.5 right-1.5" data-testid="review-state-indicator">
-          <ReviewStateBadge status={task.internalStatus} revisionCount={revisionCount} />
-        </div>
-      )}
-
-      {/* Activity indicator - shown for executing/QA tasks (not review states) */}
-      {!isArchived && executionState.isActive && !showReviewState && (
-        <div className="absolute top-1.5 right-1.5" data-testid="activity-indicator">
-          <div
-            className="flex items-center justify-center w-5 h-5 rounded"
-            style={{
-              backgroundColor: "rgba(255, 107, 53, 0.15)",
-              color: "var(--accent-primary)",
-            }}
-            title={executionState.phase === "qa" ? "Running QA" : "Executing"}
-          >
-            <Loader2 className="w-3 h-3 animate-spin" />
-          </div>
-        </div>
-      )}
-
-      {/* Drag handle - appears on hover (hidden if not draggable) */}
+      {/* Drag handle - appears on hover over the status badge (hidden if not draggable) */}
       {isDraggable && !isArchived && (
         <div
           data-testid="drag-handle"
@@ -299,8 +260,8 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Card content - extra padding when review badges are shown */}
-      <div className={showReviewState ? "pr-20" : "pr-5"}>
+      {/* Card content */}
+      <div className="pr-7">
         {/* Title - clean, simple */}
         <div
           data-testid="task-title"
