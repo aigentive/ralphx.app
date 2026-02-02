@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban, GitBranch, GitMerge } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban, GitBranch, GitMerge, Loader2 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -50,7 +50,6 @@ import {
   getExecutionBorderStyles,
   isDraggableStatus,
   isReviewStateStatus,
-  isActivelyProcessing,
 } from "./TaskCard.utils";
 
 interface TaskCardProps {
@@ -155,7 +154,6 @@ export function TaskCard({
   const executionStateClass = getExecutionStateClass(task.internalStatus);
   const executionBorderStyles = getExecutionBorderStyles(task.internalStatus);
   const showReviewState = isReviewStateStatus(task.internalStatus);
-  const isActivelyProcessingTask = isActivelyProcessing(task.internalStatus);
 
   // Context menu handlers - use selectedTaskId for split layout overlay
   const handleViewDetails = () => {
@@ -252,96 +250,42 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Completed/merged indicator - green badge for done tasks */}
+      {/* Completed/merged indicator - icon-only */}
       {!isArchived && (task.internalStatus === "approved" || task.internalStatus === "merged") && (
         <div data-testid="completed-indicator" className="absolute top-1.5 right-1.5">
           <div
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
+            className="flex items-center justify-center w-5 h-5 rounded"
             style={{
               backgroundColor: "hsla(145, 60%, 45%, 0.15)",
               color: "hsl(145 60% 45%)",
             }}
+            title={task.internalStatus === "merged" ? "Merged" : "Done"}
           >
-            <GitMerge className="w-2.5 h-2.5" />
-            <span>{task.internalStatus === "merged" ? "Merged" : "Done"}</span>
+            <GitMerge className="w-3 h-3" />
           </div>
         </div>
       )}
 
       {/* Review state badges - shown for review-related states */}
       {!isArchived && showReviewState && (
-        <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="review-state-indicator">
-          {/* Activity dots for actively processing states */}
-          {isActivelyProcessingTask && (
-            <div className="flex gap-0.5">
-              <span
-                className="w-1 h-1 rounded-full"
-                style={{
-                  backgroundColor: task.internalStatus === "reviewing" ? "var(--status-info)" : "var(--status-warning)",
-                  animation: "bounce 1.4s ease-in-out 0s infinite",
-                }}
-              />
-              <span
-                className="w-1 h-1 rounded-full"
-                style={{
-                  backgroundColor: task.internalStatus === "reviewing" ? "var(--status-info)" : "var(--status-warning)",
-                  animation: "bounce 1.4s ease-in-out 0.2s infinite",
-                }}
-              />
-              <span
-                className="w-1 h-1 rounded-full"
-                style={{
-                  backgroundColor: task.internalStatus === "reviewing" ? "var(--status-info)" : "var(--status-warning)",
-                  animation: "bounce 1.4s ease-in-out 0.4s infinite",
-                }}
-              />
-            </div>
-          )}
+        <div className="absolute top-1.5 right-1.5" data-testid="review-state-indicator">
           <ReviewStateBadge status={task.internalStatus} revisionCount={revisionCount} />
         </div>
       )}
 
       {/* Activity indicator - shown for executing/QA tasks (not review states) */}
       {!isArchived && executionState.isActive && !showReviewState && (
-        <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="activity-indicator">
-          {/* Three dots with staggered bounce animation */}
-          <div className="flex gap-0.5">
-            <span
-              className="w-1 h-1 rounded-full"
-              style={{
-                backgroundColor: "var(--accent-primary)",
-                animation: "bounce 1.4s ease-in-out 0s infinite",
-              }}
-            />
-            <span
-              className="w-1 h-1 rounded-full"
-              style={{
-                backgroundColor: "var(--accent-primary)",
-                animation: "bounce 1.4s ease-in-out 0.2s infinite",
-              }}
-            />
-            <span
-              className="w-1 h-1 rounded-full"
-              style={{
-                backgroundColor: "var(--accent-primary)",
-                animation: "bounce 1.4s ease-in-out 0.4s infinite",
-              }}
-            />
+        <div className="absolute top-1.5 right-1.5" data-testid="activity-indicator">
+          <div
+            className="flex items-center justify-center w-5 h-5 rounded"
+            style={{
+              backgroundColor: "rgba(255, 107, 53, 0.15)",
+              color: "var(--accent-primary)",
+            }}
+            title={executionState.phase === "qa" ? "Running QA" : "Executing"}
+          >
+            <Loader2 className="w-3 h-3 animate-spin" />
           </div>
-          {/* Phase-specific badge for QA */}
-          {executionState.phase === "qa" && (
-            <Badge
-              variant="secondary"
-              className="text-[9px] px-1 py-0.5"
-              style={{
-                backgroundColor: "rgba(255, 107, 53, 0.15)",
-                color: "var(--accent-primary)",
-                border: "none",
-              }}
-            >
-              QA
-            </Badge>
-          )}
         </div>
       )}
 
@@ -502,7 +446,8 @@ export function TaskCard({
           task.internalStatus === "review_passed" ||
           task.internalStatus === "escalated" ||
           task.internalStatus === "revision_needed" ||
-          task.internalStatus === "approved") && (
+          task.internalStatus === "approved" ||
+          task.internalStatus === "merged") && (
           <div className="flex items-center gap-2 mt-2" data-testid="step-progress-footer">
             <StepProgressBar taskId={task.id} compact={true} />
 

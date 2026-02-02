@@ -18,12 +18,6 @@ import {
   getBezierPath,
   type EdgeProps,
 } from "@xyflow/react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getEdgeStyleForEdge, getEdgeType, MARKER_IDS } from "./edgeStyles";
 
@@ -121,44 +115,21 @@ function DependencyEdgeComponent({
         className={edgeStyle.animated ? "react-flow__edge-path-animated" : ""}
       />
 
-      {/* Center dot with tooltip showing relationship */}
+      {/* Center dot with native title tooltip */}
       <EdgeLabelRenderer>
-        {hasTooltip ? (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  style={{
-                    position: "absolute",
-                    transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                    pointerEvents: "all",
-                  }}
-                  className={cn(
-                    "w-1.5 h-1.5 rounded-full cursor-help transition-transform hover:scale-150",
-                    isAccentEdge ? "bg-[hsl(14_100%_55%)]" : "bg-[hsl(220_10%_40%)]"
-                  )}
-                />
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs max-w-[250px]">
-                <span className="text-[hsl(var(--text-primary))]">{sourceLabel}</span>
-                <span className="text-[hsl(var(--text-muted))] mx-1">blocks</span>
-                <span className="text-[hsl(var(--text-primary))]">{targetLabel}</span>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <div
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              pointerEvents: "none",
-            }}
-            className={cn(
-              "w-1.5 h-1.5 rounded-full",
-              isAccentEdge ? "bg-[hsl(14_100%_55%)]" : "bg-[hsl(220_10%_40%)]"
-            )}
-          />
-        )}
+        <div
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: hasTooltip ? "all" : "none",
+          }}
+          className={cn(
+            "w-1.5 h-1.5 rounded-full",
+            hasTooltip && "cursor-help hover:scale-150 transition-transform",
+            isAccentEdge ? "bg-[hsl(14_100%_55%)]" : "bg-[hsl(220_10%_40%)]"
+          )}
+          title={hasTooltip ? `${sourceLabel} blocks ${targetLabel}` : undefined}
+        />
       </EdgeLabelRenderer>
 
       {/* Optional label (legacy support) */}
