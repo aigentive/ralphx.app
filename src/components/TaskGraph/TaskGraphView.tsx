@@ -31,7 +31,6 @@ import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
-import { GraphMiniMap } from "./controls/GraphMiniMap";
 import { GraphLegend } from "./controls/GraphLegend";
 import {
   GraphControls,
@@ -726,9 +725,8 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
                   borderRadius: 8,
                 }}
               />
-              <GraphMiniMap />
-              {/* Status Legend - positioned bottom-left */}
-              <div className="absolute bottom-4 left-4 z-10">
+              {/* Status Legend - positioned to right of Controls */}
+              <div className="absolute bottom-4 left-14 z-10">
                 <GraphLegend defaultCollapsed={true} />
               </div>
             </ReactFlow>
