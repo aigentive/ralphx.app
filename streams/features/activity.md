@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-02-03 07:00:00 - Phase 67 Task 17: Implement plan grouping logic in layout
+**What:**
+- Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
+  - Added `PlanGroupInfo[]` parameter to hook and `computeLayout` function
+  - Added `groupNodes: PlanGroupNode[]` to `LayoutResult` interface
+  - Created `createGroupNodes()` function to compute group nodes from plan groups
+  - Calculates bounding boxes for each plan group using `calculateGroupBoundingBoxes`
+  - Expands bounding boxes with padding for header and margin
+  - Creates "Ungrouped" region for standalone tasks not in any plan
+  - Returns group nodes alongside task nodes and edges
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Registered `PlanGroup` as custom node type with key `planGroup`
+  - Passed `planGroups` from API to `useTaskGraphLayout` hook
+  - Combined group nodes with task nodes (groups first for proper z-ordering)
+  - Updated `onNodeClick` to skip group nodes (they start with "group-")
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`
+- `src/components/TaskGraph/TaskGraphView.tsx`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - component wiring; visual testing requires Task 18 (collapse/expand) and actual plan data
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 06:00:00 - Phase 67 Task 16: Create PlanGroup visual region component
 **What:**
 - Created `src/components/TaskGraph/groups/groupUtils.ts`:

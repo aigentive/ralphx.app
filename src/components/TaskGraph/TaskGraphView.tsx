@@ -26,6 +26,7 @@ import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
 import { TaskNode } from "./nodes/TaskNode";
 import { DependencyEdge } from "./edges/DependencyEdge";
+import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { getStatusBorderColor } from "./nodes/nodeStyles";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
@@ -58,6 +59,7 @@ type TaskNodeData = Record<string, unknown> & {
  */
 const nodeTypes: NodeTypes = {
   task: TaskNode,
+  [PLAN_GROUP_NODE_TYPE]: PlanGroup,
 };
 
 /**
@@ -80,11 +82,12 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
-  // Compute layout using dagre
-  const { nodes: layoutNodes, edges: layoutEdges } = useTaskGraphLayout(
+  // Compute layout using dagre (includes plan grouping)
+  const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     graphData?.nodes ?? [],
     graphData?.edges ?? [],
-    graphData?.criticalPath ?? []
+    graphData?.criticalPath ?? [],
+    graphData?.planGroups ?? []
   );
 
   // React Flow state
@@ -92,14 +95,22 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   // Update React Flow state when layout changes
+  // Group nodes are rendered first (lower z-index) so they appear behind task nodes
   useEffect(() => {
-    setNodes(layoutNodes);
+    // Combine group nodes and task nodes - groups first for proper z-ordering
+    const allNodes = [...groupNodes, ...layoutNodes];
+    setNodes(allNodes);
     setEdges(layoutEdges);
-  }, [layoutNodes, layoutEdges, setNodes, setEdges]);
+  }, [layoutNodes, layoutEdges, groupNodes, setNodes, setEdges]);
 
   // Handle node click - opens TaskDetailOverlay via selectedTaskId
+  // Only for task nodes, not group nodes
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      // Skip group nodes (their IDs start with "group-")
+      if (node.id.startsWith("group-")) {
+        return;
+      }
       // node.id is the task ID
       setSelectedTaskId(node.id);
     },

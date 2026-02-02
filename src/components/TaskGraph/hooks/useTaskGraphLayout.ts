@@ -2,13 +2,22 @@
  * useTaskGraphLayout hook - Dagre-based hierarchical layout for task graph
  *
  * Uses dagre algorithm to compute node positions for a proper hierarchical layout
- * with configurable spacing and direction.
+ * with configurable spacing and direction. Supports plan grouping with visual
+ * region containers.
  */
 
 import { useMemo } from "react";
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/react";
-import type { TaskGraphNode, TaskGraphEdge } from "@/api/task-graph.types";
+import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
+import {
+  calculateGroupBoundingBoxes,
+  expandBoundingBox,
+  boundingBoxToGroupNode,
+  GROUP_PADDING,
+  HEADER_HEIGHT,
+} from "../groups/groupUtils";
+import { createPlanGroupNode, type PlanGroupNode } from "../groups/PlanGroup";
 
 // ============================================================================
 // Types
@@ -30,6 +39,7 @@ export interface LayoutConfig {
 export interface LayoutResult {
   nodes: Node[];
   edges: Edge[];
+  groupNodes: PlanGroupNode[];
 }
 
 // Use Record<string, unknown> compatible structure for React Flow
@@ -65,6 +75,140 @@ const NODE_WIDTH = 180;
 const NODE_HEIGHT = 50;
 
 // ============================================================================
+// Group Node Creation
+// ============================================================================
+
+/**
+ * ID for the "Ungrouped" pseudo-plan that contains standalone tasks
+ */
+const UNGROUPED_PLAN_ID = "__ungrouped__";
+
+/**
+ * Create React Flow group nodes for plan groups
+ *
+ * @param taskNodes - Positioned task nodes from dagre layout
+ * @param planGroups - Plan group info from the API
+ * @returns Array of PlanGroupNode for React Flow
+ */
+function createGroupNodes(
+  taskNodes: Node[],
+  planGroups: PlanGroupInfo[]
+): PlanGroupNode[] {
+  if (planGroups.length === 0) {
+    return [];
+  }
+
+  // Build map of planArtifactId -> taskIds for bounding box calculation
+  const planGroupMap = new Map<string, string[]>();
+  for (const pg of planGroups) {
+    planGroupMap.set(pg.planArtifactId, pg.taskIds);
+  }
+
+  // Find ungrouped tasks (tasks not in any plan group)
+  const groupedTaskIds = new Set<string>();
+  for (const pg of planGroups) {
+    for (const taskId of pg.taskIds) {
+      groupedTaskIds.add(taskId);
+    }
+  }
+
+  const ungroupedTaskIds: string[] = [];
+  for (const node of taskNodes) {
+    if (!groupedTaskIds.has(node.id)) {
+      ungroupedTaskIds.push(node.id);
+    }
+  }
+
+  // Calculate bounding boxes for all plan groups
+  const boundingBoxes = calculateGroupBoundingBoxes(
+    taskNodes,
+    planGroupMap,
+    NODE_WIDTH,
+    NODE_HEIGHT
+  );
+
+  // Create group nodes for each plan group
+  const groupNodes: PlanGroupNode[] = [];
+
+  // Create a map for quick lookup of plan group info
+  const planGroupInfoMap = new Map<string, PlanGroupInfo>();
+  for (const pg of planGroups) {
+    planGroupInfoMap.set(pg.planArtifactId, pg);
+  }
+
+  for (const bbox of boundingBoxes) {
+    const planInfo = planGroupInfoMap.get(bbox.planArtifactId);
+    if (!planInfo) continue;
+
+    // Expand the bounding box with padding and header space
+    const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);
+    const { position, width, height } = boundingBoxToGroupNode(expanded);
+
+    const groupNode = createPlanGroupNode(
+      planInfo.planArtifactId,
+      planInfo.sessionId,
+      planInfo.sessionTitle,
+      planInfo.taskIds,
+      planInfo.statusSummary,
+      position,
+      width,
+      height,
+      false // isCollapsed - starts expanded
+    );
+
+    groupNodes.push(groupNode);
+  }
+
+  // Create "Ungrouped" region for standalone tasks (if any)
+  if (ungroupedTaskIds.length > 0) {
+    const ungroupedMap = new Map<string, string[]>();
+    ungroupedMap.set(UNGROUPED_PLAN_ID, ungroupedTaskIds);
+
+    const ungroupedBoxes = calculateGroupBoundingBoxes(
+      taskNodes,
+      ungroupedMap,
+      NODE_WIDTH,
+      NODE_HEIGHT
+    );
+
+    const ungroupedBbox = ungroupedBoxes[0];
+    if (ungroupedBbox) {
+      const expanded = expandBoundingBox(ungroupedBbox, GROUP_PADDING, HEADER_HEIGHT);
+      const { position, width, height } = boundingBoxToGroupNode(expanded);
+
+      // Create a pseudo-StatusSummary for ungrouped tasks
+      const ungroupedSummary = {
+        backlog: 0,
+        ready: 0,
+        blocked: 0,
+        executing: 0,
+        qa: 0,
+        review: 0,
+        merge: 0,
+        completed: 0,
+        terminal: 0,
+      };
+
+      const groupNode = createPlanGroupNode(
+        UNGROUPED_PLAN_ID,
+        "", // No session ID
+        "Ungrouped", // Display title
+        ungroupedTaskIds,
+        ungroupedSummary,
+        position,
+        width,
+        height,
+        false // isCollapsed
+      );
+
+      groupNodes.push(groupNode);
+    }
+  }
+
+  return groupNodes;
+}
+
+// ============================================================================
 // Layout Computation
 // ============================================================================
 
@@ -72,6 +216,7 @@ function computeLayout(
   graphNodes: TaskGraphNode[],
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
+  planGroups: PlanGroupInfo[],
   config: LayoutConfig
 ): LayoutResult {
   // Create dagre graph
@@ -159,7 +304,10 @@ function computeLayout(
     };
   });
 
-  return { nodes, edges };
+  // Create group nodes for plan groups
+  const groupNodes = createGroupNodes(nodes, planGroups);
+
+  return { nodes, edges, groupNodes };
 }
 
 
@@ -173,25 +321,30 @@ function computeLayout(
  * @param nodes - Task graph nodes from API
  * @param edges - Task graph edges from API
  * @param criticalPath - Array of task IDs on the critical path
+ * @param planGroups - Plan group info for visual grouping
  * @param config - Optional layout configuration overrides
- * @returns React Flow nodes and edges with computed positions
+ * @returns React Flow nodes, edges, and group nodes with computed positions
  *
  * @example
  * ```tsx
- * const { nodes, edges } = useTaskGraphLayout(
+ * const { nodes, edges, groupNodes } = useTaskGraphLayout(
  *   graphData.nodes,
  *   graphData.edges,
  *   graphData.criticalPath,
+ *   graphData.planGroups,
  *   { direction: "LR" }
  * );
  *
- * return <ReactFlow nodes={nodes} edges={edges} />;
+ * // Combine task nodes and group nodes for React Flow
+ * const allNodes = [...groupNodes, ...nodes];
+ * return <ReactFlow nodes={allNodes} edges={edges} />;
  * ```
  */
 export function useTaskGraphLayout(
   graphNodes: TaskGraphNode[],
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
+  planGroups: PlanGroupInfo[] = [],
   config: Partial<LayoutConfig> = {}
 ): LayoutResult {
   // Merge with default config
@@ -203,10 +356,10 @@ export function useTaskGraphLayout(
   // Compute layout whenever inputs change
   const layout = useMemo(() => {
     if (graphNodes.length === 0) {
-      return { nodes: [], edges: [] };
+      return { nodes: [], edges: [], groupNodes: [] };
     }
-    return computeLayout(graphNodes, graphEdges, criticalPath, fullConfig);
-  }, [graphNodes, graphEdges, criticalPath, fullConfig]);
+    return computeLayout(graphNodes, graphEdges, criticalPath, planGroups, fullConfig);
+  }, [graphNodes, graphEdges, criticalPath, planGroups, fullConfig]);
 
   return layout;
 }
