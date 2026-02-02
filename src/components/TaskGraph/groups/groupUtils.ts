@@ -38,7 +38,7 @@ export interface GroupBoundingBox extends BoundingBox {
 // ============================================================================
 
 /** Padding around grouped tasks inside the group region */
-export const GROUP_PADDING = 24;
+export const GROUP_PADDING = 12;
 
 /** Extra space at top for the header */
 export const HEADER_HEIGHT = 48;
