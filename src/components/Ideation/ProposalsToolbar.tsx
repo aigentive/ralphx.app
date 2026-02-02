@@ -13,17 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Trash2,
-  ChevronDown,
-  FileEdit,
-  Inbox,
-  ListTodo,
   Network,
   Loader2,
   Check,
@@ -180,69 +170,34 @@ export function ProposalsToolbar({
           )}
         </TooltipProvider>
 
-        {/* Accept Plan dropdown (only when not read-only) */}
+        {/* Accept Plan button (only when not read-only) */}
+        {/* Status is determined automatically by backend based on dependencies */}
         {!isReadOnly && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!canAccept}
-                className="h-7 px-3 text-[11px] font-semibold gap-1.5 rounded-lg transition-all duration-150"
-                style={{
-                  color: canAccept ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
-                  background: canAccept ? "hsla(14 100% 60% / 0.1)" : "transparent",
-                  border: canAccept ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid transparent",
-                }}
-                onMouseEnter={(e) => {
-                  if (canAccept) {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (canAccept) {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                  }
-                }}
-              >
-                <Check className="w-3 h-3" />
-                Accept Plan ({totalCount})
-                <ChevronDown className="w-3 h-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-36"
-              style={{
-                background: "hsl(220 10% 14%)",
-                backdropFilter: "blur(20px)",
-                border: "1px solid hsla(220 10% 100% / 0.1)",
-                boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
-              }}
-            >
-              <DropdownMenuItem
-                onClick={() => onAcceptPlan("draft")}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <FileEdit className="w-4 h-4" />
-                Draft
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onAcceptPlan("backlog")}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <Inbox className="w-4 h-4" />
-                Backlog
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onAcceptPlan("todo")}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <ListTodo className="w-4 h-4" />
-                Todo
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!canAccept}
+            onClick={() => onAcceptPlan("auto")}
+            className="h-7 px-3 text-[11px] font-semibold gap-1.5 rounded-lg transition-all duration-150"
+            style={{
+              color: canAccept ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
+              background: canAccept ? "hsla(14 100% 60% / 0.1)" : "transparent",
+              border: canAccept ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid transparent",
+            }}
+            onMouseEnter={(e) => {
+              if (canAccept) {
+                e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (canAccept) {
+                e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+              }
+            }}
+          >
+            <Check className="w-3 h-3" />
+            Accept Plan ({totalCount})
+          </Button>
         )}
       </div>
     </div>
