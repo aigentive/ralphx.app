@@ -4,6 +4,10 @@ export { useTaskGraph, taskGraphKeys } from "./hooks/useTaskGraph";
 export { useTaskGraphLayout, DEFAULT_CONFIG as DEFAULT_LAYOUT_CONFIG } from "./hooks/useTaskGraphLayout";
 export type { LayoutConfig, LayoutResult } from "./hooks/useTaskGraphLayout";
 
+// Node components
+export { TaskNode } from "./nodes/TaskNode";
+export type { TaskNodeData, TaskNodeType } from "./nodes/TaskNode";
+
 // Node styles
 export {
   getNodeStyle,
