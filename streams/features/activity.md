@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-03 03:15:00 - Phase 68 Task 1: Add Merging to AGENT_ACTIVE_STATUSES
+**What:**
+- Added `InternalStatus::Merging` to `AGENT_ACTIVE_STATUSES` constant
+- This fixes crash recovery for tasks stuck in `Merging` state (merger agent will be respawned)
+- Updated the `test_agent_active_statuses_constant` test to include Merging assertion
+
+**Files Modified:**
+- `src-tauri/src/commands/execution_commands.rs`
+  - Added `InternalStatus::Merging` to `AGENT_ACTIVE_STATUSES` array (line 26)
+  - Added assertion for Merging in unit test
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test test_agent_active_statuses_constant` (passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 02:45:00 - Phase 67 Complete: Task Graph View
 **What:**
 - Completed Phase 67 gap verification - no P0 items found
