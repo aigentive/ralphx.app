@@ -532,7 +532,7 @@
       "phase": 74,
       "name": "Review Dialog Improvements",
       "prd": "specs/phases/prd_phase_74_review_dialog_improvements.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix data discrepancies and visual issues in ReviewDetailModal"
     }
   ]
