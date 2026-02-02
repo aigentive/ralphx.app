@@ -497,7 +497,7 @@
       "phase": 69,
       "name": "Fix Diff Commands Worktree Support",
       "prd": "specs/phases/prd_phase_69_diff_worktree_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Make get_task_file_changes and get_file_diff worktree-aware"
     }
   ]
