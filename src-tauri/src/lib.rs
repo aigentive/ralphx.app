@@ -94,6 +94,28 @@ pub fn run() {
             let app_state =
                 AppState::new_production(app_handle.clone()).expect("Failed to initialize AppState");
 
+            // Load execution settings from database and apply to ExecutionState
+            // This must happen before HTTP server starts to ensure consistent configuration
+            let init_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
+            let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
+            tauri::async_runtime::block_on(async move {
+                match init_settings_repo.get_settings().await {
+                    Ok(settings) => {
+                        init_execution_state.set_max_concurrent(settings.max_concurrent_tasks);
+                        info!(
+                            "Initialized execution settings from database: max_concurrent={}",
+                            settings.max_concurrent_tasks
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to load execution settings from database, using defaults: {}",
+                            e
+                        );
+                    }
+                }
+            });
+
             // Start HTTP server for MCP proxy on port 3847
             // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
             let http_app_state = Arc::new(
