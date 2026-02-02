@@ -252,6 +252,7 @@ pub fn run() {
             commands::task_commands::query::get_valid_transitions,
             commands::task_commands::query::get_tasks_awaiting_review,
             commands::task_commands::query::get_task_state_transitions,
+            commands::task_commands::query::get_task_dependency_graph,
             // Task step commands
             commands::task_step_commands::create_task_step,
             commands::task_step_commands::get_task_steps,

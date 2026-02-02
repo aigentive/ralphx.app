@@ -150,3 +150,86 @@ pub struct StateTransitionResponse {
     /// Agent run ID that was started for this state
     pub agent_run_id: Option<String>,
 }
+
+// ============================================================================
+// Task Graph Types (Phase 67)
+// ============================================================================
+
+/// Node in the task dependency graph
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskGraphNode {
+    /// Task ID
+    pub task_id: String,
+    /// Task title
+    pub title: String,
+    /// Internal status (e.g., "ready", "executing", "approved")
+    pub internal_status: String,
+    /// Task priority
+    pub priority: i32,
+    /// Number of tasks this task depends on (blockers)
+    pub in_degree: u32,
+    /// Number of tasks that depend on this task
+    pub out_degree: u32,
+    /// Computed tier level (0 = no dependencies, higher = more dependencies)
+    pub tier: u32,
+    /// Plan artifact ID if task came from a plan
+    pub plan_artifact_id: Option<String>,
+    /// Source proposal ID if task came from ideation
+    pub source_proposal_id: Option<String>,
+}
+
+/// Edge in the task dependency graph
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskGraphEdge {
+    /// Source task ID (the blocking task)
+    pub source: String,
+    /// Target task ID (the blocked task)
+    pub target: String,
+    /// Whether this edge is on the critical path
+    pub is_critical_path: bool,
+}
+
+/// Status summary for a plan group
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct StatusSummary {
+    /// Count of tasks in each status category
+    pub backlog: u32,
+    pub ready: u32,
+    pub blocked: u32,
+    pub executing: u32,
+    pub qa: u32,
+    pub review: u32,
+    pub merge: u32,
+    pub completed: u32,
+    pub terminal: u32,
+}
+
+/// Information about a plan group in the graph
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanGroupInfo {
+    /// Plan artifact ID
+    pub plan_artifact_id: String,
+    /// Ideation session ID
+    pub session_id: String,
+    /// Session title (if set)
+    pub session_title: Option<String>,
+    /// Task IDs belonging to this plan
+    pub task_ids: Vec<String>,
+    /// Status counts for tasks in this plan
+    pub status_summary: StatusSummary,
+}
+
+/// Response for the task dependency graph
+#[derive(Debug, Serialize)]
+pub struct TaskDependencyGraphResponse {
+    /// All task nodes in the graph
+    pub nodes: Vec<TaskGraphNode>,
+    /// All dependency edges
+    pub edges: Vec<TaskGraphEdge>,
+    /// Plan groups with their tasks
+    pub plan_groups: Vec<PlanGroupInfo>,
+    /// Task IDs on the critical path (longest dependency chain)
+    pub critical_path: Vec<String>,
+    /// Whether the graph has cycles (should be false in valid graphs)
+    pub has_cycles: bool,
+}

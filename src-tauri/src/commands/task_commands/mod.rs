@@ -21,6 +21,12 @@ pub use types::{
     TaskListResponse,
     StatusTransition,
     StateTransitionResponse,
+    // Task graph types (Phase 67)
+    TaskGraphNode,
+    TaskGraphEdge,
+    StatusSummary,
+    PlanGroupInfo,
+    TaskDependencyGraphResponse,
 };
 
 // Re-export helpers (for use by other command modules)
@@ -40,6 +46,7 @@ pub use query::{
     get_valid_transitions,
     get_tasks_awaiting_review,
     get_task_state_transitions,
+    get_task_dependency_graph,
 };
 
 // Re-export mutation commands

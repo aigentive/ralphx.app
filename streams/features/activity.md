@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-02 21:30:00 - Phase 67 Task 1: Add get_task_dependency_graph backend command
+**What:**
+- Created `TaskGraphNode`, `TaskGraphEdge`, `StatusSummary`, `PlanGroupInfo`, `TaskDependencyGraphResponse` structs in `src-tauri/src/commands/task_commands/types.rs`
+- Implemented `get_task_dependency_graph` Tauri command in `src-tauri/src/commands/task_commands/query.rs`
+- Graph nodes include: task_id, title, internal_status, priority, in_degree, out_degree, tier, plan_artifact_id, source_proposal_id
+- Graph edges connect source (blocker) to target (blocked) with is_critical_path flag
+- Plan groups aggregate tasks by plan_artifact_id with ideation session context (title lookup via get_by_plan_artifact_id)
+- Critical path computed via topological sort (Kahn's algorithm) + DP for longest path
+- Cycle detection via processing count vs total nodes in topological sort
+- StatusSummary buckets: backlog, ready, blocked, executing, qa, review, merge, completed, terminal
+- Registered command in lib.rs invoke_handler
+
+**Files Modified:**
+- `src-tauri/src/commands/task_commands/types.rs` (add graph types)
+- `src-tauri/src/commands/task_commands/query.rs` (add command)
+- `src-tauri/src/commands/task_commands/mod.rs` (export types and command)
+- `src-tauri/src/lib.rs` (register command)
+- `specs/phases/prd_phase_67_task_graph_view.md` (mark task 1 passes: true)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:00:00 - Complete Phase 66, Activate Phase 67
 **What:**
 - All 21 Phase 66 tasks completed with `passes: true`

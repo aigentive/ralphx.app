@@ -96,7 +96,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(task-graph): add get_task_dependency_graph command"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
