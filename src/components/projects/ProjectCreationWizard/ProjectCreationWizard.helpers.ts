@@ -14,6 +14,7 @@ export interface FormState {
   gitMode: GitMode;
   worktreeBranch: string;
   baseBranch: string;
+  worktreeParentDirectory: string;
 }
 
 export interface FormErrors {
@@ -40,12 +41,14 @@ export function generateBranchName(projectName: string): string {
 }
 
 /**
- * Generate worktree path from working directory and branch
- * Format: ~/ralphx-worktrees/<project-folder-name>
+ * Generate worktree path from working directory
+ * Format: <parentDirectory>/<project-folder-name>
+ * Default parent directory: ~/ralphx-worktrees
  */
-export function generateWorktreePath(workingDirectory: string): string {
+export function generateWorktreePath(workingDirectory: string, parentDirectory?: string): string {
   const folderName = workingDirectory.split("/").pop() || "project";
-  return `~/ralphx-worktrees/${folderName}`;
+  const parent = parentDirectory?.trim() || "~/ralphx-worktrees";
+  return `${parent}/${folderName}`;
 }
 
 /**

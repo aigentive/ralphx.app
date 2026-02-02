@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-02 14:00:00 - Phase 66 Task 17: Update project wizard with git mode selection and worktree defaults
+**What:**
+- Changed default git mode from "local" to "worktree" (recommended for concurrent tasks)
+- Updated Worktree mode label to "Isolated Worktrees (Recommended)"
+- Updated Local mode to include warning: "Only one task can execute at a time. Your uncommitted changes may be affected."
+- Added collapsible Advanced Settings section with optional `worktreeParentDirectory` input
+- Updated `generateWorktreePath` helper to accept custom parent directory
+- Added `worktreeParentDirectory` field to FormState interface
+
+**Files Modified:**
+- `src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx` (default mode, labels, Advanced section)
+- `src/components/projects/ProjectCreationWizard/ProjectCreationWizard.helpers.ts` (FormState, generateWorktreePath)
+
+**Commands:**
+- `npm run lint` (passed with pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI changes require manual testing in Tauri app
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 13:00:00 - Phase 66 Task 16: Add git commands for task commits, diff, merge, and cleanup
 **What:**
 - Created `src-tauri/src/commands/git_commands.rs` with six Tauri commands:

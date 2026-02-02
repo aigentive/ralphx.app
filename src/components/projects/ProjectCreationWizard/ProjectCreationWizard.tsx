@@ -31,7 +31,14 @@ import {
   AlertTriangle,
   GitBranch,
   Loader2,
+  ChevronDown,
+  Settings,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RadioOption } from "./ProjectCreationWizard.components";
 import {
@@ -79,13 +86,14 @@ export function ProjectCreationWizard({
   error = null,
   isFirstRun = false,
 }: ProjectCreationWizardProps) {
-  // Form state
+  // Form state - Worktree mode is default (recommended for concurrent tasks)
   const [form, setForm] = useState<FormState>({
     name: "",
     workingDirectory: "",
-    gitMode: "local",
+    gitMode: "worktree",
     worktreeBranch: "ralphx/feature",
     baseBranch: "main",
+    worktreeParentDirectory: "",
   });
 
   // Available branches for dropdown
@@ -107,11 +115,14 @@ export function ProjectCreationWizard({
   const errors = useMemo(() => validateForm(form), [form]);
   const hasErrors = Object.keys(errors).length > 0;
 
-  // Generate worktree path
+  // Generate worktree path (uses custom parent directory if provided)
   const worktreePath = useMemo(
-    () => generateWorktreePath(form.workingDirectory),
-    [form.workingDirectory]
+    () => generateWorktreePath(form.workingDirectory, form.worktreeParentDirectory),
+    [form.workingDirectory, form.worktreeParentDirectory]
   );
+
+  // Track advanced settings visibility
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Update branch name when project name changes
   useEffect(() => {
@@ -144,21 +155,23 @@ export function ProjectCreationWizard({
     }
   }, [form.workingDirectory, onFetchBranches]);
 
-  // Reset form when modal opens
+  // Reset form when modal opens - defaults to Worktree mode (recommended)
   useEffect(() => {
     if (isOpen) {
       setForm({
         name: "",
         workingDirectory: "",
-        gitMode: "local",
+        gitMode: "worktree",
         worktreeBranch: "ralphx/feature",
         baseBranch: "main",
+        worktreeParentDirectory: "",
       });
       setTouched({});
       setSubmitted(false);
       setBranches(["main", "master"]);
       setIsNameManuallySet(false);
       setLastInferredName("");
+      setShowAdvanced(false);
     }
   }, [isOpen]);
 
@@ -225,6 +238,10 @@ export function ProjectCreationWizard({
       project.worktreeBranch = form.worktreeBranch.trim();
       project.baseBranch = form.baseBranch.trim();
       project.worktreePath = worktreePath;
+      // Only include custom parent directory if user provided one
+      if (form.worktreeParentDirectory.trim()) {
+        project.worktreeParentDirectory = form.worktreeParentDirectory.trim();
+      }
     }
 
     onCreate(project);
@@ -356,24 +373,13 @@ export function ProjectCreationWizard({
               Git Mode
             </Label>
 
-            {/* Local Mode */}
-            <RadioOption
-              value="local"
-              selected={form.gitMode === "local"}
-              onSelect={(value) => setForm((prev) => ({ ...prev, gitMode: value }))}
-              label="Local (default)"
-              description="Work directly in your current branch"
-              warning="Your uncommitted changes may be affected"
-              testId="git-mode-local"
-            />
-
-            {/* Worktree Mode */}
+            {/* Worktree Mode (Default) */}
             <RadioOption
               value="worktree"
               selected={form.gitMode === "worktree"}
               onSelect={(value) => setForm((prev) => ({ ...prev, gitMode: value }))}
-              label="Isolated Worktree (recommended when actively coding)"
-              description="Creates separate worktree for RalphX to work in. Your branch stays untouched."
+              label="Isolated Worktrees (Recommended)"
+              description="Creates separate worktree for each task. Enables parallel task execution."
               testId="git-mode-worktree"
             >
               {/* Worktree-specific fields */}
@@ -482,8 +488,64 @@ export function ProjectCreationWizard({
                     </div>
                   </div>
                 </div>
+
+                {/* Advanced Settings */}
+                <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+                  <CollapsibleTrigger
+                    data-testid="advanced-settings-trigger"
+                    className="flex items-center gap-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                  >
+                    <Settings className="h-3 w-3" />
+                    <span>Advanced Settings</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-3 w-3 transition-transform",
+                        showAdvanced && "rotate-180"
+                      )}
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="worktree-parent-input"
+                        className="text-sm font-medium text-[var(--text-secondary)]"
+                      >
+                        Worktree Parent Directory
+                      </Label>
+                      <Input
+                        id="worktree-parent-input"
+                        data-testid="worktree-parent-input"
+                        type="text"
+                        value={form.worktreeParentDirectory}
+                        onChange={(e) =>
+                          setForm((prev) => ({ ...prev, worktreeParentDirectory: e.target.value }))
+                        }
+                        placeholder="~/ralphx-worktrees"
+                        disabled={isCreating}
+                        className={cn(
+                          "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                          isCreating && "opacity-50"
+                        )}
+                      />
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Default: ~/ralphx-worktrees. Task worktrees will be created inside this directory.
+                      </p>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
             </RadioOption>
+
+            {/* Local Mode */}
+            <RadioOption
+              value="local"
+              selected={form.gitMode === "local"}
+              onSelect={(value) => setForm((prev) => ({ ...prev, gitMode: value }))}
+              label="Local Branches"
+              description="Work directly in your current branch. Not recommended for concurrent tasks."
+              warning="Only one task can execute at a time. Your uncommitted changes may be affected."
+              testId="git-mode-local"
+            />
           </div>
 
           {/* Error Message */}
