@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 73,
+  "currentPhase": 74,
   "phases": [
     {
       "phase": 0,
@@ -525,14 +525,14 @@
       "phase": 73,
       "name": "Graph Page Layout Parity with Kanban",
       "prd": "specs/phases/prd_phase_73_graph_layout_parity.md",
-      "status": "active",
+      "status": "complete",
       "description": "Split-screen layout for Graph page matching Kanban structure"
     },
     {
       "phase": 74,
       "name": "Review Dialog Improvements",
       "prd": "specs/phases/prd_phase_74_review_dialog_improvements.md",
-      "status": "pending",
+      "status": "active",
       "description": "Fix data discrepancies and visual issues in ReviewDetailModal"
     }
   ]
