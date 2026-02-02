@@ -374,7 +374,7 @@ impl GitService {
     }
 
     /// Get the SHA of HEAD
-    fn get_head_sha(path: &Path) -> AppResult<String> {
+    pub fn get_head_sha(path: &Path) -> AppResult<String> {
         let output = Command::new("git")
             .args(["rev-parse", "HEAD"])
             .current_dir(path)
@@ -589,6 +589,90 @@ impl GitService {
             .collect();
 
         Ok(files)
+    }
+
+    // =========================================================================
+    // Merge State Detection (Phase 76 - Auto-completion)
+    // =========================================================================
+
+    /// Check if a rebase is currently in progress
+    ///
+    /// Detects incomplete rebase by checking for `.git/rebase-merge` or `.git/rebase-apply`
+    /// directories which exist while a rebase is paused (e.g., due to conflicts).
+    ///
+    /// # Arguments
+    /// * `worktree` - Path to the git worktree or repository
+    pub fn is_rebase_in_progress(worktree: &Path) -> bool {
+        // For worktrees, .git is a file pointing to the main repo's .git/worktrees/<name>
+        // We need to resolve the actual git directory
+        let git_path = worktree.join(".git");
+
+        let git_dir = if git_path.is_file() {
+            // Read the gitdir from the .git file
+            if let Ok(content) = std::fs::read_to_string(&git_path) {
+                if let Some(path) = content.strip_prefix("gitdir: ") {
+                    PathBuf::from(path.trim())
+                } else {
+                    git_path
+                }
+            } else {
+                git_path
+            }
+        } else {
+            git_path
+        };
+
+        git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
+    }
+
+    /// Check for conflict markers in tracked files
+    ///
+    /// Scans all tracked files for the standard git conflict marker `<<<<<<<`.
+    /// Returns true if any conflict markers are found.
+    ///
+    /// # Arguments
+    /// * `worktree` - Path to the git worktree or repository
+    pub fn has_conflict_markers(worktree: &Path) -> AppResult<bool> {
+        // Get list of tracked files
+        let output = Command::new("git")
+            .args(["ls-files"])
+            .current_dir(worktree)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git ls-files: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to list tracked files: {}",
+                stderr
+            )));
+        }
+
+        let tracked_files = String::from_utf8_lossy(&output.stdout);
+
+        // Check each tracked file for conflict markers
+        for file in tracked_files.lines() {
+            if file.is_empty() {
+                continue;
+            }
+
+            let file_path = worktree.join(file);
+
+            // Skip if file doesn't exist (could be deleted in working tree)
+            if !file_path.exists() {
+                continue;
+            }
+
+            // Skip binary files - only check text files
+            if let Ok(content) = std::fs::read_to_string(&file_path) {
+                if content.contains("<<<<<<<") {
+                    debug!("Found conflict marker in file: {}", file);
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
     }
 
     /// Attempt to rebase and merge (Phase 1 of merge workflow)
@@ -806,5 +890,65 @@ mod tests {
         assert_eq!(files, 0);
         assert_eq!(insertions, 0);
         assert_eq!(deletions, 0);
+    }
+
+    // =========================================================================
+    // Merge State Detection Tests (Phase 76)
+    // =========================================================================
+
+    #[test]
+    fn test_is_rebase_in_progress_no_rebase() {
+        // Use a temp directory without rebase state
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        assert!(!GitService::is_rebase_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_rebase_in_progress_with_rebase_merge() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        // Simulate rebase-merge directory (interactive rebase in progress)
+        std::fs::create_dir(git_dir.join("rebase-merge")).unwrap();
+
+        assert!(GitService::is_rebase_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_rebase_in_progress_with_rebase_apply() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        // Simulate rebase-apply directory (git am or older rebase in progress)
+        std::fs::create_dir(git_dir.join("rebase-apply")).unwrap();
+
+        assert!(GitService::is_rebase_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_rebase_in_progress_worktree_style() {
+        // Test worktree-style .git file pointing to gitdir
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_path = temp_dir.path().join(".git");
+
+        // Create the actual git directory somewhere else
+        let actual_git_dir = temp_dir.path().join("actual_git_dir");
+        std::fs::create_dir(&actual_git_dir).unwrap();
+
+        // Create .git file pointing to actual git dir
+        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
+
+        // No rebase in progress
+        assert!(!GitService::is_rebase_in_progress(temp_dir.path()));
+
+        // Add rebase-merge to actual git dir
+        std::fs::create_dir(actual_git_dir.join("rebase-merge")).unwrap();
+
+        assert!(GitService::is_rebase_in_progress(temp_dir.path()));
     }
 }
