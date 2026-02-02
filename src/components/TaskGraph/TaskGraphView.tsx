@@ -76,7 +76,7 @@ export interface TaskGraphViewProps {
 const HIGHLIGHT_TIMEOUT_MS = 3000;
 
 /** Empty layout config - defined as constant to prevent re-renders */
-const EMPTY_LAYOUT_CONFIG = {};
+// Layout config is now computed dynamically based on node mode
 
 /** Status categories considered "completed" for filtering */
 const COMPLETED_STATUSES: InternalStatus[] = ["approved", "merged"];
@@ -602,13 +602,18 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     );
   }, [graphData, filters]);
 
+  // Layout config with compact mode flag
+  const layoutConfig = useMemo(() => ({
+    isCompact: effectiveNodeMode === "compact",
+  }), [effectiveNodeMode]);
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     filteredGraphData.nodes,
     filteredGraphData.edges,
     graphData?.criticalPath ?? [],
     filteredGraphData.planGroups,
-    EMPTY_LAYOUT_CONFIG,
+    layoutConfig,
     collapsedPlanIds,
     handleToggleCollapse
   );
