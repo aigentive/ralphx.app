@@ -640,6 +640,19 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [setSelectedTaskId]
   );
 
+  // Handle double-click on nodes (collapse/expand for groups)
+  const handleNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      // Only handle group nodes
+      if (node.id.startsWith("group-")) {
+        // Extract plan artifact ID from "group-{planArtifactId}"
+        const planArtifactId = node.id.slice(6);
+        handleToggleCollapse(planArtifactId);
+      }
+    },
+    [handleToggleCollapse]
+  );
+
   // Clear highlight on pane click
   const handlePaneClick = useCallback(() => {
     if (highlightTimeoutRef.current) {
@@ -830,6 +843,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={handleNodeClick}
+            onNodeDoubleClick={handleNodeDoubleClick}
             onPaneClick={handlePaneClick}
             fitView
             fitViewOptions={{ padding: 0.2 }}
