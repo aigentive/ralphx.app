@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 17:30:00 - Phase 73 Task 4: Refactor TaskGraphView for new layout
+**What:**
+- Refactored `src/components/TaskGraph/TaskGraphView.tsx` to use new split layout architecture
+- Added `footer` prop to TaskGraphViewProps and TaskGraphViewInnerProps interfaces
+- Removed GraphControls component from JSX (replaced by FloatingGraphFilters)
+- Removed ExecutionTimeline from main flex layout (replaced by FloatingTimeline via GraphSplitLayout)
+- Removed TaskDetailOverlay render (now handled by GraphSplitLayout)
+- Wrapped ReactFlow canvas in GraphSplitLayout with timelineContent and footer props
+- Added FloatingGraphFilters as absolute-positioned overlay inside canvas container
+- Preserved all existing state (filters, layoutDirection, grouping, nodeMode)
+- Updated component docstring to reflect new architecture
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx` (major refactor)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - 0 errors, 15 pre-existing warnings)
+
+**Visual Verification:** N/A - layout component, needs App.tsx wiring (Task 5)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 16:00:00 - Phase 73 Task 3: Create FloatingGraphFilters component
 **What:**
 - Created `src/components/TaskGraph/controls/FloatingGraphFilters.tsx` (~210 LOC)
