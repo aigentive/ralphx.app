@@ -27,6 +27,8 @@ export interface DependencyEdgeData extends Record<string, unknown> {
   sourceStatus?: string;
   /** Optional label for the edge */
   label?: string;
+  /** Whether edge crosses plan group boundaries (rendered on top) */
+  isCrossPlan?: boolean;
 }
 
 // ============================================================================

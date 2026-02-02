@@ -56,6 +56,8 @@ type TaskNodeData = Record<string, unknown> & {
 type DependencyEdgeData = Record<string, unknown> & {
   isCriticalPath: boolean;
   sourceStatus?: string;
+  /** Whether edge crosses plan group boundaries */
+  isCrossPlan?: boolean;
 };
 
 // ============================================================================
@@ -273,6 +275,14 @@ function computeLayout(
     nodeStatusMap.set(node.taskId, node.internalStatus);
   });
 
+  // Build a map of task ID -> plan artifact ID for cross-plan edge detection
+  const taskToPlanMap = new Map<string, string>();
+  for (const pg of planGroups) {
+    for (const taskId of pg.taskIds) {
+      taskToPlanMap.set(taskId, pg.planArtifactId);
+    }
+  }
+
   // Transform dagre nodes to React Flow nodes
   const nodes: Node[] = graphNodes.map((graphNode) => {
     const dagreNode = g.node(graphNode.taskId);
@@ -298,22 +308,42 @@ function computeLayout(
   });
 
   // Transform graph edges to React Flow edges
+  // Cross-plan edges (source and target in different plan groups) get higher z-index
+  // to render on top of plan group regions
+  const CROSS_PLAN_EDGE_ZINDEX = 10;
+
   const edges: Edge[] = graphEdges.map((graphEdge) => {
     const sourceStatus = nodeStatusMap.get(graphEdge.source);
+    const sourcePlan = taskToPlanMap.get(graphEdge.source);
+    const targetPlan = taskToPlanMap.get(graphEdge.target);
+
+    // Edge is cross-plan if source and target are in different plan groups
+    // (or one is grouped and the other is ungrouped)
+    const isCrossPlan = sourcePlan !== targetPlan;
+
     const edgeData: DependencyEdgeData = {
       isCriticalPath: graphEdge.isCriticalPath,
+      isCrossPlan,
     };
     // Only add sourceStatus if it exists
     if (sourceStatus !== undefined) {
       edgeData.sourceStatus = sourceStatus;
     }
-    return {
+
+    const edge: Edge = {
       id: `${graphEdge.source}-${graphEdge.target}`,
       type: "dependency", // Use custom DependencyEdge component
       source: graphEdge.source,
       target: graphEdge.target,
       data: edgeData,
     };
+
+    // Set higher z-index for cross-plan edges to ensure they render on top of groups
+    if (isCrossPlan) {
+      edge.zIndex = CROSS_PLAN_EDGE_ZINDEX;
+    }
+
+    return edge;
   });
 
   // Create group nodes for plan groups
