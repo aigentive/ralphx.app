@@ -20,15 +20,16 @@ import { cn } from "@/lib/utils";
 import type { ViewType } from "@/types/chat";
 
 // Navigation items configuration
+// Order reflects workflow: plan ideas → visualize dependencies → execute tasks
 const NAV_ITEMS: {
   view: ViewType;
   label: string;
   icon: React.ElementType;
   shortcut: string;
 }[] = [
-  { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘1" },
+  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘1" },
   { view: "graph", label: "Graph", icon: Network, shortcut: "⌘2" },
-  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘3" },
+  { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘3" },
   { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘4" },
   { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘5" },
   { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘6" },

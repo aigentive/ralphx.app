@@ -45,10 +45,11 @@ export function useAppKeyboardShortcuts({
       }
 
       if (e.metaKey || e.ctrlKey) {
+        // Order reflects workflow: plan ideas → visualize dependencies → execute tasks
         switch (e.key) {
           case "1":
             e.preventDefault();
-            setCurrentView("kanban");
+            setCurrentView("ideation");
             break;
           case "2":
             e.preventDefault();
@@ -56,7 +57,7 @@ export function useAppKeyboardShortcuts({
             break;
           case "3":
             e.preventDefault();
-            setCurrentView("ideation");
+            setCurrentView("kanban");
             break;
           case "4":
             e.preventDefault();
