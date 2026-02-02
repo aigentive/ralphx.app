@@ -316,7 +316,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Write agent prompt for conflict resolution workflow",
       "Commit: feat(plugin): add merger agent definition for conflict resolution"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 13,
