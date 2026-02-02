@@ -736,7 +736,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): add animations and micro-interactions"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 36,

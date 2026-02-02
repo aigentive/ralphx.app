@@ -661,3 +661,22 @@ body {
 .animate-pulse-critical {
   animation: pulse-critical 2s ease-in-out infinite;
 }
+
+/* ============================================================================
+ * React Flow Task Graph - Node Animations
+ * ============================================================================ */
+
+/* Smooth node position transitions when graph layout changes */
+.react-flow__node {
+  transition: transform 300ms ease-out;
+}
+
+/* Disable position transition during drag to prevent lag */
+.react-flow__node.dragging {
+  transition: none;
+}
+
+/* Scale 115% for compact highlighted nodes (Tailwind doesn't have scale-115) */
+.scale-115 {
+  transform: scale(1.15);
+}

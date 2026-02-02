@@ -138,10 +138,11 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <div
         className={`
           rounded border-2 px-2 py-1.5
-          transition-all duration-150
-          ${selected ? "ring-2 ring-white/30" : ""}
+          transition-all duration-200 ease-out
+          hover:scale-110 hover:shadow-md
+          ${selected ? "ring-2 ring-white/30 scale-110" : ""}
           ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
-          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
+          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse scale-115" : ""}
         `}
         style={{
           borderColor: style.borderColor,
@@ -149,6 +150,8 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           boxShadow: isHighlighted
             ? `${style.boxShadow ?? ""}, 0 0 8px 1px hsl(var(--accent-primary) / 0.4)`
             : style.boxShadow,
+          // Smooth transitions for color changes (status updates)
+          transition: "transform 200ms ease-out, box-shadow 200ms ease-out, border-color 300ms ease-in-out, background-color 300ms ease-in-out",
         }}
       >
         {/* Abbreviated title - no status badge */}

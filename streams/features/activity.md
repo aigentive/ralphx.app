@@ -4,6 +4,47 @@
 
 ---
 
+### 2026-02-02 22:30:00 - Phase 67 Task 35: Add micro-interactions and animations
+**What:**
+- Updated `src/components/TaskGraph/nodes/TaskNode.tsx`:
+  - Enhanced transition duration to 200ms ease-out for smoother animations
+  - Added hover effects: scale(1.05) and shadow-lg on hover
+  - Added scale(1.05) to selected state for visual feedback
+  - Added scale(1.10) to highlighted state for timeline interaction emphasis
+  - Added inline style for color transitions (border-color, background-color) at 300ms for status changes
+- Updated `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`:
+  - Enhanced transition duration to 200ms ease-out
+  - Added hover effects: scale(1.10) and shadow-md on hover (larger scale for compact nodes)
+  - Added scale(1.10) to selected state
+  - Added scale(1.15) to highlighted state
+  - Added inline style for color transitions (300ms) for status changes
+- Updated `src/styles/globals.css`:
+  - Added `.react-flow__node` transition: transform 300ms ease-out for smooth position changes
+  - Added `.react-flow__node.dragging` transition: none to prevent lag during drag
+  - Added `.scale-115` utility class for compact node highlighted state
+
+**Animation features added:**
+- Hover effects: nodes scale up and gain shadow on hover
+- Selection effects: selected nodes stay scaled up
+- Status change animations: border and background colors transition smoothly (300ms)
+- Position transitions: nodes animate smoothly when graph layout changes (300ms)
+- Drag performance: transitions disabled during drag to prevent lag
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx` (hover + selection + color transitions)
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx` (hover + selection + color transitions)
+- `src/styles/globals.css` (node position transitions)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - animations are subtle micro-interactions, visual testing covers basic functionality
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:00:00 - Phase 67 Task 34: Implement layout caching
 **What:**
 - Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:

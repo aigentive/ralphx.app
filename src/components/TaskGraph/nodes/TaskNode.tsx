@@ -198,10 +198,11 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       <div
         className={`
           rounded-lg border-2 px-3 py-2
-          transition-all duration-150
-          ${selected ? "ring-2 ring-white/30" : ""}
+          transition-all duration-200 ease-out
+          hover:scale-105 hover:shadow-lg
+          ${selected ? "ring-2 ring-white/30 scale-105" : ""}
           ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
-          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
+          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse scale-110" : ""}
         `}
         style={{
           borderColor: style.borderColor,
@@ -209,6 +210,8 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           boxShadow: isHighlighted
             ? `${style.boxShadow ?? ""}, 0 0 12px 2px hsl(var(--accent-primary) / 0.4)`
             : style.boxShadow,
+          // Smooth transitions for color changes (status updates)
+          transition: "transform 200ms ease-out, box-shadow 200ms ease-out, border-color 300ms ease-in-out, background-color 300ms ease-in-out",
         }}
       >
         {/* Title */}
