@@ -33,12 +33,12 @@ use crate::error::{AppError, AppResult};
 /// 4. Deletes worktree (if Worktree mode)
 /// 5. Deletes task branch
 /// 6. Emits task:merged and task:status_changed events
-pub async fn complete_merge_internal(
+pub async fn complete_merge_internal<R: tauri::Runtime>(
     task: &mut Task,
     project: &Project,
     commit_sha: &str,
     task_repo: &Arc<dyn TaskRepository>,
-    app_handle: Option<&AppHandle>,
+    app_handle: Option<&AppHandle<R>>,
 ) -> AppResult<()> {
     // Clone task_id early to avoid borrow conflicts with mutable task
     let task_id = task.id.clone();

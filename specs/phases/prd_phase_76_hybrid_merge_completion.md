@@ -166,7 +166,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(chat): add merge auto-completion on agent exit"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
