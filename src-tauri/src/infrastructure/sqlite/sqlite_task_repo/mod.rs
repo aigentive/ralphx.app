@@ -500,6 +500,22 @@ impl TaskRepository for SqliteTaskRepository {
         }
     }
 
+    async fn get_oldest_ready_tasks(&self, limit: u32) -> AppResult<Vec<Task>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(queries::GET_OLDEST_READY_TASKS)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([limit as i64], Task::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(tasks)
+    }
+
     async fn update_latest_state_history_metadata(
         &self,
         task_id: &TaskId,
@@ -507,6 +523,49 @@ impl TaskRepository for SqliteTaskRepository {
     ) -> AppResult<()> {
         let conn = self.conn.lock().await;
         helpers::update_latest_state_history_metadata_sync(&conn, task_id, metadata)
+    }
+
+    async fn has_task_in_states(
+        &self,
+        project_id: &ProjectId,
+        statuses: &[InternalStatus],
+    ) -> AppResult<bool> {
+        if statuses.is_empty() {
+            return Ok(false);
+        }
+
+        let conn = self.conn.lock().await;
+
+        // Build a query with placeholders for each status
+        let placeholders: Vec<String> = (2..=statuses.len() + 1)
+            .map(|i| format!("?{}", i))
+            .collect();
+        let placeholders_str = placeholders.join(", ");
+
+        let query = format!(
+            "SELECT 1 FROM tasks
+             WHERE project_id = ?1
+               AND internal_status IN ({})
+               AND archived_at IS NULL
+             LIMIT 1",
+            placeholders_str
+        );
+
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        params.push(Box::new(project_id.as_str().to_string()));
+        for status in statuses {
+            params.push(Box::new(status.as_str().to_string()));
+        }
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+        let result: rusqlite::Result<i32> = conn.query_row(&query, params_ref.as_slice(), |row| row.get(0));
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
     }
 }
 

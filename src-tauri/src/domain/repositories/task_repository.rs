@@ -176,6 +176,20 @@ pub trait TaskRepository: Send + Sync {
     /// * `None` - No Ready tasks exist across any project
     async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>>;
 
+    /// Get Ready tasks across all projects, ordered by created_at (oldest first)
+    ///
+    /// Used by the scheduler for Local-mode enforcement. Returns up to `limit`
+    /// Ready tasks from any project, excluding archived tasks.
+    /// The scheduler iterates through these to find one that's schedulable
+    /// (accounting for Local-mode single-task constraint).
+    ///
+    /// # Arguments
+    /// * `limit` - Maximum number of tasks to return
+    ///
+    /// # Returns
+    /// * Vec of Ready tasks ordered by created_at ASC
+    async fn get_oldest_ready_tasks(&self, limit: u32) -> AppResult<Vec<Task>>;
+
     // ═══════════════════════════════════════════════════════════════════════
     // State History Operations (Phase 64 - Link Conversation IDs)
     // ═══════════════════════════════════════════════════════════════════════
@@ -198,6 +212,28 @@ pub trait TaskRepository: Send + Sync {
         task_id: &TaskId,
         metadata: &StateHistoryMetadata,
     ) -> AppResult<()>;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Git Mode Queue Enforcement (Phase 66 - Local Mode)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Check if a project has any task in one of the specified statuses
+    ///
+    /// Used by the scheduler to enforce single running task per Local-mode project.
+    /// Returns true if at least one non-archived task exists in any of the given statuses.
+    ///
+    /// # Arguments
+    /// * `project_id` - The project ID to check
+    /// * `statuses` - List of statuses to check for
+    ///
+    /// # Returns
+    /// * `true` - At least one task exists in one of the statuses
+    /// * `false` - No tasks in any of the statuses
+    async fn has_task_in_states(
+        &self,
+        project_id: &ProjectId,
+        statuses: &[InternalStatus],
+    ) -> AppResult<bool>;
 }
 
 #[cfg(test)]
@@ -330,12 +366,24 @@ mod tests {
             Ok(None)
         }
 
+        async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
         async fn update_latest_state_history_metadata(
             &self,
             _task_id: &TaskId,
             _metadata: &StateHistoryMetadata,
         ) -> AppResult<()> {
             Ok(())
+        }
+
+        async fn has_task_in_states(
+            &self,
+            _project_id: &ProjectId,
+            _statuses: &[InternalStatus],
+        ) -> AppResult<bool> {
+            Ok(false)
         }
     }
 

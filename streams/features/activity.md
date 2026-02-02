@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-02 03:45:00 - Phase 66 Task 6: Enforce single running task per Local-mode project in scheduler
+**What:**
+- Added `has_task_in_states()` method to TaskRepository trait for checking if a project has tasks in specific states
+- Added `get_oldest_ready_tasks()` method to TaskRepository trait for batch-fetching Ready tasks
+- Implemented both methods in SqliteTaskRepository and MemoryTaskRepository
+- Renamed `find_oldest_ready_task()` to `find_oldest_schedulable_task()` in TaskSchedulerService
+- New method iterates through Ready tasks and skips those from Local-mode projects that already have a running task
+- Running states checked: Executing, ReExecuting, Reviewing, Merging
+- Worktree-mode projects allow parallel task execution (no constraint)
+- Added comprehensive tests for Local-mode enforcement scenarios
+
+**Files Modified:**
+- `src-tauri/src/domain/repositories/task_repository.rs` (trait + mock)
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/mod.rs` (SQLite impl)
+- `src-tauri/src/infrastructure/sqlite/sqlite_task_repo/queries.rs` (new query)
+- `src-tauri/src/infrastructure/memory/memory_task_repo/mod.rs` (memory impl)
+- `src-tauri/src/application/task_scheduler_service.rs` (scheduler logic + tests)
+- `src-tauri/src/application/apply_service/tests.rs` (mock update)
+- `src-tauri/src/application/review_service.rs` (mock update)
+- `src-tauri/src/application/task_context_service.rs` (mock update)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test` (3363 tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 02:30:00 - Phase 66 Task 5: Create branch/worktree on task execution start
 **What:**
 - Implemented branch/worktree creation in on_enter(Executing) in side_effects.rs
