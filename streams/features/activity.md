@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-02 22:00:00 - Phase 67 Task 34: Implement layout caching
+**What:**
+- Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
+  - Added structural hash computation for cache key (node IDs + edge pairs + direction)
+  - Added `CachedLayout` interface to store hash and position map
+  - Added `computeGraphHash()` function for consistent structural hashing
+  - Added `computePositions()` function for dagre layout extraction
+  - Refactored `computeLayout` → `computeLayoutWithCache` to use cached positions
+  - Added `layoutCache` useRef to persist cache across renders
+  - Cache hit: reuses positions, only updates node data (status, title, priority)
+  - Cache miss: computes new layout and stores in cache
+  - Invalidation: automatic when hash changes (structure changed)
+
+**Performance benefit:**
+- Dagre layout computation is O(V+E) and expensive
+- Status/title changes don't affect layout positions
+- Cache avoids recomputation when only node data changes
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts` (layout caching)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - performance optimization, no visual changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:30:00 - Phase 67 Task 33: Implement auto-switch to compact mode
 **What:**
 - Updated `src/components/TaskGraph/controls/GraphControls.tsx`:
