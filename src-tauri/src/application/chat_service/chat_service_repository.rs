@@ -43,6 +43,9 @@ pub async fn get_or_create_conversation(
         ChatContextType::Review => {
             ChatConversation::new_review(TaskId::from_string(context_id.to_string()))
         }
+        ChatContextType::Merge => {
+            ChatConversation::new_merge(TaskId::from_string(context_id.to_string()))
+        }
     };
 
     conversation_repo

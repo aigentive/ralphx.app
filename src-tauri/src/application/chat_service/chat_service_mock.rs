@@ -193,6 +193,9 @@ impl ChatService for MockChatService {
             ChatContextType::Review => {
                 ChatConversation::new_review(TaskId::from_string(context_id.to_string()))
             }
+            ChatContextType::Merge => {
+                ChatConversation::new_merge(TaskId::from_string(context_id.to_string()))
+            }
         };
 
         self.conversations.lock().await.push(conv.clone());

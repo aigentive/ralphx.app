@@ -80,6 +80,8 @@ pub enum ChatContextType {
     TaskExecution,
     /// Task review context (AI reviewer)
     Review,
+    /// Merge conflict resolution context (merger agent)
+    Merge,
 }
 
 impl fmt::Display for ChatContextType {
@@ -90,6 +92,7 @@ impl fmt::Display for ChatContextType {
             ChatContextType::Project => write!(f, "project"),
             ChatContextType::TaskExecution => write!(f, "task_execution"),
             ChatContextType::Review => write!(f, "review"),
+            ChatContextType::Merge => write!(f, "merge"),
         }
     }
 }
@@ -104,6 +107,7 @@ impl std::str::FromStr for ChatContextType {
             "project" => Ok(ChatContextType::Project),
             "task_execution" => Ok(ChatContextType::TaskExecution),
             "review" => Ok(ChatContextType::Review),
+            "merge" => Ok(ChatContextType::Merge),
             _ => Err(format!("Invalid context type: {}", s)),
         }
     }
@@ -207,6 +211,22 @@ impl ChatConversation {
         Self {
             id: ChatConversationId::new(),
             context_type: ChatContextType::Review,
+            context_id: task_id.as_str().to_string(),
+            claude_session_id: None,
+            title: None,
+            message_count: 0,
+            last_message_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Create a new conversation for merge conflict resolution (merger agent)
+    pub fn new_merge(task_id: TaskId) -> Self {
+        let now = Utc::now();
+        Self {
+            id: ChatConversationId::new(),
+            context_type: ChatContextType::Merge,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
             title: None,

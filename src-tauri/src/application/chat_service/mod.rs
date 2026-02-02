@@ -300,7 +300,7 @@ impl<R: Runtime> ClaudeChatService<R> {
     async fn get_entity_status(&self, context_type: ChatContextType, context_id: &str) -> Option<String> {
         match context_type {
             // Task-related contexts: look up task status
-            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
+            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
                 let task_id = TaskId::from_string(context_id.to_string());
                 if let Ok(Some(task)) = self.task_repo.get_by_id(&task_id).await {
                     Some(task.internal_status.as_str().to_string())

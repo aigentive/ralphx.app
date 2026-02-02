@@ -45,6 +45,7 @@ pub fn resolve_agent(context_type: &ChatContextType, entity_status: Option<&str>
         ChatContextType::Project => "chat-project",
         ChatContextType::TaskExecution => "ralphx-worker",
         ChatContextType::Review => "ralphx-reviewer",
+        ChatContextType::Merge => "ralphx-merger",
     }
 }
 
@@ -59,6 +60,7 @@ pub fn get_assistant_role(context_type: &ChatContextType) -> MessageRole {
     match context_type {
         ChatContextType::TaskExecution => MessageRole::Worker,
         ChatContextType::Review => MessageRole::Reviewer,
+        ChatContextType::Merge => MessageRole::Merger,
         _ => MessageRole::Orchestrator,
     }
 }

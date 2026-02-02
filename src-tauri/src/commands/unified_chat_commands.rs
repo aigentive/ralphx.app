@@ -487,6 +487,9 @@ pub async fn create_agent_conversation(
         ChatContextType::Review => {
             ChatConversation::new_review(TaskId::from_string(input.context_id.clone()))
         }
+        ChatContextType::Merge => {
+            ChatConversation::new_merge(TaskId::from_string(input.context_id.clone()))
+        }
     };
 
     state
