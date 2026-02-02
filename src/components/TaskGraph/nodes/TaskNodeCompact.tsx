@@ -153,7 +153,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5"
+        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ top: -3 }}
       />
 
@@ -232,7 +232,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5"
+        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ bottom: -3 }}
       />
     </div>

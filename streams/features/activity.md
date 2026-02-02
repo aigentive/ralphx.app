@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-03 01:00:00 - Phase 72 Task 6: Make connection handles more subtle
+**What:**
+- Updated TaskNode.tsx handles from `!w-2 !h-2` to `!w-1.5 !h-1.5` for smaller size
+- Added `!opacity-50 hover:!opacity-100` for subtle default with hover reveal
+- Added `transition-opacity duration-150` for smooth opacity transitions
+- Updated TaskNodeCompact.tsx handles with same opacity and hover classes
+- Adjusted handle positioning from `top: -4/bottom: -4` to `top: -3/bottom: -3` to match smaller size
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - handle styling changes, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 00:00:00 - Phase 72 Task 5: Relocate and restyle status badge
 **What:**
 - Moved status badge from bottom of node content to top-right corner (absolute positioning)
