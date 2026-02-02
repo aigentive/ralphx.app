@@ -32,6 +32,11 @@ export const TaskSchema = z.object({
   completed_at: z.string().datetime({ offset: true }).nullable(),
   archived_at: z.string().datetime({ offset: true }).nullable(),
   blocked_reason: z.string().nullable(),
+  // Git branch isolation fields (Phase 66)
+  task_branch: z.string().nullable().optional(),
+  worktree_path: z.string().nullable().optional(),
+  merge_commit_sha: z.string().nullable().optional(),
+  metadata: z.string().nullable().optional(),
 });
 
 /**
@@ -61,6 +66,15 @@ export interface Task {
   sourceProposalId?: string | null;
   /** Not in TaskResponse - fetch via get_task_context */
   planArtifactId?: string | null;
+  // Git branch isolation fields (Phase 66)
+  /** Branch name for this task (both Local and Worktree modes) */
+  taskBranch?: string | null;
+  /** Worktree path for this task (Worktree mode only) */
+  worktreePath?: string | null;
+  /** Merge commit SHA after successful merge */
+  mergeCommitSha?: string | null;
+  /** Task metadata as JSON string (e.g., conflict_files for merge states) */
+  metadata?: string | null;
 }
 
 /**
@@ -82,6 +96,10 @@ export function transformTask(raw: z.infer<typeof TaskSchema>): Task {
     completedAt: raw.completed_at,
     archivedAt: raw.archived_at,
     blockedReason: raw.blocked_reason,
+    taskBranch: raw.task_branch ?? null,
+    worktreePath: raw.worktree_path ?? null,
+    mergeCommitSha: raw.merge_commit_sha ?? null,
+    metadata: raw.metadata ?? null,
   };
 }
 

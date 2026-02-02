@@ -18,3 +18,6 @@ export { HumanReviewTaskDetail } from "./HumanReviewTaskDetail";
 export { EscalatedTaskDetail } from "./EscalatedTaskDetail";
 export { WaitingTaskDetail } from "./WaitingTaskDetail";
 export { CompletedTaskDetail } from "./CompletedTaskDetail";
+export { MergingTaskDetail } from "./MergingTaskDetail";
+export { MergeConflictTaskDetail } from "./MergeConflictTaskDetail";
+export { MergedTaskDetail } from "./MergedTaskDetail";
