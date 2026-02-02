@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-02 09:30:00 - Phase 75 Task 1: Add merge mode detection and context hook support
+**What:**
+- Added `MERGE_STATUSES` import to IntegratedChatPanel.tsx
+- Added `isMergeMode` detection based on MERGE_STATUSES (pending_merge, merging, merge_conflict, merged)
+- Added `mergeConversationsQuery` to fetch merge conversations when in merge mode
+- Updated conversations selector to prioritize merge > execution > review > regular
+- Passed `isMergeMode` to useChatPanelContext hook
+- Updated ConversationSelector contextType to include "merge" mode
+- Updated useChatPanelContext.ts to accept and handle isMergeMode prop
+- Updated storeContextKey to use `merge:${taskId}` pattern
+- Updated currentContextType computation to detect merge context
+- Updated autoSelectConversation to handle merge loading state
+
+**Files:**
+- MODIFIED: src/components/Chat/IntegratedChatPanel.tsx
+- MODIFIED: src/hooks/useChatPanelContext.ts
+
+**Visual Verification:** N/A - backend/hook wiring only, no new UI components
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 01:00:00 - Phase 74 Task 6: Increase dialog size to near full screen
 **What:**
 - Changed dialog dimensions from w-[90vw] h-[85vh] to w-[95vw] h-[95vh]

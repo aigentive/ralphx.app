@@ -22,6 +22,7 @@ interface UseChatPanelContextProps {
   selectedTaskId: string | undefined;
   isExecutionMode: boolean;
   isReviewMode: boolean;
+  isMergeMode: boolean;
   /** Override conversation ID for history mode - forces selection of specific conversation */
   overrideConversationId?: string | undefined;
   /** Override agent run ID for history mode - used for scroll positioning */
@@ -45,6 +46,7 @@ export function useChatPanelContext({
   selectedTaskId,
   isExecutionMode,
   isReviewMode,
+  isMergeMode,
   overrideConversationId,
   overrideAgentRunId,
 }: UseChatPanelContextProps) {
@@ -79,8 +81,11 @@ export function useChatPanelContext({
   }, [selectedTaskId, projectId, ideationSessionId]);
 
   // Compute store context key for queue/agent state operations
-  // Uses context-aware keys: "task_execution:id", "review:id", or standard keys
+  // Uses context-aware keys: "task_execution:id", "review:id", "merge:id", or standard keys
   const storeContextKey = useMemo(() => {
+    if (isMergeMode && selectedTaskId) {
+      return `merge:${selectedTaskId}`;
+    }
     if (isExecutionMode && selectedTaskId) {
       return `task_execution:${selectedTaskId}`;
     }
@@ -88,13 +93,13 @@ export function useChatPanelContext({
       return `review:${selectedTaskId}`;
     }
     return getContextKey(chatContext);
-  }, [isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
+  }, [isMergeMode, isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
 
   // Context key for tracking changes
   const contextKey = ideationSessionId
     ? `ideation:${ideationSessionId}`
     : selectedTaskId
-      ? `${isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
+      ? `${isMergeMode ? "merge" : isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
       : `project:${projectId}`;
 
   // Initialize with empty string to ensure cleanup runs on first mount
@@ -109,11 +114,11 @@ export function useChatPanelContext({
     const currentContextType = ideationSessionId
       ? "ideation"
       : selectedTaskId
-        ? (isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
+        ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
         : "project";
     const currentContextId = ideationSessionId || selectedTaskId || projectId;
     prevContextTypeRef.current = { type: currentContextType, id: currentContextId };
-  }, [selectedTaskId, isExecutionMode, isReviewMode, projectId, ideationSessionId]);
+  }, [selectedTaskId, isMergeMode, isExecutionMode, isReviewMode, projectId, ideationSessionId]);
 
   // Handle context changes
   useEffect(() => {
@@ -175,21 +180,24 @@ export function useChatPanelContext({
   const currentContextType: ContextType = ideationSessionId
     ? "ideation"
     : selectedTaskId
-      ? (isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
+      ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
       : "project";
   const currentContextId = ideationSessionId || selectedTaskId || projectId;
 
-  // Auto-select the most recent conversation for execution/review modes
+  // Auto-select the most recent conversation for execution/review/merge modes
   const autoSelectConversation = useCallback((
     conversations: ConversationsQueryResult,
     executionLoading: boolean,
     reviewLoading: boolean,
+    mergeLoading: boolean,
   ) => {
-    const isLoading = isExecutionMode
-      ? executionLoading
-      : isReviewMode
-        ? reviewLoading
-        : conversations.isLoading;
+    const isLoading = isMergeMode
+      ? mergeLoading
+      : isExecutionMode
+        ? executionLoading
+        : isReviewMode
+          ? reviewLoading
+          : conversations.isLoading;
 
     // Wait for conversations to load before any validation/selection
     if (isLoading) {
@@ -230,7 +238,7 @@ export function useChatPanelContext({
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, isExecutionMode, isReviewMode, ideationSessionId, selectedTaskId, contextKey, setActiveConversation]);
+  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, ideationSessionId, selectedTaskId, contextKey, setActiveConversation]);
 
   return {
     chatContext,
