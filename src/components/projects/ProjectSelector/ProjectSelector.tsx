@@ -162,21 +162,21 @@ export function ProjectSelector({ onNewProject, className = "", align = "center"
         <Button
           variant="ghost"
           className={cn(
-            "gap-2 px-3 h-8 border border-[var(--border-default)] max-w-[200px]",
+            "inline-flex items-center gap-2 px-3 h-8 border border-[var(--border-default)] max-w-[280px] overflow-hidden",
             className
           )}
           data-testid="project-selector-trigger"
         >
           <FolderOpen className="w-4 h-4 text-[var(--text-secondary)] flex-shrink-0" />
           {activeProject ? (
-            <>
+            <span className="flex items-center gap-2 min-w-0 overflow-hidden">
               <span className="text-sm font-medium truncate">{activeProject.name}</span>
               <GitModeBadge
                 mode={activeProject.gitMode}
                 branch={activeProject.worktreeBranch}
                 compact
               />
-            </>
+            </span>
           ) : (
             <span className="text-sm text-[var(--text-muted)]">Select Project</span>
           )}
