@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-03 05:00:00 - Phase 67 Task 15: Create PlanGroupHeader component
+**What:**
+- Created `src/components/TaskGraph/groups/PlanGroupHeader.tsx`:
+  - Displays plan title with optional click handler for navigation to session
+  - Progress bar showing completed/total percentage with visual fill
+  - Status breakdown badges: done (green), executing (orange), blocked (amber), review (blue), merge (cyan)
+  - Collapse toggle button (chevron) with collapse state management
+  - Context menu button (ellipsis) for additional actions
+  - Uses memo for performance optimization
+- Sub-components: StatusBadge (conditionally rendered badges), ProgressBar (visual progress)
+- Exported `PlanGroupHeader` and `PlanGroupHeaderProps` from `src/components/TaskGraph/index.ts`
+
+**Files Created:**
+- `src/components/TaskGraph/groups/PlanGroupHeader.tsx`
+
+**Files Modified:**
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run lint` (passed - pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component not yet wired to view
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 04:00:00 - Phase 67 Task 14: Update frontend types/transforms for plan groups
 **What:**
 - Verified Task 14 already implemented as part of Task 2 (frontend API layer)
