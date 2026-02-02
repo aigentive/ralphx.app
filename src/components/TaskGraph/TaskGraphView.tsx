@@ -356,59 +356,26 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     handleToggleCollapse
   );
 
-  // Build set of task IDs that belong to collapsed groups
-  const collapsedTaskIds = useMemo(() => {
-    const hiddenIds = new Set<string>();
-    for (const pg of graphData?.planGroups ?? []) {
-      if (collapsedPlanIds.has(pg.planArtifactId)) {
-        for (const taskId of pg.taskIds) {
-          hiddenIds.add(taskId);
-        }
-      }
-    }
-    // Also check for ungrouped tasks if the ungrouped group is collapsed
-    if (collapsedPlanIds.has("__ungrouped__")) {
-      // Find tasks not in any plan group
-      const groupedTaskIds = new Set<string>();
-      for (const pg of graphData?.planGroups ?? []) {
-        for (const taskId of pg.taskIds) {
-          groupedTaskIds.add(taskId);
-        }
-      }
-      for (const node of graphData?.nodes ?? []) {
-        if (!groupedTaskIds.has(node.taskId)) {
-          hiddenIds.add(node.taskId);
-        }
-      }
-    }
-    return hiddenIds;
-  }, [graphData?.planGroups, graphData?.nodes, collapsedPlanIds]);
-
   // Compute visible nodes and edges (controlled mode - no useEffect sync needed)
-  // Filter task nodes - hide those in collapsed groups
+  // Note: Lazy loading is now handled in useTaskGraphLayout - collapsed group tasks
+  // are excluded from layout computation entirely, not just filtered after.
   // Inject handlers for context menu actions
   // Combine group nodes and visible task nodes - groups first for proper z-ordering
   const nodes = useMemo<Node[]>(() => {
-    const visibleTaskNodes = layoutNodes
-      .filter((node) => !collapsedTaskIds.has(node.id))
-      .map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          isHighlighted: node.id === highlightedTaskId,
-          isFocused: node.id === focusedNodeId,
-          handlers: nodeHandlers,
-        },
-      }));
-    return [...groupNodes, ...visibleTaskNodes];
-  }, [layoutNodes, groupNodes, collapsedTaskIds, highlightedTaskId, focusedNodeId, nodeHandlers]);
+    const taskNodesWithData = layoutNodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        isHighlighted: node.id === highlightedTaskId,
+        isFocused: node.id === focusedNodeId,
+        handlers: nodeHandlers,
+      },
+    }));
+    return [...groupNodes, ...taskNodesWithData];
+  }, [layoutNodes, groupNodes, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
-  // Filter edges - hide those connected to hidden nodes
-  const edges = useMemo<Edge[]>(() => {
-    return layoutEdges.filter(
-      (edge) => !collapsedTaskIds.has(edge.source) && !collapsedTaskIds.has(edge.target)
-    );
-  }, [layoutEdges, collapsedTaskIds]);
+  // Edges are already filtered in useTaskGraphLayout (lazy loading)
+  const edges = useMemo<Edge[]>(() => layoutEdges, [layoutEdges]);
 
   // Handle node changes (for selection, dragging etc.) in controlled mode
   const onNodesChange: OnNodesChange = useCallback(() => {
