@@ -11,7 +11,7 @@
  * - Center dot with tooltip showing relationship
  */
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -20,6 +20,7 @@ import {
 } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { getEdgeStyleForEdge, getEdgeType, MARKER_IDS, GRADIENT_IDS } from "./edgeStyles";
+import { ArrowRight } from "lucide-react";
 
 // ============================================================================
 // Types
@@ -68,7 +69,7 @@ function DependencyEdgeComponent({
   // Group connector edges get a special style - solid line (dotted not visible when straight)
   const edgeStyle = isGroupConnector
     ? {
-        stroke: "hsl(220 10% 35%)",
+        stroke: "hsl(220 10% 40%)",
         strokeWidth: 1.5,
         strokeDasharray: undefined,
         animated: false,
@@ -78,8 +79,10 @@ function DependencyEdgeComponent({
   const edgeType = isGroupConnector ? "normal" : getEdgeType(isCriticalPath, sourceStatus);
 
   // Get marker ID and gradient ID based on edge type
+  // Group connectors use direct stroke color (not gradient) for visibility
   const markerId = `url(#${MARKER_IDS[edgeType]})`;
-  const gradientId = `url(#${GRADIENT_IDS[edgeType]})`;
+  const useDirectStroke = isGroupConnector;
+  const strokeColor = useDirectStroke ? edgeStyle.stroke : `url(#${GRADIENT_IDS[edgeType]})`;
 
   // Compute bezier path
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -95,6 +98,9 @@ function DependencyEdgeComponent({
   const sourceLabel = edgeData?.sourceLabel;
   const targetLabel = edgeData?.targetLabel;
   const hasTooltip = sourceLabel && targetLabel;
+
+  // Hover state for custom tooltip
+  const [isHovered, setIsHovered] = useState(false);
 
   // Determine dot color based on edge type
   const isAccentEdge = edgeType === "critical" || edgeType === "active";
@@ -115,13 +121,13 @@ function DependencyEdgeComponent({
         />
       )}
 
-      {/* Main edge path with gradient stroke and arrow marker */}
+      {/* Main edge path with stroke and arrow marker */}
       <BaseEdge
         id={id}
         path={edgePath}
         markerEnd={markerId}
         style={{
-          stroke: gradientId,
+          stroke: strokeColor,
           strokeWidth: selected ? edgeStyle.strokeWidth + 0.5 : edgeStyle.strokeWidth,
           strokeDasharray: edgeStyle.strokeDasharray,
           transition: "stroke-width 0.15s ease",
@@ -129,7 +135,7 @@ function DependencyEdgeComponent({
         className={edgeStyle.animated ? "react-flow__edge-path-animated" : ""}
       />
 
-      {/* Center dot with native title tooltip */}
+      {/* Center dot with custom hover tooltip */}
       <EdgeLabelRenderer>
         <div
           style={{
@@ -137,13 +143,61 @@ function DependencyEdgeComponent({
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             pointerEvents: hasTooltip ? "all" : "none",
           }}
-          className={cn(
-            "w-1.5 h-1.5 rounded-full",
-            hasTooltip && "cursor-help hover:scale-150 transition-transform",
-            isAccentEdge ? "bg-[hsl(14_100%_55%)]" : "bg-[hsl(220_10%_40%)]"
+          className="nodrag nopan"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {/* The dot */}
+          <div
+            className={cn(
+              "w-2 h-2 rounded-full transition-transform duration-150",
+              hasTooltip && "cursor-pointer",
+              isHovered && "scale-150",
+              isAccentEdge ? "bg-[hsl(14_100%_55%)]" : "bg-[hsl(220_10%_45%)]"
+            )}
+          />
+
+          {/* Custom pill tooltip */}
+          {hasTooltip && isHovered && (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: "100%",
+                transform: "translateX(-50%)",
+                marginBottom: "8px",
+                whiteSpace: "nowrap",
+                zIndex: 50,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "5px 10px",
+                  borderRadius: "6px",
+                  background: "hsl(220 10% 12%)",
+                  border: "1px solid hsla(220 10% 100% / 0.08)",
+                  boxShadow: "0 4px 12px hsla(0 0% 0% / 0.4)",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  color: "hsl(220 10% 85%)",
+                }}
+              >
+                <span style={{ color: "hsl(220 10% 70%)" }}>{sourceLabel}</span>
+                <ArrowRight
+                  style={{
+                    width: "12px",
+                    height: "12px",
+                    color: "hsl(220 10% 45%)"
+                  }}
+                />
+                <span style={{ color: "hsl(220 10% 70%)" }}>{targetLabel}</span>
+              </div>
+            </div>
           )}
-          title={hasTooltip ? `${sourceLabel} blocks ${targetLabel}` : undefined}
-        />
+        </div>
       </EdgeLabelRenderer>
 
       {/* Optional label (legacy support) */}
