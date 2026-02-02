@@ -98,12 +98,17 @@ const NODE_HEIGHT = 100;
  */
 const UNGROUPED_PLAN_ID = "__ungrouped__";
 
+/** Collapsed group dimensions */
+const COLLAPSED_GROUP_WIDTH = NODE_WIDTH + GROUP_PADDING * 2;
+const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + GROUP_PADDING;
+
 /**
  * Create React Flow group nodes for plan groups
  *
  * @param taskNodes - Positioned task nodes from dagre layout
  * @param planGroups - Plan group info from the API
  * @param collapsedPlanIds - Set of plan artifact IDs that are collapsed
+ * @param positions - Position map from dagre (includes placeholder positions for collapsed groups)
  * @param onToggleCollapse - Callback when collapse is toggled
  * @returns Array of PlanGroupNode for React Flow
  */
@@ -111,6 +116,7 @@ function createGroupNodes(
   taskNodes: Node[],
   planGroups: PlanGroupInfo[],
   collapsedPlanIds: Set<string>,
+  positions: Map<string, { x: number; y: number }>,
   onToggleCollapse?: (planArtifactId: string) => void
 ): PlanGroupNode[] {
   if (planGroups.length === 0) {
@@ -138,14 +144,6 @@ function createGroupNodes(
     }
   }
 
-  // Calculate bounding boxes for all plan groups
-  const boundingBoxes = calculateGroupBoundingBoxes(
-    taskNodes,
-    planGroupMap,
-    NODE_WIDTH,
-    NODE_HEIGHT
-  );
-
   // Create group nodes for each plan group
   const groupNodes: PlanGroupNode[] = [];
 
@@ -155,22 +153,48 @@ function createGroupNodes(
     planGroupInfoMap.set(pg.planArtifactId, pg);
   }
 
-  for (const bbox of boundingBoxes) {
-    const planInfo = planGroupInfoMap.get(bbox.planArtifactId);
-    if (!planInfo) continue;
+  for (const pg of planGroups) {
+    const isCollapsed = collapsedPlanIds.has(pg.planArtifactId);
 
-    // Expand the bounding box with padding and header space
-    const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);
-    const { position, width, height } = boundingBoxToGroupNode(expanded);
+    let position: { x: number; y: number };
+    let width: number;
+    let height: number;
 
-    const isCollapsed = collapsedPlanIds.has(planInfo.planArtifactId);
+    if (isCollapsed) {
+      // For collapsed groups, use the placeholder position
+      const placeholderPos = positions.get(`__group_position_${pg.planArtifactId}__`);
+      position = placeholderPos ?? { x: 0, y: 0 };
+      width = COLLAPSED_GROUP_WIDTH;
+      height = COLLAPSED_GROUP_HEIGHT;
+    } else {
+      // For expanded groups, calculate bounding box from task positions
+      const groupTaskNodes = taskNodes.filter((n) => pg.taskIds.includes(n.id));
+      if (groupTaskNodes.length === 0) continue;
+
+      const singleGroupMap = new Map<string, string[]>();
+      singleGroupMap.set(pg.planArtifactId, pg.taskIds);
+      const boundingBoxes = calculateGroupBoundingBoxes(
+        groupTaskNodes,
+        singleGroupMap,
+        NODE_WIDTH,
+        NODE_HEIGHT
+      );
+      const bbox = boundingBoxes[0];
+      if (!bbox) continue;
+
+      const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);
+      const groupDims = boundingBoxToGroupNode(expanded);
+      position = groupDims.position;
+      width = groupDims.width;
+      height = groupDims.height;
+    }
 
     const groupNode = createPlanGroupNode(
-      planInfo.planArtifactId,
-      planInfo.sessionId,
-      planInfo.sessionTitle,
-      planInfo.taskIds,
-      planInfo.statusSummary,
+      pg.planArtifactId,
+      pg.sessionId,
+      pg.sessionTitle,
+      pg.taskIds,
+      pg.statusSummary,
       position,
       width,
       height,
@@ -183,51 +207,70 @@ function createGroupNodes(
 
   // Create "Ungrouped" region for standalone tasks (if any)
   if (ungroupedTaskIds.length > 0) {
-    const ungroupedMap = new Map<string, string[]>();
-    ungroupedMap.set(UNGROUPED_PLAN_ID, ungroupedTaskIds);
+    const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
 
-    const ungroupedBoxes = calculateGroupBoundingBoxes(
-      taskNodes,
-      ungroupedMap,
-      NODE_WIDTH,
-      NODE_HEIGHT
+    let position: { x: number; y: number };
+    let width: number;
+    let height: number;
+
+    if (isUngroupedCollapsed) {
+      const placeholderPos = positions.get(`__group_position_${UNGROUPED_PLAN_ID}__`);
+      position = placeholderPos ?? { x: 0, y: 0 };
+      width = COLLAPSED_GROUP_WIDTH;
+      height = COLLAPSED_GROUP_HEIGHT;
+    } else {
+      const ungroupedTaskNodes = taskNodes.filter((n) => ungroupedTaskIds.includes(n.id));
+      if (ungroupedTaskNodes.length === 0) {
+        // No ungrouped tasks visible
+      } else {
+        const ungroupedMap = new Map<string, string[]>();
+        ungroupedMap.set(UNGROUPED_PLAN_ID, ungroupedTaskIds);
+        const ungroupedBoxes = calculateGroupBoundingBoxes(
+          ungroupedTaskNodes,
+          ungroupedMap,
+          NODE_WIDTH,
+          NODE_HEIGHT
+        );
+        const ungroupedBbox = ungroupedBoxes[0];
+        if (ungroupedBbox) {
+          const expanded = expandBoundingBox(ungroupedBbox, GROUP_PADDING, HEADER_HEIGHT);
+          const groupDims = boundingBoxToGroupNode(expanded);
+          position = groupDims.position;
+          width = groupDims.width;
+          height = groupDims.height;
+        } else {
+          return groupNodes;
+        }
+      }
+    }
+
+    // Create a pseudo-StatusSummary for ungrouped tasks
+    const ungroupedSummary = {
+      backlog: 0,
+      ready: 0,
+      blocked: 0,
+      executing: 0,
+      qa: 0,
+      review: 0,
+      merge: 0,
+      completed: 0,
+      terminal: 0,
+    };
+
+    const groupNode = createPlanGroupNode(
+      UNGROUPED_PLAN_ID,
+      "", // No session ID
+      "Ungrouped", // Display title
+      ungroupedTaskIds,
+      ungroupedSummary,
+      position!,
+      width!,
+      height!,
+      isUngroupedCollapsed,
+      onToggleCollapse
     );
 
-    const ungroupedBbox = ungroupedBoxes[0];
-    if (ungroupedBbox) {
-      const expanded = expandBoundingBox(ungroupedBbox, GROUP_PADDING, HEADER_HEIGHT);
-      const { position, width, height } = boundingBoxToGroupNode(expanded);
-
-      // Create a pseudo-StatusSummary for ungrouped tasks
-      const ungroupedSummary = {
-        backlog: 0,
-        ready: 0,
-        blocked: 0,
-        executing: 0,
-        qa: 0,
-        review: 0,
-        merge: 0,
-        completed: 0,
-        terminal: 0,
-      };
-
-      const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
-
-      const groupNode = createPlanGroupNode(
-        UNGROUPED_PLAN_ID,
-        "", // No session ID
-        "Ungrouped", // Display title
-        ungroupedTaskIds,
-        ungroupedSummary,
-        position,
-        width,
-        height,
-        isUngroupedCollapsed,
-        onToggleCollapse
-      );
-
-      groupNodes.push(groupNode);
-    }
+    groupNodes.push(groupNode);
   }
 
   return groupNodes;
@@ -559,6 +602,7 @@ function computeLayoutWithCache(
   groupTitleMap.set(UNGROUPED_PLAN_ID, "Ungrouped");
 
   // Add inter-group connector edges (connect group nodes directly for rendering)
+  // Group node IDs have "group-" prefix (see createPlanGroupNode)
   const GROUP_CONNECTOR_ZINDEX = 15; // Higher than regular cross-plan edges
   for (const interEdge of interGroupEdges) {
     const sourceLabel = groupTitleMap.get(interEdge.sourceGroupId) ?? interEdge.sourceGroupId;
@@ -572,11 +616,15 @@ function computeLayoutWithCache(
       targetLabel,
     };
 
+    // Use "group-" prefix to match group node IDs from createPlanGroupNode
+    const sourceNodeId = `group-${interEdge.sourceGroupId}`;
+    const targetNodeId = `group-${interEdge.targetGroupId}`;
+
     edges.push({
       id: `group-connector-${interEdge.sourceGroupId}-${interEdge.targetGroupId}`,
       type: "dependency",
-      source: interEdge.sourceGroupId, // Connect to group node
-      target: interEdge.targetGroupId, // Connect to group node
+      source: sourceNodeId,
+      target: targetNodeId,
       data: edgeData,
       zIndex: GROUP_CONNECTOR_ZINDEX,
     });
@@ -595,7 +643,7 @@ function computeLayoutWithCache(
   });
 
   // Create group nodes for plan groups using ALL positioned nodes
-  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, onToggleCollapse);
+  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, positions, onToggleCollapse);
 
   return { nodes, edges, groupNodes };
 }
@@ -837,12 +885,35 @@ function computePositions(
     }
   }
 
-  // Add edges - skip edges involving collapsed task nodes
+  // Add edges - for collapsed tasks, redirect to placeholder nodes
   for (const edge of edges) {
-    if (collapsedTaskIds.has(edge.source) || collapsedTaskIds.has(edge.target)) {
-      continue; // Skip edges to/from collapsed tasks
+    let source = edge.source;
+    let target = edge.target;
+
+    // If source is in a collapsed group, use the placeholder
+    if (collapsedTaskIds.has(source)) {
+      const groupId = taskToGroupMap.get(source);
+      if (groupId && collapsedGroupPlaceholders.has(groupId)) {
+        source = `__collapsed_placeholder_${groupId}__`;
+      } else {
+        continue; // Skip if no placeholder
+      }
     }
-    g.setEdge(edge.source, edge.target);
+
+    // If target is in a collapsed group, use the placeholder
+    if (collapsedTaskIds.has(target)) {
+      const groupId = taskToGroupMap.get(target);
+      if (groupId && collapsedGroupPlaceholders.has(groupId)) {
+        target = `__collapsed_placeholder_${groupId}__`;
+      } else {
+        continue; // Skip if no placeholder
+      }
+    }
+
+    // Avoid self-loops (both source and target collapsed to same placeholder)
+    if (source === target) continue;
+
+    g.setEdge(source, target);
   }
 
   // Run dagre layout
@@ -857,6 +928,19 @@ function computePositions(
       positions.set(id, {
         x: dagreNode.x - NODE_WIDTH / 2,
         y: dagreNode.y - NODE_HEIGHT / 2,
+      });
+    }
+  }
+
+  // Store placeholder positions for collapsed groups (used for group bounding boxes)
+  for (const groupId of collapsedGroupPlaceholders) {
+    const placeholderId = `__collapsed_placeholder_${groupId}__`;
+    const placeholderNode = g.node(placeholderId);
+    if (placeholderNode) {
+      // Store under special key for the group
+      positions.set(`__group_position_${groupId}__`, {
+        x: placeholderNode.x - NODE_WIDTH / 2,
+        y: placeholderNode.y - 20, // Half of placeholder height (40/2)
       });
     }
   }

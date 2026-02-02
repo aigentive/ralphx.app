@@ -339,7 +339,7 @@ interface TaskGraphViewInnerProps {
 
 function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId);
-  const { setCenter, getNodes } = useReactFlow();
+  const { setCenter, getNodes, fitView } = useReactFlow();
 
   // UI Store for task selection
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
@@ -396,7 +396,11 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       return next;
     });
-  }, []);
+    // Auto-fit view after layout updates
+    setTimeout(() => {
+      fitView({ padding: 0.2, duration: 200 });
+    }, 50);
+  }, [fitView]);
 
   // Task mutations for context menu actions
   const {
