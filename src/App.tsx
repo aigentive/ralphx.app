@@ -20,6 +20,7 @@ import { IdeationView, ProposalEditModal } from "@/components/Ideation";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import { SettingsView } from "@/components/settings";
+import { TaskGraphView } from "@/components/TaskGraph";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
@@ -711,6 +712,9 @@ function AppContent() {
                 >
                   <TaskBoard projectId={currentProjectId} />
                 </KanbanSplitLayout>
+              )}
+              {currentView === "graph" && (
+                <TaskGraphView projectId={currentProjectId} />
               )}
               {currentView === "ideation" && (
                 <IdeationView
