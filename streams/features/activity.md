@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-03 03:30:00 - Phase 67 Task 13: Add PlanGroupInfo to backend response
+**What:**
+- Verified Task 13 already implemented in previous work (Task 1 included plan groups)
+- Types defined in `src-tauri/src/commands/task_commands/types.rs`:
+  - `PlanGroupInfo` struct with plan_artifact_id, session_id, session_title, task_ids, status_summary
+  - `StatusSummary` struct with counts for all status categories (backlog, ready, blocked, executing, qa, review, merge, completed, terminal)
+- Implementation in `src-tauri/src/commands/task_commands/query.rs`:
+  - Groups tasks by `plan_artifact_id` (lines 516-527)
+  - Queries `ideation_sessions` for session titles (lines 529-540)
+  - Computes status summary via `categorize_status` helper (lines 542-548)
+  - Returns `plan_groups` in `TaskDependencyGraphResponse`
+
+**Files Modified:**
+- None (implementation already exists from Task 1)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (44 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success (verified existing implementation)
+
+---
+
 ### 2026-02-03 03:00:00 - Phase 67 Task 12: Wire custom nodes/edges to React Flow
 **What:**
 - Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:

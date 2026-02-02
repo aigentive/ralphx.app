@@ -322,7 +322,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(task-graph): add plan group info to graph response"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 14,
