@@ -61,6 +61,9 @@ type TaskNodeData = Record<string, unknown> & {
 /** Duration in ms before clearing the highlighted node */
 const HIGHLIGHT_TIMEOUT_MS = 3000;
 
+/** Empty layout config - defined as constant to prevent re-renders */
+const EMPTY_LAYOUT_CONFIG = {};
+
 // ============================================================================
 // Custom Node and Edge Types
 // ============================================================================
@@ -126,7 +129,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     graphData?.edges ?? [],
     graphData?.criticalPath ?? [],
     graphData?.planGroups ?? [],
-    {}, // default layout config
+    EMPTY_LAYOUT_CONFIG,
     collapsedPlanIds,
     handleToggleCollapse
   );
