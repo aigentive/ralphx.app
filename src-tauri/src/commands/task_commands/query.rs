@@ -6,6 +6,7 @@ use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
 use super::types::{
     TaskResponse, TaskListResponse, StatusTransition, StateTransitionResponse,
     TaskGraphNode, TaskGraphEdge, PlanGroupInfo, StatusSummary, TaskDependencyGraphResponse,
+    TimelineEvent, TimelineEventType, TimelineEventsResponse,
 };
 use super::helpers::status_to_label;
 
@@ -597,4 +598,230 @@ fn categorize_status(status: &InternalStatus, summary: &mut StatusSummary) {
         InternalStatus::Approved | InternalStatus::Merged => summary.completed += 1,
         InternalStatus::Failed | InternalStatus::Cancelled => summary.terminal += 1,
     }
+}
+
+/// Get execution timeline events for the task graph view
+///
+/// Returns chronological timeline of task status changes and plan-level events.
+/// Used by the ExecutionTimeline panel in the Task Graph View.
+///
+/// # Arguments
+/// * `project_id` - The project ID
+/// * `offset` - Pagination offset (default 0)
+/// * `limit` - Page size (default 50)
+///
+/// # Returns
+/// * `TimelineEventsResponse` - Events in reverse chronological order (newest first)
+///
+/// # Event Types
+/// - `status_change`: Task transitioned to a new status
+/// - `plan_accepted`: A plan was accepted and tasks were created
+/// - `plan_completed`: All tasks in a plan reached terminal state
+#[tauri::command]
+pub async fn get_task_timeline_events(
+    project_id: String,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<TimelineEventsResponse, String> {
+    let project_id_obj = ProjectId::from_string(project_id.clone());
+    let offset = offset.unwrap_or(0) as usize;
+    let limit = limit.unwrap_or(50) as usize;
+
+    // 1. Get all tasks for the project
+    let tasks = state
+        .task_repo
+        .get_by_project(&project_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Collect status change events from all tasks
+    let mut all_events: Vec<TimelineEvent> = Vec::new();
+
+    for task in &tasks {
+        let transitions = state
+            .task_repo
+            .get_status_history(&task.id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for (idx, transition) in transitions.iter().enumerate() {
+            let description = format_status_change_description(
+                &task.title,
+                transition.to.as_str(),
+            );
+
+            all_events.push(TimelineEvent {
+                id: format!("{}-{}", task.id.as_str(), idx),
+                timestamp: transition.timestamp.to_rfc3339(),
+                task_id: Some(task.id.as_str().to_string()),
+                task_title: Some(task.title.clone()),
+                event_type: TimelineEventType::StatusChange,
+                from_status: Some(transition.from.as_str().to_string()),
+                to_status: Some(transition.to.as_str().to_string()),
+                description,
+                trigger: Some(transition.trigger.clone()),
+                plan_artifact_id: task.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()),
+                session_title: None,
+            });
+        }
+    }
+
+    // 3. Get plan-level events from ideation sessions
+    // Find sessions with accepted plans that created tasks
+    let plan_artifact_ids: Vec<String> = tasks
+        .iter()
+        .filter_map(|t| t.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    for plan_artifact_id in &plan_artifact_ids {
+        // Get the session for this plan
+        let sessions = state
+            .ideation_session_repo
+            .get_by_plan_artifact_id(plan_artifact_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(session) = sessions.first() {
+            // Find the earliest task created from this plan for the "plan accepted" timestamp
+            let plan_tasks: Vec<_> = tasks
+                .iter()
+                .filter(|t| {
+                    t.plan_artifact_id
+                        .as_ref()
+                        .is_some_and(|id| id.as_str() == plan_artifact_id)
+                })
+                .collect();
+
+            if let Some(earliest) = plan_tasks.iter().min_by_key(|t| t.created_at) {
+                let session_title = session.title.clone().unwrap_or_else(|| "Untitled Plan".to_string());
+                let task_count = plan_tasks.len();
+
+                all_events.push(TimelineEvent {
+                    id: format!("plan-accepted-{}", plan_artifact_id),
+                    timestamp: earliest.created_at.to_rfc3339(),
+                    task_id: None,
+                    task_title: None,
+                    event_type: TimelineEventType::PlanAccepted,
+                    from_status: None,
+                    to_status: None,
+                    description: format!(
+                        "Plan \"{}\" accepted - created {} task{}",
+                        session_title,
+                        task_count,
+                        if task_count == 1 { "" } else { "s" }
+                    ),
+                    trigger: Some("user".to_string()),
+                    plan_artifact_id: Some(plan_artifact_id.clone()),
+                    session_title: Some(session_title.clone()),
+                });
+
+                // Check if all tasks in this plan are complete (approved, merged, cancelled, or failed)
+                let all_complete = plan_tasks.iter().all(|t| {
+                    matches!(
+                        t.internal_status,
+                        InternalStatus::Approved
+                            | InternalStatus::Merged
+                            | InternalStatus::Failed
+                            | InternalStatus::Cancelled
+                    )
+                });
+
+                if all_complete && !plan_tasks.is_empty() {
+                    // Find the latest completion timestamp
+                    if let Some(latest) = plan_tasks
+                        .iter()
+                        .filter_map(|t| t.completed_at)
+                        .max()
+                    {
+                        let completed_count = plan_tasks
+                            .iter()
+                            .filter(|t| {
+                                matches!(
+                                    t.internal_status,
+                                    InternalStatus::Approved | InternalStatus::Merged
+                                )
+                            })
+                            .count();
+
+                        all_events.push(TimelineEvent {
+                            id: format!("plan-completed-{}", plan_artifact_id),
+                            timestamp: latest.to_rfc3339(),
+                            task_id: None,
+                            task_title: None,
+                            event_type: TimelineEventType::PlanCompleted,
+                            from_status: None,
+                            to_status: None,
+                            description: format!(
+                                "Plan \"{}\" completed - {} of {} task{} succeeded",
+                                session_title,
+                                completed_count,
+                                task_count,
+                                if task_count == 1 { "" } else { "s" }
+                            ),
+                            trigger: Some("system".to_string()),
+                            plan_artifact_id: Some(plan_artifact_id.clone()),
+                            session_title: Some(session_title),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Sort by timestamp descending (newest first)
+    all_events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    // 5. Apply pagination
+    let total = all_events.len() as u32;
+    let paginated: Vec<TimelineEvent> = all_events
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
+    let has_more = (offset + paginated.len()) < total as usize;
+
+    Ok(TimelineEventsResponse {
+        events: paginated,
+        total,
+        has_more,
+    })
+}
+
+/// Generate a human-readable description for a status change
+fn format_status_change_description(task_title: &str, to_status: &str) -> String {
+    let action = match to_status {
+        "ready" => "marked ready",
+        "blocked" => "blocked",
+        "executing" => "started execution",
+        "re_executing" => "restarted execution",
+        "qa_refining" => "entered QA refinement",
+        "qa_testing" => "entered QA testing",
+        "qa_passed" => "passed QA",
+        "qa_failed" => "failed QA",
+        "pending_review" => "queued for review",
+        "reviewing" => "review started",
+        "review_passed" => "passed AI review",
+        "escalated" => "escalated to human",
+        "revision_needed" => "needs revision",
+        "pending_merge" => "queued for merge",
+        "merging" => "merging started",
+        "merge_conflict" => "has merge conflict",
+        "merged" => "merged",
+        "approved" => "approved",
+        "failed" => "failed",
+        "cancelled" => "cancelled",
+        _ => "status changed",
+    };
+
+    // Truncate title if too long
+    let title = if task_title.len() > 40 {
+        format!("{}...", &task_title[..37])
+    } else {
+        task_title.to_string()
+    };
+
+    format!("\"{}\" {}", title, action)
 }
