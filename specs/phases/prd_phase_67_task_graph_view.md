@@ -532,7 +532,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): add timeline event filters"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 25,

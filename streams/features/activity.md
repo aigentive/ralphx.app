@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-03 15:30:00 - Phase 67 Task 24: Add timeline event filters
+**What:**
+- Created `src/components/TaskGraph/timeline/timelineFilters.ts`:
+  - Defined `TimelineFilterCategory` type with 9 categories: all, execution, reviews, escalations, qa, merge, completed, blocked, plans
+  - Added `TIMELINE_FILTER_OPTIONS` array with labels, descriptions, and colors for each filter
+  - Implemented `eventMatchesFilters()` and `filterTimelineEvents()` for client-side filtering
+  - Added `getEventCategory()` to determine the category for a timeline event
+  - Added `toApiFilters()` to convert filter state to API format
+  - Status-based filtering maps toStatus field to categories via `getStatusCategory()`
+- Updated `src/components/TaskGraph/timeline/ExecutionTimeline.tsx`:
+  - Replaced simple boolean filter state with category-based `TimelineFilterState`
+  - Replaced `TimelineFilterBar` with expandable dropdown showing all filter options
+  - Filter bar shows active filter count when collapsed, full options when expanded
+  - Each filter option has color indicator matching nodeStyles colors
+  - Added "Clear filters" button when filters are active
+  - Applied client-side filtering using `filterTimelineEvents()` after fetching data
+
+**Files Modified:**
+- `src/components/TaskGraph/timeline/timelineFilters.ts` (NEW)
+- `src/components/TaskGraph/timeline/ExecutionTimeline.tsx` (updated filter UI)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component enhancement, requires manual testing in running app
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 14:00:00 - Phase 67 Task 23: Implement timeline-to-node interaction
 **What:**
 - Added `isHighlighted` prop to `TaskNodeData` type in `src/components/TaskGraph/nodes/TaskNode.tsx`:
