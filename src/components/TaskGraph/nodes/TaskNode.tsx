@@ -29,6 +29,8 @@ export type TaskNodeData = Record<string, unknown> & {
   internalStatus: string;
   priority: number;
   isCriticalPath: boolean;
+  /** Whether this node is highlighted (e.g., from timeline click) */
+  isHighlighted?: boolean;
 };
 
 export type TaskNodeType = Node<TaskNodeData, "task">;
@@ -89,7 +91,7 @@ function truncateText(text: string, maxLength: number): string {
 // ============================================================================
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, internalStatus, isCriticalPath } = data;
+  const { label, internalStatus, isCriticalPath, isHighlighted } = data;
   const style = getNodeStyle(internalStatus);
   const category = getStatusCategory(internalStatus as InternalStatus);
   const categoryLabel = CATEGORY_LABELS[category];
@@ -102,6 +104,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       data-testid="task-node"
       data-status={internalStatus}
       data-critical-path={isCriticalPath}
+      data-highlighted={isHighlighted}
     >
       {/* Target handle - top (incoming edges) */}
       <Handle
@@ -118,11 +121,14 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           transition-all duration-150
           ${selected ? "ring-2 ring-white/30" : ""}
           ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
         `}
         style={{
           borderColor: style.borderColor,
           backgroundColor: style.backgroundColor,
-          boxShadow: style.boxShadow,
+          boxShadow: isHighlighted
+            ? `${style.boxShadow ?? ""}, 0 0 12px 2px hsl(var(--accent-primary) / 0.4)`
+            : style.boxShadow,
         }}
       >
         {/* Title */}

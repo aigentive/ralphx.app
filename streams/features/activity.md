@@ -4,6 +4,42 @@
 
 ---
 
+### 2026-02-03 14:00:00 - Phase 67 Task 23: Implement timeline-to-node interaction
+**What:**
+- Added `isHighlighted` prop to `TaskNodeData` type in `src/components/TaskGraph/nodes/TaskNode.tsx`:
+  - New optional `isHighlighted?: boolean` field for visual highlighting
+  - Added animated pulse ring + accent glow effect when highlighted
+  - Added `data-highlighted` attribute for testing
+- Refactored `TaskGraphView` to use `ReactFlowProvider` pattern:
+  - Created inner `TaskGraphViewInner` component that can access `useReactFlow` hook
+  - Wrapped in `ReactFlowProvider` for proper React Flow context
+- Integrated `ExecutionTimeline` side panel into `TaskGraphView`:
+  - Added `ExecutionTimeline` in flex layout alongside main graph area
+  - Wired `onTaskClick` handler to `handleTimelineTaskClick`
+  - Passed `highlightedTaskId` state for bi-directional highlighting
+- Implemented timeline-to-node interaction:
+  - `handleTimelineTaskClick(taskId)`: Sets highlighted task, finds node position, calls `setCenter()` to scroll with 500ms animation
+  - Uses `getNodes()` to find target node's position and dimensions
+  - Centers view at zoom level 1.2 for good visibility
+- Implemented highlight timeout/clear logic:
+  - Highlight auto-clears after 3 seconds (HIGHLIGHT_TIMEOUT_MS)
+  - Highlight clears immediately on node click or pane click
+  - Proper timeout cleanup on unmount and on new interactions
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx` (added isHighlighted prop and styling)
+- `src/components/TaskGraph/TaskGraphView.tsx` (integrated timeline, added highlight logic)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component integration, requires manual testing in running app
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 12:30:00 - Phase 67 Task 22: Create ExecutionTimeline panel component
 **What:**
 - Created `useExecutionTimeline` hook at `src/components/TaskGraph/hooks/useExecutionTimeline.ts`:

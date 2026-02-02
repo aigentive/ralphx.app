@@ -4,16 +4,19 @@
  * Displays tasks as nodes with dependencies as edges.
  * Uses dagre for hierarchical layout computation.
  * Custom TaskNode and DependencyEdge components provide rich visualization.
+ * Includes ExecutionTimeline side panel for timeline-to-node interaction.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Node,
   type Edge,
   type NodeTypes,
@@ -28,6 +31,7 @@ import { TaskNode } from "./nodes/TaskNode";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { getStatusBorderColor } from "./nodes/nodeStyles";
+import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { Loader2 } from "lucide-react";
@@ -47,7 +51,15 @@ type TaskNodeData = Record<string, unknown> & {
   internalStatus: string;
   priority: number;
   isCriticalPath: boolean;
+  isHighlighted?: boolean;
 };
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Duration in ms before clearing the highlighted node */
+const HIGHLIGHT_TIMEOUT_MS = 3000;
 
 // ============================================================================
 // Custom Node and Edge Types
@@ -70,17 +82,25 @@ const edgeTypes: EdgeTypes = {
   dependency: DependencyEdge,
 };
 
-
 // ============================================================================
-// Component
+// Inner Component (has access to useReactFlow)
 // ============================================================================
 
-export function TaskGraphView({ projectId }: TaskGraphViewProps) {
+interface TaskGraphViewInnerProps {
+  projectId: string;
+}
+
+function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId);
+  const { setCenter, getNodes } = useReactFlow();
 
   // UI Store for task selection
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+
+  // Highlighted task state (for timeline-to-node interaction)
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Collapse state for plan groups
   const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
@@ -143,14 +163,20 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
     return hiddenIds;
   }, [graphData?.planGroups, graphData?.nodes, collapsedPlanIds]);
 
-  // Update React Flow state when layout changes
+  // Update React Flow state when layout changes or highlight changes
   // Group nodes are rendered first (lower z-index) so they appear behind task nodes
   // Filter out task nodes that belong to collapsed groups
   useEffect(() => {
     // Filter task nodes - hide those in collapsed groups
-    const visibleTaskNodes = layoutNodes.filter(
-      (node) => !collapsedTaskIds.has(node.id)
-    );
+    const visibleTaskNodes = layoutNodes
+      .filter((node) => !collapsedTaskIds.has(node.id))
+      .map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          isHighlighted: node.id === highlightedTaskId,
+        },
+      }));
     // Filter edges - hide those connected to hidden nodes
     const visibleEdges = layoutEdges.filter(
       (edge) => !collapsedTaskIds.has(edge.source) && !collapsedTaskIds.has(edge.target)
@@ -159,21 +185,81 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
     const allNodes = [...groupNodes, ...visibleTaskNodes];
     setNodes(allNodes);
     setEdges(visibleEdges);
-  }, [layoutNodes, layoutEdges, groupNodes, collapsedTaskIds, setNodes, setEdges]);
+  }, [layoutNodes, layoutEdges, groupNodes, collapsedTaskIds, highlightedTaskId, setNodes, setEdges]);
 
-  // Handle node click - opens TaskDetailOverlay via selectedTaskId
-  // Only for task nodes, not group nodes
-  const onNodeClick = useCallback(
+  // Handle timeline entry click - highlight node and scroll to it
+  const handleTimelineTaskClick = useCallback(
+    (taskId: string) => {
+      // Clear any existing timeout
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+
+      // Set the highlighted task
+      setHighlightedTaskId(taskId);
+
+      // Find the node's position and center the view on it
+      const allNodes = getNodes();
+      const targetNode = allNodes.find((n) => n.id === taskId);
+      if (targetNode && targetNode.position) {
+        // Get node dimensions (default to standard task node size)
+        const nodeWidth = targetNode.measured?.width ?? 180;
+        const nodeHeight = targetNode.measured?.height ?? 60;
+        // Center on the node's center point
+        const x = targetNode.position.x + nodeWidth / 2;
+        const y = targetNode.position.y + nodeHeight / 2;
+        // Use setCenter with zoom level 1.2 for good visibility
+        setCenter(x, y, { duration: 500, zoom: 1.2 });
+      }
+
+      // Set timeout to clear highlight
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedTaskId(null);
+        highlightTimeoutRef.current = null;
+      }, HIGHLIGHT_TIMEOUT_MS);
+    },
+    [getNodes, setCenter]
+  );
+
+  // Clear highlight on any node click (new interaction)
+  const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      // Clear any existing highlight timeout
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+      // Clear highlight
+      setHighlightedTaskId(null);
+
       // Skip group nodes (their IDs start with "group-")
       if (node.id.startsWith("group-")) {
         return;
       }
-      // node.id is the task ID
+      // node.id is the task ID - open detail overlay
       setSelectedTaskId(node.id);
     },
     [setSelectedTaskId]
   );
+
+  // Clear highlight on pane click
+  const handlePaneClick = useCallback(() => {
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
+    setHighlightedTaskId(null);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Loading state
   if (isLoading) {
@@ -211,46 +297,70 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
   }
 
   return (
-    <div className="h-full w-full relative" data-testid="task-graph-view">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.1}
-        maxZoom={2}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color="hsl(220 10% 25%)" gap={20} />
-        <Controls
-          showInteractive={false}
-          style={{
-            background: "hsla(220 10% 12% / 0.9)",
-            border: "1px solid hsla(220 20% 100% / 0.08)",
-            borderRadius: 8,
-          }}
-        />
-        <MiniMap
-          nodeColor={(node) => {
-            const data = node.data as TaskNodeData | undefined;
-            return getStatusBorderColor(data?.internalStatus ?? "backlog");
-          }}
-          maskColor="hsla(220 10% 5% / 0.8)"
-          style={{
-            background: "hsla(220 10% 12% / 0.9)",
-            border: "1px solid hsla(220 20% 100% / 0.08)",
-            borderRadius: 8,
-          }}
-        />
-      </ReactFlow>
+    <div className="h-full w-full relative flex" data-testid="task-graph-view">
+      {/* Main graph area */}
+      <div className="flex-1 h-full relative">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onPaneClick={handlePaneClick}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          minZoom={0.1}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="hsl(220 10% 25%)" gap={20} />
+          <Controls
+            showInteractive={false}
+            style={{
+              background: "hsla(220 10% 12% / 0.9)",
+              border: "1px solid hsla(220 20% 100% / 0.08)",
+              borderRadius: 8,
+            }}
+          />
+          <MiniMap
+            nodeColor={(node) => {
+              const data = node.data as TaskNodeData | undefined;
+              return getStatusBorderColor(data?.internalStatus ?? "backlog");
+            }}
+            maskColor="hsla(220 10% 5% / 0.8)"
+            style={{
+              background: "hsla(220 10% 12% / 0.9)",
+              border: "1px solid hsla(220 20% 100% / 0.08)",
+              borderRadius: 8,
+            }}
+          />
+        </ReactFlow>
+      </div>
+
+      {/* Execution Timeline side panel */}
+      <ExecutionTimeline
+        projectId={projectId}
+        onTaskClick={handleTimelineTaskClick}
+        highlightedTaskId={highlightedTaskId}
+        defaultCollapsed={false}
+      />
 
       {/* Task Detail Overlay - renders when a node is selected */}
       {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}
     </div>
+  );
+}
+
+// ============================================================================
+// Main Component (provides ReactFlowProvider)
+// ============================================================================
+
+export function TaskGraphView({ projectId }: TaskGraphViewProps) {
+  return (
+    <ReactFlowProvider>
+      <TaskGraphViewInner projectId={projectId} />
+    </ReactFlowProvider>
   );
 }
