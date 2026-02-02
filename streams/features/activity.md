@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-02 17:30:00 - Phase 67 Task 26: Create TaskNodeContextMenu component
+**What:**
+- Created `src/components/TaskGraph/nodes/TaskNodeContextMenu.tsx`:
+  - Right-click context menu for task graph nodes
+  - Status-appropriate quick actions per PRD spec:
+    - ready: Start Execution, Block (with reason)
+    - blocked: Unblock, View Blockers
+    - executing/re_executing: View Agent Chat
+    - pending_review: View Work Summary
+    - review_passed: Approve, Request Changes
+    - escalated: Approve, Reject, Request Changes
+    - revision_needed: View Feedback
+    - merge_conflict: View Conflicts, Mark Resolved
+  - Uses shadcn/ui ContextMenu components
+  - Integrates useConfirmation hook for destructive actions
+  - Reuses BlockReasonDialog for block action
+  - All statuses have "View Details" as default action
+
+**Files Created:**
+- `src/components/TaskGraph/nodes/TaskNodeContextMenu.tsx` (NEW - 285 lines)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component only, wiring to nodes in Task 27
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 16:45:00 - Phase 67 Task 25: Wire real-time updates for timeline
 **What:**
 - Verified existing implementation in `src/components/TaskGraph/hooks/useExecutionTimeline.ts`:
