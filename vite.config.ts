@@ -15,6 +15,15 @@ export default defineConfig(async ({ mode }) => {
   // Base alias always includes the @ -> src mapping
   const baseAlias: Record<string, string> = {
     "@": path.resolve(__dirname, "./src"),
+    // Force dagre packages to use CJS builds (ESM build has broken require() calls)
+    "@dagrejs/dagre": path.resolve(
+      __dirname,
+      "./node_modules/@dagrejs/dagre/dist/dagre.cjs.js"
+    ),
+    "@dagrejs/graphlib": path.resolve(
+      __dirname,
+      "./node_modules/@dagrejs/graphlib/index.js"
+    ),
   };
 
   // In web mode, alias Tauri APIs and plugins to our mock implementations
@@ -96,6 +105,21 @@ export default defineConfig(async ({ mode }) => {
       watch: {
         // 3. tell Vite to ignore watching `src-tauri`, `logs`, and all markdown files
         ignored: ["**/src-tauri/**", "**/logs/**", "**/*.md"],
+      },
+    },
+
+    // Handle mixed ESM/CJS dependencies (dagre uses require() in its ESM build)
+    optimizeDeps: {
+      include: ["@dagrejs/dagre", "@dagrejs/graphlib"],
+      esbuildOptions: {
+        // Force CommonJS for dagre packages
+        mainFields: ["main", "module"],
+      },
+    },
+    build: {
+      commonjsOptions: {
+        transformMixedEsModules: true,
+        include: [/node_modules/],
       },
     },
   };
