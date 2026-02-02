@@ -24,7 +24,7 @@ import type {
   ApplyProposalsInput,
 } from "@/types/ideation";
 import { Button } from "@/components/ui/button";
-import { ResizeHandle } from "@/components/ui/ResizeHandle";
+import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -93,7 +93,7 @@ export function PlanningView({
   onReorderProposals,
   onApply,
 }: PlanningViewProps) {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(60); // 60/40 split like Kanban
+  const [chatPanelWidth, setChatPanelWidth] = useState(CHAT_PANEL_DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const proposalsScrollRef = useRef<HTMLDivElement>(null);
@@ -210,8 +210,9 @@ export function PlanningView({
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
-      setLeftPanelWidth(Math.max(30, Math.min(70, newWidth)));
+      // Chat panel is on the right, so width = container right edge - mouse position
+      const newWidth = rect.right - e.clientX;
+      setChatPanelWidth(Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(600, newWidth)));
     };
 
     const handleMouseUp = () => setIsResizing(false);
@@ -401,12 +402,11 @@ export function PlanningView({
 
             {/* Split Layout - Proposals left, Conversation right (matching Kanban pattern) */}
             <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
-              {/* Proposals Panel (Left) */}
+              {/* Proposals Panel (Left) - takes remaining space */}
               <div
                 data-testid="proposals-panel"
-                className="flex flex-col relative"
+                className="flex flex-col relative flex-1 min-w-0"
                 style={{
-                  width: `${leftPanelWidth}%`,
                   minWidth: "360px",
                   borderRight: "1px solid hsla(220 10% 100% / 0.06)",
                   background: "hsl(220 10% 8%)",
@@ -547,8 +547,8 @@ export function PlanningView({
               {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
               <div
                 data-testid="conversation-panel"
-                className="flex flex-col flex-1"
-                style={{ minWidth: "320px" }}
+                className="flex flex-col shrink-0"
+                style={{ width: `${chatPanelWidth}px` }}
               >
                 <IntegratedChatPanel
                   projectId={session.projectId}
