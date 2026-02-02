@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 04:00:00 - Phase 67 Task 14: Update frontend types/transforms for plan groups
+**What:**
+- Verified Task 14 already implemented as part of Task 2 (frontend API layer)
+- Types defined in `src/api/task-graph.types.ts`:
+  - `StatusSummary` interface with backlog, ready, blocked, executing, qa, review, merge, completed, terminal counts
+  - `PlanGroupInfo` interface with planArtifactId, sessionId, sessionTitle, taskIds, statusSummary
+- Schemas defined in `src/api/task-graph.schemas.ts`:
+  - `StatusSummarySchema` with all nine count fields
+  - `PlanGroupInfoSchema` referencing StatusSummarySchema
+- Transforms defined in `src/api/task-graph.transforms.ts`:
+  - `transformStatusSummary` - passes through (all lowercase field names)
+  - `transformPlanGroupInfo` - converts snake_case to camelCase
+
+**Files Modified:**
+- None (implementation already exists from Task 2)
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - API types only
+
+**Result:** Success (verified existing implementation)
+
+---
+
 ### 2026-02-03 03:30:00 - Phase 67 Task 13: Add PlanGroupInfo to backend response
 **What:**
 - Verified Task 13 already implemented in previous work (Task 1 included plan groups)
