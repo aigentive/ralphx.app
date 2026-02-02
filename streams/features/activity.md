@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-02 21:30:00 - Phase 77 Task 5: Wire SettingsView to load and persist execution settings
+**What:**
+- Added useRef import for save timeout reference
+- Added executionApi import and ProjectSettings/DEFAULT_PROJECT_SETTINGS type imports
+- Added state variables: executionSettings, isLoadingSettings, isSavingSettings, settingsError, saveTimeoutRef
+- Added useEffect to load settings on mount via executionApi.getSettings()
+- Added handleSettingsChange callback with 300ms debounce for saving via executionApi.updateSettings()
+- Added cleanup useEffect for timeout ref on unmount
+- Wired SettingsView with initialSettings, isLoading, isSaving, error, and onSettingsChange props
+- Used conditional spread for initialSettings to satisfy exactOptionalPropertyTypes
+
+**Files:**
+- MODIFIED: src/App.tsx (added settings loading, debounced saving, wired SettingsView props)
+
+**Visual Verification:** N/A - App.tsx wiring only, SettingsView UI unchanged
+
+**Commands:**
+- `npm run lint && npm run typecheck` - passes (15 pre-existing warnings, 0 errors)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:45:00 - Phase 77 Task 4: Add execution settings API wrapper with schemas and transforms
 **What:**
 - Added ExecutionSettingsResponseSchema and UpdateExecutionSettingsInputSchema to execution.schemas.ts
