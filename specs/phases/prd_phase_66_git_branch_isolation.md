@@ -413,7 +413,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ui): update project wizard with git mode selection and worktree defaults"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 18,
