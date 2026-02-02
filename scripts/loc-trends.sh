@@ -182,6 +182,129 @@ process_day() {
     echo "$total_added $total_deleted $commits" >> "${TMPFILE}.totals"
 }
 
+# Draw a bar using Unicode blocks
+draw_bar() {
+    local value=$1
+    local max=$2
+    local width=${3:-40}
+    local color=${4:-$GREEN}
+
+    if [ "$max" -eq 0 ]; then
+        echo ""
+        return
+    fi
+
+    # Calculate bar length
+    local bar_len=$((value * width / max))
+    [ $bar_len -gt $width ] && bar_len=$width
+
+    # Draw bar
+    local bar=""
+    for ((j=0; j<bar_len; j++)); do
+        bar="${bar}█"
+    done
+
+    echo -e "${color}${bar}${NC}"
+}
+
+# Chart view - visual bar chart
+print_chart() {
+    cd "$PROJECT_ROOT"
+
+    echo ""
+    echo -e "${BOLD}LOC Trend Chart (Net lines per day):${NC}"
+    echo ""
+
+    # Collect data first
+    local dates=()
+    local nets=()
+    local commits=()
+    local max_net=0
+
+    for ((i=DAYS-1; i>=0; i--)); do
+        local date_str=$(date -v-${i}d "+%Y-%m-%d" 2>/dev/null)
+        local next_date
+        if [ $i -eq 0 ]; then
+            next_date=$(date -v+1d "+%Y-%m-%d" 2>/dev/null)
+        else
+            next_date=$(date -v-$((i-1))d "+%Y-%m-%d" 2>/dev/null)
+        fi
+
+        # Fallback for Linux
+        if [ -z "$date_str" ]; then
+            date_str=$(date -d "$i days ago" "+%Y-%m-%d")
+            if [ $i -eq 0 ]; then
+                next_date=$(date -d "tomorrow" "+%Y-%m-%d")
+            else
+                next_date=$(date -d "$((i-1)) days ago" "+%Y-%m-%d")
+            fi
+        fi
+
+        # Get stats for this day
+        > "$TMPFILE"
+        git log --since="$date_str 00:00:00" --until="$next_date 00:00:00" --numstat --format="" 2>/dev/null | \
+        while IFS=$'\t' read -r added deleted file; do
+            [ -z "$file" ] && continue
+            [ "$added" = "-" ] && continue
+            should_exclude "$file" && continue
+            lang=$(get_language "$file")
+            [ -z "$lang" ] && continue
+            echo "$lang $added $deleted"
+        done >> "$TMPFILE"
+
+        local day_added=$(awk '{sum+=$2} END {print sum+0}' "$TMPFILE")
+        local day_deleted=$(awk '{sum+=$3} END {print sum+0}' "$TMPFILE")
+        local day_net=$((day_added - day_deleted))
+        local day_commits=$(git log --since="$date_str 00:00:00" --until="$next_date 00:00:00" --oneline 2>/dev/null | wc -l | tr -d ' ')
+
+        dates+=("$date_str")
+        nets+=("$day_net")
+        commits+=("$day_commits")
+
+        [ $day_net -gt $max_net ] && max_net=$day_net
+    done
+
+    # Draw chart
+    local bar_width=45
+
+    for ((i=0; i<${#dates[@]}; i++)); do
+        local date="${dates[$i]}"
+        local net="${nets[$i]}"
+        local commit="${commits[$i]}"
+        local short_date=$(echo "$date" | cut -c6-)  # MM-DD
+
+        # Color based on magnitude
+        local color=$GREEN
+        [ $net -lt 5000 ] && color=$YELLOW
+        [ $net -lt 1000 ] && color=$DIM
+
+        printf "${BOLD}%s${NC} %6d │ " "$short_date" "$net"
+        draw_bar $net $max_net $bar_width "$color"
+    done
+
+    echo ""
+
+    # Commits chart
+    echo -e "${BOLD}Commits per day:${NC}"
+    echo ""
+
+    local max_commits=0
+    for c in "${commits[@]}"; do
+        [ $c -gt $max_commits ] && max_commits=$c
+    done
+
+    for ((i=0; i<${#dates[@]}; i++)); do
+        local date="${dates[$i]}"
+        local commit="${commits[$i]}"
+        local short_date=$(echo "$date" | cut -c6-)
+
+        printf "${BOLD}%s${NC} %6d │ " "$short_date" "$commit"
+        draw_bar $commit $max_commits $bar_width "$CYAN"
+    done
+
+    echo ""
+}
+
 # Main analysis
 analyze_trends() {
     cd "$PROJECT_ROOT"
@@ -279,28 +402,59 @@ print_velocity() {
 
 # Usage
 usage() {
-    echo "Usage: $0 [days|all]"
+    echo "Usage: $0 [-c|--chart] [days|all]"
     echo ""
-    echo "  days    Number of days to analyze (default: 2)"
-    echo "  all     Full git history"
+    echo "Options:"
+    echo "  -c, --chart   Show only chart (no detailed breakdown)"
+    echo ""
+    echo "  days          Number of days to analyze (default: 2)"
+    echo "  all           Full git history"
     echo ""
     echo "Examples:"
-    echo "  $0        # Last 2 days"
-    echo "  $0 7      # Last week"
-    echo "  $0 all    # Full history"
+    echo "  $0            # Last 2 days with chart + details"
+    echo "  $0 -c all     # Full history, chart only"
+    echo "  $0 7          # Last week"
 }
 
 # Main
 main() {
-    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    local chart_only=false
+    local arg="$1"
+
+    if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
         usage
         exit 0
     fi
 
+    if [ "$arg" = "-c" ] || [ "$arg" = "--chart" ]; then
+        chart_only=true
+        arg="$2"
+    fi
+
+    # Re-parse DAYS if needed
+    if [ -n "$arg" ]; then
+        if [ "$arg" = "all" ]; then
+            cd "$PROJECT_ROOT"
+            first_commit=$(git log --reverse --format="%H" 2>/dev/null | head -1)
+            first_epoch=$(git show -s --format="%ct" "$first_commit" 2>/dev/null)
+            now_epoch=$(date +%s)
+            DAYS=$(( (now_epoch - first_epoch) / 86400 + 1 ))
+        else
+            DAYS="$arg"
+        fi
+    fi
+
     print_header
-    analyze_trends
-    print_summary
-    print_velocity
+
+    if $chart_only; then
+        print_chart
+        print_summary
+    else
+        print_chart
+        analyze_trends
+        print_summary
+        print_velocity
+    fi
 }
 
 main "$@"
