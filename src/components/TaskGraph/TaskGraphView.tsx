@@ -101,12 +101,16 @@ function applyGraphFilters(
     }
 
     // Check plan filter (empty = show all)
+    // Use plan group's authoritative taskIds list instead of node.planArtifactId
+    // This handles cases where session.plan_artifact_id differs from proposal.plan_artifact_id
     if (filters.planIds.length > 0) {
-      // Tasks without a plan are shown only if no plan filter is active
-      if (!node.planArtifactId) {
-        return false;
-      }
-      if (!filters.planIds.includes(node.planArtifactId)) {
+      const selectedPlanTaskIds = new Set(
+        planGroups
+          .filter((g) => filters.planIds.includes(g.planArtifactId))
+          .flatMap((g) => g.taskIds)
+      );
+
+      if (!selectedPlanTaskIds.has(node.taskId)) {
         return false;
       }
     }
