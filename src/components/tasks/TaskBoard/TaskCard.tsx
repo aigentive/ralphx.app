@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban, GitBranch } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -441,6 +441,34 @@ export function TaskCard({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>Created from proposal</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* Branch indicator - shown for tasks with active branch */}
+          {task.taskBranch && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    data-testid="branch-indicator"
+                    className="inline-flex items-center gap-1"
+                    style={{ color: "hsl(220 10% 50%)" }}
+                  >
+                    <GitBranch className="w-3 h-3 flex-shrink-0" />
+                    <span
+                      className="text-[10px] truncate max-w-[80px]"
+                      style={{
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                      }}
+                    >
+                      {task.taskBranch.split("/").pop()}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="text-xs font-mono">{task.taskBranch}</p>
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
