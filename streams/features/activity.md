@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-02 14:30:00 - Phase 73 Task 2: Create FloatingTimeline wrapper component
+**What:**
+- Created `src/components/TaskGraph/timeline/FloatingTimeline.tsx` (~55 LOC)
+- Implemented FloatingTimelineProps interface extending ExecutionTimelineProps
+- Applied Tahoe glass styling: borderRadius 10px, blur 20px, saturate 180%
+- Added glass container with hsla background, backdrop filter, subtle border and shadow
+- Updated `ExecutionTimeline.tsx` to support `embedded` mode:
+  - Added `embedded` prop to ExecutionTimelineProps
+  - Embedded mode renders without fixed width (container handles sizing)
+  - Embedded mode hides collapse toggle button
+  - Embedded mode skips backdrop styling (FloatingTimeline handles it)
+  - Added `hideCollapseToggle` prop to TimelineHeader subcomponent
+
+**Files Modified:**
+- `src/components/TaskGraph/timeline/FloatingTimeline.tsx` (new)
+- `src/components/TaskGraph/timeline/ExecutionTimeline.tsx` (modified)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - 0 errors, 15 pre-existing warnings)
+
+**Visual Verification:** N/A - new component, not yet wired to UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 12:00:00 - Phase 73 Task 1: Create GraphSplitLayout component
 **What:**
 - Created `src/components/layout/GraphSplitLayout.tsx` (~160 LOC)

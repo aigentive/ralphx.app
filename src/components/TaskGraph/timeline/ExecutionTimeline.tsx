@@ -42,10 +42,15 @@ export interface ExecutionTimelineProps {
   onTaskClick?: (taskId: string) => void;
   /** Currently highlighted task ID (from graph selection) */
   highlightedTaskId?: string | null;
-  /** Default collapsed state */
+  /** Default collapsed state (ignored when embedded) */
   defaultCollapsed?: boolean;
   /** Additional className for the container */
   className?: string;
+  /**
+   * Embedded mode - renders without outer width/collapse controls.
+   * Use when wrapping in FloatingTimeline or similar container.
+   */
+  embedded?: boolean;
 }
 
 export interface TimelineFilterState {
@@ -201,6 +206,8 @@ interface TimelineHeaderProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   eventCount: number;
+  /** Hide collapse toggle (for embedded mode) */
+  hideCollapseToggle?: boolean;
 }
 
 const TimelineHeader = memo(function TimelineHeader({
@@ -209,6 +216,7 @@ const TimelineHeader = memo(function TimelineHeader({
   onRefresh,
   isRefreshing,
   eventCount,
+  hideCollapseToggle = false,
 }: TimelineHeaderProps) {
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-[hsl(220_10%_25%)]">
@@ -237,16 +245,18 @@ const TimelineHeader = memo(function TimelineHeader({
               className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")}
             />
           </button>
-          <button
-            onClick={onToggleCollapse}
-            className="p-1 rounded hover:bg-[hsl(220_10%_20%)] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] transition-colors"
-            title="Collapse timeline"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          {!hideCollapseToggle && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1 rounded hover:bg-[hsl(220_10%_20%)] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] transition-colors"
+              title="Collapse timeline"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       )}
-      {collapsed && (
+      {collapsed && !hideCollapseToggle && (
         <button
           onClick={onToggleCollapse}
           className="p-1 rounded hover:bg-[hsl(220_10%_20%)] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_90%)] transition-colors"
@@ -302,8 +312,9 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
   highlightedTaskId,
   defaultCollapsed = false,
   className,
+  embedded = false,
 }: ExecutionTimelineProps) {
-  // Panel state
+  // Panel state (ignored when embedded)
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   // Filter state using new category-based system
@@ -361,8 +372,8 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
     [onTaskClick]
   );
 
-  // Render collapsed state
-  if (collapsed) {
+  // Render collapsed state (not applicable in embedded mode)
+  if (collapsed && !embedded) {
     return (
       <div
         className={cn(
@@ -397,11 +408,12 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
   return (
     <div
       className={cn(
-        "flex flex-col h-full bg-[hsl(220_10%_10%_/_0.95)] backdrop-blur-sm",
-        "border-l border-[hsl(220_10%_25%)]",
+        "flex flex-col h-full",
+        // Only apply backdrop styling when not embedded (FloatingTimeline handles it)
+        !embedded && "bg-[hsl(220_10%_10%_/_0.95)] backdrop-blur-sm border-l border-[hsl(220_10%_25%)]",
         className
       )}
-      style={{ width: PANEL_WIDTH_EXPANDED }}
+      style={embedded ? undefined : { width: PANEL_WIDTH_EXPANDED }}
       data-testid="execution-timeline"
     >
       {/* Header */}
@@ -411,6 +423,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
         onRefresh={refresh}
         isRefreshing={isFetching && !isFetchingNextPage}
         eventCount={totalCount}
+        hideCollapseToggle={embedded}
       />
 
       {/* Filter bar */}
