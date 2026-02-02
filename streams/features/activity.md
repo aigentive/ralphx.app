@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 16:30:00 - Phase 71 Task 1: Add backend commands for per-commit file changes and diffs
+**What:**
+- Added `get_commit_file_changes` method to `DiffService`:
+  - Uses `git diff-tree --no-commit-id --name-status -r {commit}` to get files changed
+  - Returns `FileChange` with status (Added/Modified/Deleted), additions, and deletions
+  - Added helper `get_commit_file_line_counts` for accurate line stats
+- Added `get_commit_file_diff` method to `DiffService`:
+  - Gets old content from parent commit (`commit^:file`)
+  - Gets new content from commit (`commit:file`)
+  - Handles new files (no parent content) and deleted files (no commit content)
+- Added Tauri commands `get_commit_file_changes` and `get_commit_file_diff` in `diff_commands.rs`
+- Registered both commands in `lib.rs` invoke_handler
+
+**Files Modified:**
+- `src-tauri/src/application/diff_service.rs` - Added methods + helper
+- `src-tauri/src/commands/diff_commands.rs` - Added Tauri commands
+- `src-tauri/src/lib.rs` - Registered commands
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3373 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 08:00:00 - Phase 70 Complete
 **What:**
 - All Phase 70 tasks completed (1/1)

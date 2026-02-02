@@ -81,3 +81,36 @@ pub async fn get_file_diff(
     let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
     diff_service.get_file_diff(&file_path, &working_path_str, base_branch)
 }
+
+/// Get files changed in a specific commit
+#[tauri::command]
+pub async fn get_commit_file_changes(
+    app_state: State<'_, AppState>,
+    task_id: String,
+    commit_sha: String,
+) -> AppResult<Vec<FileChange>> {
+    let task_id = TaskId::from_string(task_id);
+
+    // Get the correct working path for this task
+    let (_, working_path_str, _) = get_task_working_path(&app_state, &task_id).await?;
+
+    let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
+    diff_service.get_commit_file_changes(&commit_sha, &working_path_str)
+}
+
+/// Get diff for a file in a specific commit (comparing to its parent)
+#[tauri::command]
+pub async fn get_commit_file_diff(
+    app_state: State<'_, AppState>,
+    task_id: String,
+    commit_sha: String,
+    file_path: String,
+) -> AppResult<FileDiff> {
+    let task_id = TaskId::from_string(task_id);
+
+    // Get the correct working path for this task
+    let (_, working_path_str, _) = get_task_working_path(&app_state, &task_id).await?;
+
+    let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
+    diff_service.get_commit_file_diff(&commit_sha, &file_path, &working_path_str)
+}
