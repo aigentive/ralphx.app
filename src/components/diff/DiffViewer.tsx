@@ -51,10 +51,13 @@ export type { DiffViewTab, FileChange, Commit, DiffData, DiffViewerProps };
 export function DiffViewer({
   changes,
   commits,
+  commitFiles: commitFilesProp = [],
   onFetchDiff,
+  onFetchCommitFiles,
   onOpenInIDE,
   isLoadingChanges = false,
   isLoadingHistory = false,
+  isLoadingCommitFiles = false,
   defaultTab = "changes",
   onTabChange,
   onCommitSelect,
@@ -62,7 +65,6 @@ export function DiffViewer({
   const [activeTab, setActiveTab] = useState<DiffViewTab>(defaultTab);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [selectedCommit, setSelectedCommit] = useState<Commit | null>(null);
-  const [commitFiles] = useState<FileChange[]>([]);
   const [commitSelectedFile, setCommitSelectedFile] = useState<string | null>(null);
   const [diffData, setDiffData] = useState<DiffData | null>(null);
   const [isDiffLoading, setIsDiffLoading] = useState(false);
@@ -99,9 +101,11 @@ export function DiffViewer({
     setCommitSelectedFile(null);
     setDiffData(null);
     onCommitSelect?.(commit);
-    // In a real implementation, this would fetch the files changed in the commit
-    // For now, we'll set an empty list and expect the parent to update
-  }, [onCommitSelect]);
+    // Fetch files changed in this commit
+    if (onFetchCommitFiles) {
+      await onFetchCommitFiles(commit.sha);
+    }
+  }, [onCommitSelect, onFetchCommitFiles]);
 
   // Handle file selection within a commit
   const handleCommitFileSelect = useCallback(async (path: string) => {
@@ -268,11 +272,12 @@ export function DiffViewer({
           <div className="flex-1 min-w-0">
             <CommitDiffPanel
               commit={selectedCommit}
-              files={commitFiles}
+              files={commitFilesProp}
               selectedFilePath={commitSelectedFile}
               onSelectFile={handleCommitFileSelect}
               diffData={diffData}
               isLoading={isDiffLoading}
+              isLoadingFiles={isLoadingCommitFiles}
               {...(onOpenInIDE !== undefined && { onOpenInIDE })}
             />
           </div>

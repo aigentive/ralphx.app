@@ -24,14 +24,20 @@ export interface UseGitDiffResult {
   changes: FileChange[];
   /** Commit history */
   commits: Commit[];
+  /** Files changed in selected commit */
+  commitFiles: FileChange[];
   /** Loading state for changes */
   isLoadingChanges: boolean;
   /** Loading state for history */
   isLoadingHistory: boolean;
+  /** Loading state for commit files */
+  isLoadingCommitFiles: boolean;
   /** Error if any */
   error: Error | null;
-  /** Fetch diff data for a specific file */
+  /** Fetch diff data for a specific file (optionally for a specific commit) */
   fetchDiff: (filePath: string, commitSha?: string) => Promise<DiffData | null>;
+  /** Fetch files changed in a specific commit */
+  fetchCommitFiles: (commitSha: string) => Promise<void>;
   /** Refresh all data */
   refresh: () => Promise<void>;
 }
@@ -64,8 +70,10 @@ export function useGitDiff({
 }: UseGitDiffOptions): UseGitDiffResult {
   const [changes, setChanges] = useState<FileChange[]>([]);
   const [commits, setCommits] = useState<Commit[]>([]);
+  const [commitFiles, setCommitFiles] = useState<FileChange[]>([]);
   const [isLoadingChanges, setIsLoadingChanges] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isLoadingCommitFiles, setIsLoadingCommitFiles] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   // Fetch file changes on mount/enable
@@ -113,13 +121,16 @@ export function useGitDiff({
     fetchCommits();
   }, [enabled, taskId]);
 
-  // Fetch diff for a specific file
+  // Fetch diff for a specific file (optionally for a specific commit)
   const fetchDiff = useCallback(
-    async (filePath: string, _commitSha?: string): Promise<DiffData | null> => {
+    async (filePath: string, commitSha?: string): Promise<DiffData | null> => {
       if (!enabled || !taskId) return null;
 
       try {
-        const fileDiff = await diffApi.getFileDiff(taskId, filePath);
+        // Use commit-specific diff API if commitSha provided, otherwise use overall diff
+        const fileDiff = commitSha
+          ? await diffApi.getCommitFileDiff(taskId, commitSha, filePath)
+          : await diffApi.getFileDiff(taskId, filePath);
 
         // Convert API response to DiffData format
         const diffData: DiffData = {
@@ -133,6 +144,27 @@ export function useGitDiff({
         return diffData;
       } catch {
         return null;
+      }
+    },
+    [enabled, taskId]
+  );
+
+  // Fetch files changed in a specific commit
+  const fetchCommitFiles = useCallback(
+    async (commitSha: string): Promise<void> => {
+      if (!enabled || !taskId) return;
+
+      setIsLoadingCommitFiles(true);
+      try {
+        const files = await diffApi.getCommitFileChanges(taskId, commitSha);
+        setCommitFiles(files);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err : new Error("Failed to fetch commit files")
+        );
+        setCommitFiles([]);
+      } finally {
+        setIsLoadingCommitFiles(false);
       }
     },
     [enabled, taskId]
@@ -172,10 +204,13 @@ export function useGitDiff({
   return {
     changes,
     commits,
+    commitFiles,
     isLoadingChanges,
     isLoadingHistory,
+    isLoadingCommitFiles,
     error,
     fetchDiff,
+    fetchCommitFiles,
     refresh,
   };
 }

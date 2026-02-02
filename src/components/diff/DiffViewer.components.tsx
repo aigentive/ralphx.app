@@ -402,6 +402,7 @@ interface CommitDiffPanelProps {
   onSelectFile: (path: string) => void;
   diffData: DiffData | null;
   isLoading: boolean;
+  isLoadingFiles?: boolean;
   onOpenInIDE?: ((path: string) => void) | undefined;
 }
 
@@ -412,6 +413,7 @@ export function CommitDiffPanel({
   onSelectFile,
   diffData,
   isLoading,
+  isLoadingFiles = false,
   onOpenInIDE,
 }: CommitDiffPanelProps) {
   if (!commit) {
@@ -447,11 +449,15 @@ export function CommitDiffPanel({
           </p>
         </div>
         <ScrollArea className="h-[calc(100%-33px)]">
-          <FileTree
-            files={files}
-            selectedPath={selectedFilePath}
-            onSelect={onSelectFile}
-          />
+          {isLoadingFiles ? (
+            <FileTreeSkeleton />
+          ) : (
+            <FileTree
+              files={files}
+              selectedPath={selectedFilePath}
+              onSelect={onSelectFile}
+            />
+          )}
         </ScrollArea>
       </div>
 

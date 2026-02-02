@@ -4,6 +4,42 @@
 
 ---
 
+### 2026-02-02 18:00:00 - Phase 71 Task 3: Wire frontend to use per-commit APIs
+**What:**
+- Updated `useGitDiff.ts`:
+  - Added `commitFiles` state for files changed in selected commit
+  - Added `isLoadingCommitFiles` loading state
+  - Added `fetchCommitFiles(commitSha)` function to fetch files for a commit
+  - Updated `fetchDiff(filePath, commitSha?)` to use commit-specific diff API when commitSha provided
+- Updated `DiffViewer.types.tsx`:
+  - Added `commitFiles`, `onFetchCommitFiles`, and `isLoadingCommitFiles` props
+- Updated `DiffViewer.tsx`:
+  - Wired `handleCommitSelect` to call `onFetchCommitFiles` when commit is selected
+  - Used `commitFiles` prop instead of internal state
+  - Passed `isLoadingCommitFiles` to `CommitDiffPanel`
+- Updated `DiffViewer.components.tsx`:
+  - Added `isLoadingFiles` prop to `CommitDiffPanel` for loading state
+- Updated `ReviewDetailModal.tsx`:
+  - Extracted `commitFiles`, `isLoadingCommitFiles`, `fetchCommitFiles` from `useGitDiff`
+  - Passed new props to `DiffViewer`
+
+**Files Modified:**
+- `src/hooks/useGitDiff.ts`
+- `src/components/diff/DiffViewer.types.tsx`
+- `src/components/diff/DiffViewer.tsx`
+- `src/components/diff/DiffViewer.components.tsx`
+- `src/components/reviews/ReviewDetailModal.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - wiring/hook changes, no new UI elements
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 17:00:00 - Phase 71 Task 2: Add frontend API methods for per-commit diffs
 **What:**
 - Added `getCommitFileChanges(taskId, commitSha)` method to `diffApi`:

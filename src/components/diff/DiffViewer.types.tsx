@@ -60,14 +60,20 @@ export interface DiffViewerProps {
   changes: FileChange[];
   /** Commit history */
   commits: Commit[];
+  /** Files changed in selected commit */
+  commitFiles?: FileChange[];
   /** Callback to fetch diff for a file */
   onFetchDiff: (filePath: string, commitSha?: string) => Promise<DiffData | null>;
+  /** Callback to fetch files changed in a specific commit */
+  onFetchCommitFiles?: (commitSha: string) => Promise<void>;
   /** Callback to open file in IDE */
   onOpenInIDE?: (filePath: string) => void;
   /** Loading state for changes */
   isLoadingChanges?: boolean;
   /** Loading state for history */
   isLoadingHistory?: boolean;
+  /** Loading state for commit files */
+  isLoadingCommitFiles?: boolean;
   /** Currently active tab */
   defaultTab?: DiffViewTab;
   /** Callback when tab changes */
