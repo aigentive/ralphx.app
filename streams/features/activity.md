@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-02-02 02:30:00 - Phase 66 Task 5: Create branch/worktree on task execution start
+**What:**
+- Implemented branch/worktree creation in on_enter(Executing) in side_effects.rs
+- For Local mode: checks for uncommitted changes (blocks with ExecutionBlocked error), creates branch and checks it out
+- For Worktree mode: expands ~ in worktree_parent_directory, creates worktree with new branch
+- Added task_repo and project_repo to TaskServices to enable fetching task/project during state transitions
+- Added with_task_repo() and with_project_repo() builder methods to TaskServices
+- Updated TaskTransitionService to wire repos to TaskServices
+- Changed on_enter() to return AppResult<()> to allow ExecutionBlocked errors
+- Updated transition_handler/mod.rs to handle Result from on_enter
+- Added graceful error handling for git failures (logs warning, continues without isolation)
+- Updated all tests to handle new AppResult return type
+
+**Files Modified:**
+- `src-tauri/src/domain/state_machine/transition_handler/side_effects.rs` (main implementation)
+- `src-tauri/src/domain/state_machine/transition_handler/mod.rs` (Result handling)
+- `src-tauri/src/domain/state_machine/context.rs` (TaskServices repos)
+- `src-tauri/src/application/task_transition_service.rs` (repo wiring)
+- `src-tauri/src/domain/state_machine/transition_handler/tests.rs` (AppResult handling)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 01:15:00 - Phase 66 Task 4: Add PendingMerge, Merging, MergeConflict, Merged internal states
 **What:**
 - Added 4 new internal states to backend InternalStatus enum: PendingMerge, Merging, MergeConflict, Merged

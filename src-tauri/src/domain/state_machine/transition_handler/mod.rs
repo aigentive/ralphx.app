@@ -69,14 +69,20 @@ impl<'a> TransitionHandler<'a> {
                 self.on_exit(current_state, &new_state).await;
 
                 // Execute on-enter action for new state
-                self.on_enter(&new_state).await;
+                if let Err(e) = self.on_enter(&new_state).await {
+                    tracing::error!(error = %e, "on_enter failed for state {:?}", new_state);
+                    // Note: We still return Success as the transition happened,
+                    // but side effects may not have completed
+                }
 
                 // Check for auto-transitions
                 if let Some(auto_state) = self.check_auto_transition(&new_state) {
                     // Execute on-exit for intermediate state
                     self.on_exit(&new_state, &auto_state).await;
                     // Execute on-enter for final state
-                    self.on_enter(&auto_state).await;
+                    if let Err(e) = self.on_enter(&auto_state).await {
+                        tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
+                    }
                     return TransitionResult::AutoTransition(auto_state);
                 }
 
