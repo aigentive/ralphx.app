@@ -685,7 +685,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [getNodes, setCenter]
   );
 
-  // Single click on node - focus/highlight (consistent with timeline behavior)
+  // Single click on node - focus/highlight and center view (consistent with timeline behavior)
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       // Skip group nodes (their IDs start with "group-")
@@ -703,13 +703,22 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       setHighlightedTaskId(node.id);
       setFocusedNodeId(node.id);
 
+      // Center the view on the clicked node (same behavior as timeline click)
+      if (node.position) {
+        const nodeWidth = node.measured?.width ?? 180;
+        const nodeHeight = node.measured?.height ?? 60;
+        const x = node.position.x + nodeWidth / 2;
+        const y = node.position.y + nodeHeight / 2;
+        setCenter(x, y, { duration: 300, zoom: 1.2 });
+      }
+
       // Auto-clear highlight after timeout
       highlightTimeoutRef.current = setTimeout(() => {
         setHighlightedTaskId(null);
         highlightTimeoutRef.current = null;
       }, HIGHLIGHT_TIMEOUT_MS);
     },
-    []
+    [setCenter]
   );
 
   // Double-click on nodes - open task detail (for tasks) or collapse/expand (for groups)
