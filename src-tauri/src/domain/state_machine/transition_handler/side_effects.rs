@@ -710,8 +710,35 @@ impl<'a> super::TransitionHandler<'a> {
                     .emit("task:merge_conflict", task_id_str)
                     .await;
 
-                // Note: on_enter(Merging) will be triggered by TaskTransitionService
-                // which watches for status changes and triggers entry actions
+                // Spawn merger agent directly (on_enter(Merging) won't be called automatically
+                // when we update status directly - TaskTransitionService only triggers entry
+                // actions via transition_task() or execute_entry_actions())
+                let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Spawning merger agent for conflict resolution (from attempt_programmatic_merge)"
+                );
+
+                let result = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::Merge,
+                        task_id_str,
+                        &prompt,
+                    )
+                    .await;
+
+                match &result {
+                    Ok(_) => {
+                        tracing::info!(task_id = task_id_str, "Merger agent spawned successfully");
+                    }
+                    Err(e) => {
+                        tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent");
+                    }
+                }
             }
             Err(e) => {
                 // Git operation failed (not a conflict, but an error)
@@ -727,6 +754,45 @@ impl<'a> super::TransitionHandler<'a> {
 
                 if let Err(e) = task_repo.update(&task).await {
                     tracing::error!(error = %e, "Failed to update task to Merging status");
+                    return;
+                }
+
+                // Record status change in history
+                if let Err(e) = task_repo.persist_status_change(
+                    &task_id,
+                    InternalStatus::PendingMerge,
+                    InternalStatus::Merging,
+                    "merge_error",
+                ).await {
+                    tracing::warn!(error = %e, "Failed to record merge error transition (non-fatal)");
+                }
+
+                // Spawn merger agent directly (same as conflict case)
+                let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Spawning merger agent for error recovery (from attempt_programmatic_merge)"
+                );
+
+                let result = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::Merge,
+                        task_id_str,
+                        &prompt,
+                    )
+                    .await;
+
+                match &result {
+                    Ok(_) => {
+                        tracing::info!(task_id = task_id_str, "Merger agent spawned successfully");
+                    }
+                    Err(e) => {
+                        tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent");
+                    }
                 }
             }
         }
