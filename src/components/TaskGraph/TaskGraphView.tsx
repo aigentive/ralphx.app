@@ -7,7 +7,7 @@
  * Includes ExecutionTimeline side panel for timeline-to-node interaction.
  */
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -68,6 +68,91 @@ const HIGHLIGHT_TIMEOUT_MS = 3000;
 /** Empty layout config - defined as constant to prevent re-renders */
 const EMPTY_LAYOUT_CONFIG = {};
 
+/**
+ * Find the next node to navigate to based on arrow key direction
+ * For Up/Down: follows dependency edges (Up = blockedBy/sources, Down = blocking/targets)
+ * For Left/Right: moves to sibling nodes at the same tier level
+ */
+function findNextNode(
+  direction: "up" | "down" | "left" | "right",
+  currentNodeId: string,
+  nodes: Node[],
+  edges: Edge[]
+): string | null {
+  // Filter out group nodes
+  const taskNodes = nodes.filter((n) => n.type === "task" || n.type === undefined);
+  const currentNode = taskNodes.find((n) => n.id === currentNodeId);
+  if (!currentNode) return null;
+
+  if (direction === "up") {
+    // Navigate to source nodes (tasks that block this one)
+    const sourceIds = edges
+      .filter((e) => e.target === currentNodeId)
+      .map((e) => e.source);
+    if (sourceIds.length === 0) return null;
+    // If multiple sources, pick the one closest horizontally
+    const sourceNodes = taskNodes.filter((n) => sourceIds.includes(n.id));
+    if (sourceNodes.length === 0) return null;
+    return sourceNodes.reduce((closest, node) =>
+      Math.abs(node.position.x - currentNode.position.x) <
+      Math.abs(closest.position.x - currentNode.position.x)
+        ? node
+        : closest
+    ).id;
+  }
+
+  if (direction === "down") {
+    // Navigate to target nodes (tasks blocked by this one)
+    const targetIds = edges
+      .filter((e) => e.source === currentNodeId)
+      .map((e) => e.target);
+    if (targetIds.length === 0) return null;
+    // If multiple targets, pick the one closest horizontally
+    const targetNodes = taskNodes.filter((n) => targetIds.includes(n.id));
+    if (targetNodes.length === 0) return null;
+    return targetNodes.reduce((closest, node) =>
+      Math.abs(node.position.x - currentNode.position.x) <
+      Math.abs(closest.position.x - currentNode.position.x)
+        ? node
+        : closest
+    ).id;
+  }
+
+  // For left/right: find sibling nodes at similar Y positions (same tier)
+  const tolerance = 40; // Y-position tolerance for "same tier"
+  const siblingNodes = taskNodes.filter(
+    (n) =>
+      n.id !== currentNodeId &&
+      Math.abs(n.position.y - currentNode.position.y) < tolerance
+  );
+
+  if (siblingNodes.length === 0) return null;
+
+  if (direction === "left") {
+    // Find the nearest node to the left
+    const leftNodes = siblingNodes.filter(
+      (n) => n.position.x < currentNode.position.x
+    );
+    if (leftNodes.length === 0) return null;
+    return leftNodes.reduce((nearest, node) =>
+      node.position.x > nearest.position.x ? node : nearest
+    ).id;
+  }
+
+  if (direction === "right") {
+    // Find the nearest node to the right
+    const rightNodes = siblingNodes.filter(
+      (n) => n.position.x > currentNode.position.x
+    );
+    if (rightNodes.length === 0) return null;
+    return rightNodes.reduce((nearest, node) =>
+      node.position.x < nearest.position.x ? node : nearest
+    ).id;
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Custom Node and Edge Types
 // ============================================================================
@@ -117,6 +202,9 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
   // Highlighted task state (for timeline-to-node interaction)
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keyboard-focused node state (for keyboard navigation)
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
 
   // Collapse state for plan groups
   const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
@@ -308,11 +396,12 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
         data: {
           ...node.data,
           isHighlighted: node.id === highlightedTaskId,
+          isFocused: node.id === focusedNodeId,
           handlers: nodeHandlers,
         },
       }));
     return [...groupNodes, ...visibleTaskNodes];
-  }, [layoutNodes, groupNodes, collapsedTaskIds, highlightedTaskId, nodeHandlers]);
+  }, [layoutNodes, groupNodes, collapsedTaskIds, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
   // Filter edges - hide those connected to hidden nodes
   const edges = useMemo<Edge[]>(() => {
@@ -375,8 +464,9 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
         clearTimeout(highlightTimeoutRef.current);
         highlightTimeoutRef.current = null;
       }
-      // Clear highlight
+      // Clear highlight and focus (mouse click takes over from keyboard)
       setHighlightedTaskId(null);
+      setFocusedNodeId(null);
 
       // Skip group nodes (their IDs start with "group-")
       if (node.id.startsWith("group-")) {
@@ -395,7 +485,80 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
       highlightTimeoutRef.current = null;
     }
     setHighlightedTaskId(null);
+    // Also clear focus on pane click
+    setFocusedNodeId(null);
   }, []);
+
+  // Handle keyboard navigation
+  const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      // Only handle navigation keys
+      const key = event.key;
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(key)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      // Escape clears selection and focus
+      if (key === "Escape") {
+        setSelectedTaskId(null);
+        setFocusedNodeId(null);
+        setHighlightedTaskId(null);
+        if (highlightTimeoutRef.current) {
+          clearTimeout(highlightTimeoutRef.current);
+          highlightTimeoutRef.current = null;
+        }
+        return;
+      }
+
+      // If no node is focused, start with the first visible task node
+      const taskNodes = nodes.filter((n) => n.type === "task" || !n.type);
+      if (taskNodes.length === 0) return;
+
+      const currentFocusId = focusedNodeId ?? selectedTaskId;
+      if (!currentFocusId) {
+        // Start with first task node
+        const firstNode = taskNodes[0];
+        if (firstNode) {
+          setFocusedNodeId(firstNode.id);
+          // Center on the focused node
+          const nodeWidth = firstNode.measured?.width ?? 180;
+          const nodeHeight = firstNode.measured?.height ?? 60;
+          const x = firstNode.position.x + nodeWidth / 2;
+          const y = firstNode.position.y + nodeHeight / 2;
+          setCenter(x, y, { duration: 300, zoom: 1.2 });
+        }
+        return;
+      }
+
+      // Enter opens the detail overlay for the focused node
+      if (key === "Enter") {
+        setSelectedTaskId(currentFocusId);
+        return;
+      }
+
+      // Arrow key navigation
+      const direction = key === "ArrowUp" ? "up" :
+                        key === "ArrowDown" ? "down" :
+                        key === "ArrowLeft" ? "left" : "right";
+
+      const nextNodeId = findNextNode(direction, currentFocusId, nodes, edges);
+      if (nextNodeId) {
+        setFocusedNodeId(nextNodeId);
+        // Center on the newly focused node
+        const targetNode = nodes.find((n) => n.id === nextNodeId);
+        if (targetNode && targetNode.position) {
+          const nodeWidth = targetNode.measured?.width ?? 180;
+          const nodeHeight = targetNode.measured?.height ?? 60;
+          const x = targetNode.position.x + nodeWidth / 2;
+          const y = targetNode.position.y + nodeHeight / 2;
+          setCenter(x, y, { duration: 300, zoom: 1.2 });
+        }
+      }
+    },
+    [nodes, edges, focusedNodeId, selectedTaskId, setSelectedTaskId, setCenter]
+  );
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -459,8 +622,12 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
 
       {/* Main graph area with timeline */}
       <div className="flex-1 flex min-h-0">
-        {/* Graph canvas */}
-        <div className="flex-1 h-full relative">
+        {/* Graph canvas - tabIndex for keyboard navigation */}
+        <div
+          className="flex-1 h-full relative outline-none"
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+        >
           <ReactFlow
           nodes={nodes}
           edges={edges}
