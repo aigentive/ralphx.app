@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(git): add is_commit_on_branch helper"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

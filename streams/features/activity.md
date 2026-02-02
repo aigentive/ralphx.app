@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 22:45:00 - Phase 78 Task 1: Add is_commit_on_branch helper to GitService
+**What:**
+- Added is_commit_on_branch() function to GitService (Query Operations section)
+- Uses `git merge-base --is-ancestor commit_sha branch` to check if commit is on branch
+- Exit code 0 = commit is ancestor (on branch), 1 = not ancestor, other codes = error
+- Added 2 unit tests: test_is_commit_on_branch_with_valid_ancestor, test_is_commit_on_branch_with_non_ancestor
+- Tests create temporary git repos with commits to verify the helper behavior
+
+**Files:**
+- MODIFIED: src-tauri/src/application/git_service.rs (added helper function + tests)
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test git_service` - 10 tests pass (including 2 new tests)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:15:00 - Phase 77 Task 6: Initialize ExecutionState from database on app startup
 **What:**
 - Added execution settings initialization in lib.rs setup() callback
