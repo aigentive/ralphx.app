@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 02:15:00 - Phase 67 Task 11: Add GraphLegend component
+**What:**
+- Created `src/components/TaskGraph/controls/GraphLegend.tsx` - Status color legend component
+  - Compact horizontal layout with collapsible header
+  - Groups status colors by category (Idle, Blocked, Executing, QA, Review, Merge, Complete, Terminal)
+  - Uses data from nodeStyles.ts (STATUS_LEGEND_GROUPS, CATEGORY_LABELS, getCategoryColor)
+  - Color-coded category labels with status items
+  - Toggle button to collapse/expand legend content
+- Updated `src/components/TaskGraph/index.ts` to export GraphLegend
+
+**Files Created:**
+- `src/components/TaskGraph/controls/GraphLegend.tsx`
+
+**Files Modified:**
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - component created, requires wiring in TaskGraphView to be visible
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 01:45:00 - Phase 67 Task 10: Create custom DependencyEdge component
 **What:**
 - Created `src/components/TaskGraph/edges/edgeStyles.ts` with edge style definitions
