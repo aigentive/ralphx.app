@@ -34,7 +34,19 @@ export function useAgentEvents(taskId?: string) {
   const addMessage = useActivityStore((s) => s.addMessage);
 
   useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.log("[useAgentEvents] Setting up listener for agent:message", {
+        taskId,
+      });
+    }
     return bus.subscribe<AgentMessageEvent>("agent:message", (payload) => {
+      if (import.meta.env.DEV) {
+        console.log(
+          "[useAgentEvents] Received event:",
+          payload.type,
+          payload.taskId
+        );
+      }
       if (!taskId || payload.taskId === taskId) {
         addMessage(payload);
       }
