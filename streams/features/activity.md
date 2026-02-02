@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-02 12:00:00 - Phase 73 Task 1: Create GraphSplitLayout component
+**What:**
+- Created `src/components/layout/GraphSplitLayout.tsx` (~160 LOC)
+- Implemented GraphSplitLayoutProps interface with children, projectId, footer, timelineContent
+- Set width constraints: MIN_LEFT_PERCENT=65, MAX_LEFT_PERCENT=75, DEFAULT_LEFT_PERCENT=70
+- Implemented right panel content switching based on selectedTaskId:
+  - No task selected → shows timelineContent (FloatingTimeline)
+  - Task selected → shows IntegratedChatPanel
+- Added TaskDetailOverlay and TaskCreationOverlay rendering inside left section
+- Added resize handle between panels with localStorage persistence
+
+**Files Modified:**
+- `src/components/layout/GraphSplitLayout.tsx` (new)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - 0 errors, 15 pre-existing warnings)
+
+**Visual Verification:** N/A - new component, not yet wired to UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 03:00:00 - Phase 72 Complete: Graph Node Kanban Styling Parity
 **What:**
 - Ran gap verification: All 7 tasks wired correctly
