@@ -194,6 +194,19 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Write", "WebFetch", "WebSearch"],
     },
+    // =========================================================================
+    // MERGE AGENTS
+    // =========================================================================
+    AgentConfig {
+        name: "ralphx-merger",
+        allowed_tools: Some("Read,Edit,Bash,Grep,Glob"),
+        allowed_mcp_tools: &[
+            "complete_merge",
+            "report_conflict",
+            "get_task_context",
+        ],
+        preapproved_cli_tools: &["Read", "Edit", "Bash"],
+    },
 ];
 
 /// Get allowed tools for an agent by name
@@ -314,5 +327,31 @@ mod tests {
     fn test_get_allowed_mcp_tools_unknown_agent() {
         let tools = get_allowed_mcp_tools("unknown-agent");
         assert!(tools.is_none());
+    }
+
+    #[test]
+    fn test_get_allowed_tools_merger_agent() {
+        let tools = get_allowed_tools("ralphx-merger");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("Read"));
+        assert!(tools.contains("Edit"));
+        assert!(tools.contains("Bash"));
+        assert!(tools.contains("Grep"));
+        assert!(tools.contains("Glob"));
+    }
+
+    #[test]
+    fn test_get_allowed_mcp_tools_merger_agent() {
+        let tools = get_allowed_mcp_tools("ralphx-merger");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__complete_merge"));
+        assert!(tools.contains("mcp__ralphx__report_conflict"));
+        assert!(tools.contains("mcp__ralphx__get_task_context"));
+        // Also includes preapproved CLI tools
+        assert!(tools.contains("Read"));
+        assert!(tools.contains("Edit"));
+        assert!(tools.contains("Bash"));
     }
 }

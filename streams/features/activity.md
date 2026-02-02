@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 12:00:00 - Phase 66 Task 15: Add ralphx-merger agent configuration
+**What:**
+- Added `ralphx-merger` agent configuration to `agent_config.rs`
+- Configured CLI tools: `Read`, `Edit`, `Bash`, `Grep`, `Glob`
+- Configured MCP tools: `complete_merge`, `report_conflict`, `get_task_context`
+- Pre-approved CLI tools: `Read`, `Edit`, `Bash` (for conflict resolution without prompts)
+- Added tests for the new agent configuration
+
+**Files Modified:**
+- `src-tauri/src/infrastructure/agents/claude/agent_config.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test agent_config` (22 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 11:00:00 - Phase 66 Task 14: Add git handlers for merge operations
 **What:**
 - Created `src-tauri/src/http_server/handlers/git.rs` with four HTTP endpoints:
