@@ -21,3 +21,22 @@ export const ExecutionCommandResponseSchema = z.object({
   success: z.boolean(),
   status: ExecutionStatusResponseSchema,
 });
+
+/**
+ * Execution settings response schema from Rust (snake_case)
+ * Contains persistence settings: max concurrent tasks, auto-commit, pause on failure
+ */
+export const ExecutionSettingsResponseSchema = z.object({
+  max_concurrent_tasks: z.number().int().positive(),
+  auto_commit: z.boolean(),
+  pause_on_failure: z.boolean(),
+});
+
+/**
+ * Input schema for updating execution settings (snake_case for Tauri command)
+ */
+export const UpdateExecutionSettingsInputSchema = z.object({
+  max_concurrent_tasks: z.number().int().positive(),
+  auto_commit: z.boolean(),
+  pause_on_failure: z.boolean(),
+});
