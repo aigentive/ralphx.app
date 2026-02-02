@@ -4,6 +4,36 @@
 
 ---
 
+### 2026-02-02 21:30:00 - Phase 67 Task 33: Implement auto-switch to compact mode
+**What:**
+- Updated `src/components/TaskGraph/controls/GraphControls.tsx`:
+  - Added `NodeMode` type export (`"standard" | "compact"`)
+  - Added `nodeMode`, `onNodeModeChange`, and `isAutoCompact` props to GraphControlsProps
+  - Added node mode toggle button with Maximize2/Minimize2 icons
+  - Shows "(auto)" badge when auto-compacted due to 50+ tasks
+  - Exported `DEFAULT_NODE_MODE` and `COMPACT_MODE_THRESHOLD` constants
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Imported TaskNodeCompact component
+  - Created separate nodeTypes for standard and compact modes
+  - Added node mode state with auto-detection (switches to compact at 50+ tasks)
+  - Manual override allows users to switch back to standard mode
+  - Wired GraphControls into the view with filters, layout direction, grouping, and node mode
+  - Restructured layout to include GraphControls bar at top
+
+**Files Modified:**
+- `src/components/TaskGraph/controls/GraphControls.tsx` (added node mode toggle + types)
+- `src/components/TaskGraph/TaskGraphView.tsx` (wired auto-switch + GraphControls)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - performance feature, requires 50+ tasks to verify auto-switch
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:00:00 - Phase 67 Task 32: Create TaskNodeCompact component
 **What:**
 - Created `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`:

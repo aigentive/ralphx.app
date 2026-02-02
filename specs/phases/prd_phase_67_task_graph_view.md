@@ -698,7 +698,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): auto-switch to compact nodes at 50+ tasks"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 34,
