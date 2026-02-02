@@ -680,6 +680,9 @@ impl GitService {
     /// This is the "fast path" - tries to do a programmatic rebase + merge.
     /// If it succeeds, we skip the agent entirely.
     ///
+    /// For first tasks on empty repos (base has <= 1 commit), rebase is skipped
+    /// as there's no meaningful history to rebase onto - we directly merge instead.
+    ///
     /// # Arguments
     /// * `repo` - Path to the main git repository
     /// * `task_branch` - Name of the task branch to merge
@@ -697,12 +700,38 @@ impl GitService {
         // Step 1: Fetch latest from origin (non-fatal if fails)
         let _ = Self::fetch_origin(repo);
 
-        // Step 2: Checkout task branch and rebase onto base
+        // Step 2: Check if base branch is empty (0 or 1 commits)
+        // For first task on empty repo, rebase fails due to unrelated histories.
+        // Skip rebase and directly merge - the task branch becomes the base history.
+        let base_commit_count = Self::get_commit_count(repo, base).unwrap_or(0);
+        if base_commit_count <= 1 {
+            debug!(
+                "Base branch '{}' has {} commit(s), skipping rebase for first task",
+                base, base_commit_count
+            );
+
+            // Checkout base and merge task branch directly
+            Self::checkout_branch(repo, base)?;
+
+            match Self::merge_branch(repo, task_branch, base)? {
+                MergeResult::Success { commit_sha } | MergeResult::FastForward { commit_sha } => {
+                    return Ok(MergeAttemptResult::Success { commit_sha });
+                }
+                MergeResult::Conflict { files } => {
+                    Self::abort_merge(repo)?;
+                    return Ok(MergeAttemptResult::NeedsAgent {
+                        conflict_files: files,
+                    });
+                }
+            }
+        }
+
+        // Step 3: Checkout task branch and rebase onto base (normal case)
         Self::checkout_branch(repo, task_branch)?;
 
         match Self::rebase_onto(repo, base)? {
             RebaseResult::Success => {
-                // Step 3: Checkout base and merge task branch (should be fast-forward)
+                // Step 4: Checkout base and merge task branch (should be fast-forward)
                 Self::checkout_branch(repo, base)?;
 
                 match Self::merge_branch(repo, task_branch, base)? {
@@ -733,6 +762,41 @@ impl GitService {
     // =========================================================================
     // Query Operations
     // =========================================================================
+
+    /// Get the number of commits on a branch
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository
+    /// * `branch` - Name of the branch to count commits on
+    ///
+    /// # Returns
+    /// The number of commits on the branch
+    pub fn get_commit_count(repo: &Path, branch: &str) -> AppResult<u32> {
+        debug!("Getting commit count for branch '{}' in {:?}", branch, repo);
+
+        let output = Command::new("git")
+            .args(["rev-list", "--count", branch])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git rev-list --count: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to count commits on '{}': {}",
+                branch, stderr
+            )));
+        }
+
+        let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let count = count_str.parse::<u32>().map_err(|e| {
+            AppError::GitOperation(format!("Failed to parse commit count '{}': {}", count_str, e))
+        })?;
+
+        Ok(count)
+    }
 
     /// Check if a commit is an ancestor of (or equal to) a branch head
     ///
@@ -1247,5 +1311,99 @@ mod tests {
         let result = GitService::is_commit_on_branch(repo, &feature_sha, &main_branch);
         assert!(result.is_ok());
         assert!(!result.unwrap());
+    }
+
+    // =========================================================================
+    // get_commit_count Tests (Phase 78)
+    // =========================================================================
+
+    #[test]
+    fn test_get_commit_count_empty_repo() {
+        // Create a temp git repo with only an initial commit
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Should have exactly 1 commit
+        let result = GitService::get_commit_count(repo, "HEAD");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_get_commit_count_multiple_commits() {
+        // Create a temp git repo with multiple commits
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create 3 commits
+        for i in 1..=3 {
+            std::fs::write(repo.join(format!("test{}.txt", i)), format!("content {}", i)).unwrap();
+            Command::new("git")
+                .args(["add", "."])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            Command::new("git")
+                .args(["commit", "-m", &format!("commit {}", i)])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+        }
+
+        // Should have exactly 3 commits
+        let result = GitService::get_commit_count(repo, "HEAD");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3);
     }
 }
