@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-03 00:15:00 - Phase 67 Task 7: Integrate TaskDetailOverlay on node click
+**What:**
+- Added `onNodeClick` handler that calls `setSelectedTaskId(node.id)` via useUiStore
+- Added TaskDetailOverlay component to render when selectedTaskId is set
+- Uses same pattern as KanbanSplitLayout for consistent UX across views
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - interaction wiring only, requires running app to verify
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:45:00 - Phase 67 Task 6: Wire TaskGraphView to navigation
 **What:**
 - Added 'graph' to ViewType union in `src/types/chat.ts`

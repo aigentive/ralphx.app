@@ -22,6 +22,8 @@ import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
+import { useUiStore } from "@/stores/uiStore";
+import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { Loader2 } from "lucide-react";
 
 // ============================================================================
@@ -85,6 +87,10 @@ function getStatusBorderColor(status: string): string {
 export function TaskGraphView({ projectId }: TaskGraphViewProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId);
 
+  // UI Store for task selection
+  const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+
   // Compute layout using dagre
   const { nodes: layoutNodes, edges: layoutEdges } = useTaskGraphLayout(
     graphData?.nodes ?? [],
@@ -102,11 +108,14 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 
-  // Handle node click - will open TaskDetailOverlay in Task A.7
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    console.log("Node clicked:", node.id);
-    // TODO: Task A.7 will wire this to openModal('task-detail', { task })
-  }, []);
+  // Handle node click - opens TaskDetailOverlay via selectedTaskId
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      // node.id is the task ID
+      setSelectedTaskId(node.id);
+    },
+    [setSelectedTaskId]
+  );
 
   // Loading state
   if (isLoading) {
@@ -144,7 +153,7 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
   }
 
   return (
-    <div className="h-full w-full" data-testid="task-graph-view">
+    <div className="h-full w-full relative" data-testid="task-graph-view">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -179,6 +188,9 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
           }}
         />
       </ReactFlow>
+
+      {/* Task Detail Overlay - renders when a node is selected */}
+      {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}
     </div>
   );
 }
