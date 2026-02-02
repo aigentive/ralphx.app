@@ -734,6 +734,53 @@ impl GitService {
     // Query Operations
     // =========================================================================
 
+    /// Check if a commit is an ancestor of (or equal to) a branch head
+    ///
+    /// Uses `git merge-base --is-ancestor` to verify that commit_sha is reachable
+    /// from the specified branch. This is useful for verifying that a merge
+    /// actually happened on a target branch.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository
+    /// * `commit_sha` - SHA of the commit to check
+    /// * `branch` - Name of the branch to check against
+    ///
+    /// # Returns
+    /// * `Ok(true)` if commit is on the branch (is an ancestor or equal)
+    /// * `Ok(false)` if commit is not on the branch
+    /// * `Err` if git command fails
+    pub fn is_commit_on_branch(repo: &Path, commit_sha: &str, branch: &str) -> AppResult<bool> {
+        debug!(
+            "Checking if commit {} is on branch '{}' in {:?}",
+            commit_sha, branch, repo
+        );
+
+        let output = Command::new("git")
+            .args(["merge-base", "--is-ancestor", commit_sha, branch])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git merge-base: {}", e))
+            })?;
+
+        // Exit code 0 = commit is ancestor (on branch), 1 = not ancestor (not on branch)
+        // Other exit codes indicate errors
+        match output.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            Some(code) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(AppError::GitOperation(format!(
+                    "git merge-base failed with exit code {}: {}",
+                    code, stderr
+                )))
+            }
+            None => Err(AppError::GitOperation(
+                "git merge-base was terminated by signal".to_string(),
+            )),
+        }
+    }
+
     /// Get commits on the current branch since it diverged from base
     ///
     /// # Arguments
@@ -1050,5 +1097,155 @@ mod tests {
         std::fs::create_dir(actual_git_dir.join("rebase-merge")).unwrap();
 
         assert!(GitService::is_rebase_in_progress(temp_dir.path()));
+    }
+
+    // =========================================================================
+    // is_commit_on_branch Tests (Phase 78)
+    // =========================================================================
+
+    #[test]
+    fn test_is_commit_on_branch_with_valid_ancestor() {
+        // Create a temp git repo with a commit on main
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user for commits
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get the commit SHA
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let commit_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Verify commit is on HEAD (main/master)
+        let result = GitService::is_commit_on_branch(repo, &commit_sha, "HEAD");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_is_commit_on_branch_with_non_ancestor() {
+        // Create a temp git repo with divergent branches
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit on main
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create a feature branch
+        Command::new("git")
+            .args(["checkout", "-b", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Make commit on feature branch
+        std::fs::write(repo.join("feature.txt"), "feature content").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get feature commit SHA
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let feature_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Go back to main
+        Command::new("git")
+            .args(["checkout", "master"])
+            .current_dir(repo)
+            .output()
+            .ok(); // May be "main" instead of "master"
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .ok();
+
+        // Get main branch name
+        let branch_output = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let main_branch = String::from_utf8_lossy(&branch_output.stdout)
+            .trim()
+            .to_string();
+
+        // Feature commit should NOT be on main (not merged yet)
+        let result = GitService::is_commit_on_branch(repo, &feature_sha, &main_branch);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 }
