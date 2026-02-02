@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 02:15:00 - P0 Fix: Wire GraphLegend component to TaskGraphView
+**What:**
+- Fixed orphaned GraphLegend component discovered during gap verification
+- GraphLegend was created (Task B.4) but never imported/rendered in TaskGraphView
+- Added import for GraphLegend from controls/GraphLegend
+- Rendered GraphLegend inside ReactFlow canvas, positioned bottom-left
+- Set defaultCollapsed={true} to save space by default
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx`
+  - Added import: `import { GraphLegend } from "./controls/GraphLegend";`
+  - Added GraphLegend render inside ReactFlow with absolute positioning
+
+**Gap Fixed:**
+- [x] [Frontend] Orphaned Implementation: GraphLegend component created but never rendered - src/components/TaskGraph/TaskGraphView.tsx
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - wiring fix, component already implemented
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 01:30:00 - P0 Fix: Wire graph filters to layout computation
 **What:**
 - Fixed orphaned filter logic in TaskGraphView
