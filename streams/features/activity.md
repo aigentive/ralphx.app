@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 20:30:00 - Phase 67 Task 31: Handle cross-plan edge rendering
+**What:**
+- Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
+  - Added task-to-plan mapping to detect which plan group each task belongs to
+  - Detect cross-plan edges (edges where source and target are in different plan groups)
+  - Set `zIndex: 10` on cross-plan edges to ensure they render on top of plan group regions
+  - Added `isCrossPlan` property to edge data for potential future styling
+- Updated `src/components/TaskGraph/edges/DependencyEdge.tsx`:
+  - Added `isCrossPlan` to `DependencyEdgeData` interface for type consistency
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts` (cross-plan edge detection + z-index)
+- `src/components/TaskGraph/edges/DependencyEdge.tsx` (type update)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - z-index logic change, requires tasks with cross-plan dependencies to verify
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:00:00 - Phase 67 Task 30: Create custom GraphMiniMap component
 **What:**
 - Created `src/components/TaskGraph/controls/GraphMiniMap.tsx`:
