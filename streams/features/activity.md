@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 22:15:00 - Phase 67 Task 2: Create frontend API layer for task graph
+**What:**
+- Created `src/api/task-graph.schemas.ts` with Zod schemas (snake_case) for TaskGraphNode, TaskGraphEdge, StatusSummary, PlanGroupInfo, TaskDependencyGraphResponse
+- Created `src/api/task-graph.types.ts` with TypeScript interfaces (camelCase) matching backend types
+- Created `src/api/task-graph.transforms.ts` with transform functions converting snake_case to camelCase
+- Created `src/api/task-graph.ts` with typedInvokeWithTransform wrapper and `taskGraphApi.getDependencyGraph()` method
+- All re-exports in place for types, schemas, and transforms
+
+**Files Created:**
+- `src/api/task-graph.schemas.ts`
+- `src/api/task-graph.types.ts`
+- `src/api/task-graph.transforms.ts`
+- `src/api/task-graph.ts`
+
+**Commands:**
+- `npm run lint` (passed - only pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - API layer only, no UI changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:30:00 - Phase 67 Task 1: Add get_task_dependency_graph backend command
 **What:**
 - Created `TaskGraphNode`, `TaskGraphEdge`, `StatusSummary`, `PlanGroupInfo`, `TaskDependencyGraphResponse` structs in `src-tauri/src/commands/task_commands/types.rs`
