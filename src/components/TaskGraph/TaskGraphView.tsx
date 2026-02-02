@@ -685,39 +685,54 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [getNodes, setCenter]
   );
 
-  // Clear highlight on any node click (new interaction)
+  // Single click on node - focus/highlight (consistent with timeline behavior)
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      // Skip group nodes (their IDs start with "group-")
+      if (node.id.startsWith("group-")) {
+        return;
+      }
+
       // Clear any existing highlight timeout
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
         highlightTimeoutRef.current = null;
       }
-      // Clear highlight and focus (mouse click takes over from keyboard)
-      setHighlightedTaskId(null);
-      setFocusedNodeId(null);
 
-      // Skip group nodes (their IDs start with "group-")
-      if (node.id.startsWith("group-")) {
-        return;
-      }
-      // node.id is the task ID - open detail overlay
-      setSelectedTaskId(node.id);
+      // Set the highlighted task (focus the node)
+      setHighlightedTaskId(node.id);
+      setFocusedNodeId(node.id);
+
+      // Auto-clear highlight after timeout
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedTaskId(null);
+        highlightTimeoutRef.current = null;
+      }, HIGHLIGHT_TIMEOUT_MS);
     },
-    [setSelectedTaskId]
+    []
   );
 
-  // Handle double-click on nodes (collapse/expand for groups)
+  // Double-click on nodes - open task detail (for tasks) or collapse/expand (for groups)
   const handleNodeDoubleClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      // Only handle group nodes
+      // Clear any highlight since we're opening detail
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+      setHighlightedTaskId(null);
+
+      // Handle group nodes - collapse/expand
       if (node.id.startsWith("group-")) {
-        // Extract plan artifact ID from "group-{planArtifactId}"
         const planArtifactId = node.id.slice(6);
         handleToggleCollapse(planArtifactId);
+        return;
       }
+
+      // Handle task nodes - open detail overlay
+      setSelectedTaskId(node.id);
     },
-    [handleToggleCollapse]
+    [handleToggleCollapse, setSelectedTaskId]
   );
 
   // Clear highlight on pane click
