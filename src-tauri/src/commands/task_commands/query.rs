@@ -513,32 +513,39 @@ pub async fn get_task_dependency_graph(
         }
     }
 
-    // 5. Build plan groups
+    // 5. Build plan groups by tracing task → proposal → session
+    // This ensures tasks are grouped by the Plan (ideation session) they came from,
+    // regardless of whether a plan_artifact was explicitly created.
     let mut plan_groups: Vec<PlanGroupInfo> = Vec::new();
-    let mut plan_task_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut session_task_map: HashMap<String, Vec<String>> = HashMap::new();
 
     for task in &tasks {
-        if let Some(ref artifact_id) = task.plan_artifact_id {
-            plan_task_map
-                .entry(artifact_id.as_str().to_string())
-                .or_default()
-                .push(task.id.as_str().to_string());
+        // Trace: task.source_proposal_id → proposal → session_id
+        if let Some(ref proposal_id) = task.source_proposal_id {
+            if let Ok(Some(proposal)) = state.task_proposal_repo.get_by_id(proposal_id).await {
+                session_task_map
+                    .entry(proposal.session_id.as_str().to_string())
+                    .or_default()
+                    .push(task.id.as_str().to_string());
+            }
         }
     }
 
-    // Get session info for each plan
-    for (plan_artifact_id, task_ids_in_plan) in plan_task_map {
-        // Try to find the ideation session for this plan artifact
-        let sessions = state
+    // Get session info for each plan group
+    for (session_id_str, task_ids_in_plan) in session_task_map {
+        let session_id = crate::domain::entities::IdeationSessionId::from_string(session_id_str.clone());
+        let session = state
             .ideation_session_repo
-            .get_by_plan_artifact_id(&plan_artifact_id)
+            .get_by_id(&session_id)
             .await
             .map_err(|e| e.to_string())?;
 
-        let (session_id, session_title) = sessions.first().map_or(
-            (plan_artifact_id.clone(), None),
-            |s| (s.id.as_str().to_string(), s.title.clone()),
-        );
+        let session_title = session.as_ref().and_then(|s| s.title.clone());
+        let plan_artifact_id = session
+            .as_ref()
+            .and_then(|s| s.plan_artifact_id.as_ref())
+            .map(|id| id.as_str().to_string())
+            .unwrap_or_else(|| session_id_str.clone());
 
         // Compute status summary
         let mut summary = StatusSummary::default();
@@ -549,8 +556,8 @@ pub async fn get_task_dependency_graph(
         }
 
         plan_groups.push(PlanGroupInfo {
-            plan_artifact_id: plan_artifact_id.clone(),
-            session_id,
+            plan_artifact_id,
+            session_id: session_id_str,
             session_title,
             task_ids: task_ids_in_plan,
             status_summary: summary,
