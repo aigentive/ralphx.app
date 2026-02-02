@@ -254,6 +254,7 @@ function EdgeMarkerDefinitions() {
           refY={5}
           markerWidth={8}
           markerHeight={6}
+          markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >
           <path
@@ -270,6 +271,7 @@ function EdgeMarkerDefinitions() {
           refY={5}
           markerWidth={8}
           markerHeight={6}
+          markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >
           <path
@@ -286,6 +288,7 @@ function EdgeMarkerDefinitions() {
           refY={5}
           markerWidth={8}
           markerHeight={6}
+          markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >
           <path
