@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 69,
+  "currentPhase": 70,
   "phases": [
     {
       "phase": 0,
@@ -499,6 +499,13 @@
       "prd": "specs/phases/prd_phase_69_diff_worktree_fix.md",
       "status": "complete",
       "description": "Make get_task_file_changes and get_file_diff worktree-aware"
+    },
+    {
+      "phase": 70,
+      "name": "Fix get_task_file_changes Empty After Commits",
+      "prd": "specs/phases/prd_phase_70_diff_base_branch_fix.md",
+      "status": "active",
+      "description": "Compare against base branch instead of HEAD for file changes"
     }
   ]
 }
