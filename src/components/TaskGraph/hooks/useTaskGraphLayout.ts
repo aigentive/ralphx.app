@@ -4,9 +4,13 @@
  * Uses dagre algorithm to compute node positions for a proper hierarchical layout
  * with configurable spacing and direction. Supports plan grouping with visual
  * region containers.
+ *
+ * Layout Caching: Dagre computation is expensive. We cache layouts by a structural
+ * hash (node IDs + edge pairs + config). When only node data changes (e.g., status)
+ * but structure is the same, we reuse cached positions and just update node data.
  */
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/react";
 import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
@@ -221,49 +225,40 @@ function createGroupNodes(
 }
 
 // ============================================================================
-// Layout Computation
+// Layout Computation (with caching)
 // ============================================================================
 
-function computeLayout(
+/**
+ * Compute layout using cached positions if structure unchanged, otherwise recompute.
+ */
+function computeLayoutWithCache(
   graphNodes: TaskGraphNode[],
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
   planGroups: PlanGroupInfo[],
   config: LayoutConfig,
   collapsedPlanIds: Set<string>,
-  onToggleCollapse?: (planArtifactId: string) => void
+  onToggleCollapse: ((planArtifactId: string) => void) | undefined,
+  cache: React.MutableRefObject<CachedLayout | null>
 ): LayoutResult {
-  // Create dagre graph
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
+  // Compute structural hash to check cache
+  const nodeIds = graphNodes.map((n) => n.taskId);
+  const edgePairs = graphEdges.map((e) => ({ source: e.source, target: e.target }));
+  const hash = computeGraphHash(nodeIds, edgePairs, config.direction);
 
-  // Set graph options
-  g.setGraph({
-    rankdir: config.direction,
-    nodesep: config.nodesep,
-    ranksep: config.ranksep,
-    marginx: config.marginx,
-    marginy: config.marginy,
-  });
+  // Check if we can use cached positions
+  let positions: Map<string, { x: number; y: number }>;
+  if (cache.current && cache.current.hash === hash) {
+    // Cache hit: reuse positions
+    positions = cache.current.positions;
+  } else {
+    // Cache miss: compute new layout and cache it
+    positions = computePositions(nodeIds, edgePairs, config);
+    cache.current = { hash, positions };
+  }
 
   // Create a set of critical path nodes for quick lookup
   const criticalPathSet = new Set(criticalPath);
-
-  // Add nodes to dagre graph
-  graphNodes.forEach((node) => {
-    g.setNode(node.taskId, {
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-    });
-  });
-
-  // Add edges to dagre graph
-  graphEdges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target);
-  });
-
-  // Run dagre layout
-  dagre.layout(g);
 
   // Determine handle positions based on layout direction
   const sourcePosition = config.direction === "TB" ? Position.Bottom : Position.Right;
@@ -283,18 +278,14 @@ function computeLayout(
     }
   }
 
-  // Transform dagre nodes to React Flow nodes
+  // Transform to React Flow nodes using cached/computed positions
   const nodes: Node[] = graphNodes.map((graphNode) => {
-    const dagreNode = g.node(graphNode.taskId);
-
-    // Dagre gives center position, React Flow needs top-left
-    const x = dagreNode.x - NODE_WIDTH / 2;
-    const y = dagreNode.y - NODE_HEIGHT / 2;
+    const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
 
     return {
       id: graphNode.taskId,
       type: "task", // Use custom TaskNode component
-      position: { x, y },
+      position: pos,
       data: {
         label: graphNode.title, // Full title - TaskNode handles truncation
         taskId: graphNode.taskId,
@@ -360,6 +351,9 @@ function computeLayout(
 /**
  * Hook to compute dagre-based hierarchical layout for task graph
  *
+ * Uses layout caching to avoid expensive dagre recomputation when only node data
+ * (status, title, priority) changes but graph structure (nodes, edges) remains the same.
+ *
  * @param nodes - Task graph nodes from API
  * @param edges - Task graph edges from API
  * @param criticalPath - Array of task IDs on the critical path
@@ -411,15 +405,107 @@ export function useTaskGraphLayout(
     [config]
   );
 
-  // Compute layout whenever inputs change
+  // Layout cache - persists across renders, reused when graph structure unchanged
+  const layoutCache = useRef<CachedLayout | null>(null);
+
+  // Compute layout using cache when structure is unchanged
   const layout = useMemo(() => {
     if (graphNodes.length === 0) {
       return { nodes: [], edges: [], groupNodes: [] };
     }
-    return computeLayout(graphNodes, graphEdges, criticalPath, planGroups, fullConfig, collapsedPlanIds, onToggleCollapse);
+    return computeLayoutWithCache(
+      graphNodes,
+      graphEdges,
+      criticalPath,
+      planGroups,
+      fullConfig,
+      collapsedPlanIds,
+      onToggleCollapse,
+      layoutCache
+    );
   }, [graphNodes, graphEdges, criticalPath, planGroups, fullConfig, collapsedPlanIds, onToggleCollapse]);
 
   return layout;
+}
+
+// ============================================================================
+// Layout Cache
+// ============================================================================
+
+/**
+ * Cached layout positions from dagre computation.
+ * Only stores structural layout info - node data is applied fresh each time.
+ */
+interface CachedLayout {
+  hash: string;
+  positions: Map<string, { x: number; y: number }>;
+}
+
+/**
+ * Compute a structural hash of the graph for cache key.
+ * Hash includes: node IDs (sorted), edge pairs (sorted), and config direction.
+ * Does NOT include node data (status, title, priority) since those don't affect layout.
+ */
+function computeGraphHash(
+  nodeIds: string[],
+  edges: { source: string; target: string }[],
+  direction: "TB" | "LR"
+): string {
+  // Sort for consistent ordering
+  const sortedNodes = [...nodeIds].sort().join(",");
+  const sortedEdges = [...edges]
+    .map((e) => `${e.source}>${e.target}`)
+    .sort()
+    .join(",");
+  return `${direction}:${sortedNodes}|${sortedEdges}`;
+}
+
+/**
+ * Compute layout positions using dagre.
+ * Returns only the position map - caller applies node data.
+ */
+function computePositions(
+  nodeIds: string[],
+  edges: { source: string; target: string }[],
+  config: LayoutConfig
+): Map<string, { x: number; y: number }> {
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({
+    rankdir: config.direction,
+    nodesep: config.nodesep,
+    ranksep: config.ranksep,
+    marginx: config.marginx,
+    marginy: config.marginy,
+  });
+
+  // Add nodes
+  for (const id of nodeIds) {
+    g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  }
+
+  // Add edges
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  // Run dagre layout
+  dagre.layout(g);
+
+  // Extract positions
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const id of nodeIds) {
+    const dagreNode = g.node(id);
+    if (dagreNode) {
+      // Dagre gives center position, React Flow needs top-left
+      positions.set(id, {
+        x: dagreNode.x - NODE_WIDTH / 2,
+        y: dagreNode.y - NODE_HEIGHT / 2,
+      });
+    }
+  }
+
+  return positions;
 }
 
 // Export default config for use in controls
