@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-03 01:00:00 - Phase 74 Task 6: Increase dialog size to near full screen
+**What:**
+- Changed dialog dimensions from w-[90vw] h-[85vh] to w-[95vw] h-[95vh]
+- Changed max-w-7xl to max-w-[95vw] for consistency
+- Increased sidebar width from w-[300px] to w-[400px] for better content visibility
+- Updated maxWidth inline style from 300px to 400px
+
+**Files:**
+- MODIFIED: src/components/reviews/ReviewDetailModal.tsx (lines 435, 476-477)
+
+**Visual Verification:** N/A - CSS dimension change in existing component
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 00:15:00 - Phase 74 Task 5: Use summary field in review history
 **What:**
 - Changed ReviewHistorySection to use `entry.summary` instead of `entry.notes`

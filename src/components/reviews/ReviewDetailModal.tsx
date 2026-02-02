@@ -432,7 +432,7 @@ export function ReviewDetailModal({
         data-testid="review-detail-modal"
         className={cn(
           "p-0 gap-0 overflow-hidden flex flex-col",
-          "max-w-7xl w-[90vw] h-[85vh]"
+          "max-w-[95vw] w-[95vw] h-[95vh]"
         )}
         style={{
           backgroundColor: "var(--bg-surface)",
@@ -473,8 +473,8 @@ export function ReviewDetailModal({
         <div className="flex flex-1 min-h-0">
           {/* Left Pane: Context (300px fixed) */}
           <div
-            className="w-[300px] shrink-0 flex flex-col border-r overflow-hidden"
-            style={{ borderColor: "rgba(255,255,255,0.06)", maxWidth: "300px" }}
+            className="w-[400px] shrink-0 flex flex-col border-r overflow-hidden"
+            style={{ borderColor: "rgba(255,255,255,0.06)", maxWidth: "400px" }}
           >
             <div className="flex-1 overflow-y-auto">
               <div className="p-4 space-y-5">
