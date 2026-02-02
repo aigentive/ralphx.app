@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 19:45:00 - Phase 73 Task 6: Update KanbanSplitLayout width constraints
+**What:**
+- Updated width constraints in `src/components/layout/KanbanSplitLayout.tsx`
+- Changed MIN_LEFT_PERCENT from 40 to 65 (35% max right panel)
+- Changed DEFAULT_LEFT_PERCENT from 75 to 70 (30% default right panel)
+- MAX_LEFT_PERCENT unchanged at 75 (25% min right panel)
+- Creates visual parity with GraphSplitLayout (both use 25-35% right panel)
+
+**Files:**
+- MODIFIED: src/components/layout/KanbanSplitLayout.tsx (lines 24-26)
+
+**Visual Verification:** N/A - backend only (constant changes, no UI component changes)
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 06:34:07 - Phase 73 Task 5: Wire ExecutionControlBar to TaskGraphView
 **What:**
 - Updated `src/App.tsx` to pass ExecutionControlBar as footer prop to TaskGraphView
