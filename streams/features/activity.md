@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-02 10:15:00 - Phase 75 Task 2: Add merge title formatting to ConversationSelector
+**What:**
+- Added merge case to `getConversationTitle()` function to return `Merge #${index + 1}` for merge context
+- Added `merge` to `isAgentContext` check so merge conversations get agent-style rendering (status polling, execution history UI)
+- Updated dropdown label to show "Merge History" for merge context type
+
+**Files:**
+- MODIFIED: src/components/Chat/ConversationSelector.tsx
+
+**Visual Verification:** N/A - text content change in existing component
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 09:30:00 - Phase 75 Task 1: Add merge mode detection and context hook support
 **What:**
 - Added `MERGE_STATUSES` import to IntegratedChatPanel.tsx
