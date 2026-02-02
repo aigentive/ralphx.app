@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 23:45:00 - Phase 78 Task 3: Add verification to complete_merge HTTP handler
+**What:**
+- Added verification in complete_merge handler to check commit is on main branch before accepting
+- Added step 6: verify commit is on base branch using GitService::is_commit_on_branch()
+- If commit not on base branch: returns BAD_REQUEST with descriptive error message
+- Reused repo_path from verification step for cleanup (removed duplicate declaration)
+- Updated comment numbering for consistency (steps 1-10)
+
+**Files:**
+- MODIFIED: src-tauri/src/http_server/handlers/git.rs
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - all tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:15:00 - Phase 78 Task 2: Fix attempt_merge_auto_complete to verify merge on main
 **What:**
 - Fixed attempt_merge_auto_complete() in chat_service_send_background.rs to verify merge on main branch

@@ -114,7 +114,7 @@ pub async fn complete_merge(
         ));
     }
 
-    // 2. Get project for cleanup info
+    // 5. Get project for cleanup info and verification
     let project = state
         .app_state
         .project_repo
@@ -123,7 +123,23 @@ pub async fn complete_merge(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
 
-    // 3. Set merge_commit_sha on task
+    // 6. Verify commit is on main branch (not just in worktree)
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+    let repo_path = PathBuf::from(&project.working_directory);
+
+    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, base_branch)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Commit {} is not on {} branch. The merge may not have completed successfully.",
+                req.commit_sha, base_branch
+            ),
+        ));
+    }
+
+    // 7. Set merge_commit_sha on task
     task.merge_commit_sha = Some(req.commit_sha.clone());
     state
         .app_state
@@ -132,7 +148,7 @@ pub async fn complete_merge(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 4. Create transition service and transition to Merged
+    // 8. Create transition service and transition to Merged
     let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
         Arc::clone(&state.execution_state),
         Arc::clone(&state.app_state.project_repo),
@@ -169,9 +185,9 @@ pub async fn complete_merge(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 5. Cleanup branch/worktree
+    // 9. Cleanup branch/worktree
     if let Some(task_branch) = &task.task_branch {
-        let repo_path = PathBuf::from(&project.working_directory);
+        // repo_path already defined in step 6
 
         // Delete worktree if exists (Worktree mode)
         if let Some(worktree_path) = &task.worktree_path {
@@ -182,7 +198,7 @@ pub async fn complete_merge(
         let _ = GitService::delete_branch(&repo_path, task_branch, true);
     }
 
-    // 6. Emit events
+    // 10. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "merge:completed",
