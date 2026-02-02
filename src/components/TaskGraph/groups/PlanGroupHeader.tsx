@@ -148,6 +148,36 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   }, [statusSummary, taskCount]);
 
   const displayTitle = sessionTitle || "Unnamed Plan";
+  const percentage = counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
+
+  // Compact header for collapsed state - just icon, title, and percentage
+  if (isCollapsed) {
+    return (
+      <div
+        className="flex items-center gap-2 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer"
+        onDoubleClick={onToggleCollapse}
+      >
+        <button
+          onClick={onToggleCollapse}
+          className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
+          aria-label="Expand group"
+        >
+          <ChevronRight className="w-4 h-4 text-[hsl(var(--text-muted))]" />
+        </button>
+
+        <span
+          className="text-sm font-medium text-[hsl(var(--text-primary))] truncate flex-1"
+          title={`Plan: ${displayTitle}`}
+        >
+          {displayTitle}
+        </span>
+
+        <span className="text-xs text-[hsl(var(--text-muted))] whitespace-nowrap">
+          {percentage}%
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -159,13 +189,9 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         <button
           onClick={onToggleCollapse}
           className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
-          aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+          aria-label="Collapse group"
         >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4 text-[hsl(var(--text-muted))]" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-[hsl(var(--text-muted))]" />
-          )}
+          <ChevronDown className="w-4 h-4 text-[hsl(var(--text-muted))]" />
         </button>
 
         <button
