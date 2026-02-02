@@ -151,11 +151,11 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
 
   return (
     <div
-      className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer"
+      className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer"
       onDoubleClick={onToggleCollapse}
     >
-      {/* Left section: collapse toggle + title */}
-      <div className="flex items-center gap-2 min-w-[120px] flex-1">
+      {/* Top row: collapse toggle + title + count + context menu */}
+      <div className="flex items-center gap-2">
         <button
           onClick={onToggleCollapse}
           className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
@@ -170,7 +170,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
 
         <span
           className={cn(
-            "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
+            "text-sm font-medium text-[hsl(var(--text-primary))] truncate flex-1",
             onNavigateToSession &&
               "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
           )}
@@ -179,55 +179,62 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         >
           {displayTitle}
         </span>
+
+        {/* Task count */}
+        <span className="text-xs text-[hsl(var(--text-muted))]">
+          {counts.total} tasks
+        </span>
+
+        {/* Context menu button */}
+        {onContextMenu && (
+          <button
+            onClick={onContextMenu}
+            className="flex-shrink-0 p-1 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
+            aria-label="Plan group options"
+          >
+            <MoreHorizontal className="w-4 h-4 text-[hsl(var(--text-muted))]" />
+          </button>
+        )}
       </div>
 
-      {/* Middle section: progress bar */}
-      <ProgressBar completed={counts.done} total={counts.total} />
+      {/* Bottom row: progress bar + status badges */}
+      <div className="flex items-center gap-2">
+        <ProgressBar completed={counts.done} total={counts.total} />
 
-      {/* Status badges */}
-      <div className="flex items-center gap-1.5">
-        <StatusBadge
-          icon={<Check className="w-3 h-3" />}
-          count={counts.done}
-          label={`${counts.done} completed`}
-          colorClass="bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
-        />
-        <StatusBadge
-          icon={<Play className="w-3 h-3" />}
-          count={counts.executing}
-          label={`${counts.executing} executing`}
-          colorClass="bg-[hsla(14,100%,55%,0.15)] text-[hsl(14,100%,55%)]"
-        />
-        <StatusBadge
-          icon={<AlertTriangle className="w-3 h-3" />}
-          count={counts.blocked}
-          label={`${counts.blocked} blocked`}
-          colorClass="bg-[hsla(45,90%,55%,0.15)] text-[hsl(45,90%,55%)]"
-        />
-        <StatusBadge
-          icon={<Eye className="w-3 h-3" />}
-          count={counts.review}
-          label={`${counts.review} in review`}
-          colorClass="bg-[hsla(220,80%,60%,0.15)] text-[hsl(220,80%,60%)]"
-        />
-        <StatusBadge
-          icon={<GitMerge className="w-3 h-3" />}
-          count={counts.merge}
-          label={`${counts.merge} merging`}
-          colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
-        />
+        {/* Status badges */}
+        <div className="flex items-center gap-1.5">
+          <StatusBadge
+            icon={<Check className="w-3 h-3" />}
+            count={counts.done}
+            label={`${counts.done} completed`}
+            colorClass="bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
+          />
+          <StatusBadge
+            icon={<Play className="w-3 h-3" />}
+            count={counts.executing}
+            label={`${counts.executing} executing`}
+            colorClass="bg-[hsla(14,100%,55%,0.15)] text-[hsl(14,100%,55%)]"
+          />
+          <StatusBadge
+            icon={<AlertTriangle className="w-3 h-3" />}
+            count={counts.blocked}
+            label={`${counts.blocked} blocked`}
+            colorClass="bg-[hsla(45,90%,55%,0.15)] text-[hsl(45,90%,55%)]"
+          />
+          <StatusBadge
+            icon={<Eye className="w-3 h-3" />}
+            count={counts.review}
+            label={`${counts.review} in review`}
+            colorClass="bg-[hsla(220,80%,60%,0.15)] text-[hsl(220,80%,60%)]"
+          />
+          <StatusBadge
+            icon={<GitMerge className="w-3 h-3" />}
+            count={counts.merge}
+            label={`${counts.merge} merging`}
+            colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
+          />
+        </div>
       </div>
-
-      {/* Right section: context menu button */}
-      {onContextMenu && (
-        <button
-          onClick={onContextMenu}
-          className="flex-shrink-0 p-1 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
-          aria-label="Plan group options"
-        >
-          <MoreHorizontal className="w-4 h-4 text-[hsl(var(--text-muted))]" />
-        </button>
-      )}
     </div>
   );
 });

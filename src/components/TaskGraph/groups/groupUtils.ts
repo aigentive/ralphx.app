@@ -41,7 +41,7 @@ export interface GroupBoundingBox extends BoundingBox {
 export const GROUP_PADDING = 24;
 
 /** Extra space at top for the header */
-export const HEADER_HEIGHT = 48;
+export const HEADER_HEIGHT = 64;
 
 /** Minimum group dimensions */
 export const MIN_GROUP_WIDTH = 200;
