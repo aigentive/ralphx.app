@@ -437,8 +437,9 @@ function computeLayoutWithCache(
     // Cache hit: reuse positions
     positions = cache.current.positions;
   } else {
-    // Cache miss: compute new layout for ALL nodes using compound graph and cache it
-    positions = computePositions(allNodeIds, allEdgePairs, config, layoutPlanGroups);
+    // Cache miss: compute new layout using compound graph and cache it
+    // Collapsed groups use minimal placeholder nodes
+    positions = computePositions(allNodeIds, allEdgePairs, config, layoutPlanGroups, collapsedPlanIds);
     cache.current = { hash, positions };
   }
 
@@ -725,13 +726,16 @@ function computeGraphHash(
  * When planGroups are provided, uses compound graph to keep grouped nodes together
  * and prevent group overlap.
  *
+ * Collapsed groups use a single placeholder node for minimal space.
+ *
  * Returns position maps for both task nodes and group parent nodes.
  */
 function computePositions(
   nodeIds: string[],
   edges: { source: string; target: string }[],
   config: LayoutConfig,
-  planGroups: LayoutPlanGroup[] = []
+  planGroups: LayoutPlanGroup[] = [],
+  collapsedPlanIds: Set<string> = new Set()
 ): Map<string, { x: number; y: number }> {
   // Use compound graph when we have plan groups to prevent overlap
   const useCompound = planGroups.length > 0;
@@ -745,12 +749,18 @@ function computePositions(
     marginy: config.marginy,
   });
 
-  // Build task to group mapping for parent assignment
+  // Build task to group mapping and identify collapsed group tasks
   const taskToGroupMap = new Map<string, string>();
+  const collapsedTaskIds = new Set<string>();
+
   if (useCompound) {
     for (const group of planGroups) {
+      const isCollapsed = collapsedPlanIds.has(group.planArtifactId);
       for (const taskId of group.taskIds) {
         taskToGroupMap.set(taskId, group.planArtifactId);
+        if (isCollapsed) {
+          collapsedTaskIds.add(taskId);
+        }
       }
     }
 
@@ -773,16 +783,36 @@ function computePositions(
       }
     }
     const ungroupedTaskIds = nodeIds.filter(id => !groupedTaskIds.has(id));
+
+    // Check if ungrouped pseudo-group is collapsed
+    const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
     if (ungroupedTaskIds.length > 0) {
       g.setNode(UNGROUPED_PLAN_ID, { label: UNGROUPED_PLAN_ID });
       for (const taskId of ungroupedTaskIds) {
         taskToGroupMap.set(taskId, UNGROUPED_PLAN_ID);
+        if (isUngroupedCollapsed) {
+          collapsedTaskIds.add(taskId);
+        }
       }
     }
   }
 
-  // Add task nodes
+  // Add task nodes - skip collapsed group tasks, add placeholder instead
+  const collapsedGroupPlaceholders = new Set<string>();
   for (const id of nodeIds) {
+    if (collapsedTaskIds.has(id)) {
+      // For collapsed groups, add ONE placeholder per group (not per task)
+      const groupId = taskToGroupMap.get(id);
+      if (groupId && !collapsedGroupPlaceholders.has(groupId)) {
+        // Add a small placeholder node for the collapsed group
+        const placeholderId = `__collapsed_placeholder_${groupId}__`;
+        g.setNode(placeholderId, { width: NODE_WIDTH, height: 40 }); // Minimal height
+        g.setParent(placeholderId, groupId);
+        collapsedGroupPlaceholders.add(groupId);
+      }
+      continue; // Skip individual collapsed tasks
+    }
+
     g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
 
     // Set parent relationship for compound graph
@@ -794,8 +824,11 @@ function computePositions(
     }
   }
 
-  // Add edges
+  // Add edges - skip edges involving collapsed task nodes
   for (const edge of edges) {
+    if (collapsedTaskIds.has(edge.source) || collapsedTaskIds.has(edge.target)) {
+      continue; // Skip edges to/from collapsed tasks
+    }
     g.setEdge(edge.source, edge.target);
   }
 
