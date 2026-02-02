@@ -279,7 +279,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(state-machine): add auto-transition from Approved to PendingMerge"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 11,

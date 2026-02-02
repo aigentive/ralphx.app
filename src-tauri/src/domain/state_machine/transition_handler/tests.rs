@@ -308,7 +308,7 @@ async fn test_reviewing_approved_transitions_to_review_passed() {
 }
 
 #[tokio::test]
-async fn test_review_passed_human_approve_transitions_to_approved() {
+async fn test_review_passed_human_approve_transitions_to_pending_merge() {
     let (_spawner, emitter, _notifier, dep_manager, _review_starter, services) = create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -321,12 +321,17 @@ async fn test_review_passed_human_approve_transitions_to_approved() {
         )
         .await;
 
-    assert_eq!(result.state(), Some(&State::Approved));
+    // Should auto-transition from Approved to PendingMerge (Phase 66 - merge workflow)
+    if let TransitionResult::AutoTransition(state) = &result {
+        assert_eq!(*state, State::PendingMerge);
+    } else {
+        panic!("Expected AutoTransition to PendingMerge, got {:?}", result);
+    }
 
-    // Should emit task_completed event
+    // Should emit task_completed event (during Approved entry)
     assert!(emitter.has_event("task_completed"));
 
-    // Should unblock dependents
+    // Should unblock dependents (during Approved entry)
     let calls = dep_manager.get_calls();
     assert!(calls.iter().any(|c| c.method == "unblock_dependents"));
 }

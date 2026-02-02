@@ -166,6 +166,11 @@ impl<'a> TransitionHandler<'a> {
                 // Auto-transition to Reviewing (spawn reviewer)
                 Some(State::Reviewing)
             }
+            State::Approved => {
+                // Auto-transition to PendingMerge (Phase 66 - merge workflow)
+                // NOTE: PendingMerge does NOT auto-transition - side effect determines next state
+                Some(State::PendingMerge)
+            }
             _ => None,
         }
     }

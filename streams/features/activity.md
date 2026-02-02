@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 08:00:00 - Phase 66 Task 10: Add auto-transition from Approved to PendingMerge
+**What:**
+- Added auto-transition from `State::Approved` to `State::PendingMerge` in `check_auto_transition()` in transition_handler/mod.rs
+- This is the entry point to the merge workflow after human approval
+- NOTE: PendingMerge does NOT auto-transition - side effect determines next state based on merge success/conflict
+- Updated existing test `test_review_passed_human_approve_transitions_to_approved` to expect `PendingMerge` as final state (via AutoTransition)
+
+**Files Modified:**
+- `src-tauri/src/domain/state_machine/transition_handler/mod.rs` (add auto-transition case)
+- `src-tauri/src/domain/state_machine/transition_handler/tests.rs` (update test expectation)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 07:00:00 - Phase 66 Task 9: Checkout task branch on re-executing/reviewing in local mode
 **What:**
 - Added `checkout_task_branch_if_needed()` helper method to TransitionHandler in side_effects.rs
