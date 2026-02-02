@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-03 02:00:00 - Phase 72 Task 7: Update hover and selection states
+**What:**
+- Removed white ring selection state (`ring-2 ring-white/30`) from both TaskNode.tsx and TaskNodeCompact.tsx
+- Implemented Finder-like blue selection with translucent background `hsla(220 60% 50% / 0.25)`
+- Added blue selection border `1px solid hsla(220 60% 60% / 0.3)`
+- Selection styling applied via style prop (background and border) instead of Tailwind ring classes
+- Critical path ring now excluded when node is selected to avoid visual conflict
+- Hover states unchanged: `hover:shadow-lg` for elevation effect (no scale)
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - selection state styling changes, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 01:00:00 - Phase 72 Task 6: Make connection handles more subtle
 **What:**
 - Updated TaskNode.tsx handles from `!w-2 !h-2` to `!w-1.5 !h-1.5` for smaller size

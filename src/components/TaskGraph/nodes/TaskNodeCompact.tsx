@@ -163,17 +163,21 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           relative rounded px-2 py-1.5
           transition-all duration-150 ease-out
           hover:shadow-md
-          ${selected ? "ring-2 ring-white/30" : ""}
-          ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isCriticalPath && !selected ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
           ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
           ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)]" : ""}
         `}
         style={{
-          // Glass morphism surface
-          background: GLASS_SURFACE.background,
+          // Glass morphism surface - overridden by selection state
+          background: selected
+            ? "hsla(220 60% 50% / 0.25)"
+            : GLASS_SURFACE.background,
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
-          border: GLASS_SURFACE.border,
+          // Finder-like blue selection border, or default border
+          border: selected
+            ? "1px solid hsla(220 60% 60% / 0.3)"
+            : GLASS_SURFACE.border,
           // Left priority stripe (matches Kanban card styling)
           borderLeft: `3px solid ${getPriorityStripeColor(priority)}`,
           // Status-specific shadow for active states
