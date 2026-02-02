@@ -117,6 +117,7 @@ function createGroupNodes(
   planGroups: PlanGroupInfo[],
   collapsedPlanIds: Set<string>,
   positions: Map<string, { x: number; y: number }>,
+  graphNodes: TaskGraphNode[],
   onToggleCollapse?: (planArtifactId: string) => void
 ): PlanGroupNode[] {
   if (planGroups.length === 0) {
@@ -244,7 +245,7 @@ function createGroupNodes(
       }
     }
 
-    // Create a pseudo-StatusSummary for ungrouped tasks
+    // Calculate StatusSummary for ungrouped tasks from their actual statuses
     const ungroupedSummary = {
       backlog: 0,
       ready: 0,
@@ -256,6 +257,23 @@ function createGroupNodes(
       completed: 0,
       terminal: 0,
     };
+
+    // Build status counts from actual task statuses
+    for (const taskId of ungroupedTaskIds) {
+      const node = graphNodes.find((n) => n.taskId === taskId);
+      if (!node) continue;
+
+      const status = node.internalStatus;
+      if (status === "backlog") ungroupedSummary.backlog++;
+      else if (status === "ready") ungroupedSummary.ready++;
+      else if (status === "blocked") ungroupedSummary.blocked++;
+      else if (status === "executing" || status === "re_executing") ungroupedSummary.executing++;
+      else if (status.startsWith("qa_")) ungroupedSummary.qa++;
+      else if (status === "pending_review" || status === "reviewing" || status === "review_passed" || status === "escalated" || status === "revision_needed") ungroupedSummary.review++;
+      else if (status === "approved") ungroupedSummary.merge++;
+      else if (status === "merged") ungroupedSummary.completed++;
+      else if (status === "failed" || status === "cancelled") ungroupedSummary.terminal++;
+    }
 
     const groupNode = createPlanGroupNode(
       UNGROUPED_PLAN_ID,
@@ -643,7 +661,7 @@ function computeLayoutWithCache(
   });
 
   // Create group nodes for plan groups using ALL positioned nodes
-  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, positions, onToggleCollapse);
+  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, positions, graphNodes, onToggleCollapse);
 
   return { nodes, edges, groupNodes };
 }
