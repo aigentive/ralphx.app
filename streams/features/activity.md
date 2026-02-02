@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-02 18:00:00 - Phase 66 Task 21: Add merge state subgroups to Done column
+**What:**
+- Updated `src/types/workflow.ts`:
+  - Added groups to Done column in defaultWorkflow: Merging, Needs Attention, Completed, Terminal
+  - Merging group: pending_merge, merging states (GitMerge icon)
+  - Needs Attention group: merge_conflict state (AlertTriangle icon, warning accent)
+  - Completed group: merged, approved states (CheckCircle icon, success accent)
+  - Terminal group: failed, cancelled states (XCircle icon)
+- Updated `src/components/tasks/TaskBoard/Column.utils.tsx`:
+  - Added GitMerge, AlertTriangle, XCircle, Ban icon imports
+  - Added icon mappings to getGroupIcon function
+- Updated `src/components/tasks/TaskBoard/TaskCard.utils.ts`:
+  - Added merge_conflict border styling (warning color)
+  - Added pending_merge/merging border styling (info color)
+
+**Files Modified:**
+- `src/types/workflow.ts` (add Done column groups)
+- `src/components/tasks/TaskBoard/Column.utils.tsx` (add icon mappings)
+- `src/components/tasks/TaskBoard/TaskCard.utils.ts` (add merge state border styling)
+- `specs/phases/prd_phase_66_git_branch_isolation.md` (mark task 21 passes: true)
+
+**Commands:**
+- `npm run lint` (passed, 0 errors, 13 warnings - pre-existing)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI changes require manual testing in Tauri app
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 17:00:00 - Phase 66 Task 20: Add branch name badge to task cards
 **What:**
 - Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
