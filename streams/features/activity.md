@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 16:15:00 - Phase 76 Task 5: Update merger agent docs to reflect auto-detection
+**What:**
+- Updated CRITICAL section: changed from "MUST call complete_merge" to "auto-detected on exit"
+- Documented the auto-detection behavior (checks git state: rebase dirs, conflict markers, HEAD SHA)
+- Marked `complete_merge` as optional (backwards compatible but not required)
+- Emphasized `report_conflict` is still required for failure path (provides context for human intervention)
+- Updated workflow Step 5: simplified to "Exit" with optional explicit `complete_merge`
+- Updated MCP Tools table: added "Required?" column showing tool necessity
+- Added best practice #6 about calling `report_conflict` for failures
+
+**Files:**
+- MODIFIED: ralphx-plugin/agents/merger.md
+
+**Visual Verification:** N/A - documentation only
+
+**Commands:**
+- N/A (documentation change)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 15:30:00 - Phase 76 Task 4: Hook merge auto-completion into agent exit handler
 **What:**
 - Added `attempt_merge_auto_complete()` function to chat_service_send_background.rs

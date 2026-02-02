@@ -185,7 +185,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update workflow section to reflect new behavior",
       "Commit: docs(plugin): update merger agent for auto-detected completion"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
