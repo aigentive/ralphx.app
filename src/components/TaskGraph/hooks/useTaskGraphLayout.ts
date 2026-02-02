@@ -238,14 +238,28 @@ function createGroupNodes(
 // ============================================================================
 
 /**
+ * Inter-group edge info for layout and rendering
+ */
+interface InterGroupEdgeInfo {
+  /** Task node to use for dagre layout (leaf node from source group) */
+  layoutSource: string;
+  /** Task node to use for dagre layout (root node from target group) */
+  layoutTarget: string;
+  /** Group ID for rendering (source group) */
+  sourceGroupId: string;
+  /** Group ID for rendering (target group) */
+  targetGroupId: string;
+}
+
+/**
  * Generate synthetic edges between consecutive plan groups to stack them vertically.
- * Connects a leaf node (outDegree === 0) from group N to a root node (inDegree === 0) in group N+1.
+ * Returns both task-level edges (for dagre layout) and group-level edges (for rendering).
  * Also handles ungrouped tasks as a pseudo-group.
  */
 function generateInterGroupEdges(
   graphNodes: TaskGraphNode[],
   planGroups: PlanGroupInfo[]
-): { source: string; target: string; isGroupConnector: boolean }[] {
+): InterGroupEdgeInfo[] {
   // Build node lookup maps
   const nodeMap = new Map<string, TaskGraphNode>();
   for (const node of graphNodes) {
@@ -292,7 +306,7 @@ function generateInterGroupEdges(
   });
   groupsWithTier.sort((a, b) => a.minTier - b.minTier);
 
-  const interGroupEdges: { source: string; target: string; isGroupConnector: boolean }[] = [];
+  const interGroupEdges: InterGroupEdgeInfo[] = [];
 
   // For each consecutive pair of groups, create a connector edge
   for (let i = 0; i < groupsWithTier.length - 1; i++) {
@@ -303,12 +317,10 @@ function generateInterGroupEdges(
     const currentGroup = currentGroupInfo.group;
     const nextGroup = nextGroupInfo.group;
 
-    // Find tasks in current group
+    // Find tasks in each group for layout edge
     const currentTasks = currentGroup.taskIds
       .map((id) => nodeMap.get(id))
       .filter(Boolean) as TaskGraphNode[];
-
-    // Find tasks in next group
     const nextTasks = nextGroup.taskIds
       .map((id) => nodeMap.get(id))
       .filter(Boolean) as TaskGraphNode[];
@@ -328,9 +340,10 @@ function generateInterGroupEdges(
       : nextTasks.reduce((a, b) => (a.tier < b.tier ? a : b));
 
     interGroupEdges.push({
-      source: leafNode.taskId,
-      target: rootNode.taskId,
-      isGroupConnector: true,
+      layoutSource: leafNode.taskId,
+      layoutTarget: rootNode.taskId,
+      sourceGroupId: currentGroup.id,
+      targetGroupId: nextGroup.id,
     });
   }
 
@@ -409,18 +422,17 @@ function computeLayoutWithCache(
     (e) => !collapsedTaskIds.has(e.source) && !collapsedTaskIds.has(e.target)
   );
 
-  // Filter inter-group edges for visibility (both endpoints must be visible)
-  const visibleInterGroupEdges = interGroupEdges.filter(
-    (e) => !collapsedTaskIds.has(e.source) && !collapsedTaskIds.has(e.target)
-  );
+  // Inter-group edges connect group nodes directly, so they're always visible
+  // (they don't depend on individual task visibility)
 
   // Compute layout for ALL nodes (needed for group bounding boxes)
   // We need positions for collapsed group tasks too, so groups remain visible
   const allNodeIds = graphNodes.map((n) => n.taskId);
   // Include inter-group edges for layout computation (so dagre stacks groups)
+  // Use task-level edges (layoutSource/layoutTarget) for dagre, not group IDs
   const allEdgePairs = [
     ...graphEdges.map((e) => ({ source: e.source, target: e.target })),
-    ...interGroupEdges.map((e) => ({ source: e.source, target: e.target })),
+    ...interGroupEdges.map((e) => ({ source: e.layoutSource, target: e.layoutTarget })),
   ];
 
   // Convert PlanGroupInfo to LayoutPlanGroup for layout computation
@@ -539,31 +551,32 @@ function computeLayoutWithCache(
     return edge;
   });
 
-  // Add inter-group connector edges (cross-plan edges to stack groups)
+  // Build a map of group ID -> session title for edge labels
+  const groupTitleMap = new Map<string, string>();
+  for (const pg of planGroups) {
+    groupTitleMap.set(pg.planArtifactId, pg.sessionTitle ?? "Plan");
+  }
+  groupTitleMap.set(UNGROUPED_PLAN_ID, "Ungrouped");
+
+  // Add inter-group connector edges (connect group nodes directly for rendering)
   const GROUP_CONNECTOR_ZINDEX = 15; // Higher than regular cross-plan edges
-  for (const interEdge of visibleInterGroupEdges) {
-    const sourceLabel = nodeTitleMap.get(interEdge.source);
-    const targetLabel = nodeTitleMap.get(interEdge.target);
-    const sourcePlan = taskToPlanMap.get(interEdge.source);
-    const targetPlan = taskToPlanMap.get(interEdge.target);
+  for (const interEdge of interGroupEdges) {
+    const sourceLabel = groupTitleMap.get(interEdge.sourceGroupId) ?? interEdge.sourceGroupId;
+    const targetLabel = groupTitleMap.get(interEdge.targetGroupId) ?? interEdge.targetGroupId;
 
     const edgeData: DependencyEdgeData = {
       isCriticalPath: false,
       isCrossPlan: true,
       isGroupConnector: true,
+      sourceLabel,
+      targetLabel,
     };
-    if (sourceLabel !== undefined) {
-      edgeData.sourceLabel = `${sourcePlan ? "Group" : "Task"}: ${sourceLabel}`;
-    }
-    if (targetLabel !== undefined) {
-      edgeData.targetLabel = `${targetPlan ? "Group" : "Task"}: ${targetLabel}`;
-    }
 
     edges.push({
-      id: `group-connector-${interEdge.source}-${interEdge.target}`,
+      id: `group-connector-${interEdge.sourceGroupId}-${interEdge.targetGroupId}`,
       type: "dependency",
-      source: interEdge.source,
-      target: interEdge.target,
+      source: interEdge.sourceGroupId, // Connect to group node
+      target: interEdge.targetGroupId, // Connect to group node
       data: edgeData,
       zIndex: GROUP_CONNECTOR_ZINDEX,
     });
