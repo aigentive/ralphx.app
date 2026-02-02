@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-03 00:15:00 - Phase 74 Task 5: Use summary field in review history
+**What:**
+- Changed ReviewHistorySection to use `entry.summary` instead of `entry.notes`
+- The `summary` field is designed for brief excerpts suitable for timeline display
+- The `notes` field contains full markdown review which was too verbose for history
+
+**Files:**
+- MODIFIED: src/components/reviews/ReviewDetailModal.tsx (lines 263-267)
+
+**Visual Verification:** N/A - text content change in existing component
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:45:00 - Phase 74 Task 4: Render AI review summary as markdown
 **What:**
 - Added ReactMarkdown and remarkGfm imports to ReviewDetailModal
