@@ -48,13 +48,11 @@ interface ReviewDetailModalProps {
  * TaskContextSection - Shows task title, category, description
  */
 function TaskContextSection({
-  title,
   category,
   description,
   priority,
   isLoading,
 }: {
-  title: string;
   category: string;
   description: string | null;
   priority: number;
@@ -72,13 +70,7 @@ function TaskContextSection({
 
   return (
     <div className="space-y-3">
-      <h3
-        data-testid="modal-task-title"
-        className="font-semibold text-white/90"
-        style={{ letterSpacing: "-0.02em", lineHeight: "1.3", wordBreak: "break-word", overflowWrap: "anywhere" }}
-      >
-        {title}
-      </h3>
+      {/* Title removed - already displayed in modal header */}
       <div className="flex items-center gap-3 text-[12px]">
         <span className="text-white/50">
           Priority: <span className="text-white/70">{priority}</span>
@@ -486,7 +478,6 @@ export function ReviewDetailModal({
                 <div>
                   <SectionTitle>Task Details</SectionTitle>
                   <TaskContextSection
-                    title={task?.title ?? ""}
                     category={task?.category ?? ""}
                     description={task?.description ?? null}
                     priority={task?.priority ?? 0}

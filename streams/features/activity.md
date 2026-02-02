@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 06:48:32 - Phase 74 Task 3: Remove duplicate task title from sidebar
+**What:**
+- Removed duplicate task title from TaskContextSection in ReviewDetailModal
+- Title was appearing in both the modal header ("Review: Task Title") and sidebar
+- Removed `title` prop from TaskContextSection function signature and call site
+- Added comment noting title is displayed in modal header
+
+**Files:**
+- MODIFIED: src/components/reviews/ReviewDetailModal.tsx (lines 50-72, 480-486)
+
+**Visual Verification:** N/A - removing redundant element, no new UI components
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:15:00 - Phase 74 Task 2: Use git diff for file changes instead of activity events
 **What:**
 - Replaced activity-event-based file change detection with direct `git diff --name-status`
