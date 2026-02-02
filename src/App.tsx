@@ -3,7 +3,7 @@
  * Root component with QueryClientProvider and EventProvider
  */
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getQueryClient } from "@/lib/queryClient";
@@ -55,6 +55,9 @@ import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { api, getGitBranches } from "@/lib/tauri";
+import { executionApi } from "@/api/execution";
+import type { ProjectSettings } from "@/types/settings";
+import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -176,6 +179,13 @@ function AppContent() {
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
   const [isQuestionLoading, setIsQuestionLoading] = useState(false);
 
+  // Execution settings state (persisted to database)
+  const [executionSettings, setExecutionSettings] = useState<ProjectSettings | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Check if we should show the empty state (no projects)
   const hasNoProjects = !isLoadingProjects && Object.keys(projects).length === 0;
 
@@ -266,6 +276,73 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
+
+  // Load execution settings from database on mount
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        setIsLoadingSettings(true);
+        setSettingsError(null);
+        const response = await executionApi.getSettings();
+        // Map API response (camelCase) to settings type (snake_case)
+        setExecutionSettings({
+          ...DEFAULT_PROJECT_SETTINGS,
+          execution: {
+            ...DEFAULT_PROJECT_SETTINGS.execution,
+            max_concurrent_tasks: response.maxConcurrentTasks,
+            auto_commit: response.autoCommit,
+            pause_on_failure: response.pauseOnFailure,
+          },
+        });
+      } catch (err) {
+        console.error("Failed to load execution settings:", err);
+        setSettingsError(err instanceof Error ? err.message : "Failed to load settings");
+        // Fall back to defaults
+        setExecutionSettings(DEFAULT_PROJECT_SETTINGS);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  // Debounced handler for execution settings changes (300ms)
+  const handleSettingsChange = useCallback((newSettings: ProjectSettings) => {
+    // Update local state immediately for responsive UI
+    setExecutionSettings(newSettings);
+    setSettingsError(null);
+
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce the API call
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        setIsSavingSettings(true);
+        await executionApi.updateSettings({
+          maxConcurrentTasks: newSettings.execution.max_concurrent_tasks,
+          autoCommit: newSettings.execution.auto_commit,
+          pauseOnFailure: newSettings.execution.pause_on_failure,
+        });
+      } catch (err) {
+        console.error("Failed to save execution settings:", err);
+        setSettingsError(err instanceof Error ? err.message : "Failed to save settings");
+      } finally {
+        setIsSavingSettings(false);
+      }
+    }, 300);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {
@@ -758,7 +835,15 @@ function AppContent() {
                   {...(activityFilter.sessionId && { sessionId: activityFilter.sessionId })}
                 />
               )}
-              {currentView === "settings" && <SettingsView />}
+              {currentView === "settings" && (
+                <SettingsView
+                  {...(executionSettings && { initialSettings: executionSettings })}
+                  isLoading={isLoadingSettings}
+                  isSaving={isSavingSettings}
+                  error={settingsError}
+                  onSettingsChange={handleSettingsChange}
+                />
+              )}
             </div>
         </div>
 
