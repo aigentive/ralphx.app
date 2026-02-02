@@ -546,7 +546,7 @@
       "phase": 76,
       "name": "Hybrid Merge Completion Detection",
       "prd": "specs/phases/prd_phase_76_hybrid_merge_completion.md",
-      "status": "active",
+      "status": "complete",
       "description": "Auto-detect merge success on agent exit, make complete_merge optional"
     }
   ]
