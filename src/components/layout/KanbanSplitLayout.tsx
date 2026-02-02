@@ -21,9 +21,9 @@ import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
 // Constants
 // ============================================================================
 
-const MIN_LEFT_PERCENT = 40; // Minimum left panel width as percentage
-const MAX_LEFT_PERCENT = 75; // Maximum left panel width as percentage
-const DEFAULT_LEFT_PERCENT = 75; // Default: 75% left, 25% chat (minimum chat size)
+const MIN_LEFT_PERCENT = 65; // 65% left = 35% right (max chat width)
+const MAX_LEFT_PERCENT = 75; // 75% left = 25% right (min chat width)
+const DEFAULT_LEFT_PERCENT = 70; // Start with ~30% chat
 const LEFT_WIDTH_STORAGE_KEY = "ralphx-kanban-split-left-width";
 
 // ============================================================================
