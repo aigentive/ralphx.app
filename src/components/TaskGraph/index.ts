@@ -34,3 +34,7 @@ export {
   ACTIVE_EDGE_STYLE,
 } from "./edges/edgeStyles";
 export type { EdgeStyle, EdgeType } from "./edges/edgeStyles";
+
+// Controls
+export { GraphLegend } from "./controls/GraphLegend";
+export type { GraphLegendProps } from "./controls/GraphLegend";
