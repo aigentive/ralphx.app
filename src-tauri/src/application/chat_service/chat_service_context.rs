@@ -11,7 +11,7 @@ use tokio::process::Command;
 
 use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId,
-    IdeationSessionId, MessageRole, ProjectId, TaskId,
+    GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     IdeationSessionRepository, ProjectRepository, TaskRepository,
@@ -23,6 +23,10 @@ use crate::infrastructure::agents::claude::{
 use super::chat_service_helpers::resolve_agent;
 
 /// Resolve the project's working directory from a context
+///
+/// For task-related contexts (Task, TaskExecution, Review):
+/// - Local mode: Always returns project.working_directory
+/// - Worktree mode: Returns task.worktree_path if available, else project.working_directory
 pub async fn resolve_working_directory(
     context_type: ChatContextType,
     context_id: &str,
@@ -31,33 +35,44 @@ pub async fn resolve_working_directory(
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     default_working_directory: &Path,
 ) -> PathBuf {
-    let project_id = match context_type {
-        ChatContextType::Project => Some(ProjectId::from_string(context_id.to_string())),
+    match context_type {
+        ChatContextType::Project => {
+            // Project context: use project's working directory
+            if let Ok(Some(project)) = project_repo
+                .get_by_id(&ProjectId::from_string(context_id.to_string()))
+                .await
+            {
+                return PathBuf::from(&project.working_directory);
+            }
+        }
         ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
+            // Task-related context: check git_mode for worktree support
             if let Ok(Some(task)) = task_repo
                 .get_by_id(&TaskId::from_string(context_id.to_string()))
                 .await
             {
-                Some(task.project_id)
-            } else {
-                None
+                if let Ok(Some(project)) = project_repo.get_by_id(&task.project_id).await {
+                    // For Worktree mode, use task's worktree_path if available
+                    if project.git_mode == GitMode::Worktree {
+                        if let Some(worktree_path) = &task.worktree_path {
+                            return PathBuf::from(worktree_path);
+                        }
+                    }
+                    // Local mode or no worktree_path: use project's working directory
+                    return PathBuf::from(&project.working_directory);
+                }
             }
         }
         ChatContextType::Ideation => {
+            // Ideation context: use project's working directory
             if let Ok(Some(session)) = ideation_session_repo
                 .get_by_id(&IdeationSessionId::from_string(context_id))
                 .await
             {
-                Some(session.project_id)
-            } else {
-                None
+                if let Ok(Some(project)) = project_repo.get_by_id(&session.project_id).await {
+                    return PathBuf::from(&project.working_directory);
+                }
             }
-        }
-    };
-
-    if let Some(pid) = project_id {
-        if let Ok(Some(project)) = project_repo.get_by_id(&pid).await {
-            return PathBuf::from(&project.working_directory);
         }
     }
 
