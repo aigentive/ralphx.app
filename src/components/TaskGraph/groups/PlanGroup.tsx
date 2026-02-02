@@ -39,6 +39,8 @@ export interface PlanGroupData extends Record<string, unknown> {
   width: number;
   /** Height of the group region */
   height: number;
+  /** Callback to toggle collapse state */
+  onToggleCollapse?: ((planArtifactId: string) => void) | undefined;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -88,6 +90,7 @@ export const PlanGroup = memo(function PlanGroup({
     isCollapsed,
     width,
     height,
+    onToggleCollapse,
   } = data;
 
   // When collapsed, show only the header
@@ -121,10 +124,7 @@ export const PlanGroup = memo(function PlanGroup({
         taskCount={taskIds.length}
         statusSummary={statusSummary}
         isCollapsed={isCollapsed}
-        onToggleCollapse={() => {
-          // Collapse handling will be wired in Task 18 (C.6)
-          // For now, this is a placeholder
-        }}
+        onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
       />
 
       {/* Content area - empty, task nodes are positioned inside by React Flow */}
@@ -158,6 +158,7 @@ export const PlanGroup = memo(function PlanGroup({
  * @param width - Width of the group region
  * @param height - Height of the group region
  * @param isCollapsed - Whether the group starts collapsed
+ * @param onToggleCollapse - Optional callback when collapse is toggled
  * @returns React Flow node object
  */
 export function createPlanGroupNode(
@@ -169,7 +170,8 @@ export function createPlanGroupNode(
   position: { x: number; y: number },
   width: number,
   height: number,
-  isCollapsed = false
+  isCollapsed = false,
+  onToggleCollapse?: (planArtifactId: string) => void
 ): PlanGroupNode {
   return {
     id: `group-${planArtifactId}`,
@@ -184,6 +186,7 @@ export function createPlanGroupNode(
       isCollapsed,
       width,
       height,
+      onToggleCollapse,
     },
     // Group node properties
     style: {

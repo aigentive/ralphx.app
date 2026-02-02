@@ -4,6 +4,40 @@
 
 ---
 
+### 2026-02-03 08:00:00 - Phase 67 Task 18: Add collapse/expand for plan groups
+**What:**
+- Updated `src/components/TaskGraph/groups/PlanGroup.tsx`:
+  - Added `onToggleCollapse` callback to `PlanGroupData` interface
+  - Wired callback through to `PlanGroupHeader` component
+  - Updated `createPlanGroupNode` factory to accept optional callback parameter
+- Updated `src/components/TaskGraph/groups/PlanGroupHeader.tsx`:
+  - Collapse toggle button now properly calls parent callback
+- Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
+  - Added `collapsedPlanIds` and `onToggleCollapse` parameters to hook and `computeLayout`
+  - Passed collapse state and callback to `createGroupNodes`
+  - Group nodes now correctly reflect their collapsed state
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Added `collapsedPlanIds` state with `useState`
+  - Added `handleToggleCollapse` callback to toggle state
+  - Added `collapsedTaskIds` memoized computation to determine which tasks to hide
+  - Filtered task nodes and edges based on collapsed groups
+  - When a group is collapsed, its tasks and connected edges are hidden
+
+**Files Modified:**
+- `src/components/TaskGraph/groups/PlanGroup.tsx`
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`
+- `src/components/TaskGraph/TaskGraphView.tsx`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - component wiring; requires visual testing with actual plan data
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 07:00:00 - Phase 67 Task 17: Implement plan grouping logic in layout
 **What:**
 - Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:

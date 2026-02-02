@@ -88,11 +88,15 @@ const UNGROUPED_PLAN_ID = "__ungrouped__";
  *
  * @param taskNodes - Positioned task nodes from dagre layout
  * @param planGroups - Plan group info from the API
+ * @param collapsedPlanIds - Set of plan artifact IDs that are collapsed
+ * @param onToggleCollapse - Callback when collapse is toggled
  * @returns Array of PlanGroupNode for React Flow
  */
 function createGroupNodes(
   taskNodes: Node[],
-  planGroups: PlanGroupInfo[]
+  planGroups: PlanGroupInfo[],
+  collapsedPlanIds: Set<string>,
+  onToggleCollapse?: (planArtifactId: string) => void
 ): PlanGroupNode[] {
   if (planGroups.length === 0) {
     return [];
@@ -144,6 +148,8 @@ function createGroupNodes(
     const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);
     const { position, width, height } = boundingBoxToGroupNode(expanded);
 
+    const isCollapsed = collapsedPlanIds.has(planInfo.planArtifactId);
+
     const groupNode = createPlanGroupNode(
       planInfo.planArtifactId,
       planInfo.sessionId,
@@ -153,7 +159,8 @@ function createGroupNodes(
       position,
       width,
       height,
-      false // isCollapsed - starts expanded
+      isCollapsed,
+      onToggleCollapse
     );
 
     groupNodes.push(groupNode);
@@ -189,6 +196,8 @@ function createGroupNodes(
         terminal: 0,
       };
 
+      const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
+
       const groupNode = createPlanGroupNode(
         UNGROUPED_PLAN_ID,
         "", // No session ID
@@ -198,7 +207,8 @@ function createGroupNodes(
         position,
         width,
         height,
-        false // isCollapsed
+        isUngroupedCollapsed,
+        onToggleCollapse
       );
 
       groupNodes.push(groupNode);
@@ -217,7 +227,9 @@ function computeLayout(
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
   planGroups: PlanGroupInfo[],
-  config: LayoutConfig
+  config: LayoutConfig,
+  collapsedPlanIds: Set<string>,
+  onToggleCollapse?: (planArtifactId: string) => void
 ): LayoutResult {
   // Create dagre graph
   const g = new dagre.graphlib.Graph();
@@ -305,7 +317,7 @@ function computeLayout(
   });
 
   // Create group nodes for plan groups
-  const groupNodes = createGroupNodes(nodes, planGroups);
+  const groupNodes = createGroupNodes(nodes, planGroups, collapsedPlanIds, onToggleCollapse);
 
   return { nodes, edges, groupNodes };
 }
@@ -323,16 +335,30 @@ function computeLayout(
  * @param criticalPath - Array of task IDs on the critical path
  * @param planGroups - Plan group info for visual grouping
  * @param config - Optional layout configuration overrides
+ * @param collapsedPlanIds - Set of plan artifact IDs that are collapsed
+ * @param onToggleCollapse - Callback when collapse is toggled
  * @returns React Flow nodes, edges, and group nodes with computed positions
  *
  * @example
  * ```tsx
+ * const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(new Set());
+ * const handleToggleCollapse = (planArtifactId: string) => {
+ *   setCollapsedPlanIds(prev => {
+ *     const next = new Set(prev);
+ *     if (next.has(planArtifactId)) next.delete(planArtifactId);
+ *     else next.add(planArtifactId);
+ *     return next;
+ *   });
+ * };
+ *
  * const { nodes, edges, groupNodes } = useTaskGraphLayout(
  *   graphData.nodes,
  *   graphData.edges,
  *   graphData.criticalPath,
  *   graphData.planGroups,
- *   { direction: "LR" }
+ *   { direction: "LR" },
+ *   collapsedPlanIds,
+ *   handleToggleCollapse
  * );
  *
  * // Combine task nodes and group nodes for React Flow
@@ -345,7 +371,9 @@ export function useTaskGraphLayout(
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
   planGroups: PlanGroupInfo[] = [],
-  config: Partial<LayoutConfig> = {}
+  config: Partial<LayoutConfig> = {},
+  collapsedPlanIds: Set<string> = new Set(),
+  onToggleCollapse?: (planArtifactId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -358,8 +386,8 @@ export function useTaskGraphLayout(
     if (graphNodes.length === 0) {
       return { nodes: [], edges: [], groupNodes: [] };
     }
-    return computeLayout(graphNodes, graphEdges, criticalPath, planGroups, fullConfig);
-  }, [graphNodes, graphEdges, criticalPath, planGroups, fullConfig]);
+    return computeLayout(graphNodes, graphEdges, criticalPath, planGroups, fullConfig, collapsedPlanIds, onToggleCollapse);
+  }, [graphNodes, graphEdges, criticalPath, planGroups, fullConfig, collapsedPlanIds, onToggleCollapse]);
 
   return layout;
 }

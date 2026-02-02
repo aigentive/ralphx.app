@@ -6,7 +6,7 @@
  * Custom TaskNode and DependencyEdge components provide rich visualization.
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -82,26 +82,84 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
+  // Collapse state for plan groups
+  const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
+    new Set()
+  );
+
+  // Toggle collapse state for a plan group
+  const handleToggleCollapse = useCallback((planArtifactId: string) => {
+    setCollapsedPlanIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(planArtifactId)) {
+        next.delete(planArtifactId);
+      } else {
+        next.add(planArtifactId);
+      }
+      return next;
+    });
+  }, []);
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     graphData?.nodes ?? [],
     graphData?.edges ?? [],
     graphData?.criticalPath ?? [],
-    graphData?.planGroups ?? []
+    graphData?.planGroups ?? [],
+    {}, // default layout config
+    collapsedPlanIds,
+    handleToggleCollapse
   );
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
+  // Build set of task IDs that belong to collapsed groups
+  const collapsedTaskIds = useMemo(() => {
+    const hiddenIds = new Set<string>();
+    for (const pg of graphData?.planGroups ?? []) {
+      if (collapsedPlanIds.has(pg.planArtifactId)) {
+        for (const taskId of pg.taskIds) {
+          hiddenIds.add(taskId);
+        }
+      }
+    }
+    // Also check for ungrouped tasks if the ungrouped group is collapsed
+    if (collapsedPlanIds.has("__ungrouped__")) {
+      // Find tasks not in any plan group
+      const groupedTaskIds = new Set<string>();
+      for (const pg of graphData?.planGroups ?? []) {
+        for (const taskId of pg.taskIds) {
+          groupedTaskIds.add(taskId);
+        }
+      }
+      for (const node of graphData?.nodes ?? []) {
+        if (!groupedTaskIds.has(node.taskId)) {
+          hiddenIds.add(node.taskId);
+        }
+      }
+    }
+    return hiddenIds;
+  }, [graphData?.planGroups, graphData?.nodes, collapsedPlanIds]);
+
   // Update React Flow state when layout changes
   // Group nodes are rendered first (lower z-index) so they appear behind task nodes
+  // Filter out task nodes that belong to collapsed groups
   useEffect(() => {
-    // Combine group nodes and task nodes - groups first for proper z-ordering
-    const allNodes = [...groupNodes, ...layoutNodes];
+    // Filter task nodes - hide those in collapsed groups
+    const visibleTaskNodes = layoutNodes.filter(
+      (node) => !collapsedTaskIds.has(node.id)
+    );
+    // Filter edges - hide those connected to hidden nodes
+    const visibleEdges = layoutEdges.filter(
+      (edge) => !collapsedTaskIds.has(edge.source) && !collapsedTaskIds.has(edge.target)
+    );
+    // Combine group nodes and visible task nodes - groups first for proper z-ordering
+    const allNodes = [...groupNodes, ...visibleTaskNodes];
     setNodes(allNodes);
-    setEdges(layoutEdges);
-  }, [layoutNodes, layoutEdges, groupNodes, setNodes, setEdges]);
+    setEdges(visibleEdges);
+  }, [layoutNodes, layoutEdges, groupNodes, collapsedTaskIds, setNodes, setEdges]);
 
   // Handle node click - opens TaskDetailOverlay via selectedTaskId
   // Only for task nodes, not group nodes
