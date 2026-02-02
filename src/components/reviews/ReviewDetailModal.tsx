@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { DiffViewer } from "@/components/diff";
 import { useGitDiff } from "@/hooks/useGitDiff";
@@ -76,7 +75,7 @@ function TaskContextSection({
       <h3
         data-testid="modal-task-title"
         className="font-semibold text-white/90"
-        style={{ letterSpacing: "-0.02em", lineHeight: "1.3" }}
+        style={{ letterSpacing: "-0.02em", lineHeight: "1.3", wordBreak: "break-word", overflowWrap: "anywhere" }}
       >
         {title}
       </h3>
@@ -92,7 +91,7 @@ function TaskContextSection({
         <p
           data-testid="modal-task-description"
           className="text-[12px] text-white/60"
-          style={{ lineHeight: "1.5" }}
+          style={{ lineHeight: "1.5", wordBreak: "break-word", overflowWrap: "anywhere" }}
         >
           {description}
         </p>
@@ -167,7 +166,7 @@ function AIReviewSummary({
 
       {/* Summary text */}
       {latestApproved?.notes && (
-        <p className="text-[12px] text-white/60" style={{ lineHeight: "1.5" }}>
+        <p className="text-[12px] text-white/60" style={{ lineHeight: "1.5", wordBreak: "break-word", overflowWrap: "anywhere" }}>
           {latestApproved.notes}
         </p>
       )}
@@ -470,10 +469,10 @@ export function ReviewDetailModal({
         <div className="flex flex-1 min-h-0">
           {/* Left Pane: Context (300px fixed) */}
           <div
-            className="w-[300px] shrink-0 flex flex-col border-r"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+            className="w-[300px] shrink-0 flex flex-col border-r overflow-hidden"
+            style={{ borderColor: "rgba(255,255,255,0.06)", maxWidth: "300px" }}
           >
-            <ScrollArea className="flex-1">
+            <div className="flex-1 overflow-y-auto">
               <div className="p-4 space-y-5">
                 {/* Task Context */}
                 <div>
@@ -502,7 +501,7 @@ export function ReviewDetailModal({
                   <ReviewHistorySection history={history} />
                 </div>
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Feedback Input (in left pane when visible) */}
             {showFeedbackInput && (
