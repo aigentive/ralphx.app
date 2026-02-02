@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 21:00:00 - Phase 67 Task 32: Create TaskNodeCompact component
+**What:**
+- Created `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`:
+  - Compact node variant (100px width vs 180px standard) for graphs with 50+ tasks
+  - Abbreviated title display (12 chars max with smart word boundary truncation)
+  - No status badge (status communicated via border/background color)
+  - Same context menu support as TaskNode
+  - Smaller handles (1.5 vs 2 pixels) to match compact proportions
+  - Reuses `TaskNodeData` type from TaskNode for API consistency
+  - Memoized for React Flow performance
+
+**Files Created:**
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx` (NEW - 170 lines)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - new component not yet wired to TaskGraphView (Task 33 does auto-switch)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:30:00 - Phase 67 Task 31: Handle cross-plan edge rendering
 **What:**
 - Updated `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`:
