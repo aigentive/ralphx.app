@@ -7,6 +7,8 @@ import {
   StatusSummarySchema,
   PlanGroupInfoSchema,
   TaskDependencyGraphResponseSchema,
+  TimelineEventSchema,
+  TimelineEventsResponseSchema,
 } from "./task-graph.schemas";
 import type {
   TaskGraphNode,
@@ -14,6 +16,8 @@ import type {
   StatusSummary,
   PlanGroupInfo,
   TaskDependencyGraphResponse,
+  TimelineEvent,
+  TimelineEventsResponse,
 } from "./task-graph.types";
 
 /**
@@ -95,5 +99,43 @@ export function transformTaskDependencyGraphResponse(
     planGroups: raw.plan_groups.map(transformPlanGroupInfo),
     criticalPath: raw.critical_path,
     hasCycles: raw.has_cycles,
+  };
+}
+
+// ============================================================================
+// Timeline Event Transforms (Phase 67 - Task D.2)
+// ============================================================================
+
+/**
+ * Transform TimelineEventSchema (snake_case) → TimelineEvent (camelCase)
+ */
+export function transformTimelineEvent(
+  raw: z.infer<typeof TimelineEventSchema>
+): TimelineEvent {
+  return {
+    id: raw.id,
+    timestamp: raw.timestamp,
+    taskId: raw.task_id,
+    taskTitle: raw.task_title,
+    eventType: raw.event_type,
+    fromStatus: raw.from_status,
+    toStatus: raw.to_status,
+    description: raw.description,
+    trigger: raw.trigger,
+    planArtifactId: raw.plan_artifact_id,
+    sessionTitle: raw.session_title,
+  };
+}
+
+/**
+ * Transform TimelineEventsResponseSchema → TimelineEventsResponse
+ */
+export function transformTimelineEventsResponse(
+  raw: z.infer<typeof TimelineEventsResponseSchema>
+): TimelineEventsResponse {
+  return {
+    events: raw.events.map(transformTimelineEvent),
+    total: raw.total,
+    hasMore: raw.has_more,
   };
 }

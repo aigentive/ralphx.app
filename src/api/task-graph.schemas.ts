@@ -62,3 +62,42 @@ export const TaskDependencyGraphResponseSchema = z.object({
   critical_path: z.array(z.string()),
   has_cycles: z.boolean(),
 });
+
+// ============================================================================
+// Timeline Event Schemas (Phase 67 - Task D.2)
+// ============================================================================
+
+/**
+ * Event type enum for timeline entries (snake_case from backend)
+ */
+export const TimelineEventTypeSchema = z.enum([
+  "status_change",
+  "plan_accepted",
+  "plan_completed",
+]);
+
+/**
+ * Single event in the execution timeline (snake_case from backend)
+ */
+export const TimelineEventSchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  task_id: z.string().nullable(),
+  task_title: z.string().nullable(),
+  event_type: TimelineEventTypeSchema,
+  from_status: z.string().nullable(),
+  to_status: z.string().nullable(),
+  description: z.string(),
+  trigger: z.string().nullable(),
+  plan_artifact_id: z.string().nullable(),
+  session_title: z.string().nullable(),
+});
+
+/**
+ * Response for timeline events query (snake_case from backend)
+ */
+export const TimelineEventsResponseSchema = z.object({
+  events: z.array(TimelineEventSchema),
+  total: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+});
