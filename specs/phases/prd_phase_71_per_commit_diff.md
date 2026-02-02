@@ -131,7 +131,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(diff): wire commit selection to fetch per-commit files and diffs"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

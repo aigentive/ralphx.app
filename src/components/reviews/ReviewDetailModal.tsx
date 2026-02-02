@@ -344,8 +344,16 @@ export function ReviewDetailModal({
   const history = historyProp ?? fetchedHistory ?? [];
 
   // Git diff data - backend determines working path from task/project
-  const { changes, commits, isLoadingChanges, isLoadingHistory, fetchDiff } =
-    useGitDiff({ taskId, enabled: !!taskId });
+  const {
+    changes,
+    commits,
+    commitFiles,
+    isLoadingChanges,
+    isLoadingHistory,
+    isLoadingCommitFiles,
+    fetchDiff,
+    fetchCommitFiles,
+  } = useGitDiff({ taskId, enabled: !!taskId });
 
   // Check if task is in a state that allows human approval
   // (review_passed or escalated)
@@ -544,9 +552,12 @@ export function ReviewDetailModal({
             <DiffViewer
               changes={changes}
               commits={commits}
+              commitFiles={commitFiles}
               onFetchDiff={fetchDiff}
+              onFetchCommitFiles={fetchCommitFiles}
               isLoadingChanges={isLoadingChanges}
               isLoadingHistory={isLoadingHistory}
+              isLoadingCommitFiles={isLoadingCommitFiles}
               defaultTab="changes"
               onCommitSelect={handleCommitSelect}
             />
