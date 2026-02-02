@@ -237,3 +237,12 @@ export function shouldAnimateIcon(status: InternalStatus | string): boolean {
   const config = STATUS_ICON_CONFIG[status as InternalStatus];
   return config?.animate ?? false;
 }
+
+/**
+ * Get status color for left border stripe
+ * Used by both Kanban TaskCard and Graph TaskNode for visual consistency
+ */
+export function getStatusBorderColor(status: InternalStatus | string, isArchived = false): string {
+  if (isArchived) return ARCHIVED_ICON_CONFIG.color;
+  return getStatusIconConfig(status).color;
+}
