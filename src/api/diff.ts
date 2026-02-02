@@ -98,4 +98,33 @@ export const diffApi = {
       TaskCommitsResponseSchema,
       (response) => response.commits.map(transformCommitInfo)
     ),
+
+  /**
+   * Get files changed in a specific commit
+   * @param taskId - The task ID (used to determine working directory)
+   * @param commitSha - The commit SHA to get file changes for
+   * @returns Array of file changes with status and line counts
+   */
+  getCommitFileChanges: (taskId: string, commitSha: string): Promise<FileChange[]> =>
+    typedInvokeWithTransform(
+      "get_commit_file_changes",
+      { taskId, commitSha },
+      FileChangesResponseSchema,
+      (changes) => changes.map(transformFileChange)
+    ),
+
+  /**
+   * Get diff for a file in a specific commit (comparing to parent)
+   * @param taskId - The task ID (used to determine working directory)
+   * @param commitSha - The commit SHA to get the diff from
+   * @param filePath - The file path relative to project root
+   * @returns File diff with old (parent) and new (commit) content
+   */
+  getCommitFileDiff: (taskId: string, commitSha: string, filePath: string): Promise<FileDiff> =>
+    typedInvokeWithTransform(
+      "get_commit_file_diff",
+      { taskId, commitSha, filePath },
+      FileDiffSchema,
+      transformFileDiff
+    ),
 } as const;
