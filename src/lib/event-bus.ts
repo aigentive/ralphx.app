@@ -46,14 +46,41 @@ export interface EventBus {
  * Tauri Event Bus - Uses real Tauri listen() API
  *
  * Wraps the Tauri event system for use in the native app.
+ *
+ * IMPORTANT: Events are buffered during listener setup to prevent race conditions.
+ * When subscribe() is called, the Tauri listen() function returns a promise.
+ * Events emitted before that promise resolves would be lost without buffering.
+ * This is critical for streaming events (agent:message) that start immediately
+ * after task execution begins.
  */
 export class TauriEventBus implements EventBus {
   private unlisteners: Map<string, Set<Promise<UnlistenFn>>> = new Map();
+  private readyListeners: Set<string> = new Set();
 
   subscribe<T = unknown>(event: string, handler: EventHandler<T>): Unsubscribe {
-    // Create the listener promise
+    // Generate unique ID for this subscription to track ready state
+    const subscriptionId = `${event}-${Date.now()}-${Math.random()}`;
+
+    // Buffer to hold events received before listener is ready
+    const buffer: T[] = [];
+
+    // Create the listener - buffer events until ready
     const unlistenPromise = listen<T>(event, (e: Event<T>) => {
-      handler(e.payload);
+      if (this.readyListeners.has(subscriptionId)) {
+        // Listener is ready, deliver directly
+        handler(e.payload);
+      } else {
+        // Listener not ready yet, buffer the event
+        buffer.push(e.payload);
+      }
+    }).then((unlisten) => {
+      // Mark as ready and flush buffered events
+      this.readyListeners.add(subscriptionId);
+      for (const payload of buffer) {
+        handler(payload);
+      }
+      buffer.length = 0;
+      return unlisten;
     });
 
     // Track for cleanup
@@ -64,6 +91,7 @@ export class TauriEventBus implements EventBus {
 
     // Return unsubscribe function
     return () => {
+      this.readyListeners.delete(subscriptionId);
       unlistenPromise.then((fn) => fn());
       this.unlisteners.get(event)?.delete(unlistenPromise);
     };
