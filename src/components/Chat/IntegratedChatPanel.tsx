@@ -18,7 +18,7 @@ import { useTasks } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
-import { EXECUTION_STATUSES, HUMAN_REVIEW_STATUSES } from "@/types/status";
+import { EXECUTION_STATUSES, HUMAN_REVIEW_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -89,6 +89,11 @@ export function IntegratedChatPanel({
       effectiveStatus === "reviewing"
     : false;
 
+  // Merge states: merger agent conversation (only when NOT in ideation mode)
+  const isMergeMode = !ideationSessionId && effectiveStatus
+    ? (MERGE_STATUSES as readonly string[]).includes(effectiveStatus)
+    : false;
+
   // Use extracted context management hook
   const {
     chatContext,
@@ -106,6 +111,7 @@ export function IntegratedChatPanel({
     selectedTaskId: selectedTaskId ?? undefined,
     isExecutionMode,
     isReviewMode,
+    isMergeMode,
     // Pass history mode overrides for conversation selection
     overrideConversationId: taskHistoryState?.conversationId,
     overrideAgentRunId: taskHistoryState?.agentRunId,
@@ -134,21 +140,31 @@ export function IntegratedChatPanel({
     enabled: isReviewMode && !!selectedTaskId,
   });
 
-  // Use execution/review conversations when in those modes, otherwise regular conversations
-  const conversations = isExecutionMode
-    ? executionConversationsQuery
-    : isReviewMode
-      ? reviewConversationsQuery
-      : regularChatData.conversations;
+  // Fetch merge conversations when in merge mode
+  const mergeConversationsQuery = useQuery({
+    queryKey: chatKeys.conversationList("merge", selectedTaskId ?? ""),
+    queryFn: () => chatApi.listConversations("merge", selectedTaskId ?? ""),
+    enabled: isMergeMode && !!selectedTaskId,
+  });
 
-  // Auto-select the most recent conversation in execution/review modes
+  // Use execution/review/merge conversations when in those modes, otherwise regular conversations
+  const conversations = isMergeMode
+    ? mergeConversationsQuery
+    : isExecutionMode
+      ? executionConversationsQuery
+      : isReviewMode
+        ? reviewConversationsQuery
+        : regularChatData.conversations;
+
+  // Auto-select the most recent conversation in execution/review/merge modes
   useEffect(() => {
     autoSelectConversation(
       conversations,
       executionConversationsQuery.isLoading,
-      reviewConversationsQuery.isLoading
+      reviewConversationsQuery.isLoading,
+      mergeConversationsQuery.isLoading
     );
-  }, [autoSelectConversation, conversations, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading]);
+  }, [autoSelectConversation, conversations, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading, mergeConversationsQuery.isLoading]);
 
   // Fetch agent run status for the active conversation
   const agentRunQuery = useQuery({
@@ -366,13 +382,15 @@ export function IntegratedChatPanel({
               contextType={
                 ideationSessionId
                   ? "ideation"
-                  : isExecutionMode
-                    ? "task_execution"
-                    : isReviewMode
-                      ? "review"
-                      : selectedTaskId
-                        ? "task"
-                        : "project"
+                  : isMergeMode
+                    ? "merge"
+                    : isExecutionMode
+                      ? "task_execution"
+                      : isReviewMode
+                        ? "review"
+                        : selectedTaskId
+                          ? "task"
+                          : "project"
               }
               contextId={ideationSessionId || selectedTaskId || projectId}
               conversations={conversations.data ?? []}

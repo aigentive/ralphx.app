@@ -95,7 +95,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(chat): add merge mode detection to IntegratedChatPanel and useChatPanelContext"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
