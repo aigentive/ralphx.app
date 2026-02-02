@@ -4,6 +4,47 @@
 
 ---
 
+### 2026-02-02 16:30:00 - Phase 66 Task 19: Add Merging, MergeConflict, and Merged task detail views
+**What:**
+- Created `src/components/tasks/detail-views/MergingTaskDetail.tsx`:
+  - Handles both `pending_merge` and `merging` states (seamless UX)
+  - Shows merge progress steps with animated indicators
+  - Displays conflict files when in agent phase
+  - Branch name badge
+- Created `src/components/tasks/detail-views/MergeConflictTaskDetail.tsx`:
+  - Shows conflict files list
+  - Resolution instructions for manual merge
+  - "Conflicts Resolved" and "Retry Merge" action buttons
+- Created `src/components/tasks/detail-views/MergedTaskDetail.tsx`:
+  - Shows merge commit SHA and branch info
+  - Commit summary from git diff
+  - Review history timeline
+- Added `"merge"` to `TaskContextType` in `useTaskChat.ts`
+- Added `"merge"` to `ContextType` in `chat-conversation.ts`
+- Updated `TASK_DETAIL_VIEWS` registry in `TaskDetailPanel.tsx` for all 4 merge states
+- Added git fields to Task type: `taskBranch`, `worktreePath`, `mergeCommitSha`, `metadata`
+- Exported new components from `detail-views/index.ts`
+
+**Files Modified:**
+- `src/components/tasks/detail-views/MergingTaskDetail.tsx` (NEW)
+- `src/components/tasks/detail-views/MergeConflictTaskDetail.tsx` (NEW)
+- `src/components/tasks/detail-views/MergedTaskDetail.tsx` (NEW)
+- `src/components/tasks/detail-views/index.ts` (add exports)
+- `src/components/tasks/TaskDetailPanel.tsx` (import + registry update)
+- `src/hooks/useTaskChat.ts` (add "merge" to TaskContextType)
+- `src/types/chat-conversation.ts` (add "merge" to ContextType)
+- `src/types/task.ts` (add git fields to schema, interface, and transform)
+
+**Commands:**
+- `npm run lint` (passed, no new errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI changes require manual testing in Tauri app
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 15:00:00 - Phase 66 Task 18: Add GitSettingsSection for project git mode configuration
 **What:**
 - Created `src/components/settings/GitSettingsSection.tsx` with:

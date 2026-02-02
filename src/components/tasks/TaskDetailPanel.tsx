@@ -37,6 +37,9 @@ import {
   EscalatedTaskDetail,
   WaitingTaskDetail,
   CompletedTaskDetail,
+  MergingTaskDetail,
+  MergeConflictTaskDetail,
+  MergedTaskDetail,
 } from "./detail-views";
 
 interface TaskDetailPanelProps {
@@ -95,12 +98,12 @@ const TASK_DETAIL_VIEWS: Record<
   revision_needed: RevisionTaskDetail,
   // Approval leads to merge
   approved: CompletedTaskDetail,
-  // Merge states - use basic view (specialized views added in Task 19)
-  pending_merge: BasicTaskDetail,
-  merging: BasicTaskDetail,
-  merge_conflict: BasicTaskDetail,
+  // Merge states - specialized views
+  pending_merge: MergingTaskDetail,
+  merging: MergingTaskDetail,
+  merge_conflict: MergeConflictTaskDetail,
   // Terminal states
-  merged: CompletedTaskDetail,
+  merged: MergedTaskDetail,
   failed: BasicTaskDetail,
   cancelled: BasicTaskDetail,
 };

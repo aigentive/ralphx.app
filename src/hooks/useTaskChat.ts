@@ -22,8 +22,9 @@ import { useTaskStateTransitions } from "./useTaskStateTransitions";
  * - task: Regular task discussion/planning
  * - task_execution: Worker execution conversation
  * - review: Review process conversation
+ * - merge: Merge agent conflict resolution conversation
  */
-export type TaskContextType = "task" | "task_execution" | "review";
+export type TaskContextType = "task" | "task_execution" | "review" | "merge";
 
 /**
  * Build a context key string for task-related contexts
