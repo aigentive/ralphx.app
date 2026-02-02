@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 21:30:00 - Phase 74 Task 1: Fix commit order to display chronologically
+**What:**
+- Modified `src/hooks/useGitDiff.ts` to reverse commit order after mapping
+- Added `.reverse()` at line 113 (initial fetch effect)
+- Added `.reverse()` at line 185 (refresh callback)
+- Commits now display oldest first (chronological order) instead of newest first (git default)
+
+**Files:**
+- MODIFIED: src/hooks/useGitDiff.ts (lines 111-114, 183-186)
+
+**Visual Verification:** N/A - backend hook change, no UI component changes
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:15:00 - Phase 73 Task 7: Reorder navbar items to Ideation → Graph → Kanban
 **What:**
 - Reordered NAV_ITEMS array in `src/components/layout/Navigation.tsx`
