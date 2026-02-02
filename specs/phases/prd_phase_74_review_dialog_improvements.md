@@ -159,7 +159,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(reviews): use summary field in review history"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

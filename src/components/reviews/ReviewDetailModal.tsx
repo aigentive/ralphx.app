@@ -260,9 +260,9 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
                 {formatDate(entry.created_at)}
               </span>
             </div>
-            {entry.notes && (
+            {entry.summary && (
               <p className="text-[11px] text-white/40 truncate mt-0.5">
-                {entry.notes}
+                {entry.summary}
               </p>
             )}
           </div>
