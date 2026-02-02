@@ -357,37 +357,80 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     new Set()
   );
 
-  // Track which groups we've auto-collapsed (don't re-collapse after user expands)
-  const autoCollapsedRef = useRef<Set<string>>(new Set());
+  // ID for ungrouped tasks (must match useTaskGraphLayout.ts)
+  const UNGROUPED_PLAN_ID = "__ungrouped__";
 
-  // Auto-collapse 100% completed groups on initial load
+  // Compute and apply collapsed state: first non-100% expanded, rest collapsed
+  // Applies to ALL groups: plan groups AND ungrouped
   useEffect(() => {
-    if (!graphData?.planGroups) return;
+    if (!graphData) return;
 
-    const toCollapse: string[] = [];
-    for (const pg of graphData.planGroups) {
-      // Skip if already processed
-      if (autoCollapsedRef.current.has(pg.planArtifactId)) continue;
+    const planGroups = graphData.planGroups ?? [];
+    const allNodes = graphData.nodes ?? [];
 
-      // Check if 100% completed
-      const total = pg.taskIds.length;
-      const completed = pg.statusSummary.completed;
-      if (total > 0 && completed === total) {
-        toCollapse.push(pg.planArtifactId);
-        autoCollapsedRef.current.add(pg.planArtifactId);
+    // Find ungrouped tasks (not in any plan group)
+    const groupedTaskIds = new Set<string>();
+    for (const pg of planGroups) {
+      for (const taskId of pg.taskIds) {
+        groupedTaskIds.add(taskId);
       }
     }
+    const ungroupedTasks = allNodes.filter((n) => !groupedTaskIds.has(n.taskId));
 
-    if (toCollapse.length > 0) {
-      setCollapsedPlanIds((prev) => {
-        const next = new Set(prev);
-        for (const id of toCollapse) {
-          next.add(id);
-        }
-        return next;
+    // Build combined list of all groups with their completion status
+    interface GroupInfo {
+      id: string;
+      total: number;
+      completed: number;
+    }
+    const allGroups: GroupInfo[] = [];
+
+    // Add plan groups
+    for (const pg of planGroups) {
+      allGroups.push({
+        id: pg.planArtifactId,
+        total: pg.taskIds.length,
+        completed: pg.statusSummary.completed,
       });
     }
-  }, [graphData?.planGroups]);
+
+    // Add ungrouped if it has tasks
+    if (ungroupedTasks.length > 0) {
+      const completedCount = ungroupedTasks.filter((t) =>
+        ["approved", "merged", "completed"].includes(t.internalStatus)
+      ).length;
+      allGroups.push({
+        id: UNGROUPED_PLAN_ID,
+        total: ungroupedTasks.length,
+        completed: completedCount,
+      });
+    }
+
+    // No groups? Nothing to do
+    if (allGroups.length === 0) return;
+
+    // Find first group that is NOT 100% complete - that one stays expanded
+    let expandedGroupId: string | null = null;
+    for (const g of allGroups) {
+      if (g.total === 0 || g.completed < g.total) {
+        expandedGroupId = g.id;
+        break;
+      }
+    }
+    // If all are 100%, keep the last one expanded
+    if (!expandedGroupId) {
+      expandedGroupId = allGroups[allGroups.length - 1]?.id ?? null;
+    }
+
+    // Collapse all groups except the expanded one
+    const toCollapse = new Set(
+      allGroups
+        .filter((g) => g.id !== expandedGroupId)
+        .map((g) => g.id)
+    );
+
+    setCollapsedPlanIds(toCollapse);
+  }, [graphData]);
 
   // GraphControls state
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
