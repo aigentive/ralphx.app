@@ -3,7 +3,7 @@
  *
  * Displays tasks as nodes with dependencies as edges.
  * Uses dagre for hierarchical layout computation.
- * Custom nodes will be added in Phase B.
+ * Custom TaskNode and DependencyEdge components provide rich visualization.
  */
 
 import { useCallback, useEffect } from "react";
@@ -16,12 +16,16 @@ import {
   useEdgesState,
   type Node,
   type Edge,
+  type NodeTypes,
+  type EdgeTypes,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
+import { TaskNode } from "./nodes/TaskNode";
+import { DependencyEdge } from "./edges/DependencyEdge";
 import { getStatusBorderColor } from "./nodes/nodeStyles";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
@@ -42,6 +46,26 @@ type TaskNodeData = Record<string, unknown> & {
   internalStatus: string;
   priority: number;
   isCriticalPath: boolean;
+};
+
+// ============================================================================
+// Custom Node and Edge Types
+// ============================================================================
+
+/**
+ * Register custom node types for React Flow
+ * IMPORTANT: Defined outside component to prevent unnecessary re-renders
+ */
+const nodeTypes: NodeTypes = {
+  task: TaskNode,
+};
+
+/**
+ * Register custom edge types for React Flow
+ * IMPORTANT: Defined outside component to prevent unnecessary re-renders
+ */
+const edgeTypes: EdgeTypes = {
+  dependency: DependencyEdge,
 };
 
 
@@ -122,6 +146,8 @@ export function TaskGraphView({ projectId }: TaskGraphViewProps) {
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}

@@ -9,7 +9,6 @@ import { useMemo } from "react";
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/react";
 import type { TaskGraphNode, TaskGraphEdge } from "@/api/task-graph.types";
-import { getStatusBorderColor, getStatusBackground } from "../nodes/nodeStyles";
 
 // ============================================================================
 // Types
@@ -34,12 +33,19 @@ export interface LayoutResult {
 }
 
 // Use Record<string, unknown> compatible structure for React Flow
+// This matches TaskNodeData from nodes/TaskNode.tsx
 type TaskNodeData = Record<string, unknown> & {
   label: string;
   taskId: string;
   internalStatus: string;
   priority: number;
   isCriticalPath: boolean;
+};
+
+// Edge data for custom DependencyEdge component
+type DependencyEdgeData = Record<string, unknown> & {
+  isCriticalPath: boolean;
+  sourceStatus?: string;
 };
 
 // ============================================================================
@@ -104,6 +110,12 @@ function computeLayout(
   const sourcePosition = config.direction === "TB" ? Position.Bottom : Position.Right;
   const targetPosition = config.direction === "TB" ? Position.Top : Position.Left;
 
+  // Build a map of task ID -> status for edge source status lookup
+  const nodeStatusMap = new Map<string, string>();
+  graphNodes.forEach((node) => {
+    nodeStatusMap.set(node.taskId, node.internalStatus);
+  });
+
   // Transform dagre nodes to React Flow nodes
   const nodes: Node[] = graphNodes.map((graphNode) => {
     const dagreNode = g.node(graphNode.taskId);
@@ -114,12 +126,10 @@ function computeLayout(
 
     return {
       id: graphNode.taskId,
+      type: "task", // Use custom TaskNode component
       position: { x, y },
       data: {
-        label:
-          graphNode.title.length > 25
-            ? graphNode.title.slice(0, 25) + "..."
-            : graphNode.title,
+        label: graphNode.title, // Full title - TaskNode handles truncation
         taskId: graphNode.taskId,
         internalStatus: graphNode.internalStatus,
         priority: graphNode.priority,
@@ -127,29 +137,27 @@ function computeLayout(
       } satisfies TaskNodeData,
       sourcePosition,
       targetPosition,
-      style: {
-        background: getStatusBackground(graphNode.internalStatus),
-        border: `1px solid ${getStatusBorderColor(graphNode.internalStatus)}`,
-        borderRadius: 8,
-        padding: "8px 12px",
-        fontSize: 12,
-        width: NODE_WIDTH,
-      },
     } as Node;
   });
 
   // Transform graph edges to React Flow edges
-  const edges: Edge[] = graphEdges.map((graphEdge) => ({
-    id: `${graphEdge.source}-${graphEdge.target}`,
-    source: graphEdge.source,
-    target: graphEdge.target,
-    animated: graphEdge.isCriticalPath,
-    style: {
-      stroke: graphEdge.isCriticalPath ? "hsl(14 100% 55%)" : "hsl(220 10% 40%)",
-      strokeWidth: graphEdge.isCriticalPath ? 2 : 1,
-      strokeDasharray: graphEdge.isCriticalPath ? undefined : "5 5",
-    },
-  }));
+  const edges: Edge[] = graphEdges.map((graphEdge) => {
+    const sourceStatus = nodeStatusMap.get(graphEdge.source);
+    const edgeData: DependencyEdgeData = {
+      isCriticalPath: graphEdge.isCriticalPath,
+    };
+    // Only add sourceStatus if it exists
+    if (sourceStatus !== undefined) {
+      edgeData.sourceStatus = sourceStatus;
+    }
+    return {
+      id: `${graphEdge.source}-${graphEdge.target}`,
+      type: "dependency", // Use custom DependencyEdge component
+      source: graphEdge.source,
+      target: graphEdge.target,
+      data: edgeData,
+    };
+  });
 
   return { nodes, edges };
 }
