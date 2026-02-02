@@ -560,7 +560,7 @@
       "phase": 78,
       "name": "Git Merge Verification Fix",
       "prd": "specs/phases/prd_phase_78_git_merge_verification.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix merge auto-completion to verify merge on main branch, handle empty repo"
     }
   ]
