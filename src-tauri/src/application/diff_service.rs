@@ -57,10 +57,12 @@ impl DiffService {
     }
 
     /// Get all files changed by the agent for a task
+    /// Compares against base_branch to show all changes since branching
     pub async fn get_task_file_changes(
         &self,
         task_id: &TaskId,
         project_path: &str,
+        base_branch: &str,
     ) -> AppResult<Vec<FileChange>> {
         // Get all tool_call events for this task
         let filter = ActivityEventFilter::new()
@@ -118,7 +120,8 @@ impl DiffService {
         // For each file, determine its status using git
         let mut changes = Vec::new();
         for file_path in modified_files {
-            if let Some(change) = self.get_file_change_status(&file_path, project_path) {
+            if let Some(change) = self.get_file_change_status(&file_path, project_path, base_branch)
+            {
                 changes.push(change);
             }
         }
@@ -130,10 +133,16 @@ impl DiffService {
     }
 
     /// Get the change status for a single file using git
-    fn get_file_change_status(&self, file_path: &str, project_path: &str) -> Option<FileChange> {
-        // First check for tracked changes using git diff
+    /// Compares against base_branch to show all changes since branching
+    fn get_file_change_status(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        base_branch: &str,
+    ) -> Option<FileChange> {
+        // First check for tracked changes using git diff against base branch
         let output = Command::new("git")
-            .args(["diff", "--numstat", "HEAD", "--", file_path])
+            .args(["diff", "--numstat", base_branch, "--", file_path])
             .current_dir(project_path)
             .output()
             .ok()?;
@@ -147,12 +156,12 @@ impl DiffService {
 
                 // Determine status
                 let status = if additions > 0 && deletions == 0 {
-                    // Check if file existed before
+                    // Check if file existed in base branch using ls-tree
                     let existed = Command::new("git")
-                        .args(["ls-files", "--error-unmatch", file_path])
+                        .args(["ls-tree", "-r", "--name-only", base_branch, "--", file_path])
                         .current_dir(project_path)
                         .output()
-                        .map(|o| o.status.success())
+                        .map(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
                         .unwrap_or(false);
 
                     if existed {
@@ -201,15 +210,21 @@ impl DiffService {
     }
 
     /// Get the diff content for a specific file
-    pub fn get_file_diff(&self, file_path: &str, project_path: &str) -> AppResult<FileDiff> {
+    /// Shows old content from base_branch for accurate comparison
+    pub fn get_file_diff(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        base_branch: &str,
+    ) -> AppResult<FileDiff> {
         let full_path = std::path::Path::new(project_path).join(file_path);
 
         // Get current content
         let new_content = std::fs::read_to_string(&full_path).unwrap_or_default();
 
-        // Get old content from git
+        // Get old content from base branch
         let old_output = Command::new("git")
-            .args(["show", &format!("HEAD:{}", file_path)])
+            .args(["show", &format!("{}:{}", base_branch, file_path)])
             .current_dir(project_path)
             .output();
 
