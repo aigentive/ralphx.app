@@ -513,6 +513,13 @@
       "prd": "specs/phases/prd_phase_71_per_commit_diff.md",
       "status": "active",
       "description": "Add per-commit diff capabilities to review dialog History tab"
+    },
+    {
+      "phase": 72,
+      "name": "Graph Node Kanban Styling Parity",
+      "prd": "specs/phases/prd_phase_72_graph_node_kanban_styling.md",
+      "status": "pending",
+      "description": "Redesign graph nodes to match Kanban card visual styling"
     }
   ]
 }
