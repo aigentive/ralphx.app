@@ -103,6 +103,9 @@ function validateTaskScope(
     "get_task_steps",
     "add_step",
     "get_step_progress",
+    // Merge tools (merger agent)
+    "complete_merge",
+    "report_conflict",
   ];
 
   if (!taskScopedTools.includes(toolName)) {
@@ -265,6 +268,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // GET /api/analyze_dependencies/:session_id
       const { session_id } = args as { session_id: string };
       result = await callTauriGet(`analyze_dependencies/${session_id}`);
+    } else if (name === "complete_merge") {
+      // POST /api/git/tasks/:task_id/complete-merge
+      const { task_id, commit_sha } = args as { task_id: string; commit_sha: string };
+      result = await callTauri(`git/tasks/${task_id}/complete-merge`, { commit_sha });
+    } else if (name === "report_conflict") {
+      // POST /api/git/tasks/:task_id/report-conflict
+      const { task_id, conflict_files, reason } = args as {
+        task_id: string;
+        conflict_files: string[];
+        reason: string;
+      };
+      result = await callTauri(`git/tasks/${task_id}/report-conflict`, { conflict_files, reason });
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});

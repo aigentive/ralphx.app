@@ -335,7 +335,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck in ralphx-mcp-server",
       "Commit: feat(mcp): add complete_merge and report_conflict tools"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 14,
