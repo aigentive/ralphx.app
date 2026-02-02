@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-02 05:15:00 - Phase 66 Task 7: Auto-commit on task execution completion
+**What:**
+- Added auto-commit logic in `on_exit(Executing)` and `on_exit(ReExecuting)` in transition_handler/mod.rs
+- Auto-commit triggers when task exits execution states (Executing, ReExecuting)
+- Commit message format: `{prefix}{task_title}` with default prefix "feat: "
+- Added `resolve_working_directory()` helper to determine correct path based on git mode:
+  - Local mode: Always uses project's working directory
+  - Worktree mode: Uses task's worktree_path if available, else project's working directory
+- Auto-commit is non-fatal: errors are logged but don't block state transitions
+- Gracefully handles cases where repos aren't available or task/project can't be fetched
+
+**Files Modified:**
+- `src-tauri/src/domain/state_machine/transition_handler/mod.rs` (auto-commit logic + resolve_working_directory helper)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3363 tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 03:45:00 - Phase 66 Task 6: Enforce single running task per Local-mode project in scheduler
 **What:**
 - Added `has_task_in_states()` method to TaskRepository trait for checking if a project has tasks in specific states
