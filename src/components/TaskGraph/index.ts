@@ -19,3 +19,18 @@ export {
   CATEGORY_LABELS,
 } from "./nodes/nodeStyles";
 export type { NodeStyle, StatusCategory, LegendItem } from "./nodes/nodeStyles";
+
+// Edge components
+export { DependencyEdge } from "./edges/DependencyEdge";
+export type { DependencyEdgeData } from "./edges/DependencyEdge";
+
+// Edge styles
+export {
+  getEdgeType,
+  getEdgeStyle,
+  getEdgeStyleForEdge,
+  NORMAL_EDGE_STYLE,
+  CRITICAL_EDGE_STYLE,
+  ACTIVE_EDGE_STYLE,
+} from "./edges/edgeStyles";
+export type { EdgeStyle, EdgeType } from "./edges/edgeStyles";
