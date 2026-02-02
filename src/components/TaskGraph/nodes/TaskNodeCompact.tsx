@@ -13,7 +13,7 @@
 
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { getNodeStyle } from "./nodeStyles";
+import { getNodeStyle, GLASS_SURFACE } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import type { InternalStatus } from "@/types/status";
 import type { Task } from "@/types/task";
@@ -135,27 +135,32 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
         style={{ top: -3 }}
       />
 
-      {/* Node content - compact version */}
+      {/* Node content - compact version with glass morphism */}
       <div
         className={`
-          rounded border-2 px-2 py-1.5
-          transition-all duration-200 ease-out
-          hover:scale-110 hover:shadow-md
-          ${selected ? "ring-2 ring-white/30 scale-110" : ""}
+          rounded px-2 py-1.5
+          transition-all duration-150 ease-out
+          hover:shadow-md
+          ${selected ? "ring-2 ring-white/30" : ""}
           ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
-          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse scale-115" : ""}
-          ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)] scale-110" : ""}
+          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
+          ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)]" : ""}
         `}
         style={{
-          borderColor: style.borderColor,
-          backgroundColor: style.backgroundColor,
+          // Glass morphism surface
+          background: GLASS_SURFACE.background,
+          backdropFilter: GLASS_SURFACE.backdropFilter,
+          WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
+          border: GLASS_SURFACE.border,
+          // Status-specific shadow for active states
           boxShadow: isHighlighted
-            ? `${style.boxShadow ?? ""}, 0 0 8px 1px hsl(var(--accent-primary) / 0.4)`
+            ? `${GLASS_SURFACE.boxShadow}, 0 0 8px 1px hsl(var(--accent-primary) / 0.4)`
             : isFocused && !selected
-            ? `${style.boxShadow ?? ""}, 0 0 6px 1px rgba(56, 189, 248, 0.3)`
-            : style.boxShadow,
-          // Smooth transitions for color changes (status updates)
-          transition: "transform 200ms ease-out, box-shadow 200ms ease-out, border-color 300ms ease-in-out, background-color 300ms ease-in-out",
+            ? `${GLASS_SURFACE.boxShadow}, 0 0 6px 1px rgba(56, 189, 248, 0.3)`
+            : style.boxShadow
+            ? `${GLASS_SURFACE.boxShadow}, ${style.boxShadow}`
+            : GLASS_SURFACE.boxShadow,
+          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
         }}
       >
         {/* Abbreviated title - no status badge */}
