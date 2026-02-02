@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-02 23:00:00 - Phase 67 Task 4: Create TaskGraphView with basic React Flow setup
+**What:**
+- Created `src/components/TaskGraph/index.ts` - module exports
+- Created `src/components/TaskGraph/hooks/useTaskGraph.ts` - TanStack Query hook for fetching graph data with real-time updates
+- Created `src/components/TaskGraph/TaskGraphView.tsx` - React Flow canvas with:
+  - Default nodes positioned by tier (temporary layout, dagre in Task 5)
+  - Status-based node coloring for all 21 statuses
+  - Critical path edge highlighting (animated, accent color)
+  - Loading, error, and empty states
+  - MiniMap with status colors
+  - Controls panel
+  - onNodeClick handler stub (Task A.7 will wire to TaskDetailOverlay)
+
+**Files Created:**
+- `src/components/TaskGraph/index.ts`
+- `src/components/TaskGraph/hooks/useTaskGraph.ts`
+- `src/components/TaskGraph/TaskGraphView.tsx`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - component not yet wired to navigation (Task A.6)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:30:00 - Phase 67 Task 3: Install React Flow and dagre dependencies
 **What:**
 - Installed `@xyflow/react` ^12.10.0 - React Flow library for graph visualization
