@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-02 11:00:00 - Phase 66 Task 14: Add git handlers for merge operations
+**What:**
+- Created `src-tauri/src/http_server/handlers/git.rs` with four HTTP endpoints:
+  - `POST /api/git/tasks/{id}/complete-merge` - merger agent signals successful resolution
+  - `POST /api/git/tasks/{id}/report-conflict` - merger agent signals unresolvable conflict
+  - `GET /api/git/tasks/{id}/commits` - get commits on task branch since base
+  - `GET /api/git/tasks/{id}/diff-stats` - get diff statistics for task branch
+- Registered handlers in `mod.rs` and wired routes in http_server `mod.rs`
+- Endpoints integrate with TaskTransitionService for state transitions
+- `complete_merge` transitions Merging → Merged and triggers branch/worktree cleanup
+- `report_conflict` transitions Merging → MergeConflict, emits event with conflict files
+
+**Files Modified:**
+- `src-tauri/src/http_server/handlers/git.rs` (NEW)
+- `src-tauri/src/http_server/handlers/mod.rs` (register module)
+- `src-tauri/src/http_server/mod.rs` (wire routes)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3363 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 10:00:00 - Phase 66 Task 13: Add complete_merge and report_conflict MCP tools
 **What:**
 - Added `complete_merge` and `report_conflict` tool definitions to `ralphx-mcp-server/src/tools.ts`

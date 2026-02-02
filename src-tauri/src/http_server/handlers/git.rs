@@ -1,0 +1,389 @@
+//! Git HTTP handlers for merge operations
+//!
+//! Provides HTTP endpoints for the merger agent to signal merge completion or conflicts.
+//! Also provides query endpoints for commits and diff statistics.
+
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tauri::Emitter;
+
+use super::*;
+use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
+use crate::domain::entities::{InternalStatus, TaskId};
+use crate::domain::state_machine::services::TaskScheduler;
+
+// ============================================================================
+// Request/Response Types
+// ============================================================================
+
+/// Request to complete a merge after agent resolution
+#[derive(Debug, serde::Deserialize)]
+pub struct CompleteMergeRequest {
+    /// SHA of the merge commit
+    pub commit_sha: String,
+}
+
+/// Request to report unresolvable conflict
+#[derive(Debug, serde::Deserialize)]
+pub struct ReportConflictRequest {
+    /// List of files with unresolved conflicts
+    pub conflict_files: Vec<String>,
+}
+
+/// Response for merge operations
+#[derive(Debug, serde::Serialize)]
+pub struct MergeOperationResponse {
+    pub success: bool,
+    pub message: String,
+    pub new_status: String,
+}
+
+/// Commit information for get_task_commits
+#[derive(Debug, serde::Serialize)]
+pub struct CommitInfoResponse {
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub author: String,
+    pub timestamp: String,
+}
+
+/// Diff statistics for get_task_diff_stats
+#[derive(Debug, serde::Serialize)]
+pub struct DiffStatsResponse {
+    pub files_changed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
+    pub changed_files: Vec<String>,
+}
+
+// ============================================================================
+// Handlers
+// ============================================================================
+
+/// POST /api/git/tasks/{id}/complete-merge
+///
+/// Called by merger agent when conflicts have been successfully resolved.
+/// Transitions task from Merging → Merged and triggers cleanup.
+pub async fn complete_merge(
+    State(state): State<HttpServerState>,
+    Path(task_id): Path<String>,
+    Json(req): Json<CompleteMergeRequest>,
+) -> Result<Json<MergeOperationResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Get task and validate state is Merging
+    let mut task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    if task.internal_status != InternalStatus::Merging {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Task must be in 'merging' status to complete merge. Current status: {}",
+                task.internal_status.as_str()
+            ),
+        ));
+    }
+
+    // 2. Get project for cleanup info
+    let project = state
+        .app_state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+
+    // 3. Set merge_commit_sha on task
+    task.merge_commit_sha = Some(req.commit_sha.clone());
+    state
+        .app_state
+        .task_repo
+        .update(&task)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 4. Create transition service and transition to Merged
+    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&state.execution_state),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.activity_event_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        state.app_state.app_handle.as_ref().cloned(),
+    ));
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.activity_event_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+    )
+    .with_task_scheduler(task_scheduler);
+
+    transition_service
+        .transition_task(&task_id, InternalStatus::Merged)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 5. Cleanup branch/worktree
+    if let Some(task_branch) = &task.task_branch {
+        let repo_path = PathBuf::from(&project.working_directory);
+
+        // Delete worktree if exists (Worktree mode)
+        if let Some(worktree_path) = &task.worktree_path {
+            let _ = GitService::delete_worktree(&repo_path, &PathBuf::from(worktree_path));
+        }
+
+        // Delete branch (both modes)
+        let _ = GitService::delete_branch(&repo_path, task_branch, true);
+    }
+
+    // 6. Emit events
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "merge:completed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "commit_sha": req.commit_sha,
+            }),
+        );
+        let _ = app_handle.emit(
+            "task:status_changed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "old_status": "merging",
+                "new_status": "merged",
+            }),
+        );
+    }
+
+    Ok(Json(MergeOperationResponse {
+        success: true,
+        message: "Merge completed successfully".to_string(),
+        new_status: "merged".to_string(),
+    }))
+}
+
+/// POST /api/git/tasks/{id}/report-conflict
+///
+/// Called by merger agent when it cannot resolve conflicts.
+/// Transitions task from Merging → MergeConflict for manual resolution.
+pub async fn report_conflict(
+    State(state): State<HttpServerState>,
+    Path(task_id): Path<String>,
+    Json(req): Json<ReportConflictRequest>,
+) -> Result<Json<MergeOperationResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Get task and validate state is Merging
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    if task.internal_status != InternalStatus::Merging {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Task must be in 'merging' status to report conflict. Current status: {}",
+                task.internal_status.as_str()
+            ),
+        ));
+    }
+
+    // 2. Transition to MergeConflict
+    // Note: Conflict files are passed via the event, not stored on task
+    // The UI will display them from the merge:conflict event payload
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.activity_event_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+    );
+
+    transition_service
+        .transition_task(&task_id, InternalStatus::MergeConflict)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 4. Emit events
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "merge:conflict",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "conflict_files": req.conflict_files,
+            }),
+        );
+        let _ = app_handle.emit(
+            "task:status_changed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "old_status": "merging",
+                "new_status": "merge_conflict",
+            }),
+        );
+    }
+
+    Ok(Json(MergeOperationResponse {
+        success: true,
+        message: "Conflict reported. Task requires manual resolution.".to_string(),
+        new_status: "merge_conflict".to_string(),
+    }))
+}
+
+/// GET /api/git/tasks/{id}/commits
+///
+/// Get commits on the task branch since it diverged from base.
+pub async fn get_task_commits(
+    State(state): State<HttpServerState>,
+    Path(task_id): Path<String>,
+) -> Result<Json<Vec<CommitInfoResponse>>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Get task
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    // 2. Check task has a branch (verify exists, don't need the value)
+    task.task_branch.as_ref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Task does not have a git branch".to_string(),
+        )
+    })?;
+
+    // 3. Get project for base branch and working directory
+    let project = state
+        .app_state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+
+    // 4. Determine working path (worktree or main repo)
+    let working_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+
+    // 5. Get commits from GitService
+    let commits = GitService::get_commits_since(&working_path, base_branch)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 6. Convert to response format
+    let response: Vec<CommitInfoResponse> = commits
+        .into_iter()
+        .map(|c| CommitInfoResponse {
+            sha: c.sha,
+            short_sha: c.short_sha,
+            message: c.message,
+            author: c.author,
+            timestamp: c.timestamp,
+        })
+        .collect();
+
+    Ok(Json(response))
+}
+
+/// GET /api/git/tasks/{id}/diff-stats
+///
+/// Get diff statistics for the task branch compared to base.
+pub async fn get_task_diff_stats(
+    State(state): State<HttpServerState>,
+    Path(task_id): Path<String>,
+) -> Result<Json<DiffStatsResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Get task
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    // 2. Check task has a branch (we need to verify it exists, but don't need to use it)
+    task.task_branch.as_ref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Task does not have a git branch".to_string(),
+        )
+    })?;
+
+    // 3. Get project for base branch and working directory
+    let project = state
+        .app_state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+
+    // 4. Determine working path (worktree or main repo)
+    let working_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+
+    // 5. Get diff stats from GitService
+    let stats = GitService::get_diff_stats(&working_path, base_branch)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(DiffStatsResponse {
+        files_changed: stats.files_changed,
+        insertions: stats.insertions,
+        deletions: stats.deletions,
+        changed_files: stats.changed_files,
+    }))
+}
