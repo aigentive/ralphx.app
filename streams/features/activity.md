@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-03 11:15:00 - Phase 67 Task 21: Create TimelineEntry component
+**What:**
+- Verified `TimelineEntry` component already exists at `src/components/TaskGraph/timeline/TimelineEntry.tsx`
+- Component displays:
+  - Timestamp with relative time formatting (e.g., "2m ago", "1h ago") and full timestamp tooltip
+  - Task reference with status badge for status_change events
+  - Event description
+  - Status color indicator using `getNodeStyle()` from nodeStyles.ts
+  - Clickable area with `onTaskClick` callback for node interaction
+  - Plan context (sessionTitle) for plan-level events
+- Added export to `src/components/TaskGraph/index.ts`:
+  - `TimelineEntry` component export
+  - `TimelineEntryProps` type export
+
+**Files Modified:**
+- `src/components/TaskGraph/index.ts` (added TimelineEntry export)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component only, requires ExecutionTimeline panel to render
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 10:30:00 - Phase 67 Task 20: Create frontend API for timeline events
 **What:**
 - Added timeline event schemas to `src/api/task-graph.schemas.ts`:
