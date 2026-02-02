@@ -1,15 +1,21 @@
 /**
  * PlanGroupHeader.tsx - Header for plan groups in the Task Graph
  *
- * Displays:
- * - Plan title (linked to planning session)
- * - Task count
- * - Progress bar (completed / total)
- * - Collapse toggle
+ * Two layouts:
+ * - Collapsed: two rows (title + count, progress bar)
+ * - Expanded: single row inline (toggle, title, progress, badges)
  */
 
 import { memo, useMemo } from "react";
-import { ChevronDown, ChevronRight, Check } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Check,
+  Play,
+  AlertTriangle,
+  Eye,
+  GitMerge,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatusSummary } from "@/api/task-graph.types";
 
@@ -39,18 +45,40 @@ export interface PlanGroupHeaderProps {
 }
 
 // ============================================================================
-// Progress Bar Component
+// Reusable Components
 // ============================================================================
 
-interface ProgressBarProps {
-  completed: number;
-  total: number;
-}
+/** Collapse/expand toggle button */
+const CollapseToggle = memo(function CollapseToggle({
+  isCollapsed,
+  onClick,
+}: {
+  isCollapsed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
+      aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+    >
+      {isCollapsed ? (
+        <ChevronRight className="w-4 h-4 text-[hsl(var(--text-muted))]" />
+      ) : (
+        <ChevronDown className="w-4 h-4 text-[hsl(var(--text-muted))]" />
+      )}
+    </button>
+  );
+});
 
+/** Progress bar with percentage */
 const ProgressBar = memo(function ProgressBar({
   completed,
   total,
-}: ProgressBarProps) {
+}: {
+  completed: number;
+  total: number;
+}) {
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
@@ -68,6 +96,34 @@ const ProgressBar = memo(function ProgressBar({
   );
 });
 
+/** Status badge with icon and count */
+const StatusBadge = memo(function StatusBadge({
+  icon,
+  count,
+  label,
+  colorClass,
+}: {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+  colorClass: string;
+}) {
+  if (count === 0) return null;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium",
+        colorClass
+      )}
+      title={label}
+    >
+      {icon}
+      <span>{count}</span>
+    </div>
+  );
+});
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -80,54 +136,55 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onToggleCollapse,
   onNavigateToSession,
 }: PlanGroupHeaderProps) {
-  // Calculate aggregated counts for display
-  const counts = useMemo(() => {
-    const done = statusSummary.completed;
-    const executing = statusSummary.executing;
-    const blocked = statusSummary.blocked;
-    const review = statusSummary.review;
-    const merge = statusSummary.merge;
-    const qa = statusSummary.qa;
-    const terminal = statusSummary.terminal;
-    const idle = statusSummary.backlog + statusSummary.ready;
-
-    return {
-      done,
-      executing,
-      blocked,
-      review,
-      merge,
-      qa,
-      terminal,
-      idle,
-      total: taskCount,
-    };
-  }, [statusSummary, taskCount]);
+  const counts = useMemo(() => ({
+    done: statusSummary.completed,
+    executing: statusSummary.executing,
+    blocked: statusSummary.blocked,
+    review: statusSummary.review,
+    merge: statusSummary.merge,
+    total: taskCount,
+  }), [statusSummary, taskCount]);
 
   const displayTitle = sessionTitle || "Unnamed Plan";
 
+  // Collapsed: two-row layout with text count
+  if (isCollapsed) {
+    return (
+      <div
+        className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer"
+        onDoubleClick={onToggleCollapse}
+      >
+        {/* Row 1: toggle + title + count */}
+        <div className="flex items-center gap-2">
+          <CollapseToggle isCollapsed={true} onClick={onToggleCollapse} />
+          <span
+            className="text-sm font-medium text-[hsl(var(--text-primary))] truncate flex-1"
+            title={`Plan: ${displayTitle}`}
+          >
+            {displayTitle}
+          </span>
+          <span className="text-xs text-[hsl(var(--text-muted))]">
+            {counts.total} tasks
+          </span>
+        </div>
+        {/* Row 2: progress bar */}
+        <ProgressBar completed={counts.done} total={counts.total} />
+      </div>
+    );
+  }
+
+  // Expanded: single-row inline layout
   return (
     <div
-      className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer"
+      className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer"
       onDoubleClick={onToggleCollapse}
     >
-      {/* Top row: collapse toggle + title + count + context menu */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleCollapse}
-          className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
-          aria-label={isCollapsed ? "Expand group" : "Collapse group"}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4 text-[hsl(var(--text-muted))]" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-[hsl(var(--text-muted))]" />
-          )}
-        </button>
-
+      {/* Left: toggle + title */}
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
         <span
           className={cn(
-            "text-sm font-medium text-[hsl(var(--text-primary))] truncate flex-1",
+            "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
             onNavigateToSession &&
               "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
           )}
@@ -136,19 +193,44 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         >
           {displayTitle}
         </span>
-
-        {/* Completed count badge */}
-        <div
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
-          title={`${counts.done} of ${counts.total} completed`}
-        >
-          <Check className="w-3 h-3" />
-          <span>{counts.done}</span>
-        </div>
       </div>
 
-      {/* Bottom row: progress bar */}
+      {/* Middle: progress bar */}
       <ProgressBar completed={counts.done} total={counts.total} />
+
+      {/* Right: status badges */}
+      <div className="flex items-center gap-1.5">
+        <StatusBadge
+          icon={<Check className="w-3 h-3" />}
+          count={counts.done}
+          label={`${counts.done} completed`}
+          colorClass="bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
+        />
+        <StatusBadge
+          icon={<Play className="w-3 h-3" />}
+          count={counts.executing}
+          label={`${counts.executing} executing`}
+          colorClass="bg-[hsla(14,100%,55%,0.15)] text-[hsl(14,100%,55%)]"
+        />
+        <StatusBadge
+          icon={<AlertTriangle className="w-3 h-3" />}
+          count={counts.blocked}
+          label={`${counts.blocked} blocked`}
+          colorClass="bg-[hsla(45,90%,55%,0.15)] text-[hsl(45,90%,55%)]"
+        />
+        <StatusBadge
+          icon={<Eye className="w-3 h-3" />}
+          count={counts.review}
+          label={`${counts.review} in review`}
+          colorClass="bg-[hsla(220,80%,60%,0.15)] text-[hsl(220,80%,60%)]"
+        />
+        <StatusBadge
+          icon={<GitMerge className="w-3 h-3" />}
+          count={counts.merge}
+          label={`${counts.merge} merging`}
+          colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
+        />
+      </div>
     </div>
   );
 });
