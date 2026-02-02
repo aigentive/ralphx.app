@@ -100,7 +100,7 @@ const UNGROUPED_PLAN_ID = "__ungrouped__";
 
 /** Collapsed group dimensions */
 const COLLAPSED_GROUP_WIDTH = NODE_WIDTH + GROUP_PADDING * 2;
-const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + GROUP_PADDING;
+const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
 
 /**
  * Create React Flow group nodes for plan groups

@@ -94,8 +94,8 @@ export const PlanGroup = memo(function PlanGroup({
     onToggleCollapse,
   } = data;
 
-  // When collapsed, show only the header
-  const displayHeight = isCollapsed ? HEADER_HEIGHT + GROUP_PADDING : height;
+  // When collapsed, show only the header (minimal padding)
+  const displayHeight = isCollapsed ? HEADER_HEIGHT + 8 : height;
 
   // Handle double-click to toggle collapse (instead of React Flow zoom)
   const handleDoubleClick = useCallback(
@@ -214,7 +214,7 @@ export function createPlanGroupNode(
     // Group node properties
     style: {
       width,
-      height: isCollapsed ? HEADER_HEIGHT + GROUP_PADDING : height,
+      height: isCollapsed ? HEADER_HEIGHT + 8 : height,
     },
     // Make the group node non-draggable by default
     // (tasks inside can still be selected)
