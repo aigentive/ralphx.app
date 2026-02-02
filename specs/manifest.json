@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 77,
+  "currentPhase": 78,
   "phases": [
     {
       "phase": 0,
@@ -553,14 +553,14 @@
       "phase": 77,
       "name": "Execution Settings Persistence",
       "prd": "specs/phases/prd_phase_77_execution_settings_persistence.md",
-      "status": "active",
+      "status": "complete",
       "description": "Persist execution settings to database, wire SettingsView, initialize on startup"
     },
     {
       "phase": 78,
       "name": "Git Merge Verification Fix",
       "prd": "specs/phases/prd_phase_78_git_merge_verification.md",
-      "status": "pending",
+      "status": "active",
       "description": "Fix merge auto-completion to verify merge on main branch, handle empty repo"
     }
   ]
