@@ -99,7 +99,7 @@ const NODE_HEIGHT = 100;
 const UNGROUPED_PLAN_ID = "__ungrouped__";
 
 /** Collapsed group dimensions */
-const COLLAPSED_GROUP_WIDTH = NODE_WIDTH + GROUP_PADDING * 2;
+const COLLAPSED_GROUP_WIDTH = 320; // Min width to accommodate title + progress
 const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
 
 /**
@@ -885,7 +885,7 @@ function computePositions(
       if (groupId && !collapsedGroupPlaceholders.has(groupId)) {
         // Add a small placeholder node for the collapsed group
         const placeholderId = `__collapsed_placeholder_${groupId}__`;
-        g.setNode(placeholderId, { width: NODE_WIDTH, height: 40 }); // Minimal height
+        g.setNode(placeholderId, { width: COLLAPSED_GROUP_WIDTH, height: 40 }); // Minimal height
         g.setParent(placeholderId, groupId);
         collapsedGroupPlaceholders.add(groupId);
       }
@@ -957,7 +957,7 @@ function computePositions(
     if (placeholderNode) {
       // Store under special key for the group
       positions.set(`__group_position_${groupId}__`, {
-        x: placeholderNode.x - NODE_WIDTH / 2,
+        x: placeholderNode.x - COLLAPSED_GROUP_WIDTH / 2,
         y: placeholderNode.y - 20, // Half of placeholder height (40/2)
       });
     }

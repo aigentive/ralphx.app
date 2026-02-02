@@ -152,7 +152,10 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
     return (
       <div
         className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer"
-        onDoubleClick={onToggleCollapse}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onToggleCollapse();
+        }}
       >
         {/* Row 1: toggle + title + count */}
         <div className="flex items-center gap-2">
@@ -177,7 +180,10 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   return (
     <div
       className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer"
-      onDoubleClick={onToggleCollapse}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onToggleCollapse();
+      }}
     >
       {/* Left: toggle + title */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
