@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 00:30:00 - Phase 78 Task 5: Add merge verification tests
+**What:**
+- Added `test_merge_verification_detects_unmerged_task_branch` test to verify the core merge verification logic:
+  - Creates git repo with main and task branch
+  - Verifies task branch HEAD is NOT on main before merge
+  - Verifies task branch HEAD IS on main after merge
+- Added `test_merge_verification_uses_correct_repo_path` test to verify the fix for the original bug:
+  - Creates separate main repo and worktree
+  - Verifies that checking worktree HEAD against main repo correctly fails (the original bug)
+  - Verifies task branch HEAD from main repo is properly tracked before/after merge
+- Note: Tests for `is_commit_on_branch` and `try_rebase_and_merge` were already added in Tasks 1-4
+- Total git_service tests now: 16 (all passing)
+
+**Files:**
+- MODIFIED: src-tauri/src/application/git_service.rs (added 2 test functions)
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test git_service` - 16 tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:25:00 - Phase 78 Task 4: Handle first task on empty repo case
 **What:**
 - Added get_commit_count() helper to count commits on a branch using `git rev-list --count`
