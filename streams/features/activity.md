@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-02 09:15:00 - Phase 66 Task 12: Add merger agent definition for conflict resolution
+**What:**
+- Created `ralphx-plugin/agents/merger.md` with YAML frontmatter and agent prompt
+- Agent triggers on `status:merging` after programmatic rebase+merge fails
+- Tools: Bash, Read, Edit, Grep, Glob (for conflict resolution)
+- MCP tools: `complete_merge`, `report_conflict`, `get_task_context`
+- Agent workflow: get task context → read conflict files → analyze and resolve conflicts → verify resolution → call complete_merge or report_conflict
+
+**Files Modified:**
+- `ralphx-plugin/agents/merger.md` (NEW)
+
+**Commands:**
+- N/A - plugin file, no linting required
+
+**Visual Verification:** N/A - plugin configuration only
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 08:00:00 - Phase 66 Task 10: Add auto-transition from Approved to PendingMerge
 **What:**
 - Added auto-transition from `State::Approved` to `State::PendingMerge` in `check_auto_transition()` in transition_handler/mod.rs
