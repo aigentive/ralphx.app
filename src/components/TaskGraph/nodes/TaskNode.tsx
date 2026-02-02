@@ -88,50 +88,38 @@ function truncateText(text: string, maxLength: number): string {
 // ============================================================================
 
 /**
- * Check if status should show step progress bar (matches Kanban logic)
+ * Get background color for step dot based on status (inline style)
  */
-function shouldShowProgressBar(status: string): boolean {
-  return (
-    status === "executing" ||
-    status === "re_executing" ||
-    status.startsWith("qa_") ||
-    status === "pending_review" ||
-    status === "reviewing" ||
-    status === "review_passed" ||
-    status === "escalated" ||
-    status === "revision_needed" ||
-    status === "approved"
-  );
-}
-
-/**
- * Get background color class for step dot based on status
- */
-function getStepDotColor(
+function getStepDotStyle(
   index: number,
   completed: number,
   skipped: number,
   failed: number,
   inProgress: number
-): string {
+): React.CSSProperties {
   const completedAndSkipped = completed + skipped;
   const failedStart = completedAndSkipped;
   const failedEnd = failedStart + failed;
   const inProgressStart = failedEnd;
   const inProgressEnd = inProgressStart + inProgress;
 
-  if (index < completed) return "bg-status-success";
-  if (index < completedAndSkipped) return "bg-text-muted";
-  if (index < failedEnd) return "bg-status-error";
-  if (index < inProgressEnd) return "bg-accent-primary animate-pulse";
-  return "bg-border-default";
+  const base: React.CSSProperties = {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+  };
+
+  if (index < completed) return { ...base, backgroundColor: "hsl(142 76% 45%)" }; // success green
+  if (index < completedAndSkipped) return { ...base, backgroundColor: "hsl(220 10% 50%)" }; // muted
+  if (index < failedEnd) return { ...base, backgroundColor: "hsl(0 84% 60%)" }; // error red
+  if (index < inProgressEnd) return { ...base, backgroundColor: "hsl(14 100% 60%)" }; // accent orange
+  return { ...base, backgroundColor: "hsl(220 10% 30%)" }; // pending gray
 }
 
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers } = data;
   const statusColor = getStatusBorderColor(internalStatus);
-  const showProgressBar = shouldShowProgressBar(internalStatus);
   const { data: stepProgress } = useStepProgress(taskId);
 
   // Create a minimal task-like object for the context menu
@@ -298,18 +286,19 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
               {category}
             </span>
           )}
-          {showProgressBar && stepProgress && stepProgress.total > 0 && (
-            <div className="flex items-center gap-0.5">
+          {/* Show dots when we have step data */}
+          {stepProgress && stepProgress.total > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               {Array.from({ length: stepProgress.total }).map((_, index) => (
                 <div
                   key={index}
-                  className={`h-1.5 w-1.5 rounded-full ${getStepDotColor(
+                  style={getStepDotStyle(
                     index,
                     stepProgress.completed,
                     stepProgress.skipped,
                     stepProgress.failed,
                     stepProgress.inProgress
-                  )}`}
+                  )}
                 />
               ))}
             </div>
@@ -317,7 +306,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
         </div>
 
         {/* Progress bar */}
-        {showProgressBar && stepProgress && stepProgress.total > 0 && (
+        {stepProgress && stepProgress.total > 0 && (
           <div className="flex items-center gap-2">
             <div
               className="flex-1 h-1 rounded-full overflow-hidden"
