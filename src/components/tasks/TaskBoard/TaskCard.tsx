@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban, GitBranch } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Archive, Clock, Ban, GitBranch, GitMerge } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
@@ -252,6 +252,22 @@ export function TaskCard({
         </div>
       )}
 
+      {/* Completed/merged indicator - green badge for done tasks */}
+      {!isArchived && (task.internalStatus === "approved" || task.internalStatus === "merged") && (
+        <div data-testid="completed-indicator" className="absolute top-1.5 right-1.5">
+          <div
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
+            style={{
+              backgroundColor: "hsla(145, 60%, 45%, 0.15)",
+              color: "hsl(145 60% 45%)",
+            }}
+          >
+            <GitMerge className="w-2.5 h-2.5" />
+            <span>{task.internalStatus === "merged" ? "Merged" : "Done"}</span>
+          </div>
+        </div>
+      )}
+
       {/* Review state badges - shown for review-related states */}
       {!isArchived && showReviewState && (
         <div className="absolute top-1.5 right-1.5 flex items-center gap-1" data-testid="review-state-indicator">
@@ -369,15 +385,18 @@ export function TaskCard({
           </div>
         )}
 
-        {/* Blocked reason indicator */}
+        {/* Blocked reason indicator - yellow pill style */}
         {task.internalStatus === "blocked" && task.blockedReason && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div
                   data-testid="blocked-reason-indicator"
-                  className="flex items-center gap-1.5 mt-1.5 text-xs"
-                  style={{ color: "hsl(var(--warning))" }}
+                  className="flex items-center gap-1.5 mt-1.5 px-2 py-0.5 rounded-full text-xs max-w-full"
+                  style={{
+                    backgroundColor: "hsla(45, 90%, 55%, 0.15)",
+                    color: "hsl(45 90% 55%)",
+                  }}
                 >
                   <Ban className="w-3 h-3 flex-shrink-0" />
                   <span className="truncate">{task.blockedReason}</span>

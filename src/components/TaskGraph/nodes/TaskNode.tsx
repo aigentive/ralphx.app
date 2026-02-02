@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { getNodeStyle, getStatusCategory, CATEGORY_LABELS, GLASS_SURFACE, getPriorityStripeColor } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
+import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import type { InternalStatus } from "@/types/status";
 import type { Task } from "@/types/task";
 
@@ -66,6 +67,10 @@ export type TaskNodeData = Record<string, unknown> & {
   internalStatus: string;
   priority: number;
   isCriticalPath: boolean;
+  /** Task description for compact display (2-line clamp) */
+  description?: string | null;
+  /** Task category for badge display */
+  category?: string;
   /** Whether this node is highlighted (e.g., from timeline click) */
   isHighlighted?: boolean;
   /** Whether this node is keyboard-focused (for keyboard navigation) */
@@ -82,6 +87,9 @@ export type TaskNodeType = Node<TaskNodeData, "task">;
 
 /** Node width per design spec */
 const NODE_WIDTH = 180;
+
+/** Fixed node height for consistent graph layout */
+const NODE_HEIGHT = 100;
 
 /** Status label mapping for display */
 const STATUS_LABELS: Record<string, string> = {
@@ -136,6 +144,23 @@ function truncateText(text: string, maxLength: number): string {
  */
 function isActiveStatus(status: string): boolean {
   return status === "executing" || status === "re_executing" || status === "reviewing";
+}
+
+/**
+ * Check if status should show step progress bar (matches Kanban logic)
+ */
+function shouldShowProgressBar(status: string): boolean {
+  return (
+    status === "executing" ||
+    status === "re_executing" ||
+    status.startsWith("qa_") ||
+    status === "pending_review" ||
+    status === "reviewing" ||
+    status === "review_passed" ||
+    status === "escalated" ||
+    status === "revision_needed" ||
+    status === "approved"
+  );
 }
 
 /**
@@ -207,22 +232,23 @@ function getStatusBadgeConfig(status: string): StatusBadgeConfig {
 }
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers } = data;
   const style = getNodeStyle(internalStatus);
-  const category = getStatusCategory(internalStatus as InternalStatus);
-  const categoryLabel = CATEGORY_LABELS[category];
+  const statusCategory = getStatusCategory(internalStatus as InternalStatus);
+  const categoryLabel = CATEGORY_LABELS[statusCategory];
   const statusLabel = getStatusDisplayLabel(internalStatus);
   const showActivityDots = isActiveStatus(internalStatus);
   const activityDotColor = getActivityDotColor(internalStatus);
+  const showProgressBar = shouldShowProgressBar(internalStatus);
 
   // Create a minimal task-like object for the context menu
   // The context menu only uses title and internalStatus
   const minimalTask: Task = {
     id: taskId,
     projectId: "", // Not needed for context menu
-    category: "",
+    category: category ?? "",
     title: label,
-    description: null,
+    description: description ?? null,
     priority,
     internalStatus: internalStatus as InternalStatus,
     needsReviewPoint: false,
@@ -286,10 +312,10 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
         style={{ top: -3 }}
       />
 
-      {/* Node content - Glass morphism surface */}
+      {/* Node content - Glass morphism surface with fixed height */}
       <div
         className={`
-          relative rounded-lg px-3 py-2
+          relative rounded-lg px-3 py-2 overflow-hidden
           transition-all duration-150 ease-out
           hover:shadow-lg
           ${isCriticalPath && !selected ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
@@ -297,6 +323,8 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)]" : ""}
         `}
         style={{
+          // Fixed height for consistent graph layout (minus handle space)
+          height: NODE_HEIGHT - 6,
           // Glass morphism surface - overridden by selection state
           background: selected
             ? "hsla(220 60% 50% / 0.25)"
@@ -376,12 +404,70 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           );
         })()}
 
-        {/* Title - with right padding to avoid overlap with status badge */}
+        {/* Title - Kanban parity (13px, 500 weight) - fixed height */}
         <div
-          className="text-sm font-medium text-[hsl(220_10%_90%)] mb-1.5 leading-tight pr-8"
+          className="truncate leading-tight pr-8"
+          style={{
+            fontSize: "13px",
+            fontWeight: 500,
+            color: "hsl(220 10% 90%)",
+            lineHeight: 1.4,
+            height: "18px",
+          }}
           title={label}
         >
           {truncateText(label, 18)}
+        </div>
+
+        {/* Description area - fixed height (1 line) */}
+        <div
+          className="mt-1 pr-2"
+          style={{
+            height: "18px", // Space for 1 line
+          }}
+        >
+          {description && (
+            <div
+              className="truncate"
+              style={{
+                fontSize: "12px",
+                color: "hsl(220 10% 55%)",
+                lineHeight: 1.45,
+              }}
+            >
+              {description}
+            </div>
+          )}
+        </div>
+
+        {/* Category badge - fixed height */}
+        <div
+          className="flex items-center"
+          style={{ height: "16px" }}
+        >
+          {category && (
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 500,
+                color: "hsl(220 10% 45%)",
+                textTransform: "capitalize",
+              }}
+            >
+              {category}
+            </span>
+          )}
+        </div>
+
+        {/* Progress bar area - fixed height (always reserved) */}
+        <div
+          className="mt-1.5"
+          style={{ height: "24px" }}
+          data-testid="step-progress-footer"
+        >
+          {showProgressBar && (
+            <StepProgressBar taskId={taskId} compact={true} />
+          )}
         </div>
       </div>
 

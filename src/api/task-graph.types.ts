@@ -6,6 +6,8 @@
 export interface TaskGraphNode {
   taskId: string;
   title: string;
+  description: string | null;
+  category: string;
   internalStatus: string;
   priority: number;
   inDegree: number;

@@ -29,6 +29,8 @@ export function transformTaskGraphNode(
   return {
     taskId: raw.task_id,
     title: raw.title,
+    description: raw.description,
+    category: raw.category,
     internalStatus: raw.internal_status,
     priority: raw.priority,
     inDegree: raw.in_degree,

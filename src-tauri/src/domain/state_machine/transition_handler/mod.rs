@@ -108,7 +108,7 @@ impl<'a> TransitionHandler<'a> {
         // Decrement running count for agent-active states
         // This ensures ExecutionState tracks concurrency accurately
         match from {
-            State::Executing | State::QaRefining | State::QaTesting | State::Reviewing | State::ReExecuting => {
+            State::Executing | State::QaRefining | State::QaTesting | State::Reviewing | State::ReExecuting | State::Merging => {
                 if let Some(ref exec) = self.machine.context.services.execution_state {
                     exec.decrement_running();
                     tracing::debug!(
