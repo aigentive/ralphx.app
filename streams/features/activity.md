@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-03 00:00:00 - Phase 72 Task 5: Relocate and restyle status badge
+**What:**
+- Moved status badge from bottom of node content to top-right corner (absolute positioning)
+- Added Lucide icons for all status types (Clock, Loader2, Play, CheckCircle, AlertTriangle, Ban, RotateCcw, GitMerge, AlertCircle, XCircle)
+- Created `STATUS_BADGE_CONFIG` mapping with icon, color, bgOpacity, and label per status
+- Changed badge styling to match Kanban: `text-[9px] px-1.5 py-px` with translucent backgrounds
+- Used `color-mix()` CSS function for translucent status-colored backgrounds
+- Added spinning animation to icons for active states (executing, reviewing, merging, qa_refining, qa_testing)
+- Combined activity dots and status badge in same container for active states
+- Reduced title max chars from 22 to 18 and added `pr-8` padding to avoid badge overlap
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI styling changes, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:00:00 - Phase 72 Task 4: Add pulsing border animation for active states
 **What:**
 - Extended `NodeStyle` interface in `nodeStyles.ts` to include optional `animation` property

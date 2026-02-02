@@ -13,6 +13,18 @@
 
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import {
+  Clock,
+  Loader2,
+  Play,
+  CheckCircle,
+  AlertTriangle,
+  Ban,
+  RotateCcw,
+  GitMerge,
+  AlertCircle,
+  XCircle,
+} from "lucide-react";
 import { getNodeStyle, getStatusCategory, CATEGORY_LABELS, GLASS_SURFACE, getPriorityStripeColor } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import type { InternalStatus } from "@/types/status";
@@ -139,6 +151,61 @@ function getActivityDotColor(status: string): string {
   return "var(--accent-primary)";
 }
 
+/**
+ * Status badge configuration - icon, color, and label for each status
+ * Matches Kanban card styling: translucent backgrounds, small icons
+ */
+interface StatusBadgeConfig {
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  bgOpacity: string;
+  label: string;
+}
+
+const STATUS_BADGE_CONFIG: Record<string, StatusBadgeConfig> = {
+  // Idle
+  backlog: { icon: Clock, color: "hsl(220 10% 55%)", bgOpacity: "0.15", label: "Backlog" },
+  ready: { icon: Play, color: "hsl(220 10% 55%)", bgOpacity: "0.15", label: "Ready" },
+  // Blocked
+  blocked: { icon: Ban, color: "hsl(45 90% 55%)", bgOpacity: "0.2", label: "Blocked" },
+  // Executing
+  executing: { icon: Loader2, color: "hsl(14 100% 55%)", bgOpacity: "0.2", label: "Executing" },
+  re_executing: { icon: RotateCcw, color: "hsl(14 100% 55%)", bgOpacity: "0.2", label: "Revising" },
+  // QA
+  qa_refining: { icon: Loader2, color: "hsl(280 60% 55%)", bgOpacity: "0.2", label: "QA" },
+  qa_testing: { icon: Loader2, color: "hsl(280 60% 55%)", bgOpacity: "0.2", label: "Testing" },
+  qa_passed: { icon: CheckCircle, color: "hsl(280 60% 55%)", bgOpacity: "0.2", label: "QA ✓" },
+  qa_failed: { icon: XCircle, color: "hsl(280 60% 55%)", bgOpacity: "0.2", label: "QA ✗" },
+  // Review
+  pending_review: { icon: Clock, color: "hsl(220 80% 60%)", bgOpacity: "0.2", label: "Pending" },
+  reviewing: { icon: Loader2, color: "hsl(220 80% 60%)", bgOpacity: "0.2", label: "Reviewing" },
+  review_passed: { icon: CheckCircle, color: "hsl(145 60% 45%)", bgOpacity: "0.2", label: "Approved" },
+  escalated: { icon: AlertTriangle, color: "hsl(45 90% 55%)", bgOpacity: "0.2", label: "Escalated" },
+  revision_needed: { icon: RotateCcw, color: "hsl(45 90% 55%)", bgOpacity: "0.2", label: "Revision" },
+  // Merge
+  pending_merge: { icon: GitMerge, color: "hsl(180 60% 50%)", bgOpacity: "0.2", label: "Merge" },
+  merging: { icon: Loader2, color: "hsl(180 60% 50%)", bgOpacity: "0.2", label: "Merging" },
+  merge_conflict: { icon: AlertCircle, color: "hsl(45 90% 55%)", bgOpacity: "0.2", label: "Conflict" },
+  // Complete
+  approved: { icon: CheckCircle, color: "hsl(145 60% 45%)", bgOpacity: "0.2", label: "Done" },
+  merged: { icon: GitMerge, color: "hsl(145 60% 45%)", bgOpacity: "0.2", label: "Merged" },
+  // Terminal
+  failed: { icon: XCircle, color: "hsl(0 70% 55%)", bgOpacity: "0.2", label: "Failed" },
+  cancelled: { icon: Ban, color: "hsl(0 70% 55%)", bgOpacity: "0.2", label: "Cancelled" },
+};
+
+/**
+ * Get status badge config with fallback
+ */
+function getStatusBadgeConfig(status: string): StatusBadgeConfig {
+  return STATUS_BADGE_CONFIG[status] ?? {
+    icon: Clock,
+    color: "hsl(220 10% 55%)",
+    bgOpacity: "0.15",
+    label: status,
+  };
+}
+
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
   const style = getNodeStyle(internalStatus);
@@ -251,54 +318,66 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
         }}
       >
-        {/* Activity dots - top-right corner for active states */}
-        {showActivityDots && (
-          <div
-            className="absolute top-1.5 right-1.5 flex gap-0.5"
-            data-testid="activity-dots"
-          >
-            <span
-              className="w-1 h-1 rounded-full"
-              style={{
-                backgroundColor: activityDotColor,
-                animation: "bounce 1.4s ease-in-out 0s infinite",
-              }}
-            />
-            <span
-              className="w-1 h-1 rounded-full"
-              style={{
-                backgroundColor: activityDotColor,
-                animation: "bounce 1.4s ease-in-out 0.2s infinite",
-              }}
-            />
-            <span
-              className="w-1 h-1 rounded-full"
-              style={{
-                backgroundColor: activityDotColor,
-                animation: "bounce 1.4s ease-in-out 0.4s infinite",
-              }}
-            />
-          </div>
-        )}
+        {/* Status badge + activity dots - top-right corner (Kanban parity) */}
+        {(() => {
+          const badgeConfig = getStatusBadgeConfig(internalStatus);
+          const IconComponent = badgeConfig.icon;
+          const isSpinning = internalStatus === "executing" || internalStatus === "reviewing" ||
+            internalStatus === "merging" || internalStatus === "qa_refining" || internalStatus === "qa_testing";
 
-        {/* Title */}
+          return (
+            <div
+              className="absolute top-1.5 right-1.5 flex items-center gap-1"
+              data-testid="status-badge-container"
+            >
+              {/* Activity dots for active states */}
+              {showActivityDots && (
+                <div className="flex gap-0.5" data-testid="activity-dots">
+                  <span
+                    className="w-1 h-1 rounded-full"
+                    style={{
+                      backgroundColor: activityDotColor,
+                      animation: "bounce 1.4s ease-in-out 0s infinite",
+                    }}
+                  />
+                  <span
+                    className="w-1 h-1 rounded-full"
+                    style={{
+                      backgroundColor: activityDotColor,
+                      animation: "bounce 1.4s ease-in-out 0.2s infinite",
+                    }}
+                  />
+                  <span
+                    className="w-1 h-1 rounded-full"
+                    style={{
+                      backgroundColor: activityDotColor,
+                      animation: "bounce 1.4s ease-in-out 0.4s infinite",
+                    }}
+                  />
+                </div>
+              )}
+              {/* Status badge with icon - translucent background */}
+              <div
+                className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-medium"
+                style={{
+                  backgroundColor: `color-mix(in srgb, ${badgeConfig.color} ${parseFloat(badgeConfig.bgOpacity) * 100}%, transparent)`,
+                  color: badgeConfig.color,
+                }}
+                title={`${categoryLabel}: ${statusLabel}`}
+                data-testid="status-badge"
+              >
+                <IconComponent className={`w-2.5 h-2.5 ${isSpinning ? "animate-spin" : ""}`} />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Title - with right padding to avoid overlap with status badge */}
         <div
-          className="text-sm font-medium text-[hsl(220_10%_90%)] mb-1.5 leading-tight"
+          className="text-sm font-medium text-[hsl(220_10%_90%)] mb-1.5 leading-tight pr-8"
           title={label}
         >
-          {truncateText(label, 22)}
-        </div>
-
-        {/* Status badge */}
-        <div
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-          style={{
-            backgroundColor: style.borderColor,
-            color: "hsl(220 10% 10%)",
-          }}
-          title={`${categoryLabel}: ${statusLabel}`}
-        >
-          {statusLabel}
+          {truncateText(label, 18)}
         </div>
       </div>
 
