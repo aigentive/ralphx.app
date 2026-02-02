@@ -44,12 +44,7 @@ import { toast } from "sonner";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { TaskStatusBadge } from "./TaskStatusBadge";
-import {
-  getCardStyles,
-  getExecutionStateClass,
-  getExecutionBorderStyles,
-  isDraggableStatus,
-} from "./TaskCard.utils";
+import { getCardStyles, isDraggableStatus } from "./TaskCard.utils";
 
 interface TaskCardProps {
   task: Task;
@@ -145,13 +140,11 @@ export function TaskCard({
     ...(testStatus !== undefined && { testStatus }),
   };
 
-  // Computed styles using extracted utilities
+  // Computed styles using extracted utilities - left border colored by status
   const cardStyles = useMemo(
-    () => getCardStyles(task.priority, isArchived, !!isDragging, isDraggable, !!isSelected),
-    [task.priority, isArchived, isDragging, isDraggable, isSelected]
+    () => getCardStyles(task.internalStatus, isArchived, !!isDragging, isDraggable, !!isSelected),
+    [task.internalStatus, isArchived, isDragging, isDraggable, isSelected]
   );
-  const executionStateClass = getExecutionStateClass(task.internalStatus);
-  const executionBorderStyles = getExecutionBorderStyles(task.internalStatus);
 
   // Context menu handlers - use selectedTaskId for split layout overlay
   const handleViewDetails = () => {
@@ -236,8 +229,8 @@ export function TaskCard({
           onClick={() => {
             handleViewDetails();
           }}
-          className={`group relative p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""} ${executionStateClass}`}
-          style={{ ...cardStyles, ...executionBorderStyles, ...dragStyle }}
+          className={`group relative p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""}`}
+          style={{ ...cardStyles, ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
