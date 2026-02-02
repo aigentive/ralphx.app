@@ -199,9 +199,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           relative rounded-lg px-3 py-2 overflow-hidden
           transition-all duration-150 ease-out
           hover:shadow-lg
-          ${isCriticalPath && !selected ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
-          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
-          ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)]" : ""}
+          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
         `}
         style={{
           // Fixed height for consistent graph layout (minus handle space)
@@ -212,19 +210,18 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
             : GLASS_SURFACE.background,
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
-          // Finder-like blue selection border, or default border
-          border: selected
+          // Border: solid orange when focused, blue when selected, default otherwise
+          border: (isHighlighted || isFocused) && !selected
+            ? "2px solid hsl(14 100% 55%)"
+            : selected
             ? "1px solid hsla(220 60% 60% / 0.3)"
             : GLASS_SURFACE.border,
-          // Left border colored by status (matches Kanban card styling)
-          borderLeft: `3px solid ${statusColor}`,
-          // Glow for highlighted/focused states only
-          boxShadow: isHighlighted
-            ? `${GLASS_SURFACE.boxShadow}, 0 0 12px 2px hsl(var(--accent-primary) / 0.4)`
-            : isFocused && !selected
-            ? `${GLASS_SURFACE.boxShadow}, 0 0 8px 1px rgba(56, 189, 248, 0.3)`
-            : GLASS_SURFACE.boxShadow,
-          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
+          // Left border colored by status (only when not focused)
+          borderLeft: (isHighlighted || isFocused) && !selected
+            ? "2px solid hsl(14 100% 55%)"
+            : `3px solid ${statusColor}`,
+          boxShadow: GLASS_SURFACE.boxShadow,
+          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease, border 150ms ease",
         }}
       >
         {/* Status badge - top-right corner (shared with Kanban) */}
