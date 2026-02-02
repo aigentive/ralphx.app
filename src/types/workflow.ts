@@ -409,7 +409,47 @@ export const defaultWorkflow: WorkflowSchema = {
         },
       ],
     },
-    { id: "done", name: "Done", mapsTo: "approved" },
+    {
+      id: "done",
+      name: "Done",
+      mapsTo: "approved",
+      groups: [
+        {
+          id: "merging",
+          label: "Merging",
+          statuses: ["pending_merge", "merging"],
+          icon: "GitMerge",
+          canDragFrom: false, // System-managed
+          canDropTo: false,
+        },
+        {
+          id: "needs_attention",
+          label: "Needs Attention",
+          statuses: ["merge_conflict"],
+          icon: "AlertTriangle",
+          accentColor: "hsl(var(--warning))",
+          canDragFrom: false, // User interacts via action buttons
+          canDropTo: false,
+        },
+        {
+          id: "completed",
+          label: "Completed",
+          statuses: ["merged", "approved"],
+          icon: "CheckCircle",
+          accentColor: "hsl(var(--success))",
+          canDragFrom: false,
+          canDropTo: false,
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          statuses: ["failed", "cancelled"],
+          icon: "XCircle",
+          canDragFrom: false,
+          canDropTo: false,
+        },
+      ],
+    },
   ],
   isDefault: true,
 };

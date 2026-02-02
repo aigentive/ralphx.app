@@ -5,7 +5,7 @@
  */
 
 import { type ReactNode } from "react";
-import { RotateCcw, RefreshCw, Clock, Bot, CheckCircle } from "lucide-react";
+import { RotateCcw, RefreshCw, Clock, Bot, CheckCircle, GitMerge, AlertTriangle, XCircle, Ban } from "lucide-react";
 
 /** Storage key prefix for collapsed group state */
 export const COLLAPSED_GROUPS_KEY = "ralphx:collapsed-groups";
@@ -70,6 +70,10 @@ export function getGroupIcon(iconName: string | undefined): ReactNode {
     Clock: () => <Clock className="w-3 h-3" />,
     Bot: () => <Bot className="w-3 h-3" />,
     CheckCircle: () => <CheckCircle className="w-3 h-3" />,
+    GitMerge: () => <GitMerge className="w-3 h-3" />,
+    AlertTriangle: () => <AlertTriangle className="w-3 h-3" />,
+    XCircle: () => <XCircle className="w-3 h-3" />,
+    Ban: () => <Ban className="w-3 h-3" />,
   };
 
   const iconFactory = iconMap[iconName];

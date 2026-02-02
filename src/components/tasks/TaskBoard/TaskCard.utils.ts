@@ -142,6 +142,20 @@ export function getExecutionBorderStyles(status: InternalStatus): React.CSSPrope
       borderColor: "var(--status-warning)",
     };
   }
+  // Merge conflict: warning border to draw attention
+  if (status === "merge_conflict") {
+    return {
+      borderWidth: "2px",
+      borderColor: "var(--status-warning)",
+    };
+  }
+  // Pending merge / Merging: subtle info border
+  if (status === "pending_merge" || status === "merging") {
+    return {
+      borderWidth: "2px",
+      borderColor: "var(--status-info)",
+    };
+  }
   return {};
 }
 
