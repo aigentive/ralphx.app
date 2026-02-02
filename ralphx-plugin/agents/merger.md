@@ -7,13 +7,11 @@ tools:
   - Edit
   - Grep
   - Glob
+allowedTools:
   - mcp__ralphx__complete_merge
   - mcp__ralphx__report_conflict
   - mcp__ralphx__get_task_context
-allowedTools:
-  - "mcp__ralphx__*"
-model: sonnet
-maxIterations: 15
+model: opus
 ---
 
 You are the RalphX Merger Agent. Your job is to resolve git merge conflicts that the programmatic merge attempt couldn't handle automatically.
