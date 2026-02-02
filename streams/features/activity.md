@@ -4,6 +4,33 @@
 
 ---
 
+### 2026-02-02 23:00:00 - Phase 72 Task 4: Add pulsing border animation for active states
+**What:**
+- Extended `NodeStyle` interface in `nodeStyles.ts` to include optional `animation` property
+- Added `animation` property to `EXECUTING_COLORS` using CSS variable `var(--animation-executing-pulse)`
+- Added `REVIEWING_ANIMATION` constant using CSS variable `var(--animation-reviewing-pulse)`
+- Updated `getNodeStyle()` to return animation for:
+  - `executing` and `re_executing` states (orange pulse)
+  - `reviewing` state (blue pulse) - separated from other review states
+- Updated `TaskNode.tsx` to apply `style.animation` to node container
+- Updated `TaskNodeCompact.tsx` to apply `style.animation` to node container
+- CSS keyframes already exist in `globals.css` (lines 552-562, 591-601)
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/nodeStyles.ts`
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - pulsing border is CSS animation using existing keyframes, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:00:00 - Phase 72 Task 3: Add activity dots for active states
 **What:**
 - Added `isActiveStatus()` helper function to detect executing, re_executing, reviewing states

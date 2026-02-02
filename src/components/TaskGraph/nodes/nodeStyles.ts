@@ -28,6 +28,8 @@ export interface NodeStyle {
   backgroundColor: string;
   /** Optional box-shadow for glow effect */
   boxShadow?: string;
+  /** Optional CSS animation for active states */
+  animation?: string;
 }
 
 /**
@@ -119,6 +121,7 @@ const EXECUTING_COLORS = {
   border: "hsl(14 100% 55%)",
   background: "hsla(14 100% 55% / 0.15)",
   boxShadow: "0 0 12px hsla(14 100% 55% / 0.3)",
+  animation: "var(--animation-executing-pulse)",
 } as const;
 
 /** QA statuses: qa_refining, qa_testing, qa_passed, qa_failed */
@@ -132,6 +135,9 @@ const REVIEW_COLORS = {
   border: "hsl(220 80% 60%)",
   background: "hsla(220 80% 60% / 0.12)",
 } as const;
+
+/** Reviewing status: active review with pulse animation */
+const REVIEWING_ANIMATION = "var(--animation-reviewing-pulse)";
 
 /** Merge statuses: pending_merge, merging, merge_conflict */
 const MERGE_COLORS = {
@@ -226,6 +232,7 @@ export function getNodeStyle(status: InternalStatus | string): NodeStyle {
         borderColor: EXECUTING_COLORS.border,
         backgroundColor: EXECUTING_COLORS.background,
         boxShadow: EXECUTING_COLORS.boxShadow,
+        animation: EXECUTING_COLORS.animation,
       };
 
     // QA
@@ -240,13 +247,20 @@ export function getNodeStyle(status: InternalStatus | string): NodeStyle {
 
     // Review
     case "pending_review":
-    case "reviewing":
     case "review_passed":
     case "escalated":
     case "revision_needed":
       return {
         borderColor: REVIEW_COLORS.border,
         backgroundColor: REVIEW_COLORS.background,
+      };
+
+    // Reviewing (active review with animation)
+    case "reviewing":
+      return {
+        borderColor: REVIEW_COLORS.border,
+        backgroundColor: REVIEW_COLORS.background,
+        animation: REVIEWING_ANIMATION,
       };
 
     // Merge
