@@ -155,7 +155,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
       onDoubleClick={onToggleCollapse}
     >
       {/* Left section: collapse toggle + title */}
-      <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex items-center gap-2 min-w-[120px] flex-1">
         <button
           onClick={onToggleCollapse}
           className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
@@ -168,18 +168,17 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
           )}
         </button>
 
-        <button
-          onClick={onNavigateToSession}
+        <span
           className={cn(
             "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
             onNavigateToSession &&
               "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
           )}
           title={`Plan: ${displayTitle}`}
-          disabled={!onNavigateToSession}
+          onClick={onNavigateToSession}
         >
           {displayTitle}
-        </button>
+        </span>
       </div>
 
       {/* Middle section: progress bar */}
