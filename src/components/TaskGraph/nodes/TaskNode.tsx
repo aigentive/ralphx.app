@@ -13,7 +13,7 @@
 
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { getNodeStyle, getStatusCategory, CATEGORY_LABELS, GLASS_SURFACE } from "./nodeStyles";
+import { getNodeStyle, getStatusCategory, CATEGORY_LABELS, GLASS_SURFACE, getPriorityStripeColor } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import type { InternalStatus } from "@/types/status";
 import type { Task } from "@/types/task";
@@ -214,8 +214,9 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
           border: GLASS_SURFACE.border,
-          // Status-specific border color applied as left stripe (will be added in Task 2)
-          // For now, keep status color influence in box-shadow for active states
+          // Left priority stripe (matches Kanban card styling)
+          borderLeft: `3px solid ${getPriorityStripeColor(priority)}`,
+          // Status-specific glow for active states
           boxShadow: isHighlighted
             ? `${GLASS_SURFACE.boxShadow}, 0 0 12px 2px hsl(var(--accent-primary) / 0.4)`
             : isFocused && !selected
