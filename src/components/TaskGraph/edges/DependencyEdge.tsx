@@ -65,12 +65,12 @@ function DependencyEdgeComponent({
   const sourceStatus = edgeData?.sourceStatus;
   const isGroupConnector = edgeData?.isGroupConnector ?? false;
 
-  // Group connector edges get a special style
+  // Group connector edges get a special style - solid line (dotted not visible when straight)
   const edgeStyle = isGroupConnector
     ? {
-        stroke: "hsl(220 10% 50%)",
-        strokeWidth: 2,
-        strokeDasharray: "8 4",
+        stroke: "hsl(220 10% 35%)",
+        strokeWidth: 1.5,
+        strokeDasharray: undefined,
         animated: false,
         filter: undefined,
       }
