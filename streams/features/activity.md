@@ -4,6 +4,42 @@
 
 ---
 
+### 2026-02-03 06:00:00 - Phase 67 Task 16: Create PlanGroup visual region component
+**What:**
+- Created `src/components/TaskGraph/groups/groupUtils.ts`:
+  - `calculateBoundingBox`: Computes min/max bounds for a set of nodes
+  - `calculateGroupBoundingBoxes`: Batch calculation for multiple plan groups
+  - `expandBoundingBox`: Adds padding and header height to bounding box
+  - `boundingBoxToGroupNode`: Converts bbox to React Flow node position/dimensions
+  - Constants: GROUP_PADDING (24), HEADER_HEIGHT (48), MIN dimensions
+- Created `src/components/TaskGraph/groups/PlanGroup.tsx`:
+  - React Flow custom node type for visual group containers
+  - Uses subtle background `--bg-elevated/50%` with rounded border
+  - Integrates PlanGroupHeader for title, progress, and status badges
+  - Supports collapsed state (shows only header when collapsed)
+  - Factory function `createPlanGroupNode` for creating group nodes
+  - Exported `PLAN_GROUP_NODE_TYPE` constant
+- Updated `src/components/TaskGraph/index.ts`:
+  - Exported PlanGroup component and types
+  - Exported groupUtils functions and types
+
+**Files Created:**
+- `src/components/TaskGraph/groups/groupUtils.ts`
+- `src/components/TaskGraph/groups/PlanGroup.tsx`
+
+**Files Modified:**
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run lint` (passed - pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - component not yet wired to view (Task 17 will wire it)
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 05:00:00 - Phase 67 Task 15: Create PlanGroupHeader component
 **What:**
 - Created `src/components/TaskGraph/groups/PlanGroupHeader.tsx`:
