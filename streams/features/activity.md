@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-03 04:45:00 - Phase 68 Task 4: Add tests for crash recovery scenarios
+**What:**
+- Added 6 new tests to `startup_jobs.rs` for crash recovery scenarios:
+  - `test_merging_state_resumed_on_startup` - Verifies Merging state respawns merger agent
+  - `test_pending_review_auto_transitions_on_startup` - Verifies PendingReview → Reviewing chain
+  - `test_revision_needed_auto_transitions_on_startup` - Verifies RevisionNeeded → ReExecuting chain
+  - `test_approved_auto_transitions_on_startup` - Verifies Approved → PendingMerge transition
+  - `test_qa_passed_auto_transitions_on_startup` - Verifies full QaPassed → PendingReview → Reviewing chain
+  - `test_auto_transition_respects_max_concurrent` - Verifies max_concurrent check in auto-transition loop
+- Tests verify entry actions are called by checking for created chat conversations
+- Tests validate task status transitions to expected final states
+
+**Files Modified:**
+- `src-tauri/src/application/startup_jobs.rs`
+  - Added 6 test functions in the tests module (lines 527-815)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3373 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 04:15:00 - Phase 68 Task 3: Update StartupJobRunner for auto-transition recovery
 **What:**
 - Updated `StartupJobRunner` to recover tasks stuck in auto-transition states
