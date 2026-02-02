@@ -34,7 +34,7 @@ import type { InternalStatus } from "./status";
 export interface StatusIconConfig {
   /** Lucide icon component */
   icon: React.ComponentType<{ className?: string }>;
-  /** Icon/text color (HSL or CSS variable) */
+  /** Icon/text color (HSL or CSS variable) - used for icons AND left border */
   color: string;
   /** Background opacity (0-1 as string, e.g., "0.2") */
   bgOpacity: string;
@@ -42,10 +42,6 @@ export interface StatusIconConfig {
   label: string;
   /** Whether icon should spin (for active states) */
   animate?: boolean;
-  /** Whether to show a highlighted border on the card */
-  showBorder?: boolean;
-  /** CSS animation for border (e.g., pulse) */
-  borderAnimation?: string;
 }
 
 // ============================================================================
@@ -53,7 +49,7 @@ export interface StatusIconConfig {
 // ============================================================================
 
 export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
-  // === Idle States (no border highlight) ===
+  // === Idle States ===
   backlog: {
     icon: FileText,
     color: "hsl(220 10% 55%)",
@@ -73,7 +69,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     color: "hsl(45 90% 55%)",
     bgOpacity: "0.2",
     label: "Blocked",
-    showBorder: true,
   },
 
   // === Execution States ===
@@ -83,8 +78,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.2",
     label: "Executing",
     animate: true,
-    showBorder: true,
-    borderAnimation: "var(--animation-executing-pulse)",
   },
   re_executing: {
     icon: Loader2,
@@ -92,7 +85,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.2",
     label: "Revising",
     animate: true,
-    showBorder: true,
   },
 
   // === QA States ===
@@ -102,8 +94,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.2",
     label: "QA",
     animate: true,
-    showBorder: true,
-    borderAnimation: "var(--animation-executing-pulse)",
   },
   qa_testing: {
     icon: Loader2,
@@ -111,22 +101,18 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.2",
     label: "Testing",
     animate: true,
-    showBorder: true,
-    borderAnimation: "var(--animation-executing-pulse)",
   },
   qa_passed: {
     icon: CheckCircle,
     color: "hsl(280 60% 55%)",
     bgOpacity: "0.2",
     label: "QA ✓",
-    showBorder: true,
   },
   qa_failed: {
     icon: XCircle,
     color: "hsl(280 60% 55%)",
     bgOpacity: "0.2",
     label: "QA ✗",
-    showBorder: true,
   },
 
   // === Review States ===
@@ -135,7 +121,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     color: "hsl(220 80% 60%)",
     bgOpacity: "0.2",
     label: "Pending",
-    showBorder: true,
   },
   reviewing: {
     icon: Loader2,
@@ -143,29 +128,24 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.2",
     label: "Reviewing",
     animate: true,
-    showBorder: true,
-    borderAnimation: "var(--animation-reviewing-pulse)",
   },
   review_passed: {
     icon: CheckCircle,
     color: "hsl(145 60% 45%)",
     bgOpacity: "0.2",
     label: "Approved",
-    showBorder: true,
   },
   escalated: {
     icon: AlertTriangle,
     color: "hsl(45 90% 55%)",
     bgOpacity: "0.2",
     label: "Escalated",
-    showBorder: true,
   },
   revision_needed: {
     icon: RotateCcw,
     color: "hsl(45 90% 55%)",
     bgOpacity: "0.2",
     label: "Revision",
-    showBorder: true,
   },
 
   // === Merge States ===
@@ -174,7 +154,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     color: "hsl(180 60% 50%)",
     bgOpacity: "0.2",
     label: "Merge",
-    showBorder: true,
   },
   merging: {
     icon: Loader2,
@@ -182,14 +161,12 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.2",
     label: "Merging",
     animate: true,
-    showBorder: true,
   },
   merge_conflict: {
     icon: AlertCircle,
     color: "hsl(0 70% 55%)",
     bgOpacity: "0.2",
     label: "Conflict",
-    showBorder: true,
   },
 
   // === Complete States ===
@@ -198,14 +175,12 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     color: "hsl(145 60% 45%)",
     bgOpacity: "0.2",
     label: "Done",
-    showBorder: true,
   },
   merged: {
     icon: GitMerge,
     color: "hsl(145 60% 45%)",
     bgOpacity: "0.2",
     label: "Merged",
-    showBorder: true,
   },
 
   // === Terminal States ===
@@ -214,7 +189,6 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     color: "hsl(0 70% 55%)",
     bgOpacity: "0.2",
     label: "Failed",
-    showBorder: true,
   },
   cancelled: {
     icon: XCircle,
@@ -262,19 +236,4 @@ export function getStatusIconConfig(status: InternalStatus | string): StatusIcon
 export function shouldAnimateIcon(status: InternalStatus | string): boolean {
   const config = STATUS_ICON_CONFIG[status as InternalStatus];
   return config?.animate ?? false;
-}
-
-/**
- * Get border styles for a status (used by TaskCard)
- * Returns CSS properties for border highlight based on status color
- */
-export function getStatusBorderStyles(status: InternalStatus | string): React.CSSProperties {
-  const config = STATUS_ICON_CONFIG[status as InternalStatus];
-  if (!config?.showBorder) return {};
-
-  return {
-    borderWidth: "2px",
-    borderColor: config.color,
-    ...(config.borderAnimation && { animation: config.borderAnimation }),
-  };
 }
