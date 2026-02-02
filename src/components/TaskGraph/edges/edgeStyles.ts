@@ -37,6 +37,13 @@ export const MARKER_IDS = {
   active: "dependency-arrow-active",
 } as const;
 
+/** SVG gradient IDs for edge fade effect */
+export const GRADIENT_IDS = {
+  normal: "edge-gradient-normal",
+  critical: "edge-gradient-critical",
+  active: "edge-gradient-active",
+} as const;
+
 // ============================================================================
 // Color Definitions
 // ============================================================================
@@ -49,6 +56,9 @@ export const CRITICAL_STROKE = "hsl(14 100% 55%)";
 
 /** Animated dotted style for edges from executing nodes */
 const ACTIVE_STROKE = "hsl(14 100% 55%)";
+
+/** Background color for gradient fade (near-transparent) */
+export const EDGE_FADE_COLOR = "hsl(220 10% 10%)";
 
 // ============================================================================
 // Edge Styles

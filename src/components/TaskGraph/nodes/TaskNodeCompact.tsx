@@ -1,7 +1,7 @@
 /**
  * TaskNodeCompact - Compact React Flow node variant for large graphs
  *
- * Smaller node (100px width) for graphs with 50+ tasks:
+ * Smaller node (COMPACT_NODE_WIDTH from nodeStyles.ts) for graphs with 50+ tasks:
  * - Status-based border and background colors
  * - Abbreviated task title (first 2 words + ellipsis)
  * - No status badge (status communicated via color)
@@ -13,7 +13,7 @@
 
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { GLASS_SURFACE } from "./nodeStyles";
+import { GLASS_SURFACE, COMPACT_NODE_WIDTH, COMPACT_TITLE_MAX_CHARS } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import type { InternalStatus } from "@/types/status";
 import { getStatusBorderColor } from "@/types/status-icons";
@@ -29,15 +29,6 @@ import type { TaskNodeData } from "./TaskNode";
  */
 export type TaskNodeCompactType = Node<TaskNodeData, "taskCompact">;
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/** Compact node width - smaller than standard 180px */
-const NODE_WIDTH = 100;
-
-/** Maximum characters for abbreviated title */
-const MAX_TITLE_CHARS = 12;
 
 // ============================================================================
 // Helper Functions
@@ -45,17 +36,17 @@ const MAX_TITLE_CHARS = 12;
 
 /**
  * Abbreviate text to fit compact node
- * Takes first ~12 characters and adds ellipsis if truncated
+ * Uses COMPACT_TITLE_MAX_CHARS from nodeStyles.ts
  */
 function abbreviateTitle(text: string): string {
-  if (text.length <= MAX_TITLE_CHARS) return text;
+  if (text.length <= COMPACT_TITLE_MAX_CHARS) return text;
   // Try to break at word boundary
-  const truncated = text.slice(0, MAX_TITLE_CHARS);
+  const truncated = text.slice(0, COMPACT_TITLE_MAX_CHARS);
   const lastSpace = truncated.lastIndexOf(" ");
-  if (lastSpace > MAX_TITLE_CHARS / 2) {
+  if (lastSpace > COMPACT_TITLE_MAX_CHARS / 2) {
     return truncated.slice(0, lastSpace) + "…";
   }
-  return truncated.slice(0, MAX_TITLE_CHARS - 1) + "…";
+  return truncated.slice(0, COMPACT_TITLE_MAX_CHARS - 1) + "…";
 }
 
 // ============================================================================
@@ -143,7 +134,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
   const nodeContent = (
     <div
       className="relative"
-      style={{ width: NODE_WIDTH }}
+      style={{ width: COMPACT_NODE_WIDTH }}
       data-testid="task-node-compact"
       data-status={internalStatus}
       data-critical-path={isCriticalPath}

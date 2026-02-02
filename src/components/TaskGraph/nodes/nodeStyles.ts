@@ -49,14 +49,23 @@ export interface GlassSurface {
 }
 
 // ============================================================================
-// Node Dimensions
+// Node Dimensions (Single Source of Truth)
 // ============================================================================
 
-/** Node width - shared across TaskNode and layout calculations */
+/** Standard node width - full-size TaskNode with status badges */
 export const NODE_WIDTH = 210;
 
-/** Fixed node height to accommodate: title + 1-line description + category + progress bar */
+/** Standard node height to accommodate: title + 1-line description + category + progress bar */
 export const NODE_HEIGHT = 100;
+
+/** Compact node width - smaller TaskNodeCompact for large graphs (50+ tasks) */
+export const COMPACT_NODE_WIDTH = 160;
+
+/** Compact node height - smaller for dense layouts */
+export const COMPACT_NODE_HEIGHT = 48;
+
+/** Maximum title characters for compact nodes */
+export const COMPACT_TITLE_MAX_CHARS = 20;
 
 // ============================================================================
 // Glass Morphism Constants

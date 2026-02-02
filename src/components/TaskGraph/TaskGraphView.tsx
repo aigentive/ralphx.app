@@ -33,7 +33,7 @@ import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
 import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
-import { MARKER_IDS, NORMAL_STROKE, CRITICAL_STROKE } from "./edges/edgeStyles";
+import { MARKER_IDS, NORMAL_STROKE, CRITICAL_STROKE, EDGE_FADE_COLOR } from "./edges/edgeStyles";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
@@ -239,38 +239,57 @@ function findNextNode(
 // ============================================================================
 
 /**
- * SVG marker definitions for edge arrows
- * All arrows use the same size (8x6) - only color differs
+ * SVG definitions for edge arrows and gradients
+ * Arrows are slightly larger for better visibility
+ * Gradients fade from stroke color to near-background at the end
  */
 function EdgeMarkerDefinitions() {
   return (
     <svg style={{ position: "absolute", width: 0, height: 0 }}>
       <defs>
-        {/* Normal edge arrow - muted gray */}
+        {/* Gradient definitions for edge fade effect */}
+        <linearGradient id="edge-gradient-normal" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={NORMAL_STROKE} />
+          <stop offset="70%" stopColor={NORMAL_STROKE} />
+          <stop offset="100%" stopColor={EDGE_FADE_COLOR} stopOpacity="0.3" />
+        </linearGradient>
+        <linearGradient id="edge-gradient-critical" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={CRITICAL_STROKE} />
+          <stop offset="70%" stopColor={CRITICAL_STROKE} />
+          <stop offset="100%" stopColor={EDGE_FADE_COLOR} stopOpacity="0.3" />
+        </linearGradient>
+        <linearGradient id="edge-gradient-active" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={CRITICAL_STROKE} />
+          <stop offset="70%" stopColor={CRITICAL_STROKE} />
+          <stop offset="100%" stopColor={EDGE_FADE_COLOR} stopOpacity="0.3" />
+        </linearGradient>
+
+        {/* Normal edge arrow - muted gray, larger for visibility */}
         <marker
           id={MARKER_IDS.normal}
           viewBox="0 0 10 10"
-          refX={8}
+          refX={9}
           refY={5}
-          markerWidth={8}
-          markerHeight={6}
+          markerWidth={10}
+          markerHeight={8}
           markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >
           <path
             d="M 0 0 L 10 5 L 0 10 z"
             fill={NORMAL_STROKE}
+            fillOpacity="0.8"
           />
         </marker>
 
-        {/* Critical path edge arrow - orange, same size as normal */}
+        {/* Critical path edge arrow - orange, larger for visibility */}
         <marker
           id={MARKER_IDS.critical}
           viewBox="0 0 10 10"
-          refX={8}
+          refX={9}
           refY={5}
-          markerWidth={8}
-          markerHeight={6}
+          markerWidth={10}
+          markerHeight={8}
           markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >
@@ -280,14 +299,14 @@ function EdgeMarkerDefinitions() {
           />
         </marker>
 
-        {/* Active edge arrow - orange, same size as normal */}
+        {/* Active edge arrow - orange, larger for visibility */}
         <marker
           id={MARKER_IDS.active}
           viewBox="0 0 10 10"
-          refX={8}
+          refX={9}
           refY={5}
-          markerWidth={8}
-          markerHeight={6}
+          markerWidth={10}
+          markerHeight={8}
           markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >

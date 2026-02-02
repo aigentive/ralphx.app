@@ -71,7 +71,7 @@ const CollapseToggle = memo(function CollapseToggle({
   );
 });
 
-/** Progress bar with percentage */
+/** Progress bar with percentage - thin and subtle */
 const ProgressBar = memo(function ProgressBar({
   completed,
   total,
@@ -83,9 +83,9 @@ const ProgressBar = memo(function ProgressBar({
 
   return (
     <div className="flex items-center gap-2 min-w-[120px]">
-      <div className="flex-1 h-1.5 bg-[hsl(var(--bg-surface))] rounded-full overflow-hidden">
+      <div className="flex-1 h-1 bg-[hsla(220,10%,20%,0.5)] rounded-full overflow-hidden">
         <div
-          className="h-full bg-[hsl(145,60%,45%)] rounded-full transition-all duration-300"
+          className="h-full bg-[hsla(145,60%,45%,0.6)] rounded-full transition-all duration-300"
           style={{ width: `${percentage}%` }}
         />
       </div>

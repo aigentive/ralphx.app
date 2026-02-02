@@ -6,6 +6,7 @@
  */
 
 import type { Node } from "@xyflow/react";
+import { NODE_WIDTH, NODE_HEIGHT } from "../nodes/nodeStyles";
 
 // ============================================================================
 // Types
@@ -55,14 +56,14 @@ export const MIN_GROUP_HEIGHT = 100;
  * Calculate the bounding box for a set of nodes
  *
  * @param nodes - React Flow nodes to calculate bounds for
- * @param nodeWidth - Width of each node (default: 180)
- * @param nodeHeight - Height of each node (default: 50)
+ * @param nodeWidth - Width of each node (default: NODE_WIDTH from nodeStyles)
+ * @param nodeHeight - Height of each node (default: NODE_HEIGHT from nodeStyles)
  * @returns Bounding box or null if no nodes
  */
 export function calculateBoundingBox(
   nodes: Node[],
-  nodeWidth = 180,
-  nodeHeight = 50
+  nodeWidth = NODE_WIDTH,
+  nodeHeight = NODE_HEIGHT
 ): BoundingBox | null {
   if (nodes.length === 0) return null;
 
@@ -96,15 +97,15 @@ export function calculateBoundingBox(
  *
  * @param allNodes - All React Flow nodes
  * @param planGroups - Map of planArtifactId -> taskIds
- * @param nodeWidth - Width of each node (default: 180)
- * @param nodeHeight - Height of each node (default: 50)
+ * @param nodeWidth - Width of each node (default: NODE_WIDTH from nodeStyles)
+ * @param nodeHeight - Height of each node (default: NODE_HEIGHT from nodeStyles)
  * @returns Array of bounding boxes for each plan group
  */
 export function calculateGroupBoundingBoxes(
   allNodes: Node[],
   planGroups: Map<string, string[]>,
-  nodeWidth = 180,
-  nodeHeight = 50
+  nodeWidth = NODE_WIDTH,
+  nodeHeight = NODE_HEIGHT
 ): GroupBoundingBox[] {
   const results: GroupBoundingBox[] = [];
 

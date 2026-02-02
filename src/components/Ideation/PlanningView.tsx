@@ -24,6 +24,7 @@ import type {
   ApplyProposalsInput,
 } from "@/types/ideation";
 import { Button } from "@/components/ui/button";
+import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -537,21 +538,11 @@ export function PlanningView({
               </div>
 
               {/* Resize Handle */}
-              <div
-                data-testid="resize-handle"
-                className="w-1 cursor-ew-resize relative group shrink-0"
-                style={{
-                  background: isResizing ? "hsla(14 100% 60% / 0.5)" : "transparent",
-                }}
+              <ResizeHandle
+                isResizing={isResizing}
                 onMouseDown={handleResizeStart}
-              >
-                <div
-                  className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all duration-150"
-                  style={{
-                    background: isResizing ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.06)",
-                  }}
-                />
-              </div>
+                testId="ideation-resize-handle"
+              />
 
               {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
               <div
