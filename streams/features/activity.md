@@ -4,6 +4,38 @@
 
 ---
 
+### 2026-02-02 19:15:00 - Phase 77 Task 2: Add ExecutionSettings domain struct and repository layer
+**What:**
+- Created ExecutionSettings domain struct with max_concurrent_tasks, auto_commit, pause_on_failure fields
+- Created domain/execution module with settings.rs and mod.rs
+- Added ExecutionSettingsRepository trait to domain/repositories/mod.rs
+- Implemented SqliteExecutionSettingsRepository following ideation_settings pattern
+- Implemented MemoryExecutionSettingsRepository for testing
+- Added execution_settings_repo field to AppState struct
+- Wired execution_settings_repo into all AppState constructors (new_production, with_db_path, new_test, with_repos)
+
+**Files:**
+- CREATED: src-tauri/src/domain/execution/mod.rs
+- CREATED: src-tauri/src/domain/execution/settings.rs
+- CREATED: src-tauri/src/domain/repositories/execution_settings_repository.rs
+- CREATED: src-tauri/src/infrastructure/sqlite/sqlite_execution_settings_repo.rs
+- CREATED: src-tauri/src/infrastructure/memory/memory_execution_settings_repo.rs
+- MODIFIED: src-tauri/src/domain/mod.rs
+- MODIFIED: src-tauri/src/domain/repositories/mod.rs
+- MODIFIED: src-tauri/src/infrastructure/sqlite/mod.rs
+- MODIFIED: src-tauri/src/infrastructure/memory/mod.rs
+- MODIFIED: src-tauri/src/application/app_state.rs
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test execution` - 56 tests pass (including new settings and repo tests)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 18:30:00 - Phase 77 Task 1: Create database migration for execution_settings table
 **What:**
 - Created v10_execution_settings.rs migration with CREATE TABLE IF NOT EXISTS
