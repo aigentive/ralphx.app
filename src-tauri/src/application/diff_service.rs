@@ -6,7 +6,7 @@
 
 use crate::domain::entities::{ActivityEventType, TaskId};
 use crate::domain::repositories::{ActivityEventFilter, ActivityEventRepository};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::process::Command;
@@ -230,6 +230,155 @@ impl DiffService {
 
         let old_content = old_output
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+            .unwrap_or_default();
+
+        // Determine language from file extension
+        let language = get_language_from_path(file_path);
+
+        Ok(FileDiff {
+            file_path: file_path.to_string(),
+            old_content,
+            new_content,
+            language,
+        })
+    }
+
+    /// Get files changed in a specific commit
+    pub fn get_commit_file_changes(
+        &self,
+        commit_sha: &str,
+        project_path: &str,
+    ) -> AppResult<Vec<FileChange>> {
+        // Use git diff-tree to get files changed in this commit
+        // Format: status\tpath (e.g., "A\tfile.rs" for added, "M\tfile.rs" for modified)
+        let output = Command::new("git")
+            .args([
+                "diff-tree",
+                "--no-commit-id",
+                "--name-status",
+                "-r",
+                commit_sha,
+            ])
+            .current_dir(project_path)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git diff-tree: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git diff-tree failed: {}",
+                stderr
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut changes = Vec::new();
+
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let status_char = parts[0].chars().next().unwrap_or('M');
+                let file_path = parts[1];
+
+                let status = match status_char {
+                    'A' => FileChangeStatus::Added,
+                    'D' => FileChangeStatus::Deleted,
+                    _ => FileChangeStatus::Modified, // M, R, C, etc.
+                };
+
+                // Get line counts using git diff for this specific commit
+                let (additions, deletions) =
+                    self.get_commit_file_line_counts(commit_sha, file_path, project_path);
+
+                changes.push(FileChange {
+                    path: file_path.to_string(),
+                    status,
+                    additions,
+                    deletions,
+                });
+            }
+        }
+
+        // Sort by path for consistent ordering
+        changes.sort_by(|a, b| a.path.cmp(&b.path));
+
+        Ok(changes)
+    }
+
+    /// Get line additions/deletions for a file in a specific commit
+    fn get_commit_file_line_counts(
+        &self,
+        commit_sha: &str,
+        file_path: &str,
+        project_path: &str,
+    ) -> (u32, u32) {
+        // git diff commit^..commit --numstat -- file_path
+        let output = Command::new("git")
+            .args([
+                "diff",
+                "--numstat",
+                &format!("{}^", commit_sha),
+                commit_sha,
+                "--",
+                file_path,
+            ])
+            .current_dir(project_path)
+            .output();
+
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = stdout.lines().next() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let additions: u32 = parts[0].parse().unwrap_or(0);
+                    let deletions: u32 = parts[1].parse().unwrap_or(0);
+                    return (additions, deletions);
+                }
+            }
+        }
+
+        (0, 0)
+    }
+
+    /// Get diff for a file in a specific commit (comparing to its parent)
+    pub fn get_commit_file_diff(
+        &self,
+        commit_sha: &str,
+        file_path: &str,
+        project_path: &str,
+    ) -> AppResult<FileDiff> {
+        // Get old content from parent commit (commit^)
+        let old_output = Command::new("git")
+            .args(["show", &format!("{}^:{}", commit_sha, file_path)])
+            .current_dir(project_path)
+            .output();
+
+        let old_content = old_output
+            .map(|o| {
+                if o.status.success() {
+                    String::from_utf8_lossy(&o.stdout).to_string()
+                } else {
+                    // File didn't exist in parent (new file)
+                    String::new()
+                }
+            })
+            .unwrap_or_default();
+
+        // Get new content from this commit
+        let new_output = Command::new("git")
+            .args(["show", &format!("{}:{}", commit_sha, file_path)])
+            .current_dir(project_path)
+            .output();
+
+        let new_content = new_output
+            .map(|o| {
+                if o.status.success() {
+                    String::from_utf8_lossy(&o.stdout).to_string()
+                } else {
+                    // File was deleted in this commit
+                    String::new()
+                }
+            })
             .unwrap_or_default();
 
         // Determine language from file extension
