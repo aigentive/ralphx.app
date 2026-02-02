@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 20:15:00 - Phase 73 Task 7: Reorder navbar items to Ideation → Graph → Kanban
+**What:**
+- Reordered NAV_ITEMS array in `src/components/layout/Navigation.tsx`
+- New order: Ideation (⌘1) → Graph (⌘2) → Kanban (⌘3) → Extensibility (⌘4) → Activity (⌘5) → Settings (⌘6)
+- Updated keyboard shortcuts in `src/hooks/useAppKeyboardShortcuts.ts` to match new order
+- Reflects natural workflow: plan ideas → visualize dependencies → execute tasks
+
+**Files:**
+- MODIFIED: src/components/layout/Navigation.tsx (lines 22-35)
+- MODIFIED: src/hooks/useAppKeyboardShortcuts.ts (lines 48-60)
+
+**Visual Verification:** N/A - no new UI components, only reordering existing navigation items
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:45:00 - Phase 73 Task 6: Update KanbanSplitLayout width constraints
 **What:**
 - Updated width constraints in `src/components/layout/KanbanSplitLayout.tsx`
