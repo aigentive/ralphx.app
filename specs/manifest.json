@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 70,
+  "currentPhase": null,
   "phases": [
     {
       "phase": 0,
@@ -504,7 +504,7 @@
       "phase": 70,
       "name": "Fix get_task_file_changes Empty After Commits",
       "prd": "specs/phases/prd_phase_70_diff_base_branch_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Compare against base branch instead of HEAD for file changes"
     }
   ]
