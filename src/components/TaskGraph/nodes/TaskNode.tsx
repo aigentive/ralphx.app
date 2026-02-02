@@ -25,9 +25,9 @@ import {
   AlertCircle,
   XCircle,
 } from "lucide-react";
-import { getNodeStyle, getStatusCategory, CATEGORY_LABELS, GLASS_SURFACE, getPriorityStripeColor } from "./nodeStyles";
+import { getNodeStyle, getStatusCategory, CATEGORY_LABELS, GLASS_SURFACE, getPriorityStripeColor, NODE_WIDTH, NODE_HEIGHT } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
-import { StepProgressBar } from "@/components/tasks/StepProgressBar";
+import { useStepProgress } from "@/hooks/useTaskSteps";
 import type { InternalStatus } from "@/types/status";
 import type { Task } from "@/types/task";
 
@@ -84,12 +84,6 @@ export type TaskNodeType = Node<TaskNodeData, "task">;
 // ============================================================================
 // Constants
 // ============================================================================
-
-/** Node width per design spec */
-const NODE_WIDTH = 180;
-
-/** Fixed node height for consistent graph layout */
-const NODE_HEIGHT = 100;
 
 /** Status label mapping for display */
 const STATUS_LABELS: Record<string, string> = {
@@ -177,6 +171,29 @@ function getActivityDotColor(status: string): string {
 }
 
 /**
+ * Get background color class for step dot based on status
+ */
+function getStepDotColor(
+  index: number,
+  completed: number,
+  skipped: number,
+  failed: number,
+  inProgress: number
+): string {
+  const completedAndSkipped = completed + skipped;
+  const failedStart = completedAndSkipped;
+  const failedEnd = failedStart + failed;
+  const inProgressStart = failedEnd;
+  const inProgressEnd = inProgressStart + inProgress;
+
+  if (index < completed) return "bg-status-success";
+  if (index < completedAndSkipped) return "bg-text-muted";
+  if (index < failedEnd) return "bg-status-error";
+  if (index < inProgressEnd) return "bg-accent-primary animate-pulse";
+  return "bg-border-default";
+}
+
+/**
  * Status badge configuration - icon, color, and label for each status
  * Matches Kanban card styling: translucent backgrounds, small icons
  */
@@ -240,6 +257,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   const showActivityDots = isActiveStatus(internalStatus);
   const activityDotColor = getActivityDotColor(internalStatus);
   const showProgressBar = shouldShowProgressBar(internalStatus);
+  const { data: stepProgress } = useStepProgress(taskId);
 
   // Create a minimal task-like object for the context menu
   // The context menu only uses title and internalStatus
@@ -440,10 +458,11 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           )}
         </div>
 
-        {/* Category badge - fixed height */}
+        {/* Category + step dots - same line */}
         <div
-          className="flex items-center"
+          className="flex items-center gap-2 mt-2.5"
           style={{ height: "16px" }}
+          data-testid="step-progress-footer"
         >
           {category && (
             <span
@@ -457,18 +476,47 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
               {category}
             </span>
           )}
-        </div>
-
-        {/* Progress bar area - fixed height (always reserved) */}
-        <div
-          className="mt-1.5"
-          style={{ height: "24px" }}
-          data-testid="step-progress-footer"
-        >
-          {showProgressBar && (
-            <StepProgressBar taskId={taskId} compact={true} />
+          {showProgressBar && stepProgress && stepProgress.total > 0 && (
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: stepProgress.total }).map((_, index) => (
+                <div
+                  key={index}
+                  className={`h-1.5 w-1.5 rounded-full ${getStepDotColor(
+                    index,
+                    stepProgress.completed,
+                    stepProgress.skipped,
+                    stepProgress.failed,
+                    stepProgress.inProgress
+                  )}`}
+                />
+              ))}
+            </div>
           )}
         </div>
+
+        {/* Progress bar */}
+        {showProgressBar && stepProgress && stepProgress.total > 0 && (
+          <div className="flex items-center gap-2">
+            <div
+              className="flex-1 h-1 rounded-full overflow-hidden"
+              style={{ backgroundColor: "hsl(220 10% 14%)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.round(((stepProgress.completed + stepProgress.skipped) / stepProgress.total) * 100)}%`,
+                  backgroundColor: "hsl(220 10% 35%)",
+                }}
+              />
+            </div>
+            <span
+              className="text-[10px] tabular-nums shrink-0"
+              style={{ color: "hsl(220 10% 40%)" }}
+            >
+              {Math.round(((stepProgress.completed + stepProgress.skipped) / stepProgress.total) * 100)}%
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Source handle - bottom (outgoing edges) */}

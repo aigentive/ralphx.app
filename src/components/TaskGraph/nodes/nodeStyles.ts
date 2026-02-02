@@ -49,6 +49,16 @@ export interface GlassSurface {
 }
 
 // ============================================================================
+// Node Dimensions
+// ============================================================================
+
+/** Node width - shared across TaskNode and layout calculations */
+export const NODE_WIDTH = 210;
+
+/** Fixed node height to accommodate: title + 1-line description + category + progress bar */
+export const NODE_HEIGHT = 100;
+
+// ============================================================================
 // Glass Morphism Constants
 // ============================================================================
 
