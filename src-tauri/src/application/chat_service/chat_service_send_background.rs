@@ -3,14 +3,16 @@
 // Extracted from chat_service/mod.rs to reduce file size.
 // Handles stream processing, task transitions, queue processing, and event emissions.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 
+use crate::application::git_service::GitService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::complete_merge_internal;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatConversationId, ChatContextType, InternalStatus, TaskId,
@@ -230,6 +232,34 @@ pub fn spawn_send_message_background<R: Runtime>(
                     } else {
                         tracing::warn!(
                             "Cannot transition task {} - no execution_state available",
+                            context_id
+                        );
+                    }
+                }
+
+                // Handle merge auto-completion (only for Merge context)
+                // When merger agent exits, check git state to determine if merge succeeded
+                if context_type == ChatContextType::Merge {
+                    if let Some(ref exec_state) = execution_state {
+                        attempt_merge_auto_complete(
+                            &context_id,
+                            &task_repo,
+                            &task_dependency_repo,
+                            &project_repo,
+                            &chat_message_repo,
+                            &conversation_repo,
+                            &agent_run_repo,
+                            &ideation_session_repo,
+                            &activity_event_repo,
+                            &message_queue,
+                            &running_agent_registry,
+                            exec_state,
+                            app_handle.as_ref(),
+                        )
+                        .await;
+                    } else {
+                        tracing::warn!(
+                            "Cannot auto-complete merge for task {} - no execution_state available",
                             context_id
                         );
                     }
@@ -542,7 +572,332 @@ pub fn spawn_send_message_background<R: Runtime>(
                         }),
                     );
                 }
+
+                // Handle merge auto-completion even on agent error
+                // The agent may have crashed after completing the merge in git
+                if context_type == ChatContextType::Merge {
+                    if let Some(ref exec_state) = execution_state {
+                        attempt_merge_auto_complete(
+                            &context_id,
+                            &task_repo,
+                            &task_dependency_repo,
+                            &project_repo,
+                            &chat_message_repo,
+                            &conversation_repo,
+                            &agent_run_repo,
+                            &ideation_session_repo,
+                            &activity_event_repo,
+                            &message_queue,
+                            &running_agent_registry,
+                            exec_state,
+                            app_handle.as_ref(),
+                        )
+                        .await;
+                    } else {
+                        tracing::warn!(
+                            "Cannot auto-complete merge for task {} on error - no execution_state available",
+                            context_id
+                        );
+                    }
+                }
             }
         }
     });
+}
+
+/// Attempt to auto-complete a merge when the merger agent exits.
+///
+/// Called after process_stream_background returns for ChatContextType::Merge.
+/// Checks if the task is still in Merging state (agent didn't explicitly transition)
+/// and determines the appropriate transition based on git state:
+/// - Rebase complete + no conflict markers → transition to Merged
+/// - Rebase in progress or conflict markers → transition to MergeConflict
+///
+/// This enables "fire and forget" merge agents that don't need to call complete_merge.
+#[allow(clippy::too_many_arguments)]
+async fn attempt_merge_auto_complete<R: Runtime>(
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
+    project_repo: &Arc<dyn ProjectRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    agent_run_repo: &Arc<dyn AgentRunRepository>,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: &Arc<dyn ActivityEventRepository>,
+    message_queue: &Arc<MessageQueue>,
+    running_agent_registry: &Arc<RunningAgentRegistry>,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: Option<&AppHandle<R>>,
+) {
+    let task_id = TaskId::from_string(task_id_str.to_string());
+
+    // 1. Get task - if not in Merging state, agent already handled it
+    let mut task = match task_repo.get_by_id(&task_id).await {
+        Ok(Some(task)) => task,
+        Ok(None) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                "attempt_merge_auto_complete: task not found"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to get task"
+            );
+            return;
+        }
+    };
+
+    // If task is not in Merging state, agent already transitioned (called complete_merge or report_conflict)
+    if task.internal_status != InternalStatus::Merging {
+        tracing::info!(
+            task_id = task_id_str,
+            status = ?task.internal_status,
+            "attempt_merge_auto_complete: task already transitioned, skipping"
+        );
+        return;
+    }
+
+    // 2. Get worktree path to check git state
+    let worktree_path = match &task.worktree_path {
+        Some(path) => PathBuf::from(path),
+        None => {
+            // No worktree - this shouldn't happen for merge tasks, but handle gracefully
+            tracing::error!(
+                task_id = task_id_str,
+                "attempt_merge_auto_complete: no worktree_path on task"
+            );
+            // Transition to MergeConflict since we can't verify state
+            transition_to_merge_conflict(
+                &task_id,
+                "Auto-complete failed: no worktree path",
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+    };
+
+    let worktree = Path::new(&worktree_path);
+
+    // 3. Check git state
+    if GitService::is_rebase_in_progress(worktree) {
+        tracing::info!(
+            task_id = task_id_str,
+            "attempt_merge_auto_complete: rebase still in progress, transitioning to MergeConflict"
+        );
+        transition_to_merge_conflict(
+            &task_id,
+            "Agent exited with incomplete rebase",
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            chat_message_repo,
+            conversation_repo,
+            agent_run_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            execution_state,
+            app_handle,
+        )
+        .await;
+        return;
+    }
+
+    match GitService::has_conflict_markers(worktree) {
+        Ok(true) => {
+            tracing::info!(
+                task_id = task_id_str,
+                "attempt_merge_auto_complete: conflict markers found, transitioning to MergeConflict"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                "Agent exited with unresolved conflict markers",
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+        Ok(false) => {
+            // No conflicts - merge succeeded!
+        }
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to check conflict markers, transitioning to MergeConflict"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Auto-complete failed: {}", e),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+    }
+
+    // 4. Merge succeeded! Get commit SHA and complete
+    let commit_sha = match GitService::get_head_sha(worktree) {
+        Ok(sha) => sha,
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to get HEAD SHA"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Auto-complete failed: could not get HEAD SHA: {}", e),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+    };
+
+    // 5. Get project for complete_merge_internal
+    let project = match project_repo.get_by_id(&task.project_id).await {
+        Ok(Some(project)) => project,
+        Ok(None) => {
+            tracing::error!(
+                task_id = task_id_str,
+                project_id = task.project_id.as_str(),
+                "attempt_merge_auto_complete: project not found"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to get project"
+            );
+            return;
+        }
+    };
+
+    // 6. Complete the merge using shared logic
+    tracing::info!(
+        task_id = task_id_str,
+        commit_sha = %commit_sha,
+        "attempt_merge_auto_complete: merge successful, completing"
+    );
+
+    if let Err(e) = complete_merge_internal(
+        &mut task,
+        &project,
+        &commit_sha,
+        task_repo,
+        app_handle,
+    )
+    .await
+    {
+        tracing::error!(
+            task_id = task_id_str,
+            error = %e,
+            "attempt_merge_auto_complete: complete_merge_internal failed"
+        );
+    }
+}
+
+/// Helper to transition task to MergeConflict state
+#[allow(clippy::too_many_arguments)]
+async fn transition_to_merge_conflict<R: Runtime>(
+    task_id: &TaskId,
+    reason: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
+    project_repo: &Arc<dyn ProjectRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    agent_run_repo: &Arc<dyn AgentRunRepository>,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: &Arc<dyn ActivityEventRepository>,
+    message_queue: &Arc<MessageQueue>,
+    running_agent_registry: &Arc<RunningAgentRegistry>,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: Option<&AppHandle<R>>,
+) {
+    tracing::info!(
+        task_id = task_id.as_str(),
+        reason = reason,
+        "transition_to_merge_conflict: transitioning task"
+    );
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(task_repo),
+        Arc::clone(task_dependency_repo),
+        Arc::clone(project_repo),
+        Arc::clone(chat_message_repo),
+        Arc::clone(conversation_repo),
+        Arc::clone(agent_run_repo),
+        Arc::clone(ideation_session_repo),
+        Arc::clone(activity_event_repo),
+        Arc::clone(message_queue),
+        Arc::clone(running_agent_registry),
+        Arc::clone(execution_state),
+        app_handle.cloned(),
+    );
+
+    if let Err(e) = transition_service
+        .transition_task(task_id, InternalStatus::MergeConflict)
+        .await
+    {
+        tracing::error!(
+            task_id = task_id.as_str(),
+            error = %e,
+            "transition_to_merge_conflict: failed to transition"
+        );
+    }
 }

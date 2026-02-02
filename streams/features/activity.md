@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-02 15:30:00 - Phase 76 Task 4: Hook merge auto-completion into agent exit handler
+**What:**
+- Added `attempt_merge_auto_complete()` function to chat_service_send_background.rs
+- Function checks task state, git state (rebase in progress, conflict markers), and either:
+  - Auto-completes merge via `complete_merge_internal()` if merge succeeded
+  - Transitions to MergeConflict via `TaskTransitionService` if merge failed
+- Added `transition_to_merge_conflict()` helper function
+- Hooked into both Ok and Err branches of `process_stream_background()` for `ChatContextType::Merge`
+- Made `complete_merge_internal()` generic over `tauri::Runtime` for type compatibility
+- Added comprehensive tracing for all auto-completion decisions
+
+**Files:**
+- MODIFIED: src-tauri/src/application/chat_service/chat_service_send_background.rs (added auto-complete functions and hooks)
+- MODIFIED: src-tauri/src/domain/state_machine/transition_handler/side_effects.rs (made complete_merge_internal generic)
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - 3387 tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 12:45:00 - Phase 76 Task 2: Extract shared merge completion logic
 **What:**
 - Created `complete_merge_internal()` standalone async function for shared merge completion logic
