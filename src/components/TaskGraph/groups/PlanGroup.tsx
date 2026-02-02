@@ -8,7 +8,7 @@
  * This component is used as a custom node type in React Flow.
  */
 
-import { memo } from "react";
+import { memo, useCallback } from "react";
 import type { NodeProps, Node } from "@xyflow/react";
 import { Handle, Position } from "@xyflow/react";
 import { PlanGroupHeader } from "./PlanGroupHeader";
@@ -97,6 +97,15 @@ export const PlanGroup = memo(function PlanGroup({
   // When collapsed, show only the header
   const displayHeight = isCollapsed ? HEADER_HEIGHT + GROUP_PADDING : height;
 
+  // Handle double-click to toggle collapse (instead of React Flow zoom)
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation(); // Prevent React Flow zoom
+      onToggleCollapse?.(planArtifactId);
+    },
+    [onToggleCollapse, planArtifactId]
+  );
+
   return (
     <div
       className={cn(
@@ -113,6 +122,7 @@ export const PlanGroup = memo(function PlanGroup({
         width,
         height: displayHeight,
       }}
+      onDoubleClick={handleDoubleClick}
       data-testid={`plan-group-${planArtifactId}`}
     >
       {/* Header */}
