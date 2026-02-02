@@ -52,6 +52,8 @@ export function useTaskEvents() {
           // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+          // Bridge to graph hooks that listen for task:updated
+          bus.emit("task:updated", { taskId: taskEvent.task.id });
           break;
         case "updated": {
           // Transform snake_case changes to camelCase
@@ -75,6 +77,8 @@ export function useTaskEvents() {
           // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+          // Bridge to graph hooks that listen for task:updated
+          bus.emit("task:updated", { taskId: taskEvent.taskId });
           break;
         }
         case "deleted":
@@ -94,6 +98,8 @@ export function useTaskEvents() {
           if (taskEvent.to === "merged") {
             queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskEvent.taskId) });
           }
+          // Bridge to graph hooks that listen for task:updated
+          bus.emit("task:updated", { taskId: taskEvent.taskId });
           break;
       }
     });
