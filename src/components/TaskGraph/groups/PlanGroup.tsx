@@ -14,7 +14,7 @@ import { Handle, Position } from "@xyflow/react";
 import { PlanGroupHeader } from "./PlanGroupHeader";
 import type { StatusSummary } from "@/api/task-graph.types";
 import { cn } from "@/lib/utils";
-import { GROUP_PADDING, HEADER_HEIGHT } from "./groupUtils";
+import { HEADER_HEIGHT } from "./groupUtils";
 
 // ============================================================================
 // Types
