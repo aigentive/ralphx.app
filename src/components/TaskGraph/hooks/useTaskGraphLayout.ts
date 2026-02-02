@@ -287,17 +287,17 @@ function computeLayoutWithCache(
   const collapsedTaskIds = buildCollapsedTaskIds(graphNodes, planGroups, collapsedPlanIds);
 
   // Filter nodes and edges to exclude collapsed groups (lazy loading)
-  // This saves dagre computation for tasks that won't be rendered
+  // This saves rendering for tasks that won't be shown
   const visibleNodes = graphNodes.filter((n) => !collapsedTaskIds.has(n.taskId));
   const visibleEdges = graphEdges.filter(
     (e) => !collapsedTaskIds.has(e.source) && !collapsedTaskIds.has(e.target)
   );
 
-  // Compute structural hash to check cache
-  // Hash includes collapsed state so expanding a group invalidates cache
-  const nodeIds = visibleNodes.map((n) => n.taskId);
-  const edgePairs = visibleEdges.map((e) => ({ source: e.source, target: e.target }));
-  const hash = computeGraphHash(nodeIds, edgePairs, config.direction);
+  // Compute layout for ALL nodes (needed for group bounding boxes)
+  // We need positions for collapsed group tasks too, so groups remain visible
+  const allNodeIds = graphNodes.map((n) => n.taskId);
+  const allEdgePairs = graphEdges.map((e) => ({ source: e.source, target: e.target }));
+  const hash = computeGraphHash(allNodeIds, allEdgePairs, config.direction);
 
   // Check if we can use cached positions
   let positions: Map<string, { x: number; y: number }>;
@@ -305,8 +305,8 @@ function computeLayoutWithCache(
     // Cache hit: reuse positions
     positions = cache.current.positions;
   } else {
-    // Cache miss: compute new layout and cache it
-    positions = computePositions(nodeIds, edgePairs, config);
+    // Cache miss: compute new layout for ALL nodes and cache it
+    positions = computePositions(allNodeIds, allEdgePairs, config);
     cache.current = { hash, positions };
   }
 
@@ -392,8 +392,20 @@ function computeLayoutWithCache(
     return edge;
   });
 
-  // Create group nodes for plan groups
-  const groupNodes = createGroupNodes(nodes, planGroups, collapsedPlanIds, onToggleCollapse);
+  // Create ALL positioned nodes for group bounding box calculation
+  // (includes collapsed group tasks that won't be rendered)
+  const allPositionedNodes: Node[] = graphNodes.map((graphNode) => {
+    const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
+    return {
+      id: graphNode.taskId,
+      type: "task",
+      position: pos,
+      data: {},
+    } as Node;
+  });
+
+  // Create group nodes for plan groups using ALL positioned nodes
+  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, onToggleCollapse);
 
   return { nodes, edges, groupNodes };
 }
