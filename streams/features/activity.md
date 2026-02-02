@@ -4,6 +4,43 @@
 
 ---
 
+### 2026-02-02 18:15:00 - Phase 67 Task 27: Wire context menu to task nodes
+**What:**
+- Updated `src/components/TaskGraph/nodes/TaskNode.tsx`:
+  - Added `TaskNodeHandlers` interface for context menu action callbacks
+  - Extended `TaskNodeData` with optional `handlers` property
+  - Created minimal task object from node data for context menu compatibility
+  - Wrapped node content with `TaskNodeContextMenu` component
+  - Added handler callbacks that pass taskId to parent handlers
+  - Graceful fallback: renders without context menu if no handlers provided
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Added `useTaskMutation` hook for block/unblock mutations
+  - Created handler functions for all context menu actions:
+    - `handleViewDetails`: opens TaskDetailOverlay
+    - `handleStartExecution`: moves task to executing status
+    - `handleBlockWithReason`: blocks with optional reason
+    - `handleUnblock`: unblocks task
+    - `handleApprove`: calls reviews API to approve task
+    - `handleReject`: moves to failed status
+    - `handleRequestChanges`: moves to revision_needed status
+    - `handleMarkResolved`: moves to pending_merge status
+  - Memoized handlers into `nodeHandlers` object
+  - Injected handlers into node data during React Flow state update
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/TaskNode.tsx` (extended with context menu wiring)
+- `src/components/TaskGraph/TaskGraphView.tsx` (added handlers and mutations)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - context menu functionality, requires manual testing
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 17:30:00 - Phase 67 Task 26: Create TaskNodeContextMenu component
 **What:**
 - Created `src/components/TaskGraph/nodes/TaskNodeContextMenu.tsx`:

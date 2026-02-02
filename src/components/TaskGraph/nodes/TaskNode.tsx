@@ -6,18 +6,43 @@
  * - Truncated task title
  * - Status badge
  * - Handles for connections (top source, bottom target)
+ * - Right-click context menu with status-appropriate actions
  *
- * Per spec: Phase B.2 of Task Graph View implementation
+ * Per spec: Phase B.2 + E.2 of Task Graph View implementation
  */
 
-import { memo } from "react";
+import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { getNodeStyle, getStatusCategory, CATEGORY_LABELS } from "./nodeStyles";
+import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import type { InternalStatus } from "@/types/status";
+import type { Task } from "@/types/task";
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Handler functions passed to TaskNode for context menu actions
+ */
+export interface TaskNodeHandlers {
+  /** Open the task detail overlay */
+  onViewDetails: (taskId: string) => void;
+  /** Start task execution (ready status) */
+  onStartExecution?: (taskId: string) => void;
+  /** Block a task with optional reason */
+  onBlockWithReason?: (taskId: string, reason?: string) => void;
+  /** Unblock a task */
+  onUnblock?: (taskId: string) => void;
+  /** Approve a task */
+  onApprove?: (taskId: string) => void;
+  /** Reject a task */
+  onReject?: (taskId: string) => void;
+  /** Request changes */
+  onRequestChanges?: (taskId: string) => void;
+  /** Mark merge conflict as resolved */
+  onMarkResolved?: (taskId: string) => void;
+}
 
 /**
  * Data passed to the TaskNode component
@@ -31,6 +56,8 @@ export type TaskNodeData = Record<string, unknown> & {
   isCriticalPath: boolean;
   /** Whether this node is highlighted (e.g., from timeline click) */
   isHighlighted?: boolean;
+  /** Handler functions for context menu actions */
+  handlers?: TaskNodeHandlers;
 };
 
 export type TaskNodeType = Node<TaskNodeData, "task">;
@@ -91,13 +118,66 @@ function truncateText(text: string, maxLength: number): string {
 // ============================================================================
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, internalStatus, isCriticalPath, isHighlighted } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, handlers } = data;
   const style = getNodeStyle(internalStatus);
   const category = getStatusCategory(internalStatus as InternalStatus);
   const categoryLabel = CATEGORY_LABELS[category];
   const statusLabel = getStatusDisplayLabel(internalStatus);
 
-  return (
+  // Create a minimal task-like object for the context menu
+  // The context menu only uses title and internalStatus
+  const minimalTask: Task = {
+    id: taskId,
+    projectId: "", // Not needed for context menu
+    category: "",
+    title: label,
+    description: null,
+    priority,
+    internalStatus: internalStatus as InternalStatus,
+    needsReviewPoint: false,
+    createdAt: "",
+    updatedAt: "",
+    startedAt: null,
+    completedAt: null,
+    archivedAt: null,
+    blockedReason: null,
+  };
+
+  // Wrap handlers to pass taskId
+  const handleViewDetails = useCallback(() => {
+    handlers?.onViewDetails(taskId);
+  }, [handlers, taskId]);
+
+  const handleStartExecution = useCallback(() => {
+    handlers?.onStartExecution?.(taskId);
+  }, [handlers, taskId]);
+
+  const handleBlockWithReason = useCallback((reason?: string) => {
+    handlers?.onBlockWithReason?.(taskId, reason);
+  }, [handlers, taskId]);
+
+  const handleUnblock = useCallback(() => {
+    handlers?.onUnblock?.(taskId);
+  }, [handlers, taskId]);
+
+  const handleApprove = useCallback(() => {
+    handlers?.onApprove?.(taskId);
+  }, [handlers, taskId]);
+
+  const handleReject = useCallback(() => {
+    handlers?.onReject?.(taskId);
+  }, [handlers, taskId]);
+
+  const handleRequestChanges = useCallback(() => {
+    handlers?.onRequestChanges?.(taskId);
+  }, [handlers, taskId]);
+
+  const handleMarkResolved = useCallback(() => {
+    handlers?.onMarkResolved?.(taskId);
+  }, [handlers, taskId]);
+
+  // Node content that will be wrapped by context menu
+  const nodeContent = (
     <div
       className="relative"
       style={{ width: NODE_WIDTH }}
@@ -160,6 +240,29 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
         style={{ bottom: -4 }}
       />
     </div>
+  );
+
+  // If no handlers provided, render without context menu (for preview/compact modes)
+  if (!handlers) {
+    return nodeContent;
+  }
+
+  // Wrap with context menu
+  return (
+    <TaskNodeContextMenu
+      task={minimalTask}
+      onViewDetails={handleViewDetails}
+      onStartExecution={handleStartExecution}
+      onBlockWithReason={handleBlockWithReason}
+      onUnblock={handleUnblock}
+      onViewAgentChat={handleViewDetails} // Falls back to view details
+      onApprove={handleApprove}
+      onReject={handleReject}
+      onRequestChanges={handleRequestChanges}
+      onMarkResolved={handleMarkResolved}
+    >
+      {nodeContent}
+    </TaskNodeContextMenu>
   );
 }
 
