@@ -246,6 +246,8 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
             : style.boxShadow
             ? `${GLASS_SURFACE.boxShadow}, ${style.boxShadow}`
             : GLASS_SURFACE.boxShadow,
+          // Pulsing border animation for active states (executing, reviewing)
+          animation: style.animation,
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
         }}
       >
