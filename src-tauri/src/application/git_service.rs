@@ -1406,4 +1406,468 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 3);
     }
+
+    // =========================================================================
+    // try_rebase_and_merge Tests (Phase 78)
+    // =========================================================================
+
+    #[test]
+    fn test_try_rebase_and_merge_first_task_on_empty_repo() {
+        // Test that first task on empty repo (only 1 commit) bypasses rebase
+        // and directly merges the task branch
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial empty commit on main
+        Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "initial empty commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Rename default branch to 'main' if needed
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
+
+        // Create task branch from main
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Add content on task branch
+        std::fs::write(repo.join("feature.txt"), "feature content").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Go back to main
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Verify main has only 1 commit
+        let count = GitService::get_commit_count(repo, "main").unwrap();
+        assert_eq!(count, 1, "Main should have only 1 commit before merge");
+
+        // Try rebase and merge - should skip rebase and merge directly
+        let result = GitService::try_rebase_and_merge(repo, "task-branch", "main");
+        assert!(result.is_ok(), "try_rebase_and_merge should succeed for first task");
+
+        match result.unwrap() {
+            MergeAttemptResult::Success { commit_sha } => {
+                // Verify commit is on main
+                let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+                assert!(on_main, "Merge commit should be on main branch");
+
+                // Verify feature file exists
+                assert!(
+                    repo.join("feature.txt").exists(),
+                    "Feature file should exist after merge"
+                );
+            }
+            MergeAttemptResult::NeedsAgent { .. } => {
+                panic!("First task on empty repo should not need agent");
+            }
+        }
+    }
+
+    #[test]
+    fn test_try_rebase_and_merge_normal_case_with_history() {
+        // Test that normal case (>1 commit on base) uses rebase workflow
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit with content
+        std::fs::write(repo.join("initial.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Rename default branch to 'main' if needed
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
+
+        // Add second commit on main
+        std::fs::write(repo.join("second.txt"), "second").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "second commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create task branch from main
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Add content on task branch
+        std::fs::write(repo.join("feature.txt"), "feature content").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Go back to main
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Verify main has >1 commits
+        let count = GitService::get_commit_count(repo, "main").unwrap();
+        assert!(count > 1, "Main should have >1 commits (has {})", count);
+
+        // Try rebase and merge - should use normal rebase workflow
+        let result = GitService::try_rebase_and_merge(repo, "task-branch", "main");
+        assert!(result.is_ok(), "try_rebase_and_merge should succeed");
+
+        match result.unwrap() {
+            MergeAttemptResult::Success { commit_sha } => {
+                // Verify commit is on main
+                let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+                assert!(on_main, "Merge commit should be on main branch");
+
+                // Verify all files exist
+                assert!(repo.join("initial.txt").exists(), "Initial file should exist");
+                assert!(repo.join("second.txt").exists(), "Second file should exist");
+                assert!(repo.join("feature.txt").exists(), "Feature file should exist");
+            }
+            MergeAttemptResult::NeedsAgent { .. } => {
+                panic!("Clean merge should not need agent");
+            }
+        }
+    }
+
+    // =========================================================================
+    // Merge Verification Tests (Phase 78 - Task 5)
+    // =========================================================================
+    // These tests verify the merge verification logic used by attempt_merge_auto_complete
+    // and complete_merge HTTP handler to detect when a commit is NOT on main branch.
+
+    #[test]
+    fn test_merge_verification_detects_unmerged_task_branch() {
+        // This test verifies the core logic that attempt_merge_auto_complete uses:
+        // 1. Get task branch HEAD SHA
+        // 2. Check if that SHA is on main branch
+        // 3. If not, the merge is not complete
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit on main
+        std::fs::write(repo.join("initial.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Rename to main
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
+
+        // Create task branch
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Add work on task branch
+        std::fs::write(repo.join("feature.txt"), "feature").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get task branch HEAD SHA (simulating getting SHA from worktree)
+        let task_branch_head = GitService::get_head_sha(repo).unwrap();
+
+        // Go back to main WITHOUT merging
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Verify task branch commit is NOT on main - this is the key check
+        // that attempt_merge_auto_complete uses before marking merge complete
+        let is_on_main = GitService::is_commit_on_branch(repo, &task_branch_head, "main").unwrap();
+        assert!(
+            !is_on_main,
+            "Task branch HEAD {} should NOT be on main before merge",
+            task_branch_head
+        );
+
+        // Now merge the task branch
+        Command::new("git")
+            .args(["merge", "task-branch", "-m", "merge task branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // After merge, task branch commit SHOULD be on main
+        let is_on_main_after = GitService::is_commit_on_branch(repo, &task_branch_head, "main").unwrap();
+        assert!(
+            is_on_main_after,
+            "Task branch HEAD {} should be on main after merge",
+            task_branch_head
+        );
+
+        // Main HEAD should be at least at task branch HEAD (fast-forward or merge commit)
+        let main_head = GitService::get_head_sha(repo).unwrap();
+        // In fast-forward case, they'll be equal; in merge commit case, main_head is newer
+        // The key verification is that is_commit_on_branch returned true - that's what matters
+        assert!(
+            !main_head.is_empty(),
+            "Main HEAD should have a valid SHA after merge"
+        );
+    }
+
+    #[test]
+    fn test_merge_verification_uses_correct_repo_path() {
+        // This test verifies that checking the main repo (not worktree) correctly
+        // identifies merge status - simulating the fix for the original bug
+        let temp_dir = tempfile::tempdir().unwrap();
+        let main_repo = temp_dir.path().join("main-repo");
+        let worktree = temp_dir.path().join("worktree");
+
+        std::fs::create_dir(&main_repo).unwrap();
+        std::fs::create_dir(&worktree).unwrap();
+
+        // Initialize main repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        // Configure git user
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit on main
+        std::fs::write(main_repo.join("initial.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(&main_repo)
+            .output();
+
+        // Create task branch
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        // Add work on task branch
+        std::fs::write(main_repo.join("feature.txt"), "feature").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        // Get task branch HEAD (this is what worktree would have)
+        let task_branch_head = GitService::get_head_sha(&main_repo).unwrap();
+
+        // Simulate creating a worktree (just init a separate repo for simplicity)
+        // In real code, worktree would have task branch checked out
+        Command::new("git")
+            .args(["init"])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+        std::fs::write(worktree.join("feature.txt"), "feature").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+
+        // Go back to main in main repo
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        // KEY TEST: Checking worktree HEAD vs main repo's main branch
+        // The worktree has its own commits, not related to main_repo's main branch
+        let worktree_head = GitService::get_head_sha(&worktree).unwrap();
+
+        // Worktree HEAD is NOT on main_repo's main branch - this is the bug we fixed
+        // (Previously, code was using worktree HEAD as merge commit)
+        let result = GitService::is_commit_on_branch(&main_repo, &worktree_head, "main");
+        // This will error or return false because worktree_head doesn't exist in main_repo
+        assert!(
+            result.is_err() || !result.unwrap(),
+            "Worktree HEAD should NOT be found on main_repo's main branch"
+        );
+
+        // The correct check: task branch HEAD from main_repo
+        let is_merged = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+        assert!(
+            !is_merged,
+            "Task branch HEAD should NOT be on main until merged"
+        );
+
+        // Now merge in main_repo
+        Command::new("git")
+            .args(["merge", "task-branch", "-m", "merge task"])
+            .current_dir(&main_repo)
+            .output()
+            .unwrap();
+
+        // Now task branch HEAD should be on main
+        let is_merged_after = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+        assert!(
+            is_merged_after,
+            "Task branch HEAD should be on main after merge"
+        );
+    }
 }
