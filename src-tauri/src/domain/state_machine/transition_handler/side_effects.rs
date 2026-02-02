@@ -1,9 +1,23 @@
 // State entry side effects
 // This module contains the on_enter implementation that handles state-specific actions
 
+use std::path::Path;
 use std::sync::Arc;
 
 use super::super::machine::State;
+use crate::application::GitService;
+use crate::domain::entities::{GitMode, TaskId, ProjectId};
+use crate::error::{AppError, AppResult};
+
+/// Convert project name to a URL-safe slug for branch naming
+fn slugify(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
 
 impl<'a> super::TransitionHandler<'a> {
     /// Execute on-enter action for a state
@@ -11,7 +25,10 @@ impl<'a> super::TransitionHandler<'a> {
     /// This method is public to allow `TaskTransitionService` to trigger entry actions
     /// for direct status changes (e.g., Kanban drag-drop) without going through the
     /// full event-based transition flow.
-    pub async fn on_enter(&self, state: &State) {
+    ///
+    /// Returns an error if the state entry cannot be completed (e.g., execution blocked
+    /// due to uncommitted changes in Local mode).
+    pub async fn on_enter(&self, state: &State) -> AppResult<()> {
         match state {
             State::Ready => {
                 // When entering Ready, spawn QA prep agent if enabled
@@ -35,9 +52,147 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::Executing => {
+                let task_id_str = &self.machine.context.task_id;
+                let project_id_str = &self.machine.context.project_id;
+
+                // Setup branch/worktree for task isolation (Phase 66)
+                // Only setup if task_repo and project_repo are available
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let task_id = TaskId::from_string(task_id_str.clone());
+                    let project_id = ProjectId::from_string(project_id_str.clone());
+
+                    // Fetch task and project
+                    let task_result = task_repo.get_by_id(&task_id).await;
+                    let project_result = project_repo.get_by_id(&project_id).await;
+
+                    if let (Ok(Some(mut task)), Ok(Some(project))) = (task_result, project_result) {
+                        // Only setup if task doesn't already have a branch
+                        if task.task_branch.is_none() {
+                            let branch = format!(
+                                "ralphx/{}/task-{}",
+                                slugify(&project.name),
+                                task_id_str
+                            );
+                            let base_branch = project.base_branch.as_deref().unwrap_or("main");
+                            let repo_path = Path::new(&project.working_directory);
+
+                            // Attempt branch/worktree setup. Only ExecutionBlocked errors
+                            // should prevent task execution (uncommitted changes in Local mode).
+                            // Other git errors (missing repo, invalid path) are logged but
+                            // don't block - the agent can still work in the project directory.
+                            let git_result: AppResult<Option<(String, Option<String>)>> = match project.git_mode {
+                                GitMode::Local => {
+                                    // Block if uncommitted changes exist
+                                    match GitService::has_uncommitted_changes(repo_path) {
+                                        Ok(true) => {
+                                            return Err(AppError::ExecutionBlocked(
+                                                "Cannot execute task: uncommitted changes in working directory. \
+                                                 Please commit or stash your changes first.".to_string()
+                                            ));
+                                        }
+                                        Ok(false) => {
+                                            // Create and checkout branch in main repo
+                                            match GitService::create_branch(repo_path, &branch, base_branch)
+                                                .and_then(|_| GitService::checkout_branch(repo_path, &branch))
+                                            {
+                                                Ok(_) => Ok(Some((branch.clone(), None))),
+                                                Err(e) => {
+                                                    tracing::warn!(
+                                                        error = %e,
+                                                        task_id = task_id_str,
+                                                        "Failed to create/checkout task branch (Local mode), continuing without isolation"
+                                                    );
+                                                    Ok(None)
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                error = %e,
+                                                task_id = task_id_str,
+                                                "Failed to check uncommitted changes, continuing without isolation"
+                                            );
+                                            Ok(None)
+                                        }
+                                    }
+                                }
+                                GitMode::Worktree => {
+                                    // Build worktree path
+                                    let worktree_parent = project
+                                        .worktree_parent_directory
+                                        .as_deref()
+                                        .unwrap_or("~/ralphx-worktrees");
+                                    // Expand ~ to home directory
+                                    let worktree_parent = if let Some(stripped) = worktree_parent.strip_prefix("~/") {
+                                        if let Ok(home) = std::env::var("HOME") {
+                                            format!("{}/{}", home, stripped)
+                                        } else {
+                                            worktree_parent.to_string()
+                                        }
+                                    } else {
+                                        worktree_parent.to_string()
+                                    };
+
+                                    let worktree_path = format!(
+                                        "{}/{}/task-{}",
+                                        worktree_parent,
+                                        slugify(&project.name),
+                                        task_id_str
+                                    );
+                                    let worktree_path_buf = std::path::PathBuf::from(&worktree_path);
+
+                                    // Create worktree with new branch
+                                    match GitService::create_worktree(
+                                        repo_path,
+                                        &worktree_path_buf,
+                                        &branch,
+                                        base_branch,
+                                    ) {
+                                        Ok(_) => Ok(Some((branch.clone(), Some(worktree_path)))),
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                error = %e,
+                                                task_id = task_id_str,
+                                                "Failed to create worktree (Worktree mode), continuing without isolation"
+                                            );
+                                            Ok(None)
+                                        }
+                                    }
+                                }
+                            };
+
+                            // If git setup succeeded, persist the branch info
+                            if let Ok(Some((branch_name, worktree_path_opt))) = git_result {
+                                task.task_branch = Some(branch_name.clone());
+                                if let Some(wt_path) = worktree_path_opt {
+                                    task.worktree_path = Some(wt_path.clone());
+                                    tracing::info!(
+                                        task_id = task_id_str,
+                                        branch = %branch_name,
+                                        worktree_path = %wt_path,
+                                        "Created worktree with task branch (Worktree mode)"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        task_id = task_id_str,
+                                        branch = %branch_name,
+                                        "Created and checked out task branch (Local mode)"
+                                    );
+                                }
+                                task.touch();
+                                if let Err(e) = task_repo.update(&task).await {
+                                    tracing::error!(error = %e, "Failed to persist task branch info");
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Use ChatService for persistent worker execution (Phase 15B)
-                let task_id = &self.machine.context.task_id;
-                let prompt = format!("Execute task: {}", task_id);
+                let prompt = format!("Execute task: {}", task_id_str);
 
                 // send_message handles:
                 // 1. Creating chat_conversation (context_type: 'task_execution')
@@ -52,7 +207,7 @@ impl<'a> super::TransitionHandler<'a> {
                     .chat_service
                     .send_message(
                         crate::domain::entities::ChatContextType::TaskExecution,
-                        task_id,
+                        task_id_str,
                         &prompt,
                     )
                     .await;
@@ -296,5 +451,6 @@ impl<'a> super::TransitionHandler<'a> {
             }
             _ => {}
         }
+        Ok(())
     }
 }

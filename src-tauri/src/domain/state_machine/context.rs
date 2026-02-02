@@ -6,6 +6,7 @@ use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, R
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
+use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use std::sync::Arc;
 use std::any::Any;
 use tauri::{AppHandle, Runtime, Wry};
@@ -45,6 +46,14 @@ pub struct TaskServices {
     /// Task scheduler for auto-scheduling Ready tasks when slots are available.
     /// Used by TransitionHandler to trigger scheduling on slot free and on enter Ready.
     pub task_scheduler: Option<Arc<dyn TaskScheduler>>,
+
+    /// Task repository for fetching and updating tasks during state transitions.
+    /// Used by TransitionHandler to set task_branch and worktree_path on Executing entry.
+    pub task_repo: Option<Arc<dyn TaskRepository>>,
+
+    /// Project repository for fetching project settings during state transitions.
+    /// Used by TransitionHandler to get git_mode and worktree_parent_directory.
+    pub project_repo: Option<Arc<dyn ProjectRepository>>,
 }
 
 impl TaskServices {
@@ -67,6 +76,8 @@ impl TaskServices {
             execution_state: None,
             app_handle: None,
             task_scheduler: None,
+            task_repo: None,
+            project_repo: None,
         }
     }
 
@@ -100,6 +111,18 @@ impl TaskServices {
         self
     }
 
+    /// Set the task repository (builder pattern)
+    pub fn with_task_repo(mut self, repo: Arc<dyn TaskRepository>) -> Self {
+        self.task_repo = Some(repo);
+        self
+    }
+
+    /// Set the project repository (builder pattern)
+    pub fn with_project_repo(mut self, repo: Arc<dyn ProjectRepository>) -> Self {
+        self.project_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -114,6 +137,8 @@ impl TaskServices {
             execution_state: None,
             app_handle: None,
             task_scheduler: Some(Arc::new(MockTaskScheduler::new())),
+            task_repo: None,
+            project_repo: None,
         }
     }
 }
@@ -130,6 +155,8 @@ impl std::fmt::Debug for TaskServices {
             .field("execution_state", &self.execution_state.as_ref().map(|_| "<ExecutionState>"))
             .field("app_handle", &self.app_handle.as_ref().map(|_| "<AppHandle>"))
             .field("task_scheduler", &self.task_scheduler.as_ref().map(|_| "<TaskScheduler>"))
+            .field("task_repo", &self.task_repo.as_ref().map(|_| "<TaskRepository>"))
+            .field("project_repo", &self.project_repo.as_ref().map(|_| "<ProjectRepository>"))
             .finish()
     }
 }

@@ -352,6 +352,7 @@ fn state_to_internal_status(state: &crate::domain::state_machine::machine::State
 /// the appropriate side effects are triggered (e.g., spawning worker agents).
 pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
     agent_spawner: Arc<dyn AgentSpawner>,
     event_emitter: Arc<dyn EventEmitter>,
     notifier: Arc<dyn Notifier>,
@@ -425,6 +426,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         Self {
             task_repo,
+            project_repo,
             agent_spawner,
             event_emitter,
             notifier,
@@ -572,7 +574,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.review_starter),
             Arc::clone(&self.chat_service),
         )
-        .with_execution_state(Arc::clone(&self.execution_state));
+        .with_execution_state(Arc::clone(&self.execution_state))
+        .with_task_repo(Arc::clone(&self.task_repo))
+        .with_project_repo(Arc::clone(&self.project_repo));
 
         // Pass app_handle for event emission (uses try_with_app_handle for generic R)
         if let Some(ref handle) = self._app_handle {
@@ -598,7 +602,9 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Execute entry action via TransitionHandler
         eprintln!("[ENTRY_ACTION] Calling on_enter for state: {:?}", state);
         tracing::debug!(?state, "Calling TransitionHandler::on_enter");
-        handler.on_enter(&state).await;
+        if let Err(e) = handler.on_enter(&state).await {
+            tracing::error!(error = %e, "on_enter failed");
+        }
         eprintln!("[ENTRY_ACTION] on_enter complete");
         tracing::debug!("TransitionHandler::on_enter complete");
 
@@ -630,7 +636,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             }
 
             // Execute on_enter for the auto-transition target state
-            handler.on_enter(&auto_state).await;
+            if let Err(e) = handler.on_enter(&auto_state).await {
+                tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
+            }
             tracing::debug!(?auto_state, "Auto-transition on_enter complete");
         }
     }
@@ -665,7 +673,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.review_starter),
             Arc::clone(&self.chat_service),
         )
-        .with_execution_state(Arc::clone(&self.execution_state));
+        .with_execution_state(Arc::clone(&self.execution_state))
+        .with_task_repo(Arc::clone(&self.task_repo))
+        .with_project_repo(Arc::clone(&self.project_repo));
 
         // Pass app_handle for event emission (uses try_with_app_handle for generic R)
         if let Some(ref handle) = self._app_handle {

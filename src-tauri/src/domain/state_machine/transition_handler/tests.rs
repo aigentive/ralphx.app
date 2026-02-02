@@ -413,7 +413,7 @@ async fn test_entering_executing_spawns_worker() {
 
     // Manually test on_enter for Executing
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::Executing).await;
+    let _ = handler.on_enter(&State::Executing).await;
 
     // Test passes if no panic occurs - ExecutionChatService is called
     // (The MockExecutionChatService handles the call gracefully)
@@ -430,7 +430,7 @@ async fn test_entering_pending_review_starts_ai_review() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::PendingReview).await;
+    let _ = handler.on_enter(&State::PendingReview).await;
 
     // Should have called start_ai_review
     assert!(review_starter.has_review_for_task("task-1"));
@@ -471,7 +471,7 @@ async fn test_entering_pending_review_with_disabled_ai_review() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::PendingReview).await;
+    let _ = handler.on_enter(&State::PendingReview).await;
 
     // Should NOT spawn reviewer agent when AI review is disabled
     let calls = spawner.get_calls();
@@ -510,7 +510,7 @@ async fn test_entering_pending_review_with_error_notifies_user() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::PendingReview).await;
+    let _ = handler.on_enter(&State::PendingReview).await;
 
     // Should NOT spawn reviewer agent when review fails to start
     let calls = spawner.get_calls();
@@ -527,7 +527,7 @@ async fn test_entering_pending_review_emits_started_event_with_review_id() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::PendingReview).await;
+    let _ = handler.on_enter(&State::PendingReview).await;
 
     // Verify review:update event contains the review ID
     let events = emitter.get_events();
@@ -628,7 +628,7 @@ async fn test_entering_executing_uses_chat_service() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::Executing).await;
+    let _ = handler.on_enter(&State::Executing).await;
 
     // ChatService should have been called (check call count)
     assert!(chat_service.call_count() > 0, "ChatService should have been called");
@@ -668,7 +668,7 @@ async fn test_chat_service_unavailable_falls_back_gracefully() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::Executing).await;
+    let _ = handler.on_enter(&State::Executing).await;
 
     // The service is present but unavailable - send_message returns error
     // The current implementation still tries to use it (graceful degradation)
@@ -704,7 +704,7 @@ async fn test_entering_reviewing_uses_chat_service() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::Reviewing).await;
+    let _ = handler.on_enter(&State::Reviewing).await;
 
     // ChatService should have been called for reviewer with Review context
     assert!(chat_service.call_count() > 0, "ChatService should have been called");
@@ -724,7 +724,7 @@ async fn test_entering_review_passed_emits_event_and_notifies() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::ReviewPassed).await;
+    let _ = handler.on_enter(&State::ReviewPassed).await;
 
     // Should emit review:ai_approved event
     assert!(emitter.has_event("review:ai_approved"));
@@ -757,7 +757,7 @@ async fn test_entering_re_executing_uses_chat_service() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_enter(&State::ReExecuting).await;
+    let _ = handler.on_enter(&State::ReExecuting).await;
 
     // ChatService should have been called for worker with revision context
     assert!(chat_service.call_count() > 0, "ChatService should have been called");
