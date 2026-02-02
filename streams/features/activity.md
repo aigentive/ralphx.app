@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 22:15:00 - Phase 77 Task 6: Initialize ExecutionState from database on app startup
+**What:**
+- Added execution settings initialization in lib.rs setup() callback
+- Load settings from database via execution_settings_repo.get_settings()
+- Apply loaded max_concurrent_tasks to ExecutionState.set_max_concurrent()
+- Uses tauri::async_runtime::block_on() for synchronous initialization before HTTP server starts
+- Graceful error handling: logs warning and uses defaults if DB load fails
+
+**Files:**
+- MODIFIED: src-tauri/src/lib.rs (added settings initialization after AppState creation)
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test` - all tests pass
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 21:30:00 - Phase 77 Task 5: Wire SettingsView to load and persist execution settings
 **What:**
 - Added useRef import for save timeout reference
