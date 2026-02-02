@@ -31,7 +31,7 @@ import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
-import type { ChatContext } from "@/types/chat";
+import type { ChatContext, ViewType } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/types/ideation";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal } from "@/api/ideation";
@@ -119,6 +119,7 @@ function AppContent() {
   const closeModal = useUiStore((s) => s.closeModal);
   const currentView = useUiStore((s) => s.currentView);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
   // Unified chat visibility per view (replaces chatCollapsed and chatStore.isOpen)
   const chatVisibleByView = useUiStore((s) => s.chatVisibleByView);
   const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
@@ -582,23 +583,12 @@ function AppContent() {
     closeWelcomeOverlay();
   }, [welcomeOverlayReturnView, setCurrentView, closeWelcomeOverlay]);
 
-  // Handler for view changes - invalidates queries and resets state when switching between graph/kanban
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
-  const handleViewChange = useCallback((view: typeof currentView) => {
-    // Only invalidate when switching between graph and kanban (they share task data)
-    const taskViews = ["graph", "kanban"] as const;
-    const isLeavingTaskView = taskViews.includes(currentView as "graph" | "kanban");
-    const isEnteringTaskView = taskViews.includes(view as "graph" | "kanban");
-
-    if (isLeavingTaskView && isEnteringTaskView && currentView !== view) {
-      // Clear selected task to close any open detail dialog
-      setSelectedTaskId(null);
-      // Invalidate queries to refetch fresh data
-      queryClient.invalidateQueries();
-    }
-
+  // Handler for view changes - clears task selection to reset state
+  const handleViewChange = useCallback((view: ViewType) => {
+    // Close any open task detail panel when switching views
+    setSelectedTaskId(null);
     setCurrentView(view);
-  }, [currentView, setCurrentView, setSelectedTaskId]);
+  }, [setSelectedTaskId, setCurrentView]);
 
   // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
   useAppKeyboardShortcuts({

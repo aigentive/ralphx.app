@@ -180,6 +180,8 @@ export const NON_DRAGGABLE_STATUSES = [
   "pending_merge",
   "merging",
   "merge_conflict",
+  "approved",
+  "merged",
 ] as const satisfies readonly InternalStatus[];
 
 // ============================================================================
