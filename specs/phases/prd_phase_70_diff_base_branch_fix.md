@@ -94,7 +94,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(diff): compare against base branch instead of HEAD for file changes"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-02 14:30:00 - Phase 70 Task 1: Add base_branch parameter to DiffService and update callers
+**What:**
+- Updated `get_task_working_path` helper to return `Project` alongside path for base_branch access
+- Updated `DiffService::get_task_file_changes` to accept `base_branch` parameter
+- Updated `DiffService::get_file_change_status` to:
+  - Use `git diff --numstat base_branch` instead of `git diff --numstat HEAD`
+  - Use `git ls-tree` instead of `git ls-files` to check if file existed in base branch
+- Updated `DiffService::get_file_diff` to use `git show base_branch:file` instead of `git show HEAD:file`
+- Updated `get_task_file_changes` command to extract base_branch from project
+- Updated `get_file_diff` command to extract base_branch from project
+
+**Files Modified:**
+- `src-tauri/src/application/diff_service.rs` - Added base_branch parameter, changed git commands
+- `src-tauri/src/commands/diff_commands.rs` - Pass base_branch from project to DiffService
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3373 tests passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 07:00:00 - Phase 69 Task 2: Update frontend API to match worktree-aware backend
 **What:**
 - Updated `src/api/diff.ts`:

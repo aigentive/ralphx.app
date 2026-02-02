@@ -3,19 +3,22 @@
 //! Provides file change and diff data for reviewing task execution results.
 
 use crate::application::{AppState, DiffService, FileChange, FileDiff};
-use crate::domain::entities::{GitMode, TaskId};
+use crate::domain::entities::{GitMode, Project, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 
-/// Determine the working path for a task based on git mode
+/// Determine the working path for a task based on git mode.
+///
 /// - Worktree mode: use task.worktree_path (falls back to project.working_directory)
 /// - Local mode: use project.working_directory
+///
+/// Also returns the project for access to base_branch.
 async fn get_task_working_path(
     app_state: &AppState,
     task_id: &TaskId,
-) -> AppResult<(PathBuf, String)> {
+) -> AppResult<(PathBuf, String, Project)> {
     // Get task
     let task = app_state
         .task_repo
@@ -41,7 +44,7 @@ async fn get_task_working_path(
     };
 
     let working_path_str = working_path.to_string_lossy().to_string();
-    Ok((working_path, working_path_str))
+    Ok((working_path, working_path_str, project))
 }
 
 /// Get all files changed by the agent for a task
@@ -52,12 +55,13 @@ pub async fn get_task_file_changes(
 ) -> AppResult<Vec<FileChange>> {
     let task_id = TaskId::from_string(task_id);
 
-    // Get the correct working path for this task
-    let (_, working_path_str) = get_task_working_path(&app_state, &task_id).await?;
+    // Get the correct working path and project for this task
+    let (_, working_path_str, project) = get_task_working_path(&app_state, &task_id).await?;
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
     diff_service
-        .get_task_file_changes(&task_id, &working_path_str)
+        .get_task_file_changes(&task_id, &working_path_str, base_branch)
         .await
 }
 
@@ -70,9 +74,10 @@ pub async fn get_file_diff(
 ) -> AppResult<FileDiff> {
     let task_id = TaskId::from_string(task_id);
 
-    // Get the correct working path for this task
-    let (_, working_path_str) = get_task_working_path(&app_state, &task_id).await?;
+    // Get the correct working path and project for this task
+    let (_, working_path_str, project) = get_task_working_path(&app_state, &task_id).await?;
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new(Arc::clone(&app_state.activity_event_repo));
-    diff_service.get_file_diff(&file_path, &working_path_str)
+    diff_service.get_file_diff(&file_path, &working_path_str, base_branch)
 }
