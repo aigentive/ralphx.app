@@ -33,6 +33,7 @@ import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
 import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
+import { MARKER_IDS, NORMAL_STROKE, CRITICAL_STROKE } from "./edges/edgeStyles";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
@@ -232,6 +233,70 @@ function findNextNode(
 // ============================================================================
 // Custom Node and Edge Types
 // ============================================================================
+
+// ============================================================================
+// Edge Marker Definitions
+// ============================================================================
+
+/**
+ * SVG marker definitions for edge arrows
+ * All arrows use the same size (8x6) - only color differs
+ */
+function EdgeMarkerDefinitions() {
+  return (
+    <svg style={{ position: "absolute", width: 0, height: 0 }}>
+      <defs>
+        {/* Normal edge arrow - muted gray */}
+        <marker
+          id={MARKER_IDS.normal}
+          viewBox="0 0 10 10"
+          refX={8}
+          refY={5}
+          markerWidth={8}
+          markerHeight={6}
+          orient="auto-start-reverse"
+        >
+          <path
+            d="M 0 0 L 10 5 L 0 10 z"
+            fill={NORMAL_STROKE}
+          />
+        </marker>
+
+        {/* Critical path edge arrow - orange, same size as normal */}
+        <marker
+          id={MARKER_IDS.critical}
+          viewBox="0 0 10 10"
+          refX={8}
+          refY={5}
+          markerWidth={8}
+          markerHeight={6}
+          orient="auto-start-reverse"
+        >
+          <path
+            d="M 0 0 L 10 5 L 0 10 z"
+            fill={CRITICAL_STROKE}
+          />
+        </marker>
+
+        {/* Active edge arrow - orange, same size as normal */}
+        <marker
+          id={MARKER_IDS.active}
+          viewBox="0 0 10 10"
+          refX={8}
+          refY={5}
+          markerWidth={8}
+          markerHeight={6}
+          orient="auto-start-reverse"
+        >
+          <path
+            d="M 0 0 L 10 5 L 0 10 z"
+            fill={CRITICAL_STROKE}
+          />
+        </marker>
+      </defs>
+    </svg>
+  );
+}
 
 /**
  * Node types for standard mode (full-size nodes with status badges)
@@ -733,6 +798,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
           >
+            {/* SVG marker definitions for edge arrows */}
+            <EdgeMarkerDefinitions />
             <Background color="hsl(220 10% 25%)" gap={20} />
             <Controls
               showInteractive={false}

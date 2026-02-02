@@ -150,7 +150,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   const displayTitle = sessionTitle || "Unnamed Plan";
 
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] border-b border-[hsl(var(--border-subtle))] rounded-t-lg">
+    <div className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg">
       {/* Left section: collapse toggle + title */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <button

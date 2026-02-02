@@ -27,7 +27,8 @@ import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
 const MIN_LEFT_PERCENT = 65; // Minimum left panel width (65% left = 35% right max)
 const MAX_LEFT_PERCENT = 75; // Maximum left panel width (75% left = 25% right min)
 const DEFAULT_LEFT_PERCENT = 70; // Default: 70% left, 30% right
-const LEFT_WIDTH_STORAGE_KEY = "ralphx-graph-split-left-width";
+// Use same storage key as Kanban for consistent sizing across views
+const LEFT_WIDTH_STORAGE_KEY = "ralphx-kanban-split-left-width";
 
 // ============================================================================
 // Main Component

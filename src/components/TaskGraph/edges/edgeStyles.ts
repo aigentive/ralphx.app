@@ -27,14 +27,25 @@ export interface EdgeStyle {
 export type EdgeType = "normal" | "critical" | "active";
 
 // ============================================================================
+// Marker IDs
+// ============================================================================
+
+/** SVG marker IDs for arrow heads */
+export const MARKER_IDS = {
+  normal: "dependency-arrow-normal",
+  critical: "dependency-arrow-critical",
+  active: "dependency-arrow-active",
+} as const;
+
+// ============================================================================
 // Color Definitions
 // ============================================================================
 
 /** Muted gray for normal dependency edges */
-const NORMAL_STROKE = "hsl(220 10% 40%)";
+export const NORMAL_STROKE = "hsl(220 10% 40%)";
 
 /** Accent orange for critical path - matches EXECUTING_COLORS from nodeStyles */
-const CRITICAL_STROKE = "hsl(14 100% 55%)";
+export const CRITICAL_STROKE = "hsl(14 100% 55%)";
 
 /** Animated dotted style for edges from executing nodes */
 const ACTIVE_STROKE = "hsl(14 100% 55%)";
