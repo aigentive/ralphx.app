@@ -134,7 +134,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test",
       "Commit: feat(startup): recover tasks stuck in auto-transition states"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
