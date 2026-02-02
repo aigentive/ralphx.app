@@ -1,13 +1,14 @@
 // Tauri commands for execution control
 // Manages global execution state: pause, resume, stop
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 use crate::application::{AppState, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::InternalStatus;
+use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
 
 /// Statuses where an agent is actively running.
@@ -163,6 +164,38 @@ pub struct ExecutionCommandResponse {
     pub success: bool,
     /// Current execution status after the command
     pub status: ExecutionStatusResponse,
+}
+
+/// Response for execution settings queries
+#[derive(Debug, Serialize)]
+pub struct ExecutionSettingsResponse {
+    /// Maximum number of concurrent tasks
+    pub max_concurrent_tasks: u32,
+    /// Whether to auto-commit changes after successful task completion
+    pub auto_commit: bool,
+    /// Whether to pause execution when a task fails
+    pub pause_on_failure: bool,
+}
+
+impl From<ExecutionSettings> for ExecutionSettingsResponse {
+    fn from(settings: ExecutionSettings) -> Self {
+        Self {
+            max_concurrent_tasks: settings.max_concurrent_tasks,
+            auto_commit: settings.auto_commit,
+            pause_on_failure: settings.pause_on_failure,
+        }
+    }
+}
+
+/// Input for updating execution settings
+#[derive(Debug, Deserialize)]
+pub struct UpdateExecutionSettingsInput {
+    /// Maximum number of concurrent tasks
+    pub max_concurrent_tasks: u32,
+    /// Whether to auto-commit changes after successful task completion
+    pub auto_commit: bool,
+    /// Whether to pause execution when a task fails
+    pub pause_on_failure: bool,
 }
 
 /// Get current execution status
@@ -399,6 +432,88 @@ pub async fn set_max_concurrent(
     })
 }
 
+/// Get execution settings from database
+#[tauri::command]
+pub async fn get_execution_settings(
+    app_state: State<'_, AppState>,
+) -> Result<ExecutionSettingsResponse, String> {
+    let settings = app_state
+        .execution_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ExecutionSettingsResponse::from(settings))
+}
+
+/// Update execution settings in database and sync ExecutionState
+/// When max_concurrent_tasks changes:
+/// - Updates the in-memory ExecutionState
+/// - If capacity increased, triggers scheduler to pick up waiting Ready tasks
+/// Emits settings:execution:updated event for UI updates
+#[tauri::command]
+pub async fn update_execution_settings(
+    input: UpdateExecutionSettingsInput,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app_state: State<'_, AppState>,
+) -> Result<ExecutionSettingsResponse, String> {
+    let old_max = execution_state.max_concurrent();
+    let new_max = input.max_concurrent_tasks;
+
+    // Build domain settings from input
+    let settings = ExecutionSettings {
+        max_concurrent_tasks: input.max_concurrent_tasks,
+        auto_commit: input.auto_commit,
+        pause_on_failure: input.pause_on_failure,
+    };
+
+    // Persist to database
+    let updated = app_state
+        .execution_settings_repo
+        .update_settings(&settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Sync ExecutionState if max_concurrent_tasks changed
+    if new_max != old_max {
+        execution_state.set_max_concurrent(new_max);
+
+        // If capacity increased, trigger scheduler to pick up waiting Ready tasks
+        if new_max > old_max {
+            let scheduler = TaskSchedulerService::new(
+                Arc::clone(&execution_state),
+                Arc::clone(&app_state.project_repo),
+                Arc::clone(&app_state.task_repo),
+                Arc::clone(&app_state.task_dependency_repo),
+                Arc::clone(&app_state.chat_message_repo),
+                Arc::clone(&app_state.chat_conversation_repo),
+                Arc::clone(&app_state.agent_run_repo),
+                Arc::clone(&app_state.ideation_session_repo),
+                Arc::clone(&app_state.activity_event_repo),
+                Arc::clone(&app_state.message_queue),
+                Arc::clone(&app_state.running_agent_registry),
+                app_state.app_handle.clone(),
+            );
+            scheduler.try_schedule_ready_tasks().await;
+        }
+    }
+
+    // Emit settings:execution:updated event for UI updates
+    if let Some(ref handle) = app_state.app_handle {
+        let _ = handle.emit(
+            "settings:execution:updated",
+            serde_json::json!({
+                "max_concurrent_tasks": updated.max_concurrent_tasks,
+                "auto_commit": updated.auto_commit,
+                "pause_on_failure": updated.pause_on_failure,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
+    }
+
+    Ok(ExecutionSettingsResponse::from(updated))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,6 +691,49 @@ mod tests {
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"status\":"));
         assert!(json.contains("\"is_paused\":false"));
+    }
+
+    #[test]
+    fn test_execution_settings_response_serialization() {
+        let response = ExecutionSettingsResponse {
+            max_concurrent_tasks: 4,
+            auto_commit: true,
+            pause_on_failure: false,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+
+        // Verify snake_case serialization
+        assert!(json.contains("\"max_concurrent_tasks\":4"));
+        assert!(json.contains("\"auto_commit\":true"));
+        assert!(json.contains("\"pause_on_failure\":false"));
+    }
+
+    #[test]
+    fn test_execution_settings_response_from_domain() {
+        let settings = ExecutionSettings {
+            max_concurrent_tasks: 3,
+            auto_commit: false,
+            pause_on_failure: true,
+        };
+
+        let response = ExecutionSettingsResponse::from(settings);
+
+        assert_eq!(response.max_concurrent_tasks, 3);
+        assert!(!response.auto_commit);
+        assert!(response.pause_on_failure);
+    }
+
+    #[test]
+    fn test_update_execution_settings_input_deserialization() {
+        let json = r#"{"max_concurrent_tasks":5,"auto_commit":false,"pause_on_failure":true}"#;
+
+        let input: UpdateExecutionSettingsInput =
+            serde_json::from_str(json).expect("Failed to deserialize input");
+
+        assert_eq!(input.max_concurrent_tasks, 5);
+        assert!(!input.auto_commit);
+        assert!(input.pause_on_failure);
     }
 
     // ========================================
@@ -1094,5 +1252,85 @@ mod tests {
         // Resume
         state.resume();
         assert!(state.can_start_task());
+    }
+
+    // ========================================
+    // Execution Settings Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_execution_settings_repo_get_default() {
+        let app_state = AppState::new_test();
+
+        let settings = app_state
+            .execution_settings_repo
+            .get_settings()
+            .await
+            .expect("Failed to get execution settings");
+
+        // Default values
+        assert_eq!(settings.max_concurrent_tasks, 2);
+        assert!(settings.auto_commit);
+        assert!(settings.pause_on_failure);
+    }
+
+    #[tokio::test]
+    async fn test_execution_settings_repo_update() {
+        let app_state = AppState::new_test();
+
+        let new_settings = ExecutionSettings {
+            max_concurrent_tasks: 5,
+            auto_commit: false,
+            pause_on_failure: false,
+        };
+
+        let updated = app_state
+            .execution_settings_repo
+            .update_settings(&new_settings)
+            .await
+            .expect("Failed to update execution settings");
+
+        assert_eq!(updated.max_concurrent_tasks, 5);
+        assert!(!updated.auto_commit);
+        assert!(!updated.pause_on_failure);
+
+        // Verify persistence
+        let retrieved = app_state
+            .execution_settings_repo
+            .get_settings()
+            .await
+            .expect("Failed to get execution settings");
+
+        assert_eq!(retrieved.max_concurrent_tasks, 5);
+        assert!(!retrieved.auto_commit);
+        assert!(!retrieved.pause_on_failure);
+    }
+
+    #[tokio::test]
+    async fn test_execution_settings_update_syncs_execution_state() {
+        let execution_state = Arc::new(ExecutionState::new());
+        let app_state = AppState::new_test();
+
+        // Initial state
+        assert_eq!(execution_state.max_concurrent(), 2);
+
+        // Update settings
+        let new_settings = ExecutionSettings {
+            max_concurrent_tasks: 8,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+
+        app_state
+            .execution_settings_repo
+            .update_settings(&new_settings)
+            .await
+            .expect("Failed to update execution settings");
+
+        // Simulate what update_execution_settings command does
+        execution_state.set_max_concurrent(8);
+
+        // ExecutionState should be updated
+        assert_eq!(execution_state.max_concurrent(), 8);
     }
 }
