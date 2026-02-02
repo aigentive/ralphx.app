@@ -43,12 +43,15 @@ import {
   type LayoutDirection,
   type GroupingOption,
 } from "./controls/GraphControls";
+import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
+import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Filter, Loader2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // ============================================================================
 // Types
@@ -67,6 +70,69 @@ const HIGHLIGHT_TIMEOUT_MS = 3000;
 
 /** Empty layout config - defined as constant to prevent re-renders */
 const EMPTY_LAYOUT_CONFIG = {};
+
+/** Status categories considered "completed" for filtering */
+const COMPLETED_STATUSES: InternalStatus[] = ["approved", "merged"];
+
+/**
+ * Apply filters to graph data
+ * Filters nodes based on status, plan, and showCompleted settings.
+ * Filters edges to only include those where both source and target are visible.
+ */
+function applyGraphFilters(
+  nodes: TaskGraphNode[],
+  edges: TaskGraphEdge[],
+  planGroups: PlanGroupInfo[],
+  filters: GraphFilters
+): { nodes: TaskGraphNode[]; edges: TaskGraphEdge[]; planGroups: PlanGroupInfo[] } {
+  // Filter nodes
+  const filteredNodes = nodes.filter((node) => {
+    const status = node.internalStatus as InternalStatus;
+
+    // Check showCompleted filter
+    if (!filters.showCompleted && COMPLETED_STATUSES.includes(status)) {
+      return false;
+    }
+
+    // Check status filter (empty = show all)
+    if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
+      return false;
+    }
+
+    // Check plan filter (empty = show all)
+    if (filters.planIds.length > 0) {
+      // Tasks without a plan are shown only if no plan filter is active
+      if (!node.planArtifactId) {
+        return false;
+      }
+      if (!filters.planIds.includes(node.planArtifactId)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Build set of visible node IDs for edge filtering
+  const visibleNodeIds = new Set(filteredNodes.map((n) => n.taskId));
+
+  // Filter edges - only keep edges where both source and target are visible
+  const filteredEdges = edges.filter(
+    (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)
+  );
+
+  // Update plan groups with filtered task lists
+  const filteredPlanGroups = planGroups.map((group) => ({
+    ...group,
+    taskIds: group.taskIds.filter((taskId) => visibleNodeIds.has(taskId)),
+  }));
+
+  return {
+    nodes: filteredNodes,
+    edges: filteredEdges,
+    planGroups: filteredPlanGroups,
+  };
+}
 
 /**
  * Find the next node to navigate to based on arrow key direction
@@ -345,12 +411,25 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     handleMarkResolved,
   ]);
 
+  // Apply filters to graph data before layout computation
+  const filteredGraphData = useMemo(() => {
+    if (!graphData) {
+      return { nodes: [], edges: [], planGroups: [] };
+    }
+    return applyGraphFilters(
+      graphData.nodes,
+      graphData.edges,
+      graphData.planGroups,
+      filters
+    );
+  }, [graphData, filters]);
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
-    graphData?.nodes ?? [],
-    graphData?.edges ?? [],
+    filteredGraphData.nodes,
+    filteredGraphData.edges,
     graphData?.criticalPath ?? [],
-    graphData?.planGroups ?? [],
+    filteredGraphData.planGroups,
     EMPTY_LAYOUT_CONFIG,
     collapsedPlanIds,
     handleToggleCollapse
@@ -557,7 +636,7 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
     );
   }
 
-  // Empty state
+  // Empty state (no tasks at all)
   if (!graphData || graphData.nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -570,6 +649,12 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
       </div>
     );
   }
+
+  // Check if filters hide all tasks
+  const hasActiveFilters =
+    filters.statuses.length > 0 ||
+    filters.planIds.length > 0 ||
+    !filters.showCompleted;
 
   return (
     <div className="h-full w-full relative flex flex-col" data-testid="task-graph-view">
@@ -595,33 +680,51 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
           tabIndex={0}
           onKeyDown={handleKeyDown}
         >
-          <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={activeNodeTypes}
-          edgeTypes={edgeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={handleNodeClick}
-          onPaneClick={handlePaneClick}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.1}
-          maxZoom={2}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background color="hsl(220 10% 25%)" gap={20} />
-          <Controls
-            showInteractive={false}
-            style={{
-              background: "hsla(220 10% 12% / 0.9)",
-              border: "1px solid hsla(220 20% 100% / 0.08)",
-              borderRadius: 8,
-            }}
-          />
-          <GraphMiniMap />
-        </ReactFlow>
-      </div>
+          {/* Show empty state when filters hide all tasks */}
+          {filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <Filter className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground mb-2">No tasks match current filters</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters(DEFAULT_GRAPH_FILTERS)}
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Clear filters
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={activeNodeTypes}
+              edgeTypes={edgeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={handleNodeClick}
+              onPaneClick={handlePaneClick}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              minZoom={0.1}
+              maxZoom={2}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background color="hsl(220 10% 25%)" gap={20} />
+              <Controls
+                showInteractive={false}
+                style={{
+                  background: "hsla(220 10% 12% / 0.9)",
+                  border: "1px solid hsla(220 20% 100% / 0.08)",
+                  borderRadius: 8,
+                }}
+              />
+              <GraphMiniMap />
+            </ReactFlow>
+          )}
+        </div>
 
         {/* Execution Timeline side panel */}
         <ExecutionTimeline
