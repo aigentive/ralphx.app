@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   LayoutGrid,
+  Network,
   Lightbulb,
   Puzzle,
   Activity,
@@ -26,10 +27,11 @@ const NAV_ITEMS: {
   shortcut: string;
 }[] = [
   { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘1" },
-  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘2" },
-  { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘3" },
-  { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘4" },
-  { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘5" },
+  { view: "graph", label: "Graph", icon: Network, shortcut: "⌘2" },
+  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘3" },
+  { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘4" },
+  { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘5" },
+  { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘6" },
 ];
 
 interface NavigationProps {

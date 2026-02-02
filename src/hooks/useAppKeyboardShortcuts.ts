@@ -52,20 +52,24 @@ export function useAppKeyboardShortcuts({
             break;
           case "2":
             e.preventDefault();
-            setCurrentView("ideation");
+            setCurrentView("graph");
             break;
           case "3":
             e.preventDefault();
-            setCurrentView("extensibility");
+            setCurrentView("ideation");
             break;
           case "4":
             e.preventDefault();
-            setCurrentView("activity");
+            setCurrentView("extensibility");
             break;
           case "5":
+            e.preventDefault();
+            setCurrentView("activity");
+            break;
+          case "6":
           case ".":
           case ",":
-            // Cmd+5, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
+            // Cmd+6, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
             e.preventDefault();
             setCurrentView("settings");
             break;

@@ -4,6 +4,63 @@
 
 ---
 
+### 2026-02-02 23:45:00 - Phase 67 Task 6: Wire TaskGraphView to navigation
+**What:**
+- Added 'graph' to ViewType union in `src/types/chat.ts`
+- Added 'graph' default chat visibility (false) in `src/stores/uiStore.ts`
+- Added Graph nav item with Network icon to `src/components/layout/Navigation.tsx`
+- Updated keyboard shortcuts in `src/hooks/useAppKeyboardShortcuts.ts`:
+  - ⌘1: Kanban, ⌘2: Graph, ⌘3: Ideation, ⌘4: Extensibility, ⌘5: Activity, ⌘6: Settings
+- Imported and wired TaskGraphView in `src/App.tsx` to render when currentView === 'graph'
+
+**Files Modified:**
+- `src/types/chat.ts`
+- `src/stores/uiStore.ts`
+- `src/components/layout/Navigation.tsx`
+- `src/hooks/useAppKeyboardShortcuts.ts`
+- `src/App.tsx`
+
+**Commands:**
+- `npm run lint` (passed - pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - navigation wiring only, visual testing deferred to Task A.7/B.5 when graph is functional
+
+**Result:** Success
+
+---
+
+### 2026-02-02 23:15:00 - Phase 67 Task 5: Implement dagre layout computation
+**What:**
+- Created `src/components/TaskGraph/hooks/useTaskGraphLayout.ts` - Dagre-based hierarchical layout hook with:
+  - Configurable layout direction (TB/LR)
+  - Configurable spacing (nodesep: 60, ranksep: 80, margins: 40)
+  - Status-based node styling (21 statuses)
+  - Critical path node marking
+  - Handle positioning based on direction
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Replaced inline tier-based layout with dagre layout hook
+  - Removed redundant transform functions
+  - Simplified component by delegating layout to hook
+- Updated `src/components/TaskGraph/index.ts` - Added exports for layout hook and types
+
+**Files Created:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx`
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run lint` (passed - pre-existing warnings only)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - backend layout computation, component not yet wired to navigation (Task A.6)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 23:00:00 - Phase 67 Task 4: Create TaskGraphView with basic React Flow setup
 **What:**
 - Created `src/components/TaskGraph/index.ts` - module exports

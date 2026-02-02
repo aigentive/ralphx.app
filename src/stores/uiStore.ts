@@ -21,6 +21,7 @@ const CHAT_VISIBILITY_KEY = "ralphx-chat-visibility-by-view";
 
 const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
   kanban: true, // visible by default (integrated layout)
+  graph: false, // hidden by default (focus on visualization)
   ideation: true, // always visible (built-in chat)
   extensibility: false,
   activity: false,

@@ -12,6 +12,7 @@ import { z } from "zod";
  */
 export const VIEW_TYPE_VALUES = [
   "kanban",
+  "graph",
   "ideation",
   "extensibility",
   "activity",
