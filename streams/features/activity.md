@@ -4,6 +4,42 @@
 
 ---
 
+### 2026-02-03 12:30:00 - Phase 67 Task 22: Create ExecutionTimeline panel component
+**What:**
+- Created `useExecutionTimeline` hook at `src/components/TaskGraph/hooks/useExecutionTimeline.ts`:
+  - Uses TanStack Query's `useInfiniteQuery` for paginated timeline fetching
+  - Subscribes to `task:updated` events for real-time refresh
+  - Provides `timelineKeys` query key factory for cache management
+  - Exports both `useExecutionTimeline` (with pagination) and `useTimelineEvents` (simple) hooks
+  - Supports filtering by event type with `TimelineFilters` interface
+- Created `ExecutionTimeline` panel component at `src/components/TaskGraph/timeline/ExecutionTimeline.tsx`:
+  - Collapsible side panel (320px expanded, 40px collapsed)
+  - Displays chronological list of `TimelineEntry` components
+  - Filter bar for Status Changes vs Plan Events
+  - Header with event count, refresh button, and collapse toggle
+  - Load more button for pagination
+  - Loading, error, and empty states
+  - Highlighting support for clicked task entries
+- Updated `src/components/TaskGraph/index.ts`:
+  - Exported `ExecutionTimeline` component and `ExecutionTimelineProps` type
+  - Exported `useExecutionTimeline`, `useTimelineEvents`, and `timelineKeys`
+  - Exported `TimelineFilters` and `UseExecutionTimelineOptions` types
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useExecutionTimeline.ts` (new)
+- `src/components/TaskGraph/timeline/ExecutionTimeline.tsx` (new)
+- `src/components/TaskGraph/index.ts` (updated exports)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 14 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - panel component requires TaskGraphView integration (Task 23)
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 11:15:00 - Phase 67 Task 21: Create TimelineEntry component
 **What:**
 - Verified `TimelineEntry` component already exists at `src/components/TaskGraph/timeline/TimelineEntry.tsx`

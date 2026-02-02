@@ -66,3 +66,17 @@ export type { BoundingBox, GroupBoundingBox } from "./groups/groupUtils";
 // Timeline components
 export { TimelineEntry } from "./timeline/TimelineEntry";
 export type { TimelineEntryProps } from "./timeline/TimelineEntry";
+
+export { ExecutionTimeline } from "./timeline/ExecutionTimeline";
+export type { ExecutionTimelineProps, TimelineFilterState } from "./timeline/ExecutionTimeline";
+
+// Timeline hooks
+export {
+  useExecutionTimeline,
+  useTimelineEvents,
+  timelineKeys,
+} from "./hooks/useExecutionTimeline";
+export type {
+  TimelineFilters,
+  UseExecutionTimelineOptions,
+} from "./hooks/useExecutionTimeline";
