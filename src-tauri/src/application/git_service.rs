@@ -780,6 +780,106 @@ impl GitService {
         Ok(commits)
     }
 
+    /// Get commits that were part of a merged task
+    ///
+    /// After a task is merged, the task branch/worktree is deleted, so we can't use
+    /// `base..HEAD` from the working path. Instead, we query commits between the
+    /// merge-base and the merge commit SHA.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository
+    /// * `base_branch` - Name of the base branch
+    /// * `merge_commit_sha` - SHA of the merge commit
+    pub fn get_merged_task_commits(
+        repo: &Path,
+        base_branch: &str,
+        merge_commit_sha: &str,
+    ) -> AppResult<Vec<CommitInfo>> {
+        // Get the merge-base (where the task branch diverged from base)
+        // We need the first parent of the merge commit, which is the base branch
+        // Then get commits from merge-base to the merge commit's second parent (the task branch)
+        //
+        // For a merge commit:
+        // - First parent (^1) is the base branch commit
+        // - Second parent (^2) is the task branch tip
+        //
+        // We want commits that were on the task branch: merge_commit^1..merge_commit^2
+        // But if it was a fast-forward, there's no second parent, so we use merge_commit^1..merge_commit
+
+        // First, check if merge commit has a second parent (true merge vs fast-forward)
+        let check_output = Command::new("git")
+            .args(["rev-parse", "--verify", &format!("{}^2", merge_commit_sha)])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git rev-parse: {}", e))
+            })?;
+
+        let range = if check_output.status.success() {
+            // True merge - get commits from first parent to second parent
+            format!("{}^1..{}^2", merge_commit_sha, merge_commit_sha)
+        } else {
+            // Fast-forward - get commits from before merge to merge commit
+            // Find merge-base between base branch and merge commit
+            let merge_base_output = Command::new("git")
+                .args(["merge-base", base_branch, merge_commit_sha])
+                .current_dir(repo)
+                .output()
+                .map_err(|e| {
+                    AppError::GitOperation(format!("Failed to run git merge-base: {}", e))
+                })?;
+
+            if !merge_base_output.status.success() {
+                // If we can't find merge-base, just use base_branch..merge_commit
+                format!("{}..{}", base_branch, merge_commit_sha)
+            } else {
+                let merge_base = String::from_utf8_lossy(&merge_base_output.stdout)
+                    .trim()
+                    .to_string();
+                format!("{}..{}", merge_base, merge_commit_sha)
+            }
+        };
+
+        let output = Command::new("git")
+            .args([
+                "log",
+                &range,
+                "--pretty=format:%H|%h|%s|%an|%aI",
+            ])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git log: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to get merged commits: {}",
+                stderr
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let commits: Vec<CommitInfo> = stdout
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split('|').collect();
+                if parts.len() >= 5 {
+                    Some(CommitInfo {
+                        sha: parts[0].to_string(),
+                        short_sha: parts[1].to_string(),
+                        message: parts[2].to_string(),
+                        author: parts[3].to_string(),
+                        timestamp: parts[4].to_string(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(commits)
+    }
+
     /// Get diff statistics between current branch and base
     ///
     /// # Arguments

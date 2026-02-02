@@ -90,6 +90,10 @@ export function useTaskEvents() {
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           // Invalidate state transitions so StateTimelineNav updates
           queryClient.invalidateQueries({ queryKey: stateTransitionKeys.task(taskEvent.taskId) });
+          // Refetch full task data when entering merged state to get merge_commit_sha
+          if (taskEvent.to === "merged") {
+            queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskEvent.taskId) });
+          }
           break;
       }
     });

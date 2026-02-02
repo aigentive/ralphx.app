@@ -175,12 +175,27 @@ pub async fn complete_review(
 
     let new_status = match outcome {
         ReviewToolOutcome::Approved => {
-            // Approved: transition to ReviewPassed (awaiting human approval)
+            // Check if human review is required
+            let require_human = state
+                .app_state
+                .review_settings_repo
+                .get_settings()
+                .await
+                .map(|s| s.require_human_review)
+                .unwrap_or(false);
+
+            let target_status = if require_human {
+                InternalStatus::ReviewPassed // Wait for human approval
+            } else {
+                InternalStatus::Approved // Auto-approve, skip human step
+            };
+
             transition_service
-                .transition_task(&task_id, InternalStatus::ReviewPassed)
+                .transition_task(&task_id, target_status.clone())
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            InternalStatus::ReviewPassed
+
+            target_status
         }
         ReviewToolOutcome::NeedsChanges => {
             // Needs changes: transition to RevisionNeeded (auto re-execute)
