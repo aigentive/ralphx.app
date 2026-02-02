@@ -492,6 +492,13 @@
       "prd": "specs/phases/prd_phase_68_task_crash_recovery.md",
       "status": "active",
       "description": "Fix Merging state and auto-transition states crash recovery"
+    },
+    {
+      "phase": 69,
+      "name": "Fix Diff Commands Worktree Support",
+      "prd": "specs/phases/prd_phase_69_diff_worktree_fix.md",
+      "status": "pending",
+      "description": "Make get_task_file_changes and get_file_diff worktree-aware"
     }
   ]
 }
