@@ -436,7 +436,21 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 6a. Fetch entity status for dynamic agent resolution
         let entity_status = self.get_entity_status(context_type, context_id).await;
 
-        // 7. Build and spawn command
+        // 7. Increment running count for task execution contexts BEFORE spawning
+        // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
+        // The count is decremented in TransitionHandler::on_exit when leaving these states
+        // IMPORTANT: Must increment before spawn to ensure scheduling respects capacity
+        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Review) {
+            if let Some(ref exec) = self.execution_state {
+                exec.increment_running();
+                // Emit status_changed event to frontend for real-time UI update
+                if let Some(ref handle) = self.app_handle {
+                    exec.emit_status_changed(handle, "task_started");
+                }
+            }
+        }
+
+        // 7a. Build and spawn command
         let mut cmd = self.build_command(
             &conversation,
             message,
@@ -447,7 +461,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .spawn()
             .map_err(|e| ChatServiceError::SpawnFailed(e.to_string()))?;
 
-        // 7a. Register the process in the running agent registry
+        // 7b. Register the process in the running agent registry
         let child_pid = child.id();
         if let Some(pid) = child_pid {
             let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
@@ -457,19 +471,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 conversation_id.as_str().to_string(),
                 agent_run_id.clone(),
             ).await;
-        }
-
-        // 7b. Increment running count for task execution contexts
-        // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
-        // The count is decremented in TransitionHandler::on_exit when leaving these states
-        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Review) {
-            if let Some(ref exec) = self.execution_state {
-                exec.increment_running();
-                // Emit status_changed event to frontend for real-time UI update
-                if let Some(ref handle) = self.app_handle {
-                    exec.emit_status_changed(handle, "task_started");
-                }
-            }
         }
 
         // 8. Clone values for background task

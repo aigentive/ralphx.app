@@ -190,48 +190,57 @@ impl<R: Runtime> TaskSchedulerService<R> {
 impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     /// Try to schedule Ready tasks if execution slots are available.
     ///
-    /// This method:
+    /// This method loops to fill all available execution slots:
     /// 1. Checks if execution is paused or at capacity
     /// 2. Finds the oldest Ready task across all projects
     /// 3. Transitions it to Executing state via the state machine
+    /// 4. Repeats until no more slots or no more schedulable tasks
     async fn try_schedule_ready_tasks(&self) {
-        // Check if we can start a new task
-        if !self.execution_state.can_start_task() {
-            tracing::debug!(
-                is_paused = self.execution_state.is_paused(),
-                running_count = self.execution_state.running_count(),
-                max_concurrent = self.execution_state.max_concurrent(),
-                "Cannot schedule: execution paused or at capacity"
-            );
-            return;
-        }
+        loop {
+            // Check capacity on each iteration
+            if !self.execution_state.can_start_task() {
+                tracing::debug!(
+                    is_paused = self.execution_state.is_paused(),
+                    running_count = self.execution_state.running_count(),
+                    max_concurrent = self.execution_state.max_concurrent(),
+                    "Cannot schedule more: at capacity or paused"
+                );
+                break;
+            }
 
-        // Find the oldest schedulable task (accounting for Local-mode constraints)
-        let Some(task) = self.find_oldest_schedulable_task().await else {
-            tracing::debug!("No schedulable tasks found");
-            return;
-        };
+            // Find next schedulable task (accounting for Local-mode constraints)
+            let Some(task) = self.find_oldest_schedulable_task().await else {
+                tracing::debug!("No more schedulable tasks");
+                break;
+            };
 
-        tracing::info!(
-            task_id = task.id.as_str(),
-            task_title = task.title.as_str(),
-            created_at = %task.created_at,
-            "Scheduling Ready task for execution"
-        );
-
-        // Transition the task to Executing
-        // This triggers on_enter(Executing) which spawns the worker agent
-        let transition_service = self.build_transition_service();
-
-        if let Err(e) = transition_service
-            .transition_task(&task.id, InternalStatus::Executing)
-            .await
-        {
-            tracing::error!(
+            tracing::info!(
                 task_id = task.id.as_str(),
-                error = %e,
-                "Failed to transition Ready task to Executing"
+                task_title = task.title.as_str(),
+                created_at = %task.created_at,
+                "Scheduling Ready task for execution"
             );
+
+            // Transition the task to Executing
+            // This triggers on_enter(Executing) which:
+            // - Increments running_count via ExecutionState
+            // - Spawns the worker agent
+            let transition_service = self.build_transition_service();
+
+            if let Err(e) = transition_service
+                .transition_task(&task.id, InternalStatus::Executing)
+                .await
+            {
+                tracing::error!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to transition Ready task to Executing"
+                );
+                // Stop on error to avoid infinite loop on persistent failures
+                break;
+            }
+
+            // Continue loop - try to fill next slot
         }
     }
 }
@@ -647,6 +656,125 @@ mod tests {
         assert_eq!(
             found.unwrap().project_id, wt_project.id,
             "Should schedule task from Worktree project, not blocked Local project"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Multi-Task Scheduling Tests (Phase 77)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn test_schedules_multiple_tasks_up_to_capacity() {
+        use crate::domain::entities::GitMode;
+
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Set max concurrent to 3
+        execution_state.set_max_concurrent(3);
+
+        // Create a Worktree-mode project (allows parallel tasks from same project)
+        let mut project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        project.git_mode = GitMode::Worktree;
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create 5 Ready tasks
+        let mut task_ids = Vec::new();
+        for i in 0..5 {
+            let mut task = Task::new(project.id.clone(), format!("Task {}", i));
+            task.internal_status = InternalStatus::Ready;
+            app_state.task_repo.create(task.clone()).await.unwrap();
+            task_ids.push(task.id);
+            // Small delay to ensure different timestamps
+            tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+        }
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+
+        // Schedule - should pick up to 3 tasks (max_concurrent)
+        scheduler.try_schedule_ready_tasks().await;
+
+        // Count tasks in each state
+        let mut executing_count = 0;
+        let mut ready_count = 0;
+
+        for task_id in &task_ids {
+            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            match task.internal_status {
+                InternalStatus::Executing => executing_count += 1,
+                InternalStatus::Ready => ready_count += 1,
+                _ => panic!("Unexpected status: {:?}", task.internal_status),
+            }
+        }
+
+        assert_eq!(
+            executing_count, 3,
+            "Should have scheduled 3 tasks (max_concurrent)"
+        );
+        assert_eq!(
+            ready_count, 2,
+            "Should have 2 tasks still Ready"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_loop_stops_at_capacity() {
+        use crate::domain::entities::GitMode;
+
+        let (execution_state, app_state) = setup_test_state().await;
+
+        // Set max concurrent to 2, pre-fill 1 running slot
+        execution_state.set_max_concurrent(2);
+        execution_state.increment_running(); // 1 slot already taken
+
+        // Create multiple Worktree-mode projects with one Ready task each
+        // This allows testing capacity limits without Local-mode single-task constraint
+        let mut task_ids = Vec::new();
+        for i in 0..3 {
+            let mut project = Project::new(
+                format!("Project {}", i),
+                format!("/test/path{}", i),
+            );
+            project.git_mode = GitMode::Worktree;
+            app_state.project_repo.create(project.clone()).await.unwrap();
+
+            let mut task = Task::new(project.id.clone(), format!("Task {}", i));
+            task.internal_status = InternalStatus::Ready;
+            app_state.task_repo.create(task.clone()).await.unwrap();
+            task_ids.push(task.id);
+            tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+        }
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+
+        // Schedule - should only pick 1 task (only 1 slot available: max=2, pre-filled=1)
+        scheduler.try_schedule_ready_tasks().await;
+
+        // Count tasks in each state
+        let mut executing_count = 0;
+        let mut ready_count = 0;
+
+        for task_id in &task_ids {
+            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            match task.internal_status {
+                InternalStatus::Executing => executing_count += 1,
+                InternalStatus::Ready => ready_count += 1,
+                _ => panic!("Unexpected status: {:?}", task.internal_status),
+            }
+        }
+
+        assert_eq!(
+            executing_count, 1,
+            "Should have scheduled only 1 task (1 slot available)"
+        );
+        assert_eq!(
+            ready_count, 2,
+            "Should have 2 tasks still Ready"
+        );
+
+        // Verify running count is now at capacity (1 pre-filled + 1 scheduled = 2)
+        assert_eq!(
+            execution_state.running_count(), 2,
+            "Running count should be at max_concurrent"
         );
     }
 }

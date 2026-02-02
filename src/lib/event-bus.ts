@@ -91,9 +91,14 @@ export class TauriEventBus implements EventBus {
 
     // Return unsubscribe function
     return () => {
-      this.readyListeners.delete(subscriptionId);
-      unlistenPromise.then((fn) => fn());
+      // IMPORTANT: Don't delete from readyListeners until unlisten actually completes.
+      // Otherwise, events arriving between cleanup start and actual unlisten completion
+      // will be buffered to an orphaned buffer that never gets flushed.
       this.unlisteners.get(event)?.delete(unlistenPromise);
+      unlistenPromise.then((fn) => {
+        fn();
+        this.readyListeners.delete(subscriptionId);
+      });
     };
   }
 

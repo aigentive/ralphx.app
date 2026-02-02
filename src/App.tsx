@@ -40,6 +40,7 @@ import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import { useExecutionStatus } from "@/hooks/useExecutionControl";
 import { useProjects, projectKeys } from "@/hooks/useProjects";
 import {
   useIdeationSession,
@@ -185,6 +186,8 @@ function AppContent() {
 
   // Real-time execution status updates via Tauri events
   useExecutionEvents();
+  // Fetch initial execution status and poll every 30s as fallback
+  useExecutionStatus();
   const { isApproving, isRequestingChanges } = useReviewMutations();
 
   // Listen for agent questions requiring user input

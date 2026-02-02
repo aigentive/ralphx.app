@@ -579,6 +579,8 @@ pub async fn get_task_dependency_graph(
             TaskGraphNode {
                 task_id: task_id_str.clone(),
                 title: task.title.clone(),
+                description: task.description.clone(),
+                category: task.category.clone(),
                 internal_status: task.internal_status.as_str().to_string(),
                 priority: task.priority,
                 in_degree: *in_degree.get(&task_id_str).unwrap_or(&0),

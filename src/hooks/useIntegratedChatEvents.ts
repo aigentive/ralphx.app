@@ -32,12 +32,13 @@ export function useIntegratedChatEvents({
   const queryClient = useQueryClient();
   const activeConversationIdRef = useRef(activeConversationId);
 
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
-
   // Subscribe to Tauri events for real-time updates
   useEffect(() => {
+    // Update ref synchronously at the START of this effect, before creating subscriptions.
+    // This prevents a race where autoSelectConversation changes activeConversationId,
+    // events arrive with the new conversation_id, but the ref still has the old value.
+    activeConversationIdRef.current = activeConversationId;
+
     const unsubscribes: Unsubscribe[] = [];
 
     // Listen for tool calls - accumulate for streaming display and invalidate cache

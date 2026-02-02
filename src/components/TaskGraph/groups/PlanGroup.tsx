@@ -101,12 +101,10 @@ export const PlanGroup = memo(function PlanGroup({
       className={cn(
         // Base styles
         "rounded-lg overflow-hidden",
-        // Background - subtle elevated with transparency
-        "bg-[hsla(var(--bg-elevated)/0.5)]",
-        // Border - subtle with slight emphasis when selected
-        "border border-[hsla(var(--border-subtle)/0.6)]",
-        // Selection state
-        selected && "border-[hsl(var(--accent-primary)/0.5)]",
+        // Background - Kanban glass at 50% opacity (no border)
+        "bg-[hsla(220_10%_14%_/_0.5)]",
+        // Selection state - use ring instead of border
+        selected && "ring-1 ring-[hsl(var(--accent-primary)/0.5)]",
         // Transition
         "transition-all duration-200"
       )}

@@ -162,6 +162,10 @@ pub struct TaskGraphNode {
     pub task_id: String,
     /// Task title
     pub title: String,
+    /// Task description (for card display)
+    pub description: Option<String>,
+    /// Task category (e.g., "feature", "bug", "chore")
+    pub category: String,
     /// Internal status (e.g., "ready", "executing", "approved")
     pub internal_status: String,
     /// Task priority

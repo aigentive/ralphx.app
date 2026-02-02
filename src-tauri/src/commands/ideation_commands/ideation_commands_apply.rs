@@ -1,13 +1,16 @@
 // Proposal-to-task conversion and task dependency commands
 
 use std::collections::{HashMap, HashSet};
-use tauri::State;
+use std::sync::Arc;
+use tauri::{Manager, State};
 
-use crate::application::AppState;
+use crate::application::{AppState, TaskSchedulerService};
+use crate::commands::ExecutionState;
 use crate::domain::entities::{
     IdeationSessionId, IdeationSessionStatus, InternalStatus, Task,
     TaskId, TaskProposal, TaskProposalId,
 };
+use crate::domain::state_machine::services::TaskScheduler;
 
 use super::ideation_commands_types::{ApplyProposalsInput, ApplyProposalsResultResponse};
 
@@ -239,6 +242,29 @@ pub async fn apply_proposals_to_kanban(
     // Emit queue_changed if any tasks were set to Ready status
     if any_ready_tasks {
         emit_queue_changed(&state, &session.project_id, &app).await;
+
+        // Trigger scheduler to pick up newly Ready tasks (600ms delay for UI settlement)
+        // This is necessary because we set status via direct repo update, bypassing TransitionHandler
+        let execution_state = app.state::<Arc<ExecutionState>>();
+        let scheduler = TaskSchedulerService::<tauri::Wry>::new(
+            Arc::clone(&*execution_state),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Some(app.clone()),
+        );
+
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+            scheduler.try_schedule_ready_tasks().await;
+        });
     }
 
     Ok(ApplyProposalsResultResponse {

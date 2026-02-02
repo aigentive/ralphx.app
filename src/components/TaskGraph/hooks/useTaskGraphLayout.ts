@@ -54,6 +54,8 @@ type TaskNodeData = Record<string, unknown> & {
   internalStatus: string;
   priority: number;
   isCriticalPath: boolean;
+  description?: string | null;
+  category?: string;
 };
 
 // Edge data for custom DependencyEdge component
@@ -78,7 +80,8 @@ const DEFAULT_CONFIG: LayoutConfig = {
 
 // Node dimensions (must match what's rendered in TaskGraphView)
 const NODE_WIDTH = 180;
-const NODE_HEIGHT = 50;
+// Fixed height to accommodate: title + 1-line description + category + progress bar
+const NODE_HEIGHT = 100;
 
 // ============================================================================
 // Group Node Creation
@@ -343,6 +346,8 @@ function computeLayoutWithCache(
       data: {
         label: graphNode.title, // Full title - TaskNode handles truncation
         taskId: graphNode.taskId,
+        description: graphNode.description,
+        category: graphNode.category,
         internalStatus: graphNode.internalStatus,
         priority: graphNode.priority,
         isCriticalPath: criticalPathSet.has(graphNode.taskId),

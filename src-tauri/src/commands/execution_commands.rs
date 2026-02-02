@@ -171,7 +171,7 @@ pub async fn get_execution_status(
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionStatusResponse, String> {
-    // Count queued tasks (tasks in Ready status)
+    // Count queued tasks (tasks in Ready status) and running tasks (tasks in agent-active states)
     let all_projects = app_state
         .project_repo
         .get_all()
@@ -179,7 +179,8 @@ pub async fn get_execution_status(
         .map_err(|e| e.to_string())?;
 
     let mut queued_count = 0u32;
-    for project in all_projects {
+    let mut db_running_count = 0u32;
+    for project in &all_projects {
         let tasks = app_state
             .task_repo
             .get_by_project(&project.id)
@@ -190,14 +191,26 @@ pub async fn get_execution_status(
             .iter()
             .filter(|t| t.internal_status == InternalStatus::Ready)
             .count() as u32;
+
+        // Count tasks in agent-active states from the database
+        // This ensures running_count reflects reality even after app restart
+        db_running_count += tasks
+            .iter()
+            .filter(|t| AGENT_ACTIVE_STATUSES.contains(&t.internal_status))
+            .count() as u32;
     }
+
+    // Use MAX of in-memory count and db count to handle:
+    // 1. Normal operation: in-memory count is accurate
+    // 2. After restart: db count reflects tasks that should be running
+    let running_count = std::cmp::max(execution_state.running_count(), db_running_count);
 
     Ok(ExecutionStatusResponse {
         is_paused: execution_state.is_paused(),
-        running_count: execution_state.running_count(),
+        running_count,
         max_concurrent: execution_state.max_concurrent(),
         queued_count,
-        can_start_task: execution_state.can_start_task(),
+        can_start_task: !execution_state.is_paused() && running_count < execution_state.max_concurrent(),
     })
 }
 

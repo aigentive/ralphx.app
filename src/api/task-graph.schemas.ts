@@ -8,6 +8,8 @@ import { z } from "zod";
 export const TaskGraphNodeSchema = z.object({
   task_id: z.string(),
   title: z.string(),
+  description: z.string().nullable(),
+  category: z.string(),
   internal_status: z.string(),
   priority: z.number().int(),
   in_degree: z.number().int().nonnegative(),
