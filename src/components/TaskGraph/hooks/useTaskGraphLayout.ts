@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/react";
 import type { TaskGraphNode, TaskGraphEdge } from "@/api/task-graph.types";
+import { getStatusBorderColor, getStatusBackground } from "../nodes/nodeStyles";
 
 // ============================================================================
 // Types
@@ -153,83 +154,6 @@ function computeLayout(
   return { nodes, edges };
 }
 
-// ============================================================================
-// Status Colors (temporary - will be moved to nodeStyles.ts in Phase B)
-// ============================================================================
-
-function getStatusBackground(status: string): string {
-  switch (status) {
-    // Executing
-    case "executing":
-    case "re_executing":
-      return "hsla(14 100% 55% / 0.15)";
-    // Blocked
-    case "blocked":
-      return "hsla(45 90% 55% / 0.1)";
-    // Review
-    case "pending_review":
-    case "reviewing":
-    case "review_passed":
-    case "escalated":
-    case "revision_needed":
-      return "hsla(220 80% 60% / 0.12)";
-    // QA
-    case "qa_refining":
-    case "qa_testing":
-    case "qa_passed":
-    case "qa_failed":
-      return "hsla(280 60% 55% / 0.12)";
-    // Merge
-    case "pending_merge":
-    case "merging":
-    case "merge_conflict":
-      return "hsla(180 60% 50% / 0.12)";
-    // Complete
-    case "approved":
-    case "merged":
-      return "hsla(145 60% 45% / 0.12)";
-    // Terminal
-    case "failed":
-    case "cancelled":
-      return "hsla(0 70% 55% / 0.12)";
-    // Idle (backlog, ready)
-    default:
-      return "hsla(220 10% 15% / 0.8)";
-  }
-}
-
-function getStatusBorderColor(status: string): string {
-  switch (status) {
-    case "executing":
-    case "re_executing":
-      return "hsl(14 100% 55%)";
-    case "blocked":
-      return "hsl(45 90% 55%)";
-    case "pending_review":
-    case "reviewing":
-    case "review_passed":
-    case "escalated":
-    case "revision_needed":
-      return "hsl(220 80% 60%)";
-    case "qa_refining":
-    case "qa_testing":
-    case "qa_passed":
-    case "qa_failed":
-      return "hsl(280 60% 55%)";
-    case "pending_merge":
-    case "merging":
-    case "merge_conflict":
-      return "hsl(180 60% 50%)";
-    case "approved":
-    case "merged":
-      return "hsl(145 60% 45%)";
-    case "failed":
-    case "cancelled":
-      return "hsl(0 70% 55%)";
-    default:
-      return "hsl(220 10% 40%)";
-  }
-}
 
 // ============================================================================
 // Hook

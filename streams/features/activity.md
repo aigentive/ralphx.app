@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-03 00:45:00 - Phase 67 Task 8: Create status color mapping
+**What:**
+- Created `src/components/TaskGraph/nodes/nodeStyles.ts` with centralized status color mapping
+- Defined border/background colors for all 21 internal statuses grouped by category
+- Added `getNodeStyle()`, `getStatusBorderColor()`, `getStatusBackground()` functions
+- Added legend data exports (`STATUS_LEGEND_GROUPS`, `CATEGORY_LABELS`, `getCategoryColor()`)
+- Updated `useTaskGraphLayout.ts` to import from nodeStyles.ts (removed duplicate functions)
+- Updated `TaskGraphView.tsx` to import from nodeStyles.ts (removed duplicate function)
+- Updated `index.ts` to export nodeStyles types and functions
+
+**Files Created:**
+- `src/components/TaskGraph/nodes/nodeStyles.ts`
+
+**Files Modified:**
+- `src/components/TaskGraph/hooks/useTaskGraphLayout.ts`
+- `src/components/TaskGraph/TaskGraphView.tsx`
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - style definitions only, no visual changes until custom nodes use them
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 00:15:00 - Phase 67 Task 7: Integrate TaskDetailOverlay on node click
 **What:**
 - Added `onNodeClick` handler that calls `setSelectedTaskId(node.id)` via useUiStore

@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
+import { getStatusBorderColor } from "./nodes/nodeStyles";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { Loader2 } from "lucide-react";
@@ -43,42 +44,6 @@ type TaskNodeData = Record<string, unknown> & {
   isCriticalPath: boolean;
 };
 
-// ============================================================================
-// Status Colors (for MiniMap - main node colors in useTaskGraphLayout)
-// ============================================================================
-
-function getStatusBorderColor(status: string): string {
-  switch (status) {
-    case "executing":
-    case "re_executing":
-      return "hsl(14 100% 55%)";
-    case "blocked":
-      return "hsl(45 90% 55%)";
-    case "pending_review":
-    case "reviewing":
-    case "review_passed":
-    case "escalated":
-    case "revision_needed":
-      return "hsl(220 80% 60%)";
-    case "qa_refining":
-    case "qa_testing":
-    case "qa_passed":
-    case "qa_failed":
-      return "hsl(280 60% 55%)";
-    case "pending_merge":
-    case "merging":
-    case "merge_conflict":
-      return "hsl(180 60% 50%)";
-    case "approved":
-    case "merged":
-      return "hsl(145 60% 45%)";
-    case "failed":
-    case "cancelled":
-      return "hsl(0 70% 55%)";
-    default:
-      return "hsl(220 10% 40%)";
-  }
-}
 
 // ============================================================================
 // Component
