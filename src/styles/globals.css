@@ -680,3 +680,23 @@ body {
 .scale-115 {
   transform: scale(1.15);
 }
+
+/* ============================================================================
+ * React Flow Controls - Dark Mode Styling
+ * ============================================================================ */
+
+/* Dark mode styling for React Flow control buttons */
+.react-flow__controls-button {
+  background: hsla(220 10% 18% / 0.95) !important;
+  border: 1px solid hsl(220 10% 30%) !important;
+  fill: hsl(220 10% 70%) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: hsla(220 10% 25% / 0.95) !important;
+  fill: hsl(220 10% 90%) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: inherit !important;
+}
