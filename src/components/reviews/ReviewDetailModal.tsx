@@ -9,6 +9,8 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   X,
   Loader2,
@@ -156,11 +158,13 @@ function AIReviewSummary({
         )}
       </div>
 
-      {/* Summary text */}
+      {/* Summary text - rendered as markdown */}
       {latestApproved?.notes && (
-        <p className="text-[12px] text-white/60" style={{ lineHeight: "1.5", wordBreak: "break-word", overflowWrap: "anywhere" }}>
-          {latestApproved.notes}
-        </p>
+        <div className="text-[12px] text-white/60 prose prose-sm prose-invert max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {latestApproved.notes}
+          </ReactMarkdown>
+        </div>
       )}
 
       {/* Checklist */}
