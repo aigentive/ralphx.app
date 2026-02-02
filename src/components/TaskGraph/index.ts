@@ -38,3 +38,7 @@ export type { EdgeStyle, EdgeType } from "./edges/edgeStyles";
 // Controls
 export { GraphLegend } from "./controls/GraphLegend";
 export type { GraphLegendProps } from "./controls/GraphLegend";
+
+// Groups
+export { PlanGroupHeader } from "./groups/PlanGroupHeader";
+export type { PlanGroupHeaderProps } from "./groups/PlanGroupHeader";
