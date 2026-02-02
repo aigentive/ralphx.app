@@ -13,11 +13,12 @@
 
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { getNodeStyle, GLASS_SURFACE, getPriorityStripeColor, NODE_WIDTH, NODE_HEIGHT } from "./nodeStyles";
+import { GLASS_SURFACE, NODE_WIDTH, NODE_HEIGHT } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import { useStepProgress } from "@/hooks/useTaskSteps";
 import type { InternalStatus } from "@/types/status";
 import { TaskStatusBadge } from "@/components/tasks/TaskBoard/TaskStatusBadge";
+import { getStatusBorderColor } from "@/types/status-icons";
 import type { Task } from "@/types/task";
 
 // ============================================================================
@@ -129,7 +130,7 @@ function getStepDotColor(
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers } = data;
-  const style = getNodeStyle(internalStatus);
+  const statusColor = getStatusBorderColor(internalStatus);
   const showProgressBar = shouldShowProgressBar(internalStatus);
   const { data: stepProgress } = useStepProgress(taskId);
 
@@ -227,18 +228,14 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           border: selected
             ? "1px solid hsla(220 60% 60% / 0.3)"
             : GLASS_SURFACE.border,
-          // Left priority stripe (matches Kanban card styling)
-          borderLeft: `3px solid ${getPriorityStripeColor(priority)}`,
-          // Status-specific glow for active states
+          // Left border colored by status (matches Kanban card styling)
+          borderLeft: `3px solid ${statusColor}`,
+          // Glow for highlighted/focused states only
           boxShadow: isHighlighted
             ? `${GLASS_SURFACE.boxShadow}, 0 0 12px 2px hsl(var(--accent-primary) / 0.4)`
             : isFocused && !selected
             ? `${GLASS_SURFACE.boxShadow}, 0 0 8px 1px rgba(56, 189, 248, 0.3)`
-            : style.boxShadow
-            ? `${GLASS_SURFACE.boxShadow}, ${style.boxShadow}`
             : GLASS_SURFACE.boxShadow,
-          // Pulsing border animation for active states (executing, reviewing)
-          animation: style.animation,
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
         }}
       >

@@ -6,16 +6,7 @@
  */
 
 import { type InternalStatus, NON_DRAGGABLE_STATUSES } from "@/types/status";
-import { getStatusIconConfig, ARCHIVED_ICON_CONFIG } from "@/types/status-icons";
-
-/**
- * Get status color for the left border stripe
- * Uses shared STATUS_ICON_CONFIG for consistency with icons
- */
-export function getStatusColor(status: InternalStatus, isArchived: boolean): string {
-  if (isArchived) return ARCHIVED_ICON_CONFIG.color;
-  return getStatusIconConfig(status).color;
-}
+import { getStatusBorderColor } from "@/types/status-icons";
 
 /**
  * Build base card styles (macOS Tahoe - subtle floating elevation)
@@ -36,7 +27,7 @@ export function getBaseCardStyles(
     WebkitBackdropFilter: "blur(12px) saturate(150%)",
     border: "1px solid hsla(220 10% 100% / 0.06)",
     boxShadow: "0 2px 8px hsla(220 10% 0% / 0.25)",
-    borderLeft: `3px solid ${getStatusColor(status, isArchived)}`,
+    borderLeft: `3px solid ${getStatusBorderColor(status, isArchived)}`,
   };
 }
 
