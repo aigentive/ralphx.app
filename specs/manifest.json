@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 74,
+  "currentPhase": 75,
   "phases": [
     {
       "phase": 0,
@@ -534,6 +534,13 @@
       "prd": "specs/phases/prd_phase_74_review_dialog_improvements.md",
       "status": "complete",
       "description": "Fix data discrepancies and visual issues in ReviewDetailModal"
+    },
+    {
+      "phase": 75,
+      "name": "Merge Chat Context",
+      "prd": "specs/phases/prd_phase_75_merge_chat_context.md",
+      "status": "active",
+      "description": "Wire up merge conversation context to chat panel for merger agent visibility"
     }
   ]
 }
