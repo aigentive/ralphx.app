@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 68,
+  "currentPhase": 69,
   "phases": [
     {
       "phase": 0,
@@ -490,14 +490,14 @@
       "phase": 68,
       "name": "Task Crash Recovery Gaps Fix",
       "prd": "specs/phases/prd_phase_68_task_crash_recovery.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix Merging state and auto-transition states crash recovery"
     },
     {
       "phase": 69,
       "name": "Fix Diff Commands Worktree Support",
       "prd": "specs/phases/prd_phase_69_diff_worktree_fix.md",
-      "status": "pending",
+      "status": "active",
       "description": "Make get_task_file_changes and get_file_diff worktree-aware"
     }
   ]
