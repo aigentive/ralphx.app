@@ -58,14 +58,14 @@ export const diffApi = {
    * Get all files changed by the agent for a task
    * Extracts file paths from Write/Edit tool calls in activity events
    * and uses git to determine change status
+   * Backend determines working path (worktree or local) from task/project
    * @param taskId - The task ID to get file changes for
-   * @param projectPath - The project path for git operations
    * @returns Array of file changes with status and line counts
    */
-  getTaskFileChanges: (taskId: string, projectPath: string): Promise<FileChange[]> =>
+  getTaskFileChanges: (taskId: string): Promise<FileChange[]> =>
     typedInvokeWithTransform(
       "get_task_file_changes",
-      { taskId, projectPath },
+      { taskId },
       FileChangesResponseSchema,
       (changes) => changes.map(transformFileChange)
     ),
@@ -73,14 +73,15 @@ export const diffApi = {
   /**
    * Get the diff content for a specific file
    * Compares current file content with git HEAD
+   * Backend determines working path (worktree or local) from task/project
+   * @param taskId - The task ID (used to determine working directory)
    * @param filePath - The file path relative to project root
-   * @param projectPath - The project path for git operations
    * @returns File diff with old and new content
    */
-  getFileDiff: (filePath: string, projectPath: string): Promise<FileDiff> =>
+  getFileDiff: (taskId: string, filePath: string): Promise<FileDiff> =>
     typedInvokeWithTransform(
       "get_file_diff",
-      { filePath, projectPath },
+      { taskId, filePath },
       FileDiffSchema,
       transformFileDiff
     ),

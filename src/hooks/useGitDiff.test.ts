@@ -55,9 +55,9 @@ describe("useGitDiff", () => {
   });
 
   describe("initialization", () => {
-    it("starts with loading state true when enabled with projectPath", async () => {
+    it("starts with loading state true when enabled", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       expect(result.current.isLoadingChanges).toBe(true);
@@ -69,7 +69,7 @@ describe("useGitDiff", () => {
 
     it("does not load when disabled", () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: false })
+        useGitDiff({ taskId: "task-1", enabled: false })
       );
 
       expect(result.current.changes).toEqual([]);
@@ -80,16 +80,7 @@ describe("useGitDiff", () => {
 
     it("does not load when taskId is empty", () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "", projectPath: "/path/to/project", enabled: true })
-      );
-
-      expect(result.current.changes).toEqual([]);
-      expect(diffApi.getTaskFileChanges).not.toHaveBeenCalled();
-    });
-
-    it("does not load when projectPath is missing", () => {
-      const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", enabled: true })
+        useGitDiff({ taskId: "", enabled: true })
       );
 
       expect(result.current.changes).toEqual([]);
@@ -100,17 +91,17 @@ describe("useGitDiff", () => {
   describe("data loading", () => {
     it("calls getTaskFileChanges with correct parameters", async () => {
       renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/my/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
-        expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-1", "/my/project");
+        expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-1");
       });
     });
 
     it("loads file changes data", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -126,7 +117,7 @@ describe("useGitDiff", () => {
 
     it("returns empty commits (not yet implemented)", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -139,7 +130,7 @@ describe("useGitDiff", () => {
 
     it("sets error to null on successful load", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -153,7 +144,7 @@ describe("useGitDiff", () => {
       vi.mocked(diffApi.getTaskFileChanges).mockRejectedValue(new Error("API Error"));
 
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -169,7 +160,7 @@ describe("useGitDiff", () => {
   describe("fetchDiff", () => {
     it("returns diff data for a file path", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -182,8 +173,8 @@ describe("useGitDiff", () => {
       });
 
       expect(diffApi.getFileDiff).toHaveBeenCalledWith(
-        "src/components/LoginForm.tsx",
-        "/path/to/project"
+        "task-1",
+        "src/components/LoginForm.tsx"
       );
       expect(diffData).not.toBeNull();
       expect(diffData).toHaveProperty("filePath", "src/components/LoginForm.tsx");
@@ -195,7 +186,7 @@ describe("useGitDiff", () => {
 
     it("returns null when disabled", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: false })
+        useGitDiff({ taskId: "task-1", enabled: false })
       );
 
       let diffData;
@@ -207,9 +198,9 @@ describe("useGitDiff", () => {
       expect(diffApi.getFileDiff).not.toHaveBeenCalled();
     });
 
-    it("returns null when projectPath is missing", async () => {
+    it("returns null when taskId is missing", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", enabled: true })
+        useGitDiff({ taskId: "", enabled: true })
       );
 
       let diffData;
@@ -225,7 +216,7 @@ describe("useGitDiff", () => {
       vi.mocked(diffApi.getFileDiff).mockRejectedValue(new Error("Diff API Error"));
 
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -244,7 +235,7 @@ describe("useGitDiff", () => {
   describe("refresh", () => {
     it("sets loading state during refresh", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: true })
+        useGitDiff({ taskId: "task-1", enabled: true })
       );
 
       await waitFor(() => {
@@ -268,7 +259,7 @@ describe("useGitDiff", () => {
 
     it("does nothing when disabled", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", projectPath: "/path/to/project", enabled: false })
+        useGitDiff({ taskId: "task-1", enabled: false })
       );
 
       await act(async () => {
@@ -279,9 +270,9 @@ describe("useGitDiff", () => {
       expect(diffApi.getTaskFileChanges).not.toHaveBeenCalled();
     });
 
-    it("does nothing when projectPath is missing", async () => {
+    it("does nothing when taskId is missing", async () => {
       const { result } = renderHook(() =>
-        useGitDiff({ taskId: "task-1", enabled: true })
+        useGitDiff({ taskId: "", enabled: true })
       );
 
       await act(async () => {
@@ -295,7 +286,7 @@ describe("useGitDiff", () => {
   describe("re-fetching on taskId change", () => {
     it("refetches data when taskId changes", async () => {
       const { result, rerender } = renderHook(
-        ({ taskId }) => useGitDiff({ taskId, projectPath: "/path/to/project", enabled: true }),
+        ({ taskId }) => useGitDiff({ taskId, enabled: true }),
         { initialProps: { taskId: "task-1" } }
       );
 
@@ -303,7 +294,7 @@ describe("useGitDiff", () => {
         expect(result.current.isLoadingChanges).toBe(false);
       });
 
-      expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-1", "/path/to/project");
+      expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-1");
 
       // Change taskId
       rerender({ taskId: "task-2" });
@@ -318,32 +309,7 @@ describe("useGitDiff", () => {
         expect(result.current.isLoadingChanges).toBe(false);
       });
 
-      expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-2", "/path/to/project");
-    });
-  });
-
-  describe("re-fetching on projectPath change", () => {
-    it("refetches data when projectPath changes", async () => {
-      const { result, rerender } = renderHook(
-        ({ projectPath }) => useGitDiff({ taskId: "task-1", projectPath, enabled: true }),
-        { initialProps: { projectPath: "/project1" } }
-      );
-
-      await waitFor(() => {
-        expect(result.current.isLoadingChanges).toBe(false);
-      });
-
-      expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-1", "/project1");
-
-      // Change projectPath
-      rerender({ projectPath: "/project2" });
-
-      // Should eventually finish with new path
-      await waitFor(() => {
-        expect(result.current.isLoadingChanges).toBe(false);
-      });
-
-      expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-1", "/project2");
+      expect(diffApi.getTaskFileChanges).toHaveBeenCalledWith("task-2");
     });
   });
 });
