@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-02 06:34:07 - Phase 73 Task 5: Wire ExecutionControlBar to TaskGraphView
+**What:**
+- Updated `src/App.tsx` to pass ExecutionControlBar as footer prop to TaskGraphView
+- Copied exact pattern from KanbanSplitLayout footer prop (same props passed)
+- ExecutionControlBar now displays at bottom of Graph page with pause/stop controls
+
+**Files:**
+- MODIFIED: src/App.tsx (lines 718-732)
+
+**Visual Verification:** N/A - backend only (App.tsx is component wiring, not UI changes)
+
+**Commands:**
+- `npm run lint` - 0 errors, 15 pre-existing warnings
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 17:30:00 - Phase 73 Task 4: Refactor TaskGraphView for new layout
 **What:**
 - Refactored `src/components/TaskGraph/TaskGraphView.tsx` to use new split layout architecture
