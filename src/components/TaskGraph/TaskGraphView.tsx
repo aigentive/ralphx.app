@@ -32,7 +32,17 @@ import { DependencyEdge } from "./edges/DependencyEdge";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
 import { ExecutionTimeline } from "./timeline/ExecutionTimeline";
 import { GraphMiniMap } from "./controls/GraphMiniMap";
-import { COMPACT_MODE_THRESHOLD, type NodeMode } from "./controls/GraphControls";
+import {
+  GraphControls,
+  COMPACT_MODE_THRESHOLD,
+  DEFAULT_GRAPH_FILTERS,
+  DEFAULT_LAYOUT_DIRECTION,
+  DEFAULT_GROUPING,
+  type NodeMode,
+  type GraphFilters,
+  type LayoutDirection,
+  type GroupingOption,
+} from "./controls/GraphControls";
 import { useUiStore } from "@/stores/uiStore";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
@@ -112,6 +122,11 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
   const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
     new Set()
   );
+
+  // GraphControls state
+  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
+  const [grouping, setGrouping] = useState<GroupingOption>(DEFAULT_GROUPING);
 
   // Node mode state (standard or compact)
   // null means "auto" - will be determined by task count
@@ -427,10 +442,26 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
   }
 
   return (
-    <div className="h-full w-full relative flex" data-testid="task-graph-view">
-      {/* Main graph area */}
-      <div className="flex-1 h-full relative">
-        <ReactFlow
+    <div className="h-full w-full relative flex flex-col" data-testid="task-graph-view">
+      {/* Graph Controls bar */}
+      <GraphControls
+        filters={filters}
+        onFiltersChange={setFilters}
+        layoutDirection={layoutDirection}
+        onLayoutDirectionChange={setLayoutDirection}
+        grouping={grouping}
+        onGroupingChange={setGrouping}
+        nodeMode={effectiveNodeMode}
+        onNodeModeChange={handleNodeModeChange}
+        isAutoCompact={isAutoCompact && nodeModeOverride === null}
+        planGroups={graphData?.planGroups ?? []}
+      />
+
+      {/* Main graph area with timeline */}
+      <div className="flex-1 flex min-h-0">
+        {/* Graph canvas */}
+        <div className="flex-1 h-full relative">
+          <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={activeNodeTypes}
@@ -458,13 +489,14 @@ function TaskGraphViewInner({ projectId }: TaskGraphViewInnerProps) {
         </ReactFlow>
       </div>
 
-      {/* Execution Timeline side panel */}
-      <ExecutionTimeline
-        projectId={projectId}
-        onTaskClick={handleTimelineTaskClick}
-        highlightedTaskId={highlightedTaskId}
-        defaultCollapsed={false}
-      />
+        {/* Execution Timeline side panel */}
+        <ExecutionTimeline
+          projectId={projectId}
+          onTaskClick={handleTimelineTaskClick}
+          highlightedTaskId={highlightedTaskId}
+          defaultCollapsed={false}
+        />
+      </div>
 
       {/* Task Detail Overlay - renders when a node is selected */}
       {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}

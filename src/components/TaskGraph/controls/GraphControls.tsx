@@ -19,6 +19,8 @@ import {
   ArrowRightFromLine,
   Layers,
   X,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -55,6 +57,8 @@ export interface GraphFilters {
   showCompleted: boolean;
 }
 
+export type NodeMode = "standard" | "compact";
+
 export interface GraphControlsProps {
   /** Current filter state */
   filters: GraphFilters;
@@ -68,6 +72,12 @@ export interface GraphControlsProps {
   grouping: GroupingOption;
   /** Callback when grouping changes */
   onGroupingChange: (grouping: GroupingOption) => void;
+  /** Current node display mode */
+  nodeMode: NodeMode;
+  /** Callback when node mode changes */
+  onNodeModeChange: (mode: NodeMode) => void;
+  /** Whether compact mode was auto-activated (50+ tasks) */
+  isAutoCompact: boolean;
   /** Available plan groups for filtering */
   planGroups: PlanGroupInfo[];
   /** Additional className for the container */
@@ -389,6 +399,9 @@ function GraphControlsComponent({
   onLayoutDirectionChange,
   grouping,
   onGroupingChange,
+  nodeMode,
+  onNodeModeChange,
+  isAutoCompact,
   planGroups,
   className = "",
 }: GraphControlsProps) {
@@ -401,6 +414,10 @@ function GraphControlsComponent({
   const handleLayoutToggle = useCallback(() => {
     onLayoutDirectionChange(layoutDirection === "TB" ? "LR" : "TB");
   }, [layoutDirection, onLayoutDirectionChange]);
+
+  const handleNodeModeToggle = useCallback(() => {
+    onNodeModeChange(nodeMode === "standard" ? "compact" : "standard");
+  }, [nodeMode, onNodeModeChange]);
 
   return (
     <div
@@ -497,6 +514,36 @@ function GraphControlsComponent({
         <span className="text-[hsl(220_10%_70%)]">{layoutDirection}</span>
       </button>
 
+      {/* Node Mode Toggle */}
+      <button
+        onClick={handleNodeModeToggle}
+        className={cn(
+          "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs transition-colors",
+          "bg-[hsl(220_10%_12%)] border border-[hsl(220_10%_25%)]",
+          "hover:bg-[hsl(220_10%_15%)] hover:border-[hsl(220_10%_30%)]",
+          isAutoCompact && nodeMode === "compact" && "border-[hsl(14_100%_55%_/_0.5)]"
+        )}
+        title={
+          nodeMode === "standard"
+            ? "Switch to compact nodes"
+            : isAutoCompact
+              ? "Auto-compacted (50+ tasks) - click to use standard nodes"
+              : "Switch to standard nodes"
+        }
+      >
+        {nodeMode === "compact" ? (
+          <Minimize2 className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+        ) : (
+          <Maximize2 className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+        )}
+        <span className="text-[hsl(220_10%_70%)]">
+          {nodeMode === "compact" ? "Compact" : "Standard"}
+        </span>
+        {isAutoCompact && nodeMode === "compact" && (
+          <span className="text-[10px] text-[hsl(14_100%_55%)]">(auto)</span>
+        )}
+      </button>
+
       {/* Grouping Dropdown */}
       <GroupingDropdown grouping={grouping} onGroupingChange={onGroupingChange} />
     </div>
@@ -530,3 +577,13 @@ export const DEFAULT_LAYOUT_DIRECTION: LayoutDirection = "TB";
  * Default grouping option
  */
 export const DEFAULT_GROUPING: GroupingOption = "plan";
+
+/**
+ * Default node display mode
+ */
+export const DEFAULT_NODE_MODE: NodeMode = "standard";
+
+/**
+ * Threshold for auto-switching to compact mode
+ */
+export const COMPACT_MODE_THRESHOLD = 50;
