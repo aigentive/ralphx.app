@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 72,
+  "currentPhase": 73,
   "phases": [
     {
       "phase": 0,
@@ -518,14 +518,14 @@
       "phase": 72,
       "name": "Graph Node Kanban Styling Parity",
       "prd": "specs/phases/prd_phase_72_graph_node_kanban_styling.md",
-      "status": "active",
+      "status": "complete",
       "description": "Redesign graph nodes to match Kanban card visual styling"
     },
     {
       "phase": 73,
       "name": "Graph Page Layout Parity with Kanban",
       "prd": "specs/phases/prd_phase_73_graph_layout_parity.md",
-      "status": "pending",
+      "status": "active",
       "description": "Split-screen layout for Graph page matching Kanban structure"
     }
   ]
