@@ -111,7 +111,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(diff): add frontend API for per-commit diffs"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

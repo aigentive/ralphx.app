@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 17:00:00 - Phase 71 Task 2: Add frontend API methods for per-commit diffs
+**What:**
+- Added `getCommitFileChanges(taskId, commitSha)` method to `diffApi`:
+  - Calls `get_commit_file_changes` Tauri command
+  - Uses existing `FileChangesResponseSchema` and `transformFileChange`
+- Added `getCommitFileDiff(taskId, commitSha, filePath)` method to `diffApi`:
+  - Calls `get_commit_file_diff` Tauri command
+  - Uses existing `FileDiffSchema` and `transformFileDiff`
+
+**Files Modified:**
+- `src/api/diff.ts` - Added two new API methods
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - API layer only, no UI changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 16:30:00 - Phase 71 Task 1: Add backend commands for per-commit file changes and diffs
 **What:**
 - Added `get_commit_file_changes` method to `DiffService`:
