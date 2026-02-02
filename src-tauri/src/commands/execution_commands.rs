@@ -23,6 +23,7 @@ pub const AGENT_ACTIVE_STATUSES: &[InternalStatus] = &[
     InternalStatus::QaTesting,
     InternalStatus::Reviewing,
     InternalStatus::ReExecuting,
+    InternalStatus::Merging, // spawns merger agent
 ];
 
 /// Global execution state managed atomically for thread safety
@@ -766,6 +767,7 @@ mod tests {
         assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::QaTesting));
         assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Reviewing));
         assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::ReExecuting));
+        assert!(AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Merging));
 
         // Non-agent-active statuses should not be included
         assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Ready));
