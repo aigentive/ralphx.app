@@ -4,6 +4,37 @@
 
 ---
 
+### 2026-02-03 01:45:00 - Phase 67 Task 10: Create custom DependencyEdge component
+**What:**
+- Created `src/components/TaskGraph/edges/edgeStyles.ts` with edge style definitions
+  - Normal edges: dashed, muted gray, 1px
+  - Critical path edges: solid, accent orange (#ff6b35), 2px with glow effect
+  - Active edges (from executing nodes): animated dotted, accent orange, 1.5px
+  - Helper functions: `getEdgeType()`, `getEdgeStyle()`, `getEdgeStyleForEdge()`
+- Created `src/components/TaskGraph/edges/DependencyEdge.tsx` - Custom React Flow edge component
+  - Uses bezier path for smooth curves
+  - Glow layer for critical path edges (shadow effect)
+  - Optional label support with EdgeLabelRenderer
+  - Supports animation via CSS class
+- Updated `src/components/TaskGraph/index.ts` to export edge components and styles
+
+**Files Created:**
+- `src/components/TaskGraph/edges/edgeStyles.ts`
+- `src/components/TaskGraph/edges/DependencyEdge.tsx`
+
+**Files Modified:**
+- `src/components/TaskGraph/index.ts`
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (passed - pre-existing warnings only)
+
+**Visual Verification:** N/A - component created, requires wiring in Task B.5 (Task 12) to be visible
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 01:15:00 - Phase 67 Task 9: Create custom TaskNode component
 **What:**
 - Created `src/components/TaskGraph/nodes/TaskNode.tsx` - Custom React Flow node component
