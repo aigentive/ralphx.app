@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-02 17:00:00 - Phase 66 Task 20: Add branch name badge to task cards
+**What:**
+- Updated `src/components/tasks/TaskBoard/TaskCard.tsx`:
+  - Added `GitBranch` icon import from lucide-react
+  - Added branch badge in the badge row for tasks with active `taskBranch`
+  - Shows just the last segment of the branch name (e.g., "task-123" from "ralphx/project/task-123")
+  - Full branch name shown on hover via tooltip
+  - Subtle styling: muted color, monospace font, max-width truncation
+
+**Files Modified:**
+- `src/components/tasks/TaskBoard/TaskCard.tsx` (add GitBranch icon + branch indicator)
+
+**Commands:**
+- `npm run lint` (passed, 0 errors)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - UI changes require manual testing in Tauri app
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 16:30:00 - Phase 66 Task 19: Add Merging, MergeConflict, and Merged task detail views
 **What:**
 - Created `src/components/tasks/detail-views/MergingTaskDetail.tsx`:
