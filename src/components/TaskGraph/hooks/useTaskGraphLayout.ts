@@ -429,7 +429,7 @@ function computeLayoutWithCache(
     taskIds: pg.taskIds,
   }));
 
-  const hash = computeGraphHash(allNodeIds, allEdgePairs, config.direction, layoutPlanGroups);
+  const hash = computeGraphHash(allNodeIds, allEdgePairs, config.direction, layoutPlanGroups, collapsedPlanIds);
 
   // Check if we can use cached positions
   let positions: Map<string, { x: number; y: number }>;
@@ -694,14 +694,15 @@ interface LayoutPlanGroup {
 
 /**
  * Compute a structural hash of the graph for cache key.
- * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, and plan groups.
+ * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, plan groups, and collapsed state.
  * Does NOT include node data (status, title, priority) since those don't affect layout.
  */
 function computeGraphHash(
   nodeIds: string[],
   edges: { source: string; target: string }[],
   direction: "TB" | "LR",
-  planGroups: LayoutPlanGroup[] = []
+  planGroups: LayoutPlanGroup[] = [],
+  collapsedPlanIds: Set<string> = new Set()
 ): string {
   // Sort for consistent ordering
   const sortedNodes = [...nodeIds].sort().join(",");
@@ -714,7 +715,9 @@ function computeGraphHash(
     .map((g) => `${g.planArtifactId}:[${[...g.taskIds].sort().join(",")}]`)
     .sort()
     .join(";");
-  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}`;
+  // Include collapsed state so layout recalculates when groups collapse/expand
+  const sortedCollapsed = [...collapsedPlanIds].sort().join(",");
+  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedCollapsed}`;
 }
 
 /**
