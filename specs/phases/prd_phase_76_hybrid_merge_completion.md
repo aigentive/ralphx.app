@@ -145,7 +145,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(http): make complete_merge idempotent with SHA validation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

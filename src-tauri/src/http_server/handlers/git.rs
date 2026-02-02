@@ -75,9 +75,17 @@ pub async fn complete_merge(
     Path(task_id): Path<String>,
     Json(req): Json<CompleteMergeRequest>,
 ) -> Result<Json<MergeOperationResponse>, (StatusCode, String)> {
+    // 1. Validate SHA format (must be 40 hex characters)
+    if !is_valid_git_sha(&req.commit_sha) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "commit_sha must be a full 40-character SHA (use `git rev-parse HEAD`)".to_string(),
+        ));
+    }
+
     let task_id = TaskId::from_string(task_id);
 
-    // 1. Get task and validate state is Merging
+    // 2. Get task
     let mut task = state
         .app_state
         .task_repo
@@ -86,6 +94,16 @@ pub async fn complete_merge(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
 
+    // 3. Idempotent: if already merged, return success
+    if task.internal_status == InternalStatus::Merged {
+        return Ok(Json(MergeOperationResponse {
+            success: true,
+            message: "Merge already completed".to_string(),
+            new_status: "already_merged".to_string(),
+        }));
+    }
+
+    // 4. Validate state is Merging
     if task.internal_status != InternalStatus::Merging {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -386,4 +404,87 @@ pub async fn get_task_diff_stats(
         deletions: stats.deletions,
         changed_files: stats.changed_files,
     }))
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Validates that a string is a valid full git SHA (40 hexadecimal characters)
+fn is_valid_git_sha(sha: &str) -> bool {
+    sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod sha_validation {
+        use super::*;
+
+        #[test]
+        fn valid_sha_40_lowercase_hex() {
+            let sha = "a1b2c3d4e5f6789012345678901234567890abcd";
+            assert!(is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn valid_sha_40_uppercase_hex() {
+            let sha = "A1B2C3D4E5F6789012345678901234567890ABCD";
+            assert!(is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn valid_sha_mixed_case() {
+            let sha = "a1B2c3D4e5F6789012345678901234567890AbCd";
+            assert!(is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn valid_sha_all_digits() {
+            let sha = "1234567890123456789012345678901234567890";
+            assert!(is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn invalid_sha_too_short() {
+            let sha = "a1b2c3d4";
+            assert!(!is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn invalid_sha_too_long() {
+            let sha = "a1b2c3d4e5f6789012345678901234567890abcd1234";
+            assert!(!is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn invalid_sha_non_hex_chars() {
+            let sha = "g1b2c3d4e5f6789012345678901234567890abcd"; // 'g' is not hex
+            assert!(!is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn invalid_sha_empty() {
+            let sha = "";
+            assert!(!is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn invalid_sha_spaces() {
+            let sha = "a1b2c3d4e5f67890 2345678901234567890abcd";
+            assert!(!is_valid_git_sha(sha));
+        }
+
+        #[test]
+        fn invalid_sha_short_sha_format() {
+            // Short SHA (7 chars) should be rejected
+            let sha = "a1b2c3d";
+            assert!(!is_valid_git_sha(sha));
+        }
+    }
 }
