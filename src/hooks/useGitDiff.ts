@@ -109,7 +109,8 @@ export function useGitDiff({
 
       try {
         const commitInfos = await diffApi.getTaskCommits(taskId);
-        setCommits(commitInfos.map(toCommit));
+        // Reverse to show chronological order (oldest first)
+        setCommits(commitInfos.map(toCommit).reverse());
       } catch {
         // Silently fail for commits - not critical and task may not have a branch yet
         setCommits([]);
@@ -180,7 +181,8 @@ export function useGitDiff({
     setIsLoadingHistory(true);
     try {
       const commitInfos = await diffApi.getTaskCommits(taskId);
-      setCommits(commitInfos.map(toCommit));
+      // Reverse to show chronological order (oldest first)
+      setCommits(commitInfos.map(toCommit).reverse());
     } catch {
       setCommits([]);
     } finally {
