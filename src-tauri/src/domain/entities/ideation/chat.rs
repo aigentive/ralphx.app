@@ -26,6 +26,8 @@ pub enum MessageRole {
     Worker,
     /// Message from the Reviewer AI agent (task review)
     Reviewer,
+    /// Message from the Merger AI agent (merge conflict resolution)
+    Merger,
 }
 
 impl Default for MessageRole {
@@ -42,6 +44,7 @@ impl std::fmt::Display for MessageRole {
             MessageRole::System => write!(f, "system"),
             MessageRole::Worker => write!(f, "worker"),
             MessageRole::Reviewer => write!(f, "reviewer"),
+            MessageRole::Merger => write!(f, "merger"),
         }
     }
 }
@@ -70,6 +73,7 @@ impl FromStr for MessageRole {
             "system" => Ok(MessageRole::System),
             "worker" => Ok(MessageRole::Worker),
             "reviewer" => Ok(MessageRole::Reviewer),
+            "merger" => Ok(MessageRole::Merger),
             _ => Err(ParseMessageRoleError {
                 value: s.to_string(),
             }),

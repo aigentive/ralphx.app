@@ -56,6 +56,13 @@ pub async fn send_chat_message(
                 msg.role = MessageRole::Reviewer;
                 msg
             }
+            MessageRole::Merger => {
+                // Merger messages are typically not created through this endpoint
+                // but we handle them for completeness
+                let mut msg = ChatMessage::user_in_session(session_id, &input.content);
+                msg.role = MessageRole::Merger;
+                msg
+            }
         }
     } else if let Some(project_id_str) = input.project_id {
         let project_id = ProjectId::from_string(project_id_str);

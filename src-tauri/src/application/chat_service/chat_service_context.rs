@@ -45,7 +45,7 @@ pub async fn resolve_working_directory(
                 return PathBuf::from(&project.working_directory);
             }
         }
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
+        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
             // Task-related context: check git_mode for worktree support
             if let Ok(Some(task)) = task_repo
                 .get_by_id(&TaskId::from_string(context_id.to_string()))
@@ -118,6 +118,14 @@ pub fn build_initial_prompt(
             format!(
                 "RalphX Review Session. Task ID: {}.\n\n\
                  You are reviewing this task. Examine the work, provide feedback, and determine if it meets quality standards.\n\n\
+                 User's message: {}",
+                context_id, user_message
+            )
+        }
+        ChatContextType::Merge => {
+            format!(
+                "RalphX Merge Session. Task ID: {}.\n\n\
+                 You are resolving merge conflicts for this task. Analyze the conflicts, resolve them, and complete the merge.\n\n\
                  User's message: {}",
                 context_id, user_message
             )
@@ -195,7 +203,7 @@ pub fn create_user_message(
         ChatContextType::Ideation => {
             ChatMessage::user_in_session(IdeationSessionId::from_string(context_id), content)
         }
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
+        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
             ChatMessage::user_about_task(TaskId::from_string(context_id.to_string()), content)
         }
         ChatContextType::Project => {
@@ -253,6 +261,20 @@ pub fn create_assistant_message(
             task_id: Some(TaskId::from_string(context_id.to_string())),
             conversation_id: Some(conversation_id),
             role: MessageRole::Reviewer,
+            content: content.to_string(),
+            metadata: None,
+            parent_message_id: None,
+            tool_calls: None,
+            content_blocks: None,
+            created_at: chrono::Utc::now(),
+        },
+        ChatContextType::Merge => ChatMessage {
+            id: ChatMessageId::new(),
+            session_id: None,
+            project_id: None,
+            task_id: Some(TaskId::from_string(context_id.to_string())),
+            conversation_id: Some(conversation_id),
+            role: MessageRole::Merger,
             content: content.to_string(),
             metadata: None,
             parent_message_id: None,
