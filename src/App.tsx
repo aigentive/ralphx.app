@@ -582,10 +582,28 @@ function AppContent() {
     closeWelcomeOverlay();
   }, [welcomeOverlayReturnView, setCurrentView, closeWelcomeOverlay]);
 
+  // Handler for view changes - invalidates queries and resets state when switching between graph/kanban
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const handleViewChange = useCallback((view: typeof currentView) => {
+    // Only invalidate when switching between graph and kanban (they share task data)
+    const taskViews = ["graph", "kanban"] as const;
+    const isLeavingTaskView = taskViews.includes(currentView as "graph" | "kanban");
+    const isEnteringTaskView = taskViews.includes(view as "graph" | "kanban");
+
+    if (isLeavingTaskView && isEnteringTaskView && currentView !== view) {
+      // Clear selected task to close any open detail dialog
+      setSelectedTaskId(null);
+      // Invalidate queries to refetch fresh data
+      queryClient.invalidateQueries();
+    }
+
+    setCurrentView(view);
+  }, [currentView, setCurrentView, setSelectedTaskId]);
+
   // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
   useAppKeyboardShortcuts({
     currentView,
-    setCurrentView,
+    setCurrentView: handleViewChange,
     toggleChatVisible,
     toggleReviewsPanel,
     openProjectWizard: handleOpenProjectWizard,
@@ -642,7 +660,7 @@ function AppContent() {
             </h1>
 
             {/* View Navigation */}
-            <Navigation currentView={currentView} onViewChange={setCurrentView} />
+            <Navigation currentView={currentView} onViewChange={handleViewChange} />
           </div>
 
           {/* Spacer */}

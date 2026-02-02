@@ -64,6 +64,10 @@ type DependencyEdgeData = Record<string, unknown> & {
   sourceStatus?: string;
   /** Whether edge crosses plan group boundaries */
   isCrossPlan?: boolean;
+  /** Source task title for tooltip */
+  sourceLabel?: string;
+  /** Target task title for tooltip */
+  targetLabel?: string;
 };
 
 // ============================================================================
@@ -327,10 +331,12 @@ function computeLayoutWithCache(
   const sourcePosition = config.direction === "TB" ? Position.Bottom : Position.Right;
   const targetPosition = config.direction === "TB" ? Position.Top : Position.Left;
 
-  // Build a map of task ID -> status for edge source status lookup
+  // Build maps of task ID -> status and task ID -> title for edge data
   const nodeStatusMap = new Map<string, string>();
+  const nodeTitleMap = new Map<string, string>();
   graphNodes.forEach((node) => {
     nodeStatusMap.set(node.taskId, node.internalStatus);
+    nodeTitleMap.set(node.taskId, node.title);
   });
 
   // Build a map of task ID -> plan artifact ID for cross-plan edge detection
@@ -379,13 +385,23 @@ function computeLayoutWithCache(
     // (or one is grouped and the other is ungrouped)
     const isCrossPlan = sourcePlan !== targetPlan;
 
+    // Get titles for tooltip
+    const sourceLabel = nodeTitleMap.get(graphEdge.source);
+    const targetLabel = nodeTitleMap.get(graphEdge.target);
+
     const edgeData: DependencyEdgeData = {
       isCriticalPath: graphEdge.isCriticalPath,
       isCrossPlan,
     };
-    // Only add sourceStatus if it exists
+    // Only add optional fields if they exist
     if (sourceStatus !== undefined) {
       edgeData.sourceStatus = sourceStatus;
+    }
+    if (sourceLabel !== undefined) {
+      edgeData.sourceLabel = sourceLabel;
+    }
+    if (targetLabel !== undefined) {
+      edgeData.targetLabel = targetLabel;
     }
 
     const edge: Edge = {
