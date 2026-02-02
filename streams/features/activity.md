@@ -4,6 +4,38 @@
 
 ---
 
+### 2026-02-03 07:00:00 - Phase 69 Task 2: Update frontend API to match worktree-aware backend
+**What:**
+- Updated `src/api/diff.ts`:
+  - Removed `projectPath` parameter from `getTaskFileChanges` - backend determines path internally
+  - Changed `getFileDiff` signature: now takes `(taskId, filePath)` instead of `(filePath, projectPath)`
+- Updated `src/hooks/useGitDiff.ts`:
+  - Removed `projectPath` from `UseGitDiffOptions` interface
+  - Updated all `diffApi` calls to match new signatures
+  - Simplified `useEffect` dependencies (no longer depend on projectPath)
+- Updated `src/hooks/useGitDiff.test.ts`:
+  - Updated all test cases to not pass `projectPath`
+  - Updated API call expectations to match new signatures
+  - Removed tests for "projectPath missing" (no longer applicable)
+- Cleaned up stale comment in `src/components/reviews/ReviewsPanel.utils.tsx`
+
+**Files Modified:**
+- `src/api/diff.ts` - API signature changes
+- `src/hooks/useGitDiff.ts` - Hook interface and implementation
+- `src/hooks/useGitDiff.test.ts` - Test expectations
+- `src/components/reviews/ReviewsPanel.utils.tsx` - Removed stale comment
+
+**Commands:**
+- `npm run lint --quiet` (passed - errors only)
+- `npm run typecheck` (passed)
+- `npm test -- --run src/hooks/useGitDiff.test.ts` (16 tests passed)
+
+**Visual Verification:** N/A - no UI changes, only API layer
+
+**Result:** Success
+
+---
+
 ### 2026-02-03 05:15:00 - Phase 69 Task 1: Make backend diff commands worktree-aware
 **What:**
 - Updated `get_task_file_changes` and `get_file_diff` commands to be worktree-aware
