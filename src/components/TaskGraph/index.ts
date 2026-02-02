@@ -42,3 +42,23 @@ export type { GraphLegendProps } from "./controls/GraphLegend";
 // Groups
 export { PlanGroupHeader } from "./groups/PlanGroupHeader";
 export type { PlanGroupHeaderProps } from "./groups/PlanGroupHeader";
+
+export {
+  PlanGroup,
+  createPlanGroupNode,
+  PLAN_GROUP_NODE_TYPE,
+} from "./groups/PlanGroup";
+export type { PlanGroupData, PlanGroupNode, PlanGroupProps } from "./groups/PlanGroup";
+
+// Group utilities
+export {
+  calculateBoundingBox,
+  calculateGroupBoundingBoxes,
+  expandBoundingBox,
+  boundingBoxToGroupNode,
+  GROUP_PADDING,
+  HEADER_HEIGHT,
+  MIN_GROUP_WIDTH,
+  MIN_GROUP_HEIGHT,
+} from "./groups/groupUtils";
+export type { BoundingBox, GroupBoundingBox } from "./groups/groupUtils";
