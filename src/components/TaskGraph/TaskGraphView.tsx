@@ -357,6 +357,38 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     new Set()
   );
 
+  // Track which groups we've auto-collapsed (don't re-collapse after user expands)
+  const autoCollapsedRef = useRef<Set<string>>(new Set());
+
+  // Auto-collapse 100% completed groups on initial load
+  useEffect(() => {
+    if (!graphData?.planGroups) return;
+
+    const toCollapse: string[] = [];
+    for (const pg of graphData.planGroups) {
+      // Skip if already processed
+      if (autoCollapsedRef.current.has(pg.planArtifactId)) continue;
+
+      // Check if 100% completed
+      const total = pg.taskIds.length;
+      const completed = pg.statusSummary.completed;
+      if (total > 0 && completed === total) {
+        toCollapse.push(pg.planArtifactId);
+        autoCollapsedRef.current.add(pg.planArtifactId);
+      }
+    }
+
+    if (toCollapse.length > 0) {
+      setCollapsedPlanIds((prev) => {
+        const next = new Set(prev);
+        for (const id of toCollapse) {
+          next.add(id);
+        }
+        return next;
+      });
+    }
+  }, [graphData?.planGroups]);
+
   // GraphControls state
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
