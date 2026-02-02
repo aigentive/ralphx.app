@@ -40,7 +40,7 @@ import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
-import { useProjects } from "@/hooks/useProjects";
+import { useProjects, projectKeys } from "@/hooks/useProjects";
 import {
   useIdeationSession,
   useIdeationSessions,
@@ -456,6 +456,8 @@ function AppContent() {
     try {
       // Call Tauri backend to create project
       const newProject = await api.projects.create(projectData);
+      // Invalidate the projects query so the useEffect sync doesn't overwrite with stale data
+      await queryClient.invalidateQueries({ queryKey: projectKeys.list() });
       addProject(newProject);
       selectProject(newProject.id);
       setIsProjectWizardOpen(false);
