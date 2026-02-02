@@ -255,6 +255,10 @@
   --color-status-warning: var(--status-warning);
   --color-status-error: var(--status-error);
 
+  /* Border colors */
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+
   /* Radius tokens for shadcn components */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
