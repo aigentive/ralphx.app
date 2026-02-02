@@ -4,6 +4,32 @@
 
 ---
 
+### 2026-02-02 19:30:00 - Phase 67 Task 29: Create filter/grouping hooks
+**What:**
+- Created `src/components/TaskGraph/hooks/useTaskGraphFilters.ts`:
+  - State management for filters (statuses, planIds, showCompleted)
+  - State management for layout direction (TB ↔ LR)
+  - State management for grouping option (plan, tier, status, none)
+  - `nodePassesFilters()` function to check if a node passes all filters
+  - `applyFilters()` function to filter nodes/edges/planGroups
+  - Computed values: `hasActiveFilters`, `activeStatusCount`, `activePlanCount`
+  - Utility functions for React Flow integration: `filterFlowNodes()`, `filterFlowEdges()`
+  - Imports types from GraphControls and uses default values
+  - Full TypeScript types for hook return interface
+
+**Files Created:**
+- `src/components/TaskGraph/hooks/useTaskGraphFilters.ts` (NEW - 233 lines)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - hook only, wiring to TaskGraphView in future tasks
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 19:00:00 - Phase 67 Task 28: Create GraphControls component
 **What:**
 - Created `src/components/TaskGraph/controls/GraphControls.tsx`:
