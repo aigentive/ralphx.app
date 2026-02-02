@@ -755,7 +755,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): add keyboard navigation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 37,

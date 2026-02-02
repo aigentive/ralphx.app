@@ -62,7 +62,7 @@ function abbreviateTitle(text: string): string {
 // ============================================================================
 
 function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, handlers } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
   const style = getNodeStyle(internalStatus);
 
   // Create a minimal task-like object for the context menu
@@ -125,6 +125,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       data-status={internalStatus}
       data-critical-path={isCriticalPath}
       data-highlighted={isHighlighted}
+      data-focused={isFocused}
     >
       {/* Target handle - top (incoming edges) */}
       <Handle
@@ -143,12 +144,15 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           ${selected ? "ring-2 ring-white/30 scale-110" : ""}
           ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
           ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse scale-115" : ""}
+          ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)] scale-110" : ""}
         `}
         style={{
           borderColor: style.borderColor,
           backgroundColor: style.backgroundColor,
           boxShadow: isHighlighted
             ? `${style.boxShadow ?? ""}, 0 0 8px 1px hsl(var(--accent-primary) / 0.4)`
+            : isFocused && !selected
+            ? `${style.boxShadow ?? ""}, 0 0 6px 1px rgba(56, 189, 248, 0.3)`
             : style.boxShadow,
           // Smooth transitions for color changes (status updates)
           transition: "transform 200ms ease-out, box-shadow 200ms ease-out, border-color 300ms ease-in-out, background-color 300ms ease-in-out",

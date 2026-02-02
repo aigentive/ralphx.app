@@ -56,6 +56,8 @@ export type TaskNodeData = Record<string, unknown> & {
   isCriticalPath: boolean;
   /** Whether this node is highlighted (e.g., from timeline click) */
   isHighlighted?: boolean;
+  /** Whether this node is keyboard-focused (for keyboard navigation) */
+  isFocused?: boolean;
   /** Handler functions for context menu actions */
   handlers?: TaskNodeHandlers;
 };
@@ -118,7 +120,7 @@ function truncateText(text: string, maxLength: number): string {
 // ============================================================================
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, handlers } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
   const style = getNodeStyle(internalStatus);
   const category = getStatusCategory(internalStatus as InternalStatus);
   const categoryLabel = CATEGORY_LABELS[category];
@@ -185,6 +187,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       data-status={internalStatus}
       data-critical-path={isCriticalPath}
       data-highlighted={isHighlighted}
+      data-focused={isFocused}
     >
       {/* Target handle - top (incoming edges) */}
       <Handle
@@ -203,12 +206,15 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           ${selected ? "ring-2 ring-white/30 scale-105" : ""}
           ${isCriticalPath ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
           ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse scale-110" : ""}
+          ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)] scale-105" : ""}
         `}
         style={{
           borderColor: style.borderColor,
           backgroundColor: style.backgroundColor,
           boxShadow: isHighlighted
             ? `${style.boxShadow ?? ""}, 0 0 12px 2px hsl(var(--accent-primary) / 0.4)`
+            : isFocused && !selected
+            ? `${style.boxShadow ?? ""}, 0 0 8px 1px rgba(56, 189, 248, 0.3)`
             : style.boxShadow,
           // Smooth transitions for color changes (status updates)
           transition: "transform 200ms ease-out, box-shadow 200ms ease-out, border-color 300ms ease-in-out, background-color 300ms ease-in-out",

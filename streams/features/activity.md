@@ -4,6 +4,47 @@
 
 ---
 
+### 2026-02-02 23:45:00 - Phase 67 Task 36: Add keyboard navigation
+**What:**
+- Updated `src/components/TaskGraph/TaskGraphView.tsx`:
+  - Added `findNextNode()` helper function for arrow key navigation through dependency edges
+  - Added `focusedNodeId` state for tracking keyboard-focused node
+  - Added `handleKeyDown` callback for keyboard event handling
+  - Up/Down arrows navigate along dependency edges (Up = blockers, Down = dependents)
+  - Left/Right arrows navigate to sibling nodes at the same tier level
+  - Enter opens TaskDetailOverlay for the focused node
+  - Escape clears selection and focus
+  - Made graph container focusable with tabIndex={0}
+- Updated `src/components/TaskGraph/nodes/TaskNode.tsx`:
+  - Added `isFocused` prop to TaskNodeData type
+  - Added visual focus indicator: sky-blue ring with glow effect
+  - Focus state distinct from selected and highlighted states
+- Updated `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`:
+  - Added `isFocused` prop support for consistency with standard nodes
+  - Added matching focus indicator styling
+
+**Keyboard navigation features:**
+- Arrow keys: navigate through dependency graph (Up/Down) or same-tier siblings (Left/Right)
+- Enter: open task detail overlay for focused node
+- Escape: clear selection and focus
+- Focus indicator: sky-blue ring distinct from selection (white) and highlight (orange)
+- Auto-center: viewport centers on newly focused node
+
+**Files Modified:**
+- `src/components/TaskGraph/TaskGraphView.tsx` (keyboard handler + focus state)
+- `src/components/TaskGraph/nodes/TaskNode.tsx` (isFocused prop + visual)
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx` (isFocused prop + visual)
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - keyboard navigation is interactive behavior, not visual rendering
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 22:30:00 - Phase 67 Task 35: Add micro-interactions and animations
 **What:**
 - Updated `src/components/TaskGraph/nodes/TaskNode.tsx`:
