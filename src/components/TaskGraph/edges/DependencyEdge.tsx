@@ -19,7 +19,7 @@ import {
   type EdgeProps,
 } from "@xyflow/react";
 import { cn } from "@/lib/utils";
-import { getEdgeStyleForEdge, getEdgeType, MARKER_IDS } from "./edgeStyles";
+import { getEdgeStyleForEdge, getEdgeType, MARKER_IDS, GRADIENT_IDS } from "./edgeStyles";
 
 // ============================================================================
 // Types
@@ -77,8 +77,9 @@ function DependencyEdgeComponent({
     : getEdgeStyleForEdge(isCriticalPath, sourceStatus);
   const edgeType = isGroupConnector ? "normal" : getEdgeType(isCriticalPath, sourceStatus);
 
-  // Get marker ID based on edge type
+  // Get marker ID and gradient ID based on edge type
   const markerId = `url(#${MARKER_IDS[edgeType]})`;
+  const gradientId = `url(#${GRADIENT_IDS[edgeType]})`;
 
   // Compute bezier path
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -114,13 +115,13 @@ function DependencyEdgeComponent({
         />
       )}
 
-      {/* Main edge path with arrow marker */}
+      {/* Main edge path with gradient stroke and arrow marker */}
       <BaseEdge
         id={id}
         path={edgePath}
         markerEnd={markerId}
         style={{
-          stroke: edgeStyle.stroke,
+          stroke: gradientId,
           strokeWidth: selected ? edgeStyle.strokeWidth + 0.5 : edgeStyle.strokeWidth,
           strokeDasharray: edgeStyle.strokeDasharray,
           transition: "stroke-width 0.15s ease",

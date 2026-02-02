@@ -2,16 +2,14 @@
  * GraphSplitLayout - Split-screen layout for Graph view
  *
  * Provides a split layout with:
- * - Left side: ReactFlow canvas + task detail overlay (when selected)
- * - Right side: Always visible panel that switches content:
- *   - No task selected: FloatingTimeline (execution timeline)
- *   - Task selected: IntegratedChatPanel
+ * - Left side: ReactFlow canvas + task detail overlay (takes remaining space)
+ * - Right side: Panel that switches content and sizing:
+ *   - No task selected: FloatingTimeline at fixed 320px
+ *   - Task selected: IntegratedChatPanel with resizable width
  *
  * Key difference from KanbanSplitLayout:
  * - Kanban: Chat toggleable (can hide completely)
  * - Graph: Right panel always visible, content switches (timeline ↔ chat)
- *
- * Resizing works like IdeationView - percentage-based with mouse drag.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,16 +17,20 @@ import { useUiStore } from "@/stores/uiStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
+import { ResizeHandle, SeparatorLine } from "@/components/ui/ResizeHandle";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const MIN_LEFT_PERCENT = 65; // Minimum left panel width (65% left = 35% right max)
-const MAX_LEFT_PERCENT = 75; // Maximum left panel width (75% left = 25% right min)
+// Fixed timeline sidebar width (px) - non-resizable
+const TIMELINE_SIDEBAR_WIDTH = 320;
+
+// Chat panel resize constraints (percentage-based)
+const MIN_LEFT_PERCENT = 60; // Minimum left panel width (60% left = 40% right max)
+const MAX_LEFT_PERCENT = 80; // Maximum left panel width (80% left = 20% right min)
 const DEFAULT_LEFT_PERCENT = 70; // Default: 70% left, 30% right
-// Use same storage key as Kanban for consistent sizing across views
-const LEFT_WIDTH_STORAGE_KEY = "ralphx-kanban-split-left-width";
+const LEFT_WIDTH_STORAGE_KEY = "ralphx-graph-chat-left-width";
 
 // ============================================================================
 // Main Component
@@ -54,7 +56,7 @@ export function GraphSplitLayout({
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
 
-  // Percentage-based width for left panel
+  // Chat panel resize state (only used when task is selected)
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     const saved = localStorage.getItem(LEFT_WIDTH_STORAGE_KEY);
     if (saved) {
@@ -69,18 +71,17 @@ export function GraphSplitLayout({
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Persist left panel width to localStorage when it changes
+  // Persist chat panel width
   useEffect(() => {
     localStorage.setItem(LEFT_WIDTH_STORAGE_KEY, leftPanelWidth.toString());
   }, [leftPanelWidth]);
 
-  // Handle resize start
+  // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
   }, []);
 
-  // Handle resize move/end
   useEffect(() => {
     if (!isResizing) return;
 
@@ -102,6 +103,9 @@ export function GraphSplitLayout({
     };
   }, [isResizing]);
 
+  // Show chat (resizable) when task selected, timeline (fixed) otherwise
+  const showChat = !!selectedTaskId;
+
   return (
     <div
       ref={containerRef}
@@ -112,11 +116,13 @@ export function GraphSplitLayout({
       {/* Left Section - Graph canvas */}
       <div
         data-testid="graph-split-left"
-        className="relative flex flex-col overflow-hidden"
-        style={{
+        className="relative flex flex-col overflow-hidden min-w-0"
+        style={showChat ? {
           width: `${leftPanelWidth}%`,
           minWidth: "400px",
           transition: isResizing ? "none" : "width 150ms ease-out",
+        } : {
+          flex: 1,
         }}
       >
         {/* Graph Canvas */}
@@ -138,32 +144,32 @@ export function GraphSplitLayout({
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {/* Resize Handle - subtle separator line */}
-      <div
-        data-testid="graph-split-resize-handle"
-        className="cursor-ew-resize relative shrink-0"
-        style={{
-          width: "1px",
-          background: "hsla(220 20% 100% / 0.04)",
-        }}
-        onMouseDown={handleResizeStart}
-      />
+      {/* Resize Handle - interactive when chat is shown, static separator for timeline */}
+      {showChat ? (
+        <ResizeHandle
+          isResizing={isResizing}
+          onMouseDown={handleResizeStart}
+          testId="graph-split-resize-handle"
+        />
+      ) : (
+        <SeparatorLine />
+      )}
 
-      {/* Right Section - Timeline or Chat (always visible, content switches) */}
+      {/* Right Section - Timeline (fixed 320px) or Chat (resizable) */}
       <div
         data-testid="graph-split-right"
         className="flex flex-col overflow-hidden shrink-0"
-        style={{
+        style={showChat ? {
           width: `${100 - leftPanelWidth}%`,
-          minWidth: "320px",
+          minWidth: "280px",
           transition: isResizing ? "none" : "width 150ms ease-out",
+        } : {
+          width: `${TIMELINE_SIDEBAR_WIDTH}px`,
         }}
       >
-        {selectedTaskId ? (
-          // Task selected: show chat panel
+        {showChat ? (
           <IntegratedChatPanel projectId={projectId} />
         ) : (
-          // No task selected: show timeline
           timelineContent
         )}
       </div>

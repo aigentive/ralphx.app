@@ -16,6 +16,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
+import { ResizeHandle } from "@/components/ui/ResizeHandle";
 
 // ============================================================================
 // Constants
@@ -127,16 +128,12 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {/* Resize Handle - subtle separator line */}
+      {/* Resize Handle */}
       {chatVisible && (
-        <div
-          data-testid="split-layout-resize-handle"
-          className="cursor-ew-resize relative shrink-0"
-          style={{
-            width: "1px",
-            background: "hsla(220 20% 100% / 0.04)",
-          }}
+        <ResizeHandle
+          isResizing={isResizing}
           onMouseDown={handleResizeStart}
+          testId="kanban-split-resize-handle"
         />
       )}
 
