@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-02 16:00:00 - Phase 73 Task 3: Create FloatingGraphFilters component
+**What:**
+- Created `src/components/TaskGraph/controls/FloatingGraphFilters.tsx` (~210 LOC)
+- Implemented FloatingGraphFiltersProps interface matching GraphControlsProps structure
+- Applied Tahoe glass styling: borderRadius 10px, blur 20px, saturate 180%
+- Positioned absolute: left 16px, top 50%, transform translateY(-50%)
+- Stacked layout with 5 controls: Status Filter, Plan Filter, Layout (TB/LR), Node Mode (Std/Cpt), Grouping dropdown
+- Reused StatusFilterContent and PlanFilterContent subcomponents from GraphControls
+- FilterButton helper component with tooltip and popover support
+- Compact icons with tooltips for space efficiency (120px width)
+
+**Files Modified:**
+- `src/components/TaskGraph/controls/FloatingGraphFilters.tsx` (new)
+
+**Commands:**
+- `npm run lint && npm run typecheck` (passed - 0 errors, 15 pre-existing warnings)
+
+**Visual Verification:** N/A - new component, not yet wired to UI
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 14:30:00 - Phase 73 Task 2: Create FloatingTimeline wrapper component
 **What:**
 - Created `src/components/TaskGraph/timeline/FloatingTimeline.tsx` (~55 LOC)
