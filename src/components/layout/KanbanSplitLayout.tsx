@@ -16,16 +16,14 @@ import { useUiStore } from "@/stores/uiStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
-import { ResizeHandle } from "@/components/ui/ResizeHandle";
+import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const MIN_LEFT_PERCENT = 65; // 65% left = 35% right (max chat width)
-const MAX_LEFT_PERCENT = 75; // 75% left = 25% right (min chat width)
-const DEFAULT_LEFT_PERCENT = 70; // Start with ~30% chat
-const LEFT_WIDTH_STORAGE_KEY = "ralphx-kanban-split-left-width";
+const MAX_CHAT_WIDTH = 600; // Maximum chat panel width
+const CHAT_WIDTH_STORAGE_KEY = "ralphx-kanban-chat-width";
 
 // ============================================================================
 // Main Component
@@ -44,25 +42,25 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
 
-  // Percentage-based width for left panel (like IdeationView)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    const saved = localStorage.getItem(LEFT_WIDTH_STORAGE_KEY);
+  // Chat panel width (pixel-based)
+  const [chatPanelWidth, setChatPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
     if (saved) {
-      const parsed = parseFloat(saved);
-      if (!isNaN(parsed) && parsed >= MIN_LEFT_PERCENT && parsed <= MAX_LEFT_PERCENT) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= CHAT_PANEL_MIN_WIDTH && parsed <= MAX_CHAT_WIDTH) {
         return parsed;
       }
     }
-    return DEFAULT_LEFT_PERCENT;
+    return CHAT_PANEL_DEFAULT_WIDTH;
   });
 
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Persist left panel width to localStorage when it changes
+  // Persist chat panel width
   useEffect(() => {
-    localStorage.setItem(LEFT_WIDTH_STORAGE_KEY, leftPanelWidth.toString());
-  }, [leftPanelWidth]);
+    localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatPanelWidth.toString());
+  }, [chatPanelWidth]);
 
   // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -70,15 +68,16 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
     setIsResizing(true);
   }, []);
 
-  // Handle resize move/end (like IdeationView)
+  // Handle resize move/end
   useEffect(() => {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
-      setLeftPanelWidth(Math.max(MIN_LEFT_PERCENT, Math.min(MAX_LEFT_PERCENT, newWidth)));
+      // Chat panel is on the right, so width = container right edge - mouse position
+      const newWidth = rect.right - e.clientX;
+      setChatPanelWidth(Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(MAX_CHAT_WIDTH, newWidth)));
     };
 
     const handleMouseUp = () => setIsResizing(false);
@@ -102,10 +101,8 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
       {/* Left Section - Kanban board */}
       <div
         data-testid="kanban-split-left"
-        className="relative flex flex-col overflow-hidden"
+        className="relative flex-1 flex flex-col overflow-hidden min-w-0"
         style={{
-          width: chatVisible ? `${leftPanelWidth}%` : "100%",
-          minWidth: "400px",
           transition: isResizing ? "none" : "width 150ms ease-out",
         }}
       >
@@ -143,8 +140,7 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
           data-testid="kanban-split-right"
           className="flex flex-col overflow-hidden shrink-0"
           style={{
-            width: `${100 - leftPanelWidth}%`,
-            minWidth: "320px",
+            width: `${chatPanelWidth}px`,
             transition: isResizing ? "none" : "width 150ms ease-out",
           }}
         >

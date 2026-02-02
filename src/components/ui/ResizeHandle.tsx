@@ -8,6 +8,16 @@
  * - Orange highlight while dragging
  */
 
+// ============================================================================
+// Shared Layout Constants
+// ============================================================================
+
+/** Default chat panel width in pixels */
+export const CHAT_PANEL_DEFAULT_WIDTH = 430;
+
+/** Minimum chat panel width in pixels */
+export const CHAT_PANEL_MIN_WIDTH = 320;
+
 import { memo } from "react";
 
 interface ResizeHandleProps {

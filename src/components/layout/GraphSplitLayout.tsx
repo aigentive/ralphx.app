@@ -17,7 +17,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { TaskDetailOverlay } from "@/components/tasks/TaskDetailOverlay";
 import { TaskCreationOverlay } from "@/components/tasks/TaskCreationOverlay";
-import { ResizeHandle, SeparatorLine } from "@/components/ui/ResizeHandle";
+import { ResizeHandle, SeparatorLine, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 
 // ============================================================================
 // Constants
@@ -26,11 +26,9 @@ import { ResizeHandle, SeparatorLine } from "@/components/ui/ResizeHandle";
 // Fixed timeline sidebar width (px) - non-resizable
 const TIMELINE_SIDEBAR_WIDTH = 320;
 
-// Chat panel resize constraints (percentage-based)
-const MIN_LEFT_PERCENT = 60; // Minimum left panel width (60% left = 40% right max)
-const MAX_LEFT_PERCENT = 80; // Maximum left panel width (80% left = 20% right min)
-const DEFAULT_LEFT_PERCENT = 70; // Default: 70% left, 30% right
-const LEFT_WIDTH_STORAGE_KEY = "ralphx-graph-chat-left-width";
+// Chat panel resize constraints (pixel-based)
+const MAX_CHAT_WIDTH = 600; // Maximum chat panel width
+const CHAT_WIDTH_STORAGE_KEY = "ralphx-graph-chat-width";
 
 // ============================================================================
 // Main Component
@@ -56,16 +54,16 @@ export function GraphSplitLayout({
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
 
-  // Chat panel resize state (only used when task is selected)
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    const saved = localStorage.getItem(LEFT_WIDTH_STORAGE_KEY);
+  // Chat panel resize state (pixel-based, only used when task is selected)
+  const [chatPanelWidth, setChatPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
     if (saved) {
-      const parsed = parseFloat(saved);
-      if (!isNaN(parsed) && parsed >= MIN_LEFT_PERCENT && parsed <= MAX_LEFT_PERCENT) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= CHAT_PANEL_MIN_WIDTH && parsed <= MAX_CHAT_WIDTH) {
         return parsed;
       }
     }
-    return DEFAULT_LEFT_PERCENT;
+    return CHAT_PANEL_DEFAULT_WIDTH;
   });
 
   const [isResizing, setIsResizing] = useState(false);
@@ -73,8 +71,8 @@ export function GraphSplitLayout({
 
   // Persist chat panel width
   useEffect(() => {
-    localStorage.setItem(LEFT_WIDTH_STORAGE_KEY, leftPanelWidth.toString());
-  }, [leftPanelWidth]);
+    localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatPanelWidth.toString());
+  }, [chatPanelWidth]);
 
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -88,8 +86,9 @@ export function GraphSplitLayout({
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
-      setLeftPanelWidth(Math.max(MIN_LEFT_PERCENT, Math.min(MAX_LEFT_PERCENT, newWidth)));
+      // Chat panel is on the right, so width = container right edge - mouse position
+      const newWidth = rect.right - e.clientX;
+      setChatPanelWidth(Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(MAX_CHAT_WIDTH, newWidth)));
     };
 
     const handleMouseUp = () => setIsResizing(false);
@@ -116,13 +115,9 @@ export function GraphSplitLayout({
       {/* Left Section - Graph canvas */}
       <div
         data-testid="graph-split-left"
-        className="relative flex flex-col overflow-hidden min-w-0"
-        style={showChat ? {
-          width: `${leftPanelWidth}%`,
-          minWidth: "400px",
+        className="relative flex-1 flex flex-col overflow-hidden min-w-0"
+        style={{
           transition: isResizing ? "none" : "width 150ms ease-out",
-        } : {
-          flex: 1,
         }}
       >
         {/* Graph Canvas */}
@@ -159,12 +154,9 @@ export function GraphSplitLayout({
       <div
         data-testid="graph-split-right"
         className="flex flex-col overflow-hidden shrink-0"
-        style={showChat ? {
-          width: `${100 - leftPanelWidth}%`,
-          minWidth: "280px",
+        style={{
+          width: showChat ? `${chatPanelWidth}px` : `${TIMELINE_SIDEBAR_WIDTH}px`,
           transition: isResizing ? "none" : "width 150ms ease-out",
-        } : {
-          width: `${TIMELINE_SIDEBAR_WIDTH}px`,
         }}
       >
         {showChat ? (
