@@ -107,7 +107,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(git): add merge state detection helpers"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

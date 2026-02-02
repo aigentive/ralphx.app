@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-02 11:30:00 - Phase 76 Task 1: Add merge state detection helpers to GitService
+**What:**
+- Added `is_rebase_in_progress()` - checks for `.git/rebase-merge` and `.git/rebase-apply` directories
+- Added `has_conflict_markers()` - scans tracked files for `<<<<<<<` conflict markers
+- Made `get_head_sha()` public (was private) for use by auto-completion logic
+- Both functions handle worktree-style `.git` files (where .git is a pointer file)
+- Added 4 unit tests for rebase detection (including worktree path resolution)
+
+**Files:**
+- MODIFIED: src-tauri/src/application/git_service.rs
+
+**Visual Verification:** N/A - backend only
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test git_service` - 8 tests pass (4 new)
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 10:15:00 - Phase 75 Task 2: Add merge title formatting to ConversationSelector
 **What:**
 - Added merge case to `getConversationTitle()` function to return `Merge #${index + 1}` for merge context
