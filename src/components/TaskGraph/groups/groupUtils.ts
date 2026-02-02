@@ -44,7 +44,7 @@ export const GROUP_PADDING = 12;
 export const HEADER_HEIGHT = 48;
 
 /** Minimum group dimensions */
-export const MIN_GROUP_WIDTH = 200;
+export const MIN_GROUP_WIDTH = 320;
 export const MIN_GROUP_HEIGHT = 100;
 
 // ============================================================================
@@ -151,17 +151,27 @@ export function expandBoundingBox(
   padding: number = GROUP_PADDING,
   headerHeight: number = HEADER_HEIGHT
 ): BoundingBox {
-  const minX = bbox.minX - padding;
+  let minX = bbox.minX - padding;
   const minY = bbox.minY - padding - headerHeight;
-  const maxX = bbox.maxX + padding;
+  let maxX = bbox.maxX + padding;
   const maxY = bbox.maxY + padding;
+
+  const naturalWidth = maxX - minX;
+  const width = Math.max(naturalWidth, MIN_GROUP_WIDTH);
+
+  // Center content horizontally if min width is enforced
+  if (width > naturalWidth) {
+    const extraWidth = width - naturalWidth;
+    minX -= extraWidth / 2;
+    maxX += extraWidth / 2;
+  }
 
   return {
     minX,
     minY,
     maxX,
     maxY,
-    width: Math.max(maxX - minX, MIN_GROUP_WIDTH),
+    width,
     height: Math.max(maxY - minY, MIN_GROUP_HEIGHT),
   };
 }
