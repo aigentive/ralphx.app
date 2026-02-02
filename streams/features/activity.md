@@ -4,6 +4,35 @@
 
 ---
 
+### 2026-02-02 21:00:00 - Phase 72 Task 2: Add left priority stripe to nodes
+**What:**
+- Added priority color constants to `nodeStyles.ts`:
+  - P1: `hsl(0 70% 55%)` (red)
+  - P2: `hsl(25 90% 55%)` (deep orange)
+  - P3: `hsl(14 100% 60%)` (accent orange #ff6b35)
+  - P4: `hsl(220 10% 35%)` (gray)
+- Added `getPriorityStripeColor()` helper function with undefined/out-of-range fallback to transparent
+- Updated `TaskNode.tsx`:
+  - Imported `getPriorityStripeColor`
+  - Added `borderLeft: 3px solid ${getPriorityStripeColor(priority)}` to style prop
+- Updated `TaskNodeCompact.tsx`:
+  - Same priority stripe implementation
+
+**Files Modified:**
+- `src/components/TaskGraph/nodes/nodeStyles.ts`
+- `src/components/TaskGraph/nodes/TaskNode.tsx`
+- `src/components/TaskGraph/nodes/TaskNodeCompact.tsx`
+
+**Commands:**
+- `npm run lint` (passed - 0 errors, 15 pre-existing warnings)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - this task modifies left border styling only, visual verification will happen at phase completion
+
+**Result:** Success
+
+---
+
 ### 2026-02-02 20:00:00 - Phase 72 Task 1: Apply glass morphism surface styling to graph nodes
 **What:**
 - Added `GLASS_SURFACE` constant to `nodeStyles.ts` with glass morphism properties:

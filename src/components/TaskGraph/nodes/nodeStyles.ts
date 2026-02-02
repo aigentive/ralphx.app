@@ -62,6 +62,32 @@ export const GLASS_SURFACE: GlassSurface = {
   boxShadow: "0 2px 8px hsla(220 10% 0% / 0.25)",
 };
 
+// ============================================================================
+// Priority Stripe Colors
+// ============================================================================
+
+/**
+ * Priority colors for left border stripe
+ * Matches Kanban card styling (from TaskCard.utils.ts)
+ */
+const PRIORITY_COLORS: Record<number, string> = {
+  1: "hsl(0 70% 55%)",      // P1 Critical - Red
+  2: "hsl(25 90% 55%)",     // P2 High - Deep orange
+  3: "hsl(14 100% 60%)",    // P3 Medium - Accent orange (#ff6b35)
+  4: "hsl(220 10% 35%)",    // P4 Low - Gray
+};
+
+/**
+ * Get priority color for the left border stripe
+ * Falls back to transparent if priority is undefined or out of range
+ */
+export function getPriorityStripeColor(priority: number | undefined): string {
+  if (priority === undefined || priority < 1 || priority > 4) {
+    return "transparent";
+  }
+  return PRIORITY_COLORS[priority] ?? "transparent";
+}
+
 export type StatusCategory =
   | "idle"
   | "blocked"

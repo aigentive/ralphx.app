@@ -13,7 +13,7 @@
 
 import { memo, useCallback } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { getNodeStyle, GLASS_SURFACE } from "./nodeStyles";
+import { getNodeStyle, GLASS_SURFACE, getPriorityStripeColor } from "./nodeStyles";
 import { TaskNodeContextMenu } from "./TaskNodeContextMenu";
 import type { InternalStatus } from "@/types/status";
 import type { Task } from "@/types/task";
@@ -152,6 +152,8 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
           border: GLASS_SURFACE.border,
+          // Left priority stripe (matches Kanban card styling)
+          borderLeft: `3px solid ${getPriorityStripeColor(priority)}`,
           // Status-specific shadow for active states
           boxShadow: isHighlighted
             ? `${GLASS_SURFACE.boxShadow}, 0 0 8px 1px hsl(var(--accent-primary) / 0.4)`
