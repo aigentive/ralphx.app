@@ -9,13 +9,14 @@
  * This component is used as a custom node type in React Flow.
  */
 
-import { memo, useCallback } from "react";
+import { memo } from "react";
 import type { NodeProps, Node } from "@xyflow/react";
 import { Handle, Position } from "@xyflow/react";
 import { PlanGroupHeader } from "./PlanGroupHeader";
 import type { StatusSummary } from "@/api/task-graph.types";
 import { cn } from "@/lib/utils";
 import { HEADER_HEIGHT } from "./groupUtils";
+import { getPlanGroupNodeId } from "./groupTypes";
 
 // ============================================================================
 // Types
@@ -51,6 +52,8 @@ export interface PlanGroupData extends Record<string, unknown> {
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void;
   /** Callback to toggle collapse state */
   onToggleCollapse?: (planArtifactId: string) => void;
+  /** Selection state driven by graph selection */
+  isSelected?: boolean;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -105,6 +108,7 @@ export const PlanGroup = memo(function PlanGroup({
     allTiersCollapsed,
     onToggleAllTiers,
     onToggleCollapse,
+    isSelected,
   } = data;
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -121,14 +125,7 @@ export const PlanGroup = memo(function PlanGroup({
   // When collapsed, show only the header (minimal padding)
   const displayHeight = isCollapsed ? HEADER_HEIGHT + 8 : height;
 
-  // Handle double-click to toggle collapse (instead of React Flow zoom)
-  const handleDoubleClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation(); // Prevent React Flow zoom
-      onToggleCollapse?.(planArtifactId);
-    },
-    [onToggleCollapse, planArtifactId]
-  );
+  const isGroupSelected = isSelected ?? selected;
 
   return (
     <div
@@ -138,7 +135,7 @@ export const PlanGroup = memo(function PlanGroup({
         // Background - Kanban glass at 50% opacity (no border)
         "bg-[hsla(220_10%_14%_/_0.5)]",
         // Selection state - use ring instead of border
-        selected && "ring-1 ring-[hsl(var(--accent-primary)/0.5)]",
+        isGroupSelected && "ring-1 ring-[hsl(var(--accent-primary)/0.5)]",
         // Transition
         "transition-all duration-200"
       )}
@@ -146,7 +143,6 @@ export const PlanGroup = memo(function PlanGroup({
         width,
         height: displayHeight,
       }}
-      onDoubleClick={handleDoubleClick}
       data-testid={`plan-group-${planArtifactId}`}
     >
       {/* Header */}
@@ -226,7 +222,7 @@ export function createPlanGroupNode(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
 ): PlanGroupNode {
   return {
-    id: `group-${planArtifactId}`,
+    id: getPlanGroupNodeId(planArtifactId),
     type: "planGroup",
     position,
     data: {

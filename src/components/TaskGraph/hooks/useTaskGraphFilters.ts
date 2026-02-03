@@ -24,6 +24,7 @@ import {
 } from "../controls/GraphControls";
 import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
 import type { InternalStatus } from "@/types/status";
+import { isGroupNodeId } from "../groups/groupTypes";
 
 // ============================================================================
 // Types
@@ -284,7 +285,7 @@ export function filterFlowNodes<T extends Node>(
 ): T[] {
   return flowNodes.filter((node) => {
     // Skip group nodes (they have different data structure)
-    if (node.type === "planGroup" || node.id.startsWith("group-")) {
+    if (node.type === "planGroup" || node.type === "tierGroup" || isGroupNodeId(node.id)) {
       return true;
     }
 
