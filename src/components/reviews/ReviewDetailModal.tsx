@@ -43,6 +43,8 @@ interface ReviewDetailModalProps {
   history?: ReviewNoteResponse[];
   /** @deprecated No longer required - using task-based approval APIs */
   reviewId?: string;
+  /** Hide approve/request actions for read-only contexts */
+  showActions?: boolean;
   onClose: () => void;
 }
 
@@ -318,6 +320,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export function ReviewDetailModal({
   taskId,
   history: historyProp,
+  showActions = true,
   onClose,
 }: ReviewDetailModalProps) {
   const queryClient = useQueryClient();
@@ -507,7 +510,7 @@ export function ReviewDetailModal({
             </div>
 
             {/* Feedback Input (in left pane when visible) */}
-            {showFeedbackInput && (
+            {showActions && showFeedbackInput && (
               <div
                 className="p-3 border-t"
                 style={{ borderColor: "rgba(255,255,255,0.06)" }}
@@ -560,56 +563,58 @@ export function ReviewDetailModal({
         </div>
 
         {/* Footer: Action Buttons */}
-        <div
-          className="flex items-center justify-end gap-3 px-4 py-3 border-t shrink-0"
-          style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "rgba(18,18,18,0.85)",
-          }}
-        >
-          {/* Error display */}
-          {(approveMutation.error || requestChangesMutation.error) && (
-            <span className="text-[12px] text-red-400 mr-auto">
-              {approveMutation.error?.message || requestChangesMutation.error?.message}
-            </span>
-          )}
+        {showActions && (
+          <div
+            className="flex items-center justify-end gap-3 px-4 py-3 border-t shrink-0"
+            style={{
+              borderColor: "rgba(255,255,255,0.06)",
+              background: "rgba(18,18,18,0.85)",
+            }}
+          >
+            {/* Error display */}
+            {(approveMutation.error || requestChangesMutation.error) && (
+              <span className="text-[12px] text-red-400 mr-auto">
+                {approveMutation.error?.message || requestChangesMutation.error?.message}
+              </span>
+            )}
 
-          <Button
-            data-testid="review-detail-request-changes"
-            onClick={handleRequestChangesClick}
-            disabled={isLoading || !canApprove || (showFeedbackInput && !feedback.trim())}
-            variant="outline"
-            className="gap-1.5"
-            style={{
-              borderColor: "var(--status-warning)",
-              color: "var(--status-warning)",
-            }}
-          >
-            {requestChangesMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RotateCcw className="w-4 h-4" />
-            )}
-            {showFeedbackInput ? "Submit Changes" : "Request Changes"}
-          </Button>
-          <Button
-            data-testid="review-detail-approve"
-            onClick={handleApprove}
-            disabled={isLoading || !canApprove || showFeedbackInput}
-            className="gap-1.5"
-            style={{
-              backgroundColor: "var(--status-success)",
-              color: "white",
-            }}
-          >
-            {approveMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4" />
-            )}
-            Approve
-          </Button>
-        </div>
+            <Button
+              data-testid="review-detail-request-changes"
+              onClick={handleRequestChangesClick}
+              disabled={isLoading || !canApprove || (showFeedbackInput && !feedback.trim())}
+              variant="outline"
+              className="gap-1.5"
+              style={{
+                borderColor: "var(--status-warning)",
+                color: "var(--status-warning)",
+              }}
+            >
+              {requestChangesMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RotateCcw className="w-4 h-4" />
+              )}
+              {showFeedbackInput ? "Submit Changes" : "Request Changes"}
+            </Button>
+            <Button
+              data-testid="review-detail-approve"
+              onClick={handleApprove}
+              disabled={isLoading || !canApprove || showFeedbackInput}
+              className="gap-1.5"
+              style={{
+                backgroundColor: "var(--status-success)",
+                color: "white",
+              }}
+            >
+              {approveMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              Approve
+            </Button>
+          </div>
+        )}
         <ConfirmationDialog {...confirmationDialogProps} />
       </DialogContent>
     </Dialog>
