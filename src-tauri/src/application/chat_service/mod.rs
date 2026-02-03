@@ -25,6 +25,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
+use which::which;
 use tokio::process::Command;
 use crate::domain::entities::{
     AgentRun, ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId, TaskId,
@@ -198,7 +199,8 @@ impl<R: Runtime> ClaudeChatService<R> {
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<RunningAgentRegistry>,
     ) -> Self {
-        let cli_path = which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
+        let cli_path = crate::infrastructure::agents::claude::find_claude_cli()
+            .unwrap_or_else(|| PathBuf::from("claude"));
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let default_working_directory = cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd);
         let plugin_dir = default_working_directory.join("ralphx-plugin");
@@ -333,10 +335,21 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         context_id: &str,
         message: &str,
     ) -> Result<SendResult, ChatServiceError> {
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message start (context_type={}, context_id={}, message_len={})",
+            context_type.to_string(),
+            context_id,
+            message.len()
+        );
         // 1. Get or create conversation
         let conversation = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message conversation (id={}, session_id={:?})",
+            conversation.id.as_str(),
+            conversation.claude_session_id
+        );
         let conversation_id = conversation.id;
         let is_new_conversation = conversation.claude_session_id.is_none();
         let stored_session_id = conversation.claude_session_id.clone();
@@ -348,6 +361,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .create(agent_run)
             .await
             .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message agent_run created (run_id={})",
+            agent_run_id
+        );
 
         // 2a. Update state history metadata for task-related contexts
         // This links the conversation_id and agent_run_id to the state history entry,
@@ -400,6 +417,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .create(user_msg)
             .await
             .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message user message stored (message_id={})",
+            user_msg_id
+        );
 
         // 5. Emit message created event
         self.emit_event(
@@ -430,9 +451,20 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         );
 
         // 6. Resolve working directory
-        let working_directory = self
+        let mut working_directory = self
             .resolve_working_directory(context_type, context_id)
             .await;
+        if !working_directory.exists() {
+            eprintln!(
+                "[STREAM_DEBUG] chat_service.send_message working_directory missing, falling back to default (missing={})",
+                working_directory.display()
+            );
+            working_directory = self.default_working_directory.clone();
+        }
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message working_directory={}",
+            working_directory.display()
+        );
 
         // 6a. Fetch entity status for dynamic agent resolution
         let entity_status = self.get_entity_status(context_type, context_id).await;
@@ -452,15 +484,43 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // 7a. Build and spawn command
+        if !self.cli_path.exists() && which(&self.cli_path).is_err() {
+            eprintln!(
+                "[STREAM_DEBUG] chat_service.send_message missing Claude CLI at {}",
+                self.cli_path.display()
+            );
+            return Err(ChatServiceError::SpawnFailed(format!(
+                "Claude CLI not found at {}",
+                self.cli_path.display()
+            )));
+        }
+
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message building command (cli_path={})",
+            self.cli_path.display()
+        );
         let mut cmd = self.build_command(
             &conversation,
             message,
             &working_directory,
             entity_status.as_deref(),
         );
-        let child = cmd
-            .spawn()
-            .map_err(|e| ChatServiceError::SpawnFailed(e.to_string()))?;
+        eprintln!("[STREAM_DEBUG] chat_service.send_message command built");
+        eprintln!("[STREAM_DEBUG] chat_service.send_message spawning CLI");
+        let child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                eprintln!(
+                    "[STREAM_DEBUG] chat_service.send_message spawn failed: {}",
+                    e
+                );
+                return Err(ChatServiceError::SpawnFailed(e.to_string()));
+            }
+        };
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message spawn ok (pid={:?})",
+            child.id()
+        );
 
         // 7b. Register the process in the running agent registry
         let child_pid = child.id();
@@ -519,6 +579,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             running_agent_registry,
             execution_state,
             app_handle,
+        );
+        eprintln!(
+            "[STREAM_DEBUG] chat_service.send_message background spawn kicked (conversation_id={})",
+            conversation_id.as_str()
         );
 
         // Return immediately

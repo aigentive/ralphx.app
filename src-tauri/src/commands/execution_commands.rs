@@ -6,7 +6,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-use crate::application::{AppState, TaskSchedulerService, TaskTransitionService};
+use crate::application::{
+    AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
+};
+use crate::application::reconciliation::UserRecoveryAction;
 use crate::domain::entities::InternalStatus;
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -104,6 +107,11 @@ impl ExecutionState {
         } else {
             prev - 1
         }
+    }
+
+    /// Force-set running count (used for reconciliation with registry)
+    pub fn set_running_count(&self, count: u32) {
+        self.running_count.store(count, Ordering::SeqCst);
     }
 
     /// Get max concurrent tasks
@@ -204,7 +212,7 @@ pub async fn get_execution_status(
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionStatusResponse, String> {
-    // Count queued tasks (tasks in Ready status) and running tasks (tasks in agent-active states)
+    // Count queued tasks (tasks in Ready status)
     let all_projects = app_state
         .project_repo
         .get_all()
@@ -212,7 +220,6 @@ pub async fn get_execution_status(
         .map_err(|e| e.to_string())?;
 
     let mut queued_count = 0u32;
-    let mut db_running_count = 0u32;
     for project in &all_projects {
         let tasks = app_state
             .task_repo
@@ -225,18 +232,16 @@ pub async fn get_execution_status(
             .filter(|t| t.internal_status == InternalStatus::Ready)
             .count() as u32;
 
-        // Count tasks in agent-active states from the database
-        // This ensures running_count reflects reality even after app restart
-        db_running_count += tasks
-            .iter()
-            .filter(|t| AGENT_ACTIVE_STATUSES.contains(&t.internal_status))
-            .count() as u32;
     }
 
-    // Use MAX of in-memory count and db count to handle:
-    // 1. Normal operation: in-memory count is accurate
-    // 2. After restart: db count reflects tasks that should be running
-    let running_count = std::cmp::max(execution_state.running_count(), db_running_count);
+    // Use running agent registry as source of truth for active processes.
+    // This avoids inflated counts from stuck task statuses.
+    let registry_count = app_state.running_agent_registry.list_all().await.len() as u32;
+
+    // Sync in-memory count with registry so downstream logic stays consistent.
+    execution_state.set_running_count(registry_count);
+
+    let running_count = registry_count;
 
     Ok(ExecutionStatusResponse {
         is_paused: execution_state.is_paused(),
@@ -386,6 +391,111 @@ pub async fn stop_execution(
         success: true,
         status,
     })
+}
+
+/// Recover a task execution after a stop request
+///
+/// Applies the recovery policy:
+/// - If run completed → PendingReview
+/// - Else → Ready
+/// - If evidence conflicts → emit recovery:prompt
+#[tauri::command]
+pub async fn recover_task_execution(
+    task_id: String,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app_state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    let task_id = crate::domain::entities::TaskId::from_string(task_id);
+
+    let transition_service = Arc::new(TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&execution_state),
+        app_state.app_handle.clone(),
+    ));
+
+    let reconciler = ReconciliationRunner::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.agent_run_repo),
+        transition_service,
+        Arc::clone(&execution_state),
+        Some(app),
+    );
+
+    Ok(reconciler.recover_execution_stop(&task_id).await)
+}
+
+/// Resolve a recovery prompt by applying the selected action.
+#[tauri::command]
+pub async fn resolve_recovery_prompt(
+    task_id: String,
+    action: String,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app_state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    let task_id = crate::domain::entities::TaskId::from_string(task_id);
+    let action = match action.as_str() {
+        "restart" => UserRecoveryAction::Restart,
+        "cancel" => UserRecoveryAction::Cancel,
+        _ => return Err("Invalid recovery action".to_string()),
+    };
+
+    let transition_service = Arc::new(TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&execution_state),
+        app_state.app_handle.clone(),
+    ));
+
+    let reconciler = ReconciliationRunner::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.agent_run_repo),
+        transition_service,
+        Arc::clone(&execution_state),
+        Some(app),
+    );
+
+    let task = match app_state.task_repo.get_by_id(&task_id).await {
+        Ok(Some(task)) => task,
+        Ok(None) => return Ok(false),
+        Err(e) => return Err(e.to_string()),
+    };
+
+    Ok(reconciler.apply_user_recovery_action(&task, action).await)
 }
 
 /// Set maximum concurrent tasks

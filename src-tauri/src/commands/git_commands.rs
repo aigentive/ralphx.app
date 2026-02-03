@@ -216,12 +216,13 @@ pub async fn resolve_merge_conflict(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", task.project_id.as_str()))?;
 
-    // Determine working path
+    // Determine working path (prefer existing worktree, fallback to project repo)
     let working_path = match project.git_mode {
         GitMode::Worktree => task
             .worktree_path
             .as_ref()
             .map(PathBuf::from)
+            .filter(|path| path.exists())
             .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
         GitMode::Local => PathBuf::from(&project.working_directory),
     };

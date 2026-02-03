@@ -118,6 +118,40 @@ export function useIntegratedChatEvents({
       })
     );
 
+    // Message created events - invalidate conversation for live updates
+    const handleMessageCreated = (payload: { conversation_id?: string }) => {
+      const conversationId = payload.conversation_id;
+      if (!conversationId) {
+        return;
+      }
+      if (conversationId === activeConversationIdRef.current) {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversationId),
+        });
+      }
+    };
+
+    unsubscribes.push(
+      bus.subscribe<{ conversation_id?: string }>(
+        "agent:message_created",
+        handleMessageCreated
+      )
+    );
+
+    unsubscribes.push(
+      bus.subscribe<{ conversation_id?: string }>(
+        "chat:message_created",
+        handleMessageCreated
+      )
+    );
+
+    unsubscribes.push(
+      bus.subscribe<{ conversation_id?: string }>(
+        "execution:message_created",
+        handleMessageCreated
+      )
+    );
+
     // Unified agent:run_completed event
     unsubscribes.push(
       bus.subscribe<{

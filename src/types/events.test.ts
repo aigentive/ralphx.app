@@ -3,6 +3,7 @@ import {
   TaskEventSchema,
   type TaskEvent,
   AgentMessageEventSchema,
+  RecoveryPromptEventSchema,
   TaskStatusEventSchema,
   SupervisorAlertEventSchema,
   ReviewEventSchema,
@@ -257,6 +258,36 @@ describe("TaskStatusEventSchema", () => {
 
     const result = TaskStatusEventSchema.safeParse(event);
     expect(result.success).toBe(true);
+  });
+});
+
+describe("RecoveryPromptEventSchema", () => {
+  it("validates a valid recovery prompt", () => {
+    const event = {
+      taskId: "550e8400-e29b-41d4-a716-446655440000",
+      status: "executing",
+      contextType: "execution",
+      reason: "Execution run missing but max concurrency is reached.",
+      primaryAction: { id: "restart", label: "Restart" },
+      secondaryAction: { id: "cancel", label: "Cancel" },
+    };
+
+    const result = RecoveryPromptEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an invalid recovery prompt", () => {
+    const event = {
+      taskId: "invalid",
+      status: "executing",
+      contextType: "execution",
+      reason: "",
+      primaryAction: { id: "restart", label: "Restart" },
+      secondaryAction: { id: "cancel", label: "Cancel" },
+    };
+
+    const result = RecoveryPromptEventSchema.safeParse(event);
+    expect(result.success).toBe(false);
   });
 });
 

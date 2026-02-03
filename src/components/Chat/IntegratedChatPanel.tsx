@@ -33,6 +33,8 @@ import {
 import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
 import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
 import { useAgentEvents } from "@/hooks/useAgentEvents";
+import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog";
+import { useEventBus } from "@/providers/EventProvider";
 
 // ============================================================================
 // Main Component
@@ -65,9 +67,11 @@ export function IntegratedChatPanel({
   onClose,
 }: IntegratedChatPanelProps) {
   const queryClient = useQueryClient();
+  const bus = useEventBus();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
+  const isHistoryMode = !!taskHistoryState;
 
   // Get task data from React Query (useTasks) which has full task data
   const { data: tasks = [] } = useTasks(projectId);
@@ -112,13 +116,37 @@ export function IntegratedChatPanel({
     isExecutionMode,
     isReviewMode,
     isMergeMode,
+    isHistoryMode,
     // Pass history mode overrides for conversation selection
     overrideConversationId: taskHistoryState?.conversationId,
     overrideAgentRunId: taskHistoryState?.agentRunId,
   });
 
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+
   // Listen for agent lifecycle events so chat stays live during reviews/merges
   useAgentEvents(activeConversationId);
+
+  // If a new run starts in this context, switch to its conversation (live mode only)
+  useEffect(() => {
+    if (isHistoryMode) {
+      return undefined;
+    }
+
+    return bus.subscribe<{
+      context_type: string;
+      context_id: string;
+      conversation_id: string;
+    }>("agent:run_started", (payload) => {
+      if (
+        payload.context_type === currentContextType &&
+        payload.context_id === currentContextId &&
+        payload.conversation_id
+      ) {
+        setActiveConversation(payload.conversation_id);
+      }
+    });
+  }, [bus, currentContextType, currentContextId, isHistoryMode, setActiveConversation]);
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
@@ -210,6 +238,33 @@ export function IntegratedChatPanel({
     return () => clearInterval(intervalId);
   }, [activeConversationId, agentRunQuery.data?.status, queryClient]);
 
+  // Recovery fallback: keep conversation list fresh while agent is running
+  useEffect(() => {
+    if (isHistoryMode || !(isExecutionMode || isReviewMode || isMergeMode)) {
+      return undefined;
+    }
+    if (!isAgentRunning || !selectedTaskId) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
+      });
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [
+    currentContextType,
+    isAgentRunning,
+    isExecutionMode,
+    isHistoryMode,
+    isMergeMode,
+    isReviewMode,
+    queryClient,
+    selectedTaskId,
+  ]);
+
   // Live updates: poll active conversation while agent is running (store state)
   useEffect(() => {
     if (!activeConversationId || !isAgentRunning) {
@@ -254,6 +309,7 @@ export function IntegratedChatPanel({
     isExecutionMode,
     isMergeMode,
     isReviewMode,
+    projectId,
     queryClient,
     selectedTaskId,
   ]);
@@ -339,6 +395,7 @@ export function IntegratedChatPanel({
     isExecutionMode,
     isMergeMode,
     isReviewMode,
+    projectId,
     queryClient,
     selectedTaskId,
   ]);
@@ -383,9 +440,6 @@ export function IntegratedChatPanel({
         : [],
     [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
   );
-
-  // History mode: viewing past task state via time-travel navigation
-  const isHistoryMode = !!taskHistoryState;
 
   // Debug logging for history mode
   console.log('[IntegratedChatPanel] Context mode:', {
@@ -482,6 +536,7 @@ export function IntegratedChatPanel({
   return (
     <>
       <style>{animationStyles}</style>
+      <RecoveryPromptDialog surface="chat" taskId={selectedTaskId ?? undefined} />
       {/* Outer container - matches main content bg for unified surface */}
       <div
         data-testid="integrated-chat-panel"

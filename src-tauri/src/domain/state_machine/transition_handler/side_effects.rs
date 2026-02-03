@@ -377,6 +377,11 @@ impl<'a> super::TransitionHandler<'a> {
 
                 // Use ChatService for persistent worker execution (Phase 15B)
                 let prompt = format!("Execute task: {}", task_id_str);
+                eprintln!(
+                    "[STREAM_DEBUG] transition handler sending task_execution message (task_id={}, prompt_len={})",
+                    task_id_str,
+                    prompt.len()
+                );
 
                 // send_message handles:
                 // 1. Creating chat_conversation (context_type: 'task_execution')

@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
+import type { RecoveryPromptEvent } from "@/types/events";
 import type { ViewType } from "@/types/chat";
 import type { InternalStatus } from "@/types/status";
 
@@ -109,6 +110,10 @@ interface UiState {
   confirmation: ConfirmationConfig | null;
   /** Active question from agent requiring user response */
   activeQuestion: AskUserQuestionPayload | null;
+  /** Active recovery prompt from backend */
+  recoveryPrompt: RecoveryPromptEvent | null;
+  /** Surface that currently owns the recovery prompt dialog */
+  recoveryPromptSurface: "chat" | "task_detail" | null;
   /** Current execution status (pause state, running/queued counts) */
   executionStatus: ExecutionStatusResponse;
   /** Whether to show archived tasks on the board */
@@ -175,6 +180,12 @@ interface UiActions {
   setActiveQuestion: (question: AskUserQuestionPayload) => void;
   /** Clear active question after answer submitted */
   clearActiveQuestion: () => void;
+  /** Set active recovery prompt */
+  setRecoveryPrompt: (prompt: RecoveryPromptEvent) => void;
+  /** Clear active recovery prompt */
+  clearRecoveryPrompt: () => void;
+  /** Set surface that owns the recovery prompt dialog */
+  setRecoveryPromptSurface: (surface: "chat" | "task_detail" | null) => void;
   /** Update full execution status from backend */
   setExecutionStatus: (status: ExecutionStatusResponse) => void;
   /** Set just the paused state */
@@ -232,6 +243,8 @@ export const useUiStore = create<UiState & UiActions>()(
     loading: {},
     confirmation: null,
     activeQuestion: null,
+    recoveryPrompt: null,
+    recoveryPromptSurface: null,
     executionStatus: {
       isPaused: false,
       runningCount: 0,
@@ -341,6 +354,23 @@ export const useUiStore = create<UiState & UiActions>()(
     clearActiveQuestion: () =>
       set((state) => {
         state.activeQuestion = null;
+      }),
+
+    setRecoveryPrompt: (prompt) =>
+      set((state) => {
+        state.recoveryPrompt = prompt;
+        state.recoveryPromptSurface = null;
+      }),
+
+    clearRecoveryPrompt: () =>
+      set((state) => {
+        state.recoveryPrompt = null;
+        state.recoveryPromptSurface = null;
+      }),
+
+    setRecoveryPromptSurface: (surface) =>
+      set((state) => {
+        state.recoveryPromptSurface = surface;
       }),
 
     setExecutionStatus: (status) =>

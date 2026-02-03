@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tracing::info;
 
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, TaskId,
@@ -38,6 +39,12 @@ pub async fn process_stream_background<R: Runtime>(
     activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
     task_repo: Option<Arc<dyn TaskRepository>>,
 ) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), String> {
+    eprintln!(
+        "[STREAM_DEBUG] process_stream_background start (conversation_id={}, context_type={}, context_id={})",
+        conversation_id.as_str(),
+        context_type.to_string(),
+        context_id
+    );
     let stdout = child
         .stdout
         .take()
@@ -51,6 +58,12 @@ pub async fn process_stream_background<R: Runtime>(
     let conversation_id_str = conversation_id.as_str().to_string();
     let context_type_str = context_type.to_string();
     let context_id_str = context_id.to_string();
+    let debug_path = std::env::temp_dir()
+        .join(format!("ralphx-stream-debug-{}.log", conversation_id_str));
+    eprintln!(
+        "[STREAM_DEBUG] Debug log path (written on parse failure): {}",
+        debug_path.display()
+    );
 
     // Parse task_id for activity persistence (only for TaskExecution context)
     let task_id_for_persistence = if context_type == ChatContextType::TaskExecution {
@@ -79,9 +92,17 @@ pub async fn process_stream_background<R: Runtime>(
     let stdout_reader = BufReader::new(stdout);
     let mut lines = stdout_reader.lines();
     let mut processor = StreamProcessor::new();
+    let mut debug_lines: Vec<String> = Vec::new();
+    let mut lines_seen: usize = 0;
+    let mut lines_parsed: usize = 0;
 
     while let Ok(Some(line)) = lines.next_line().await {
+        lines_seen += 1;
+        if debug_lines.len() < 50 {
+            debug_lines.push(line.clone());
+        }
         if let Some(msg) = StreamProcessor::parse_line(&line) {
+            lines_parsed += 1;
             let stream_events = processor.process_message(msg);
 
             for event in stream_events {
@@ -362,6 +383,17 @@ pub async fn process_stream_background<R: Runtime>(
                 }
             }
         }
+
+        if lines_seen % 50 == 0 {
+            eprintln!(
+                "[STREAM_DEBUG] Progress (conversation_id={}, lines_seen={}, lines_parsed={}, response_len={}, tool_calls={})",
+                conversation_id_str,
+                lines_seen,
+                lines_parsed,
+                processor.response_text.len(),
+                processor.tool_calls.len()
+            );
+        }
     }
 
     let result = processor.finish();
@@ -371,6 +403,47 @@ pub async fn process_stream_background<R: Runtime>(
 
     // Wait for process
     let status = child.wait().await.map_err(|e| e.to_string())?;
+    eprintln!(
+        "[STREAM_DEBUG] Stream finished (conversation_id={}, success={}, response_len={}, tool_calls={})",
+        conversation_id_str,
+        status.success(),
+        result.response_text.len(),
+        result.tool_calls.len()
+    );
+
+    if result.response_text.is_empty() {
+        let payload = if debug_lines.is_empty() {
+            format!(
+                "no stdout lines captured\n\nstderr:\n{}",
+                stderr_content.trim()
+            )
+        } else {
+            format!(
+                "stdout sample:\n{}\n\nstderr:\n{}",
+                debug_lines.join("\n"),
+                stderr_content.trim()
+            )
+        };
+        let _ = std::fs::write(&debug_path, payload);
+        info!(
+            path = %debug_path.display(),
+            conversation_id = %conversation_id_str,
+            "Wrote stream debug log"
+        );
+        eprintln!(
+            "[STREAM_DEBUG] Wrote stream debug log: {}",
+            debug_path.display()
+        );
+    }
+
+    if result.is_error {
+        let error_msg = if !result.errors.is_empty() {
+            result.errors.join("; ")
+        } else {
+            "Agent failed during execution".to_string()
+        };
+        return Err(error_msg);
+    }
 
     if !status.success() && result.response_text.is_empty() {
         let error_msg = if stderr_content.is_empty() {

@@ -12,6 +12,7 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore } from "@/stores/chatStore";
 import { chatApi, stopAgent } from "@/api/chat";
+import { recoverTaskExecution } from "@/api/recovery";
 import { chatKeys } from "@/hooks/useChat";
 import { ideationApi } from "@/api/ideation";
 import type { ContextType } from "@/types/chat-conversation";
@@ -220,6 +221,10 @@ export function useIntegratedChatHandlers({
     const ctxId = ideationSessionId || selectedTaskId || projectId;
 
     try {
+      if (isExecutionMode && selectedTaskId) {
+        await recoverTaskExecution(selectedTaskId);
+        return;
+      }
       await stopAgent(ctxType, ctxId);
     } catch {
       // Silently ignore - agent stop is fire-and-forget

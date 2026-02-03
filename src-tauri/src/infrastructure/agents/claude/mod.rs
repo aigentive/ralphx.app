@@ -183,7 +183,31 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
 
 /// Find the Claude CLI path (uses same approach as ClaudeCodeClient)
 pub fn find_claude_cli() -> Option<PathBuf> {
-    which::which("claude").ok()
+    if let Ok(path) = std::env::var("CLAUDE_CLI_PATH") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    if let Ok(path) = which::which("claude") {
+        return Some(path);
+    }
+
+    let candidates = [
+        "/opt/homebrew/bin/claude",
+        "/usr/local/bin/claude",
+        "/usr/bin/claude",
+    ];
+
+    for candidate in candidates {
+        let path = PathBuf::from(candidate);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
 }
 
 /// Find the plugin directory relative to the app
